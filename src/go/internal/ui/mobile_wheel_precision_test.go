@@ -138,8 +138,8 @@ func TestWheelCenterValuePrecisionTracksResolution(t *testing.T) {
 // after a real value change.
 func TestWheelCenterValueRefreshesAtEveryResolution(t *testing.T) {
 	defs := []audio.ParamDef{
-		{Name: "amt", Min: 0, Max: 1},               // unitless
-		{Name: "decay", Min: 0, Max: 4},             // multiplier (x)
+		{Name: "amt", Min: 0, Max: 1},                   // unitless
+		{Name: "decay", Min: 0, Max: 4},                 // multiplier (x)
 		{Name: "amp_attack", Min: 0, Max: 2, Unit: "s"}, // seconds
 		{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"},
 	}

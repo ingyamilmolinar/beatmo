@@ -108,7 +108,6 @@ func TestAddRowButtonAnchoredAcrossRowCounts(t *testing.T) {
 	}
 }
 
-
 // TestAddRowButtonAnchoredAcrossRowCountsDesktop covers the strict
 // "no movement across row counts" invariant on desktop. Desktop keeps
 // the original bottom-anchor everywhere (the snap-flush behavior is

@@ -559,6 +559,7 @@ func (z *ChainPanelZone) Update() {
 				Owner:   z,
 				Overlay: NewTooltipOverlay(text),
 				Modal:   false,
+				Passive: true, // display-only hint; never owns input / closes on outside press
 				Anchor:  anchor,
 			})
 		}

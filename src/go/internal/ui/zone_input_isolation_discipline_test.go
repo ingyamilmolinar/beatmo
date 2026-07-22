@@ -143,7 +143,7 @@ func TestZoneInvisibleNotInHitIndex(t *testing.T) {
 		{X: 180, Y: 400},
 		{X: 350, Y: 700},
 	}
-	forbiddenTags := []string{"eq-panel-capture", "chain-panel-capture", "synth-knob-0", "synth-knob-1"}
+	forbiddenTags := []string{"eq-panel-capture", "chain-panel-capture", "synth-control-0", "synth-control-1"}
 	for _, pt := range probePoints {
 		hits := g.drum.tree.HitIndexRef().At(pt.X, pt.Y)
 		for _, h := range hits {

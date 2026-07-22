@@ -27,8 +27,10 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	g.longPressPopupLastHover = ""
 
 	// Button dimensions — sourced from density tokens and spacing constants.
-	btnW := 80
-	btnH := Profile().DensityValues().PopupBtnH
+	// btnW is widened from the text-only ideal so an icon (IconSizeMD) fits
+	// above the label; btnH grows to fit an icon row + label row.
+	btnW := 88
+	btnH := Profile().DensityValues().PopupBtnH + IconSizeMD + SpaceXS // icon row + label row
 	gap := SpaceSM
 	pad := SpaceMD
 	gridW := g.split.GridW(g.winW)
@@ -108,6 +110,16 @@ func (g *Game) updateLongPressPopup(mx, my int, left bool) {
 	// hover from the previous frame we can still activate the correct button.
 	if left {
 		g.longPressPopupLastHover = g.longPressPopupHover
+	}
+
+	// Click-outside contract: a NEW press (down-edge) that lands outside the
+	// panel dismisses the popup, matching every other pop-up. The slide-release
+	// path below still handles the hold-slide-release gesture.
+	pressEdge := left && !g.leftPrev
+	if pressEdge && !pt.In(g.longPressPopupRect) {
+		g.dismissLongPressPopup("outside-press")
+		g.leftPrev = left
+		return
 	}
 
 	// Detect release: previous frame was pressed, this frame is not.
@@ -194,54 +206,42 @@ func (g *Game) longPressPopupAccent() color.Color {
 // and broke the filled-control pattern.
 func longPressDeleteTextColor() color.Color { return genColorBackground }
 
+// drawPopupActionCap renders one quick-action keycap: shared keycap chrome,
+// a leading/top icon, and a centered label. tint colors BOTH icon and label
+// (instrument accent on hover); delete overrides via its own fill/label.
+func drawPopupActionCap(dst *ebiten.Image, rect image.Rectangle, icon IconID, label string, fill, border, tint color.Color, hovered bool) {
+	capRect := drawKeycapPanelButton(dst, rect, fill, border, hovered)
+	iconSz := IconSizeMD
+	ix := capRect.Min.X + (capRect.Dx()-iconSz)/2
+	iy := capRect.Min.Y + SpaceXS
+	drawIconByID(dst, icon, image.Rect(ix, iy, ix+iconSz, iy+iconSz), tint)
+	lw := StyledTextWidth(label, RoleBody)
+	lx := capRect.Min.X + (capRect.Dx()-lw)/2
+	ly := iy + iconSz + SpaceXS
+	DrawTextStyled(dst, label, lx, ly, RoleBody, tint)
+}
+
 func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	if !g.longPressPopup {
 		return
 	}
 	accent := g.longPressPopupAccent()
-
-	// Panel background.
 	drawScrim(dst)
 	drawPanel(dst, g.longPressPopupRect)
 
-	// Move button — raised keycap, neutral color, instrument-accent text on hover.
-	moveHover := g.longPressPopupHover == "move"
-	moveCap := drawKeycapPanelButton(dst, g.longPressPopupMove, colDropdown, colTransportBorder, moveHover)
-	moveTxtCol := color.Color(genColorPopupTextSecondary)
-	if moveHover {
-		moveTxtCol = accent // instrument-color text when hovered
+	tint := func(hover bool) color.Color {
+		if hover {
+			return accent
+		}
+		return color.Color(genColorPopupTextSecondary)
 	}
-	mtx := moveCap.Min.X + (moveCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapMove), RoleBody))/2
-	mty := moveCap.Min.Y + (moveCap.Dy()-StyledTextHeight(RoleBody))/2
-	DrawTextStyled(dst, i18n.T(i18n.KeyCapMove), mtx, mty, RoleBody, moveTxtCol)
-
-	// Copy button — raised keycap, neutral color, instrument-accent text on hover.
-	copyHover := g.longPressPopupHover == "copy"
-	copyCap := drawKeycapPanelButton(dst, g.longPressPopupCopy, colDropdown, colTransportBorder, copyHover)
-	copyTxtCol := color.Color(genColorPopupTextSecondary)
-	if copyHover {
-		copyTxtCol = accent // instrument-color text when hovered
-	}
-	cpx := copyCap.Min.X + (copyCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapCopy), RoleBody))/2
-	cpy := copyCap.Min.Y + (copyCap.Dy()-StyledTextHeight(RoleBody))/2
-	DrawTextStyled(dst, i18n.T(i18n.KeyCapCopy), cpx, cpy, RoleBody, copyTxtCol)
-
-	// Connect button — raised keycap, neutral color, instrument-accent text on hover.
-	connHover := g.longPressPopupHover == "connect"
-	connCap := drawKeycapPanelButton(dst, g.longPressPopupConn, colDropdown, colTransportBorder, connHover)
-	connTxtCol := color.Color(genColorPopupTextSecondary)
-	if connHover {
-		connTxtCol = accent // instrument-color text when hovered
-	}
-	ctx := connCap.Min.X + (connCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapConnect), RoleBody))/2
-	cty := connCap.Min.Y + (connCap.Dy()-StyledTextHeight(RoleBody))/2
-	DrawTextStyled(dst, i18n.T(i18n.KeyCapConnect), ctx, cty, RoleBody, connTxtCol)
-
-	// Delete button — raised keycap, destructive rust color, dark-on-neon
-	// label (no accent on hover).
-	delHover := g.longPressPopupHover == "delete"
-	delCap := drawKeycapPanelButton(dst, g.longPressPopupDel, colDeleteFill, colDeleteBorder, delHover)
-	dtx := delCap.Min.X + (delCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyMenuDelete), RoleBody))/2
-	dty := delCap.Min.Y + (delCap.Dy()-StyledTextHeight(RoleBody))/2
-	DrawTextStyled(dst, i18n.T(i18n.KeyMenuDelete), dtx, dty, RoleBody, longPressDeleteTextColor())
+	drawPopupActionCap(dst, g.longPressPopupMove, IconMove, i18n.T(i18n.KeyCapMove),
+		colDropdown, colTransportBorder, tint(g.longPressPopupHover == "move"), g.longPressPopupHover == "move")
+	drawPopupActionCap(dst, g.longPressPopupCopy, IconCopy, i18n.T(i18n.KeyCapCopy),
+		colDropdown, colTransportBorder, tint(g.longPressPopupHover == "copy"), g.longPressPopupHover == "copy")
+	drawPopupActionCap(dst, g.longPressPopupConn, IconConnect, i18n.T(i18n.KeyCapConnect),
+		colDropdown, colTransportBorder, tint(g.longPressPopupHover == "connect"), g.longPressPopupHover == "connect")
+	// Delete: destructive fill + dark-on-neon icon+label.
+	drawPopupActionCap(dst, g.longPressPopupDel, IconTrash, i18n.T(i18n.KeyMenuDelete),
+		colDeleteFill, colDeleteBorder, longPressDeleteTextColor(), g.longPressPopupHover == "delete")
 }

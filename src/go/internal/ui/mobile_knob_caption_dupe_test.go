@@ -14,10 +14,10 @@ import (
 // label twice ("Start 0%" / "Start 0%" on the Sampler, "Base" / "Base" on
 // the Synth tab — A9 in the 2026-07-04 critique).
 
-func TestSynthMobileKnobCaptionIsParamName(t *testing.T) {
+func TestSynthMobileControlCaptionIsParamName(t *testing.T) {
 	def := audio.ParamDef{Name: "wave", Min: 0, Max: 1, Enum: []string{"Base", "Saw"}}
 
-	caption := synthKnobMobileCaption(def)
+	caption := synthControlMobileCaption(def)
 	pill := formatKnobDisplay(def, 0) // pill label at value "Base"
 
 	if caption == pill {

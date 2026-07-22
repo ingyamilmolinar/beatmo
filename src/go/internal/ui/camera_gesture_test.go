@@ -10,9 +10,9 @@ func TestCameraGestureEmitsOncePerPan(t *testing.T) {
 		pans = append(pans, struct{ dx, dy float64 }{dx, dy})
 	}, emitZoom: func(float64) {}}
 
-	g.observe(false, 0, 0, 1) // idle
-	g.observe(true, 5, 0, 1)  // pan starts (offset jumps)
-	g.observe(true, 12, 3, 1) // pan continues
+	g.observe(false, 0, 0, 1)  // idle
+	g.observe(true, 5, 0, 1)   // pan starts (offset jumps)
+	g.observe(true, 12, 3, 1)  // pan continues
 	g.observe(false, 12, 3, 1) // release → one emit, dx=12 dy=3
 
 	if len(pans) != 1 {

@@ -49,6 +49,16 @@ func (g *Game) handleEditor() {
 		return
 	}
 
+	// A portal overlay (Settings / Logs / File menu, dialogs, …) owns input while
+	// open — the desktop editor must stand down so a click on a grid-anchored menu
+	// never creates or selects a node behind it. Mirrors handleTapInGrid's gate;
+	// these menus now render in the grid pane, so their clicks reach handleEditor.
+	if g.modalOverlayActive() {
+		g.pendingClick = false
+		g.leftPrev = left
+		return
+	}
+
 	// Armed grid mode: mouse release in the grid places/cancels via the same
 	// shared handler the touch path uses.
 	if g.modes.Active() != GridModeNone {

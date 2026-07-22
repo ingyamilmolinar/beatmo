@@ -580,7 +580,7 @@ func TestContextMenuEffectsAbsentOnMobile(t *testing.T) {
 // (Rename, Color, Origin, Delete) plus the close button = 5. ("Instrument" was
 // removed — the row label opens the picker directly on every platform; "Color"
 // was re-exposed in Task 14 to open the grouped Vice City picker.)
-func TestContextMenuHasFiveItemsMobile(t *testing.T) {
+func TestContextMenuHasFourItemsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
@@ -598,12 +598,18 @@ func TestContextMenuHasFiveItemsMobile(t *testing.T) {
 		t.Fatal("context menu did not open")
 	}
 
-	// Mobile items: Rename, Color, Origin, Delete (4) + close = 5.
-	want := 5
+	// Mobile items: Rename, Color, Origin, Delete (4). No close × on mobile — it
+	// is desktop-only; the bottom sheet dismisses via tap-away.
+	want := 4
 	if got := len(dv.contextMenuBtns); got != want {
-		t.Errorf("expected %d context menu buttons (4 items + close), got %d", want, got)
+		t.Errorf("expected %d context menu buttons (4 items, no close), got %d", want, got)
 		for i, btn := range dv.contextMenuBtns {
 			t.Logf("  btn[%d]: text=%q icon=%q", i, btn.Text, btn.Icon)
+		}
+	}
+	for i, btn := range dv.contextMenuBtns {
+		if btn.Icon == "close" {
+			t.Errorf("mobile context menu must have no close ×; btn[%d] has icon=close", i)
 		}
 	}
 }
@@ -655,7 +661,7 @@ func TestFXPanelMobileSizing(t *testing.T) {
 	}
 }
 
-func TestFXPanelHasCloseButtonMobile(t *testing.T) {
+func TestFXPanelHasNoCloseButtonMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
@@ -676,20 +682,15 @@ func TestFXPanelHasCloseButtonMobile(t *testing.T) {
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
 	}
-	if len(dv.fxPanelBtns) == 0 {
-		t.Fatal("no buttons in FX panel")
-	}
 
-	// Last button should be the close button.
-	closeBtn := dv.fxPanelBtns[len(dv.fxPanelBtns)-1]
-	if closeBtn.Icon != "close" {
-		t.Errorf("expected last button icon='close', got %q", closeBtn.Icon)
+	// No close × on mobile — the FX panel dismisses via tap-away (desktop-only ×).
+	if btn := dv.fxPanelCloseBtn(); btn != nil {
+		t.Fatalf("mobile FX panel must have no close ×; got rect %+v", btn.Rect())
 	}
-
-	// Clicking close should close the panel.
-	closeBtn.OnClick()
-	if dv.IsFXPanelOpen() {
-		t.Fatal("FX panel did not close after clicking close button on mobile")
+	for i, btn := range dv.fxPanelBtns {
+		if btn != nil && btn.Icon == "close" {
+			t.Errorf("mobile FX panel must have no close ×; btn[%d] has icon=close", i)
+		}
 	}
 }
 
@@ -1045,7 +1046,7 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 
 	// While a slider drag is active, the FX panel's capturing state should
 	// be true, meaning the portal system will route all input to it.
-	capturing := dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	capturing := dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging
 	if !capturing {
 		t.Error("FX panel should be in capturing state during slider drag")
 	}

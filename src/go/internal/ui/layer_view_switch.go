@@ -13,8 +13,8 @@ type ViewSwitchLayer struct {
 
 func newViewSwitchLayer(dv *DrumView) *ViewSwitchLayer { return &ViewSwitchLayer{dv: dv} }
 
-func (l *ViewSwitchLayer) ID() string    { return "view-switch" }
-func (l *ViewSwitchLayer) ZIndex() int   { return ZViewSwitch }
+func (l *ViewSwitchLayer) ID() string  { return "view-switch" }
+func (l *ViewSwitchLayer) ZIndex() int { return ZViewSwitch }
 func (l *ViewSwitchLayer) Visible() bool {
 	return Profile().IsMobile() && l.dv.viewSwitchSegmented != nil &&
 		!l.dv.viewSwitchSegmented.Rect().Empty()

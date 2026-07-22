@@ -17,7 +17,7 @@ const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
-  ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+  ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
@@ -90,13 +90,35 @@ console.log("Testing touch gestures on mobile viewport...");
 
 // Test 1: Single-finger drag on grid pans camera
 console.log("Test 1: Single-finger drag on grid pans camera");
-const offsetBefore = await page.evaluate(() => camOffset());
 const gridY = 100; // Y position in grid area (above drum view)
-await cdpDrag(page, 200, gridY, 300, gridY + 60, 10);
-await page.waitForTimeout(100);
-const offsetAfter = await page.evaluate(() => camOffset());
-const dragMoved = Math.abs(offsetAfter.x - offsetBefore.x) > 5 || Math.abs(offsetAfter.y - offsetBefore.y) > 5;
-assert(dragMoved, `Camera moved after drag (dx=${offsetAfter.x - offsetBefore.x}, dy=${offsetAfter.y - offsetBefore.y})`);
+// A single-finger drag pans only if the WASM game loop OBSERVES the touch at the
+// anchor and then at a moved position (camera.go anchors camDrag at the first
+// frame it sees the press, then pans by travel-from-anchor). Under the CPU
+// starvation of the parallel browser-test phase the loop can tick so rarely that
+// CDP delivers the whole gesture (touchStart → moves → touchEnd) before its first
+// tick — the loop's only observation is already at the drag's END, so the anchor
+// is set there and zero travel is committed (dx=0,dy=0). This is a probabilistic
+// scheduling artifact, not a logic bug (it passes reliably unthrottled), so retry
+// the short (<500ms, no long-press risk) drag a few times; each attempt is a fresh
+// chance for the loop to catch the anchor frame. closeAllPopups() between attempts
+// clears any long-press popup a collapsed drag may have opened (which would freeze
+// panning via panOK=false). See project_mobile_gesture_unified_pan_model.
+let dragMoved = false;
+let lastDx = 0, lastDy = 0;
+for (let attempt = 0; attempt < 5 && !dragMoved; attempt++) {
+  await page.evaluate(() => { if (typeof closeAllPopups === 'function') closeAllPopups(); });
+  await page.waitForTimeout(150);
+  const offsetBefore = await page.evaluate(() => camOffset());
+  await cdpDrag(page, 200, gridY, 300, gridY + 60, 10);
+  await page.waitForTimeout(100);
+  const offsetAfter = await page.evaluate(() => camOffset());
+  lastDx = offsetAfter.x - offsetBefore.x;
+  lastDy = offsetAfter.y - offsetBefore.y;
+  dragMoved = Math.abs(lastDx) > 5 || Math.abs(lastDy) > 5;
+  if (!dragMoved) console.log(`  (retry: drag did not pan on attempt ${attempt + 1}, dx=${lastDx}, dy=${lastDy})`);
+}
+assert(dragMoved, `Camera moved after drag (dx=${lastDx}, dy=${lastDy})`);
+await page.evaluate(() => { if (typeof closeAllPopups === 'function') closeAllPopups(); });
 await page.waitForTimeout(200); // Let gesture state settle before next test
 
 // Test 2: Pinch zoom changes camera scale

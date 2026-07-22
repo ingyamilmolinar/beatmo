@@ -955,6 +955,51 @@ func (g *Game) initJSGraphUI() {
 		return obj
 	}))
 
+	// openLogsPanel() -> bool. Ensures the Logs Navigation Panel is open (idempotent)
+	// and returns whether it is open afterwards. Read-only debug seam for the
+	// logs-search caret-editing browser test.
+	js.Global().Set("openLogsPanel", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		if !g.drum.IsLogsPanelOpen() {
+			g.toggleLogsPanel()
+		}
+		return js.ValueOf(g.drum.IsLogsPanelOpen())
+	}))
+
+	// logsSearchRect() -> {x,y,w,h} of the logs-panel search field, or null when
+	// the panel is closed / the box doesn't exist. Read-only; used by the caret
+	// browser test to click the field.
+	js.Global().Set("logsSearchRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.logsComp == nil || !g.drum.logsComp.IsOpen() {
+			return js.Null()
+		}
+		r := g.drum.logsComp.searchRect
+		if r.Empty() {
+			return js.Null()
+		}
+		return rectToJS(r)
+	}))
+
+	// logsSearchState() -> {text, cursor, focused} of the logs-panel search box,
+	// or null when the panel is closed / the box doesn't exist. Mirrors
+	// instMenuSearchState — the caret position is otherwise unobservable from JS.
+	js.Global().Set("logsSearchState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.logsComp == nil || !g.drum.logsComp.IsOpen() {
+			return js.Null()
+		}
+		box := g.drum.logsComp.searchBox
+		if box == nil {
+			return js.Null()
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("text", box.Value())
+		obj.Set("cursor", box.CursorForTest())
+		obj.Set("focused", box.Focused())
+		return obj
+	}))
+
 	// rowColor(row) -> hex string like #RRGGBBAA
 	js.Global().Set("rowColor", jsFn(func(args jsArgs) any {
 		if g.drum == nil || args.Len() < 1 {
@@ -1142,6 +1187,25 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		return rectToJS(g.drum.renameComp.Bounds())
+	}))
+
+	// renameBoxState() -> {text, cursor, focused} of the instrument rename box,
+	// or null when the rename portal is closed. Mirrors instMenuSearchState —
+	// the caret position is otherwise unobservable from JS. Read-only debug seam
+	// for the rename caret-editing browser test.
+	js.Global().Set("renameBoxState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
+			return js.Null()
+		}
+		box := g.drum.renameComp.TextBox()
+		if box == nil {
+			return js.Null()
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("text", box.Value())
+		obj.Set("cursor", box.CursorForTest())
+		obj.Set("focused", box.Focused())
+		return obj
 	}))
 
 	js.Global().Set("commitRename", jsFn(func(args jsArgs) any {
@@ -1482,6 +1546,19 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		return rectToJS(g.drum.recordBtn().Rect())
+	}))
+
+	// fileMenuBtnRect() -> {x,y,w,h} of the grid-pane folder button that opens the
+	// File menu (Upload / Import / Export / Load Template), or null before it is
+	// laid out. Since the "Pop Up Controls / Modes" overhaul the transport kebab
+	// was removed and File actions moved here (g.gridFileButtonRect → OpenFileMenu),
+	// so the real-device test taps this to reach the file-picker overlays.
+	js.Global().Set("fileMenuBtnRect", jsFn(func(args jsArgs) any {
+		r := g.gridFileButtonRect()
+		if r.Empty() {
+			return nil
+		}
+		return rectToJS(r)
 	}))
 
 	// stopBtnRect() -> {x,y,w,h}

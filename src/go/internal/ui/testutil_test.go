@@ -266,35 +266,40 @@ func spinWait(t *testing.T, steps int, cond func() bool) {
 	t.Fatalf("condition not met after %d steps", steps)
 }
 
+// waitForChan blocks until ch delivers a value or a derived wall-clock budget
+// elapses. It BLOCKS on the channel (does not busy-poll): the value it waits
+// for is produced by a background goroutine — e.g. audioLoop draining g.audioCh
+// and invoking the test playFn — and a busy-spin here keeps the calling
+// goroutine RUNNABLE, competing for a P with that very producer. Under the full
+// internal/ui package run (hundreds of concurrent test goroutines saturating
+// every P), the old spin exhausted its poll window before the producer got a
+// timeslice, so TestSoundPlaysAfterHighlight / TestMuteAndSoloPlayback flaked
+// with "channel did not receive". Blocking yields the P so the producer runs.
+//
+// steps is retained as the caller-expressed patience budget (100µs/step),
+// clamped to [25ms, 5s].
 func waitForChan[T any](t *testing.T, ch <-chan T, steps int) T {
 	t.Helper()
 	var zero T
 	if steps < 1 {
 		steps = 1
 	}
-	timeout := time.Duration(steps/100) * time.Millisecond
+	timeout := time.Duration(steps) * 100 * time.Microsecond
 	if timeout < 25*time.Millisecond {
 		timeout = 25 * time.Millisecond
 	}
-	if timeout > 500*time.Millisecond {
-		timeout = 500 * time.Millisecond
+	if timeout > 5*time.Second {
+		timeout = 5 * time.Second
 	}
-	deadline := time.Now().Add(timeout)
-	for i := 0; i < steps; i++ {
-		select {
-		case v := <-ch:
-			return v
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("channel did not receive within %v (%d steps)", timeout, steps)
-			return zero
-		}
-		runtime.Gosched()
-		time.Sleep(time.Microsecond)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case v := <-ch:
+		return v
+	case <-timer.C:
+		t.Fatalf("channel did not receive within %v (%d steps)", timeout, steps)
+		return zero
 	}
-	t.Fatalf("channel did not receive after %d steps", steps)
-	return zero
 }
 
 // waitForUpdateCond advances the game loop while waiting for cond to succeed.

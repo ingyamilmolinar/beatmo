@@ -401,9 +401,6 @@ func (dv *DrumView) recalcButtons() {
 			if dv.viewSwitchBtn() != nil {
 				dv.viewSwitchBtn().SetRect(safeInset(row1Grid.Cell(1, 0), pad))
 			}
-			if dv.overflowBtn() != nil {
-				dv.overflowBtn().SetRect(safeInset(row1Grid.Cell(2, 0), pad))
-			}
 			// Hide desktop-only buttons on mobile.
 			dv.trackBtn().SetRect(image.Rectangle{})
 			// Upload/Import/Export behind overflow on mobile.
@@ -447,9 +444,6 @@ func (dv *DrumView) recalcButtons() {
 			}
 			if dv.viewSwitchBtn() != nil {
 				dv.viewSwitchBtn().SetRect(image.Rectangle{})
-			}
-			if dv.overflowBtn() != nil {
-				dv.overflowBtn().SetRect(image.Rectangle{})
 			}
 		}
 		ensureGap(dv.playBtn(), dv.stopBtn())
@@ -504,14 +498,32 @@ func (dv *DrumView) recalcButtons() {
 
 	// Beat counter rect: above the timeline bar. Aligned to timelineRect's
 	// left edge — that edge already accounts for the track button reservation.
-	// infoH must accommodate the pill chrome drawBeatCounter actually paints
-	// (`pillH = TextHeight() + 2*pillPadY`); otherwise the pill bleeds below
-	// Max.Y into the timeline bar (root cause of the startup-chrome bug).
+	// infoH must accommodate the keycap chrome drawBeatCounter actually paints
+	// (`pillH = TextHeight() + 2*pillPadY + keycap wall depth`); otherwise the
+	// keycap bleeds below Max.Y into the timeline bar (startup-chrome bug) or is
+	// clipped short of its cap face.
 	const minChromeGap = 2
-	pillH := TextHeight() + 2*beatCounterPillPadY
+	pillH := TextHeight() + 2*beatCounterPillPadY + genGeomKeycapWallDepth
 	infoH := debugCharH + 4
 	if pillH > infoH {
 		infoH = pillH
+	}
+	// Floor the band to a comfortable keycap height matching the transport
+	// buttons so the counter + track/lock read as proper keycaps rather than
+	// thin slivers — capped by the room available above the timeline bar.
+	if pb := dv.playBtn().Rect(); !pb.Empty() && pb.Dy() > infoH {
+		infoH = pb.Dy()
+	}
+	// Cap the band to the room actually available above the timeline bar. This
+	// must fire even when that room is smaller than pillH: under the real
+	// TrueType font (TextHeight 18 vs the stub's 16) pillH is 26 but a compact
+	// desktop header leaves only ~24px above the bar, so a `avail >= pillH`
+	// guard would skip the cap and let the counter overflow into the bar
+	// (TestDesktopBeatCounterAboveTimeline). drawBeatCounter clamps its pill to
+	// beatCounterRect.Dy(), so a slightly-shorter band shrinks the keycap
+	// rather than bleeding past it.
+	if avail := dv.timelineRect.Min.Y - tlWidget.Min.Y - minChromeGap; avail > 0 && infoH > avail {
+		infoH = avail
 	}
 	bcTop := dv.timelineRect.Min.Y - infoH - minChromeGap
 	if bcTop < tlWidget.Min.Y {
@@ -625,64 +637,44 @@ func (dv *DrumView) recalcButtons() {
 		}
 	}
 
-	// Position the track/lock chip — the unified LEFT anchor of the band on
-	// BOTH platforms. It occupies the reserved left strip (tlWidget.Min.X ..
-	// +trackBtnW) that the timeline already steps around, with the counter +
-	// notification area to its right. Desktop keeps a tall strip down to the
-	// play-button bottom; mobile grows to the touch-target floor.
+	// Position the track/lock keycap — the LEFT anchor of the band, aligned to
+	// the beat-counter keycap's top so the two read as a control pair rather
+	// than the old tall two-row strip. Width matches the reserved left strip
+	// (trackBtnW == bandLeftReserved-gap) so the counter abuts it cleanly.
+	// Desktop matches the counter-band height exactly; mobile grows the keycap
+	// DOWN to the 44px touch target (the timeline bar steps around its left
+	// strip), since a phone needs a real finger target here.
 	if !dv.beatCounterRect.Empty() {
-		chipBottom := dv.timelineRect.Max.Y
-		if !p.IsMobile() {
-			if pb := dv.playBtn().Rect(); !pb.Empty() && pb.Max.Y > chipBottom {
-				chipBottom = pb.Max.Y
+		bottom := dv.beatCounterRect.Max.Y
+		if p.IsMobile() {
+			if h := bottom - dv.beatCounterRect.Min.Y; h < TouchMinTarget() {
+				bottom = dv.beatCounterRect.Min.Y + TouchMinTarget()
 			}
-		} else if h := chipBottom - dv.beatCounterRect.Min.Y; h < TouchMinTarget() {
-			chipBottom = dv.beatCounterRect.Min.Y + TouchMinTarget()
 		}
 		dv.trackBtn().SetRect(image.Rect(
 			tlWidget.Min.X, dv.beatCounterRect.Min.Y,
-			tlWidget.Min.X+trackBtnW, chipBottom,
+			tlWidget.Min.X+trackBtnW, bottom,
 		))
 	}
 
-	// Carve the dedicated notification area from the right of the band. The
-	// counter keeps a left-anchored slot sized to a stable upper-bound width;
-	// the remainder (to the band's already-clamped right limit) becomes the
-	// notification marquee area. Runs AFTER the len-button / row-zoom-chip
-	// shrinks so it respects their right clamps.
+	// Size the beat-counter slot to the LIVE rendered readout width so the chip
+	// stays tight to its content. Runs AFTER the len-button / row-zoom-chip
+	// shrinks so it respects their right clamps. beatCounterSlotWidth is the
+	// CEILING (a pathological 4-digit readout clips at the cap rather than
+	// swallowing the whole band); the readout also can't exceed the band width.
 	if !dv.beatCounterRect.Empty() {
-		bandRight := dv.beatCounterRect.Max.X
-		// Size the counter slot to the LIVE rendered readout width (position +
-		// time) so the notification area starts right where the beat/timer text
-		// ends and reclaims the band's remaining width — the notif used to
-		// start after a fixed worst-case slot ("Beat 888 · 88:88"), leaving a
-		// large dead gap before it (it looked far smaller than the band
-		// allowed). recalcButtons runs every frame and re-carves this band, so
-		// the split tracks the live readout (dv.lastElapsedBeats, ≤1 frame
-		// stale). beatCounterSlotWidth is the CEILING: a pathological readout
-		// (4-digit beats / 2-digit minutes beyond the worst case) can't swallow
-		// the whole notif area — the readout clips at the cap instead.
-		readoutW := TextWidth(dv.timelineInfo(dv.lastElapsedBeats)) + 2*beatCounterPillPadX
+		// Include the leading-icon + gap + cap padding (beatCounterContentWidth)
+		// so the keycap fits the icon AND the readout — omitting the icon
+		// allowance here was the cause of the counter cropping "0:00" to "0:0".
+		readoutW := beatCounterContentWidth(dv.timelineInfo(dv.lastElapsedBeats))
 		counterSlotW := readoutW
 		if ub := beatCounterSlotWidth(); counterSlotW > ub {
 			counterSlotW = ub
 		}
-		// Clamp to the band itself. On narrow phones this keeps the essential
-		// readout from being starved below its text width (the prior half-band
-		// clamp clipped "Beat 1" with the notif slot painted over the rest —
-		// screenshot review); the readout wins over the notif area on overflow.
 		if counterSlotW > dv.beatCounterRect.Dx() {
 			counterSlotW = dv.beatCounterRect.Dx()
 		}
 		dv.beatCounterRect.Max.X = dv.beatCounterRect.Min.X + counterSlotW
-		notifLeft := dv.beatCounterRect.Max.X + SpaceSM
-		if notifLeft < bandRight {
-			dv.notifRect = image.Rect(notifLeft, dv.beatCounterRect.Min.Y, bandRight, dv.beatCounterRect.Max.Y)
-		} else {
-			dv.notifRect = image.Rectangle{}
-		}
-	} else {
-		dv.notifRect = image.Rectangle{}
 	}
 
 	// Delegate timeline zone layout when available.

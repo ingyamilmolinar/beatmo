@@ -14,7 +14,31 @@ import (
 // punctuation, symbols, and spaces across all scripts — so non-ASCII names
 // (é, ñ, 日本語) can be typed. Control characters are rejected. Numeric fields
 // keep the ASCII-only default instead (they set no Accept).
-func AcceptTextRune(r rune) bool { return unicode.IsGraphic(r) }
+func AcceptTextRune(r rune) bool {
+	// unicode.IsGraphic already rejects control (Cc) and format (Cf) runes —
+	// that excludes bidi overrides (U+202E), zero-width joiners, and the DEL
+	// control used as our forward-delete sentinel — while permitting letters,
+	// marks, digits, punctuation, symbols and spaces across all scripts. Reject
+	// the noncharacters and unpaired-surrogate range explicitly as belt-and-
+	// suspenders against pasted junk that some fonts choke on.
+	if !unicode.IsGraphic(r) {
+		return false
+	}
+	if r >= 0xD800 && r <= 0xDFFF { // surrogate halves (never valid standalone)
+		return false
+	}
+	if r == 0xFFFE || r == 0xFFFF { // noncharacters
+		return false
+	}
+	return true
+}
+
+// textInputHardMaxRunes is an absolute defensive cap on the number of runes any
+// text input will hold, enforced even when MaxLen is unset (0). It bounds memory
+// and per-frame work against a pathological or malicious paste, independent of
+// each field's semantic MaxLen (rename 32, search 40, …) which is usually far
+// smaller. A single frame also never processes more than this many typed runes.
+const textInputHardMaxRunes = 1024
 
 // TextInput is a reusable editable text box with cursor support.
 type TextInput struct {
@@ -87,14 +111,22 @@ func (t *TextInput) SetFocus(focus bool) {
 // rely on SetFocus or natural mouse/key events.
 func (t *TextInput) FocusForTest(focus bool) { t.focused = focus }
 
-// SetText sets the current text and resets the cursor to the end.
+// effectiveMaxLen returns the rune cap actually enforced: the smaller of the
+// field's semantic MaxLen (when set) and the absolute defensive hard cap.
+func (t *TextInput) effectiveMaxLen() int {
+	if t.MaxLen > 0 && t.MaxLen < textInputHardMaxRunes {
+		return t.MaxLen
+	}
+	return textInputHardMaxRunes
+}
+
+// SetText sets the current text and resets the cursor to the end. The value is
+// truncated to effectiveMaxLen (so even an unbounded field can't be driven past
+// the hard cap); content filtering beyond length is left to the typing path.
 func (t *TextInput) SetText(s string) {
-	// Enforce MaxLen when set; do not filter content here beyond length.
-	if t.MaxLen > 0 {
-		rs := []rune(s)
-		if len(rs) > t.MaxLen {
-			rs = rs[:t.MaxLen]
-		}
+	rs := []rune(s)
+	if m := t.effectiveMaxLen(); len(rs) > m {
+		rs = rs[:m]
 		s = string(rs)
 	}
 	t.Text = s
@@ -226,27 +258,52 @@ func (t *TextInput) Update() bool {
 		t.cursor++
 	}
 
+	// Home / End jump the caret to the string bounds. Absolute moves, so they
+	// are applied after the relative arrow moves; when both fire in one batched
+	// frame the later assignment wins (harmless — both are idempotent). Native
+	// receives the keydown via keyRepeat; WASM forwards Home/End out-of-band
+	// through the proxy (the hidden input holds focus) via consumeSoftKeyboard*.
+	// keyRepeat is evaluated unconditionally (never short-circuited) so its
+	// per-key repeat state stays maintained every frame — matching the arrows.
+	homeJumps := consumeSoftKeyboardHome()
+	if t.keyRepeat(ebiten.KeyHome) {
+		homeJumps++
+	}
+	if homeJumps > 0 {
+		t.cursor = 0
+	}
+	endJumps := consumeSoftKeyboardEnd()
+	if t.keyRepeat(ebiten.KeyEnd) {
+		endJumps++
+	}
+	if endJumps > 0 {
+		t.cursor = utf8.RuneCountInString(t.Text)
+	}
+
 	// Gather input characters: prefer soft keyboard when active (mobile),
 	// fall back to Ebiten's InputChars() (desktop/hardware keyboard).
 	var chars []rune
 	if softKeyboardActive() {
 		skChars := softKeyboardDrainChars()
 		for _, r := range skChars {
-			if r == '\b' {
-				// Handle backspace from soft keyboard
-				if t.cursor > 0 {
-					bi := byteIndex(t.Text, t.cursor)
-					prev := byteIndex(t.Text, t.cursor-1)
-					t.Text = t.Text[:prev] + t.Text[bi:]
-					t.cursor--
-				}
+			switch r {
+			case '\b': // backspace from the soft keyboard
+				t.deleteBackward()
 				consumed = true
-			} else {
+			case '\x7f': // DEL: forward-delete sentinel from the proxy keydown handler
+				t.deleteForward()
+				consumed = true
+			default:
 				chars = append(chars, r)
 			}
 		}
 	} else {
 		chars = inputChars()
+	}
+	// Defensive bound: never process more than the hard cap of typed runes in a
+	// single frame, so a pathological paste can't spin the insert loop.
+	if len(chars) > textInputHardMaxRunes {
+		chars = chars[:textInputHardMaxRunes]
 	}
 
 	if len(chars) > 0 {
@@ -265,7 +322,7 @@ func (t *TextInput) Update() bool {
 						continue
 					}
 				}
-				if t.MaxLen > 0 && utf8.RuneCountInString(t.Text) >= t.MaxLen {
+				if utf8.RuneCountInString(t.Text) >= t.effectiveMaxLen() {
 					continue
 				}
 				before := t.Text[:byteIndex(t.Text, t.cursor)]
@@ -289,14 +346,36 @@ func (t *TextInput) Update() bool {
 	}
 
 	if t.keyRepeat(ebiten.KeyBackspace) {
-		if t.cursor > 0 {
-			bi := byteIndex(t.Text, t.cursor)
-			prev := byteIndex(t.Text, t.cursor-1)
-			t.Text = t.Text[:prev] + t.Text[bi:]
-			t.cursor--
-		}
+		t.deleteBackward()
+	}
+	// Native forward-delete (WASM routes it through the '\x7f' char sentinel above).
+	if t.keyRepeat(ebiten.KeyDelete) {
+		t.deleteForward()
 	}
 	return consumed
+}
+
+// deleteBackward removes the rune before the caret (Backspace) and moves the
+// caret left. No-op at the start of the string.
+func (t *TextInput) deleteBackward() {
+	if t.cursor <= 0 {
+		return
+	}
+	bi := byteIndex(t.Text, t.cursor)
+	prev := byteIndex(t.Text, t.cursor-1)
+	t.Text = t.Text[:prev] + t.Text[bi:]
+	t.cursor--
+}
+
+// deleteForward removes the rune at the caret (Delete). The caret does not move.
+// No-op at the end of the string.
+func (t *TextInput) deleteForward() {
+	if t.cursor >= utf8.RuneCountInString(t.Text) {
+		return
+	}
+	bi := byteIndex(t.Text, t.cursor)
+	next := byteIndex(t.Text, t.cursor+1)
+	t.Text = t.Text[:bi] + t.Text[next:]
 }
 
 func (t *TextInput) keyRepeat(k ebiten.Key) bool {

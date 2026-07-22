@@ -686,8 +686,11 @@ func TestSidebarDurationButtons(t *testing.T) {
 
 // ─── Additional Layout & Rect Tests ─────────────────────────────────────────
 
-// TestSidebarPanelRectDimensions verifies that the panel rect is left-anchored
-// with the correct width and spans the full grid height.
+// TestSidebarPanelRectDimensions verifies that the panel rect is a compact,
+// content-sized card anchored beside the tapped node — NOT a full-height panel
+// docked at the grid pane's left edge (x=0). It still has a width matching
+// sidebar.width and a height capped to the grid pane, but its origin now
+// follows the anchored node rather than being fixed at (0,0).
 func TestSidebarPanelRectDimensions(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -702,17 +705,29 @@ func TestSidebarPanelRectDimensions(t *testing.T) {
 	if !ok || panel.Empty() {
 		t.Fatal("panel rect should exist and be non-empty")
 	}
-	if panel.Min.X != 0 {
-		t.Fatalf("panel should be left-anchored: Min.X=%d, want 0", panel.Min.X)
-	}
 	if panel.Dx() != g.sidebar.width {
 		t.Fatalf("panel width should match sidebar width: panel.Dx()=%d, sidebar.width=%d",
 			panel.Dx(), g.sidebar.width)
 	}
 	gridH := g.split.GridH(g.winH)
-	if panel.Dy() != gridH {
-		t.Fatalf("panel should span full grid height: panel.Dy()=%d, gridH=%d",
+	if panel.Dy() <= 0 || panel.Dy() > gridH {
+		t.Fatalf("panel should be content-sized and capped to the grid pane height: panel.Dy()=%d, gridH=%d",
 			panel.Dy(), gridH)
+	}
+
+	// The card is anchored beside the tapped node (a compact popup), not
+	// docked at a fixed left-edge origin: opening on a node at a different
+	// grid cell must move the panel's origin.
+	n2 := g.tryAddNode(5, 5, model.NodeTypeRegular)
+	g.sidebar.Open(n2)
+	g.sidebar.layout()
+	panel2, ok := g.sidebar.rects["panel"]
+	if !ok || panel2.Empty() {
+		t.Fatal("panel2 rect should exist and be non-empty")
+	}
+	if panel2.Min == panel.Min {
+		t.Fatalf("panel should be anchored beside its own node, not fixed: panel=%v (node@0,0) panel2=%v (node@5,5) share the same origin",
+			panel, panel2)
 	}
 }
 

@@ -197,7 +197,7 @@ func (p *synthPanel) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle
 	key := struct {
 		hash string
 		sel  int
-	}{p.synthParamsHash(instID), dv.synthSelectedKnobIdx(instID, dv.synthSelectedSection())}
+	}{p.synthParamsHash(instID), dv.synthSelectedControlIdx(instID, dv.synthSelectedSection())}
 	p.sprites.focus.Draw(dst, rect, key, func(img *ebiten.Image, r image.Rectangle) {
 		p.drawSynthFocusGraphContent(img, r, instID)
 	})
@@ -221,7 +221,7 @@ func (p *synthPanel) drawSynthFocusGraphContent(dst *ebiten.Image, r image.Recta
 	if sec == nil {
 		return
 	}
-	kIdx := dv.synthSelectedKnobIdx(instID, sec)
+	kIdx := dv.synthSelectedControlIdx(instID, sec)
 	if kIdx < 0 || kIdx >= len(dv.instEditorBindings) {
 		return
 	}
@@ -235,7 +235,7 @@ func (p *synthPanel) drawSynthFocusGraphContent(dst *ebiten.Image, r image.Recta
 		label = def.Name
 	}
 	caption := label
-	if purpose := synthKnobPurpose(def); purpose != "" {
+	if purpose := synthControlPurpose(def); purpose != "" {
 		caption = label + " — " + purpose
 	}
 	capY := r.Min.Y + pad/2
@@ -257,7 +257,7 @@ func (p *synthPanel) drawSynthFocusGraphContent(dst *ebiten.Image, r image.Recta
 	if graphR.Dx() < 8 || graphR.Dy() < 10 {
 		return
 	}
-	synthFocusRendererForKnob(def)(dst, graphR, instID, def, dv.synthConceptGhost(kIdx))
+	synthFocusRendererForControl(def)(dst, graphR, instID, def, dv.synthConceptGhost(kIdx))
 	// Honesty scrim: the picture previews what the knob WOULD do, but when the
 	// stage is off the sound doesn't change — dim the graph and say so.
 	if en, ok := conceptStageEnableParam(def.Group); ok && !synthStageEnabled(instID, en) {
@@ -273,12 +273,12 @@ func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle,
 	dv.synp().drawSynthFocusGraph(dst, rect, instID)
 }
 
-// isSynthPitchKnob reports whether a knob changes PITCH rather than timbre. The
+// isSynthPitchControl reports whether a knob changes PITCH rather than timbre. The
 // cycle-normalized timbre renderers (conceptOsc/conceptFilter/…) can't show
 // pitch — they normalize to a fixed number of cycles — so these route to
 // conceptPitchWave, a real-pitch output window whose on-screen period tracks the
 // knob.
-func isSynthPitchKnob(name string) bool {
+func isSynthPitchControl(name string) bool {
 	switch name {
 	case "osc_octave", "osc_detune", "pitch", "tune", "fm_base", "fm_base_freq", "fundamental", "base_freq":
 		return true
@@ -286,11 +286,11 @@ func isSynthPitchKnob(name string) bool {
 	return false
 }
 
-// synthFocusRendererForKnob picks the focus renderer for a SPECIFIC knob: pitch
+// synthFocusRendererForControl picks the focus renderer for a SPECIFIC knob: pitch
 // knobs get the pitch wave; everything else routes by group. This is the entry
 // point drawSynthFocusGraph uses.
-func synthFocusRendererForKnob(def audio.ParamDef) conceptRenderer {
-	if isSynthPitchKnob(def.Name) {
+func synthFocusRendererForControl(def audio.ParamDef) conceptRenderer {
+	if isSynthPitchControl(def.Name) {
 		return conceptPitchWave
 	}
 	if isFMTimeDomainKnob(def.Name) {

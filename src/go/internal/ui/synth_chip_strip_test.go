@@ -59,11 +59,11 @@ func TestSynthChips_StripShowsEveryStageInPipelineOrder(t *testing.T) {
 	}
 }
 
-// TestSynthChips_DefaultSelectionFirstEnabledWithKnobs pins the default
+// TestSynthChips_DefaultSelectionFirstEnabledWithControls pins the default
 // selection rule: the first section in pipeline order that is enabled AND has
 // at least one knob. Computed generically from the section model so the test
 // holds for every recipe.
-func TestSynthChips_DefaultSelectionFirstEnabledWithKnobs(t *testing.T) {
+func TestSynthChips_DefaultSelectionFirstEnabledWithControls(t *testing.T) {
 	for _, mk := range []struct {
 		name string
 		game func(*testing.T) *Game
@@ -114,11 +114,11 @@ func TestSynthChips_DefaultSelectionFirstEnabledWithKnobs(t *testing.T) {
 	}
 }
 
-// TestSynthChips_OnlySelectedStageKnobsHaveRects pins the accordion core
+// TestSynthChips_OnlySelectedStageControlsHaveRects pins the accordion core
 // invariant: knobs belonging to the selected stage are laid out (at least the
 // first is visible); every knob of every collapsed stage has an empty rect so
 // it is neither drawn nor hit-testable.
-func TestSynthChips_OnlySelectedStageKnobsHaveRects(t *testing.T) {
+func TestSynthChips_OnlySelectedStageControlsHaveRects(t *testing.T) {
 	g := newSynthTabGame(t)
 	layoutSynthTab(t, g)
 	dv := g.drum
@@ -136,7 +136,7 @@ func TestSynthChips_OnlySelectedStageKnobsHaveRects(t *testing.T) {
 	if len(selected.knobIdxs) == 0 {
 		t.Fatalf("selected section %v has no knobs — default rule must pick a knobbed section", selected.id)
 	}
-	if dv.instEditorKnobs[selected.knobIdxs[0]].Rect().Empty() {
+	if dv.instEditorControls[selected.knobIdxs[0]].Rect().Empty() {
 		t.Errorf("selected section %v first knob rect is empty — detail pane must lay out its knobs", selected.id)
 	}
 	for _, s := range dv.instEditorSections {
@@ -144,8 +144,8 @@ func TestSynthChips_OnlySelectedStageKnobsHaveRects(t *testing.T) {
 			continue
 		}
 		for _, kIdx := range s.knobIdxs {
-			if !dv.instEditorKnobs[kIdx].Rect().Empty() {
-				t.Errorf("collapsed section %v knob %d has non-empty rect %v — collapsed stages must not lay out knobs", s.id, kIdx, dv.instEditorKnobs[kIdx].Rect())
+			if !dv.instEditorControls[kIdx].Rect().Empty() {
+				t.Errorf("collapsed section %v knob %d has non-empty rect %v — collapsed stages must not lay out knobs", s.id, kIdx, dv.instEditorControls[kIdx].Rect())
 			}
 		}
 	}
@@ -169,7 +169,7 @@ func TestSynthChips_SelectionSurvivesRelayout(t *testing.T) {
 	for i := range dv.instEditorSections {
 		s := dv.instEditorSections[i]
 		if s.id == synthSectionFilter && len(s.knobIdxs) > 0 {
-			if dv.instEditorKnobs[s.knobIdxs[0]].Rect().Empty() {
+			if dv.instEditorControls[s.knobIdxs[0]].Rect().Empty() {
 				t.Errorf("selected FILTER knobs not laid out after re-layout")
 			}
 		}

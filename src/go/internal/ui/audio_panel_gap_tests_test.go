@@ -10,22 +10,19 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// TestSynthActionsDirectlyVisibleAtAllDensities — the canonical mobile
-// Save bug: at narrow widths the Save / SaveAs / Reset cascade previously
-// dropped actions behind an overflow (⋯) chevron. The fixed-layout
-// redesign removes the cascade entirely: at every density, on a 360-px
-// portrait viewport, ALL FOUR actions (Preview / Save / Save As / Reset)
-// are laid out as directly-tappable, non-empty buttons.
-func TestSynthActionsDirectlyVisibleAtAllDensities(t *testing.T) {
+// TestSynthMobileHeaderRelocatedAtAllDensities — Approach B: on mobile the
+// in-panel synth header (identity banner + Preview/Save/Save As/Reset action
+// row) is gone at EVERY density; the actions live on the sticky bar. This
+// guards against a regression that re-introduces the in-panel header. The
+// positive assertion (the [Preview][Save][⋯] cluster on the sticky bar) lives
+// in TestSynthMobileActionsOnStickyBar.
+func TestSynthMobileHeaderRelocatedAtAllDensities(t *testing.T) {
 	for _, d := range []Density{DensityCompact, DensityComfortable, DensitySpacious} {
 		restoreDensity := SetDensityForTest(d)
-		// Force the small-screen profile so layoutSynthHeader picks the
-		// mobile branch (smaller waveform thumb + taller buttons).
 		forceSmallScreenForTest = true
 		t.Cleanup(func() { forceSmallScreenForTest = false })
 
 		dv := &DrumView{}
-		// Header tall enough for the two-row mobile layout (caption + action row).
 		btnH := Profile().DensityValues().SynthHeaderButtonH
 		headerH := 2*SpaceSM + TextHeight() + SpaceSM + btnH
 		dv.layoutSynthHeader(image.Rect(0, 0, 360, 200), headerH, "kick-1", "drum-kick", true)
@@ -33,10 +30,10 @@ func TestSynthActionsDirectlyVisibleAtAllDensities(t *testing.T) {
 
 		for name, r := range map[string]image.Rectangle{
 			"preview": h.previewRect, "save": h.saveRect,
-			"save-as": h.saveAsRect, "reset": h.resetRect,
+			"save-as": h.saveAsRect, "reset": h.resetRect, "caption": h.captionRect,
 		} {
-			if r.Empty() {
-				t.Errorf("density=%v: %q action button is empty (must be directly visible, no overflow)", d, name)
+			if !r.Empty() {
+				t.Errorf("density=%v: in-panel %q rect %v is non-empty (must be relocated off-panel on mobile)", d, name, r)
 			}
 		}
 		restoreDensity()

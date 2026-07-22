@@ -72,11 +72,11 @@ for BPM in "${BPMS[@]}"; do
       $PROF_FLAG" 2>&1 | tee "$LOG_FILE"
   fi
 
-  # Extract the BENCH_JSON line
-  JSON_LINE=$(grep '\[BENCH_JSON\]' "$LOG_FILE" | sed 's/.*\[BENCH_JSON\] //' | head -1)
+  # Extract the bench_json line (emitted to stdout by cmd, lowercase tag).
+  JSON_LINE=$(grep -i '\[bench_json\]' "$LOG_FILE" | sed 's/.*\[bench_json\] //I' | head -1)
 
   if [ -z "$JSON_LINE" ]; then
-    echo "  ERROR: No [BENCH_JSON] output found for BPM=$BPM"
+    echo "  ERROR: No [bench_json] output found for BPM=$BPM"
     continue
   fi
 
@@ -103,7 +103,7 @@ echo "╠══════╬═══════╬════════�
 
 for BPM in "${BPMS[@]}"; do
   LOG_FILE="$RESULTS_DIR/desktop_${BPM}.log"
-  JSON_LINE=$(grep '\[BENCH_JSON\]' "$LOG_FILE" 2>/dev/null | sed 's/.*\[BENCH_JSON\] //' | head -1)
+  JSON_LINE=$(grep -i '\[bench_json\]' "$LOG_FILE" 2>/dev/null | sed 's/.*\[bench_json\] //I' | head -1)
   if [ -z "$JSON_LINE" ]; then
     echo "║ $(printf '%4s' "$BPM") ║  N/A  ║   N/A   ║   N/A   ║   N/A   ║   N/A   ║  N/A  ║   N/A   ║   N/A   ║   N/A   ║   N/A   ║  N/A   ║"
     continue
@@ -131,6 +131,29 @@ done
 echo "╚══════╩═══════╩═════════╩═════════╩═════════╩═════════╩═══════╩═════════╩═════════╩═════════╩═════════╩════════╝"
 echo ""
 
+# ── GC Summary Table ──
+echo "╔══════════════════════════════════════════════════════════════════════════════════╗"
+echo "║  GARBAGE COLLECTOR (whole-run window; STW pause approximations from /gc/pauses)   ║"
+echo "╠══════╦════════╦════════╦════════╦══════════╦══════════╦══════════╦══════════════╣"
+echo "║ BPM  ║ Cycles ║ Forced ║ Pauses ║ Pause50  ║ Pause99  ║ PauseMax ║ HeapHigh(MB) ║"
+echo "╠══════╬════════╬════════╬════════╬══════════╬══════════╬══════════╬══════════════╣"
+for BPM in "${BPMS[@]}"; do
+  LOG_FILE="$RESULTS_DIR/desktop_${BPM}.log"
+  JSON_LINE=$(grep -i '\[bench_json\]' "$LOG_FILE" 2>/dev/null | sed 's/.*\[bench_json\] //I' | head -1)
+  if [ -z "$JSON_LINE" ]; then
+    echo "║ $(printf '%4s' "$BPM") ║  N/A   ║  N/A   ║  N/A   ║   N/A    ║   N/A    ║   N/A    ║     N/A      ║"
+    continue
+  fi
+  gextract() { local v; v=$(echo "$JSON_LINE" | grep -o "\"$1\":[^,}]*" | sed "s/\"$1\"://"); echo "${v:-0}" | sed 's/null/0/'; }
+  GC_CYC=$(gextract gcCycles); GC_FRC=$(gextract gcForced); GC_PAU=$(gextract gcPauses)
+  GC_P50=$(gextract gcPauseP50MS); GC_P99=$(gextract gcPauseP99MS); GC_MAX=$(gextract gcPauseMaxMS)
+  GC_HI=$(gextract gcHeapHighKB)
+  printf "║ %4s ║ %6s ║ %6s ║ %6s ║ %6.3fms ║ %6.3fms ║ %6.3fms ║ %12s ║\n" \
+    "$BPM" "$GC_CYC" "$GC_FRC" "$GC_PAU" "$GC_P50" "$GC_P99" "$GC_MAX" "$(echo "scale=1; ${GC_HI:-0}/1024" | bc)"
+done
+echo "╚══════╩════════╩════════╩════════╩══════════╩══════════╩══════════╩══════════════╝"
+echo ""
+
 # ── pprof summary ──
 if [ -f "$RESULTS_DIR/cpu_${PROF_BPM}.prof" ]; then
   echo "=== CPU Profile (BPM=$PROF_BPM) — Top 15 ==="
@@ -143,3 +166,32 @@ fi
 echo ""
 echo "Results saved to $RESULTS_DIR/desktop.json"
 echo "Per-BPM logs: $RESULTS_DIR/desktop_*.log"
+
+# ── Optional synth param-mutation storm pass ──
+# Gated by BENCH_SYNTH_STORM so the default run's output is unchanged.
+# Usage: BENCH_SYNTH_STORM=combined STORM_BPM=200 DURATION=15 ./scripts/bench-desktop.sh
+if [ -n "${BENCH_SYNTH_STORM:-}" ]; then
+  echo ""
+  echo "== synth storm pass: $BENCH_SYNTH_STORM =="
+  if command -v xvfb-run >/dev/null 2>&1; then
+    xvfb-run -a bash -c "cd src/go && PARITY_FATAL=0 PERF_LOG=1 CGO_ENABLED=1 $GO run ./cmd \
+      -log INFO \
+      -bench-bpm ${STORM_BPM:-200} \
+      -bench-secs $DURATION \
+      -bench-synth-storm $BENCH_SYNTH_STORM \
+      -bench-prof $RESULTS_DIR/cpu_storm_${BENCH_SYNTH_STORM}.prof" \
+      2>&1 | tee "$RESULTS_DIR/desktop_storm_${BENCH_SYNTH_STORM}.log"
+  else
+    echo "  WARNING: xvfb-run not found, trying without virtual display"
+    bash -c "cd src/go && PARITY_FATAL=0 PERF_LOG=1 CGO_ENABLED=1 $GO run ./cmd \
+      -log INFO \
+      -bench-bpm ${STORM_BPM:-200} \
+      -bench-secs $DURATION \
+      -bench-synth-storm $BENCH_SYNTH_STORM \
+      -bench-prof $RESULTS_DIR/cpu_storm_${BENCH_SYNTH_STORM}.prof" \
+      2>&1 | tee "$RESULTS_DIR/desktop_storm_${BENCH_SYNTH_STORM}.log"
+  fi
+  echo ""
+  echo "Storm log: $RESULTS_DIR/desktop_storm_${BENCH_SYNTH_STORM}.log"
+  echo "Storm CPU profile: $RESULTS_DIR/cpu_storm_${BENCH_SYNTH_STORM}.prof"
+fi

@@ -229,14 +229,14 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 
 	adapter.OnRelease(endX, y)
 
-	// Exactly one seek on press, at most one more on release (final !=
-	// press beat here since the gesture travels the full bar width) —
-	// NEVER one per intermediate drag frame.
-	if len(seeks) != 2 {
-		t.Fatalf("expected exactly 2 OnSeekToStep calls (press + release), got %d: %v", len(seeks), seeks)
+	// Task 6: press no longer seeks (drag-only ribbon) — exactly ONE seek
+	// commits, on release, since the gesture travels the full bar width
+	// (final beat != press beat). NEVER one per intermediate drag frame.
+	if len(seeks) != 1 {
+		t.Fatalf("expected exactly 1 OnSeekToStep call (release only), got %d: %v", len(seeks), seeks)
 	}
-	if seeks[0] >= seeks[len(seeks)-1] {
-		t.Fatalf("expected press seek < release seek (left edge -> right edge); saw %v", seeks)
+	if seeks[0] <= 0 {
+		t.Fatalf("expected release seek near the right edge (left edge -> right edge drag); saw %v", seeks)
 	}
 
 	// The ghost preview must still advance monotonically across the drag

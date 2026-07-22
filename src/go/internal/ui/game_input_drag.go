@@ -80,13 +80,15 @@ func (g *Game) cursorLabelOccluded(x, y int) bool {
 		g.modalOverlayActive()
 }
 
-// modalOverlayActive reports whether a blocking (modal/scrim) overlay — such as
-// the mobile synth-knob wheel popup or a volume popup — is open in the drum
-// view's input trees. The out-of-tree Game-level gesture/camera handlers consult
-// this so a gesture over the scrim never leaks to the grid, camera, or timeline
-// beneath; the overlay closes via the tree's click-outside / Esc path instead.
+// modalOverlayActive reports whether an INTERACTIVE overlay — a blocking
+// modal/scrim menu/popup (mobile synth-control wheel, volume popup) OR a
+// non-blocking docked panel / dropdown (FX panel, EQ channel dropdown) — is open
+// in the drum view's input trees. The out-of-tree Game-level gesture/camera
+// handlers consult this so a press outside the overlay never leaks to the grid,
+// camera, or timeline beneath; the overlay closes via the tree's click-outside /
+// Esc path instead. Passive tooltips are excluded (they never own input).
 func (g *Game) modalOverlayActive() bool {
-	return g.drum != nil && g.drum.PortalHasBlocking()
+	return g.drum != nil && g.drum.PortalOwnsInput()
 }
 
 func (g *Game) spawnPulseFromRow(row, start int) {

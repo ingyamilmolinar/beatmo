@@ -200,3 +200,44 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 		}
 	}
 }
+
+// TestLongPressPopup_KeycapsHaveIconRoom verifies each quick-action keycap is
+// tall enough to hold a leading/top icon (IconSizeMD) stacked above a
+// RoleBody label, per the icon+label keycap draw upgrade.
+func TestLongPressPopup_KeycapsHaveIconRoom(t *testing.T) {
+	assertDefaultParityState(t)
+	withDefaultStart(t, false)
+
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	centerCameraOn(g, 2, 2)
+
+	g.tryAddNode(2, 2, model.NodeTypeRegular)
+	g.updateBeatInfos()
+	node := g.nodeAt(2, 2)
+	if node == nil {
+		t.Fatalf("node at (2,2) not found")
+	}
+
+	cx, cy := nodeCenter(g, node)
+	g.showLongPressPopup(node, cx, cy)
+	if !g.longPressPopup {
+		t.Fatalf("popup not shown")
+	}
+
+	minH := IconSizeMD + StyledTextHeight(RoleBody)
+	for _, btn := range []struct {
+		name string
+		rect image.Rectangle
+	}{
+		{"move", g.longPressPopupMove},
+		{"copy", g.longPressPopupCopy},
+		{"connect", g.longPressPopupConn},
+		{"delete", g.longPressPopupDel},
+	} {
+		if btn.rect.Dy() < minH {
+			t.Errorf("%s keycap too short for icon+label: got %d, want >= %d", btn.name, btn.rect.Dy(), minH)
+		}
+	}
+}

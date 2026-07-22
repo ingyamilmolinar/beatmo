@@ -52,10 +52,10 @@ func TestSynthPreviewPane_PaintsAllThreePlots(t *testing.T) {
 	}
 }
 
-// TestSynthADSRPlot_DecayKnobChangesShape: bumping the decay multiplier
+// TestSynthADSRPlot_DecayControlChangesShape: bumping the decay multiplier
 // must move the D-stage endpoint to the right — different decay values
 // must produce different geometries.
-func TestSynthADSRPlot_DecayKnobChangesShape(t *testing.T) {
+func TestSynthADSRPlot_DecayControlChangesShape(t *testing.T) {
 	dst := ebiten.NewImage(280, 60)
 	r := image.Rect(0, 0, 280, 60)
 	short := collectFilledRects(t, func() {

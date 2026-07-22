@@ -132,6 +132,68 @@ var modularInstrumentDefs = []ModularInstrumentDef{
 	// voice-opera: breathier "old-man opera" variant of voice-ahh, ear-
 	// approved per the 2026-07-08 round-2 review (see voiceOperaSeed).
 	{ID: "voice-opera", RecipeID: "synth-modular-voice-opera", Display: "Opera Voice", Category: modularRecipeCategory, Seed: voiceOperaSeed, Beats: 2.5, DurationSec: 2.5, Amplitude: 0.8},
+
+	// ── Showcase batch 2026-07-20: 24 config-only instruments (seeds in
+	// instrument_seeds_showcase.go). Designed from synthesis principles, not
+	// reference-WAV tuned — first drafts for the ear-gate. All pitched (mallets
+	// included) → all in melodicRecipeIDs. ──
+	// A · Mallets & metals (struck, inharmonic).
+	{ID: "marimba", RecipeID: "synth-modular-marimba", Display: "Marimba", Category: modularRecipeCategory, Seed: marimbaSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "vibraphone", RecipeID: "synth-modular-vibraphone", Display: "Vibraphone", Category: modularRecipeCategory, Seed: vibraphoneSeed, Beats: 2.5, DurationSec: 2.5, Amplitude: 0.8},
+	{ID: "glockenspiel", RecipeID: "synth-modular-glockenspiel", Display: "Glockenspiel", Category: modularRecipeCategory, Seed: glockenspielSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "gamelan", RecipeID: "synth-modular-gamelan", Display: "Gamelan", Category: modularRecipeCategory, Seed: gamelanSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	// B · Plucked & struck strings (Karplus-Strong).
+	{ID: "kalimba", RecipeID: "synth-modular-kalimba", Display: "Kalimba", Category: modularRecipeCategory, Seed: kalimbaSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "sitar", RecipeID: "synth-modular-sitar", Display: "Sitar", Category: modularRecipeCategory, Seed: sitarSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "banjo", RecipeID: "synth-modular-banjo", Display: "Banjo", Category: modularRecipeCategory, Seed: banjoSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "music-box", RecipeID: "synth-modular-music-box", Display: "Music Box", Category: modularRecipeCategory, Seed: musicBoxSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	// C · Keys (FM / KS / additive).
+	{ID: "piano-rhodes", RecipeID: "synth-modular-piano-rhodes", Display: "Electric Piano", Category: modularRecipeCategory, Seed: pianoRhodesSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "clavinet", RecipeID: "synth-modular-clavinet", Display: "Clavinet", Category: modularRecipeCategory, Seed: clavinetSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "harpsichord", RecipeID: "synth-modular-harpsichord", Display: "Harpsichord", Category: modularRecipeCategory, Seed: harpsichordSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "celesta", RecipeID: "synth-modular-celesta", Display: "Celesta", Category: modularRecipeCategory, Seed: celestaSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	// D · Winds & reeds.
+	{ID: "clarinet", RecipeID: "synth-modular-clarinet", Display: "Clarinet", Category: modularRecipeCategory, Seed: clarinetSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "tuba", RecipeID: "synth-modular-tuba", Display: "Tuba", Category: modularRecipeCategory, Seed: tubaSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "pan-flute", RecipeID: "synth-modular-pan-flute", Display: "Pan Flute", Category: modularRecipeCategory, Seed: panFluteSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "harmonium", RecipeID: "synth-modular-harmonium", Display: "Harmonium", Category: modularRecipeCategory, Seed: harmoniumSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	// E · Synth leads & basses.
+	{ID: "lead-supersaw", RecipeID: "synth-modular-lead-supersaw", Display: "Supersaw Lead", Category: modularRecipeCategory, Seed: leadSupersawSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "lead-hoover", RecipeID: "synth-modular-lead-hoover", Display: "Hoover Lead", Category: modularRecipeCategory, Seed: leadHooverSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "lead-chip", RecipeID: "synth-modular-lead-chip", Display: "Chip Lead", Category: modularRecipeCategory, Seed: leadChipSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "bass-wobble", RecipeID: "synth-modular-bass-wobble", Display: "Wobble Bass", Category: modularRecipeCategory, Seed: bassWobbleSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	// F · Experimental / textural.
+	{ID: "theremin", RecipeID: "synth-modular-theremin", Display: "Theremin", Category: modularRecipeCategory, Seed: thereminSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "singing-bowl", RecipeID: "synth-modular-singing-bowl", Display: "Singing Bowl", Category: modularRecipeCategory, Seed: singingBowlSeed, Beats: 3.0, DurationSec: 3.0, Amplitude: 0.8},
+	{ID: "glass-wash", RecipeID: "synth-modular-glass-wash", Display: "Glass Wash", Category: modularRecipeCategory, Seed: glassWashSeed, Beats: 2.5, DurationSec: 2.5, Amplitude: 0.8},
+	{ID: "voice-alien", RecipeID: "synth-modular-voice-alien", Display: "Alien Choir", Category: modularRecipeCategory, Seed: voiceAlienSeed, Beats: 2.5, DurationSec: 2.5, Amplitude: 0.8},
+
+	// ── Showcase batch ROUND 2 2026-07-20: 18 more config-only instruments
+	// (seeds in instrument_seeds_showcase2.go). All default to A3 (no octave
+	// offsets) so every melodic instrument shares the same default pitch. ──
+	// A2 · Strings & bowed.
+	{ID: "viola", RecipeID: "synth-modular-viola", Display: "Viola", Category: modularRecipeCategory, Seed: violaSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "double-bass", RecipeID: "synth-modular-double-bass", Display: "Double Bass", Category: modularRecipeCategory, Seed: doubleBassSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "pizz-strings", RecipeID: "synth-modular-pizz-strings", Display: "Pizzicato Strings", Category: modularRecipeCategory, Seed: pizzStringsSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	// B2 · World plucked.
+	{ID: "mandolin", RecipeID: "synth-modular-mandolin", Display: "Mandolin", Category: modularRecipeCategory, Seed: mandolinSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "ukulele", RecipeID: "synth-modular-ukulele", Display: "Ukulele", Category: modularRecipeCategory, Seed: ukuleleSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "koto", RecipeID: "synth-modular-koto", Display: "Koto", Category: modularRecipeCategory, Seed: kotoSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	// C2 · Metals & bells.
+	{ID: "steel-drum", RecipeID: "synth-modular-steel-drum", Display: "Steel Drum", Category: modularRecipeCategory, Seed: steelDrumSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "tubular-bells", RecipeID: "synth-modular-tubular-bells", Display: "Tubular Bells", Category: modularRecipeCategory, Seed: tubularBellsSeed, Beats: 3.0, DurationSec: 3.0, Amplitude: 0.8},
+	{ID: "xylophone", RecipeID: "synth-modular-xylophone", Display: "Xylophone", Category: modularRecipeCategory, Seed: xylophoneSeed, Beats: 1.0, DurationSec: 1.0, Amplitude: 0.8},
+	// D2 · Winds & brass.
+	{ID: "bassoon", RecipeID: "synth-modular-bassoon", Display: "Bassoon", Category: modularRecipeCategory, Seed: bassoonSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "piccolo", RecipeID: "synth-modular-piccolo", Display: "Piccolo", Category: modularRecipeCategory, Seed: piccoloSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "accordion", RecipeID: "synth-modular-accordion", Display: "Accordion", Category: modularRecipeCategory, Seed: accordionSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "trombone", RecipeID: "synth-modular-trombone", Display: "Trombone", Category: modularRecipeCategory, Seed: tromboneSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "muted-trumpet", RecipeID: "synth-modular-muted-trumpet", Display: "Muted Trumpet", Category: modularRecipeCategory, Seed: mutedTrumpetSeed, Beats: 2.0, DurationSec: 2.0, Amplitude: 0.8},
+	{ID: "brass-stab", RecipeID: "synth-modular-brass-stab", Display: "Brass Stab", Category: modularRecipeCategory, Seed: brassStabSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	// E2 · Synth & textural.
+	{ID: "moog-bass", RecipeID: "synth-modular-moog-bass", Display: "Moog Bass", Category: modularRecipeCategory, Seed: moogBassSeed, Beats: 1.5, DurationSec: 1.5, Amplitude: 0.8},
+	{ID: "pwm-pad", RecipeID: "synth-modular-pwm-pad", Display: "PWM Pad", Category: modularRecipeCategory, Seed: pwmPadSeed, Beats: 2.5, DurationSec: 2.5, Amplitude: 0.8},
+	{ID: "glass-armonica", RecipeID: "synth-modular-glass-armonica", Display: "Glass Armonica", Category: modularRecipeCategory, Seed: glassArmonicaSeed, Beats: 2.5, DurationSec: 2.5, Amplitude: 0.8},
 }
 
 // ModularInstrumentDefs returns a copy of the table (for tests / tooling that

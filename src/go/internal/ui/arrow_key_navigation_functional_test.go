@@ -75,9 +75,9 @@ func TestFunctional_ArrowKeys_EQdBEditor(t *testing.T) {
 	}
 }
 
-// TestFunctional_ArrowKeys_SynthKnobEditor reproduces editing a synth knob value
+// TestFunctional_ArrowKeys_SynthControlEditor reproduces editing a synth knob value
 // and navigating with arrows through the REAL Game.Update loop.
-func TestFunctional_ArrowKeys_SynthKnobEditor(t *testing.T) {
+func TestFunctional_ArrowKeys_SynthControlEditor(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")

@@ -118,14 +118,15 @@ func collectOrderedDraws(t *testing.T, fn func()) []orderedDraw {
 // at all — the sidebar panel fill that overlaps the badge is drawn AFTER the
 // badge, so the sidebar composites on top of (and hides) the badge.
 //
+// The sidebar draws entirely within drawGridPane (it is a GridTree layer,
+// "grid-sidebar" at z=GZSidebar, clipped to the grid pane), so capturing
+// drawGridPane alone is sufficient to see both the badge fill and the
+// sidebar panel fill in one ordered timeline.
+//
 // Approach (A) from the task: draw-order interception. We intercept drawRect
 // (the badge pill fill, color genColorVizPillFill) and drawRoundedRect (the
 // sidebar panel fill, colPanelBG over the panel rect) into one ordered
-// timeline. A naive screen.At() pixel read can't be used here: the badge
-// draws into the grid-pane SubImage (clip=true) and so is invisible to a
-// parent screen.At(), while the sidebar (clip=false) draws to the unclipped
-// screen — a pixel read would only ever see the sidebar and trivially pass
-// without exercising the ordering (task note (B)).
+// timeline.
 //
 // Desktop is the meaningful case: the desktop badge guard does NOT suppress
 // the badge when the sidebar is open (only the mobile guard does), so the
@@ -145,8 +146,6 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 		t.Fatalf("expected desktop profile after Layout(1280,720); IsMobile=true")
 	}
 
-	// Add a node and position the camera so the node (and the badge above it)
-	// sit on the LEFT, under the left-anchored sidebar panel (0,0,w,gridH).
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if n == nil {
 		t.Fatal("tryAddNode returned nil")
@@ -157,12 +156,15 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 	if sidebarW <= 0 {
 		t.Fatalf("sidebar width not positive: %d", sidebarW)
 	}
-	// Map grid (0,0) to a small screen X well inside the sidebar's left band
-	// and to a Y a comfortable distance below the grid top so the badge (which
-	// sits ~16px above the node) stays on-screen. Grid (0,0) maps to the raw
-	// camera offset, so set the offset directly to the target screen point.
+	// The sidebar card is node-anchored (gridAnchoredPopupRect / AnchorPopupRect,
+	// preferring PopupBelow) and CLAMPED TO THE GRID PANE (0,0,gridW,gridH) — it
+	// can never spill past the split line. To make the badge (which sits ~16px
+	// ABOVE its node) land under the card, place the node near the BOTTOM of the
+	// grid pane: too little room below flips the preferred side to above the
+	// node, landing the card directly over the badge.
+	gridH := g.split.GridH(g.winH)
 	g.cam.OffsetX = float64(sidebarW / 3)
-	g.cam.OffsetY = float64(gridTopOffset() + 120)
+	g.cam.OffsetY = float64(gridH - 40 - gridTopOffset())
 
 	// Activate the badge for this node and open the sidebar over it.
 	g.sel = n
@@ -173,8 +175,9 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 		t.Fatal("sidebar did not open")
 	}
 
-	// Sanity: the badge's computed pill rect overlaps the sidebar panel rect,
-	// otherwise the "sidebar paints over the badge" assertion would be vacuous.
+	// Sanity: the badge's computed pill rect overlaps the ACTUAL, node-anchored
+	// sidebar panel rect, otherwise the "sidebar paints over the badge"
+	// assertion would be vacuous.
 	bx1, by1, bx2, _ := g.nodeScreenRect(g.coordBadgeNode)
 	bcx := int((bx1 + bx2) * 0.5)
 	bcy := int(by1) - 16
@@ -184,7 +187,10 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 	badgeText := fmt.Sprintf("(%d, %d)", g.coordBadgeNode.I, g.coordBadgeNode.J)
 	tw := len(badgeText)*7 + 8
 	badgePill := image.Rect(bcx-tw/2, bcy-1, bcx+tw/2, bcy+13)
-	panelRect := image.Rect(0, 0, sidebarW, g.split.Y-gridTopOffset())
+	panelRect := g.sidebar.rects["panel"]
+	if panelRect.Empty() {
+		t.Fatal("sidebar panel rect should be non-empty once open")
+	}
 	if badgePill.Intersect(panelRect).Empty() {
 		t.Fatalf("test misconfigured: badge pill %v does not overlap sidebar panel %v; "+
 			"reposition the camera so the badge lands under the sidebar", badgePill, panelRect)

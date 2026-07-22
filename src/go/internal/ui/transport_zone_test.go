@@ -56,9 +56,6 @@ func newTestTransportZone() (*TransportZone, *transportTestCallbackLog) {
 		OnSubdivClick: func() {
 			log.subdivClicks++
 		},
-		OnOverflowOpen: func() {
-			log.overflowOpens++
-		},
 		OnMasterVolClick: func() {
 			log.volClicks++
 		},
@@ -338,40 +335,26 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 	copy(desktopAreas, z.HitAreas())
 
 	// Desktop now routes File ops through the overflow "..." menu, so the
-	// overflow button (not the inline upload button) is the visible trigger.
-	overflowArea := findHitAreaByTagPrefix(desktopAreas, "transport-overflow")
-	if overflowArea == nil {
-		t.Error("desktop layout should have 'transport-overflow' hit area")
-	}
+	// Desktop routes file ops through the grid folder button's file menu, so
+	// the inline upload button is NOT registered as a hit area.
 	if uploadArea := findHitAreaByTagPrefix(desktopAreas, "transport-upload"); uploadArea != nil {
-		t.Error("desktop layout should NOT register 'transport-upload' (file ops moved behind overflow menu)")
+		t.Error("desktop layout should NOT register 'transport-upload' (file ops moved behind file menu)")
 	}
 
-	// Mobile layout: vol-icon / view-switch / overflow now live in
-	// DrumView.bottomActionBarRect (B3 critique). The transport zone
-	// alone does NOT register hit areas for them on mobile — DrumView
-	// places them after zone Layout completes and re-runs hit-area
+	// Mobile layout: vol-icon / view-switch live in the bottom action bar.
+	// The transport zone alone does NOT register hit areas for them on mobile —
+	// DrumView places them after zone Layout completes and re-runs hit-area
 	// registration. Asserting the new contract here.
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
 
 	// Re-init buttons for mobile styles (constructor checks isSmallScreen).
 	zm, _ := newTestTransportZone()
-	// Standard mobile flow: DrumView allocates the bottom action bar
-	// and signals the zone via SetUseBottomBar(true). Without this the
-	// zone falls back to a two-row layout (used on ultra-short
-	// viewports where the bar collapses) which DOES register the
-	// view-switch / overflow hit areas inside the top toolbar.
 	zm.SetUseBottomBar(true)
 	mobileRect := image.Rect(0, 0, 400, 120)
 	zm.Layout(mobileRect)
 	mobileAreas := zm.HitAreas()
 
-	// Theme 4: overflow now lives in the top toolbar (bar is for the
-	// 6-segment switcher only). Hit area must be registered.
-	if a := findHitAreaByTagPrefix(mobileAreas, "transport-overflow"); a == nil {
-		t.Error("mobile layout should register transport-overflow in top toolbar (Theme 4)")
-	}
 	// Legacy view-switch is suppressed (segmented replaces it).
 	if a := findHitAreaByTagPrefix(mobileAreas, "transport-view-switch"); a != nil {
 		t.Error("mobile layout should NOT register transport-view-switch (segmented control replaces it)")
@@ -934,58 +917,6 @@ func TestTransport_InputBlockedCancelsBPMEditor(t *testing.T) {
 	}
 }
 
-// TestTransport_OverflowButtonMobile verifies that on mobile, when DrumView
-// places the overflow button into the bottom action bar (simulated here by
-// directly setting its rect and re-registering hit areas with the bar as
-// ClipRect), clicking it fires OnOverflowOpen. The zone's mobile layout
-// alone leaves the button rect empty — DrumView is the sole authority that
-// positions it (B3 critique).
-func TestTransport_OverflowButtonMobile(t *testing.T) {
-	forceSmallScreenForTest = true
-	defer func() { forceSmallScreenForTest = false }()
-
-	var mx, my int
-	var pressed bool
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 400, 800 },
-	)
-	defer restore()
-
-	z, log := newTestTransportZone()
-	tree := registerTransportZone(z, image.Rect(0, 0, 400, 120))
-	tree.Update()
-
-	// Theme 4: overflow lives in the top toolbar. Layout the zone over a
-	// 2-row mobile bar (height >= 2*TouchMinTarget) so overflow lands on
-	// row 1 inside z.rect.
-	z.Layout(image.Rect(0, 0, 400, 120))
-	tree.HitIndexRef().Update("transport", z.HitAreas())
-
-	overflowArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-overflow")
-	if overflowArea == nil {
-		t.Fatal("expected 'transport-overflow' hit area in top toolbar after Theme 4")
-	}
-
-	mx, my = (overflowArea.Rect.Min.X+overflowArea.Rect.Max.X)/2, (overflowArea.Rect.Min.Y+overflowArea.Rect.Max.Y)/2
-	pressed = true
-	tree.Update()
-	pressed = false
-	tree.Update()
-
-	if log.overflowOpens == 0 {
-		t.Error("expected OnOverflowOpen callback after clicking overflow button")
-	}
-}
-
-// TestTransport_ViewSwitchButtonMobile verifies that on mobile (Theme 1)
-// the legacy binary view-switch button is suppressed — the 6-segment
-// SegmentedControl in DrumView's bottom action bar replaces it. The
-// transport zone must not register a hit area for it.
 func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()

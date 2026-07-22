@@ -422,3 +422,31 @@ func TestPasteOnEdgeStitchesIntoConnection(t *testing.T) {
 		t.Fatal("undo did not remove the pasted node (stitched paste not one atomic step)")
 	}
 }
+
+// TestPasteConfirm_OutsideClickCancels drives the shared ConfirmDialog's
+// click-outside contract through the REAL input path: a press well outside
+// the centered dialog panel yields zero hit-area matches, so the tree's
+// CloseTop → OnClose fires (ConfirmDialog.portalEntry wires OnClose to
+// d.cancel → g.CancelPasteOverwrite), leaving the graph untouched.
+func TestPasteConfirm_OutsideClickCancels(t *testing.T) {
+	g := newTestGameForUndo(t)
+	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+	g.updateBeatInfos()
+	if n == nil {
+		t.Fatal("setup node nil")
+	}
+	g.snapshotNodeToClipboard(n)
+	g.beginPasteConfirm(3, 1)
+	if !g.pasteConfirmActive() {
+		t.Fatal("paste confirm should be active")
+	}
+	// A press well outside the dialog panel (screen top-left corner) must
+	// cancel via the portal's outside-click path.
+	clickAt(g, 2, 2)
+	if g.pasteConfirmActive() {
+		t.Fatal("outside click must cancel the paste confirm")
+	}
+	if g.nodeAt(3, 1) != n {
+		t.Fatal("cancel must not mutate the graph")
+	}
+}

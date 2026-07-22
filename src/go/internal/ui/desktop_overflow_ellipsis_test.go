@@ -3,9 +3,8 @@
 package ui
 
 import (
+	"image"
 	"testing"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // newDesktopGameForTransport builds a desktop-profile Game laid out at a
@@ -24,34 +23,28 @@ func newDesktopGameForTransport(t *testing.T) *Game {
 	return g
 }
 
-// TestDesktopTransportShowsSingleOverflowEllipsis verifies the desktop
-// transport exposes exactly ONE working overflow ("...") button — matching the
-// mobile behaviour — rather than the two cramped Undo/Redo buttons that
-// collapsed to "..." via clipTextToWidth and opened no menu.
-//
-// Bug: on desktop the transport zone is only ~308px wide, so the text-labelled
-// Undo/Redo buttons (~21px) rendered as "..." while the real overflow button
-// was hidden (rect cleared in layoutDesktop). The user saw "two ellipsis"
-// buttons, neither of which opened the overflow menu.
-func TestDesktopTransportShowsSingleOverflowEllipsis(t *testing.T) {
+// TestDesktopFileOpsBehindFolderButton verifies the inline Upload/Import/Export
+// buttons are hidden on desktop (they moved behind the grid folder button's
+// file menu) and that the folder button is present to reach them.
+func TestDesktopFileOpsBehindFolderButton(t *testing.T) {
 	g := newDesktopGameForTransport(t)
 	dv := g.drum
 
-	// The genuine overflow "..." button must be visible on desktop.
-	if got := dv.overflowBtn().Rect(); got.Empty() {
-		t.Errorf("desktop overflow button rect is empty — the '...' overflow menu trigger is hidden on desktop (want visible, like mobile)")
+	// The grid folder button (file-menu trigger) must be present on desktop.
+	if got := g.gridFileButtonRect(); got.Empty() {
+		t.Errorf("desktop folder button rect is empty — the file menu trigger is hidden")
 	}
 
-	// File-ops move behind the overflow menu (they already exist as overflow
-	// entries), so the cramped inline Upload/Import/Export buttons are hidden.
+	// File-ops move behind the file menu, so the cramped inline
+	// Upload/Import/Export buttons are hidden.
 	if got := dv.uploadBtn().Rect(); !got.Empty() {
-		t.Errorf("upload button rect = %v, want empty (moved behind overflow menu)", got)
+		t.Errorf("upload button rect = %v, want empty (moved behind file menu)", got)
 	}
 	if got := dv.importBtn().Rect(); !got.Empty() {
-		t.Errorf("import button rect = %v, want empty (moved behind overflow menu)", got)
+		t.Errorf("import button rect = %v, want empty (moved behind file menu)", got)
 	}
 	if got := dv.exportBtn().Rect(); !got.Empty() {
-		t.Errorf("export button rect = %v, want empty (moved behind overflow menu)", got)
+		t.Errorf("export button rect = %v, want empty (moved behind file menu)", got)
 	}
 }
 
@@ -84,42 +77,24 @@ func TestDesktopUndoRedoUseIconsNotEllipsisText(t *testing.T) {
 	}
 }
 
-// TestDesktopOverflowButtonOpensMenu verifies that clicking the desktop
-// overflow "..." button actually opens the overflow menu — "no user action
-// triggers the menu" was the reported breakage.
-func TestDesktopOverflowButtonOpensMenu(t *testing.T) {
+// TestDesktopFileMenuOpensVisible verifies opening the file menu from the grid
+// folder button lands a non-empty popup within the screen (it is pixel-anchored
+// under the folder button in the grid pane, so it is NOT confined to the drum
+// pane — see the menu-adjacency rule).
+func TestDesktopFileMenuOpensVisible(t *testing.T) {
 	g := newDesktopGameForTransport(t)
 	dv := g.drum
 
-	r := dv.overflowBtn().Rect()
-	if r.Empty() {
-		t.Fatal("overflow button rect empty — cannot click it")
-	}
-	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
-
-	const W, H = 1280, 720
-	reset := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	reset()
-
+	g.openFileMenu()
 	if !dv.IsOverflowMenuOpen() {
-		t.Fatalf("clicking desktop overflow button did not open the overflow menu")
+		t.Fatalf("openFileMenu did not open the file menu")
 	}
-
-	// The popup must land somewhere visible (non-empty, inside the drum pane),
-	// otherwise the menu "opens" but renders off-screen.
 	popup := dv.overflowPopupRect()
 	if popup.Empty() {
-		t.Errorf("overflow popup rect is empty after opening on desktop")
+		t.Errorf("file popup rect is empty after opening on desktop")
 	}
-	if !popup.In(dv.Bounds) {
-		t.Errorf("overflow popup rect %v not within drum bounds %v", popup, dv.Bounds)
+	screen := image.Rect(0, 0, g.winW, g.winH)
+	if !popup.In(screen) {
+		t.Errorf("file popup rect %v not within screen %v", popup, screen)
 	}
 }

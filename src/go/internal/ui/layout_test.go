@@ -82,18 +82,10 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			}
 		}
 
-		// File ops moved behind the overflow "..." menu on desktop; the overflow
-		// button is the icon-only inline control that opens them.
-		r := dv.overflowBtn().Rect()
-		if r.Empty() {
-			t.Fatalf("w=%d: overflow rect empty", w)
-		}
-		if dv.overflowBtn().Icon != "overflow" {
-			t.Fatalf("w=%d: overflow icon = %q want overflow", w, dv.overflowBtn().Icon)
-		}
-		// Upload/Import/Export are hidden inline (reachable via the overflow menu).
+		// File ops moved behind the grid folder button's file menu on desktop;
+		// the inline Upload/Import/Export buttons are hidden.
 		if ur := dv.uploadBtn().Rect(); !ur.Empty() {
-			t.Fatalf("w=%d: upload rect = %v want empty (behind overflow menu)", w, ur)
+			t.Fatalf("w=%d: upload rect = %v want empty (behind file menu)", w, ur)
 		}
 	}
 }

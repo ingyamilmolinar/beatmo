@@ -26,9 +26,6 @@ type TransportCallbacks struct {
 	OnRecordToggle   func()                             // record button pressed
 	OnUndo           func()                             // undo button pressed
 	OnRedo           func()                             // redo button pressed
-	OnRewind         func()                             // seek -jumpBeats beats
-	OnFastForward    func()                             // seek +jumpBeats beats
-	OnJumpSizeClick  func()                             // delegates to DrumView's jump-size (×N) dropdown
 	CanUndo          func() bool                        // whether the undo stack is non-empty (drives dim)
 	CanRedo          func() bool                        // whether the redo stack is non-empty (drives dim)
 	IsPlaying        func() bool                        // read current playback state
@@ -40,7 +37,6 @@ type TransportCallbacks struct {
 
 	// Overlay callbacks: delegate to DrumView's overlay mechanisms.
 	OnSubdivClick    func()       // delegates to DrumView's SubdivMenuComponent
-	OnOverflowOpen   func()       // delegates to DrumView's overflow menu
 	OnMasterVolClick func()       // delegates to DrumView's master vol popup
 	MasterVolPopup   *SliderPopup // forwarded to transportVolIconHitAdapter for drag-through
 }
@@ -58,9 +54,6 @@ type TransportZone struct {
 	playBtn        *Button
 	stopBtn        *Button
 	recordBtn      *Button
-	rwBtn          *Button // rewind: seek -jumpBeats beats on tap
-	ffBtn          *Button // fast-forward: seek +jumpBeats beats on tap
-	jumpBtn        *Button // "×N" pill: opens the jump-size dropdown ({1,2,4,8,16})
 	undoBtn        *Button
 	redoBtn        *Button
 	bpmDecBtn      *Button
@@ -74,7 +67,6 @@ type TransportZone struct {
 	exportBtn      *Button
 	eqToggleMobile *Button
 	viewSwitchBtn  *Button
-	overflowBtn    *Button
 
 	// Master volume
 	mainVolSlider   *Slider
@@ -208,33 +200,8 @@ func (z *TransportZone) initButtons() {
 	z.recordBtn.Icon = string(IconRecord)
 	z.recordBtn.IconColor = colRecordIdle
 
-	// Rewind / Fast-Forward: seek ∓jumpBeats beats per tap. No hold-accelerate
-	// (Repeat removed) — the jump size is configurable via the ×N pill instead
-	// of a hold-to-accelerate gesture; holding used to fire a 60Hz seek-storm.
-	z.rwBtn = NewButton("", nil, func() {
-		hapticTransportTap()
-		if z.callbacks.OnRewind != nil {
-			z.callbacks.OnRewind()
-		}
-	})
-	z.rwBtn.Icon = string(IconRewind)
-
-	z.ffBtn = NewButton("", nil, func() {
-		hapticTransportTap()
-		if z.callbacks.OnFastForward != nil {
-			z.callbacks.OnFastForward()
-		}
-	})
-	z.ffBtn.Icon = string(IconFastForward)
-
-	// Jump-size pill: tapping opens a dropdown of {1,2,4,8,16} beats; default 4.
-	// Text-only pill (no Icon) styled like the subdivision selector.
-	z.jumpBtn = NewButton("×4", nil, func() {
-		hapticTransportTap()
-		if z.callbacks.OnJumpSizeClick != nil {
-			z.callbacks.OnJumpSizeClick()
-		}
-	})
+	// Navigation now opens from the beat counter (see dv.OpenNavigation); the
+	// former transport "Navigate" (bullseye) button was removed.
 
 	// Undo / Redo render as vector icons (IconUndo / IconRedo) rather than
 	// text labels: the narrow desktop transport cell (~24px) clips a
@@ -338,13 +305,8 @@ func (z *TransportZone) initButtons() {
 	z.viewSwitchBtn.Icon = string(IconAudio)
 	z.viewSwitchBtn.IconColor = colTextSecondary
 
-	z.overflowBtn = NewButton("", nil, func() {
-		if z.callbacks.OnOverflowOpen != nil {
-			z.callbacks.OnOverflowOpen()
-		}
-	})
-	z.overflowBtn.Icon = string(IconOverflow)
-	z.overflowBtn.IconColor = colTextSecondary
+	// The overflow (kebab) button was removed; file options now open from the
+	// grid folder button (see Game.gridFileBtn / dv.OpenFileMenu).
 
 	// Single authority for every profile-dependent Style and IconColor.
 	// Called once here so the buttons are visually valid before Layout(),
@@ -373,17 +335,6 @@ func (z *TransportZone) refreshProfileStyles() {
 		// recordBtn.IconColor is dynamic (idle / armed) and managed
 		// elsewhere — do not overwrite it here.
 	}
-	if z.rwBtn != nil {
-		z.rwBtn.Style = p.StopBtnStyle
-		z.rwBtn.IconColor = colTextPrimary
-	}
-	if z.ffBtn != nil {
-		z.ffBtn.Style = p.StopBtnStyle
-		z.ffBtn.IconColor = colTextPrimary
-	}
-	if z.jumpBtn != nil {
-		z.jumpBtn.Style = p.SubdivBtnStyle
-	}
 	if z.bpmDecBtn != nil {
 		z.bpmDecBtn.Style = p.BPMDecBtnStyle
 		z.bpmDecBtn.IconColor = p.BPMIconColor
@@ -398,25 +349,19 @@ func (z *TransportZone) refreshProfileStyles() {
 	if z.trackBtn != nil {
 		z.trackBtn.Style = p.TrackBtnStyle
 	}
-	// Mobile second-row recede: secondary controls (view, overflow) sit
-	// on surface-1 fill so the eye reads them as ancillary to the row 0
-	// primary cluster (play/stop/record/bpm/subdiv on surface-2). Desktop
-	// uses the profile's ViewSwitchStyle / OverflowStyle directly.
+	// Mobile second-row recede: the view-switch control sits on surface-1 fill
+	// so the eye reads it as ancillary to the row 0 primary cluster
+	// (play/stop/record/bpm/subdiv on surface-2). Desktop uses the profile's
+	// ViewSwitchStyle directly.
 	if p.IsMobile() {
 		recede := ButtonStyleFromSpec(ComponentButtonSecondary)
 		recede.Fill = colSurface1
 		if z.viewSwitchBtn != nil {
 			z.viewSwitchBtn.Style = recede
 		}
-		if z.overflowBtn != nil {
-			z.overflowBtn.Style = recede
-		}
 	} else {
 		if z.viewSwitchBtn != nil {
 			z.viewSwitchBtn.Style = p.ViewSwitchStyle
-		}
-		if z.overflowBtn != nil {
-			z.overflowBtn.Style = p.OverflowStyle
 		}
 	}
 }
@@ -679,24 +624,6 @@ func (z *TransportZone) SetFollow(f bool) {
 // FollowPlayback returns whether auto-scroll is enabled.
 func (z *TransportZone) FollowPlayback() bool { return z.follow }
 
-// SetJumpBeats updates the ×N pill's label text to reflect the current
-// FF/RW jump size in whole beats. × is U+00D7 (allowed — not the forbidden
-// ✕ U+2715 chrome glyph).
-func (z *TransportZone) SetJumpBeats(n int) {
-	if z.jumpBtn != nil {
-		z.jumpBtn.Text = "×" + strconv.Itoa(n)
-	}
-}
-
-// JumpBtnRect returns the ×N jump-size pill's rect (empty when hidden, e.g.
-// on mobile). Used as the anchor for the jump-size dropdown portal.
-func (z *TransportZone) JumpBtnRect() image.Rectangle {
-	if z.jumpBtn != nil {
-		return z.jumpBtn.Rect()
-	}
-	return image.Rectangle{}
-}
-
 // BPMErrorAnim returns the current BPM error animation value.
 func (z *TransportZone) BPMErrorAnim() float64 { return z.bpmErrorAnim }
 
@@ -750,10 +677,10 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	// width — placed by DrumView, not here.
 	//
 	// Single-row layout (preferred — when topBounds height fits one row):
-	//   Play | Stop | Record | [−|BPM|+] | Subdiv | Vol | Overflow
+	//   Play | Stop | Record | [−|BPM|+] | Subdiv | Vol | Nav | Overflow
 	// Two-row fallback (when topBounds is tall enough to split):
 	//   Row 0: Play | Stop | Record | [−|BPM|+] | Subdiv
-	//   Row 1:                                       Vol .... Overflow
+	//   Row 1:                                       Vol | Nav | Overflow
 	//
 	// We prefer single row whenever it would land each cell at >=
 	// TouchMinTarget; otherwise fall back to 2-row to preserve touch
@@ -773,34 +700,33 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	}
 
 	if useTwoRow {
-		// Row 1: vol-icon left, empty middle, overflow right (3-cell grid).
-		row1Grid := NewGridLayout(row1Bounds, []float64{1.0, 1.0, 1.0}, []float64{1})
+		// Row 1: just the vol icon now (Nav + Overflow removed — navigation
+		// opens from the beat counter, file options from the grid folder
+		// button).
+		row1Grid := NewGridLayout(row1Bounds, []float64{1.0}, []float64{1})
 		z.mainVolIconRect = safeInsetTransport(row1Grid.Cell(0, 0), pad)
 		if z.mainVolSlider != nil {
 			z.mainVolSlider.SetRect(image.Rectangle{})
 			z.mainVolRect = image.Rectangle{}
 		}
-		if z.overflowBtn != nil {
-			z.overflowBtn.SetRect(safeInsetTransport(row1Grid.Cell(2, 0), pad))
-		}
 	}
 
-	// Row 0 column weights — extend by [vol, overflow] when single-row.
-	// Undo / Redo are NOT placed on the mobile primary row: at <=480px the
-	// extra cells shrink the record button below the 44px touch-min (see
-	// TestMobileRecordButtonNeverSliver). On mobile they live in the overflow
-	// menu (TODO) + keyboard; desktop keeps them on the toolbar.
+	// Row 0 column weights — extend by [vol] when single-row (Nav + Overflow
+	// removed, freeing two slots). Undo / Redo are NOT placed on the mobile
+	// primary row: at <=480px the extra cells shrink the record button below
+	// the 44px touch-min (see TestMobileRecordButtonNeverSliver). On mobile
+	// they live in the overflow menu (TODO) + keyboard; desktop keeps them on
+	// the toolbar.
 	//
 	// NOTE: mobile buttons are intentionally NOT forced into equal squares
 	// (unlike desktop's layoutDesktop run). The mobile transport region is
-	// only ~188px wide, so seven controls at the 44px touch-min cannot be
-	// square — the layout instead fills the cell HEIGHT (≥ touch-min) at a
-	// narrow width and relies on ExpandHitArea for the 44px touch target.
-	// There is no "spacer void" on mobile to remove. Touch-min ratchet:
-	// TestMobileTransportButtons_AtTouchMin.
+	// narrow, so controls at the 44px touch-min cannot be square — the layout
+	// instead fills the cell HEIGHT (≥ touch-min) at a narrow width and relies
+	// on ExpandHitArea for the 44px touch target. There is no "spacer void" on
+	// mobile to remove. Touch-min ratchet: TestMobileTransportButtons_AtTouchMin.
 	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0}
 	if !useTwoRow {
-		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
+		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0}
 	}
 	row0Grid := NewGridLayout(row0Bounds, weights, []float64{1})
 
@@ -852,38 +778,27 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 
 	z.subdivBtn.SetRect(safeInsetTransport(row0Grid.Cell(4, 0), pad))
 
-	// Single-row mode: append vol icon + overflow on row 0 (cells 5, 6).
+	// Single-row mode: append vol icon on row 0 (cell 5). Nav + Overflow were
+	// removed (freeing two slots) — navigation opens from the beat counter,
+	// file options from the grid folder button.
 	if !useTwoRow {
 		z.mainVolIconRect = safeInsetTransport(row0Grid.Cell(5, 0), pad)
 		if z.mainVolSlider != nil {
 			z.mainVolSlider.SetRect(image.Rectangle{})
 			z.mainVolRect = image.Rectangle{}
 		}
-		if z.overflowBtn != nil {
-			z.overflowBtn.SetRect(safeInsetTransport(row0Grid.Cell(6, 0), pad))
-		}
 	}
 
-	// Undo / Redo / Rewind / Fast-Forward are hidden on the mobile primary row
-	// (no room at the 44px touch-min — the ~188px mobile transport region
-	// already can't fit its seven controls as squares, see the weights note
-	// above). Zero their rects so they are not drawn or hit-registered on
-	// mobile; they remain available via keyboard (undo/redo) and (TODO) the
-	// overflow menu.
+	// Undo / Redo are hidden on the mobile primary row (no room at the 44px
+	// touch-min — the narrow mobile transport region already can't fit its
+	// controls as squares, see the weights note above). Zero their rects so
+	// they are not drawn or hit-registered on mobile; they remain available
+	// via keyboard (undo/redo).
 	if z.undoBtn != nil {
 		z.undoBtn.SetRect(image.Rectangle{})
 	}
 	if z.redoBtn != nil {
 		z.redoBtn.SetRect(image.Rectangle{})
-	}
-	if z.rwBtn != nil {
-		z.rwBtn.SetRect(image.Rectangle{})
-	}
-	if z.ffBtn != nil {
-		z.ffBtn.SetRect(image.Rectangle{})
-	}
-	if z.jumpBtn != nil {
-		z.jumpBtn.SetRect(image.Rectangle{})
 	}
 
 	// Hide desktop-only buttons on mobile.
@@ -911,21 +826,18 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec T
 	// Desktop transport is a single left-aligned run of equal-size SQUARE
 	// buttons with a uniform gap. Running order:
 	//
-	//   RW | Play | Stop | FF | ×N | Record | BPM box | BPM ± | Subdiv | Vol | Undo | Redo | Overflow
+	//   Play | Stop | Record | BPM box | BPM ± | Subdiv | Vol | Undo | Redo
 	//
-	// RW/FF flank Play/Stop (added for beat-seek shuttle; task 9) so a tap
-	// falls naturally next to the transport it steps relative to. Jump (the
-	// "×N" jump-size pill) sits right after Record, next to the RW/FF pair it
-	// configures. The BPM box and BPM ± stepper are the only non-square
-	// exceptions. The run packs at the left of the transport column; any
-	// leftover width sits to the right, before the timeline begins. This
-	// replaces the former weighted grid whose weight-0.6 "spacer" cell left a
-	// black void between Subdiv and Vol and whose uneven weights made the
-	// buttons different sizes. Regression guards:
+	// The former Nav (crosshair) and Overflow (kebab) buttons were removed:
+	// navigation opens from the beat counter (dv.OpenNavigation), file options
+	// from the grid folder button (dv.OpenFileMenu). The BPM box and BPM ±
+	// stepper are the only non-square exceptions. The run packs at the left of
+	// the transport column; any leftover width sits to the right, before the
+	// timeline begins. Regression guards:
 	// TestDesktopTransportButtonsAreEqualSquares, TestDesktopTransportNoSpacerGap,
 	// TestDesktopTransportNoOverlap.
-	const nGaps = 12 // 13 controls in the run → 12 inter-control gaps (added Jump pill)
-	totalUnits := 11*1.0 + transportBPMBoxUnits + transportBPMStepUnits
+	const nGaps = 8 // 9 controls in the run → 8 inter-control gaps (Nav + Overflow removed)
+	totalUnits := 7*1.0 + transportBPMBoxUnits + transportBPMStepUnits
 	sq, gap, top, bot := transportRunMetrics(topBounds, pad, spec, totalUnits, nGaps)
 
 	x := topBounds.Min.X
@@ -937,11 +849,8 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec T
 		x += sq + gap
 	}
 
-	square(z.rwBtn)
 	square(z.playBtn)
 	square(z.stopBtn)
-	square(z.ffBtn)
-	square(z.jumpBtn)
 	square(z.recordBtn)
 
 	bpmW := int(transportBPMBoxUnits * float64(sq))
@@ -967,7 +876,6 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec T
 
 	square(z.undoBtn)
 	square(z.redoBtn)
-	square(z.overflowBtn)
 
 	// Group container pills derive from the final button rects.
 	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
@@ -1013,14 +921,12 @@ func (z *TransportZone) rebuildHitAreas() {
 		{z.undoBtn, "transport-undo", true},
 		{z.redoBtn, "transport-redo", true},
 		{z.subdivBtn, "transport-subdiv", true},
-		{z.jumpBtn, "transport-jump", true},
 		{z.trackBtn, "transport-track", true},
 		{z.uploadBtn, "transport-upload", true},
 		{z.importBtn, "transport-import", true},
 		{z.exportBtn, "transport-export", true},
 		{z.eqToggleMobile, "transport-eq-toggle", false},
 		{z.viewSwitchBtn, "transport-view-switch", true},
-		{z.overflowBtn, "transport-overflow", true},
 	}
 	for _, sb := range simpleButtons {
 		if sb.btn == nil {
@@ -1040,20 +946,18 @@ func (z *TransportZone) rebuildHitAreas() {
 		})
 	}
 
-	// BPM +/- and RW/FF buttons use repeatButtonHitAdapter for hold-to-repeat:
-	// its OnDrag re-invokes HandleInputResult every held frame, which is what
+	// BPM +/- buttons use repeatButtonHitAdapter for hold-to-repeat: its
+	// OnDrag re-invokes HandleInputResult every held frame, which is what
 	// actually drives Button.repeatTick's acceleration (the plain
 	// buttonHitAdapter above has a no-op OnDrag, so .Repeat never fires past
 	// the first press through that path — see repeatButtonHitAdapter vs
-	// buttonHitAdapter). RW/FF added: task 9 FF/RW transport buttons.
+	// buttonHitAdapter).
 	for _, rb := range []struct {
 		btn *Button
 		tag string
 	}{
 		{z.bpmDecBtn, "transport-bpm-dec"},
 		{z.bpmIncBtn, "transport-bpm-inc"},
-		{z.rwBtn, "transport-rewind"},
-		{z.ffBtn, "transport-fastforward"},
 	} {
 		if rb.btn == nil {
 			continue
@@ -1366,21 +1270,6 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 	mix(boolBit(z.bpmIncBtn.pressed))
 	mix(boolBit(z.subdivBtn.hovered))
 	mix(boolBit(z.subdivBtn.pressed))
-	if z.rwBtn != nil {
-		mix(boolBit(z.rwBtn.hovered))
-		mix(boolBit(z.rwBtn.pressed))
-	}
-	if z.ffBtn != nil {
-		mix(boolBit(z.ffBtn.hovered))
-		mix(boolBit(z.ffBtn.pressed))
-	}
-	if z.jumpBtn != nil {
-		mix(boolBit(z.jumpBtn.hovered))
-		mix(boolBit(z.jumpBtn.pressed))
-		for _, r := range z.jumpBtn.Text {
-			mix(uint64(r))
-		}
-	}
 	mix(boolBit(z.trackBtn.hovered))
 	mix(boolBit(z.trackBtn.pressed))
 	mix(boolBit(z.uploadBtn.hovered))
@@ -1405,13 +1294,6 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 		}
 		mix(boolBit(z.eqToggleMobile.hovered))
 		mix(boolBit(z.eqToggleMobile.pressed))
-	}
-	if z.overflowBtn != nil {
-		for _, r := range z.overflowBtn.Text {
-			mix(uint64(r))
-		}
-		mix(boolBit(z.overflowBtn.hovered))
-		mix(boolBit(z.overflowBtn.pressed))
 	}
 	if z.viewSwitchBtn != nil {
 		for _, r := range z.viewSwitchBtn.Icon {
@@ -1475,17 +1357,8 @@ func (z *TransportZone) toolbarBounds() image.Rectangle {
 			}
 		}
 	}
-	if z.rwBtn != nil {
-		expand(z.rwBtn.Rect())
-	}
 	expand(z.playBtn.Rect())
 	expand(z.stopBtn.Rect())
-	if z.ffBtn != nil {
-		expand(z.ffBtn.Rect())
-	}
-	if z.jumpBtn != nil {
-		expand(z.jumpBtn.Rect())
-	}
 	expand(z.bpmDecBtn.Rect())
 	expand(z.bpmBox.Rect)
 	expand(z.bpmIncBtn.Rect())
@@ -1501,9 +1374,6 @@ func (z *TransportZone) toolbarBounds() image.Rectangle {
 	}
 	if z.eqToggleMobile != nil {
 		expand(z.eqToggleMobile.Rect())
-	}
-	if z.overflowBtn != nil {
-		expand(z.overflowBtn.Rect())
 	}
 	if z.viewSwitchBtn != nil {
 		expand(z.viewSwitchBtn.Rect())
@@ -1570,20 +1440,11 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 	z.drawFileOpsGroupOffset(cache, offsetX, offsetY)
 
 	z.drawPlayAccentOffset(cache, offsetX, offsetY)
-	if z.rwBtn != nil {
-		drawBtnOff(cache, z.rwBtn, offsetX, offsetY)
-	}
 	drawBtnOff(cache, z.playBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.stopBtn, offsetX, offsetY)
-	if z.ffBtn != nil {
-		drawBtnOff(cache, z.ffBtn, offsetX, offsetY)
-	}
 	drawBtnOff(cache, z.recordBtn, offsetX, offsetY)
 	z.drawRecordArmedRingOffset(cache, offsetX, offsetY)
 	z.drawRecordIndicatorOffset(cache, offsetX, offsetY)
-	if z.jumpBtn != nil {
-		drawBtnOff(cache, z.jumpBtn, offsetX, offsetY)
-	}
 	drawBtnOff(cache, z.bpmDecBtn, offsetX, offsetY)
 	drawTIOffset(cache, z.bpmBox, offsetX, offsetY)
 	if z.bpmErrorAnim > 0 {
@@ -1605,9 +1466,6 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 	}
 	if z.eqToggleMobile != nil {
 		drawBtnOff(cache, z.eqToggleMobile, offsetX, offsetY)
-	}
-	if z.overflowBtn != nil {
-		drawBtnOff(cache, z.overflowBtn, offsetX, offsetY)
 	}
 	if z.viewSwitchBtn != nil {
 		drawBtnOff(cache, z.viewSwitchBtn, offsetX, offsetY)
@@ -1636,20 +1494,11 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 	z.drawFileOpsGroupOffset(dst, 0, 0)
 
 	z.drawPlayAccentOffset(dst, 0, 0)
-	if z.rwBtn != nil {
-		z.rwBtn.Draw(dst)
-	}
 	z.playBtn.Draw(dst)
 	z.stopBtn.Draw(dst)
-	if z.ffBtn != nil {
-		z.ffBtn.Draw(dst)
-	}
 	z.recordBtn.Draw(dst)
 	z.drawRecordArmedRingOffset(dst, 0, 0)
 	z.drawRecordIndicatorOffset(dst, 0, 0)
-	if z.jumpBtn != nil {
-		z.jumpBtn.Draw(dst)
-	}
 	z.bpmDecBtn.Draw(dst)
 	z.bpmBox.Draw(dst)
 	if z.bpmErrorAnim > 0 {
@@ -1672,9 +1521,6 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 	}
 	if z.eqToggleMobile != nil {
 		z.eqToggleMobile.Draw(dst)
-	}
-	if z.overflowBtn != nil {
-		z.overflowBtn.Draw(dst)
 	}
 	if z.viewSwitchBtn != nil {
 		z.viewSwitchBtn.Draw(dst)

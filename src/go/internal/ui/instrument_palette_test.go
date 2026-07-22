@@ -39,8 +39,8 @@ func TestInstrumentSwatchesParity(t *testing.T) {
 
 // Matches YAML block-style entries as written in DESIGN.md:
 //
-//	- name: coral
-//	  hex: "#FF8C5A"
+//   - name: coral
+//     hex: "#FF8C5A"
 //
 // Both keys must be on consecutive lines; spaces only between tokens (no `\s`,
 // which would let a stray newline collapse two entries into one).

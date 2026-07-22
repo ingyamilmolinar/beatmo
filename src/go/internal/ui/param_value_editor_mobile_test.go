@@ -56,7 +56,7 @@ func TestParamEditorOpenValueArmsMobileInput(t *testing.T) {
 				v, err := strconv.ParseFloat(s, 64)
 				return v, err == nil
 			},
-			MinW:   72,
+			MinW: 72,
 		},
 		Anchor:        image.Rect(10, 10, 90, 40),
 		MobileInputID: mobileID,

@@ -11,6 +11,19 @@ import (
 // the canonical hooks.ActionRegistry (ActionMeta.Tag), read in writeEvent.
 type formatter func(payload any) string
 
+// Format renders the one-line narrative message for an event (no bracket tag —
+// the tag comes from hooks.MetaFor(Kind).Tag). Returns "" when the kind has no
+// formatter or the formatter suppresses the line. Exported so the UI logs panel
+// can render the same text the INFO narrative uses without duplicating the
+// per-kind formatter table.
+func Format(e hooks.Event) string {
+	f, ok := lookupFormatter(e.Kind)
+	if !ok {
+		return ""
+	}
+	return f(e.Payload)
+}
+
 // formatters maps each hooks.Kind to its narrative one-liner. Coverage is
 // enforced by coverage_test.go; adding a new Kind without an entry here
 // fails CI.

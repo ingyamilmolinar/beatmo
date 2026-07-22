@@ -21,8 +21,8 @@ type LayoutGuidesLayer struct {
 
 func newLayoutGuidesLayer(dv *DrumView) *LayoutGuidesLayer { return &LayoutGuidesLayer{dv: dv} }
 
-func (l *LayoutGuidesLayer) ID() string    { return "layout-guides" }
-func (l *LayoutGuidesLayer) ZIndex() int   { return ZLayoutGuides }
+func (l *LayoutGuidesLayer) ID() string  { return "layout-guides" }
+func (l *LayoutGuidesLayer) ZIndex() int { return ZLayoutGuides }
 func (l *LayoutGuidesLayer) Visible() bool {
 	return !l.dv.perfDrawLite && Profile().ShowLayoutGuides && l.dv.widgets != nil
 }

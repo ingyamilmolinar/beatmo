@@ -28,7 +28,7 @@ const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
-  ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+  ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");

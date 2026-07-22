@@ -117,7 +117,7 @@ func TestScrollHandleWheelEmitsOnMove(t *testing.T) {
 
 	// Pin to max and try to scroll further — ScrollBy is a no-op → no emit.
 	sb.VS.First = sb.VS.Total - sb.VS.Visible // = 40 (max)
-	sb.HandleWheel(-1)                          // ScrollBy(1) clamped → no change
+	sb.HandleWheel(-1)                        // ScrollBy(1) clamped → no change
 
 	select {
 	case s := <-ch:

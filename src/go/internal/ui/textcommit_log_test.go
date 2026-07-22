@@ -45,9 +45,9 @@ func TestTextCommitEmits(t *testing.T) {
 // then the blur-transition branch emitted a second time on the following frame.
 //
 // The test drives the full Update() cycle across three frames:
-//  - frame 0: settle focus (focused=true, prevFocused catches up)
-//  - frame 1: Enter pressed → focused set to false
-//  - frame 2: blur transition fires → exactly one EventTextCommitted
+//   - frame 0: settle focus (focused=true, prevFocused catches up)
+//   - frame 1: Enter pressed → focused set to false
+//   - frame 2: blur transition fires → exactly one EventTextCommitted
 func TestTextCommitEnterExactlyOneEvent(t *testing.T) {
 	ch := make(chan hooks.TextPayload, 4) // buffered to catch spurious extra events
 	u := hooks.GlobalBus().Subscribe(hooks.EventTextCommitted, func(e hooks.Event) {

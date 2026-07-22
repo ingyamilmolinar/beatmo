@@ -12,38 +12,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestSettingsOverlayHasCloseButton asserts the overlay exposes a close button
-// (top-right of the panel) and that pressing it marks the overlay for removal.
-func TestSettingsOverlayHasCloseButton(t *testing.T) {
+// TestSettingsOverlayHasNoCloseButton: the settings overlay has NO close (×)
+// button — it is toggled closed by the gear button (see
+// TestSettingsOverlayClosesViaGearToggle and TestTopRightMenusHaveNoCloseButton).
+func TestSettingsOverlayHasNoCloseButton(t *testing.T) {
 	o := NewSettingsOverlay(func(i18n.Locale) {})
 	screen := image.Rect(0, 0, 1200, 800)
 	o.Layout(screen, screen)
-
-	cr := o.CloseButtonRect()
-	if cr.Empty() {
-		t.Fatal("close button rect is empty after Layout")
-	}
-	// Close button sits inside the panel, at the top-right.
-	if !cr.In(o.rect) {
-		t.Fatalf("close button %v not inside panel %v", cr, o.rect)
-	}
-	if cr.Min.X < (o.rect.Min.X+o.rect.Max.X)/2 {
-		t.Fatalf("close button %v should be on the right half of panel %v", cr, o.rect)
-	}
-
-	area, ok := findHitAreaByTag(o.HitAreas(), "settings-close")
-	if !ok {
-		t.Fatal("no settings-close hit area published")
-	}
-	if o.ShouldClose() {
-		t.Fatal("overlay should not be closed before the close button is pressed")
-	}
-	cx := (cr.Min.X + cr.Max.X) / 2
-	cy := (cr.Min.Y + cr.Max.Y) / 2
-	area.Handler.OnPress(cx, cy)
-	area.Handler.OnRelease(cx, cy)
-	if !o.ShouldClose() {
-		t.Fatal("pressing the close button did not mark the overlay for removal")
+	if _, ok := findHitAreaByTag(o.HitAreas(), "settings-close"); ok {
+		t.Error("settings overlay must not publish a close (×) hit area")
 	}
 }
 
@@ -153,9 +130,9 @@ func TestSettingsOverlayIsModal(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayClosesViaCloseButtonDispatch drives the real input loop:
-// clicking the close button removes the overlay from the portal.
-func TestSettingsOverlayClosesViaCloseButtonDispatch(t *testing.T) {
+// TestSettingsOverlayAnchorsUnderGear asserts the settings panel drops from the
+// grid-pane gear (top-right) instead of centering — the bottom-panel-pin bug.
+func TestSettingsOverlayAnchorsUnderGear(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)
 
@@ -167,20 +144,49 @@ func TestSettingsOverlayClosesViaCloseButtonDispatch(t *testing.T) {
 
 	g.toggleSettingsOverlay()
 	advanceFrames(g, 2)
-
 	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay after toggle")
 	}
-	cr := ov.CloseButtonRect()
-	cx := (cr.Min.X + cr.Max.X) / 2
-	cy := (cr.Min.Y + cr.Max.Y) / 2
 
-	holdTap := makeHoldTap(g, 1280, 720)
-	holdTap(cx, cy, 4)
+	gridH := g.split.GridH(g.winH)
+	// Hugs the top-right (next to the gear) and is fully CONTAINED IN THE GRID
+	// PANE — it must never spill past the split into the drum-view panel. A tall
+	// panel is pushed up to fit, so its top may sit above the gear; the invariant
+	// is that its bottom does not cross the split (and it is not centered).
+	if ov.rect.Max.Y > gridH {
+		t.Fatalf("settings panel %v spills past the grid pane (gridH=%d) into the drum-view panel", ov.rect, gridH)
+	}
+	if ov.rect.Min.X < 1280/2 {
+		t.Fatalf("settings panel %v should hug the right side, not center", ov.rect)
+	}
+	if z := g.gridHelpReservedRect(); !z.Empty() && ov.rect.Overlaps(z) {
+		t.Fatalf("settings panel %v overlaps gear zone %v", ov.rect, z)
+	}
+}
+
+// TestSettingsOverlayClosesViaCloseButtonDispatch drives the real input loop:
+// clicking the close button removes the overlay from the portal.
+func TestSettingsOverlayClosesViaGearToggle(t *testing.T) {
+	defer i18n.SetLocale(i18n.LocaleEN)
+	assertDefaultParityState(t)
+
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(1280, 720)
 	advanceFrames(g, 2)
 
+	g.toggleSettingsOverlay()
+	advanceFrames(g, 2)
+	if !g.drum.portal().Has(settingsOverlayID) {
+		t.Fatal("gear toggle should open the settings overlay")
+	}
+
+	// With no × button, tapping the gear again toggles it closed.
+	g.toggleSettingsOverlay()
+	advanceFrames(g, 2)
 	if g.drum.portal().Has(settingsOverlayID) {
-		t.Fatalf("clicking the close button at (%d,%d) in rect %v did not close the settings overlay", cx, cy, cr)
+		t.Fatal("second gear toggle must close the settings overlay")
 	}
 }

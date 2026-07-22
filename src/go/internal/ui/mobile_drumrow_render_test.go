@@ -159,7 +159,6 @@ func TestMobileDrumRowCacheBuilt(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-
 			g.drum.markAllRowsDirty()
 
 			// Draw to trigger the rendering pipeline.
@@ -207,7 +206,6 @@ func TestMobileDrumRowHasContentWithStriping(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-
 			g.drum.markAllRowsDirty()
 
 			// Draw to trigger the rendering pipeline.
@@ -251,7 +249,6 @@ func TestMobileDrumRowsDrawnMaskWithStriping(t *testing.T) {
 
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
-
 
 			g.drum.markAllRowsDirty()
 
@@ -335,7 +332,6 @@ func TestMobileDrumRowCacheWithProductionEQ(t *testing.T) {
 			g.drum.refreshWidgetLayout()
 			g.drum.calcLayout()
 
-
 			g.drum.markAllRowsDirty()
 
 			screen := ebiten.NewImage(vp.w, vp.h)
@@ -369,7 +365,6 @@ func TestMobileDirectDrawUsed(t *testing.T) {
 
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
-
 
 			g.drum.markAllRowsDirty()
 

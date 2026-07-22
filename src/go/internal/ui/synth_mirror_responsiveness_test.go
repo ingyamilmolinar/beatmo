@@ -45,13 +45,13 @@ func pcmEqual(a, b []float64) bool {
 	return true
 }
 
-// TestSynthMirrorRespondsToTimbreKnobs is the UI-level guard that the "Your
+// TestSynthMirrorRespondsToTimbreControls is the UI-level guard that the "Your
 // sound" wave re-renders when a TIMBRE knob changes (osc shape, filter, drive,
 // FM) — the knobs that change the wave SHAPE the cycle-normalized trace shows.
 // (Pitch / envelope / gain affect time or level, not the cycle shape, and have
 // their own per-knob pictures; the audio-level
 // TestRenderInstrumentPreview_RespondsToEveryStageParam covers all params.)
-func TestSynthMirrorRespondsToTimbreKnobs(t *testing.T) {
+func TestSynthMirrorRespondsToTimbreControls(t *testing.T) {
 	g := setupModularSynthGame(t)
 	dv := g.drum
 	const inst = "modular"

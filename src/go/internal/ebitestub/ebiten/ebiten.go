@@ -252,6 +252,7 @@ const (
 	KeyR
 	KeyPeriod
 	KeyComma
+	KeyDelete
 )
 
 // Window and run stubs

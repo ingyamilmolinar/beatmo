@@ -86,7 +86,9 @@ func TestSynthFooter_ClickAtVisibleCenter_RoutesToCorrectHandler(t *testing.T) {
 	}{
 		{"desktop_typical", 1280, 800, false, []string{synthSaveButtonTag, synthSaveAsButtonTag, synthResetButtonTag}},
 		{"desktop_short", 1280, 480, false, []string{synthSaveButtonTag, synthSaveAsButtonTag, synthResetButtonTag}},
-		{"mobile_portrait", 414, 896, true, []string{synthSaveButtonTag, synthSaveAsButtonTag, synthResetButtonTag}},
+		// No mobile case: on mobile the synth actions live on the sticky bar
+		// (Approach B), not the in-panel footer this test drives. Sticky-bar
+		// routing is covered by TestSynthMobileActionsOnStickyBar.
 	}
 
 	for _, tc := range cases {
@@ -188,13 +190,13 @@ func TestSynthFooter_ButtonsInsideHeader(t *testing.T) {
 	}
 }
 
-// TestSynthFooter_KnobRectsClearOfFooter — invariant: no knob's visible
+// TestSynthFooter_ControlRectsClearOfFooter — invariant: no knob's visible
 // rect intersects any footer button rect. With the OUT column removed,
 // section cards span the full content width, so the rightmost section's
 // knob lives directly above the right-aligned Save / Save As / Reset
 // buttons. The buildSynthTab footerGap inset must keep them apart at
 // every supported viewport size; this test fails the moment they touch.
-func TestSynthFooter_KnobRectsClearOfFooter(t *testing.T) {
+func TestSynthFooter_ControlRectsClearOfFooter(t *testing.T) {
 	cases := []struct {
 		name   string
 		w, h   int
@@ -215,7 +217,7 @@ func TestSynthFooter_KnobRectsClearOfFooter(t *testing.T) {
 					footerRects[b.Text] = b.Rect()
 				}
 			}
-			for i, k := range env.g.drum.SynthTabKnobs() {
+			for i, k := range env.g.drum.SynthTabControls() {
 				if k == nil {
 					continue
 				}
@@ -293,4 +295,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-

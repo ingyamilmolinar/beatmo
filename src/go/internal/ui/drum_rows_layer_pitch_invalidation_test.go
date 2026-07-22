@@ -110,4 +110,3 @@ func TestRowsLayerInvalidatesOnTimelineWidthChange(t *testing.T) {
 			g.drum.rowsLayerRowWidth, g.drum.timelineRect.Dx())
 	}
 }
-

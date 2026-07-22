@@ -9,7 +9,7 @@ import "testing"
 // instrument when the params are unchanged. Without the no-op skip, each
 // undo/redo re-applied EVERY instrument's full param set, firing the WASM
 // re-render bridge + voice-cache invalidation for every instrument — so undoing
-// a single synth-knob change re-rendered the whole kit (the "applying actions is
+// a single synth-control change re-rendered the whole kit (the "applying actions is
 // slow" lag).
 func TestSetInstrumentParamsSkipsRedundantReapply(t *testing.T) {
 	const id = "test.inst.redundant.reapply"

@@ -44,9 +44,9 @@ var (
 	colSubtleBorder = colBorderSubtle // alias for subtle borders
 
 	// ── Accent (Primary — Cyan) ─────────────────────────────────────────
-	colAccent      = genColorPrimary
+	colAccent       = genColorPrimary
 	colAccentBright = genColorPrimaryBright
-	colAccentDim   = genColorPrimaryDim
+	colAccentDim    = genColorPrimaryDim
 	// colAccentSubtle composes primary with the panel-border bucket (20).
 	// 20 sits between subtle (8) and faint (25); reusing the panel-border
 	// bucket here keeps every "20-alpha overlay" decision in one place.
@@ -64,12 +64,12 @@ var (
 	colTextAccent    = genColorOnSurfaceAccent
 
 	// ── Legacy aliases (mapped to new surface system) ───────────────────
-	colPlayButton = genColorPlayDesktopFill                           // lime play fill (DESIGN.md play-desktop-fill)
-	colStopButton = genColorStopDesktopFill                           // wine stop fill (DESIGN.md stop-desktop-fill)
-	colBPMBox     = colSurface2                                       // elevated surface for inputs
-	colDropdown   = colSurface2                                       // elevated surface for dropdowns
-	colDropdownEdge = WithAlpha(genColorPrimary, genAlphaAccentTint)  // magenta accent border @ alpha.accent-tint (50)
-	colError      = genColorError                                     // DESIGN.md error
+	colPlayButton   = genColorPlayDesktopFill                        // lime play fill (DESIGN.md play-desktop-fill)
+	colStopButton   = genColorStopDesktopFill                        // wine stop fill (DESIGN.md stop-desktop-fill)
+	colBPMBox       = colSurface2                                    // elevated surface for inputs
+	colDropdown     = colSurface2                                    // elevated surface for dropdowns
+	colDropdownEdge = WithAlpha(genColorPrimary, genAlphaAccentTint) // magenta accent border @ alpha.accent-tint (50)
+	colError        = genColorError                                  // DESIGN.md error
 
 	// Secondary button fill for file-ops, overflow, etc.
 	colSecondaryBtn = colSurface2
@@ -87,8 +87,8 @@ var (
 	// `splitter-handle-hover` reuses the universal white `border` token at
 	// the splitter-hover bucket; the role is "splitter handle at hover", the
 	// hex is white (no separate token needed since border already names it).
-	colSplitterHandle        = WithAlpha(genColorSplitterHandle, genAlphaStrong)
-	colSplitterHandleHover   = WithAlpha(genColorBorder, genAlphaSplitterHover)
+	colSplitterHandle      = WithAlpha(genColorSplitterHandle, genAlphaStrong)
+	colSplitterHandleHover = WithAlpha(genColorBorder, genAlphaSplitterHover)
 
 	// Rack surface: Level 1 for visual separation
 	colRackSurface = colSurface1
@@ -109,15 +109,15 @@ var (
 	// Both groups now use named tokens × named alpha buckets — the
 	// menu-delete-tint TODO that previously kept this inline is resolved
 	// (see DESIGN.md `colors.menu-delete-tint`).
-	colMenuGroupBG       = WithAlpha(genColorBorder, genAlphaBorderThin)        // group container bg @ alpha.border-thin (8)
+	colMenuGroupBG       = WithAlpha(genColorBorder, genAlphaBorderThin)            // group container bg @ alpha.border-thin (8)
 	colMenuGroupDeleteBG = WithAlpha(genColorMenuDeleteTint, genAlphaBorderDefault) // delete-row warning tint @ alpha.border-default (15)
-	colMenuIcon          = colTextDisabled                  // icon tint
+	colMenuIcon          = colTextDisabled                                          // icon tint
 
-	colStep          = colAccent                                       // primary-magenta active cells
-	colStepOff       = genColorDrumCellOff                             // cell-off resting fill (DESIGN.md drum-cell-off)
-	colStepBorder    = WithAlpha(genColorBorder, AlphaRowRackZebra)    // very subtle cell borders (border@10)
-	colHighlight     = genColorDrumCellHighlight                       // cool-white per-beat flash (DESIGN.md drum-cell-highlight)
-	colMuteCell      = genColorDrumMuteCell                            // muted-row resting fill (DESIGN.md drum-mute-cell)
+	colStep          = colAccent                                                   // primary-magenta active cells
+	colStepOff       = genColorDrumCellOff                                         // cell-off resting fill (DESIGN.md drum-cell-off)
+	colStepBorder    = WithAlpha(genColorBorder, AlphaRowRackZebra)                // very subtle cell borders (border@10)
+	colHighlight     = genColorDrumCellHighlight                                   // cool-white per-beat flash (DESIGN.md drum-cell-highlight)
+	colMuteCell      = genColorDrumMuteCell                                        // muted-row resting fill (DESIGN.md drum-mute-cell)
 	colMuteHighlight = WithAlpha(genColorDrumMuteHighlight, genAlphaMuteHighlight) // muted-row beat flash @ alpha.mute-highlight (160)
 
 	// Beat grouping: alternate column tint for visual beat separation
@@ -126,31 +126,31 @@ var (
 	// Timeline strip palette — sourced from DESIGN.md timeline-* tokens.
 	// Amber accent family is intentional (data-canvas color, not chrome —
 	// see "Single chrome accent" invariant exemption for `viz-*` family).
-	colTimelineTotal        = genColorTimelineTotalBg
-	colTimelineView         = WithAlpha(genColorTimelineView, genAlphaSubtle) // view region @ alpha.subtle (60)
-	colTimelineViewHi       = genColorTimelineViewHi
-	colTimelineCursor       = genColorTimelineCursor
-	colTimelineBeat         = genColorTimelineBeat
+	colTimelineTotal  = genColorTimelineTotalBg
+	colTimelineView   = WithAlpha(genColorTimelineView, genAlphaSubtle) // view region @ alpha.subtle (60)
+	colTimelineViewHi = genColorTimelineViewHi
+	colTimelineCursor = genColorTimelineCursor
+	colTimelineBeat   = genColorTimelineBeat
 	// viz-bg/curve/wave-b carry intentional non-255 alpha; sourced from
 	// generated symbols and composed via WithAlpha + named buckets. The
 	// previous "stays inline" exemption for WaveTraceDry / EQ zero-line /
 	// EQ curve-fill is now resolved (alpha.wave-trace-dry, alpha.eq-zero-line,
 	// alpha.eq-curve-fill in DESIGN.md).
-	colEQBg                 = WithAlpha(genColorVizBg, genAlphaOverlay)              // viz-bg @ alpha.overlay (220)
+	colEQBg                 = WithAlpha(genColorVizBg, genAlphaOverlay) // viz-bg @ alpha.overlay (220)
 	colEQBar                = genColorVizBar
 	colEQBarPeak            = genColorVizBarPeak
 	colWaveTrace            = genColorVizWaveA
-	colWaveTraceDry         = WithAlpha(genColorWaveTraceDry, genAlphaWaveTraceDry)  // wave dry trace @ alpha.wave-trace-dry (100)
-	colWaveMid              = WithAlpha(genColorVizWaveB, genAlphaSidebarChip)       // wave-b @ alpha.sidebar-chip (200)
-	colEQCurve              = WithAlpha(genColorVizCurve, 230)                       // curve stroke at intentional 230
-	colEQCurveFill          = WithAlpha(genColorTimelineView, genAlphaEqCurveFill)   // amber fill @ alpha.eq-curve-fill (20); shares hex with timeline-view by design
+	colWaveTraceDry         = WithAlpha(genColorWaveTraceDry, genAlphaWaveTraceDry) // wave dry trace @ alpha.wave-trace-dry (100)
+	colWaveMid              = WithAlpha(genColorVizWaveB, genAlphaSidebarChip)      // wave-b @ alpha.sidebar-chip (200)
+	colEQCurve              = WithAlpha(genColorVizCurve, 230)                      // curve stroke at intentional 230
+	colEQCurveFill          = WithAlpha(genColorTimelineView, genAlphaEqCurveFill)  // amber fill @ alpha.eq-curve-fill (20); shares hex with timeline-view by design
 	colEQHandle             = colAccent
 	colEQHandleActive       = colAccentBright
 	colEQHandleBorder       = colAccentDim
-	colEQZeroLine           = WithAlpha(genColorEqZeroLine, genAlphaEqZeroLine)      // 0 dB ruler @ alpha.eq-zero-line (80)
-	colEQFilterHandle       = genColorVizBar                                         // filter handle reuses viz-bar (cyan, opaque)
-	colEQFilterHandleActive = genColorVizBarPeak                                     // active state reuses viz-bar-peak
-	colEQFilterLine         = WithAlpha(genColorVizBar, genAlphaSubtle)              // filter line @ alpha.subtle (60)
+	colEQZeroLine           = WithAlpha(genColorEqZeroLine, genAlphaEqZeroLine) // 0 dB ruler @ alpha.eq-zero-line (80)
+	colEQFilterHandle       = genColorVizBar                                    // filter handle reuses viz-bar (cyan, opaque)
+	colEQFilterHandleActive = genColorVizBarPeak                                // active state reuses viz-bar-peak
+	colEQFilterLine         = WithAlpha(genColorVizBar, genAlphaSubtle)         // filter line @ alpha.subtle (60)
 
 	// Spectrum frequency-group tinting (warm = bass, neutral = mids, cool
 	// = treble). Sourced from DESIGN.md `viz-bass` / `viz-mids` /
@@ -176,24 +176,24 @@ var (
 	colTransportDivider = WithAlpha(genColorBorder, genAlphaBorderPanel)
 
 	// Pill container colors for transport button groups
-	colTransportGroupBG     = WithAlpha(genColorBorder, genAlphaRowRackZebra)    // pill container fill — white@10 = alpha.row-rack-zebra
-	colTransportGroupBorder = WithAlpha(genColorBorder, genAlphaBorderDefault)   // pill container border — white@15 = alpha.border-default
+	colTransportGroupBG     = WithAlpha(genColorBorder, genAlphaRowRackZebra)  // pill container fill — white@10 = alpha.row-rack-zebra
+	colTransportGroupBorder = WithAlpha(genColorBorder, genAlphaBorderDefault) // pill container border — white@15 = alpha.border-default
 
 	// Icon tint colors for mobile transport buttons
-	colPlayIconTint  = colPlayGreen                    // green for play icon
-	colStopIconTint  = colStopRed                      // red for stop icon
-	colIncDecIcon    = colTextPrimary                   // primary text for +/- icons (mobile)
-	colVolumeIconOn  = colTextPrimary                   // primary when volume > 0
-	colVolumeIconOff = colTextDisabled                  // disabled when muted/zero
-	colFollowActive  = colTextPrimary                   // neutral bright tint for follow-on (track lit); free state dims to colTextDisabled
-	colRecordIdle    = genColorRecordIdle                // red circle for record button (DESIGN.md record-idle, opaque)
-	colRecordActive  = genColorRecordActive              // bright red when recording (DESIGN.md record-active, opaque)
+	colPlayIconTint  = colPlayGreen         // green for play icon
+	colStopIconTint  = colStopRed           // red for stop icon
+	colIncDecIcon    = colTextPrimary       // primary text for +/- icons (mobile)
+	colVolumeIconOn  = colTextPrimary       // primary when volume > 0
+	colVolumeIconOff = colTextDisabled      // disabled when muted/zero
+	colFollowActive  = colTextPrimary       // neutral bright tint for follow-on (track lit); free state dims to colTextDisabled
+	colRecordIdle    = genColorRecordIdle   // red circle for record button (DESIGN.md record-idle, opaque)
+	colRecordActive  = genColorRecordActive // bright red when recording (DESIGN.md record-active, opaque)
 
 	// Mute/Solo active state colors
 	colMuteActive    = colMuteRed
-	colMuteActiveBdr = genColorMuteActiveBorder       // mute-active-border (DESIGN.md mute-active-border #D87848)
-	colSoloActive    = genColorPrimaryBright           // primary-bright coral #FFB498
-	colSoloActiveBdr = genColorSoloActiveBorder        // solo-active-border #FFB498
+	colMuteActiveBdr = genColorMuteActiveBorder // mute-active-border (DESIGN.md mute-active-border #D87848)
+	colSoloActive    = genColorPrimaryBright    // primary-bright coral #FFB498
+	colSoloActiveBdr = genColorSoloActiveBorder // solo-active-border #FFB498
 
 	// Phase M2 (post-refactor cleanup): every var below sources its
 	// fill/border from a generated ComponentSpec. The hand-coded literals

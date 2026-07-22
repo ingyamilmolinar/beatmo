@@ -29,21 +29,9 @@ func TestSynthHeaderPreviewLaidOutOnWidePanel(t *testing.T) {
 	}
 }
 
-func TestSynthHeaderPreviewOnMobileMeetsTouchMin(t *testing.T) {
-	forceSmallScreenForTest = true
-	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
-	UpdateProfile()
-	restore := SetDensityForTest(DensitySpacious)
-	defer restore()
-
-	h := synthHeaderForTest(t, image.Rect(0, 0, 900, 200), "kick-1", "drum-kick", true)
-	if h.previewRect.Empty() {
-		t.Fatal("preview button empty on a wide mobile header (must exist on mobile)")
-	}
-	if h.previewRect.Dy() < Profile().MinTarget {
-		t.Errorf("preview height %d < touch-min %d", h.previewRect.Dy(), Profile().MinTarget)
-	}
-}
+// The mobile Preview button moved from the in-panel header to the sticky bar
+// (Approach B); its presence + touch-min there is covered by
+// TestSynthMobileActionsOnStickyBar + TestStickyBarTrailingActionsMobileTouchMin.
 
 func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 	assertDefaultParityState(t)

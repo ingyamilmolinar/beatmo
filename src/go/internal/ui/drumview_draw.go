@@ -89,6 +89,10 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 		dv.rootTree.Draw(dst)
 	}
 
+	// The NAVIGATION panel's go-to-beat/go-to-time editor is now owned by the
+	// nav-menu portal component (navMenuComp) and drawn as part of that portal
+	// overlay in rootTree.Draw above — no DrumView-level after-draw needed.
+
 	// Post-draw test/JS-export sync.
 	if dv.eqPanelZone != nil {
 		dv.eqLastBands = append(dv.eqLastBands[:0], dv.eqPanelZone.eqBandVals...)

@@ -54,6 +54,7 @@ func (h *repeatButtonHitAdapter) glowRect(_, _ int, _ image.Rectangle) image.Rec
 	}
 	return h.btn.Rect()
 }
+
 // Text inputs (BPM box, …) — the input's rect; empty while focused (the focus
 // ring is the active-edit signal there).
 func (h *textInputHitAdapter) glowRect(_, _ int, _ image.Rectangle) image.Rectangle {

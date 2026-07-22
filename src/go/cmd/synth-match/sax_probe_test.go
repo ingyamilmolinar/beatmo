@@ -19,13 +19,13 @@ import (
 // It exists to expose which axes the shipped wind-gap rows miss.
 // Run: go test -run TestSaxProbe -v ./cmd/synth-match/
 func TestSaxProbe(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 
 	pcm, sr, err := audio.DecodeWAVToPCM(root + "360251__mtg__sax-baritone-c3.wav")
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("reference WAV unavailable: %v", err)
 	}
 	refW := wave.Wave{Samples: f32ToF64(pcm), SampleRate: sr}
 

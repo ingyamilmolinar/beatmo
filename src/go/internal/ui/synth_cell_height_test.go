@@ -9,7 +9,7 @@ func TestKnobCellHeight_IsParamCardHeight(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
 	want := Profile().DensityValues().ParamCardH
-	got := synthKnobCellHeight()
+	got := synthControlCellHeight()
 	if got != want {
 		t.Fatalf("cell height = %d, want %d (ParamCardH)", got, want)
 	}

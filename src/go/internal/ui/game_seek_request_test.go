@@ -11,7 +11,7 @@ func TestSeekRequestAbsoluteDrains(t *testing.T) {
 		t.Fatalf("playhead=%d want %d", got, 5*div)
 	}
 	// Request is one-shot.
-	if _, _, _, _, ok := g.drum.TakeSeekRequest(); ok {
+	if _, _, _, ok := g.drum.TakeSeekRequest(); ok {
 		t.Fatal("seek request should be consumed after drain")
 	}
 }

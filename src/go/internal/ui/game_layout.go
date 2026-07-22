@@ -161,6 +161,12 @@ func (g *Game) Layout(w, h int) (int, int) {
 	if g.gridHelpBtn != nil {
 		g.gridHelpBtn.SetRect(g.gridHelpButtonRect())
 	}
+	if g.gridFileBtn != nil {
+		g.gridFileBtn.SetRect(g.gridFileButtonRect())
+	}
+	if g.gridLogsBtn != nil {
+		g.gridLogsBtn.SetRect(g.gridLogsButtonRect())
+	}
 	g.logger.Debugf("[game] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }
@@ -179,23 +185,23 @@ func (g *Game) Layout(w, h int) (int, int) {
 // rendered over the last row.
 // mobileAudioPanelMinContentH is the comfortable minimum CONTENT height (excluding
 // the transport header + bottom action bar) for the mobile audio panel. Sized so
-// the synth knob renders at its full SynthKnobIdeal diameter (not the shrunk
-// SynthKnobMin): a ~2-row chip strip + the detail header + one full knob cell +
+// the synth knob renders at its full SynthControlIdeal diameter (not the shrunk
+// SynthControlMin): a ~2-row chip strip + the detail header + one full knob cell +
 // section paddings. Synth is the tallest audio tab, so this single floor keeps
 // every audio tab roomy (and the sampler control buttons clear of the knob labels).
 func mobileAudioPanelMinContentH() int {
 	d := Profile().DensityValues()
 	// Walk the synth-tab layout chain top-to-bottom so the content floor reserves
 	// EVERY band between the panel body and the knob cell (otherwise the cell is
-	// clamped and the dial shrinks below SynthKnobIdeal — see
-	// TestMobileSynthTab_KnobRendersAtIdealSize):
+	// clamped and the dial shrinks below SynthControlIdeal — see
+	// TestMobileSynthTab_ControlRendersAtIdealSize):
 	//   SynthHeaderH            — Save/SaveAs/Reset header strip (layoutSynthTab)
 	//   2*SpaceSM               — layoutSynthSections top+bottom rowR trims
 	//   2*SynthChipStripH       — wrapped pipeline chip strip (2 rows at 390px)
 	//   SpaceSM                 — gap between chip strip and detail pane
 	//   SynthDetailHeaderH      — detail-pane header (title + enable pill)
 	//   2*synthSectionPaddingY  — innerR top+bottom padding inside the detail pane
-	//   knobCell                — one ParamCard slot (synthKnobCellHeight == ParamCardH)
+	//   knobCell                — one ParamCard slot (synthControlCellHeight == ParamCardH)
 	// The mobile audio panel reserves a sticky tab-switcher bar at its top
 	// (stickyBarHeight); the synth content (contentRect) is everything below it.
 	// The split budgets this whole value as the panel height, so include the bar.

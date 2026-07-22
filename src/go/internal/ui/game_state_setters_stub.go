@@ -6,6 +6,6 @@ package ui
 // off in test builds. Tests that need to flip these still use the
 // *ForTest helpers (SetDefaultStartForTest, SetForceAutoSizeForTest).
 
-func (g *Game) SetDefaultStart(bool)        {}
-func (g *Game) SetForceMobileProfile(bool)  {}
-func (g *Game) SetForceAutoSize(bool)       {}
+func (g *Game) SetDefaultStart(bool)       {}
+func (g *Game) SetForceMobileProfile(bool) {}
+func (g *Game) SetForceAutoSize(bool)      {}

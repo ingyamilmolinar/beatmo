@@ -102,6 +102,12 @@ func NewParamValueEditor() *ParamValueEditor {
 // Active reports whether the editor is currently open.
 func (e *ParamValueEditor) Active() bool { return e.active }
 
+// Rect returns the editor's current on-screen box, valid while Active().
+// Used by callers that must isolate clicks destined for the editor from a
+// sibling catch-all hit area rendered underneath it (e.g. the overflow
+// menu's NAVIGATION go-to editors — see DrumView.handleOverflowMenuInput).
+func (e *ParamValueEditor) Rect() image.Rectangle { return e.ti.Rect }
+
 // OpenValue focuses the editor over o.Anchor, pre-filled with the current
 // value (caret at end). The box auto-sizes to fit the value (min o.Spec.MinW)
 // and is clamped inside o.Clamp when set.

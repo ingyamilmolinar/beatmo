@@ -190,8 +190,8 @@ func TestDrumViewInput_PressOutsideBoundsIgnored(t *testing.T) {
 	}{
 		{"left", dv.Bounds.Min.X - 1, dv.Bounds.Min.Y + 10},
 		{"top", dv.Bounds.Min.X + 10, dv.Bounds.Min.Y - 1},
-		{"right", dv.Bounds.Max.X, dv.Bounds.Min.Y + 10},   // Max.X is exclusive
-		{"bottom", dv.Bounds.Min.X + 10, dv.Bounds.Max.Y},   // Max.Y is exclusive
+		{"right", dv.Bounds.Max.X, dv.Bounds.Min.Y + 10},  // Max.X is exclusive
+		{"bottom", dv.Bounds.Min.X + 10, dv.Bounds.Max.Y}, // Max.Y is exclusive
 	}
 	for _, e := range edges {
 		result = dv.HandleInput(e.x, e.y, true)

@@ -21,6 +21,7 @@ type notificationStore struct {
 	cap        int
 	entries    []notification // oldest..newest
 	sessionGen bool           // true once a real Push happened this session
+	pushSeq    int64          // monotonic push counter (never resets; survives ring eviction)
 	// persist, when set, is invoked with a fresh oldest..newest snapshot after
 	// every Push so DrumView can write through to userprefs. nil in unit tests.
 	persist func([]notification)
@@ -41,6 +42,24 @@ func (s *notificationStore) Push(n notification) {
 		s.entries = s.entries[len(s.entries)-s.cap:]
 	}
 	s.sessionGen = true
+	s.pushSeq++
+	if s.persist != nil {
+		s.persist(s.snapshot())
+	}
+}
+
+// PushSeq returns the monotonic count of Pushes (never resets, unaffected by
+// ring eviction) — a robust change signal for consumers that memoize.
+func (s *notificationStore) PushSeq() int64 { return s.pushSeq }
+
+// Clear empties the ring and writes an EMPTY snapshot through the persist sink,
+// so a cleared history stays cleared across refreshes (the "Clear history"
+// action). pushSeq is advanced so memoizing consumers (the unread badge)
+// invalidate. sessionGen is left as-is: clearing is not a new notification, and
+// Latest() is nil now, so the live band hides regardless.
+func (s *notificationStore) Clear() {
+	s.entries = s.entries[:0]
+	s.pushSeq++
 	if s.persist != nil {
 		s.persist(s.snapshot())
 	}

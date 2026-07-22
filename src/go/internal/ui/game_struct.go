@@ -22,7 +22,9 @@ type Game struct {
 	drum                        *DrumView
 	i18nCancel                  func()  // cancels the i18n.OnChange listener registered in NewGame
 	gridHelpBtn                 *Button // settings gear in grid pane top-right (opens settings overlay; both desktop and mobile)
-	gridHelpCapturing           bool    // true while the grid "?" button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
+	gridFileBtn                 *Button // folder button just left of the gear (opens the file menu; both desktop and mobile)
+	gridLogsBtn                 *Button // logs button left of the folder button (opens the Logs Navigation Panel; both desktop and mobile)
+	gridHelpCapturing           bool    // true while the grid gear/folder/logs button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
 	undoManager                 *UndoManager
 	keyboardRouter              *keyboardShortcutRouter // component-owned keyboard shortcut dispatch (keyboard_shortcuts.go)
 	inputDispatcher             *InputDispatcher
@@ -32,11 +34,15 @@ type Game struct {
 	graph                       *model.Graph
 	graphRuntime                *graphruntime.Runtime
 	state                       *gamestate.State
-	engine                      *engine.Engine
-	engineProgress              func() float64
-	logger                      *game_log.Logger
-	grid                        *Grid
-	audioCh                     chan soundReq
+	// nodeTimingCache memoizes the sidebar's per-node beat/last/next readout so
+	// nodeLiveTiming does not rescan the circuit every frame. Derived render
+	// state, never serialized. See game_node_coords.go.
+	nodeTimingCache nodeTimingMemo
+	engine          *engine.Engine
+	engineProgress  func() float64
+	logger          *game_log.Logger
+	grid            *Grid
+	audioCh         chan soundReq
 	// audioLoopReqs and audioLoopBatch are reusable scratch buffers held
 	// across audioLoop iterations so steady-state playback does not
 	// allocate ~3 KB of soundReq slice + a BatchParam slice every drain
@@ -93,13 +99,15 @@ type Game struct {
 	// cosmetic loss, not an audio/UI desync. Value = g.frame deadline after
 	// which the exemption is pruned (highlight is a transient visual effect).
 	// Guarded by highlightMu (same lock as highlightedBeats).
-	hlDropped    map[int]int64
-	highlightMu  sync.RWMutex
-	selNeighbors map[*uiNode]bool
-	clipboard    nodeClipboard     // single-node copy/cut buffer (node_clipboard.go)
-	pastePending pastePendingState // in-flight paste-overwrite confirmation (node_clipboard.go)
-	breakPending breakPendingState // in-flight break-circuit confirmation (grid_move_break_confirm.go)
-	hover        *uiNode
+	hlDropped       map[int]int64
+	highlightMu     sync.RWMutex
+	selNeighbors    map[*uiNode]bool
+	clipboard       nodeClipboard     // single-node copy/cut buffer (node_clipboard.go)
+	pastePending    pastePendingState // in-flight paste-overwrite confirmation (node_clipboard.go)
+	pasteConfirmDlg *ConfirmDialog    // shared ConfirmDialog backing the paste-overwrite portal (node_clipboard.go)
+	breakPending    breakPendingState // in-flight break-circuit confirmation (grid_move_break_confirm.go)
+	breakConfirmDlg *ConfirmDialog    // shared ConfirmDialog backing the break-circuit portal (grid_move_break_confirm.go)
+	hover           *uiNode
 	// hoverGlowNode/hoverGlowP ease the grid-node hover halo (shared
 	// button-hover-fade spring — see advanceNodeHoverGlow). hoverGlowNode is
 	// the node the halo currently renders on (kept while fading out after

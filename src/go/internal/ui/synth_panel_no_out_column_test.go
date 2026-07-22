@@ -13,12 +13,12 @@ import (
 // menu) — surfacing them again on the Synth tab proved confusing.
 //
 // The test asserts three things end-to-end:
-//   1. No DrumView accessor surfaces an OUT-column slice (validated at
-//      compile time by the absence of `SynthTabOutLinks` / `SynthTabOutButtons`).
-//   2. No synth-tab hit area carries an OUT-column tag prefix.
-//   3. No footer / header button text contains the word "Delay" or
-//      "Reverb" — i.e. those launchers were not silently re-introduced
-//      under a different label.
+//  1. No DrumView accessor surfaces an OUT-column slice (validated at
+//     compile time by the absence of `SynthTabOutLinks` / `SynthTabOutButtons`).
+//  2. No synth-tab hit area carries an OUT-column tag prefix.
+//  3. No footer / header button text contains the word "Delay" or
+//     "Reverb" — i.e. those launchers were not silently re-introduced
+//     under a different label.
 func TestSynthPanel_NoOutColumnArtifacts(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 

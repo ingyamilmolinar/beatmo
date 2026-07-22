@@ -332,10 +332,22 @@ func TestSidebarButtonSuppressedDuringScroll(t *testing.T) {
 }
 
 // TestSidebarGestureTapScrollDoesNotToggle verifies that when the sidebar
-// has committed scroll state (user dragged past dead zone) and handleTapInGrid
-// fires, the section does NOT toggle. The handleTapInGrid fix sends only a
-// release (not press+release), which correctly resolves via the
-// ScrollingCommitted path that cancels the deferred tap.
+// has committed scroll state (user dragged past dead zone), a release does
+// NOT toggle the section.
+//
+// This used to fire through handleTapInGrid, which special-cased the sidebar
+// (send only a release when scroll.TouchActive()/Dragging(), resolving via the
+// ScrollingCommitted path that cancels the deferred tap). Since the sidebar's
+// card is now rendered/hit-tested through the global OverlayPortal, opening it
+// makes modalOverlayActive() true, and handleTapInGrid bails out on its very
+// first line before ever reaching that sidebar-interaction branch — the
+// branch is unreachable while the sidebar is open (see game_input_touch.go's
+// gate at the top of handleTapInGrid). handleTapInGrid's sidebar block reduced
+// to exactly this call (`g.sidebar.HandleInput(x, y, false)` or, through
+// g.handleNodeMenuButtons, the same call with a leading press), so calling it
+// directly re-expresses the same invariant against NodeSidebar.HandleInput's
+// still-unchanged scroll/deferred-tap state machine, without depending on the
+// now-dead grid-tap wrapper.
 func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -365,10 +377,11 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 		t.Fatal("scroll should be committed after dragging past dead zone")
 	}
 
-	// Now handleTapInGrid fires (e.g., InputDispatcher skipped on gesture
-	// frame). The fix sends only a release to resolve the committed scroll.
+	// Resolve with a release, directly on the sidebar — the exact call
+	// handleTapInGrid used to make on this path before the sidebar's
+	// interaction branch there became unreachable (see comment above).
 	endY := startY + touchScrollDeadZone + 5
-	g.handleTapInGrid(cx, endY)
+	g.sidebar.HandleInput(cx, endY, false)
 
 	// Section state should be unchanged — committed scroll cancels deferred tap.
 	for k, v := range openBefore {
@@ -384,7 +397,17 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 }
 
 // TestSidebarGestureTapStillToggles verifies that a true tap (0px movement)
-// through handleTapInGrid still toggles sections when no scroll state is active.
+// still toggles sections when no scroll state is active.
+//
+// Previously driven through handleTapInGrid, whose sidebar-interaction branch
+// (no scroll/touch state active) forwarded to g.handleNodeMenuButtons — itself
+// a thin wrapper calling g.sidebar.HandleInput(x, y, left) for press then
+// release. That branch is unreachable now that the sidebar renders through the
+// global OverlayPortal (modalOverlayActive() gates handleTapInGrid's very
+// first line while the sidebar is open — see game_input_touch.go). Driving the
+// same underlying press+release pair directly against the sidebar
+// re-expresses the identical invariant against NodeSidebar.HandleInput, whose
+// section-header toggle logic is unchanged.
 func TestSidebarGestureTapStillToggles(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -397,8 +420,11 @@ func TestSidebarGestureTapStillToggles(t *testing.T) {
 
 	volBefore := g.sidebar.sectionOpen["vol"]
 
-	// Direct tap — no prior scroll state.
-	g.handleTapInGrid(cx, cy)
+	// Direct tap — no prior scroll state. Section headers toggle on the press
+	// edge (see NodeSidebar.HandleInput step 9); the release call mirrors what
+	// g.handleNodeMenuButtons used to send afterward.
+	g.sidebar.HandleInput(cx, cy, true)
+	g.sidebar.HandleInput(cx, cy, false)
 
 	if g.sidebar.sectionOpen["vol"] == volBefore {
 		t.Fatalf("section 'vol' should have toggled from %v after gesture tap", volBefore)
@@ -407,6 +433,12 @@ func TestSidebarGestureTapStillToggles(t *testing.T) {
 
 // TestSidebarScrollStateCleanAfterGestureTap verifies that after a gesture
 // tap resolves sidebar scroll state, no stale TouchActive or DeferredTap remains.
+//
+// Previously resolved via handleTapInGrid (see the comment on
+// TestSidebarGestureTapScrollDoesNotToggle above for why that path is now
+// unreachable while the sidebar is open). Resolving directly with the release
+// call handleTapInGrid used to make preserves the same invariant against
+// NodeSidebar.HandleInput's state machine.
 func TestSidebarScrollStateCleanAfterGestureTap(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -423,8 +455,8 @@ func TestSidebarScrollStateCleanAfterGestureTap(t *testing.T) {
 		g.sidebar.HandleInput(cx, startY+dy, true)
 	}
 
-	// Gesture tap resolves the pending state.
-	g.handleTapInGrid(cx, startY+12)
+	// Resolve the pending state with a release, directly on the sidebar.
+	g.sidebar.HandleInput(cx, startY+12, false)
 
 	if g.sidebar.scroll.TouchActive() {
 		t.Fatal("TouchActive should be false after gesture tap resolution")
@@ -480,14 +512,15 @@ func TestFXPanelScrollDoesNotFireButtons(t *testing.T) {
 	cx := (vp.Min.X + vp.Max.X) / 2
 	startY := (vp.Min.Y + vp.Max.Y) / 2
 
-	g.drum.fxScrollTS.Begin(cx, startY)
+	sb := g.drum.ensureFXScroll().ScrollBehavior()
+	sb.HandleTouchBegin(cx, startY)
 	g.drum.fxPanelDeferredTap.Begin(cx, startY)
 	for dy := 1; dy <= 15; dy++ {
-		g.drum.fxScrollTS.Move(cx, startY+dy)
+		sb.HandleTouchMove(cx, startY+dy)
 	}
 
 	// Scroll should now be committed, deferred tap should be cancellable.
-	if !g.drum.fxScrollTS.ScrollingCommitted() {
+	if !sb.ScrollingCommitted() {
 		t.Fatal("FX scroll should be committed after 15px drag")
 	}
 

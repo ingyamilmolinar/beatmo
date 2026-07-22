@@ -44,11 +44,17 @@ const (
 	IconSolo         IconID = "solo"
 	IconFx           IconID = "fx"
 	IconTarget       IconID = "target"
+	IconMove         IconID = "move"
+	IconCopy         IconID = "copy"
+	IconConnect      IconID = "connect"
 	IconSettings     IconID = "settings"
 	IconTrash        IconID = "trash"
 	IconCircle       IconID = "circle"
 	IconTemplate     IconID = "template"
 	IconSearch       IconID = "search"
+	IconFolder       IconID = "folder"
+	IconLogs         IconID = "logs"
+	IconCalendar     IconID = "calendar"
 
 	IconRewind      IconID = "rewind"
 	IconFastForward IconID = "fast-forward"
@@ -129,6 +135,12 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawFxIcon(dst, r, col)
 	case IconTarget:
 		drawTargetIcon(dst, r, col)
+	case IconMove:
+		drawMoveIcon(dst, r, col)
+	case IconCopy:
+		drawCopyIcon(dst, r, col)
+	case IconConnect:
+		drawConnectIcon(dst, r, col)
 	case IconSettings:
 		drawSettingsIcon(dst, r, col)
 	case IconTrash:
@@ -139,6 +151,12 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawTemplateIcon(dst, r, col)
 	case IconSearch:
 		drawSearchIcon(dst, r, col)
+	case IconFolder:
+		drawFolderIcon(dst, r, col)
+	case IconLogs:
+		drawLogsIcon(dst, r, col)
+	case IconCalendar:
+		drawCalendarIcon(dst, r, col)
 	case IconTriggerMarker:
 		drawTriggerMarkerIcon(dst, r, col)
 	case IconHeadroom:

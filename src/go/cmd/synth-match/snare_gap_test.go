@@ -16,14 +16,14 @@ import (
 // plus the shared kick metrics, to drive the tuning.
 // go test -run TestSnareGap -v ./cmd/synth-match/
 func TestSnareGap(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	const refFile = "579499__yenus__fat-snare-bottom-ramon.wav"
 	audio.Reset()
 	audio.ResetInstruments()
 
 	pcm, sr, err := audio.DecodeWAVToPCM(root + refFile)
 	if err != nil {
-		t.Fatalf("decode ref: %v", err)
+		t.Skipf("reference WAV unavailable: %v", err)
 	}
 	refWave := wave.Wave{Samples: f32ToF64(pcm), SampleRate: sr}
 	refSM := fingerprint.AnalyzeSnare(refWave)

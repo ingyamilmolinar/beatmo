@@ -150,10 +150,10 @@ func TestTopLevelControlsBoundedByWidgets(t *testing.T) {
 		{"lenInc", dv.lenIncBtn.Rect(), tl},
 		{"lenDec", dv.lenDecBtn.Rect(), tl},
 		{"track", dv.trackBtn().Rect(), tl},
-		// File ops (upload/import/export) moved behind the overflow "..." menu
-		// on desktop; the overflow button is the only inline file-ops control
-		// and must stay bounded by the transport widget.
-		{"overflow", dv.overflowBtn().Rect(), tr},
+		// File ops (upload/import/export) moved behind the grid folder button's
+		// file menu on desktop; the overflow/kebab button was removed. Undo is a
+		// representative right-side inline control bounded by the transport widget.
+		{"undo", dv.transportZone.undoBtn.Rect(), tr},
 		{"rowLabel0", dv.rowLabels()[0].Rect(), rack},
 		// rowEdit0 and rowSave0 are hidden on desktop (empty rects).
 		{"addRow", dv.addRowBtn().Rect(), rack},
@@ -312,12 +312,12 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	basePlay := dv.playBtn().Rect()
-	// Upload is hidden inline on desktop (behind the overflow menu); use the
-	// overflow button — the rightmost inline control in the same row — as the
-	// representative right-edge button for the resize check.
-	baseOverflow := dv.overflowBtn().Rect()
-	if basePlay.Dy() <= 0 || baseOverflow.Dy() <= 0 {
-		t.Fatalf("base button heights invalid: play=%v overflow=%v", basePlay, baseOverflow)
+	// The overflow/kebab button was removed; use redo — the rightmost inline
+	// control in the same row — as the representative right-edge button for the
+	// resize check.
+	baseRight := dv.transportZone.redoBtn.Rect()
+	if basePlay.Dy() <= 0 || baseRight.Dy() <= 0 {
+		t.Fatalf("base button heights invalid: play=%v redo=%v", basePlay, baseRight)
 	}
 
 	// Grow height and ensure both rows expand together.
@@ -326,9 +326,9 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 	largePlay := dv.playBtn().Rect()
-	largeOverflow := dv.overflowBtn().Rect()
-	if diff := absInt(largePlay.Dy() - largeOverflow.Dy()); diff > 10 {
-		t.Fatalf("grown heights should stay aligned: play=%d overflow=%d diff=%d", largePlay.Dy(), largeOverflow.Dy(), diff)
+	largeRight := dv.transportZone.redoBtn.Rect()
+	if diff := absInt(largePlay.Dy() - largeRight.Dy()); diff > 10 {
+		t.Fatalf("grown heights should stay aligned: play=%d redo=%d diff=%d", largePlay.Dy(), largeRight.Dy(), diff)
 	}
 	// Padding: ensure gap between play and stop exists
 	if dv.stopBtn().Rect().Min.X-dv.playBtn().Rect().Max.X <= 1 {

@@ -289,6 +289,11 @@ type DrumView struct {
 	audioTree                     *DrumViewTree // audio-panel subtree (eq-panel + divider + view-switch)
 	overlayTree                   *DrumViewTree // top-of-z overlay subtree: owns the SINGLE global portal
 	rootTree                      *RootTree     // composes [tree, audioTree, overlayTree] for isolated input/draw
+	// tapGate is the shared mobile tap-debounce, consulted at the injectTouchTap
+	// chokepoint (game_update.go) so every drum-area mobile control shares one
+	// guard against touch-bounce / accidental double-taps. Ticked once per frame
+	// in Update. See tap_debounce.go.
+	tapGate tapDebounce
 	// lastNativeRects is the set of native-gesture rects synced to JS last frame.
 	// syncNativeGestures diffs against it to avoid per-frame arm/clear churn.
 	lastNativeRects []NativeRect
@@ -314,6 +319,22 @@ type DrumView struct {
 	// jumpBeats is the current FF/RW jump size in whole beats. Configurable
 	// via the ×N pill's dropdown ({1,2,4,8,16}); default 4.
 	jumpBeats int
+	// jumpUnitBeats selects the NavigationPanel's prev/next jump granularity:
+	// true = jumpBeats whole beats (RequestSeekDeltaBeats, beat-snapped),
+	// false = jumpBeats raw subdivisions (RequestSeekDeltaSteps, no snap).
+	// Toggled via the panel's unit button; defaults true.
+	jumpUnitBeats bool
+	// navPanel is the position/jump/go-to controls embedded as the overflow
+	// menu's NAVIGATION section — see drumview_context_menu.go
+	// (overflowItems/overflowPopupRect/drawOverflowMenu/handleOverflowMenuInput).
+	navPanel *NavigationPanel
+	// navMenuComp is the first-class portal component that hosts the navigation
+	// menu (wrapping navPanel + owning its go-to editor). It flows through
+	// compPortalOverlay + the tree's native input/keyboard/capture dispatch —
+	// see drumview_overlay_nav_comp.go, openNavMenuPortal, OpenNavigation. The
+	// go-to numeric editor lives on this component (navMenuComp.Editor()), NOT
+	// as a floating view-owned editor drawn outside the tree.
+	navMenuComp *NavigationMenuComponent
 
 	// widget layout (bottom pane is divided into movable widgets)
 	widgets         *WidgetBoard
@@ -387,12 +408,24 @@ type DrumView struct {
 	fxSliderDragging   bool              // active slider drag in FX panel
 	fxSliderDragIdx    int               // index into fxPanelSliders being dragged
 	fxAddMenuOpen      bool
+	fxAddRowEffect     []audio.EffectType // effect type picker rows, aligned with fxAddRowBtn
+	fxAddRowBtn        []*Button          // picker-row buttons, aligned with fxAddRowEffect (drawn via drawMenuRow, not btn.Draw)
+	fxAddMenuBackBtn   *Button            // the add-menu "Back" row, tracked by identity (drawn via drawMenuRow)
+	fxAddHeaderRows    []fxAddHeaderRow  // idle-only category group-header rows interleaved into the picker layout
 	fxExpandedSlots    map[int]bool    // which effect slots are expanded (mobile only)
-	fxScrollOffsetPx   int             // pixel scroll offset for FX panel content area
-	fxScrollTS         TouchScroller   // touch scroll tracking for FX panel
-	fxScrollMaxPx      int             // max scroll offset (contentH - viewportH), 0 = no scroll
+	fxScroll           *MenuScroll     // FX panel content scroll (pixel mode, ItemHeight=1): the shared list-menu engine, so wheel/momentum/thumb match every menu
 	fxSliderLeft       int             // computed label area width for FX param rows (desktop)
 	fxViewportRect     image.Rectangle // scrollable content area (between header and footer)
+
+	// FX add-menu fuzzy search — mirrors the template/overflow menu's pinned
+	// search field (drumview_context_menu.go templateSearch*) exactly: a
+	// TextInput built via ensureMenuSearchBox, a cached query string, the
+	// pinned hit-rect for tap-to-focus/clear, and per-result highlight
+	// indices (keyed by effect type) for drawMenuRow's fuzzy-match painting.
+	fxAddSearch           *TextInput
+	fxAddSearchRect       image.Rectangle
+	fxAddSearchQuery      string
+	fxAddSearchHighlights map[audio.EffectType][]int
 
 	// Instrument-editor (Phase 4 → redesigned per
 	// hey-please-review-the-vectorized-rocket.md) state. The editor lives
@@ -409,8 +442,8 @@ type DrumView struct {
 	// Slider's rect is set equal to the Knob's bounds so hit-test paths
 	// that still consult slider rects land on the knob area.
 	instEditorSliders    []*Slider
-	instEditorKnobs      []*Knob
-	instEditorStepBadges []*KnobStepBadge   // index-aligned with instEditorKnobs; nil for discrete params
+	instEditorControls   []*Knob
+	instEditorStepBadges []*KnobStepBadge   // index-aligned with instEditorControls; nil for discrete params
 	instEditorBindings   []instParamBinding // maps widget index → ParamDef
 	synthWheelPopup      *MobileWheelPopup  // mobile vertical scroll-wheel for synth knobs
 	synthWheelNudge      wheelNudger        // desktop scroll-wheel value nudge -> debounced single-undo commit
@@ -441,10 +474,14 @@ type DrumView struct {
 	// tab replaces its grid of section cards with a single explanatory
 	// banner (instEditorBannerRect) instead of a grid of empty section
 	// cards plus their distracting trigger-pulse borders.
-	instEditorNoSynth     bool
-	instEditorBannerRect  image.Rectangle
-	instEditorHeader      synthHeaderLayout  // header strip rects
-	instEditorHeaderBtns  []*Button          // header retrigger + vol buttons (shared *Button chrome)
+	instEditorNoSynth    bool
+	instEditorBannerRect image.Rectangle
+	instEditorHeader     synthHeaderLayout // header strip rects
+	instEditorHeaderBtns []*Button         // header retrigger + vol buttons (shared *Button chrome)
+	// actionMenu is the shared "⋯" overflow (Save As / Reset) opened from the
+	// mobile Synth/Sampler action cluster on the sticky bar. One instance
+	// serves both tabs (props swapped per open).
+	actionMenu            *actionMenuComponent
 	saveAsDialog          *synthSaveAsDialog // active Save-As name dialog (nil = closed)
 	instEditorScrollPx    int
 	instEditorScrollMax   int
@@ -462,14 +499,18 @@ type DrumView struct {
 	// [[feedback_runtime_profile_derivation]] — geometry is re-derived every
 	// Layout from instEditorSelectedSection.
 	instEditorSelectedSection map[string]synthSectionID // resolved instID → open stage
-	// instEditorSelectedKnob is the per-instrument index (into instEditorKnobs /
+	// instEditorMacroOpen is the drill-down nav state for the beginner "macro"
+	// layer (synth_macro_groups.go): resolved instID → currently-open concept id
+	// ("" = at the Basic root showing the concept cards). See synth_macro_nav.go.
+	instEditorMacroOpen map[string]string
+	// instEditorSelectedControl is the per-instrument index (into instEditorControls /
 	// instEditorBindings) of the knob explained by the focus graph. Set on knob
 	// press (click-to-select); defaults to the open stage's main knob.
-	instEditorSelectedKnob  map[string]int
-	instEditorChips         []synthChip       // rebuilt (reused [:0]) every Layout
-	instEditorDetailR       image.Rectangle   // detail pane rect (selected stage's knobs)
-	instEditorDetailHeaderH int               // effective detail header height (token, shrunk on short panels)
-	instEditorReadoutRects  []image.Rectangle // index-aligned with instEditorKnobs; readout tap hit rects
+	instEditorSelectedControl map[string]int
+	instEditorChips           []synthChip       // rebuilt (reused [:0]) every Layout
+	instEditorDetailR         image.Rectangle   // detail pane rect (selected stage's knobs)
+	instEditorDetailHeaderH   int               // effective detail header height (token, shrunk on short panels)
+	instEditorReadoutRects    []image.Rectangle // index-aligned with instEditorControls; readout tap hit rects
 	// P4 tiering: a stage's Essential (character) knobs always come first; its
 	// Advanced (fine-tuning) knobs are laid out below an always-visible in-grid
 	// divider row (phantom cells). synthAdvDividerRect is the band spanned by the
@@ -553,8 +594,12 @@ type DrumView struct {
 	nameBox    *TextInput // active while naming
 
 	// JSON import
-	importing      bool
-	importCh       chan importResult
+	importing bool
+	importCh  chan importResult
+	// Portable single-instrument import (*.beatmo-inst.json) — its own picker
+	// guard + channel, drained by drainInstrumentImport in Update.
+	instImporting  bool
+	instImportCh   chan importResult
 	lengthChanging bool // Set true during length change to suppress parity
 
 	// callback to change subdivisions per beat
@@ -635,9 +680,11 @@ type DrumView struct {
 	overflowBtns       []*Button   // persisted overflow/template rows (rebuilt on open/page switch); rects updated per frame for scroll
 	overflowBtnsPage   int         // page the persisted overflowBtns were built for; rebuild on page change
 
-	// overflowPage selects the overflow popup page: 0 = File actions, 1 = the
-	// genre template list. Reset to 0 whenever the menu closes or a template is
-	// chosen so reopening always starts at the File page.
+	// overflowPage selects the overflow (file) popup page: 0 = File actions,
+	// 1 = the genre template list. Reset to 0 whenever the menu closes or a
+	// template is chosen so reopening always starts at the File page. The
+	// overflow portal is file-only; the navigation menu is a separate portal
+	// component (navMenuComp).
 	overflowPage int
 
 	// Template-menu (overflow page 1) fuzzy search. Mirrors the instrument
@@ -732,14 +779,14 @@ type DrumView struct {
 	timelineUnitsPerBeat int
 
 	// internal ui state
-	bpm           int
-	secPerBeat    float64
-	playPressed   bool
-	stopPressed   bool
+	bpm         int
+	secPerBeat  float64
+	playPressed bool
+	stopPressed bool
 	// pendingSeek is a one-shot navigation intent queued by any UI entry
 	// point (ribbon, FF/RW, counter, keyboard) and drained once per frame by
 	// Game.Update's drainSeekRequest (game_seek.go), under seqMu.
-	pendingSeek *seekRequest
+	pendingSeek   *seekRequest
 	Length        int  // Length of the drum view, independent of graph
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
@@ -784,6 +831,11 @@ type DrumView struct {
 	// export so imported projects can auto-register custom samples.
 	samplePath map[string]string
 
+	// wavReg is our own file-based WAV versioning registry (name→content
+	// versions), used by the portable-instrument export/import to pin a WAV
+	// version by hash. Lazily created; backed by the decoupled instrument store.
+	wavReg *audio.WavRegistry
+
 	// Playing flag (copied from Game) so DrumView can freeze header scale
 	// and avoid cursor jumps during active playback.
 	isPlaying bool
@@ -796,11 +848,12 @@ type DrumView struct {
 	// notifications: single source of truth for the in-band notification
 	// area + history popup. Replaces the former floating top-right toast.
 	notifStore *notificationStore
-	// notifRect is the dedicated in-band notification area (right of the
-	// beat counter); computed in calcLayout.
-	notifRect image.Rectangle
-	// notifHistoryRect is the history popup's on-screen rect when open.
-	notifHistoryRect image.Rectangle
+	// logsComp is the Logs Navigation Panel component (event stream +
+	// notifications, searchable/filterable/paginated). Lazily created.
+	logsComp *LogsComponent
+	// logsToast is the transient error-only alert shown at the top of the grid
+	// pane (replaces the removed in-band notification area's alert role).
+	logsToast logsToast
 	// import
 	importAttemptFrame  int
 	importAttemptUpdate int
@@ -969,7 +1022,6 @@ func (dv *DrumView) importBtn() *Button           { return dv.transportZone.impo
 func (dv *DrumView) exportBtn() *Button           { return dv.transportZone.exportBtn }
 func (dv *DrumView) eqToggleMobile() *Button      { return dv.transportZone.eqToggleMobile }
 func (dv *DrumView) viewSwitchBtn() *Button       { return dv.transportZone.viewSwitchBtn }
-func (dv *DrumView) overflowBtn() *Button         { return dv.transportZone.overflowBtn }
 func (dv *DrumView) mainVolSlider() *Slider       { return dv.transportZone.mainVolSlider }
 func (dv *DrumView) mainVolGroup() *SliderGroup   { return dv.transportZone.mainVolGroup }
 func (dv *DrumView) transportGroup() *LayoutGroup { return dv.transportZone.transportGroup }

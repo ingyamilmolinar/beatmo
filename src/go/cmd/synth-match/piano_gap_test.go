@@ -18,14 +18,14 @@ import (
 // piano-grand, to drive making the synth sound less electronic.
 // go test -run TestPianoAnalyze -v ./cmd/synth-match/
 func TestPianoAnalyze(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	const refFile = "68448__pinkyfinger__piano-g.wav"
 	audio.Reset()
 	audio.ResetInstruments()
 
 	pcm, sr, err := audio.DecodeWAVToPCM(root + refFile)
 	if err != nil {
-		t.Fatalf("decode ref: %v", err)
+		t.Skipf("reference WAV unavailable: %v", err)
 	}
 	refWave := wave.Wave{Samples: f32ToF64(pcm), SampleRate: sr}
 	f0 := fingerprint.DetectF0(fingerprint.AutoSegment(refWave, fingerprint.SustainLenSec))

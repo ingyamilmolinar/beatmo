@@ -17,7 +17,7 @@ import (
 // despite matching bands/crest/settle. Diagnostic only (always passes).
 func TestKickAcousticDiagnose(t *testing.T) {
 	const sr = 44100
-	ref := decodeRefAt(t, "../../../../36010__sandyrb__dnb-kick-003.wav", sr)
+	ref := decodeRefAt(t, wavRefOrSkip(t, "36010__sandyrb__dnb-kick-003.wav"), sr)
 	syn := peakNorm(f32toF64(func() []float32 { b, _ := RenderInstrumentOneShotRaw("kick-acoustic"); return b }()))
 
 	rw := wave.Wave{Samples: ref, SampleRate: sr}

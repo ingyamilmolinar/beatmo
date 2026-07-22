@@ -109,7 +109,7 @@ func TestSynthFocusGraphSprite_RenderCount(t *testing.T) {
 		t.Skip("selected section needs >=2 knobs to exercise a selection change")
 	}
 	kIdx0, kIdx1 := sec.knobIdxs[0], sec.knobIdxs[1]
-	dv.setSynthSelectedKnob(instID, kIdx0)
+	dv.setSynthSelectedControl(instID, kIdx0)
 
 	p := dv.synp()
 	now := time.Unix(10_000, 0)
@@ -133,7 +133,7 @@ func TestSynthFocusGraphSprite_RenderCount(t *testing.T) {
 	}
 
 	// Selection change: key changes even though no param VALUE moved.
-	dv.setSynthSelectedKnob(instID, kIdx1)
+	dv.setSynthSelectedControl(instID, kIdx1)
 	now = now.Add(time.Second)
 	edited := collectFilledRects(t, func() { p.drawSynthFocusGraph(img, r, instID) })
 	if len(edited) == 0 {
@@ -408,7 +408,7 @@ func TestSynthSprites_ReleasedOnLocaleChange(t *testing.T) {
 // one card whose (name, value, gauge, state) key changed.
 
 // newSynthTabForCardSprites builds a DrumView bound to the modular voice and
-// lays out the Synth tab so dv.instEditorKnobs / dv.instEditorBindings and
+// lays out the Synth tab so dv.instEditorControls / dv.instEditorBindings and
 // the selected section's card rects are populated (buildSynthTab +
 // placeKnobsInSection both run inside layoutSynthTab's Layout call).
 func newSynthTabForCardSprites(t *testing.T) (dv *DrumView, instID string) {
@@ -428,10 +428,10 @@ func newSynthTabForCardSprites(t *testing.T) (dv *DrumView, instID string) {
 // drawSynthDetailPane constructs for knob index kIdx, so both tests below
 // exercise the real key shape rather than a hand-rolled stand-in.
 func cardKeyFor(dv *DrumView, instID string, sel *synthSection, kIdx int) (paramID, name, value string, gauge paramCardGauge, st paramCardState, key any) {
-	k := dv.instEditorKnobs[kIdx]
+	k := dv.instEditorControls[kIdx]
 	b := dv.instEditorBindings[kIdx]
 	st = paramCardState{
-		Selected: dv.synthSelectedKnobIdx(instID, sel) == kIdx,
+		Selected: dv.synthSelectedControlIdx(instID, sel) == kIdx,
 		Dim:      false,
 	}
 	name = synthParamDisplayName(b.def.Name)
@@ -456,10 +456,10 @@ func TestSynthParamCardSprite_MatchesDirect(t *testing.T) {
 		t.Skip("selected section has no knobs")
 	}
 	kIdx := sel.knobIdxs[0]
-	if kIdx < 0 || kIdx >= len(dv.instEditorKnobs) || dv.instEditorKnobs[kIdx].Rect().Empty() {
+	if kIdx < 0 || kIdx >= len(dv.instEditorControls) || dv.instEditorControls[kIdx].Rect().Empty() {
 		t.Skip("first card not visible in this profile")
 	}
-	rOrig := dv.instEditorKnobs[kIdx].Rect()
+	rOrig := dv.instEditorControls[kIdx].Rect()
 	paramID, name, value, gauge, st, key := cardKeyFor(dv, instID, sel, kIdx)
 
 	r := image.Rect(0, 0, rOrig.Dx(), rOrig.Dy())
@@ -494,10 +494,10 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	var visible []int
 	var paramIDs []string
 	for _, kIdx := range sel.knobIdxs {
-		if kIdx < 0 || kIdx >= len(dv.instEditorKnobs) {
+		if kIdx < 0 || kIdx >= len(dv.instEditorControls) {
 			continue
 		}
-		if !dv.instEditorKnobs[kIdx].Rect().Empty() {
+		if !dv.instEditorControls[kIdx].Rect().Empty() {
 			visible = append(visible, kIdx)
 			paramIDs = append(paramIDs, dv.instEditorBindings[kIdx].def.Name)
 		}
@@ -567,7 +567,7 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	// key derivation, no draw — keeps the render-count trail below clean.
 	editIdx := -1
 	for i, kIdx := range visible {
-		k := dv.instEditorKnobs[kIdx]
+		k := dv.instEditorControls[kIdx]
 		b := dv.instEditorBindings[kIdx]
 		gaugeBefore := paramCardGaugeFor(k, b.def)
 		valueBefore := knobPillLabel(k, b.def)

@@ -22,18 +22,18 @@ func rendererName(fn conceptRenderer) string {
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
 
-func TestSynthFocusRendererForKnob_RoutesPitchKnobsToPitchWave(t *testing.T) {
+func TestSynthFocusRendererForControl_RoutesPitchControlsToPitchWave(t *testing.T) {
 	for _, name := range []string{"osc_octave", "osc_detune", "pitch", "tune"} {
 		def := audio.ParamDef{Name: name, Group: "osc", Min: 0, Max: 1}
 		// Pitch knobs must NOT route to the plain group renderer's shape view.
-		got := rendererName(synthFocusRendererForKnob(def))
+		got := rendererName(synthFocusRendererForControl(def))
 		if got != rendererName(conceptPitchWave) {
 			t.Errorf("knob %s routed to %s, want conceptPitchWave", name, got)
 		}
 	}
 	// A non-pitch knob still routes by group.
 	cut := audio.ParamDef{Name: "filter_cutoff", Group: "filter", Min: 0, Max: 1}
-	if rendererName(synthFocusRendererForKnob(cut)) != rendererName(conceptFilter) {
+	if rendererName(synthFocusRendererForControl(cut)) != rendererName(conceptFilter) {
 		t.Errorf("filter_cutoff should route to conceptFilter")
 	}
 }

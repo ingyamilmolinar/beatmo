@@ -16,8 +16,8 @@ func newTransportPulseLayer(dv *DrumView) *TransportPulseLayer {
 	return &TransportPulseLayer{dv: dv}
 }
 
-func (l *TransportPulseLayer) ID() string    { return "transport-pulse" }
-func (l *TransportPulseLayer) ZIndex() int   { return ZTransportPulse }
+func (l *TransportPulseLayer) ID() string  { return "transport-pulse" }
+func (l *TransportPulseLayer) ZIndex() int { return ZTransportPulse }
 func (l *TransportPulseLayer) Visible() bool {
 	dv := l.dv
 	playing := dv.isPlaying && dv.playBtn() != nil && dv.playBtn().Icon == string(IconPause)

@@ -58,10 +58,31 @@ type textKey struct {
 	gen int64
 }
 
+// textCacheMaxEntries bounds both sprite caches. A text input caches one sprite
+// per DISTINCT string, so typing/searching produces thousands of transient
+// strings over a session; without a cap the caches grow without bound. The
+// working set of stable UI labels is well under this, so eviction (a full clear
+// on overflow — sprites are cheap to re-render and the set re-populates in a
+// frame or two) is rare in practice.
+const textCacheMaxEntries = 4096
+
 var (
 	textCacheMu sync.RWMutex
 	textSprites = map[textKey]*ebiten.Image{}
 )
+
+// textCacheLen / styledCacheLen report the current cache sizes (test seam).
+func textCacheLen() int {
+	textCacheMu.RLock()
+	defer textCacheMu.RUnlock()
+	return len(textSprites)
+}
+
+func styledCacheLen() int {
+	styledCacheMu.RLock()
+	defer styledCacheMu.RUnlock()
+	return len(styledSprites)
+}
 
 // TextSprite returns a cached image containing the provided text rendered
 // using TrueType fonts (when available) or Ebiten's debug font as fallback.
@@ -102,6 +123,9 @@ func TextSprite(s string) *ebiten.Image {
 	}
 
 	textCacheMu.Lock()
+	if len(textSprites) >= textCacheMaxEntries {
+		textSprites = map[textKey]*ebiten.Image{}
+	}
 	textSprites[k] = img
 	textCacheMu.Unlock()
 	return img
@@ -210,6 +234,9 @@ func StyledTextSprite(s string, role TextRole) *ebiten.Image {
 		img = TextSprite(s)
 	}
 	styledCacheMu.Lock()
+	if len(styledSprites) >= textCacheMaxEntries {
+		styledSprites = map[styledKey]*ebiten.Image{}
+	}
 	styledSprites[key] = img
 	styledCacheMu.Unlock()
 	return img

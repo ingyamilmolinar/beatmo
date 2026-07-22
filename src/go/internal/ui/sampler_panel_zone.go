@@ -352,6 +352,13 @@ func (p *samplerPanel) buildSamplerTab(contentR image.Rectangle, instID string) 
 	// ── Header band ───────────────────────────────────────────────
 	btnH := dv2.SynthHeaderButtonH
 	headerH := btnH + 2*SpaceXS
+	if mobile {
+		// Mobile drops the "SAMPLER" title band (redundant with the highlighted
+		// Smpl nav tab + the channel pill) and relocates Save/Save As/Reset to
+		// the sticky bar, so the header reserves no height — the waveform rises
+		// to the top. An empty headerRect makes drawSamplerTab skip the title.
+		headerH = 0
+	}
 	minBodyH := Profile().DensityValues().SamplerMinBodyH
 	if contentR.Dy() < headerH+minBodyH {
 		headerH = contentR.Dy() - minBodyH
@@ -460,9 +467,10 @@ func samplerControlMinHeight(dv2 densityValues) int {
 	labelBandH := TextHeight() + SpaceXS // group-label band above the card
 	cellH := labelBandH + dv2.ParamCardH // one ParamCard slot per control
 	// +SpaceSM slack so the budget lands comfortably above the ideal after the
-	// waveform 40% cap and split rounding take their cut. Two button rows so
-	// every edit + action button stays visible (mirrors the Synth tab).
-	return cellH + SpaceSM + 2*dv2.SynthHeaderButtonH + SpaceXS + TextHeight() + 2*SpaceXS
+	// waveform 40% cap and split rounding take their cut. ONE button row now:
+	// only the Rev/Norm/Fade transforms row stays in-panel — Preview/Save/⋯
+	// moved to the sticky bar (Approach B).
+	return cellH + SpaceSM + dv2.SynthHeaderButtonH + SpaceXS + TextHeight() + 2*SpaceXS
 }
 
 // layoutSamplerHeaderButtons right-aligns Save / Save As / Reset in the
@@ -521,20 +529,13 @@ func (p *samplerPanel) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityV
 	s.metaRect = metaR
 
 	if mobile {
-		// Two FIXED full-width button rows so every edit + action button is
-		// directly visible and untruncated (mirrors the Synth tab's fixed
-		// action row): Rev/Norm/Fade toggles on top, then the
-		// Preview/Save/Save As/Reset action row pinned above the metadata.
-		actionY1 := metaR.Min.Y - SpaceXS
-		actionY0 := actionY1 - btnH
-		mToggleY1 := actionY0 - SpaceXS
-		mToggleY0 := mToggleY1 - btnH
-		gridBottomM := mToggleY0 - SpaceXS
+		// One FIXED full-width row: the Rev/Norm/Fade transforms row pinned
+		// above the metadata. The Preview/Save/Save As/Reset actions moved to
+		// the sticky bar (Approach B — see MobileActionButtons), so the
+		// reclaimed action-row height goes to the knob grid.
+		gridBottomM := toggleY0 - SpaceXS
 		dv.layoutSamplerKnobsScrolling(image.Rect(ctrlR.Min.X, ctrlR.Min.Y, ctrlR.Max.X, gridBottomM), dv2)
-		dv.layoutSamplerMobileButtonRows(
-			image.Rect(ctrlR.Min.X, mToggleY0, ctrlR.Max.X, mToggleY1),
-			image.Rect(ctrlR.Min.X, actionY0, ctrlR.Max.X, actionY1),
-		)
+		dv.layoutSamplerMobileToggleRow(image.Rect(ctrlR.Min.X, toggleY0, ctrlR.Max.X, toggleY1))
 		return
 	}
 
@@ -591,7 +592,7 @@ func (p *samplerPanel) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityV
 // the scroll position across Layout calls.
 func (s *samplerState) ensureKnobGrid() *ControlGrid {
 	if s.knobGrid == nil {
-		s.knobGrid = NewControlGrid(ScrollbarStyleForPlatform())
+		s.knobGrid = NewControlGrid(controlGridScrollbarStyle())
 	}
 	return s.knobGrid
 }
@@ -669,39 +670,42 @@ func (p *samplerPanel) layoutSamplerControlButtons(rowR image.Rectangle) {
 	}
 }
 
-// layoutSamplerMobileButtonRows lays the sampler's mobile edit controls out as
-// TWO FIXED full-width rows of equal-width cells — Rev/Norm/Fade toggles on
-// top, Preview/Save/Save As/Reset actions below — so every button stays
-// directly visible and untruncated on a narrow phone, matching the Synth tab's
-// fixed action row. The last cell in each row claims the remainder so rounding
-// slack never leaves a gap.
-func (p *samplerPanel) layoutSamplerMobileButtonRows(toggleR, actionR image.Rectangle) {
+// layoutSamplerMobileToggleRow lays the sampler's ONE mobile in-panel button
+// row — the Rev/Norm/Fade transforms — as a fixed full-width row of equal-width
+// cells (last cell claims the remainder so rounding slack never gaps). The
+// Preview/Save/Save As/Reset action buttons are relocated to the sticky bar on
+// mobile (Approach B — see MobileActionButtons), so their in-panel rects are
+// cleared here.
+func (p *samplerPanel) layoutSamplerMobileToggleRow(toggleR image.Rectangle) {
 	dv := p.dv
-	place := func(rowR image.Rectangle, tags []string) {
-		n := len(tags)
-		if n == 0 || rowR.Dx() <= 0 {
-			return
-		}
-		cellW := (rowR.Dx() - (n-1)*SpaceSM) / n
-		if cellW < 1 {
-			cellW = 1
-		}
-		x := rowR.Min.X
-		for i, tag := range tags {
-			b := dv.samplerButtonByTag(tag)
-			if b == nil {
-				continue
-			}
-			x1 := x + cellW
-			if i == n-1 {
-				x1 = rowR.Max.X // last cell claims the remainder
-			}
-			b.SetRect(image.Rect(x, rowR.Min.Y, x1, rowR.Max.Y))
-			x = x1 + SpaceSM
+	// Actions live on the sticky bar on mobile — clear any stale in-panel rect.
+	for _, tag := range []string{"sampler-preview", "sampler-save", "sampler-save-as", "sampler-reset"} {
+		if b := dv.samplerButtonByTag(tag); b != nil {
+			b.SetRect(image.Rectangle{})
 		}
 	}
-	place(toggleR, []string{"sampler-reverse", "sampler-normalize", "sampler-fade"})
-	place(actionR, []string{"sampler-preview", "sampler-save", "sampler-save-as", "sampler-reset"})
+	tags := []string{"sampler-reverse", "sampler-normalize", "sampler-fade"}
+	n := len(tags)
+	if n == 0 || toggleR.Dx() <= 0 {
+		return
+	}
+	cellW := (toggleR.Dx() - (n-1)*SpaceSM) / n
+	if cellW < 1 {
+		cellW = 1
+	}
+	x := toggleR.Min.X
+	for i, tag := range tags {
+		b := dv.samplerButtonByTag(tag)
+		if b == nil {
+			continue
+		}
+		x1 := x + cellW
+		if i == n-1 {
+			x1 = toggleR.Max.X // last cell claims the remainder
+		}
+		b.SetRect(image.Rect(x, toggleR.Min.Y, x1, toggleR.Max.Y))
+		x = x1 + SpaceSM
+	}
 }
 
 // samplerHandleRect returns the thin vertical drag-handle rect for a trim
@@ -883,6 +887,8 @@ func (p *samplerPanel) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangl
 		// scrolling; never created/used on desktop).
 		if Profile().IsMobile() && s.knobGrid != nil {
 			s.knobGrid.Draw(dst)
+			// Edge fades over the reserved peek band signal more controls below.
+			drawControlGridEdgeFades(dst, s.knobGrid, TokenSurface1())
 		}
 	}
 
@@ -1470,6 +1476,7 @@ func (p *samplerPanel) samplerTabHitAreas() []HitArea {
 type samplerKnobHitAdapter struct {
 	dv  *DrumView
 	idx int
+	arb dragScrollArbiter // tap-vs-scroll gate for the current gesture
 }
 
 func (h *samplerKnobHitAdapter) knob() *Knob {
@@ -1489,22 +1496,41 @@ func (h *samplerKnobHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) imag
 // OnPress opens the value-wheel popup on EVERY platform (the old desktop rotary
 // drag + step-badge tap + readout-editor tap are retired; resolution + numeric
 // entry now live in the popup). Flush any pending wheel-nudge commit first so
-// the popup snapshots the committed value. Mirrors synthKnobHitAdapter.OnPress.
+// the popup snapshots the committed value. Mirrors synthControlHitAdapter.OnPress.
 func (h *samplerKnobHitAdapter) OnPress(x, y int) InputResult {
 	// Numeric editor open: swallow the tap so nothing starts beneath it.
 	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
 		return InputConsumed
 	}
-	// openSamplerKnobWheelPopup flushes any pending wheel-nudge commit before
-	// snapshotting the popup's initial value (same contract as the synth opener).
-	h.dv.openSamplerKnobWheelPopup(h.idx)
-	return InputConsumed
+	// Capture the gesture and begin tap-vs-scroll arbitration (mirrors the Synth
+	// tab): a vertical sweep scrolls the knob grid, a stationary tap opens the
+	// value-wheel popup on RELEASE. Capturing (not consuming) is what lets the
+	// sweep become a scroll instead of opening the popup on the down frame.
+	h.arb.begin(y, h.dv.sampler.knobGrid)
+	return InputCaptured
 }
 
-// OnDrag / OnRelease are no-ops: the card no longer drives an in-place drag; the
-// press opened the value-wheel popup, which owns the drag interaction.
-func (h *samplerKnobHitAdapter) OnDrag(x, y int)    {}
-func (h *samplerKnobHitAdapter) OnRelease(x, y int) {}
+// OnDrag advances the knob grid while the finger sweeps; once travel crosses the
+// tap slop the gesture is a scroll and the release will NOT open the popup.
+func (h *samplerKnobHitAdapter) invalidate() {
+	if h.dv != nil && h.dv.eqPanelZone != nil {
+		h.dv.eqPanelZone.Invalidate()
+	}
+}
+
+func (h *samplerKnobHitAdapter) OnDrag(x, y int) {
+	if h.arb.drag(y) {
+		h.invalidate()
+	}
+}
+
+// OnRelease opens the value-wheel popup only when the gesture stayed a tap.
+func (h *samplerKnobHitAdapter) OnRelease(x, y int) {
+	if !h.arb.end() {
+		return
+	}
+	h.dv.openSamplerKnobWheelPopup(h.idx)
+}
 
 // OnWheel nudges the value by one StepMul (endless) per notch, holding Shift for
 // one-rung-finer. The whole spin collapses into ONE debounced undo step (see
@@ -1666,8 +1692,51 @@ func (dv *DrumView) layoutSamplerControlButtons(rowR image.Rectangle) {
 	dv.sp().layoutSamplerControlButtons(rowR)
 }
 
-func (dv *DrumView) layoutSamplerMobileButtonRows(toggleR, actionR image.Rectangle) {
-	dv.sp().layoutSamplerMobileButtonRows(toggleR, actionR)
+func (dv *DrumView) layoutSamplerMobileToggleRow(toggleR image.Rectangle) {
+	dv.sp().layoutSamplerMobileToggleRow(toggleR)
+}
+
+// MobileActionButtons returns the Sampler tab's trailing action cluster for the
+// sticky bar ([Preview][Save][⋯]), or nil off-mobile / when no sample buffer is
+// loaded (nothing to preview or save). Mirrors the Synth tab.
+func (p *samplerPanel) MobileActionButtons() []*Button {
+	dv := p.dv
+	if !Profile().IsMobile() {
+		return nil
+	}
+	if !dv.sampler.hasBuffer() {
+		return nil
+	}
+	p.ensureMobileActionButtons()
+	p.mobilePreviewBtn.Text = i18n.T(i18n.KeyPreview)
+	p.mobileSaveBtn.Text = i18n.T(i18n.KeySave)
+	return []*Button{p.mobilePreviewBtn, p.mobileSaveBtn, p.mobileOverflowBtn}
+}
+
+// ensureMobileActionButtons builds the persistent sticky-bar action buttons.
+// Guarded so a tap while no buffer is loaded is a no-op (belt-and-suspenders
+// alongside the nil return above).
+func (p *samplerPanel) ensureMobileActionButtons() {
+	dv := p.dv
+	guard := func(fn func()) func() {
+		return func() {
+			if dv.sampler.hasBuffer() {
+				fn()
+			}
+		}
+	}
+	if p.mobilePreviewBtn == nil {
+		p.mobilePreviewBtn = NewSpecButton(i18n.T(i18n.KeyPreview), ComponentButtonSecondary, guard(func() { dv.samplerPreview() }))
+	}
+	if p.mobileSaveBtn == nil {
+		p.mobileSaveBtn = NewSpecButton(i18n.T(i18n.KeySave), ComponentButtonPrimary, guard(func() { dv.samplerSave() }))
+	}
+	if p.mobileOverflowBtn == nil {
+		p.mobileOverflowBtn = NewSpecButton("", ComponentButtonSecondary, func() {
+			dv.openSamplerActionMenu(p.mobileOverflowBtn.Rect())
+		})
+		p.mobileOverflowBtn.Icon = string(IconOverflow)
+	}
 }
 
 func (dv *DrumView) samplerHandleRect(frac float64) image.Rectangle {

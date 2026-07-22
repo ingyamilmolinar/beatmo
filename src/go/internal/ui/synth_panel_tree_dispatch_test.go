@@ -10,12 +10,12 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSynthTab_KnobTapViaTreeDispatch_Mobile verifies that on mobile the synth
+// TestSynthTab_ControlTapViaTreeDispatch_Mobile verifies that on mobile the synth
 // knob hit-area is correctly registered (non-empty rect, reachable via the
 // tree dispatcher) and that a tap opens the scroll-wheel popup (the mobile
 // knob-interaction path introduced by the mobile-wheel feature). The old drag
 // path is replaced by the wheel on mobile; desktop drag is tested separately.
-func TestSynthTab_KnobTapViaTreeDispatch_Mobile(t *testing.T) {
+func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
 	t.Cleanup(restoreProfile)
@@ -38,7 +38,7 @@ func TestSynthTab_KnobTapViaTreeDispatch_Mobile(t *testing.T) {
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	g.Update()
 
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
 	wantKnobs := len(audio.WiredParamsForRecipe("drum-snare"))
 	if len(knobs) != wantKnobs {
@@ -58,7 +58,7 @@ func TestSynthTab_KnobTapViaTreeDispatch_Mobile(t *testing.T) {
 	// hit-testable rect under the chip-strip + expand-one-detail-pane layout.
 	selectSectionForKnobIdx(t, g, "snare", decayIdx)
 	g.Update()
-	k := g.drum.SynthTabKnobs()[decayIdx]
+	k := g.drum.SynthTabControls()[decayIdx]
 	rect := k.Rect()
 	if rect.Empty() {
 		t.Fatalf("mobile decay knob has empty rect; section layout = %v", g.drum.SynthTabSections())
@@ -79,19 +79,23 @@ func TestSynthTab_KnobTapViaTreeDispatch_Mobile(t *testing.T) {
 	)
 	defer restoreInput()
 
-	// On mobile, a tap on the knob cell opens the scroll-wheel popup instead
-	// of starting an in-place rotary drag. The tree dispatcher routes the press
-	// to synthKnobHitAdapter.OnPress which returns InputConsumed (not Captured).
+	// On mobile, a tap on the control cell opens the scroll-wheel popup — but on
+	// RELEASE, not on the down frame. synthControlHitAdapter.OnPress captures the
+	// gesture (InputCaptured) so a vertical sweep can scroll instead of opening the
+	// popup; a stationary tap opens it when the finger lifts.
 	pressed = true
 	g.Update()
-	if !g.drum.synthWheelPopup.IsOpen() {
-		t.Fatalf("mobile: wheel popup not open after press at center (%d,%d); rect=%v", cx, cy, rect)
+	if g.drum.synthWheelPopup.IsOpen() {
+		t.Fatalf("mobile: wheel popup opened on the press frame; it must wait for release so a swipe can scroll; rect=%v", rect)
 	}
-	// The knob itself must NOT be in capturing mode (the wheel owns the interaction).
+	// The control widget must NOT be in capturing mode (the wheel owns the value).
 	if k.Capturing() {
-		t.Fatalf("mobile: knob must not be capturing when wheel popup handles the interaction; rect=%v", rect)
+		t.Fatalf("mobile: control must not be capturing when wheel popup handles the interaction; rect=%v", rect)
 	}
 
 	pressed = false
 	g.Update()
+	if !g.drum.synthWheelPopup.IsOpen() {
+		t.Fatalf("mobile: wheel popup not open after release (tap) at center (%d,%d); rect=%v", cx, cy, rect)
+	}
 }

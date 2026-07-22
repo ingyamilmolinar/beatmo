@@ -17,3 +17,9 @@ src/go/internal/ui/recordings
 screenshots/
 !screenshots/.gitkeep
 src/go/bench-results
+
+# Audio: no WAV files are committed. Reference/test WAVs are copyright-
+# sensitive and are supplied locally (see internal/wavref + testdata MANIFESTs);
+# generated WAVs come from cmd/wavgen / internal/wavgen at runtime. Force-add
+# only if a file is verified license-clean and intentionally versioned.
+*.wav

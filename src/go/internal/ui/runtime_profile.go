@@ -180,16 +180,20 @@ type RuntimeProfile struct {
 	// memory pressure.
 	PredictorWindowCap int
 
-	// RibbonBeatsPerPixel fixes the timeline ribbon's horizontal scale so
-	// long sessions no longer compress the ticks into a forest. The visible
-	// window is `barRect.Dx() * RibbonBeatsPerPixel` beats wide, slid so
-	// the playhead sits at RibbonPlayheadFrac of the bar width. Visual-
-	// readability target (DESIGN.md ribbon spec); not bench-derived. Lower
-	// values = denser bars; 0.25 = 4 px/beat default.
+	// RibbonBeatsPerPixel USED TO fix the timeline ribbon's horizontal
+	// scale for a fixed-beats-per-pixel sliding window centered on the
+	// playhead. Task 6 replaced the ribbon with a slim whole-song progress
+	// bar spanning [0, TimelineBeats()] (decoupled from the drum-grid
+	// pattern window) — (*TimelineZone).drawTimelineBar no longer reads
+	// this field. Left in place (unconsumed) rather than deleted so this
+	// is a one-line diff if a future "zoomed-in" ribbon mode wants it back;
+	// candidate for removal in a follow-up cleanup pass.
 	RibbonBeatsPerPixel float64
-	// RibbonPlayheadFrac is the playhead's horizontal position inside the
-	// visible ribbon window, expressed as a fraction of bar width. 0.70 =
-	// 70% from the left, leaving ~30% of the bar for lookahead context.
+	// RibbonPlayheadFrac is still read by DrumView.TrackBeat (drumview_transport.go)
+	// to keep the drum-grid pattern window's auto-follow recenter column in
+	// sync with where the OLD ribbon cursor used to pin. The ribbon itself
+	// (drawTimelineBar) no longer uses this field post-Task-6 — its cursor
+	// is now `elapsedBeats / TimelineBeats()` of the whole-song bar width.
 	RibbonPlayheadFrac float64
 
 	// AudioPanelHeightMultiplier scales the base eqPanelHeight to size

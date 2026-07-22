@@ -50,52 +50,71 @@ func newBeatCounterTestZone(rect image.Rectangle) *TimelineZone {
 	})
 }
 
-// beatCounterChipFill returns the first filled colSurface1 rect drawn inside
-// beatRect by drawBeatCounter — the square chip background. The chip is now a
-// plain drawRect (square corners), so this intercepts drawRect, not
-// drawRoundedRect. Squareness itself is pinned by TestBeatCounterChipIsSquare.
-func beatCounterChipFill(t *testing.T, z *TimelineZone, dst *ebiten.Image, beatRect image.Rectangle) (image.Rectangle, bool) {
+// beatCounterKeycapCap returns the keycap CAP-FACE rect drawn inside beatRect by
+// drawBeatCounter — the rounded button painted with the secondary keycap fill
+// (TransportMiscStyle.Fill, or its hover-brightened variant). The counter now
+// renders as a matte keycap via drawKeycapPanelButton (drawRoundedButton), not
+// a flat drawRect, matching every other Button (DESIGN.md "Keycap elevation").
+func beatCounterKeycapCap(t *testing.T, z *TimelineZone, dst *ebiten.Image, beatRect image.Rectangle) (image.Rectangle, bool) {
 	t.Helper()
-	wantFill := color.RGBAModel.Convert(colSurface1).(color.RGBA)
-	fills := collectFilledRects(t, func() { z.drawBeatCounter(dst, 0) })
-	for _, f := range fills {
-		if f.Color == wantFill && f.Rect.In(beatRect) && !f.Rect.Empty() {
-			return f.Rect, true
+	restFill := color.RGBAModel.Convert(TransportMiscStyle.Fill).(color.RGBA)
+	hoverFill := color.RGBAModel.Convert(adjustColor(TransportMiscStyle.Fill, 12)).(color.RGBA)
+	var caps []image.Rectangle
+	orig := drawRoundedButton
+	drawRoundedButton = func(d *ebiten.Image, r image.Rectangle, fill, border color.Color, radius int, pressed bool) {
+		if f, ok := color.RGBAModel.Convert(fill).(color.RGBA); ok {
+			if (f == restFill || f == hoverFill) && r.In(beatRect) && !r.Empty() {
+				caps = append(caps, r)
+			}
+		}
+		orig(d, r, fill, border, radius, pressed)
+	}
+	t.Cleanup(func() { drawRoundedButton = orig })
+	z.drawBeatCounter(dst, 0)
+	if len(caps) == 0 {
+		return image.Rectangle{}, false
+	}
+	// The cap face is the widest such rounded button (the shell uses a darker
+	// derived shade, so it won't match the fill).
+	best := caps[0]
+	for _, c := range caps[1:] {
+		if c.Dx() > best.Dx() {
+			best = c
 		}
 	}
-	return image.Rectangle{}, false
+	return best, true
 }
 
-// TestBeatCounterChip_DrawsSurface1Fill verifies the chip is filled with
-// `colSurface1` so it reads as a real container in the toolbar surface ladder.
-func TestBeatCounterChip_DrawsSurface1Fill(t *testing.T) {
+// TestBeatCounterKeycap_DrawsSecondaryFill verifies the counter renders a matte
+// keycap cap face with the shared secondary fill, so it reads as a pressable
+// control consistent with the neighbouring track/lock keycap.
+func TestBeatCounterKeycap_DrawsSecondaryFill(t *testing.T) {
 	assertDefaultParityState(t)
-	beatRect := image.Rect(0, 0, 200, 24)
+	beatRect := image.Rect(0, 0, 240, 28)
 	z := newBeatCounterTestZone(beatRect)
 	dst := ebiten.NewImage(beatRect.Max.X+16, beatRect.Max.Y+16)
 
-	if _, ok := beatCounterChipFill(t, z, dst, beatRect); !ok {
-		t.Fatalf("no filled colSurface1 rect inside beatCounterRect %v", beatRect)
+	if _, ok := beatCounterKeycapCap(t, z, dst, beatRect); !ok {
+		t.Fatalf("no secondary-fill keycap cap face inside beatCounterRect %v", beatRect)
 	}
 }
 
-// TestBeatCounterChip_LeftAligned verifies the chip's left edge sits near
-// the allotted rect's left edge (within 1 px). The notification redesign
-// moved the counter to a left-anchored slot (next to the track/lock chip)
-// so the dedicated notification area can occupy the space to its right.
-func TestBeatCounterChip_LeftAligned(t *testing.T) {
+// TestBeatCounterKeycap_LeftAligned verifies the keycap's left edge sits near
+// the allotted rect's left edge — the counter is a left-anchored slot next to
+// the track/lock keycap.
+func TestBeatCounterKeycap_LeftAligned(t *testing.T) {
 	assertDefaultParityState(t)
-	beatRect := image.Rect(0, 0, 200, 24)
+	beatRect := image.Rect(0, 0, 240, 28)
 	z := newBeatCounterTestZone(beatRect)
 	dst := ebiten.NewImage(beatRect.Max.X+16, beatRect.Max.Y+16)
 
-	chip, ok := beatCounterChipFill(t, z, dst, beatRect)
+	cap, ok := beatCounterKeycapCap(t, z, dst, beatRect)
 	if !ok {
-		t.Fatal("no chip rect captured")
+		t.Fatal("no keycap cap face captured")
 	}
-	gap := chip.Min.X - beatRect.Min.X
+	gap := cap.Min.X - beatRect.Min.X
 	if gap < 0 || gap > 1 {
-		t.Fatalf("expected chip flush-left within 1 px of beatCounterRect.Min.X=%d; chip=%v gap=%d",
-			beatRect.Min.X, chip, gap)
+		t.Fatalf("expected keycap flush-left within 1 px of beatCounterRect.Min.X=%d; cap=%v gap=%d",
+			beatRect.Min.X, cap, gap)
 	}
 }

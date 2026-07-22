@@ -570,6 +570,27 @@ func (b *Button) ResetPress() {
 	b.held = 0
 }
 
+// ReleaseStuckPress clears a latched press (pressed/held) and springs the cap
+// back to rest, WITHOUT disturbing hover. It heals a button whose release edge
+// was swallowed by a menu/scrim that opened on its press — the input path never
+// delivered the release, so the cap stayed stuck down and held latched at 1 (a
+// later tap would then increment held past the press edge and be swallowed,
+// making the button un-clickable). Unlike ResetPress it preserves hover, so a
+// caller may invoke it every frame the pointer is up without flickering the
+// desktop hover glow. Safe with the pointer up: no pointer down means no active
+// hold to cancel, so it never aborts a real press or double-fires OnClick.
+func (b *Button) ReleaseStuckPress() {
+	if !b.pressed && b.held == 0 {
+		return
+	}
+	if b.pressed && b.pressDepth > 0 {
+		b.pressDepth = -genGeomKeycapReleaseOvershootFrac
+	}
+	b.pressTarget = 0
+	b.pressed = false
+	b.held = 0
+}
+
 // AdvancePressAnim eases the press depth toward its target (analogue settle,
 // both directions) and decays the one-shot engage flash. Call once per frame
 // from Draw. Allocation-free; a no-op once depth==target and flash==0.

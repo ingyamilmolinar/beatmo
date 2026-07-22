@@ -85,7 +85,7 @@ func TestConceptFMEnvelope_RespondsToDecayAndPitchEnv(t *testing.T) {
 	}
 }
 
-func TestSynthFocusRendererForKnob_FMRouting(t *testing.T) {
+func TestSynthFocusRendererForControl_FMRouting(t *testing.T) {
 	cases := []struct {
 		name string
 		want conceptRenderer
@@ -100,7 +100,7 @@ func TestSynthFocusRendererForKnob_FMRouting(t *testing.T) {
 		{"fm_op2_ratio", conceptFM}, // unchanged: timbre → group routing
 	}
 	for _, c := range cases {
-		got := synthFocusRendererForKnob(audio.ParamDef{Name: c.name, Group: "fm"})
+		got := synthFocusRendererForControl(audio.ParamDef{Name: c.name, Group: "fm"})
 		if rendererName(got) != rendererName(c.want) {
 			t.Errorf("%s routed to %s, want %s", c.name, rendererName(got), rendererName(c.want))
 		}

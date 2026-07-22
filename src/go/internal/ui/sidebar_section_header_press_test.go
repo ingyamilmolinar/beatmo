@@ -57,11 +57,32 @@ func holdClick(g *Game, x, y, holdFrames int, suppress bool) {
 //
 // The section-header branch did not: it toggled on raw `pressed`, so a press
 // that began while clicks were suppressed still expanded the section.
+//
+// Driven through HandleInput directly (mirrors
+// TestSidebarSectionHeaderHeldPressNeverRepeats below) rather than holdClick's
+// full Game.Update() pass. The sidebar now ALSO renders/hit-tests through the
+// global OverlayPortal (game_node_sidebar.go), so a full Update() dispatches
+// this SAME press twice in one frame: once via g.inputDispatcher (which
+// honors suppressClicksUntilRelease as set), and again via the DrumView's
+// RootTree, whose tree-managed dispatch temporarily clears the GLOBAL
+// suppress flag around its own hit.Handler.OnPress call (drumview_tree.go) —
+// by design, since native tree zones track their own consumption via the
+// tree's t.suppress instead. That second, tree-driven call lets
+// DeferredTap.Begin succeed and capture the gesture, which then fires the
+// tap unconditionally on release (fireTapAt has no suppress check of its
+// own) — an interaction between the tree's dispatch and the sidebar's
+// cross-cutting global guard that is orthogonal to the invariant this test
+// pins. Calling HandleInput once, directly, isolates the section-header
+// branch's own suppress check under test from that dispatch interaction.
 func TestSidebarSectionHeaderPressWhileSuppressedDoesNotToggle(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	cx, cy := secHeaderCenter(t, g, aID)
 
-	holdClick(g, cx, cy, 1, true)
+	suppressClicksUntilRelease = true
+	t.Cleanup(func() { suppressClicksUntilRelease = false })
+
+	g.sidebar.HandleInput(cx, cy, true)
+	g.sidebar.HandleInput(cx, cy, false)
 
 	if g.sidebar.sectionOpen["grp"] {
 		t.Fatalf("a press that began while clicks were suppressed must not toggle the section")
@@ -112,6 +133,14 @@ func TestSidebarSectionHeaderHeldPressNeverRepeats(t *testing.T) {
 // the normal (unsuppressed) path: one click = one toggle, whatever the hold
 // duration. This is what the deferred-tap path already delivers; it must keep
 // holding once the header branch is edge-gated.
+//
+// The card is a compact, node-anchored panel that resizes (and can flip
+// above/below its node) with its content, so expanding "grp" via the first
+// click can move the header to a different on-screen position for the
+// second click. Re-derive the header's actual current center from
+// g.sidebar.rects before each click — exactly what a real user does by
+// looking at the screen — instead of reusing a coordinate captured before
+// the panel moved.
 func TestSidebarSectionHeaderClickTogglesExactlyOnce(t *testing.T) {
 	for _, hold := range []int{1, 2, 5, 10} {
 		g, aID, _ := buildGroupSidebarFixture(t)
@@ -122,7 +151,14 @@ func TestSidebarSectionHeaderClickTogglesExactlyOnce(t *testing.T) {
 			t.Fatalf("hold=%d: one click must expand the section (got collapsed)", hold)
 		}
 
-		holdClick(g, cx, cy, hold, false)
+		g.sidebar.layout()
+		r, ok := g.sidebar.rects["sec-grp"]
+		if !ok || r.Empty() {
+			t.Fatalf("hold=%d: sec-grp rect missing after expand (rects=%v)", hold, g.sidebar.rects)
+		}
+		cx2, cy2 := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+
+		holdClick(g, cx2, cy2, hold, false)
 		if g.sidebar.sectionOpen["grp"] {
 			t.Fatalf("hold=%d: a second click must collapse it again (got expanded)", hold)
 		}

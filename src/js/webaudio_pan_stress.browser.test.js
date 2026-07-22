@@ -20,7 +20,7 @@ const build = spawnSync(
     "-X main.defaultLog=INFO",
     "-o",
     path.join(jsDir, "main.wasm"),
-    "./cmd/...",
+    "./cmd",
   ],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );

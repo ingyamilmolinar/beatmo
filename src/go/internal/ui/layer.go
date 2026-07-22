@@ -30,8 +30,8 @@ type zoneAsLayer struct {
 	visible func() bool
 }
 
-func (a zoneAsLayer) ID() string             { return a.zone.ID() }
-func (a zoneAsLayer) ZIndex() int            { return a.zIndex }
+func (a zoneAsLayer) ID() string  { return a.zone.ID() }
+func (a zoneAsLayer) ZIndex() int { return a.zIndex }
 func (a zoneAsLayer) Visible() bool {
 	if a.visible == nil {
 		return true

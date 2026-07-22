@@ -198,6 +198,41 @@
             window._kbProxyArrowRightGo();
           }
           e.preventDefault();
+        } else if (e.key === 'Home') {
+          // Caret jump-to-start. Same out-of-band bridge as the arrows: the
+          // proxy holds focus, so forward to Go and preventDefault so the
+          // proxy's own hidden caret doesn't fight it.
+          if (typeof window._kbProxyHomeGo === 'function') {
+            window._kbProxyHomeGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'End') {
+          if (typeof window._kbProxyEndGo === 'function') {
+            window._kbProxyEndGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'Delete') {
+          // Forward-delete. Buffer it as the DEL (\x7f) sentinel into charBuf,
+          // mirroring how Backspace is buffered as \b — the focused TextInput's
+          // softKeyboardDrainChars turns \x7f into a delete-at-caret. keydown
+          // (not beforeinput) so a very short press is never dropped; the proxy
+          // value stays empty so its own deleteContentForward never fires.
+          charBuf.push('\x7f');
+          e.preventDefault();
+        } else if (e.key === ' ' && !e.isComposing) {
+          // Space, buffered from KEYDOWN — same reliability reason as Backspace
+          // above. The proxy value is kept EMPTY (the app draws its own text), and
+          // some engines do NOT fire the 'input' event for a space typed into an
+          // empty/off-screen input, so Space — captured ONLY via 'input' — was
+          // silently dropped ("caret goes to the start, Space adds nothing") while
+          // keydown-forwarded arrows still worked. keydown fires for Space on every
+          // engine, so buffer it here and preventDefault so the browser's own
+          // insert + the 'input' it would trigger don't double-count it. Also stops
+          // Space's default page-scroll. Skipped while composing (e.isComposing) so
+          // IME candidate-selection with Space is unaffected — Space then flows to
+          // the composition and its committed text arrives via 'input' as usual.
+          charBuf.push(' ');
+          e.preventDefault();
         }
       });
 

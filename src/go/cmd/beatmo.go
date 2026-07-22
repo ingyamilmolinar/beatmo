@@ -158,6 +158,12 @@ func main() {
 		}
 	}
 
+	// Retain a bounded in-memory event history for the UI Logs panel. Fed by the
+	// same eventlogger consumer opened below (one line per emitted event), so
+	// this must be set before Open subscribes. Runs on both desktop and browser
+	// (the wasm build compiles ./cmd, so this main runs there too). Session-only.
+	eventlogger.SetLogHistory(eventlogger.NewRingHistory(1000))
+
 	// Wire the human-readable INFO narrative consumer of hooks.Bus. This is
 	// the canonical "what is the user doing / what is the engine doing" view;
 	// disable with BEATMO_INFO_LOG=off (default: on). Verbose kinds (camera
@@ -191,18 +197,17 @@ func main() {
 		ui.SetNotificationHistoryStore(ui.NewPersistedNotificationHistory(ns))
 	}
 
-	// Phase 3: apply user-saved recipe overrides + register user
-	// recipes from disk. The parity gate is flipped on here (production
-	// bootstrap only) so test binaries / parity goldens keep shipped
-	// defaults exactly.
-	if rs, ok := prefsStore.(userprefs.RecipeStore); ok {
-		audio.SetUseUserRecipeOverrides(true)
-		_ = audio.ApplyUserRecipeOverrides(rs)
-		// Phase 4: wire the Synth-tab Save / Save-As persistence sink
-		// to the same backing store. userprefs.RecipeStore directly
-		// satisfies ui.RecipeSaveSink (subset of methods).
-		ui.SetRecipeSink(rs)
-	}
+	// Instrument data (user recipes + per-recipe overrides) lives in its OWN
+	// decoupled store — separate file from prefs.json — so instruments can be
+	// shared/imported without touching favorites/language/UI state. The parity
+	// gate is flipped on here (production bootstrap only) so test binaries /
+	// parity goldens keep shipped defaults exactly. InstrumentStore satisfies
+	// both audio.UserRecipeSource (load) and ui.RecipeSaveSink (save).
+	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
+	defer instStore.Close()
+	audio.SetUseUserRecipeOverrides(true)
+	_ = audio.ApplyUserRecipeOverrides(instStore)
+	ui.SetRecipeSink(instStore)
 
 	// Sampler tab: cross-session user-sample persistence (per-file under the
 	// prefs dir on desktop). Mirrors the recipe wiring above; ApplySavedSamples

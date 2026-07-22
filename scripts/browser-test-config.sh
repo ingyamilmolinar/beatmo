@@ -45,6 +45,15 @@ SEQUENTIAL_TESTS=(
     # ~0 (e.g. kick-tight, hi-hat), false-tripping the wired-vs-unwired check.
     # Run alone so every analyser warms up and reports its true (non-zero) peak.
     "template_audio_panel_data.browser.test.js"
+    # Mobile audio-unlock e2e: iPhone emulation (js/wasm → NumCPU()==1, single
+    # WASM thread) boots the full ~29MB app across FOUR fresh contexts, then
+    # drives real-gesture unlock (re-suspension recovery) + sequencer playback
+    # with output capture. Under parallel jobs the renderer's single main thread
+    # is starved, so a fresh page's boot poll (waitForFunction on the audio.js
+    # exports) never resolves inside the 30s gate — Scenario 3 times out. Passes
+    # reliably one-at-a-time. Same starvation class as mobile_sanity /
+    # instrument_params_e2e_real_drag above.
+    "mobile_audio_unlock.browser.test.js"
 )
 
 # Tests that are known to be flaky or run separately and should be skipped

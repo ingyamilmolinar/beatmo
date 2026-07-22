@@ -65,7 +65,7 @@ func visibleFMKnobRects(g *Game) map[int]image.Rectangle {
 			s = sec
 		}
 	}
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	for _, idx := range s.KnobIdxs() {
 		if idx < 0 || idx >= len(knobs) {
 			continue
@@ -79,7 +79,7 @@ func visibleFMKnobRects(g *Game) map[int]image.Rectangle {
 	return out
 }
 
-func TestSynthSection_FMKnobsDoNotOverlap(t *testing.T) {
+func TestSynthSection_FMControlsDoNotOverlap(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	s := fmSection(t, g)
 	if s.KnobCount() < 6 {
@@ -106,7 +106,7 @@ func TestSynthSection_FMKnobsDoNotOverlap(t *testing.T) {
 	}
 }
 
-func TestSynthSection_FMKnobsAtLeastTwoPerRow(t *testing.T) {
+func TestSynthSection_FMControlsAtLeastTwoPerRow(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
 	if grid == nil {
@@ -117,12 +117,12 @@ func TestSynthSection_FMKnobsAtLeastTwoPerRow(t *testing.T) {
 	}
 }
 
-func TestSynthSection_FMKnobsAtLeastMinDiameter(t *testing.T) {
+func TestSynthSection_FMControlsAtLeastMinDiameter(t *testing.T) {
 	g := modularSynthGameRealistic(t)
-	minD := Profile().DensityValues().SynthKnobMin
+	minD := Profile().DensityValues().SynthControlMin
 	for idx, r := range visibleFMKnobRects(g) {
 		if r.Dx() < minD {
-			t.Errorf("FM knob %d width %d below SynthKnobMin %d (cramped)", idx, r.Dx(), minD)
+			t.Errorf("FM knob %d width %d below SynthControlMin %d (cramped)", idx, r.Dx(), minD)
 		}
 	}
 }
@@ -304,7 +304,7 @@ func TestSynthSection_WheelThrottledOneRowPerCooldown(t *testing.T) {
 func firstVisibleFMKnob(t *testing.T, g *Game) (int, HitHandler) {
 	t.Helper()
 	s := fmSection(t, g)
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	kIdx := -1
 	for _, idx := range s.KnobIdxs() {
 		if idx >= 0 && idx < len(knobs) && !knobs[idx].Rect().Empty() {
@@ -315,7 +315,7 @@ func firstVisibleFMKnob(t *testing.T, g *Game) (int, HitHandler) {
 	if kIdx < 0 {
 		t.Fatal("no visible FM knob")
 	}
-	tag := fmt.Sprintf("synth-knob-%d", kIdx)
+	tag := fmt.Sprintf("synth-control-%d", kIdx)
 	for _, h := range g.drum.eqPanelZone.HitAreas() {
 		if h.Tag == tag {
 			return kIdx, h.Handler
@@ -325,7 +325,7 @@ func firstVisibleFMKnob(t *testing.T, g *Game) (int, HitHandler) {
 	return 0, nil
 }
 
-func TestSynthSection_OffWindowKnobsNotHittable(t *testing.T) {
+func TestSynthSection_OffWindowControlsNotHittable(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
 	if grid == nil || !grid.HasScroll() {
@@ -333,7 +333,7 @@ func TestSynthSection_OffWindowKnobsNotHittable(t *testing.T) {
 	}
 	// Collect the FM knob indices that are currently off-window (empty rect).
 	s := fmSection(t, g)
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	offWindow := map[int]bool{}
 	for _, idx := range s.KnobIdxs() {
 		if idx >= 0 && idx < len(knobs) && knobs[idx].Rect().Empty() {
@@ -343,13 +343,13 @@ func TestSynthSection_OffWindowKnobsNotHittable(t *testing.T) {
 	if len(offWindow) == 0 {
 		t.Fatal("expected some FM knobs off-window when scrolling")
 	}
-	// None of those indices may have a synth-knob hit area.
+	// None of those indices may have a synth-control hit area.
 	for _, h := range g.drum.eqPanelZone.HitAreas() {
-		if !strings.HasPrefix(h.Tag, "synth-knob-") {
+		if !strings.HasPrefix(h.Tag, "synth-control-") {
 			continue
 		}
 		var idx int
-		if _, err := fmt.Sscanf(h.Tag, "synth-knob-%d", &idx); err != nil {
+		if _, err := fmt.Sscanf(h.Tag, "synth-control-%d", &idx); err != nil {
 			continue
 		}
 		if offWindow[idx] {
@@ -367,7 +367,7 @@ func TestSynthSection_DenseSectionsFitAllDensities(t *testing.T) {
 			g := modularSynthGameRealistic(t)
 			s := fmSection(t, g)
 			card := s.Rect()
-			minD := Profile().DensityValues().SynthKnobMin
+			minD := Profile().DensityValues().SynthControlMin
 			rects := visibleFMKnobRects(g)
 			if len(rects) == 0 {
 				t.Fatalf("density %v: no visible FM knobs", d)

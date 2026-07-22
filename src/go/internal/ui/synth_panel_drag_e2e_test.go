@@ -11,12 +11,12 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSynthTab_KnobDragEndToEndChangesAudioParam reproduces the exact UX
+// TestSynthTab_ControlDragEndToEndChangesAudioParam reproduces the exact UX
 // the user described: switch to the Synth tab, find a knob, press inside
 // it, drag, release — and verify the audio.SetInstrumentParam was called
 // with a new value. Catches regressions where the hit area is registered
 // but the knob's value isn't propagated to the audio engine.
-func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
+func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
@@ -39,7 +39,7 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 
 	// Find the decay knob — drum-snare wires {pitch, decay, tone, drive}
 	// plus the snare family knobs (native-deprecation migration).
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
 	wantKnobs := len(audio.WiredParamsForRecipe("drum-snare"))
 	if len(knobs) != wantKnobs {
@@ -58,7 +58,7 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 	// decay lives in the ENVELOPE stage; open it so the knob gets a
 	// hit-testable rect under the chip-strip + detail-pane layout.
 	selectSectionForKnobIdx(t, g, "snare", decayIdx)
-	knobs = g.drum.SynthTabKnobs()
+	knobs = g.drum.SynthTabControls()
 	knob := knobs[decayIdx]
 	rect := knob.Rect()
 	if rect.Empty() {
@@ -69,7 +69,7 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 	hits := g.drum.eqPanelZone.HitAreas()
 	var pressHit *HitArea
 	for i, h := range hits {
-		if h.Tag != "" && strings.HasPrefix(h.Tag, "synth-knob-") {
+		if h.Tag != "" && strings.HasPrefix(h.Tag, "synth-control-") {
 			if image.Pt((rect.Min.X+rect.Max.X)/2, (rect.Min.Y+rect.Max.Y)/2).In(h.Rect) {
 				pressHit = &hits[i]
 				break
@@ -81,7 +81,7 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 		for _, h := range hits {
 			tags = append(tags, fmt.Sprintf("%s@%v", h.Tag, h.Rect))
 		}
-		t.Fatalf("no synth-knob HitArea covers the decay knob center (rect=%v); tags=%s", rect, strings.Join(tags, ","))
+		t.Fatalf("no synth-control HitArea covers the decay knob center (rect=%v); tags=%s", rect, strings.Join(tags, ","))
 	}
 
 	cx := (rect.Min.X + rect.Max.X) / 2
@@ -96,7 +96,7 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 	initialValue = knob.Value
 	for s := 0; s < 8; s++ {
 		if pressHit.Handler.OnWheel(cx, cy, 1) == InputIgnored {
-			t.Fatalf("wheel over synth-knob HitArea ignored at center (%d,%d) of rect %v", cx, cy, rect)
+			t.Fatalf("wheel over synth-control HitArea ignored at center (%d,%d) of rect %v", cx, cy, rect)
 		}
 	}
 	if knob.Value <= initialValue {
@@ -117,9 +117,9 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 	}
 }
 
-// TestSynthTab_PressMissingKnobIsNoOp verifies a press OUTSIDE every knob
+// TestSynthTab_PressMissingControlIsNoOp verifies a press OUTSIDE every knob
 // rect does not start a drag (negative complement to the success case).
-func TestSynthTab_PressMissingKnobIsNoOp(t *testing.T) {
+func TestSynthTab_PressMissingControlIsNoOp(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
@@ -137,7 +137,7 @@ func TestSynthTab_PressMissingKnobIsNoOp(t *testing.T) {
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	// Press at a point WAY off any knob — far below the audio panel.
-	for _, k := range g.drum.SynthTabKnobs() {
+	for _, k := range g.drum.SynthTabControls() {
 		if k.Capturing() {
 			t.Errorf("knob unexpectedly capturing before any press: rect=%v", k.Rect())
 		}
@@ -172,7 +172,7 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 		fired++
 	})
 
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
 	// Pick the first VISIBLE synth knob. Phase 8B's unified layout shows many
 	// more sections, so a fixed param (the old "drive") may scroll out of its
@@ -198,14 +198,14 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 	var hit *HitArea
 	hits := g.drum.eqPanelZone.HitAreas()
 	for i, h := range hits {
-		if h.Tag != fmt.Sprintf("synth-knob-%d", idx) {
+		if h.Tag != fmt.Sprintf("synth-control-%d", idx) {
 			continue
 		}
 		hit = &hits[i]
 		break
 	}
 	if hit == nil {
-		t.Fatalf("no hit area for synth-knob-%d", idx)
+		t.Fatalf("no hit area for synth-control-%d", idx)
 	}
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2

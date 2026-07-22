@@ -2,15 +2,15 @@ package ui
 
 import "testing"
 
-// TestSynthFocusSceneSelectsIntendedKnob — the crop_synth_focus_* scenes drive
-// synthTabFocusKnobSetup, which walks the selected stage's knobs to select the
+// TestSynthFocusSceneSelectsIntendedControl — the crop_synth_focus_* scenes drive
+// synthTabFocusControlSetup, which walks the selected stage's knobs to select the
 // one whose ParamDef.Name matches the requested param so the focus graph shows
 // that knob's property-native domain. If the name isn't present in the stage,
 // the selection silently falls back to the section's main knob (still renders,
 // wrong domain). TestSceneCropSubjectsResolveToVisibleRect only checks the
 // Subject *bounds*, so it would pass a silent fallback. This pins the actual
 // selected knob for each focus scene (mirrors TestSynthChipSceneSelectsIntendedStage).
-func TestSynthFocusSceneSelectsIntendedKnob(t *testing.T) {
+func TestSynthFocusSceneSelectsIntendedControl(t *testing.T) {
 	cases := []struct{ scene, knob string }{
 		{"crop_synth_focus_filter", "filter_cutoff"},
 		{"crop_synth_focus_env", "amp_attack"},
@@ -44,7 +44,7 @@ func TestSynthFocusSceneSelectsIntendedKnob(t *testing.T) {
 			if sec == nil {
 				t.Fatalf("no selected section for %s", c.scene)
 			}
-			idx := g.drum.synthSelectedKnobIdx(inst, sec)
+			idx := g.drum.synthSelectedControlIdx(inst, sec)
 			if idx < 0 || idx >= len(g.drum.instEditorBindings) {
 				t.Fatalf("bad selected knob idx %d", idx)
 			}

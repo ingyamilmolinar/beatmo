@@ -17,7 +17,7 @@ import (
 // (bowed strings, plucked harp, piano) to find which are structurally off.
 // go test -run TestStringGap -v ./cmd/synth-match/
 func TestStringGap(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 

@@ -136,6 +136,26 @@ func (s *playbackSlate) rowPastExclusive(row int) int {
 	if g == nil {
 		return 0
 	}
+	global := g.globalPastExclusive()
+	if global > 0 {
+		// While playing/paused the immutable-past boundary is the VISUAL
+		// playhead: every subdivision the playhead has passed (abs < global) is
+		// past and must render from committed history — regardless of whether
+		// this row's highlight (nextBeatIdxs) or scheduler (seqNextIdxs) index
+		// has caught up. Those per-row indices lag the playhead whenever the
+		// row's highlight is delivered late over hlCh or dropped by the
+		// stale-info guard in applySequencerHighlight (which fires for every
+		// in-flight highlight the instant a circuit edit changes the row's beat
+		// path). Returning the lagged index here left the cells in
+		// [next, playhead] treated as mutable future, so editing the circuit
+		// re-rendered the already-played past from the edited predictor — the
+		// "past changes on edit" regression. This is the single source of truth
+		// for the boundary: buildRowWindow (render) and diffPredictorTimeline
+		// (parity) both read it, so anchoring here keeps them consistent.
+		return global
+	}
+	// Stopped: no playback past. Fall back to per-row highlight/schedule progress
+	// so seek/preview flows still see the last committed frontier.
 	next := 0
 	if row >= 0 && row < len(g.nextBeatIdxs) {
 		next = g.nextBeatIdxs[row]
@@ -144,10 +164,6 @@ func (s *playbackSlate) rowPastExclusive(row int) int {
 		if seqNext := g.seqNextIdxs[row]; seqNext > next {
 			next = seqNext
 		}
-	}
-	global := g.globalPastExclusive()
-	if global > 0 && (next == 0 || next > global) {
-		next = global
 	}
 	return next
 }

@@ -132,66 +132,66 @@ var synthParamNameOverrides = map[string]string{
 // "Hit N" prefix stays English while only the noun follows the locale.
 var synthParamNameKeys = map[string]i18n.Key{
 	// ---- generic post knobs ----
-	"pitch":      i18n.KeySynthKnobTune,
-	"decay":      i18n.KeySynthKnobDecayMult,
-	"tone":       i18n.KeySynthKnobTone,
-	"drive":      i18n.KeySynthKnobDrive,
-	"body":       i18n.KeySynthKnobBody,
-	"brightness": i18n.KeySynthKnobBright,
-	"gain":       i18n.KeySynthKnobGain,
+	"pitch":      i18n.KeySynthControlTune,
+	"decay":      i18n.KeySynthControlDecayMult,
+	"tone":       i18n.KeySynthControlTone,
+	"drive":      i18n.KeySynthControlDrive,
+	"body":       i18n.KeySynthControlBody,
+	"brightness": i18n.KeySynthControlBright,
+	"gain":       i18n.KeySynthControlGain,
 
 	// ---- OSC stage ----
-	"osc_type":   i18n.KeySynthKnobWave,
-	"osc_detune": i18n.KeySynthKnobDetune,
-	"osc_octave": i18n.KeySynthKnobOctave,
+	"osc_type":   i18n.KeySynthControlWave,
+	"osc_detune": i18n.KeySynthControlDetune,
+	"osc_octave": i18n.KeySynthControlOctave,
 
 	// ---- amp envelope (ADSR) ----
-	"amp_attack":  i18n.KeySynthKnobAttack,
-	"amp_decay":   i18n.KeySynthKnobDecay,
-	"amp_sustain": i18n.KeySynthKnobSustain,
-	"amp_release": i18n.KeySynthKnobRelease,
-	"amp_curve":   i18n.KeySynthKnobCurve,
+	"amp_attack":  i18n.KeySynthControlAttack,
+	"amp_decay":   i18n.KeySynthControlDecay,
+	"amp_sustain": i18n.KeySynthControlSustain,
+	"amp_release": i18n.KeySynthControlRelease,
+	"amp_curve":   i18n.KeySynthControlCurve,
 
 	// ---- filter stage ----
-	"filter_type":      i18n.KeySynthKnobType,
-	"filter_cutoff":    i18n.KeySynthKnobCutoff,
-	"filter_resonance": i18n.KeySynthKnobResonance,
+	"filter_type":      i18n.KeySynthControlType,
+	"filter_cutoff":    i18n.KeySynthControlCutoff,
+	"filter_resonance": i18n.KeySynthControlResonance,
 
 	// ---- FM stage singletons (the OpN families are composed) ----
-	"fm_algorithm":        i18n.KeySynthKnobAlgorithm,
-	"fm_wave":             i18n.KeySynthKnobWave,
-	"fm_base_freq":        i18n.KeySynthKnobBaseFreq,
-	"fm_pitch_env_amount": i18n.KeySynthKnobPitchEnv,
-	"fm_pitch_env_decay":  i18n.KeySynthKnobPitchEnvDecay,
+	"fm_algorithm":        i18n.KeySynthControlAlgorithm,
+	"fm_wave":             i18n.KeySynthControlWave,
+	"fm_base_freq":        i18n.KeySynthControlBaseFreq,
+	"fm_pitch_env_amount": i18n.KeySynthControlPitchEnv,
+	"fm_pitch_env_decay":  i18n.KeySynthControlPitchEnvDecay,
 
 	// ---- PITCH-env modulator stage ----
-	"pitchenv_amt":   i18n.KeySynthKnobAmount,
-	"pitchenv_decay": i18n.KeySynthKnobDecay,
+	"pitchenv_amt":   i18n.KeySynthControlAmount,
+	"pitchenv_decay": i18n.KeySynthControlDecay,
 
 	// ---- LFO modulator stage ----
-	"lfo_rate":  i18n.KeySynthKnobRate,
-	"lfo_depth": i18n.KeySynthKnobDepth,
+	"lfo_rate":  i18n.KeySynthControlRate,
+	"lfo_depth": i18n.KeySynthControlDepth,
 
 	// ---- BURST modulator stage (the HitN families are composed) ----
-	"burst_sharp": i18n.KeySynthKnobSharpness,
+	"burst_sharp": i18n.KeySynthControlSharpness,
 
 	// ---- noise generator ----
-	"noise_draws":   i18n.KeySynthKnobDraws,
-	"noise_prelude": i18n.KeySynthKnobPrelude,
-	"noise_seed":    i18n.KeySynthKnobSeed,
+	"noise_draws":   i18n.KeySynthControlDraws,
+	"noise_prelude": i18n.KeySynthControlPrelude,
+	"noise_seed":    i18n.KeySynthControlSeed,
 
 	// ---- voice fundamentals ----
-	"fundamental":   i18n.KeySynthKnobPitch,
-	"voice_freq_hz": i18n.KeySynthKnobPitch,
+	"fundamental":   i18n.KeySynthControlPitch,
+	"voice_freq_hz": i18n.KeySynthControlPitch,
 
 	// ---- drum-family well-known knobs ----
-	"kick_click": i18n.KeySynthKnobClick,
-	"kick_noise": i18n.KeySynthKnobNoise,
-	"kick_wave":  i18n.KeySynthKnobWave,
-	"snare_wave": i18n.KeySynthKnobWave,
-	"cym_wave":   i18n.KeySynthKnobWave,
-	"tom_wave":   i18n.KeySynthKnobWave,
-	"bass_wave":  i18n.KeySynthKnobWave,
+	"kick_click": i18n.KeySynthControlClick,
+	"kick_noise": i18n.KeySynthControlNoise,
+	"kick_wave":  i18n.KeySynthControlWave,
+	"snare_wave": i18n.KeySynthControlWave,
+	"cym_wave":   i18n.KeySynthControlWave,
+	"tom_wave":   i18n.KeySynthControlWave,
+	"bass_wave":  i18n.KeySynthControlWave,
 }
 
 // synthEnumLabelKeys maps a canonical enum string (the audio.ParamDef.Enum
@@ -244,9 +244,9 @@ func composeOpLabel(name string) (string, bool) {
 		case "level":
 			k = i18n.KeySynthNounLevel
 		case "depth":
-			k = i18n.KeySynthKnobDepth
+			k = i18n.KeySynthControlDepth
 		case "decay":
-			k = i18n.KeySynthKnobDecay
+			k = i18n.KeySynthControlDecay
 		default:
 			return "", false
 		}

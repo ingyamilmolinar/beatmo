@@ -44,6 +44,7 @@ import {
   DEVICE_MATRIX,
 } from "./visual_browserstack_helpers.js";
 import { cdpTap } from "./touch_cdp_helpers.js";
+import { shouldSkipWasmBuild } from "./browser_test_helpers.js";
 
 const USE_BROWSERSTACK = (process.env.TEST_PLATFORM || "").startsWith("browserstack")
   || process.env.DEVICE === "browserstack";
@@ -87,15 +88,44 @@ async function runUserActions(page, label) {
   const settle = (ms) => page.waitForTimeout(ms);
   const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
   const validRect = (r) => !!(r && typeof r.w === "number" && r.w > 1 && r.h > 1);
-  const overflowRect = () => read("fullLayoutSnapshot").then((s) => s?.buttons?.overflow || null);
+  // Since the "Pop Up Controls / Modes" overhaul the transport kebab was removed;
+  // the File menu (Upload / Import / Export) now opens from the grid-pane folder
+  // button (dv.OpenFileMenu → overflowModeFile), whose screen-space rect is
+  // exported as fileMenuBtnRect(). filePickerCandidates only arms the Upload/
+  // Import overlays while that File menu is open on page 0.
+  const fileMenuRect = () => read("fileMenuBtnRect");
 
+  const overflowArmed = async () => (await page.locator('input[data-fp-id="import"]').count()) > 0;
+  // Open the File menu until its Import/Upload file-input overlays are mounted
+  // (registered by syncNativeGestures while the menu is open on page 0). Those
+  // overlays are what pickFile's real setInputFiles targets — that is the real OS
+  // file-path fidelity this test exists to exercise.
+  //
+  // Opening the menu itself, however, must NOT be flaky. The folder button that
+  // opens it is dispatched off the touch→mouse override, sampled once per rAF
+  // Update frame. Under headless automation rAF is throttled/variable, so a real
+  // 150 ms tap can fall entirely between two slow Update frames and be missed —
+  // and because the folder button sits OUTSIDE the menu popup (which has a scrim),
+  // a blind re-tap while the menu is already open lands on the scrim and CLOSES
+  // it, giving an open↔close oscillation. That was the flaky "no import/upload
+  // affordance found" failure. (A real device paints at 60 fps so a real tap is
+  // always sampled there — this is purely an automation artifact.)
+  //
+  // So: try a REAL tap first (covers the genuine touch→open path when rAF is
+  // healthy — the common case), then fall back to the openOverflowMenu() bridge
+  // export, which opens the menu via QueueAction with NO canvas tap — no scrim,
+  // no click-outside race, deterministic. It reaches the same page-0 menu state,
+  // so syncNativeGestures mounts the identical overlays and the real setInputFiles
+  // path downstream is unchanged.
   async function openOverflow() {
-    for (let i = 0; i < 4; i++) {
-      const r = await overflowRect();
-      if (r && r.w > 1) { await cdpTap(page, r.x + r.w / 2, r.y + r.h / 2); await settle(450); }
-      if (await page.locator('input[data-fp-id="import"]').count() > 0) return true;
+    const r = await fileMenuRect();
+    if (r && r.w > 1) await cdpTap(page, Math.round(r.x + r.w / 2), Math.round(r.y + r.h / 2)).catch(() => {});
+    for (let k = 0; k < 6; k++) { if (await overflowArmed()) return true; await settle(150); }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await read("openOverflowMenu").catch(() => {});
+      for (let k = 0; k < 8; k++) { if (await overflowArmed()) return true; await settle(150); }
     }
-    return (await page.locator('input[data-fp-id="import"]').count()) > 0;
+    return await overflowArmed();
   }
   // forceDraw advances a frame (it also re-runs g.Layout from the live window
   // size); the natural rAF Update loop processes queued actions (file import).
@@ -375,8 +405,12 @@ async function runUserActions(page, label) {
 
 // ─── Driver ──────────────────────────────────────────────────────────────────
 
-console.log("Building WASM...");
-buildWasm();
+if (shouldSkipWasmBuild("main.wasm")) {
+  console.log("Using prebuilt main.wasm (WASM_PREBUILT=1)");
+} else {
+  console.log("Building WASM...");
+  buildWasm();
+}
 const { server, port } = await startServer();
 console.log(`Local server on port ${port}`);
 

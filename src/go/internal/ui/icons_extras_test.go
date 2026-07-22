@@ -43,3 +43,30 @@ func TestStarPathPointCount(t *testing.T) {
 		t.Fatalf("starPathPoints len=%d, want 10 (5 outer + 5 inner)", got)
 	}
 }
+
+// TestIconNodeActionDispatch verifies the node quick-action icons are wired
+// through drawIconByID (used by the long-press popup keycaps).
+func TestIconNodeActionDispatch(t *testing.T) {
+	dst := ebiten.NewImage(24, 24)
+	r := image.Rect(0, 0, 24, 24)
+	col := color.NRGBA{255, 255, 255, 255}
+	for _, id := range []IconID{IconMove, IconCopy, IconConnect} {
+		if !drawIconByID(dst, id, r, col) {
+			t.Errorf("drawIconByID returned false for %q; switch case or IconID missing", id)
+		}
+	}
+}
+
+// TestIconFolderDispatch verifies the folder glyph (grid-pane file button) is
+// wired through drawIconByID. Pixel-level rendering is covered by the broader
+// icon_renderer tests; the stub backend does not reflect vector draws in
+// dst.At, so this only exercises the dispatch switch (matching the other icon
+// dispatch tests in this file).
+func TestIconFolderDispatch(t *testing.T) {
+	dst := ebiten.NewImage(24, 24)
+	r := image.Rect(0, 0, 24, 24)
+	col := color.NRGBA{255, 255, 255, 255}
+	if !drawIconByID(dst, IconFolder, r, col) {
+		t.Fatal("drawIconByID returned false for IconFolder; switch case or IconID missing")
+	}
+}

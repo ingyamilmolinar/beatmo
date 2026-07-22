@@ -78,6 +78,40 @@ func TestGridHelpReservedRectCoversGear(t *testing.T) {
 	}
 }
 
+// TestGridTopRightIconsLayout pins that the three top-right grid icons
+// (logs, folder, gear) are laid out left→right, same size, and pairwise
+// disjoint. The logs button is deliberately NOT unioned into the gear's
+// reserved "no-invade" zone: that zone is tuned for the gear+folder cluster
+// (group-menu placement in tiny panes can't avoid a wider zone — see
+// TestMenuOverlapsOnlyWhenNoRoom), and the logs button is the leftmost /
+// least-exposed icon.
+func TestGridTopRightIconsLayout(t *testing.T) {
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(1280, 720)
+
+	gear := g.gridHelpButtonRect()
+	file := g.gridFileButtonRect()
+	logs := g.gridLogsButtonRect()
+	if gear.Empty() || file.Empty() || logs.Empty() {
+		t.Fatalf("a top-right icon rect is empty: gear=%v file=%v logs=%v", gear, file, logs)
+	}
+	// Left→right order: logs, folder, gear.
+	if logs.Max.X > file.Min.X {
+		t.Fatalf("logs %v must sit left of folder %v", logs, file)
+	}
+	if file.Max.X > gear.Min.X {
+		t.Fatalf("folder %v must sit left of gear %v", file, gear)
+	}
+	// Same size, pairwise disjoint.
+	if logs.Dx() != file.Dx() || logs.Dy() != file.Dy() {
+		t.Fatalf("logs/file size mismatch logs=%v file=%v", logs, file)
+	}
+	if logs.Overlaps(file) || file.Overlaps(gear) || logs.Overlaps(gear) {
+		t.Fatalf("top-right icons overlap: logs=%v file=%v gear=%v", logs, file, gear)
+	}
+}
+
 // TestGroupMenuAvoidsSettingsGear: a group menu anchored right at the gear
 // corner must not overlap the gear's rect.
 func TestGroupMenuAvoidsSettingsGear(t *testing.T) {

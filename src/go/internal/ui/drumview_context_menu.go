@@ -173,16 +173,15 @@ func (dv *DrumView) openContextMenu(rowIdx int) {
 	}
 	dv.contextMenuScroll.VS.Visible = visibleItems
 
-	// Close button at the header's top-right — on both platforms now (the desktop
-	// menu has a header row, so the × sits in the header, not over a menu item).
-	closeR := closeButtonRect(dv.contextMenuRect, SpaceXS)
-	closeB := NewButton("", PopupButtonStyle, func() { dv.closeContextMenuPortal() })
-	closeB.Icon = "close"
-	closeB.IconColor = closeIconColor()
-	closeB.SetRect(closeR)
-	closeB.ConsumeOnPress = true
-	dv.contextMenuCloseButton = closeB
-	dv.contextMenuBtns = append(dv.contextMenuBtns, closeB)
+	// Close button at the header's top-right — desktop only, via the shared
+	// newPopupCloseButton helper (nil on mobile, where the bottom sheet closes by
+	// tapping away). Only append + track when non-nil so contextMenuBtns never
+	// carries a nil trailing entry and itemBtnCount stays correct on both platforms.
+	dv.contextMenuCloseButton = newPopupCloseButton(func() { dv.closeContextMenuPortal() })
+	if dv.contextMenuCloseButton != nil {
+		dv.contextMenuCloseButton.SetRect(closeButtonRect(dv.contextMenuRect, SpaceXS))
+		dv.contextMenuBtns = append(dv.contextMenuBtns, dv.contextMenuCloseButton)
+	}
 	dv.openContextMenuPortal()
 }
 
@@ -195,11 +194,14 @@ func (dv *DrumView) rebuildContextMenuButtons() {
 	rowH := touchMinTargetPx
 	scrollPx := dv.contextMenuScroll.VS.First * dv.contextMenuScroll.ItemHeight
 
-	// Rebuild non-close buttons with scroll offset. itemBtnCount is the number
-	// of menu-item buttons (mobile appends a trailing close button; desktop
-	// does not), so the guard works on both platforms.
+	// Rebuild non-close buttons with scroll offset. itemBtnCount is the number of
+	// menu-item buttons; the close × is a desktop-only trailing button (nil on
+	// mobile), so discount it only when actually present.
 	items := dv.contextMenuItems(dv.contextMenuRow)
-	itemBtnCount := len(dv.contextMenuBtns) - 1 // trailing close button (both platforms)
+	itemBtnCount := len(dv.contextMenuBtns)
+	if dv.contextMenuCloseButton != nil {
+		itemBtnCount-- // trailing close button (desktop only)
+	}
 	btnIdx := 0
 	if Profile().UseBottomSheet {
 		curY := dv.contextMenuRect.Min.Y + touchMinTargetPx - scrollPx // skip header
@@ -595,6 +597,7 @@ func (dv *DrumView) handleOverflowMenuInput(mx, my int, left bool) bool {
 	}
 	dv.configureOverflowScroll()
 	popupRect := dv.overflowPopupRect()
+
 	btns := dv.overflowPopupBtns(popupRect)
 
 	// Pinned search box: a press on the clear-× wipes the query; any other
@@ -737,60 +740,75 @@ func (dv *DrumView) overflowPopupWidth(items []overflowItem) int {
 	return w
 }
 
-// overflowPopupRect returns the rectangle for the overflow popup. On mobile
-// (when LayoutProfile.UseBottomSheet is true) the popup is rendered as a
-// full-width bottom sheet anchored to the bottom of the drum pane —
-// DESIGN.md §"Mobile bottom sheets" mandates this for full-width modal
-// menus. Desktop keeps the dropdown anchored to the kebab.
+// overflowPopupRect returns the rectangle for the overflow (file) popup. On
+// mobile (LayoutProfile.UseBottomSheet) it is a full-width bottom sheet anchored
+// to the drum-pane bottom; on desktop it drops from the grid-pane folder button
+// (overflowAnchorRect), clamped to the whole screen so it may paint into the
+// grid pane.
 func (dv *DrumView) overflowPopupRect() image.Rectangle {
-	if dv.overflowBtn() == nil {
+	anchor := dv.overflowAnchorRect()
+	if anchor.Empty() {
 		return image.Rectangle{}
 	}
 	items := dv.overflowItems()
-	if Profile().UseBottomSheet {
-		// Bottom sheet: full-width, anchored to drum-pane bottom.
-		h := len(items) * touchMinTargetPx
-		// Cap to drum pane height to avoid overflow above the toolbar.
-		maxH := dv.Bounds.Dy() - touchMinTargetPx
-		if h > maxH {
-			h = maxH
-		}
-		if h < touchMinTargetPx {
-			h = touchMinTargetPx
-		}
-		return image.Rect(dv.Bounds.Min.X, dv.Bounds.Max.Y-h, dv.Bounds.Max.X, dv.Bounds.Max.Y)
+
+	// The file menu is triggered from the grid-pane folder button, so it drops
+	// beside that button and clamps to the GRID PANE — on EVERY screen size,
+	// never spilling past the split into the drum-view panel below (matching the
+	// node pop-up, Settings and Logs). The scrim portal owns input while open.
+	// (Previously a UseBottomSheet branch made it a full-width bottom sheet in the
+	// drum pane on small screens — the "menus appear in the drum view" bug.)
+	clampBox := dv.Bounds
+	if dv.game != nil {
+		g := dv.game
+		clampBox = image.Rect(0, 0, g.split.GridW(g.winW), g.split.GridH(g.winH))
 	}
 
-	anchor := dv.overflowBtn().Rect()
 	w := dv.overflowPopupWidth(items)
 	h := len(items) * touchMinTargetPx
 	x := anchor.Max.X - w
 	y := anchor.Max.Y + 2
-	if x < dv.Bounds.Min.X {
-		x = dv.Bounds.Min.X
+	if x < clampBox.Min.X {
+		x = clampBox.Min.X
 	}
-	if x+w > dv.Bounds.Max.X {
-		x = dv.Bounds.Max.X - w
+	if x+w > clampBox.Max.X {
+		x = clampBox.Max.X - w
 	}
-	if y+h > dv.Bounds.Max.Y {
-		y = anchor.Min.Y - h - 2
+	if y+h > clampBox.Max.Y {
+		y = anchor.Min.Y - h - 2 // flip above the trigger
 	}
-	// Clamp so the popup never escapes above the drum pane.
-	// Without this, on adaptive portrait layouts where the drum pane starts
-	// near the bottom (e.g. Bounds.Min.Y ≈ 600), the flipped popup lands in
-	// the grid area, and InputDispatcher skips the drum view (InputBounds()
-	// returns dv.Bounds), so clicks create unwanted grid nodes.
-	if y < dv.Bounds.Min.Y {
-		y = dv.Bounds.Min.Y
+	// Clamp so the popup never escapes above the clamp box.
+	if y < clampBox.Min.Y {
+		y = clampBox.Min.Y
 	}
-	// Cap height so the popup does not overflow below the drum pane.
-	if maxH := dv.Bounds.Max.Y - y; h > maxH {
+	// Cap height so the popup does not overflow below the clamp box.
+	if maxH := clampBox.Max.Y - y; h > maxH {
 		h = maxH
 		if h < touchMinTargetPx {
 			h = touchMinTargetPx
 		}
 	}
 	return image.Rect(x, y, x+w, y+h)
+}
+
+// overflowAnchorRect returns the grid-pane folder button rect the file menu
+// drops from (DESIGN.md menu-placement rule: adjacent to its trigger).
+func (dv *DrumView) overflowAnchorRect() image.Rectangle {
+	if r := dv.fileMenuAnchorRect(); !r.Empty() {
+		return r
+	}
+	// Fallback until the grid folder button exists: drum-pane top-right.
+	return image.Rect(dv.Bounds.Max.X-1, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Min.Y+1)
+}
+
+// fileMenuAnchorRect returns the grid-pane folder button rect the file menu
+// drops from (screen-space; the grid pane's origin is screen (0,0)). Empty when
+// the game/button is absent.
+func (dv *DrumView) fileMenuAnchorRect() image.Rectangle {
+	if dv.game == nil {
+		return image.Rectangle{}
+	}
+	return dv.game.gridFileButtonRect()
 }
 
 // templateSearchResults returns MenuSearcher output for the current template
@@ -888,6 +906,7 @@ func overflowPinnedCount(items []overflowItem) int {
 	return n
 }
 
+
 // overflowItem defines a menu entry for the overflow popup.
 //
 // iconID, when non-empty, is rendered as a small leading icon by
@@ -962,6 +981,8 @@ func (dv *DrumView) overflowItems() []overflowItem {
 		return items
 	}
 	items := []overflowItem{
+		// File menu (opened by the grid folder button). The navigation menu is a
+		// separate portal component (navMenuComp), not part of this list.
 		// File group — every action carries a semantic IconID so the
 		// menu communicates meaning through iconography (Theme 5 of the
 		// mobile UI consistency pass; DESIGN.md single-chrome-accent
@@ -1015,7 +1036,7 @@ func (dv *DrumView) overflowItems() []overflowItem {
 func (dv *DrumView) rebuildOverflowBtns() {
 	items := dv.overflowItems()
 	itemStyle := ButtonVisual(DropdownStyle)
-	btns := make([]*Button, 0, len(items)+1)
+	btns := make([]*Button, 0, len(items))
 	for _, item := range items {
 		if item.header || item.search {
 			continue // headers are not buttons; rects are advanced in the accessor
@@ -1023,12 +1044,7 @@ func (dv *DrumView) rebuildOverflowBtns() {
 		btn := NewButton(item.label, itemStyle, item.onClick)
 		btns = append(btns, btn)
 	}
-	// Close button at top-right (rect set in overflowPopupBtns each frame).
-	closeB := NewButton("", PopupButtonStyle, func() { dv.closeOverflowMenu() })
-	closeB.Icon = "close"
-	closeB.IconColor = closeIconColor()
-	closeB.ConsumeOnPress = true
-	btns = append(btns, closeB)
+	// No close (×) button — the folder button toggles this menu closed.
 	dv.overflowBtns = btns
 	dv.overflowBtnsPage = dv.overflowPage
 }
@@ -1050,7 +1066,7 @@ func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 			want++
 		}
 	}
-	if len(dv.overflowBtns) != want+1 || dv.overflowBtnsPage != dv.overflowPage { // +1 for the close button; also rebuild on page change
+	if len(dv.overflowBtns) != want || dv.overflowBtnsPage != dv.overflowPage { // rebuild on count/page change
 		dv.rebuildOverflowBtns()
 	}
 	// Refresh rects for the current scroll offset. Pinned rows (header/search)
@@ -1087,14 +1103,10 @@ func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 		if item.header {
 			continue // mid-list group header: occupies a row, owns no button
 		}
-		if btnIdx < len(dv.overflowBtns)-1 {
+		if btnIdx < len(dv.overflowBtns) {
 			dv.overflowBtns[btnIdx].SetRect(insetRect(r, SpaceXS))
 		}
 		btnIdx++
-	}
-	// Close button rect (last element).
-	if len(dv.overflowBtns) > 0 {
-		dv.overflowBtns[len(dv.overflowBtns)-1].SetRect(closeButtonRect(popupRect, SpaceXS))
 	}
 	return dv.overflowBtns
 }
@@ -1115,12 +1127,11 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	// Backdrop scrim painted by the OverlayPortal (PortalEntry.Scrim).
 	// Mobile renders as a bottom sheet with the shared drag handle so the
 	// File sheet's chrome matches the context menu and instrument picker.
-	if Profile().UseBottomSheet {
-		drawBottomSheetPanel(dst, popupRect)
-		drawSheetDragHandle(dst, popupRect)
-	} else {
-		drawPanel(dst, popupRect)
-	}
+	// Floating card on every screen size — the File menu anchors in the grid
+	// pane like the node pop-up, so it is NOT a bottom sheet and carries NO drag
+	// handle. It shares the exact chrome (drawPanel) of the Settings and Logs
+	// cards.
+	drawPanel(dst, popupRect)
 	items := dv.overflowItems()
 	rowH := touchMinTargetPx
 	pinned := overflowPinnedCount(items)
@@ -1136,15 +1147,15 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	}
 	clip := dst.SubImage(scrollRegion).(*ebiten.Image)
 
-	// 1. Pinned band (fixed Y, unclipped chrome).
+	// 1. Pinned band (fixed Y, unclipped chrome), offset below the nav panel.
 	pinnedY := popupRect.Min.Y
 	for i := 0; i < pinned && i < len(items); i++ {
 		item := items[i]
 		rowR := image.Rect(popupRect.Min.X, pinnedY, popupRect.Max.X, pinnedY+rowH)
 		pinnedY += rowH
 		if item.header {
-			titleRect := image.Rect(rowR.Min.X+SpaceMD, rowR.Min.Y, rowR.Max.X-SpaceMD, rowR.Max.Y)
-			drawMenuTitle(dst, titleRect, item.label, nil)
+			titleRect := image.Rect(rowR.Min.X+cardContentPadX, rowR.Min.Y, rowR.Max.X-cardContentPadX, rowR.Max.Y)
+			drawCardTitleIn(dst, titleRect, item.label)
 			continue
 		}
 		if item.search {
@@ -1160,7 +1171,10 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	// button) stay aligned with the buttons around them.
 	scrollY := popupRect.Min.Y + bandH - dv.overflowMenuScroll.OffsetPx()
 	btnIdx := 0
-	nActionBtns := len(btns) - 1
+	// Every button is an action row rendered via drawMenuRow. There is no
+	// reserved trailing chrome button (the close × was removed — the folder
+	// button toggles the menu closed), so the whole set renders as menu rows.
+	nActionBtns := len(btns)
 	for i := pinned; i < len(items); i++ {
 		item := items[i]
 		rowR := image.Rect(popupRect.Min.X, scrollY, popupRect.Max.X, scrollY+rowH)
@@ -1196,10 +1210,8 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 		})
 	}
 
-	// Close button + scrollbar (pinned chrome, unclipped).
-	if len(btns) > 0 {
-		btns[len(btns)-1].Draw(dst)
-	}
+	// Scrollbar (pinned chrome, unclipped). Every action button was rendered as
+	// a menu row above; there is no trailing chrome button to draw.
 	if dv.overflowMenuScroll != nil {
 		dv.overflowMenuScroll.Draw(dst)
 	}
@@ -1368,9 +1380,6 @@ func (dv *DrumView) syncViewSwitchIcon() {
 		}
 	}
 }
-
-// wrapOverflowBtn lets tests access the overflow button.
-func (dv *DrumView) OverflowBtn() *Button { return dv.overflowBtn() }
 
 // MobileEQCollapsed returns the mobile EQ collapsed state for testing.
 func (dv *DrumView) MobileEQCollapsed() bool { return dv.mobileEQCollapsed }

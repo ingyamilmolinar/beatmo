@@ -197,7 +197,8 @@ func TestTimelineZoneScrubCapture(t *testing.T) {
 		t.Fatal("expected 'timeline-scrub' hit area")
 	}
 
-	// Press in the timeline bar.
+	// Press in the timeline bar. Task 6: the ribbon is drag-only — a press
+	// alone must NOT dispatch a seek.
 	mx = (scrubArea.Rect.Min.X + scrubArea.Rect.Max.X) / 2
 	my = (scrubArea.Rect.Min.Y + scrubArea.Rect.Max.Y) / 2
 	pressed = true
@@ -211,20 +212,24 @@ func TestTimelineZoneScrubCapture(t *testing.T) {
 		t.Error("tree should be capturing after scrub press")
 	}
 
-	if len(log.scrubChanges) == 0 {
-		t.Error("expected OnSeekToStep callback after scrub press")
+	if len(log.scrubChanges) != 0 {
+		t.Errorf("expected NO OnSeekToStep callback on press (drag-only ribbon), got %v", log.scrubChanges)
 	}
 
 	// Drag along the timeline bar.
 	mx += 50
 	tree.Update()
 
-	// Release.
+	// Release — a real drag moved to a different beat, so exactly one seek
+	// commits now.
 	pressed = false
 	tree.Update()
 
 	if z.IsScrubbing() {
 		t.Error("expected IsScrubbing() false after release")
+	}
+	if len(log.scrubChanges) == 0 {
+		t.Error("expected OnSeekToStep callback after drag+release")
 	}
 }
 
@@ -543,24 +548,30 @@ func TestTimelineZone_ScrubPosition(t *testing.T) {
 		t.Fatal("expected non-empty timeline bar rect")
 	}
 
-	// Press at ~75% along the timeline bar.
+	// Press at ~50%, drag to ~75% along the timeline bar (Task 6: the
+	// ribbon is drag-only — a press alone must not seek).
+	pressX := barRect.Min.X + barRect.Dx()/2
 	scrubX := barRect.Min.X + barRect.Dx()*3/4
 	scrubY := (barRect.Min.Y + barRect.Max.Y) / 2
 
-	result := scrubArea.Handler.OnPress(scrubX, scrubY)
+	result := scrubArea.Handler.OnPress(pressX, scrubY)
 	if result != InputCaptured {
 		t.Fatalf("expected InputCaptured, got %d", result)
 	}
 	if !z.IsScrubbing() {
 		t.Error("expected scrubbing after press")
 	}
-	if len(log.scrubChanges) == 0 {
-		t.Error("expected OnSeekToStep to fire")
+	if len(log.scrubChanges) != 0 {
+		t.Errorf("expected NO OnSeekToStep on press (drag-only ribbon), got %v", log.scrubChanges)
 	}
 
+	scrubArea.Handler.OnDrag(scrubX, scrubY)
 	scrubArea.Handler.OnRelease(scrubX, scrubY)
 	if z.IsScrubbing() {
 		t.Error("expected scrubbing to end after release")
+	}
+	if len(log.scrubChanges) == 0 {
+		t.Error("expected OnSeekToStep to fire on release after a real drag")
 	}
 }
 

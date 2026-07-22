@@ -21,6 +21,15 @@ type synthPanel struct {
 	// their pixel loops. Released on tab-hide via EQCallbacks.ReleaseSynthSprites
 	// (releaseHiddenTabSprites chokepoint in eq_panel_zone.go).
 	sprites synthSpriteCache
+
+	// Persistent mobile action buttons hosted on the sticky bar (Approach B):
+	// [Preview][Save][⋯]. Built once (ensureMobileActionButtons), refreshed each
+	// frame (label/dirty-spec) by MobileActionButtons. The ⋯ button opens the
+	// shared actionMenu (Save As / Reset). These replace the in-panel action
+	// row on mobile; desktop keeps its header buttons.
+	mobilePreviewBtn  *Button
+	mobileSaveBtn     *Button
+	mobileOverflowBtn *Button
 }
 
 // synp returns the DrumView's synth panel, lazily creating it if absent. The

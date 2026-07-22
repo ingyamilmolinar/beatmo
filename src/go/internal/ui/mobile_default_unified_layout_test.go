@@ -251,4 +251,3 @@ func TestMobileDefault_RowZoomChipsAnchoredToTimeline(t *testing.T) {
 		}
 	}
 }
-

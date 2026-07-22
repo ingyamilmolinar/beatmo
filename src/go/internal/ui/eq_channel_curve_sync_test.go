@@ -207,7 +207,7 @@ func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 	dv.Rows[1].Instrument = "snare"
 	dv.ensureRowEQ(0)
 	dv.ensureRowEQ(1)
-	dv.Rows[0].EQGainsDB[3] = 12.0 // kick: big boost on band 3
+	dv.Rows[0].EQGainsDB[3] = 12.0  // kick: big boost on band 3
 	dv.Rows[1].EQGainsDB[7] = -12.0 // snare: big cut on band 7
 
 	// Start on master (flat).

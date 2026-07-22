@@ -270,6 +270,12 @@ func sectionShortLabelKey(id synthSectionID) i18n.Key {
 		return i18n.KeySynthStageEnvelopeShort
 	case synthSectionFilterEnv:
 		return i18n.KeySynthStageFilterEnvShort
+	case synthSectionEnsemble:
+		return i18n.KeySynthStageEnsembleShort
+	case synthSectionFormant:
+		return i18n.KeySynthStageFormantShort
+	case synthSectionResonator:
+		return i18n.KeySynthStageResonatorShort
 	}
 	return ""
 }
@@ -578,21 +584,21 @@ func synthParamHiddenInContext(def audio.ParamDef, kickActive bool, oscType floa
 		synthOscModelParamHidden(def, oscType)
 }
 
-// synthParamIsGridKnobIn reports whether a ParamDef is SELECTABLE as a knob in
+// synthParamIsGridControlIn reports whether a ParamDef is SELECTABLE as a knob in
 // the section grid of a recipe with the given context (kick stage active?
-// current oscillator?). This is the contextual form of synthParamIsGridKnob and
+// current oscillator?). This is the contextual form of synthParamIsGridControl and
 // the one any per-recipe assertion must use: a param that is hidden in context
 // has no knob to select and therefore no focus graph to be right or wrong about.
-func synthParamIsGridKnobIn(def audio.ParamDef, kickActive bool, oscType float64) bool {
+func synthParamIsGridControlIn(def audio.ParamDef, kickActive bool, oscType float64) bool {
 	return !synthParamHiddenInContext(def, kickActive, oscType) && !isSynthEnableParam(def.Name)
 }
 
-// synthParamIsGridKnob is the CONTEXT-FREE form: it answers "can this param ever
+// synthParamIsGridControl is the CONTEXT-FREE form: it answers "can this param ever
 // be a knob?" using only the def, and is correct for callers reasoning about a
 // param's kind rather than its visibility on one recipe (e.g. the family-section
 // routing tests). It deliberately ignores the contextual gates — use
-// synthParamIsGridKnobIn when the answer must match what a given recipe shows.
-func synthParamIsGridKnob(def audio.ParamDef) bool {
+// synthParamIsGridControlIn when the answer must match what a given recipe shows.
+func synthParamIsGridControl(def audio.ParamDef) bool {
 	return def.Group != audio.SynthHiddenGroup && !isSynthEnableParam(def.Name)
 }
 
@@ -798,7 +804,7 @@ func (p *synthPanel) applySynthStageToggleByID(instID string, id synthSectionID)
 type synthSection struct {
 	id       synthSectionID
 	rect     image.Rectangle
-	knobIdxs []int // indices into instEditorKnobs / instEditorBindings
+	knobIdxs []int // indices into instEditorControls / instEditorBindings
 	// enableParam is the modular per-stage bypass toggle param name
 	// (e.g. "osc_enabled") when the active recipe carries one for this
 	// section; "" for the bespoke drum/FM recipes (no per-stage toggles).
@@ -1040,7 +1046,7 @@ func (dv *DrumView) samplerViewDisabled() bool {
 
 // buildSynthTab is the layout entry point invoked by EQPanelZone when
 // TabSynth is active. Computes header / section / OUT column / footer
-// rects, populates instEditorKnobs + instEditorSliders + instEditorBindings
+// rects, populates instEditorControls + instEditorSliders + instEditorBindings
 // with one entry per wired ParamDef, and assigns each entry to its section.
 // Called every Layout so re-derivation per [[feedback_runtime_profile_derivation]]
 // keeps working when the runtime profile or panel size changes.
@@ -1062,7 +1068,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 	dv.instEditorNoSynth = false
 	dv.instEditorBannerRect = image.Rectangle{}
 	if contentR.Empty() {
-		dv.instEditorKnobs = dv.instEditorKnobs[:0]
+		dv.instEditorControls = dv.instEditorControls[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
 		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
@@ -1071,7 +1077,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 
 	resolved := dv.resolveSynthInstrument(instID)
 	if resolved == "" {
-		dv.instEditorKnobs = dv.instEditorKnobs[:0]
+		dv.instEditorControls = dv.instEditorControls[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
 		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
@@ -1097,7 +1103,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 	// also blinked distractingly around controls the sample never uses). The
 	// header / footer / preview / section grid are all skipped.
 	if len(schema) == 0 {
-		dv.instEditorKnobs = dv.instEditorKnobs[:0]
+		dv.instEditorControls = dv.instEditorControls[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
 		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
@@ -1115,7 +1121,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 	deferred := false
 	// Defer any schema CHANGE while the value-wheel popup is open. The popup
 	// caches the knob pointer and edits it BY INDEX (see
-	// openSynthKnobWheelPopup): a schema swap mid-edit rebuilds the binding
+	// openSynthControlWheelPopup): a schema swap mid-edit rebuilds the binding
 	// slice, so the popup's index would bind a DIFFERENT param and the
 	// in-flight edit would scramble it (in WASM that silently drove foreign
 	// params like gain/osc_enabled, silencing the voice until reload). Hold the
@@ -1132,28 +1138,27 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 
 	pp := Profile()
 	mobile := pp.IsMobile()
-	headerH := Profile().SynthHeaderH
+	var headerH int
 	if mobile {
-		// Mobile lays the header out as two rows: a caption row on top and a
-		// fixed full-width action row (Preview/Save/Save As/Reset) below.
-		// Reserve enough height for both so the action buttons keep their
-		// touch-min height instead of being squeezed by adaptive shrink.
-		btnH := Profile().DensityValues().SynthHeaderButtonH
-		twoRow := 2*SpaceSM + TextHeight() + SpaceSM + btnH
-		if twoRow > headerH {
-			headerH = twoRow
-		}
-	}
-	// Adaptive shrink: when the panel is short, shrink the header so
-	// the section row keeps at least minSectionsH for the knobs. The
-	// Save / SaveAs / Reset buttons live inside the header now, so
-	// there's no separate footer band to reserve — sections own all
-	// vertical space below the header.
-	const minSectionsH = 60
-	if contentR.Dy() < headerH+minSectionsH {
-		headerH = contentR.Dy() - minSectionsH
-		if headerH < 0 {
-			headerH = 0
+		// Mobile: no in-panel banner or action row. Identity lives in the
+		// channel pill; the [Preview][Save][⋯] actions live on the always-
+		// present sticky bar (see MobileActionButtons + EQPanelZone trailing
+		// actions). Reserve zero header so the chip strip + knob grid own the
+		// full height.
+		headerH = 0
+	} else {
+		headerH = Profile().SynthHeaderH
+		// Adaptive shrink: when the panel is short, shrink the header so
+		// the section row keeps at least minSectionsH for the knobs. The
+		// Save / SaveAs / Reset buttons live inside the header on desktop, so
+		// there's no separate footer band to reserve — sections own all
+		// vertical space below the header.
+		const minSectionsH = 60
+		if contentR.Dy() < headerH+minSectionsH {
+			headerH = contentR.Dy() - minSectionsH
+			if headerH < 0 {
+				headerH = 0
+			}
 		}
 	}
 
@@ -1213,7 +1218,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 		dv.sdbg("[synthdrag] buildSynthTab REBUILDING knob slice (reuseExisting=false) — live edit state will be LOST; popupEditing=%v", dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen())
 	}
 	if !reuseExisting {
-		dv.instEditorKnobs = dv.instEditorKnobs[:0]
+		dv.instEditorControls = dv.instEditorControls[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
 		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
@@ -1273,23 +1278,23 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 			zeroFrac = (0 - def.Min) / (def.Max - def.Min)
 		}
 		sc, discrete, endless := scaleFromParamDef(def)
-		if reuseExisting && i < len(dv.instEditorKnobs) {
+		if reuseExisting && i < len(dv.instEditorControls) {
 			// Keep the existing knob/slider — preserve drag state,
 			// pressY latch, captured-handler pointer. Only refresh the
 			// Value when NO drag is in progress; mid-drag, the user's
 			// finger owns the value and we must not clobber it.
-			if !dv.instEditorKnobs[i].Capturing() {
-				dv.instEditorKnobs[i].Value = initial
+			if !dv.instEditorControls[i].Capturing() {
+				dv.instEditorControls[i].Value = initial
 				dv.instEditorSliders[i].Value = initial
 			}
-			dv.instEditorKnobs[i].Bipolar = bipolar
-			dv.instEditorKnobs[i].ZeroFrac = zeroFrac
-			dv.instEditorKnobs[i].Scale = sc
-			dv.instEditorKnobs[i].Discrete = discrete
-			dv.instEditorKnobs[i].Endless = endless
+			dv.instEditorControls[i].Bipolar = bipolar
+			dv.instEditorControls[i].ZeroFrac = zeroFrac
+			dv.instEditorControls[i].Scale = sc
+			dv.instEditorControls[i].Discrete = discrete
+			dv.instEditorControls[i].Endless = endless
 			// Refresh StepMul from the existing badge when present.
 			if endless && i < len(dv.instEditorStepBadges) && dv.instEditorStepBadges[i] != nil {
-				dv.instEditorKnobs[i].StepMul = dv.instEditorStepBadges[i].Step()
+				dv.instEditorControls[i].StepMul = dv.instEditorStepBadges[i].Step()
 			}
 			dv.instEditorBindings[i] = instParamBinding{def: def}
 			continue
@@ -1309,7 +1314,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
 			}
 			k.StepMul = badge.Step()
 		}
-		dv.instEditorKnobs = append(dv.instEditorKnobs, k)
+		dv.instEditorControls = append(dv.instEditorControls, k)
 		dv.instEditorStepBadges = append(dv.instEditorStepBadges, badge)
 		dv.instEditorSliders = append(dv.instEditorSliders, NewSlider(initial))
 	}
@@ -1380,6 +1385,16 @@ func bindingsMatchSchema(bindings []instParamBinding, schema []audio.ParamDef) b
 // had before the Save buttons were added.
 func (p *synthPanel) layoutSynthHeader(contentR image.Rectangle, headerH int, instID, recipeID string, mobile bool) {
 	dv := p.dv
+
+	if mobile {
+		// Mobile relocates the header actions to the sticky bar and drops the
+		// identity banner — nothing is laid out in-panel. An empty header makes
+		// buildSynthHeaderButtons skip every button and drawSynthHeader
+		// early-return (rect empty).
+		dv.instEditorHeader = synthHeaderLayout{}
+		dv.instEditorHeaderBtns = dv.instEditorHeaderBtns[:0]
+		return
+	}
 
 	r := image.Rect(contentR.Min.X, contentR.Min.Y, contentR.Max.X, contentR.Min.Y+headerH)
 	dv2 := Profile().DensityValues()
@@ -1482,6 +1497,54 @@ func (p *synthPanel) layoutSynthHeader(contentR image.Rectangle, headerH int, in
 		recipeID:     recipeID,
 	}
 	dv.instEditorHeaderBtns = dv.instEditorHeaderBtns[:0]
+}
+
+// ensureMobileActionButtons builds the persistent [Preview][Save][⋯] cluster
+// hosted on the sticky bar on mobile (Approach B). Built once; the buttons keep
+// their OnClick behavior for the panel's lifetime while the sticky bar owns
+// their per-frame layout.
+func (p *synthPanel) ensureMobileActionButtons() {
+	dv := p.dv
+	if p.mobilePreviewBtn == nil {
+		p.mobilePreviewBtn = NewSpecButton(synthActionLabel("preview"), ComponentButtonSecondary, func() {
+			dv.previewActiveSynth()
+		})
+	}
+	if p.mobileSaveBtn == nil {
+		p.mobileSaveBtn = NewSpecButton(synthActionLabel("save"), ComponentButtonSecondary, func() {
+			dv.SaveActiveRecipe()
+		})
+	}
+	if p.mobileOverflowBtn == nil {
+		p.mobileOverflowBtn = NewSpecButton("", ComponentButtonSecondary, func() {
+			dv.openSynthActionMenu(p.mobileOverflowBtn.Rect())
+		})
+		p.mobileOverflowBtn.Icon = string(IconOverflow)
+	}
+}
+
+// MobileActionButtons returns the Synth tab's trailing action cluster for the
+// sticky bar ([Preview][Save][⋯]), or nil off-mobile / when the active
+// instrument has no synth controls (a loaded-WAV instrument has nothing to
+// save). Refreshes localized labels and the Save dirty-spec each call.
+func (p *synthPanel) MobileActionButtons() []*Button {
+	dv := p.dv
+	if !Profile().IsMobile() {
+		return nil
+	}
+	resolved := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
+	if !instrumentHasSynthControls(resolved) {
+		return nil
+	}
+	p.ensureMobileActionButtons()
+	p.mobilePreviewBtn.Text = synthActionLabel("preview")
+	p.mobileSaveBtn.Text = synthActionLabel("save")
+	saveSpec := ComponentButtonSecondary
+	if dv.synthSaveDirty(resolved) {
+		saveSpec = ComponentButtonPrimary
+	}
+	p.mobileSaveBtn.SetSpec(saveSpec)
+	return []*Button{p.mobilePreviewBtn, p.mobileSaveBtn, p.mobileOverflowBtn}
 }
 
 // buildSynthHeaderButtons constructs the three *Button widgets that sit
@@ -1610,7 +1673,7 @@ func (p *synthPanel) layoutSynthSections(rowR image.Rectangle, sections []synthS
 		//
 		// Both bounds derive from the live density so they can't drift from the
 		// knob-row size the "knobs aren't cramped" guard
-		// (TestMobileSynthTab_KnobColumnHasUsableHeight) asserts:
+		// (TestMobileSynthTab_ControlColumnHasUsableHeight) asserts:
 		//   - minDetailH (hard floor): title row + ONE knob row — survives the
 		//     headerH shrink clamp at synthSectionTitleHeight below. A fixed 72 left
 		//     only ~56 px of body once the 10-stage pipeline (FILTER ENV) compacted
@@ -1620,7 +1683,7 @@ func (p *synthPanel) layoutSynthSections(rowR image.Rectangle, sections []synthS
 		//     alongside it (the taller 390×896 viewport). Capping the strip to leave
 		//     this much hands the surplus to the knob pane instead of letting the
 		//     strip greedily claim full-height rows.
-		knobRow := dv2.SynthKnobMin + dv2.SynthKnobCaptionH
+		knobRow := dv2.SynthControlMin + dv2.SynthControlCaptionH
 		minDetailH := synthSectionTitleHeight + knobRow + 2*synthSectionPaddingY
 		// Two-row reserve sits BELOW the FULL detail header (it only applies when the
 		// pane is tall, so headerH does not shrink), hence SynthDetailHeaderH — not
@@ -1718,7 +1781,7 @@ func (p *synthPanel) layoutSynthSections(rowR image.Rectangle, sections []synthS
 	// enough for header + one ideal knob row; otherwise shrink toward the
 	// bare title row so the knobs (the actual controls) keep their space.
 	headerH := dv2.SynthDetailHeaderH
-	if knobRowMin := dv2.SynthKnobMin + dv2.SynthKnobCaptionH + 2*synthSectionPaddingY; detailR.Dy() < headerH+knobRowMin {
+	if knobRowMin := dv2.SynthControlMin + dv2.SynthControlCaptionH + 2*synthSectionPaddingY; detailR.Dy() < headerH+knobRowMin {
 		headerH = detailR.Dy() - knobRowMin
 		if headerH < synthSectionTitleHeight {
 			headerH = synthSectionTitleHeight
@@ -1804,7 +1867,7 @@ func (p *synthPanel) sectionGrid(id synthSectionID) *ControlGrid {
 	}
 	g := dv.instEditorSectionGrids[id]
 	if g == nil {
-		g = NewControlGrid(ScrollbarStyleForPlatform())
+		g = NewControlGrid(controlGridScrollbarStyle())
 		dv.instEditorSectionGrids[id] = g
 	}
 	return g
@@ -1858,10 +1921,10 @@ func (p *synthPanel) synthTabUpdate() bool {
 // overflow. Off-window knobs get an empty rect so they are neither drawn nor
 // hit-tested (drawSynthSectionCard and synthTabHitAreas both skip empty rects).
 // Each knob is centred (horizontally) inside its grid cell at the largest
-// diameter that fits the cell, clamped to [SynthKnobMin, SynthKnobIdeal]. The
+// diameter that fits the cell, clamped to [SynthControlMin, SynthControlIdeal]. The
 // slider's rect mirrors the knob's so legacy hit-tests + JS export rects keep
 // landing on the visible widget.
-// synthKnobCellHeight is the per-knob grid cell height: dial + caption + gap.
+// synthControlCellHeight is the per-knob grid cell height: dial + caption + gap.
 // The old per-knob concept-viz band is gone (the focus graph explains the
 // selected knob in the right pane), so the cell no longer reserves SynthConceptVizH.
 // synthMaxGridCols caps how many card columns the synth detail grid flows. It is
@@ -1870,7 +1933,7 @@ func (p *synthPanel) synthTabUpdate() bool {
 // and gives the two-pass divider layout a stable upper bound for its cols probe.
 const synthMaxGridCols = 12
 
-func synthKnobCellHeight() int {
+func synthControlCellHeight() int {
 	// Card-cell layout (Task 3): each grid cell is a full ParamCard slot.
 	return Profile().DensityValues().ParamCardH
 }
@@ -1902,10 +1965,10 @@ func (p *synthPanel) placeKnobsInSection(s synthSection, mobile bool) {
 	if len(s.knobIdxs) == 0 || s.rect.Empty() {
 		grid.Layout(image.Rectangle{}, 0, 1, 1, 0, 0)
 		for _, kIdx := range s.knobIdxs {
-			if kIdx < 0 || kIdx >= len(dv.instEditorKnobs) {
+			if kIdx < 0 || kIdx >= len(dv.instEditorControls) {
 				continue
 			}
-			dv.instEditorKnobs[kIdx].SetRect(image.Rectangle{})
+			dv.instEditorControls[kIdx].SetRect(image.Rectangle{})
 			dv.instEditorSliders[kIdx].SetRect(image.Rectangle{})
 		}
 		return
@@ -1938,15 +2001,15 @@ func (p *synthPanel) placeKnobsInSection(s synthSection, mobile bool) {
 	// drawSynthDetailPane). The resolution badge is laid out INLINE on the
 	// caption row, so it needs no extra vertical space; the viz band is the
 	// only growth over the original sizing. The dial diameter is still capped
-	// to SynthKnobIdeal and placed at the TOP of the slot, so the taller cell
+	// to SynthControlIdeal and placed at the TOP of the slot, so the taller cell
 	// does NOT enlarge the dial or change its hit geometry — it just frees the
 	// lower slot for the viz band, leaving left/right knob drag unaffected.
 	// Shrinks to the card when even one ideal row won't fit.
 	// The plain-English purpose gloss ("bright or dull", …) is drawn on the
-	// caption ROW beside the value (see drawSynthDetailPane / synthKnobPurpose) —
+	// caption ROW beside the value (see drawSynthDetailPane / synthControlPurpose) —
 	// the fewer-per-row cap makes cells wide enough for both — so it costs no
 	// vertical space here; the cell only reserves dial + caption + concept band.
-	cellH := synthKnobCellHeight()
+	cellH := synthControlCellHeight()
 	if availH := innerR.Dy(); cellH > availH {
 		cellH = availH
 	}
@@ -2020,14 +2083,14 @@ func (p *synthPanel) placeKnobsInSection(s synthSection, mobile bool) {
 		}
 		slot, vis := grid.CellRect(i)
 		if !vis {
-			dv.instEditorKnobs[kIdx].SetRect(image.Rectangle{})
+			dv.instEditorControls[kIdx].SetRect(image.Rectangle{})
 			dv.instEditorSliders[kIdx].SetRect(image.Rectangle{})
 			continue
 		}
 		// The card fills the whole grid cell. Task 4 swaps the dial DRAW for the
 		// ParamCard renderer against this same rect; the slider mirrors the knob
 		// rect so legacy hit-tests + JS export rects keep landing on the widget.
-		dv.instEditorKnobs[kIdx].SetRect(slot)
+		dv.instEditorControls[kIdx].SetRect(slot)
 		dv.instEditorSliders[kIdx].SetRect(slot)
 	}
 }
@@ -2115,10 +2178,10 @@ func (p *synthPanel) synthDecayValueForPreview() float64 {
 	dv := p.dv
 
 	for i, b := range dv.instEditorBindings {
-		if b.def.Name != "decay" || i >= len(dv.instEditorKnobs) {
+		if b.def.Name != "decay" || i >= len(dv.instEditorControls) {
 			continue
 		}
-		k := dv.instEditorKnobs[i]
+		k := dv.instEditorControls[i]
 		if k == nil {
 			continue
 		}
@@ -2681,17 +2744,17 @@ func (p *synthPanel) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 	// Selected) and its gauge carries what the step badge used to show.
 	p.sprites.beginCardFrame()
 	for _, kIdx := range sel.knobIdxs {
-		if kIdx < 0 || kIdx >= len(dv.instEditorKnobs) {
+		if kIdx < 0 || kIdx >= len(dv.instEditorControls) {
 			continue
 		}
-		k := dv.instEditorKnobs[kIdx]
+		k := dv.instEditorControls[kIdx]
 		r := k.Rect()
 		if r.Empty() {
 			continue // scrolled out of the detail pane's visible window
 		}
 		b := dv.instEditorBindings[kIdx]
 		st := paramCardState{
-			Selected: dv.synthSelectedKnobIdx(instID, sel) == kIdx,
+			Selected: dv.synthSelectedControlIdx(instID, sel) == kIdx,
 			Dim:      !stageEnabled,
 		}
 		name := synthParamDisplayName(b.def.Name)
@@ -2707,8 +2770,12 @@ func (p *synthPanel) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 		})
 	}
 	p.sprites.endCardFrame()
-	// Scrollbar when the stage's knobs overflow the pane.
-	dv.sectionGrid(sel.id).Draw(dst)
+	// Scrollbar + edge fades when the stage's knobs overflow the pane. The bottom
+	// fade dissolves the last row into the reserved peek band — the "more below"
+	// affordance; the top fade appears once scrolled down.
+	stageGrid := dv.sectionGrid(sel.id)
+	stageGrid.Draw(dst)
+	drawControlGridEdgeFades(dst, stageGrid, TokenSurface1())
 	p.drawSynthAdvDivider(dst)
 	if sel.enableParam != "" && !stageEnabled {
 		scrim := image.Rect(detail.Min.X+1, detail.Min.Y+headerH, detail.Max.X-1, detail.Max.Y-1)
@@ -2859,7 +2926,7 @@ func synthActionLabel(action string) string {
 	return ""
 }
 
-// synthKnobCaption formats one knob's caption as "name  value[ unit]"
+// synthControlCaption formats one knob's caption as "name  value[ unit]"
 // with a unit-aware suffix for the params whose C transform has a known
 // unit (st for semitones, % for normalised 0..1, ×N for multipliers).
 // enumLabelFor returns the label for a discrete (Enum) ParamDef at the given
@@ -2878,7 +2945,7 @@ func enumLabelFor(def audio.ParamDef, value float64) string {
 	return localizeEnumLabel(def.Enum[idx])
 }
 
-func synthKnobCaption(def audio.ParamDef, value float64) string {
+func synthControlCaption(def audio.ParamDef, value float64) string {
 	// Discrete (Enum) params show only the selected label — the name lives in
 	// the stage title; the waveform/algorithm name IS the value.
 	if lbl := enumLabelFor(def, value); lbl != "" {
@@ -2887,36 +2954,36 @@ func synthKnobCaption(def audio.ParamDef, value float64) string {
 	return synthParamDisplayName(def.Name) + "  " + formatSynthParamValue(def, value)
 }
 
-// synthKnobPurpose returns the one-line, kid-readable gloss for a knob ("bright
+// synthControlPurpose returns the one-line, kid-readable gloss for a knob ("bright
 // or dull", "slight pitch shift", …) drawn under its caption. It prefers the
 // param's display Label, falling back to its raw Name, and returns "" when
 // neither maps (caller skips the line). Same PlainEnglish source the section
 // subtitles use, applied per knob.
-func synthKnobPurpose(def audio.ParamDef) string {
+func synthControlPurpose(def audio.ParamDef) string {
 	if p := PlainEnglish(def.Label); p != "" {
 		return p
 	}
 	return PlainEnglish(def.Name)
 }
 
-// synthKnobCaptionValueOnly returns just the value portion of the
+// synthControlCaptionValueOnly returns just the value portion of the
 // knob caption — the section title carries the parameter name, so on
 // narrow mobile-grid cells where the full caption truncates with
 // ellipsis we strip the name prefix and keep the value legible.
 // Mobile-usability pass.
-func synthKnobCaptionValueOnly(def audio.ParamDef, value float64) string {
+func synthControlCaptionValueOnly(def audio.ParamDef, value float64) string {
 	if lbl := enumLabelFor(def, value); lbl != "" {
 		return lbl
 	}
 	return formatSynthParamValue(def, value)
 }
 
-// synthKnobMobileCaption is the caption band under a mobile knob's value
+// synthControlMobileCaption is the caption band under a mobile knob's value
 // pill: the parameter NAME only. The pill above already renders the value
 // (knobPillLabel), so a name+value — or, for enum knobs, value-only —
 // caption duplicated the pill's text ("Base"/"Base" — A9, 2026-07-04
 // critique).
-func synthKnobMobileCaption(def audio.ParamDef) string {
+func synthControlMobileCaption(def audio.ParamDef) string {
 	return synthParamDisplayName(def.Name)
 }
 
@@ -2967,7 +3034,7 @@ func (p *synthPanel) handleSynthTabInput(x, y int, pressed bool, instID string) 
 	}
 	// NOTE: this is a legacy DIRECT input path retained for tests + JS bridge
 	// fallbacks; the production synth-tab value interaction is the tree-routed
-	// ParamCard tap (synthKnobHitAdapter.OnPress → value-wheel popup). There is
+	// ParamCard tap (synthControlHitAdapter.OnPress → value-wheel popup). There is
 	// no in-place rotary drag here anymore — the knob is a headless model.
 	//
 	// Selected stage's enable pill (detail-pane header). Hit-test before the
@@ -3022,18 +3089,18 @@ func (p *synthPanel) handleSynthTabInput(x, y int, pressed bool, instID string) 
 func (p *synthPanel) syncSliderFromKnob(idx int) {
 	dv := p.dv
 
-	if idx < 0 || idx >= len(dv.instEditorKnobs) || idx >= len(dv.instEditorSliders) {
+	if idx < 0 || idx >= len(dv.instEditorControls) || idx >= len(dv.instEditorSliders) {
 		return
 	}
-	dv.instEditorSliders[idx].Value = dv.instEditorKnobs[idx].Value
+	dv.instEditorSliders[idx].Value = dv.instEditorControls[idx].Value
 }
 
 // ---- Readout-rect helpers + numeric editor ------------------------------
 
-// synthKnobReadoutRect returns the caption hit-rect for the given knob index.
+// synthControlReadoutRect returns the caption hit-rect for the given knob index.
 // Returns the zero rectangle when the index is out of range or the rect has
 // not been populated yet (no Draw pass has occurred).
-func (p *synthPanel) synthKnobReadoutRect(idx int) image.Rectangle {
+func (p *synthPanel) synthControlReadoutRect(idx int) image.Rectangle {
 	dv := p.dv
 
 	if idx < 0 || idx >= len(dv.instEditorReadoutRects) {
@@ -3061,27 +3128,27 @@ func (p *synthPanel) setKnobReadoutRect(idx int, r image.Rectangle) {
 func (p *synthPanel) openSynthParamEditor(idx int, instID string) {
 	dv := p.dv
 
-	if idx < 0 || idx >= len(dv.instEditorBindings) || idx >= len(dv.instEditorKnobs) {
+	if idx < 0 || idx >= len(dv.instEditorBindings) || idx >= len(dv.instEditorControls) {
 		return
 	}
 	if dv.paramEditor == nil {
 		dv.paramEditor = NewParamValueEditor()
 	}
 	def := dv.instEditorBindings[idx].def
-	anchor := dv.synthKnobReadoutRect(idx)
+	anchor := dv.synthControlReadoutRect(idx)
 	dv.paramEditor.OpenValue(ValueOpen{
 		Spec:          paramSpec(def),
 		Anchor:        anchor,
 		MobileInputID: "synth-param",
 		Get: func() float64 {
-			return def.Min + dv.instEditorKnobs[idx].Value*(def.Max-def.Min)
+			return def.Min + dv.instEditorControls[idx].Value*(def.Max-def.Min)
 		},
 		Set: func(v float64) {
 			span := def.Max - def.Min
 			if span <= 0 {
 				span = 1
 			}
-			dv.instEditorKnobs[idx].Value = (v - def.Min) / span
+			dv.instEditorControls[idx].Value = (v - def.Min) / span
 			dv.syncSliderFromKnob(idx)
 			dv.propagateSynthSliderValue(idx, instID)
 			dv.requestSynthMirror(instID) // one-shot typed commit → refresh preview
@@ -3251,7 +3318,7 @@ func (p *synthPanel) synthTabHitAreas() []HitArea {
 	scrollBodyZ := ZEQPanel + 1
 	z := ZEQPanel + 2
 	// Capacity sized for the VISIBLE knob set (one expanded stage), not the
-	// full schema: instEditorKnobs holds a slot per wired ParamDef (~1030 for
+	// full schema: instEditorControls holds a slot per wired ParamDef (~1030 for
 	// a modular recipe, almost all with empty rects), and reserving that many
 	// HitAreas allocated ~100 KB per frame — a large slice of the Synth-tab
 	// GC churn (see synth_live_param_edit_alloc_test.go). append grows the
@@ -3319,7 +3386,7 @@ func (p *synthPanel) synthTabHitAreas() []HitArea {
 		}
 		return clip
 	}
-	for i, k := range dv.instEditorKnobs {
+	for i, k := range dv.instEditorControls {
 		if k == nil {
 			continue
 		}
@@ -3331,8 +3398,8 @@ func (p *synthPanel) synthTabHitAreas() []HitArea {
 		out = append(out, HitArea{
 			Rect:     r,
 			ZIndex:   z,
-			Handler:  &synthKnobHitAdapter{dv: dv, idx: i, instID: instID},
-			Tag:      fmt.Sprintf("synth-knob-%d", i),
+			Handler:  &synthControlHitAdapter{dv: dv, idx: i, instID: instID},
+			Tag:      fmt.Sprintf("synth-control-%d", i),
 			Touch:    true,
 			ClipRect: clip,
 		})
@@ -3341,7 +3408,7 @@ func (p *synthPanel) synthTabHitAreas() []HitArea {
 		out = append(out, HitArea{
 			Rect:     r,
 			ZIndex:   z,
-			Handler:  &synthKnobHitAdapter{dv: dv, idx: i, instID: instID},
+			Handler:  &synthControlHitAdapter{dv: dv, idx: i, instID: instID},
 			Tag:      fmt.Sprintf("synth-slider-%d", i),
 			Touch:    true,
 			ClipRect: clip,
@@ -3359,7 +3426,7 @@ func (p *synthPanel) synthTabHitAreas() []HitArea {
 				out = append(out, HitArea{
 					Rect:     b.Rect(),
 					ZIndex:   z + 1, // above readout so badge wins over readout on overlap
-					Handler:  &synthKnobHitAdapter{dv: dv, idx: i, instID: instID},
+					Handler:  &synthControlHitAdapter{dv: dv, idx: i, instID: instID},
 					Tag:      fmt.Sprintf("synth-badge-%d", i),
 					Touch:    true,
 					ClipRect: clipFor(b.Rect()),
@@ -3529,69 +3596,95 @@ func (h *synthChipHitAdapter) OnDrag(x, y int)                     {}
 func (h *synthChipHitAdapter) OnRelease(x, y int)                  {}
 func (h *synthChipHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// synthKnobHitAdapter is the per-card hit handler: a tap/click opens the
+// synthControlHitAdapter is the per-card hit handler: a tap/click opens the
 // value-wheel popup (all platforms) and the mouse wheel nudges the value in
 // place. The adapter does NOT cache the *Knob pointer — buildSynthTab can
-// rebuild instEditorKnobs at any time (analyzer state changes, channel
+// rebuild instEditorControls at any time (analyzer state changes, channel
 // switches, …), which would leave a cached pointer dangling against a
 // now-orphan widget. Looking up by index every call stays correct across
-// re-layouts; each wheel notch reads instEditorKnobs[idx] and
+// re-layouts; each wheel notch reads instEditorControls[idx] and
 // instEditorBindings[idx] fresh and mutually consistent. (The old rotary
 // drag path — and the capture-by-index hazards it carried — was removed in
 // the ParamCard conversion; the popup is now the only by-index editing
 // surface, guarded by synthWheelPopup.IsOpen() at the schema-swap deferral.)
-type synthKnobHitAdapter struct {
+type synthControlHitAdapter struct {
 	dv     *DrumView
 	idx    int
 	instID string
+	arb    dragScrollArbiter // tap-vs-scroll gate for the current gesture
 }
 
-func (h *synthKnobHitAdapter) currentKnob() *Knob {
-	if h.dv == nil || h.idx < 0 || h.idx >= len(h.dv.instEditorKnobs) {
+// ownerGrid returns the ControlGrid of the currently expanded stage — the grid
+// that hosts this control and that a vertical sweep starting on it scrolls.
+func (h *synthControlHitAdapter) ownerGrid() *ControlGrid {
+	if h.dv == nil {
 		return nil
 	}
-	return h.dv.instEditorKnobs[h.idx]
+	if sel := h.dv.synthSelectedSection(); sel != nil {
+		return h.dv.sectionGrid(sel.id)
+	}
+	return nil
+}
+
+func (h *synthControlHitAdapter) currentKnob() *Knob {
+	if h.dv == nil || h.idx < 0 || h.idx >= len(h.dv.instEditorControls) {
+		return nil
+	}
+	return h.dv.instEditorControls[h.idx]
 }
 
 // glowRect implements glowTarget: hovering a param card lifts it through the
 // shared tree hover overlay like every other clickable. The whole card is the
 // hover target (a tap anywhere on it opens the value-wheel popup).
-func (h *synthKnobHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) image.Rectangle {
+func (h *synthControlHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) image.Rectangle {
 	return hitRect
 }
 
-func (h *synthKnobHitAdapter) invalidatePanel() {
+func (h *synthControlHitAdapter) invalidatePanel() {
 	if h.dv != nil && h.dv.eqPanelZone != nil {
 		h.dv.eqPanelZone.Invalidate()
 	}
 }
 
-func (h *synthKnobHitAdapter) OnPress(x, y int) InputResult {
+func (h *synthControlHitAdapter) OnPress(x, y int) InputResult {
 	// Numeric editor open: swallow the tap so nothing starts beneath it.
 	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
 		return InputConsumed
 	}
-	// Universal tap-to-popup (all platforms): a tap anywhere on the card selects
-	// the knob (focus graph) and opens the value-wheel popup, which owns value +
-	// resolution + numeric entry. (The old desktop in-place rotary drag +
-	// step-badge tap are retired; resolution moves to the popup ladder.) The
-	// opener flushes any pending wheel-nudge commit before snapshotting the
-	// popup's initial value, so no flush is needed here.
-	h.dv.setSynthSelectedKnob(h.instID, h.idx)
-	h.dv.openSynthKnobWheelPopup(h.idx, h.instID)
-	return InputConsumed
+	// Capture the gesture and begin tap-vs-scroll arbitration: a vertical sweep
+	// starting on this control scrolls its stage's ControlGrid, while a stationary
+	// tap opens the value-wheel popup on RELEASE. Capturing (not consuming) is what
+	// lets the sweep become a scroll instead of opening the popup on the down frame
+	// — the whole point of the mobile "swipe up/down" fix. Desktop wheel-over-control
+	// stays value-only (OnWheel), so rows are scrolled from the widened scrollbar.
+	h.arb.begin(y, h.ownerGrid())
+	return InputCaptured
 }
 
-// OnDrag / OnRelease are no-ops: the card no longer drives an in-place drag; the
-// press opened the value-wheel popup, which owns the drag interaction.
-func (h *synthKnobHitAdapter) OnDrag(x, y int)    {}
-func (h *synthKnobHitAdapter) OnRelease(x, y int) {}
+// OnDrag advances the stage grid while the finger sweeps; once travel crosses the
+// tap slop the gesture is a scroll and the release will NOT open the popup.
+func (h *synthControlHitAdapter) OnDrag(x, y int) {
+	if h.arb.drag(y) {
+		h.invalidatePanel()
+	}
+}
+
+// OnRelease opens the value-wheel popup only when the gesture stayed a tap (never
+// crossed the slop). A committed scroll opens nothing. Selecting the control
+// (focus graph) also happens here so a scroll leaves no stray selection.
+func (h *synthControlHitAdapter) OnRelease(x, y int) {
+	if !h.arb.end() {
+		return
+	}
+	h.dv.setSynthSelectedControl(h.instID, h.idx)
+	h.dv.openSynthControlWheelPopup(h.idx, h.instID)
+}
 
 // OnWheel nudges the value by one StepMul (endless) / one detent (discrete) per
 // notch, holding Shift for one-rung-finer. The whole spin collapses into ONE
 // debounced undo step (see wheelNudger). Section scrolling stays on grid
 // whitespace (synthSectionScrollAdapter), so the knob's wheel is value-only.
-func (h *synthKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
+func (h *synthControlHitAdapter) OnWheel(x, y, steps int) InputResult {
 	// Numeric editor open: swallow the notch so a wheel spin can't mutate the
 	// param (and arm a second commit) beneath the inline editor — mirrors OnPress.
 	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
@@ -3609,7 +3702,7 @@ func (h *synthKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
 	if !nudgeKnobByWheel(k, badge, steps, fine) {
 		return InputIgnored
 	}
-	h.dv.setSynthSelectedKnob(h.instID, h.idx)
+	h.dv.setSynthSelectedControl(h.instID, h.idx)
 	h.dv.syncSliderFromKnob(h.idx)
 	h.dv.propagateSynthSliderValue(h.idx, h.instID)
 	instID := h.instID
@@ -3629,7 +3722,7 @@ func (h *synthKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
 // naturally (content follows the finger — ControlGrid.BeginContentDrag) while
 // the thumb grab is direct (the thumb follows the finger — BeginDrag). A scroll
 // change calls Invalidate so the next Layout re-derives the knob rects for the
-// new window. Created fresh per Layout (like synthKnobHitAdapter) so it never
+// new window. Created fresh per Layout (like synthControlHitAdapter) so it never
 // caches a stale grid pointer.
 type synthSectionScrollAdapter struct {
 	dv   *DrumView
@@ -3703,7 +3796,7 @@ func (h *synthSectionScrollAdapter) OnWheel(x, y, steps int) InputResult {
 // synthSliderHitAdapter is the legacy name kept so any external callers
 // (or older tests) that reference the symbol continue to compile. It
 // wraps the new knob adapter so behaviour is identical.
-type synthSliderHitAdapter = synthKnobHitAdapter
+type synthSliderHitAdapter = synthControlHitAdapter
 
 // synthSaveAsDialog hit adapters. The dialog itself is just a *Button
 // pair + TextInput; these adapters wire the button presses into the
@@ -3751,10 +3844,10 @@ func (p *synthPanel) SynthTabSliders() []*Slider {
 	return dv.instEditorSliders
 }
 
-// SynthTabKnobs exposes the visible Knob widgets for tests.
-func (p *synthPanel) SynthTabKnobs() []*Knob {
+// SynthTabControls exposes the visible Knob widgets for tests.
+func (p *synthPanel) SynthTabControls() []*Knob {
 	dv := p.dv
-	return dv.instEditorKnobs
+	return dv.instEditorControls
 }
 
 // SynthTabBindings exposes the widget→param map for tests.
@@ -4003,8 +4096,8 @@ func (dv *DrumView) syncSliderFromKnob(idx int) {
 	dv.synp().syncSliderFromKnob(idx)
 }
 
-func (dv *DrumView) synthKnobReadoutRect(idx int) image.Rectangle {
-	return dv.synp().synthKnobReadoutRect(idx)
+func (dv *DrumView) synthControlReadoutRect(idx int) image.Rectangle {
+	return dv.synp().synthControlReadoutRect(idx)
 }
 
 func (dv *DrumView) setKnobReadoutRect(idx int, r image.Rectangle) {
@@ -4043,8 +4136,8 @@ func (dv *DrumView) SynthTabSliders() []*Slider {
 	return dv.synp().SynthTabSliders()
 }
 
-func (dv *DrumView) SynthTabKnobs() []*Knob {
-	return dv.synp().SynthTabKnobs()
+func (dv *DrumView) SynthTabControls() []*Knob {
+	return dv.synp().SynthTabControls()
 }
 
 func (dv *DrumView) SynthTabBindings() []instParamBinding {

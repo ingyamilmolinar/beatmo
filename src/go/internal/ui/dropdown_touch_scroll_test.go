@@ -284,9 +284,8 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: "kick"})
 	dv.calcLayout()
 
-	// Need overflow button to be non-nil for popup rect calculation.
-	dv.transportZone.overflowBtn = NewButton("...", PopupButtonStyle, nil)
-	dv.overflowBtn().SetRect(image.Rect(10, 10, 60, 50))
+	// File menu (default mode): anchored via fileMenuAnchorRect (folder button
+	// fallback = drum-pane top-right when no Game).
 	dv.openOverflowMenuPortal()
 
 	popupRect := dv.overflowPopupRect()
@@ -294,9 +293,10 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 		t.Fatal("overflow popup rect is empty")
 	}
 	cx := popupRect.Min.X + 10
-	// "File" header occupies the first touchMinTargetPx row; "Upload" is the
-	// next row. Tap mid-way through the Upload row to fire its action.
-	cy := popupRect.Min.Y + touchMinTargetPx + 10
+	// File mode reserves no NAVIGATION band. Row 0 is the "File" header; the
+	// scrolling file-action rows follow. Tap a couple rows down to land on a
+	// file action (which closes the menu).
+	cy := popupRect.Min.Y + 2*touchMinTargetPx + 10
 
 	// Touch down — should not fire immediately.
 	consumed := dv.handleOverflowMenuInput(cx, cy, true)

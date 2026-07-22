@@ -47,11 +47,11 @@ func TestDesignMDContrast(t *testing.T) {
 	exceptions := loadContrastExceptions(t)
 
 	type pair struct {
-		component  string
-		bg, text   string
-		bgHex      string
-		textHex    string
-		ratio      float64
+		component string
+		bg, text  string
+		bgHex     string
+		textHex   string
+		ratio     float64
 	}
 	var checked []pair
 	var below []pair

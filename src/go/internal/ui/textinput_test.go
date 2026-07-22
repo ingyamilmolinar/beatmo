@@ -403,3 +403,71 @@ func TestTextInputRightArrowMovesCursor(t *testing.T) {
 		t.Fatalf("after Right cursor=%d want 1", ti.cursor)
 	}
 }
+
+// driveKey runs one Update frame with the given single key held down.
+func driveKey(ti *TextInput, key ebiten.Key) {
+	restore := SetInputForTest(
+		func() (int, int) { return -1, -1 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == key },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+	ti.Update()
+}
+
+// TestTextInputHomeEnd covers Home (jump to start) and End (jump to end).
+func TestTextInputHomeEnd(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 200, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("hello") // cursor at end (5)
+	if ti.cursor != 5 {
+		t.Fatalf("setup cursor=%d want 5", ti.cursor)
+	}
+	driveKey(ti, ebiten.KeyHome)
+	if ti.cursor != 0 {
+		t.Fatalf("after Home cursor=%d want 0", ti.cursor)
+	}
+	driveKey(ti, ebiten.KeyEnd)
+	if ti.cursor != 5 {
+		t.Fatalf("after End cursor=%d want 5", ti.cursor)
+	}
+}
+
+// TestTextInputForwardDelete covers the Delete key (removes the rune AT the
+// caret; the caret does not move).
+func TestTextInputForwardDelete(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 200, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("hello")
+	driveKey(ti, ebiten.KeyHome)
+	driveKey(ti, ebiten.KeyDelete)
+	if ti.Text != "ello" || ti.cursor != 0 {
+		t.Fatalf("after Home+Delete text=%q cursor=%d want %q/0", ti.Text, ti.cursor, "ello")
+	}
+	// Delete at end is a no-op.
+	driveKey(ti, ebiten.KeyEnd)
+	driveKey(ti, ebiten.KeyDelete)
+	if ti.Text != "ello" {
+		t.Fatalf("Delete at end must be a no-op, got %q", ti.Text)
+	}
+}
+
+// TestTextInputHardCapDefends verifies the widget refuses to grow past an
+// absolute defensive rune cap even when MaxLen is unset (0). Malicious/pathological
+// paste must not grow the buffer without bound.
+func TestTextInputHardCapDefends(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.MaxLen = 0 // explicitly uncapped
+	huge := strings.Repeat("a", textInputHardMaxRunes+500)
+	ti.SetText(huge)
+	if got := utf8.RuneCountInString(ti.Text); got > textInputHardMaxRunes {
+		t.Fatalf("SetText allowed %d runes, hard cap is %d", got, textInputHardMaxRunes)
+	}
+}

@@ -169,6 +169,9 @@ func TestGridDragHitAdapter_OnWheel_NotConsumed(t *testing.T) {
 
 // --- Timeline scrub hit adapter tests ---
 
+// Task 6: the ribbon is drag-only — press only arms scrubbing. It must NOT
+// dispatch a seek; that only happens on OnRelease when the gesture moved to
+// a different beat than the press.
 func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 	scrubCalled := false
 	z, _ := newTestTimelineZone()
@@ -184,8 +187,8 @@ func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 	if !z.IsScrubbing() {
 		t.Error("expected IsScrubbing() true after OnPress")
 	}
-	if !scrubCalled {
-		t.Error("expected OnSeekToStep callback on press")
+	if scrubCalled {
+		t.Error("expected NO OnSeekToStep callback on press (drag-only ribbon, Task 6)")
 	}
 }
 
@@ -999,14 +1002,25 @@ func TestTimelineZone_HandleCharsIgnored(t *testing.T) {
 
 // --- SetTimelineBarHeight ---
 
+// Task 6: the ribbon is now clamped to timelineBarHMax so it reads as a
+// slim progress strip — SetTimelineBarHeight no longer echoes back
+// arbitrarily large requested heights verbatim.
 func TestTimelineZone_SetTimelineBarHeight(t *testing.T) {
 	z, _ := newTestTimelineZone()
 	z.SetTimelineBarHeight(20)
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	barRect := z.TimelineBarRect()
-	if barRect.Dy() != 20 {
-		t.Errorf("expected timeline bar height=20, got %d", barRect.Dy())
+	if barRect.Dy() != timelineBarHMax {
+		t.Errorf("expected timeline bar height clamped to %d, got %d", timelineBarHMax, barRect.Dy())
+	}
+
+	// A request within the cap is honored verbatim.
+	z2, _ := newTestTimelineZone()
+	z2.SetTimelineBarHeight(timelineBarHMax - 2)
+	z2.Layout(image.Rect(0, 0, 400, 300))
+	if got := z2.TimelineBarRect().Dy(); got != timelineBarHMax-2 {
+		t.Errorf("expected timeline bar height=%d (under the cap), got %d", timelineBarHMax-2, got)
 	}
 }
 
@@ -1020,6 +1034,8 @@ func TestTimelineZone_SetTimelineBarHeight(t *testing.T) {
 // pattern window". Was TestTimelineScrubHitAdapter_ScrubTo_Clamp,
 // asserting the old scrubTo's pattern-aware max-offset clamp; now asserts
 // OnPress (via ribbonStepAt) clamps to [0, TimelineBeats*unitsPerBeat].
+// Task 6: press no longer seeks, so clamping is now exercised via
+// press-then-drag-then-release (a real drag) instead of press alone.
 func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 	var scrubbed int
 	z, _ := newTestTimelineZone()
@@ -1031,19 +1047,25 @@ func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 
 	adapter := &timelineScrubHitAdapter{zone: z}
 
-	// Press far left of the bar — should clamp to beat 0 (step 0).
-	adapter.OnPress(-100, 5)
+	// Press near the middle, drag far left of the bar — should clamp to
+	// beat 0 (step 0) on release.
+	adapter.OnPress(200, 5)
+	adapter.OnDrag(-100, 5)
+	adapter.OnRelease(-100, 5)
 	if scrubbed != 0 {
-		t.Errorf("expected clamp to step 0 for far-left press, got %d", scrubbed)
+		t.Errorf("expected clamp to step 0 for far-left drag, got %d", scrubbed)
 	}
 
-	// Press far right of the bar — should clamp to the last whole beat
-	// (16 beats * 4 units/beat = step 64), NOT the old length-aware max.
-	z.scrubbing = false
-	adapter.OnPress(9999, 5)
+	// Press near the middle, drag far right of the bar — should clamp to
+	// the last whole beat (16 beats * 4 units/beat = step 64), NOT the old
+	// length-aware max.
+	scrubbed = -1
+	adapter.OnPress(200, 5)
+	adapter.OnDrag(9999, 5)
+	adapter.OnRelease(9999, 5)
 	const maxSteps = 16 * 4
 	if scrubbed != maxSteps {
-		t.Errorf("expected clamp to step %d for far-right press, got %d", maxSteps, scrubbed)
+		t.Errorf("expected clamp to step %d for far-right drag, got %d", maxSteps, scrubbed)
 	}
 }
 
@@ -1121,9 +1143,9 @@ func TestTimelineZone_DrawHighlights_WithRowOffset(t *testing.T) {
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	z.highlightsByRow = [][]highlightEntry{
-		{{idx: 0, val: 100}},  // Row 0 — not visible (before rowOffset).
-		{{idx: 2, val: 100}},  // Row 1 — visible.
-		{{idx: 4, val: 100}},  // Row 2 — visible.
+		{{idx: 0, val: 100}}, // Row 0 — not visible (before rowOffset).
+		{{idx: 2, val: 100}}, // Row 1 — visible.
+		{{idx: 4, val: 100}}, // Row 2 — visible.
 	}
 
 	dst := ebiten.NewImage(400, 300)

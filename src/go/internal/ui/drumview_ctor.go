@@ -46,6 +46,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		labelWidthDirty:      true, // Force initial label width calculation
 		uploadCh:             make(chan uploadResult, 1),
 		importCh:             make(chan importResult, 1),
+		instImportCh:         make(chan importResult, 1),
 		timelineUnitsPerBeat: 1,
 		timelineBeats:        8,
 		jumpBeats:            4, // default FF/RW jump size in whole beats
@@ -215,6 +216,46 @@ func (dv *DrumView) initOverlayComponents() {
 	dv.renameComp = NewRenameComponent()
 	dv.colorWheelComp = NewColorWheelComponent()
 	dv.instMenuComp = NewInstrumentMenuComponent()
+
+	// NAVIGATION section of the overflow menu: embedded panel + real seek
+	// wiring. jumpUnitBeats defaults true, preserving the legacy FF/RW
+	// beat-only jump behavior until the user flips the unit toggle.
+	dv.jumpUnitBeats = true
+	dv.navPanel = &NavigationPanel{}
+	dv.navPanel.SetCallbacks(NavPanelCallbacks{
+		PlayheadStep: func() int {
+			if dv.game != nil {
+				return dv.game.playheadAbsSubdiv()
+			}
+			return 0
+		},
+		BPM:           func() int { return dv.BPM() },
+		Div:           func() int { return dv.timelineUnitsPerBeat },
+		TimelineBeats: func() int { return dv.timelineBeats },
+		JumpAmount:    func() int { return dv.jumpBeats },
+		JumpUnitBeats: func() bool { return dv.jumpUnitBeats },
+		OnPrev: func() {
+			if dv.jumpUnitBeats {
+				dv.RequestSeekDeltaBeats(-dv.jumpBeats, seekOriginCounter)
+			} else {
+				dv.RequestSeekDeltaSteps(-dv.jumpBeats, seekOriginCounter)
+			}
+		},
+		OnNext: func() {
+			if dv.jumpUnitBeats {
+				dv.RequestSeekDeltaBeats(dv.jumpBeats, seekOriginCounter)
+			} else {
+				dv.RequestSeekDeltaSteps(dv.jumpBeats, seekOriginCounter)
+			}
+		},
+		OnPickAmount: func() { dv.OpenJumpMenu() },
+		OnToggleUnit: func() { dv.jumpUnitBeats = !dv.jumpUnitBeats },
+		OnGotoBeat:   func() { dv.openGotoBeatEditor() },
+		OnGotoTime:   func() { dv.openGotoTimeEditor() },
+	})
+	// The navigation menu is a first-class portal component (compOverlayable),
+	// opened by tapping the beat counter — see openNavMenuPortal / OpenNavigation.
+	dv.navMenuComp = NewNavigationMenuComponent(dv.navPanel)
 }
 
 func (dv *DrumView) initEQChannelState() {
@@ -296,7 +337,7 @@ func (dv *DrumView) initInputTrees(b image.Rectangle) {
 	// divider + mobile view-switch layer) lives in its OWN DrumViewTree so its
 	// HitIndex is isolated from the drum-view subtree. A wheel/press inside the
 	// panel region is dispatched ONLY by dv.audioTree; dv.tree's HitIndex has no
-	// hit areas there, so the row rack never sees it (the synth-knob-wheel fix).
+	// hit areas there, so the row rack never sees it (the synth-control-wheel fix).
 	dv.audioTree = NewDrumViewTree()
 	dv.audioTree.SetDragActive(func() bool { return dv.anyDragActive() })
 	dv.audioTree.SetExternalCapture(func() bool { return dv.inputCapturedExternally })
@@ -510,6 +551,15 @@ func (dv *DrumView) initEQPanelZone() {
 		SynthTabHitAreas: func() []HitArea {
 			return dv.synthTabHitAreas()
 		},
+		TrailingActionsForTab: func(tab PanelTab) []*Button {
+			switch tab {
+			case TabSynth:
+				return dv.synthPanelMobileActions()
+			case TabSampler:
+				return dv.samplerPanelMobileActions()
+			}
+			return nil
+		},
 		SynthTabUpdate: func() bool {
 			return dv.synthTabUpdate()
 		},
@@ -672,8 +722,6 @@ func (dv *DrumView) initTransportZone() {
 		OnStop: func() {
 			dv.logger.Debugf("[drumview] stop button pressed")
 		},
-		OnRewind:      func() { dv.RequestSeekDeltaBeats(-dv.jumpBeats, seekOriginTransport) },
-		OnFastForward: func() { dv.RequestSeekDeltaBeats(dv.jumpBeats, seekOriginTransport) },
 		OnBPMChange: func(bpm int) {
 			dv.bpm = bpm
 			dv.secPerBeat = 60.0 / float64(bpm)
@@ -782,24 +830,6 @@ func (dv *DrumView) initTransportZone() {
 			}
 			if dv.IsSubdivMenuOpen() {
 				dv.buildSubdivMenu()
-			}
-		},
-		OnJumpSizeClick: func() {
-			// Toggle: close if already open (mirrors OnSubdivClick).
-			if dv.jumpMenuComp != nil && dv.jumpMenuComp.IsOpen() {
-				dv.jumpMenuComp.Close()
-				dv.closeJumpMenuPortal()
-				return
-			}
-			dv.OpenJumpMenu()
-		},
-		OnOverflowOpen: func() {
-			if dv.IsOverflowMenuOpen() {
-				dv.closeOverflowMenu()
-			} else {
-				dv.CloseAllPopups()
-				dv.initOverflowScroll()
-				dv.openOverflowMenuPortal()
 			}
 		},
 		OnMasterVolClick: func() {
@@ -1041,21 +1071,10 @@ func (dv *DrumView) initTimelineZone() {
 		MobileEQActive:  func() bool { return Profile().IsMobile() && dv.MobileEQMode() },
 		BeatCounterRect: func() image.Rectangle { return dv.beatCounterRect },
 		RowsTopY:        func() int { return dv.Bounds.Min.Y + dv.headerH },
-		NotifRect:       func() image.Rectangle { return dv.notifRect },
-		NotifLatest: func() (string, bool, bool) {
-			if dv.notifStore == nil || !dv.notifStore.HasSessionEntry() {
-				return "", false, false
-			}
-			n := dv.notifStore.Latest()
-			if n == nil {
-				return "", false, false
-			}
-			return n.display(), n.isErr, true
-		},
-		OnNotifClick: dv.openNotifHistoryPortal,
 		SetTimelineBeats: func(beats int) {
 			dv.timelineBeats = beats
 		},
+		OnOpenNavigation: func() { dv.OpenNavigation() },
 		OnRowScrollWheel: func(steps int) bool {
 			// Reuse the row rack's canonical wheel scroll so up/down over the
 			// cell grid behaves identically to scrolling over the instrument

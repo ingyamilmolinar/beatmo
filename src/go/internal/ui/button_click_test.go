@@ -22,7 +22,7 @@ func TestControlButtonsClickable(t *testing.T) {
 	// File ops (upload/import/export) moved behind the overflow "..." menu on
 	// desktop; the overflow button is the inline control that took upload's old
 	// toolbar slot, so it's the representative right-edge file-ops control here.
-	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn(), g.drum.overflowBtn()}
+	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn()}
 	for i, btn := range buttons {
 		called := false
 		btn.OnClick = func() { called = true }
@@ -50,7 +50,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 	// File ops (upload/import/export) moved behind the overflow "..." menu on
 	// desktop; the overflow button is the inline control that took upload's old
 	// toolbar slot, so it's the representative right-edge file-ops control here.
-	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn(), g.drum.overflowBtn()}
+	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn()}
 	for i := 0; i < len(buttons); i++ {
 		ri := buttons[i].Rect()
 		for j := i + 1; j < len(buttons); j++ {

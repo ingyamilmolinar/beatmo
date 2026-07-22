@@ -31,7 +31,7 @@ console.log("Building WASM...");
 if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
-  ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+  ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");

@@ -36,8 +36,8 @@ func buildInflightHighlightGame(t *testing.T, recordedAt time.Time) *Game {
 	const abs = 139
 	g.SetPlaying(true)
 	g.elapsedBeats = abs
-	g.nextBeatIdxs = []int{abs}     // UI processed through abs-1; abs's highlight not applied yet
-	g.seqNextIdxs = []int{abs + 1}  // sequencer already scheduled abs
+	g.nextBeatIdxs = []int{abs}    // UI processed through abs-1; abs's highlight not applied yet
+	g.seqNextIdxs = []int{abs + 1} // sequencer already scheduled abs
 
 	const eventWhen = 5.0
 	restoreNow := audio.SetNowForTest(func() float64 { return eventWhen })

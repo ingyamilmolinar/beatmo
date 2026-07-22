@@ -1324,18 +1324,18 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	m.SetBounds(m.fullRect)
 }
 
-// buildCloseBtn creates the close button at the top-right of the menu.
+// buildCloseBtn creates the close button at the top-right of the menu — desktop
+// only, via the shared newPopupCloseButton helper (nil on mobile, where the
+// bottom sheet closes by tapping away). Every draw/hit site guards `closeBtn != nil`.
 func (m *InstrumentMenuComponent) buildCloseBtn() {
 	if m.fullRect.Empty() {
 		m.closeBtn = nil
 		return
 	}
-	r := closeButtonRect(m.fullRect, SpaceXS)
-	m.closeBtn = NewButton("", PopupButtonStyle, func() { m.Close() })
-	m.closeBtn.Icon = "close"
-	m.closeBtn.IconColor = closeIconColor()
-	m.closeBtn.SetRect(r)
-	m.closeBtn.ConsumeOnPress = true
+	m.closeBtn = newPopupCloseButton(func() { m.Close() })
+	if m.closeBtn != nil {
+		m.closeBtn.SetRect(closeButtonRect(m.fullRect, SpaceXS))
+	}
 }
 
 // CloseBtn returns the close button (for testing).

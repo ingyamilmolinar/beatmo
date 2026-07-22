@@ -127,38 +127,38 @@ func TestTokenDiscipline(t *testing.T) {
 // Phase B sweep — render_meters / render_scope / row_rack_zone migrated to
 // AlphaPanelBorder / AlphaRowActive + WithAlphaNRGBA / WithAlphaFromColor).
 var allowedLiteralBudget = map[string]int{
-	"theme.go":                         2, // ContextMenuItemStyle Fill+Border are transparent zero-value sentinels (color.RGBA{0,0,0,0} / color.NRGBA{0,0,0,0}); every other color in theme.go flows through gen* tokens
-	"design_types.go":                  1, // BorderRef.Resolve() constructs an NRGBA value at runtime
-	"components.go":                    1, // 2 of 3 migrated; 1 remaining is runtime alpha math (fadeColor)
-	"drumview.go":                      0, // migrated to row-rack-color-fallback
-	"drumview_cache_row_sprite.go":     0, // migrated to drum-stripe-* tokens
-	"drumview_colors.go":               0, // HSV→RGB / hash→RGB wheel code removed; ensureUniqueColor is palette-only
-	"drumview_context_menu.go":         0, // migrated to scrollbar-thumb alpha
-	"drumview_draw.go":                 0, // migrated to drum-stripe + drum-glow + row-rack-zebra
-	"drumview_fx_panel.go":             0, // migrated to slider-track-fill + border (white)
-	"drumview_overlay_color_comp.go":   0, // swatch-grid picker uses genInstrumentSwatches palette; HSV literals removed
-	"eq_panel_zone.go":                 0, // migrated to eq-readout-bg + primary alpha composite + border
-	"game_connect_mode.go":             0,
-	"game_draw.go":                     0, // throttle/frameBuffer deleted in Phase G; no literals remain
-	"game_draw_grid_pane.go":           0, // all migrated to viz-debug-* / viz-pill-* / viz-confirm-* / viz-glow tokens
-	"game_draw_helpers.go":             0, // all migrated to divider-* tokens + border-panel alpha
-	"game_longpress_popup.go":          0, // migrated to popup-text-secondary
-	"game_node_sidebar.go":             0, // all migrated to sidebar-* tokens
-	"import.go":                        5, // JSON deserialization color parsing — runtime input, permanent
-	"render_meters.go":                 0, // border composite → AlphaPanelBorder; meterColorAlpha → WithAlpha
-	"render_scope.go":                  0, // half-mode fill alpha → WithAlphaNRGBA helper
-	"render_spectrum.go":               0, // both migrated
-	"render_waveform.go":               0, // migrated to border + border-panel alpha
-	"row_instrument_shades.go":         1, // rowToggleBaseRGBA narrows an arbitrary instrument color.Color to RGBA (one constructor); all shades derive via adjustColor / WithAlphaFromColor token helpers
-	"row_rack_zone.go":                 0, // per-row tints via WithAlphaFromColor; volume slider uses the row's node color directly
-	"scope_panel_zone.go":              0, // migrated to scope-label-dim + alpha bucket
-	"scrollbar_style.go":               0, // all migrated to scrollbar-* alpha buckets
-	"slider.go":                        0, // all migrated to slider-* tokens
-	"slider_popup.go":                  0, // migrated to border + strong alpha
-	"timeline_zone.go":                 0, // migrated to focus-ring + dim-black tokens
-	"transport.go":                     0, // migrated to transport-bar-bg
-	"transport_zone.go":                0, // record-pulse + separator migrated
-	"uigrid.go":                        0, // migrated to primary + subtle alpha
+	"theme.go":                       2, // ContextMenuItemStyle Fill+Border are transparent zero-value sentinels (color.RGBA{0,0,0,0} / color.NRGBA{0,0,0,0}); every other color in theme.go flows through gen* tokens
+	"design_types.go":                1, // BorderRef.Resolve() constructs an NRGBA value at runtime
+	"components.go":                  1, // 2 of 3 migrated; 1 remaining is runtime alpha math (fadeColor)
+	"drumview.go":                    0, // migrated to row-rack-color-fallback
+	"drumview_cache_row_sprite.go":   0, // migrated to drum-stripe-* tokens
+	"drumview_colors.go":             0, // HSV→RGB / hash→RGB wheel code removed; ensureUniqueColor is palette-only
+	"drumview_context_menu.go":       0, // migrated to scrollbar-thumb alpha
+	"drumview_draw.go":               0, // migrated to drum-stripe + drum-glow + row-rack-zebra
+	"drumview_fx_panel.go":           0, // migrated to slider-track-fill + border (white)
+	"drumview_overlay_color_comp.go": 0, // swatch-grid picker uses genInstrumentSwatches palette; HSV literals removed
+	"eq_panel_zone.go":               0, // migrated to eq-readout-bg + primary alpha composite + border
+	"game_connect_mode.go":           0,
+	"game_draw.go":                   0, // throttle/frameBuffer deleted in Phase G; no literals remain
+	"game_draw_grid_pane.go":         0, // all migrated to viz-debug-* / viz-pill-* / viz-confirm-* / viz-glow tokens
+	"game_draw_helpers.go":           0, // all migrated to divider-* tokens + border-panel alpha
+	"game_longpress_popup.go":        0, // migrated to popup-text-secondary
+	"game_node_sidebar.go":           0, // all migrated to sidebar-* tokens
+	"import.go":                      5, // JSON deserialization color parsing — runtime input, permanent
+	"render_meters.go":               0, // border composite → AlphaPanelBorder; meterColorAlpha → WithAlpha
+	"render_scope.go":                0, // half-mode fill alpha → WithAlphaNRGBA helper
+	"render_spectrum.go":             0, // both migrated
+	"render_waveform.go":             0, // migrated to border + border-panel alpha
+	"row_instrument_shades.go":       1, // rowToggleBaseRGBA narrows an arbitrary instrument color.Color to RGBA (one constructor); all shades derive via adjustColor / WithAlphaFromColor token helpers
+	"row_rack_zone.go":               0, // per-row tints via WithAlphaFromColor; volume slider uses the row's node color directly
+	"scope_panel_zone.go":            0, // migrated to scope-label-dim + alpha bucket
+	"scrollbar_style.go":             0, // all migrated to scrollbar-* alpha buckets
+	"slider.go":                      0, // all migrated to slider-* tokens
+	"slider_popup.go":                0, // migrated to border + strong alpha
+	"timeline_zone.go":               0, // migrated to focus-ring + dim-black tokens
+	"transport.go":                   0, // migrated to transport-bar-bg
+	"transport_zone.go":              0, // record-pulse + separator migrated
+	"uigrid.go":                      0, // migrated to primary + subtle alpha
 }
 
 func findUIDir(t *testing.T) string {

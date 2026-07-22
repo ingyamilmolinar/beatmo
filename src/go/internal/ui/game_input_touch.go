@@ -53,7 +53,7 @@ func (g *Game) handleArmedModeTap(x, y int) bool {
 // handleTapInGrid handles a tap gesture in the grid area.
 // This provides direct tap-to-click handling without relying on the mouse state machine.
 func (g *Game) handleTapInGrid(x, y int) {
-	// A blocking overlay (e.g. the mobile synth-knob wheel popup) owns input
+	// A blocking overlay (e.g. the mobile synth-control wheel popup) owns input
 	// exclusively. A tap on the scrim outside it must only close the overlay
 	// (the tree's click-outside path), never reach the grid to create/select a
 	// node beneath it.
@@ -102,6 +102,17 @@ func (g *Game) handleTapInGrid(x, y int) {
 		}
 		return
 	}
+	// Group badge hit (outside the sidebar card): open that group's menu and
+	// close the sidebar in one tap. Checked BEFORE the generic outside-close so a
+	// badge click while the sidebar is open still opens the menu — the sidebar is
+	// now a node-anchored card, so this ordering matters (a plain outside tap
+	// would otherwise just close it and swallow the badge). Badges under the card
+	// are handled by the card itself via the Hit branch above.
+	if gid, ok := g.groupBadgeAt(x, y); ok {
+		g.sidebar.Close()
+		g.openGroupMenuForBadge(gid, x, y)
+		return
+	}
 	if g.sidebar.IsOpen() {
 		// Tap outside sidebar closes it
 		g.sidebar.Close()
@@ -143,14 +154,8 @@ func (g *Game) handleTapInGrid(x, y int) {
 		}
 	}
 
-	// Group badge hit: opens that group's menu instead of resolving to a
-	// node/empty-space tap. Checked at the top of the node/empty resolution
-	// so a tap on a floating badge never selects/adds a node beneath it.
-	if gid, ok := g.groupBadgeAt(x, y); ok {
-		g.sidebar.Close()
-		g.openGroupMenuForBadge(gid, x, y)
-		return
-	}
+	// (Group badge hit is handled earlier, before the sidebar outside-close rung,
+	// so a badge tap opens its menu whether or not the sidebar is open.)
 
 	// Check if tapping on existing node
 	if n := g.nodeAtScreen(x, y); n != nil {

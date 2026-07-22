@@ -9,7 +9,9 @@ func (dv *DrumView) CancelAllDeferredTaps() {
 		dv.overflowMenuScroll.DeferredTap().Cancel()
 	}
 	dv.fxPanelDeferredTap.Cancel()
-	dv.fxScrollTS.Reset()
+	if dv.fxScroll != nil {
+		dv.fxScroll.ScrollBehavior().ResetTouch()
+	}
 	dv.instEditorDeferredTap.Cancel()
 	dv.instEditorScrollTS.Reset()
 	for _, g := range dv.instEditorSectionGrids {
@@ -57,8 +59,12 @@ func (dv *DrumView) CloseAllPopups() {
 	dv.closeEQKnobWheelPopup()
 	dv.closeRename()
 	dv.closeNaming()
+	// The navigation menu (and its owned go-to editor) is a portal component;
+	// closing the nav-menu portal cancels the editor via navMenuComp.Close.
+	dv.closeNavMenuPortal()
 	dv.CancelAllDeferredTaps()
 }
+
 
 // resetTransientTabState tears down EVERY piece of transient, tab-local
 // interaction state that must not survive a view-mode switch. It runs

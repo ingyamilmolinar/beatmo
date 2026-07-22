@@ -20,10 +20,10 @@ import (
 // roundedOp records one drawRoundedRect call (rect + premultiplied color +
 // radius + filled).
 type roundedOp struct {
-	rect           image.Rectangle
-	r, g, b, a     uint32
-	radius         int
-	filled         bool
+	rect       image.Rectangle
+	r, g, b, a uint32
+	radius     int
+	filled     bool
 }
 
 // captureRounded intercepts drawRoundedRect and records every call. Returns a

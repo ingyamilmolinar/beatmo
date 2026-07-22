@@ -32,13 +32,13 @@ func bindFocusSweepInst(t *testing.T, recipeID string) string {
 //
 // SCOPE: per-stage enable toggles (*_enabled), engine-internal hidden params and
 // params gated out by the recipe's own context are NOT keys here — they are
-// filtered out before the sweep loop by synthParamIsGridKnobIn (they render as
+// filtered out before the sweep loop by synthParamIsGridControlIn (they render as
 // section pills / have no UI / have no knob on that recipe at all, never as a
 // selectable knob the focus graph explains).
 //
-// ROUTING (synthFocusRendererForKnob, synth_focus_graph.go): each swept knob
+// ROUTING (synthFocusRendererForControl, synth_focus_graph.go): each swept knob
 // picks its renderer in this order —
-//  1. Pitch knobs (isSynthPitchKnob: osc_octave/osc_detune/pitch/tune/fm_base/
+//  1. Pitch knobs (isSynthPitchControl: osc_octave/osc_detune/pitch/tune/fm_base/
 //     fm_base_freq/fundamental/base_freq) → conceptPitchWave, a real-note
 //     fixed-time-window render whose cycle count tracks pitch.
 //  2. FM time-domain knobs (isFMTimeDomainKnob: operator decay, FM pitch-env
@@ -93,7 +93,7 @@ func bindFocusSweepInst(t *testing.T, recipeID string) string {
 //  3. osc_sax_*/osc_bow_* were swept on all 51 modular recipes even though the
 //     Synth tab only ever shows them when their oscillator is selected
 //     (synthOscModelParamHidden): the sweep's selectability predicate had
-//     drifted from the grid's. Both now go through synthParamIsGridKnobIn, so
+//     drifted from the grid's. Both now go through synthParamIsGridControlIn, so
 //     the sweep asks exactly what the UI answers. The bow knobs remain swept on
 //     the recipes that DO select the Bowed String oscillator (violin, cello) and
 //     are depicted there; pinned by
@@ -132,10 +132,10 @@ var focusSweepExemptPair = map[string]string{
 }
 
 // TestFocusGraph_RespondsToEveryKnob is the OBJECTIVE GATE over the Synth-tab
-// focus graph: for every SELECTABLE GRID KNOB (synthParamIsGridKnobIn — excludes
+// focus graph: for every SELECTABLE GRID KNOB (synthParamIsGridControlIn — excludes
 // hidden params, per-stage enable toggles, and params the recipe's own context
 // gates out) of every registered recipe, the per-knob focus renderer
-// (synthFocusRendererForKnob — pitch knobs → pitch wave, else by group) must
+// (synthFocusRendererForControl — pitch knobs → pitch wave, else by group) must
 // paint a DIFFERENT picture at the knob's Min vs its Max, proving the focus
 // graph reflects the knob.
 //
@@ -165,7 +165,7 @@ func TestFocusGraph_RespondsToEveryKnob(t *testing.T) {
 		// The sweep must ask the SAME selectability question the Synth tab
 		// answers when it builds the knob grid, or it asserts a focus graph for
 		// knobs the user can never select on this recipe. Both the grid and this
-		// loop go through synthParamIsGridKnobIn (synth_panel_zone.go).
+		// loop go through synthParamIsGridControlIn (synth_panel_zone.go).
 		kickActive := schemaUsesKickStage(reg.Params)
 		oscType := audio.MergedInstrumentParamsRO(inst)["osc_type"]
 		for _, d := range reg.Params {
@@ -175,7 +175,7 @@ func TestFocusGraph_RespondsToEveryKnob(t *testing.T) {
 			// knobs on a non-kick recipe, the physical-model OSC knobs whose
 			// oscillator isn't selected — have no knob, so the focus graph never
 			// depicts them. Skip outright.
-			if !synthParamIsGridKnobIn(d, kickActive, oscType) || d.Max <= d.Min {
+			if !synthParamIsGridControlIn(d, kickActive, oscType) || d.Max <= d.Min {
 				continue
 			}
 			pairKey := recipeID + "\x00" + d.Name
@@ -187,7 +187,7 @@ func TestFocusGraph_RespondsToEveryKnob(t *testing.T) {
 			// Per-knob routing: pitch knobs route through the pitch-wave
 			// renderer, everything else by group. Using the per-knob entry
 			// point exercises the same routing the live Synth tab uses.
-			render := synthFocusRendererForKnob(d)
+			render := synthFocusRendererForControl(d)
 
 			audio.ResetInstrumentParams(inst)
 			audio.SetInstrumentParam(inst, d.Name, d.Min)

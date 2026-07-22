@@ -20,8 +20,8 @@ func makeWave(cycles, ptsPerCycle int, harmonic float64) []float64 {
 // cycles (zoom in) than a simple sine, so its shape stays legible instead of
 // smearing into a dense band.
 func TestAutoZoomCycles_BusyZoomsIn(t *testing.T) {
-	sine := makeWave(6, 96, 1)  // 2 crossings/cycle
-	busy := makeWave(6, 96, 6)  // ~12 crossings/cycle
+	sine := makeWave(6, 96, 1) // 2 crossings/cycle
+	busy := makeWave(6, 96, 6) // ~12 crossings/cycle
 	zSine := autoZoomCycles(sine, 6)
 	zBusy := autoZoomCycles(busy, 6)
 	if zBusy >= zSine {

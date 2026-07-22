@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
+	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
 func TestDetectF0_PureTone(t *testing.T) {
@@ -161,7 +162,11 @@ func TestDetectF0_Vibrato(t *testing.T) {
 // fingerprint must not import the audio package, so this is a local minimal reader.
 func loadRefWaveForTest(t *testing.T) (wave.Wave, bool) {
 	t.Helper()
-	data, err := os.ReadFile("../../../../../356181__mtg__violin-d5.wav")
+	path, ok := wavref.Path("356181__mtg__violin-d5.wav")
+	if !ok {
+		return wave.Wave{}, false // set BEATMO_WAV_REFS to run (refs are uncommitted)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return wave.Wave{}, false
 	}

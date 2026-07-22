@@ -101,16 +101,9 @@ func TestBottomActionBar_HostsSegmentedControlOnly(t *testing.T) {
 	if !z.mainVolIconRect.Empty() && z.mainVolIconRect.In(bar) {
 		t.Errorf("mainVolIcon %v should NOT be inside bar %v (Theme 4 moved it to top toolbar)", z.mainVolIconRect, bar)
 	}
-	// Overflow is NOT in the bar — it lives in the top toolbar now.
-	if !z.overflowBtn.Rect().Empty() && z.overflowBtn.Rect().In(bar) {
-		t.Errorf("overflowBtn %v should NOT be inside bar %v (Theme 4 moved it to top toolbar)", z.overflowBtn.Rect(), bar)
-	}
-	// And both must still be reachable somewhere on screen (top toolbar).
+	// The vol icon must still be reachable somewhere on screen (top toolbar).
 	if z.mainVolIconRect.Empty() {
 		t.Errorf("mainVolIconRect should be non-empty (placed in top toolbar)")
-	}
-	if z.overflowBtn.Rect().Empty() {
-		t.Errorf("overflowBtn rect should be non-empty (placed in top toolbar)")
 	}
 }
 
@@ -151,12 +144,8 @@ func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
 	}
 	// Theme 1: legacy viewSwitchBtn is always suppressed on mobile in
 	// favor of the segmented control; the segmented lives only in the
-	// bottom action bar (which is collapsed here). When neither is
-	// reachable, the overflow menu remains the user's escape hatch — so
-	// we only require overflowBtn to be reachable at minimum.
-	if z.overflowBtn.Rect().Empty() {
-		t.Errorf("overflowBtn unreachable on ultra-short viewport (rect empty)")
-	}
+	// bottom action bar (which is collapsed here). At minimum the vol icon
+	// must remain reachable in the top toolbar.
 	if z.mainVolIconRect.Empty() {
 		t.Errorf("mainVolIconRect unreachable on ultra-short viewport (empty)")
 	}

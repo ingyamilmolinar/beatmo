@@ -41,7 +41,12 @@ const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("main.wasm")) {
   const build = spawnSync(
     GO,
-    ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+    // Build ONLY the WASM entry package (./cmd), not ./cmd/... — under GOOS=js the
+    // "..." pattern now also matches sibling generator mains (gen-showcase,
+    // gen-sample-edit-golden, synth-match, …), and `go build -o <file>` refuses to
+    // write multiple packages to one output ("cannot write multiple packages to a
+    // non-directory"). ./cmd matches the production `make wasm` target exactly.
+    ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
     { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
   );
   if (build.status !== 0) throw new Error("go build main wasm failed");
@@ -99,10 +104,13 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
     const isMobile = await page.evaluate(() => fullLayoutSnapshot()?.drumLayout?.isSmallScreen);
     if (!isMobile) throw new Error(`${deviceName}: expected mobile profile; threshold/runtime drift`);
 
-    // Open the overflow menu via a real tap so OnOverflowOpen runs (this is what
-    // registers the file-picker rects and, after the fix, creates the overlays).
-    const overflow = await page.evaluate(() => fullLayoutSnapshot()?.buttons?.overflow || null);
-    if (!overflow || overflow.w <= 0) throw new Error(`${deviceName}: no overflow button rect`);
+    // Open the File menu via a real tap so the file-picker rects register and the
+    // <input type=file> overlays are created. Since the "Pop Up Controls / Modes"
+    // overhaul the transport kebab was removed; File actions now open from the
+    // grid-pane folder button (dv.OpenFileMenu → overflowModeFile), exported as
+    // fileMenuBtnRect().
+    const overflow = await page.evaluate(() => (typeof fileMenuBtnRect === "function" ? fileMenuBtnRect() : null));
+    if (!overflow || overflow.w <= 0) throw new Error(`${deviceName}: no file-menu (folder) button rect`);
     const oc = rectCenter(overflow);
     await cdpTap(page, oc.x, oc.y);
     await page.waitForTimeout(400);
@@ -165,20 +173,34 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
     if (endToEnd) {
       page.on("filechooser", async (fc) => { try { await fc.setFiles(importFile); } catch (_) {} });
       const ic = rectCenter(importRect);
-      await cdpTap(page, ic.x, ic.y);
       // The import chain crosses several Update ticks (overlay change ->
       // _fpStartImport -> QueueAction -> importBtn.OnClick -> openJSONFile ->
-      // consume pending -> importCh -> apply). Under the headless ~7fps loop
-      // that is well over a second, so poll instead of using a fixed sleep.
+      // consume pending -> importCh -> apply). forceDraw() only advances Draw();
+      // the queued actions and channel drains ride the natural rAF Update loop,
+      // which the browser THROTTLES under CPU contention. In the parallel test
+      // batch (BROWSER_JOBS × Chromium+WASM) that loop slows enough that a fixed
+      // 12s budget expires mid-import, and a single dropped CDP tap never opens
+      // the picker at all. So mirror the proven device_user_actions pattern:
+      // re-tap Import a few times to ride out a dropped tap, each attempt polling
+      // with a generous budget while pumping frames. (bpm probe is deterministic;
+      // slowness never corrupts it — worst case we simply wait longer.)
       let bpm = 0;
-      const deadline = Date.now() + 12000;
-      while (Date.now() < deadline) {
-        await page.evaluate(() => forceDraw && forceDraw());
-        bpm = await page.evaluate(() => getBPM());
-        if (bpm === 123) break;
-        await page.waitForTimeout(200);
+      const pollForApply = async (ms) => {
+        const deadline = Date.now() + ms;
+        while (Date.now() < deadline) {
+          await page.evaluate(() => forceDraw && forceDraw());
+          bpm = await page.evaluate(() => getBPM());
+          if (bpm === 123) return true;
+          await page.waitForTimeout(200);
+        }
+        return false;
+      };
+      let applied = false;
+      for (let attempt = 0; attempt < 4 && !applied; attempt++) {
+        await cdpTap(page, ic.x, ic.y);
+        applied = await pollForApply(8000);
       }
-      if (bpm !== 123) {
+      if (!applied) {
         throw new Error(`${deviceName} FAIL: import did not apply (bpm=${bpm}, expected 123)`);
       }
       console.log(`  OK: tapping Import opened the picker and the circuit loaded (bpm=123)`);
@@ -225,9 +247,9 @@ async function assertLandscapeImportBlocked(deviceName) {
       throw new Error(`${deviceName}: expected landscape (w>h), got ${snap.canvasWidth}x${snap.canvasHeight}`);
     }
 
-    // Best-effort tap on the overflow button location. Input is blocked in
-    // landscape, so the menu must NOT open and no picker rect may register.
-    const overflow = snap?.buttons?.overflow || null;
+    // Best-effort tap on the File-menu (folder) button location. Input is blocked
+    // in landscape, so the menu must NOT open and no picker rect may register.
+    const overflow = await page.evaluate(() => (typeof fileMenuBtnRect === "function" ? fileMenuBtnRect() : null));
     if (overflow && overflow.w > 0) {
       const oc = rectCenter(overflow);
       await cdpTap(page, oc.x, oc.y);

@@ -23,7 +23,7 @@ import (
 //
 //	go test -run TestAttributeReferences -v ./cmd/synth-match/
 func TestAttributeReferences(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 

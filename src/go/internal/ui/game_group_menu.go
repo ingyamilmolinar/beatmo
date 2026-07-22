@@ -822,7 +822,14 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	headerR := image.Rect(panel.Min.X+sidebarPad, panel.Min.Y+sidebarPad, panel.Max.X-sidebarPad, panel.Min.Y+sidebarPad+sidebarHeaderH)
 	m.rects["title"] = headerR
 	closeSize := sidebarBtnH
-	m.rects["close"] = image.Rect(headerR.Max.X-closeSize, headerR.Min.Y, headerR.Max.X, headerR.Min.Y+closeSize)
+	// Close × is desktop-only (shared desktopCloseVisible gate). On mobile the
+	// group menu dismisses via tap-away, so no rect is published; mk("close")
+	// below self-prunes its button, and Save reclaims the freed header space.
+	if desktopCloseVisible() {
+		m.rects["close"] = image.Rect(headerR.Max.X-closeSize, headerR.Min.Y, headerR.Max.X, headerR.Min.Y+closeSize)
+	} else {
+		delete(m.rects, "close")
+	}
 
 	// Save button: header row, immediately left of close. ALWAYS present
 	// (task-save-always Part 1) — provisional or committed, dirty or clean;
@@ -835,7 +842,12 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	if minW := closeSize * 2; saveW < minW {
 		saveW = minW
 	}
-	saveX2 := m.rects["close"].Min.X - sidebarGap
+	// Save's right edge sits just left of the close × on desktop; on mobile (no
+	// close ×) it reclaims the full header width up to the right padding.
+	saveX2 := headerR.Max.X
+	if r, ok := m.rects["close"]; ok {
+		saveX2 = r.Min.X - sidebarGap
+	}
 	saveX1 := saveX2 - saveW
 	if saveX1 < headerR.Min.X {
 		saveX1 = headerR.Min.X

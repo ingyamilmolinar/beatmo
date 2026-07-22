@@ -13,7 +13,13 @@ import (
 // the drum-pane bottom (B6 in the screenshot critique). DESIGN.md
 // §"Mobile bottom sheets" mandates `rounded.xl` full-width modals for
 // this kind of menu rather than a small floating dropdown.
-func TestOverflowBottomSheet_AnchoredToBottomOnMobile(t *testing.T) {
+// TestOverflowMenuStaysInGridPaneOnMobile: the file menu is triggered from the
+// grid folder button, so on mobile (as on desktop) it drops from that button and
+// stays within the GRID pane. It is NO LONGER a drum-pane bottom sheet — that
+// full-width, bottom-anchored form put a grid-pane menu into the drum-view panel
+// (the "menus appear in the drum view" bug on small screens). See the two-trees
+// invariant in grid_button_menus_small_screen_test.go.
+func TestOverflowMenuStaysInGridPaneOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -28,11 +34,8 @@ func TestOverflowBottomSheet_AnchoredToBottomOnMobile(t *testing.T) {
 	if r.Empty() {
 		t.Fatal("overflow popup rect empty when open")
 	}
-	if r.Min.X != dv.Bounds.Min.X || r.Max.X != dv.Bounds.Max.X {
-		t.Fatalf("expected full-width popup [%d,%d]; got [%d,%d]", dv.Bounds.Min.X, dv.Bounds.Max.X, r.Min.X, r.Max.X)
-	}
-	if r.Max.Y != dv.Bounds.Max.Y {
-		t.Fatalf("expected bottom-anchored popup (Max.Y=%d); got %d", dv.Bounds.Max.Y, r.Max.Y)
+	if gridH := g.split.GridH(g.winH); r.Max.Y > gridH {
+		t.Fatalf("file menu %v spills past the grid pane (gridH=%d) into the drum-view panel on mobile", r, gridH)
 	}
 }
 

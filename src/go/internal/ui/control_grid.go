@@ -33,8 +33,14 @@ type ControlGrid struct {
 	rowH    int // cellH + vGap; the scroll item height
 	hGap    int
 	visRows int
+	peekH   int // bottom peek-band height (0 when the grid fits or has no room)
 	maxCols int // 0 = unlimited; caps the adaptive column count (overrides the floor)
 }
+
+// controlGridPeekFrac is the fraction of one row height reserved as a bottom
+// "peek band" when the grid overflows — a clipped sliver of the next row that
+// signals more controls lie below. Draw-only; it publishes no hit area.
+const controlGridPeekFrac = 0.4
 
 // SetMaxCols caps how many columns Layout will use, overriding both the
 // width-adaptive count AND the 2-column floor. 0 (default) leaves the grid
@@ -70,14 +76,11 @@ func (g *ControlGrid) Layout(rect image.Rectangle, count, cellIdealW, cellH, hGa
 	}
 
 	g.rowH = cellH + vGap
-	visRows := rect.Dy() / g.rowH
-	if visRows < 1 {
-		visRows = 1
-	}
-	g.visRows = visRows
 
-	// Adaptive columns: at least 2 (when there's more than one control), more
-	// when the rect is wide enough to fit them at the ideal cell width.
+	// Adaptive columns (independent of the visible-row count): at least 2 (when
+	// there's more than one control), more when the rect is wide enough to fit
+	// them at the ideal cell width. Computed before visRows because the row count
+	// depends on it.
 	cell := cellIdealW + hGap
 	cols := 1
 	if cell > 0 {
@@ -98,6 +101,30 @@ func (g *ControlGrid) Layout(rect image.Rectangle, count, cellIdealW, cellH, hGa
 	g.cols = cols
 
 	totalRows := (count + cols - 1) / cols
+
+	// Visible rows. When the grid overflows AND there is room, reserve a bottom
+	// peek band (~0.4 row) so the first off-window row renders as a clipped
+	// sliver — a "more below" affordance. The window height is derived from the
+	// rect + peek only (never the scroll position), so it stays constant while
+	// scrolling and never reflows.
+	fullRows := rect.Dy() / g.rowH
+	if fullRows < 1 {
+		fullRows = 1
+	}
+	visRows := fullRows
+	g.peekH = 0
+	if totalRows > fullRows {
+		ph := int(float64(g.rowH) * controlGridPeekFrac)
+		if ph > 0 && (rect.Dy()-ph)/g.rowH >= 1 {
+			g.peekH = ph
+			visRows = (rect.Dy() - ph) / g.rowH
+			if visRows < 1 {
+				visRows = 1
+			}
+		}
+	}
+	g.visRows = visRows
+
 	g.scroll.ItemHeight = g.rowH
 	g.scroll.VS.Total = totalRows
 	g.scroll.VS.Visible = visRows
@@ -133,6 +160,45 @@ func (g *ControlGrid) CellRect(i int) (image.Rectangle, bool) {
 	x0 := g.rect.Min.X + col*(g.cellW+g.hGap)
 	y0 := g.rect.Min.Y + (row-first)*g.rowH
 	return image.Rect(x0, y0, x0+g.cellW, y0+g.cellH), true
+}
+
+// PeekH reports the reserved bottom peek-band height (0 when the grid fits or has
+// no room for a band). Draw sites use it as the fade-edge height.
+func (g *ControlGrid) PeekH() int { return g.peekH }
+
+// PeekRect returns the clipped top-sliver rect for control i when it lies in the
+// first row just below the visible window (the peek band), and whether it does.
+// It is DRAW-ONLY — the peek row publishes no hit area (CellRect returns false for
+// it). Returns false when there is no peek band, when i is not in that first
+// off-window row, or when scrolled to the bottom (no next row exists).
+func (g *ControlGrid) PeekRect(i int) (image.Rectangle, bool) {
+	if g.peekH <= 0 || g.cols <= 0 || i < 0 || i >= g.count {
+		return image.Rectangle{}, false
+	}
+	if i/g.cols != g.scroll.VS.First+g.visRows {
+		return image.Rectangle{}, false
+	}
+	col := i % g.cols
+	x0 := g.rect.Min.X + col*(g.cellW+g.hGap)
+	yTop := g.rect.Min.Y + g.visRows*g.rowH
+	yBot := yTop + g.peekH
+	if yBot > g.rect.Max.Y {
+		yBot = g.rect.Max.Y
+	}
+	return image.Rect(x0, yTop, x0+g.cellW, yBot), true
+}
+
+// ContentRect returns the content rect the grid was last laid out into.
+func (g *ControlGrid) ContentRect() image.Rectangle { return g.rect }
+
+// ShowTopFade reports whether the top fade edge should paint (content is scrolled
+// down from the first row).
+func (g *ControlGrid) ShowTopFade() bool { return g.scroll.VS.First > 0 }
+
+// ShowBottomFade reports whether the bottom fade edge should paint (more rows
+// exist below the visible window). Hides at the bottom of travel.
+func (g *ControlGrid) ShowBottomFade() bool {
+	return g.scroll.VS.First+g.visRows < g.scroll.VS.Total
 }
 
 // Cols reports the current column count.

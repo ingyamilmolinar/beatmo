@@ -143,10 +143,10 @@ func TestFormatParamValue(t *testing.T) {
 	}
 }
 
-// TestFormatSynthParamValue_GenericPostKnobs pins the generic post knobs whose
+// TestFormatSynthParamValue_GenericPostControls pins the generic post knobs whose
 // semantic unit isn't carried in ParamDef.Unit (decay → ×, drive/body/bright →
 // %, pitch → st).
-func TestFormatSynthParamValue_GenericPostKnobs(t *testing.T) {
+func TestFormatSynthParamValue_GenericPostControls(t *testing.T) {
 	cases := []struct {
 		name  string
 		value float64

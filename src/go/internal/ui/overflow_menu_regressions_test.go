@@ -296,38 +296,21 @@ func TestOverflowMenuStaysOpenAfterButtonTap(t *testing.T) {
 	const W, H = 390, 600
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
-	// Locate the overflow button.
-	btnRect := dv.overflowBtn().Rect()
-	if btnRect.Empty() {
-		t.Skip("overflow button rect empty — layout may differ")
-	}
-	bx := btnRect.Min.X + btnRect.Dx()/2
-	by := btnRect.Min.Y + btnRect.Dy()/2
-
-	// ── Frame 0: tap the overflow button (opens menu via OnClick) ──
-	resetFrame0 := SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	// Save suppression state before reset clears it — in the real app the
-	// touch hasn't been released so the flag stays true between frames.
-	savedSuppress := suppressClicksUntilRelease
-	resetFrame0()
-	suppressClicksUntilRelease = savedSuppress
+	// Open the file menu programmatically (the transport overflow button was
+	// removed; it now opens from the grid folder button). Simulate the
+	// just-opened, not-yet-released touch by setting the suppression flag, the
+	// same state the real open path leaves behind.
+	dv.openOverflowMenuPortal()
+	suppressClicksUntilRelease = true
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
 	if !dv.IsOverflowMenuOpen() {
-		t.Fatal("expected overflow menu to open after tapping button")
+		t.Fatal("expected overflow menu to open")
 	}
 
-	// ── Frame 1: HandleInput with left=true at a position outside the popup ──
-	// Use a point that's inside the drum bounds but outside both the popup
-	// rect and the button rect — this is where flicker would happen.
+	// ── HandleInput with left=true at a position outside the popup ──
+	// Use a point inside the drum bounds but outside the popup rect — this is
+	// where flicker would happen.
 	popupRect := dv.overflowPopupRect()
 	outsideX := popupRect.Max.X + 30
 	outsideY := popupRect.Max.Y + 30
@@ -338,11 +321,9 @@ func TestOverflowMenuStaysOpenAfterButtonTap(t *testing.T) {
 		outsideY = popupRect.Min.Y - 30
 	}
 
-	// Sanity: the point must be outside both popup and button rect.
-	pt := image.Pt(outsideX, outsideY)
-	if pt.In(popupRect) || pt.In(btnRect) {
-		t.Fatalf("test point (%d,%d) must be outside popup %v and button %v",
-			outsideX, outsideY, popupRect, btnRect)
+	// Sanity: the point must be outside the popup.
+	if image.Pt(outsideX, outsideY).In(popupRect) {
+		t.Fatalf("test point (%d,%d) must be outside popup %v", outsideX, outsideY, popupRect)
 	}
 
 	dv.HandleInput(outsideX, outsideY, true)
@@ -352,9 +333,8 @@ func TestOverflowMenuStaysOpenAfterButtonTap(t *testing.T) {
 			"overflow menu was closed by HandleInput(left=true) while suppressClicksUntilRelease — flicker bug\n"+
 				"  tap pos:    (%d,%d)\n"+
 				"  popup rect: %v\n"+
-				"  button rect: %v\n"+
 				"  Fix: guard 'click outside to close' with !suppressClicksUntilRelease",
-			outsideX, outsideY, popupRect, btnRect,
+			outsideX, outsideY, popupRect,
 		)
 	}
 }
@@ -373,25 +353,9 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	const W, H = 390, 600
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
-	// Locate the overflow button.
-	btnRect := dv.overflowBtn().Rect()
-	if btnRect.Empty() {
-		t.Skip("overflow button rect empty — layout may differ")
-	}
-	bx := btnRect.Min.X + btnRect.Dx()/2
-	by := btnRect.Min.Y + btnRect.Dy()/2
-
-	// Open the menu via Update().
-	resetOpen := SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	resetOpen()
+	// Open the file menu programmatically (the transport overflow button was
+	// removed; it now opens from the grid folder button).
+	dv.openOverflowMenuPortal()
 
 	if !dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu must be open before testing close")
@@ -399,7 +363,7 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 
 	// Simulate touch release — clears suppressClicksUntilRelease.
 	resetRelease := SetInputForTest(
-		func() (int, int) { return bx, by },
+		func() (int, int) { return 0, 0 },
 		func(b ebiten.MouseButton) bool { return false }, // left released
 		func(k ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -435,93 +399,6 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	if dv.IsOverflowMenuOpen() {
 		t.Errorf("overflow menu should close when tapping outside after suppression cleared (tap pos: %d,%d, popup rect: %v)",
 			outsideX, outsideY, popupRect)
-	}
-}
-
-// TestOverflowBtnTapDoesNotTriggerAdjacentButton verifies that tapping the
-// overflow button on mobile opens the overflow menu WITHOUT also activating
-// the adjacent viewSwitchBtn. The root cause was that Button.HandleInputResult() expands
-// hit areas to touchMinTargetPx (44px) for touch targets. With 8 buttons in a
-// narrow transport column (~18px each), expanded areas overlap. The button loop
-// checks left-to-right: viewSwitchBtn is checked before overflowBtn, so its
-// expanded area steals the tap.
-func TestOverflowBtnTapDoesNotTriggerAdjacentButton(t *testing.T) {
-	assertDefaultParityState(t)
-	withSmallScreen(t, true)
-
-	const W, H = 390, 844
-	bounds := image.Rect(0, 0, W, H)
-	dv := NewDrumView(bounds, nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{
-		Name:       "Kick",
-		Instrument: "kick",
-		Steps:      make([]bool, 8),
-		Volume:     1.0,
-	}}
-	dv.Length = 8
-	// Use the actual widget board transport column width (not full screen width)
-	// so buttons are realistically narrow, reproducing the overlap.
-	transportRect := dv.widgetRects[WidgetTransport]
-	if transportRect.Empty() {
-		transportRect = image.Rect(bounds.Min.X, bounds.Min.Y, bounds.Min.X+dv.widgets.ColWidth(0), bounds.Min.Y+dv.headerH)
-		dv.widgetRects[WidgetTransport] = transportRect
-	}
-	reset := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	reset()
-
-	btnRect := dv.overflowBtn().Rect()
-	if btnRect.Empty() {
-		t.Skip("overflow button rect empty — layout may differ")
-	}
-
-	// Remember viewSwitchBtn state before tap.
-	viewModeBefore := dv.currentViewMode
-
-	// Tap at the center of the overflow button.
-	bx := btnRect.Min.X + btnRect.Dx()/2
-	by := btnRect.Min.Y + btnRect.Dy()/2
-
-	// Frame 0: press
-	reset = SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	savedSuppress := suppressClicksUntilRelease
-	reset()
-	suppressClicksUntilRelease = savedSuppress
-	t.Cleanup(func() { suppressClicksUntilRelease = false })
-
-	// Frame 1: release
-	reset2 := SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	reset2()
-
-	if !dv.IsOverflowMenuOpen() {
-		t.Error("expected overflow menu to open after tapping overflow button")
-	}
-	if dv.currentViewMode != viewModeBefore {
-		t.Errorf("viewSwitchBtn was triggered (viewMode changed %d → %d) when tapping overflow button — hit area overlap bug",
-			viewModeBefore, dv.currentViewMode)
 	}
 }
 

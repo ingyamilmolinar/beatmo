@@ -19,16 +19,16 @@ import (
 //   - a wheel over grid whitespace still scrolls the section (never nudges).
 //
 // These drive the REAL production tree dispatch (SetInputForTest → g.Update →
-// HitIndex → synthKnobHitAdapter), mirroring knob_interaction_functional_test.go.
+// HitIndex → synthControlHitAdapter), mirroring knob_interaction_functional_test.go.
 
 // undoDepth returns the current undo-stack depth (one entry per committed
 // gesture). Mirrors the accessor used by game_marquee_test.go and friends.
 func undoDepth(g *Game) int { return len(g.undoManager.undo) }
 
-// firstContinuousSynthKnob selects the section that owns the canonical
+// firstContinuousSynthControl selects the section that owns the canonical
 // continuous (endless, badge-backed) synth knob — filter_cutoff — lays it out,
 // and returns its binding index + on-screen rect. Fails if the knob has no rect.
-func firstContinuousSynthKnob(t *testing.T, g *Game) (int, image.Rectangle) {
+func firstContinuousSynthControl(t *testing.T, g *Game) (int, image.Rectangle) {
 	t.Helper()
 	idx := synthIdxByParam(t, g, "filter_cutoff")
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
@@ -36,7 +36,7 @@ func firstContinuousSynthKnob(t *testing.T, g *Game) (int, image.Rectangle) {
 	img := newTrackedImage("test.paramcardinput", 1280, 720)
 	defer releaseImage(img)
 	g.Draw(img)
-	r := g.drum.SynthTabKnobs()[idx].Rect()
+	r := g.drum.SynthTabControls()[idx].Rect()
 	if r.Empty() {
 		t.Fatalf("filter_cutoff knob has empty rect after layout")
 	}
@@ -95,7 +95,7 @@ func TestParamCardClickOpensPopupOnDesktop(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	_, r := firstContinuousSynthKnob(t, g)
+	_, r := firstContinuousSynthControl(t, g)
 	pressAndReleaseAt(t, g, r.Min.X+4, r.Min.Y+4)
 	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
 		t.Fatal("desktop card tap must open the value-wheel popup")
@@ -108,8 +108,8 @@ func TestParamCardWheelNudgesValue(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	idx, r := firstContinuousSynthKnob(t, g)
-	k := dv.instEditorKnobs[idx]
+	idx, r := firstContinuousSynthControl(t, g)
+	k := dv.instEditorControls[idx]
 	before := k.Value
 	undoBefore := undoDepth(g)
 
@@ -166,9 +166,9 @@ func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 			continue
 		}
 		for _, ki := range s.knobIdxs {
-			if ki >= 0 && ki < len(dv.instEditorKnobs) {
-				fmVals[ki] = dv.instEditorKnobs[ki].Value
-				if kr := dv.instEditorKnobs[ki].Rect(); !kr.Empty() {
+			if ki >= 0 && ki < len(dv.instEditorControls) {
+				fmVals[ki] = dv.instEditorControls[ki].Value
+				if kr := dv.instEditorControls[ki].Rect(); !kr.Empty() {
 					knobRects = append(knobRects, kr)
 				}
 			}
@@ -202,7 +202,7 @@ func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 				continue
 			}
 			for _, ki := range s.knobIdxs {
-				if r := dv.instEditorKnobs[ki].Rect(); !r.Empty() {
+				if r := dv.instEditorControls[ki].Rect(); !r.Empty() {
 					out[ki] = r.Min.Y
 				}
 			}
@@ -247,8 +247,8 @@ func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 	}
 	// No knob value may change from a whitespace scroll.
 	for ki, v := range fmVals {
-		if dv.instEditorKnobs[ki].Value != v {
-			t.Fatalf("FM knob %d value changed during whitespace scroll (%.4f -> %.4f)", ki, v, dv.instEditorKnobs[ki].Value)
+		if dv.instEditorControls[ki].Value != v {
+			t.Fatalf("FM knob %d value changed during whitespace scroll (%.4f -> %.4f)", ki, v, dv.instEditorControls[ki].Value)
 		}
 	}
 }
@@ -263,7 +263,7 @@ func TestWheelNudgeFlushesOnTabSwitchAway(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	_, r := firstContinuousSynthKnob(t, g)
+	_, r := firstContinuousSynthControl(t, g)
 	undoBefore := undoDepth(g)
 
 	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
@@ -298,7 +298,7 @@ func TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	_, r := firstContinuousSynthKnob(t, g)
+	_, r := firstContinuousSynthControl(t, g)
 	undoBefore := undoDepth(g)
 
 	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
@@ -318,12 +318,12 @@ func TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth(t *testing.T) {
 	}
 }
 
-// TestSynthKnobShiftWheelIsFiner proves Shift-held wheel notches nudge a
+// TestSynthControlShiftWheelIsFiner proves Shift-held wheel notches nudge a
 // continuous knob by a SMALLER amount than an unshifted notch (Task-5's
 // "fine" wheel path in nudgeKnobByWheel), and that the temporary finer step
 // never persists: the knob's normal StepMul and the step badge's active
 // rung are unchanged afterward.
-func TestSynthKnobShiftWheelIsFiner(t *testing.T) {
+func TestSynthControlShiftWheelIsFiner(t *testing.T) {
 	// Two independent games (rather than one game hit twice) so the second
 	// trial isn't contaminated by the first commit's param propagation
 	// re-syncing the knob's Value out from under a manual reset.
@@ -331,12 +331,12 @@ func TestSynthKnobShiftWheelIsFiner(t *testing.T) {
 		t.Helper()
 		g := newModularSynthTabGame(t)
 		expandSynthPanelForTest(t, g)
-		idx, r := firstContinuousSynthKnob(t, g)
+		idx, r := firstContinuousSynthControl(t, g)
 		return g, idx, r
 	}
 
 	gU, idxU, rU := setup(t)
-	kU := gU.drum.instEditorKnobs[idxU]
+	kU := gU.drum.instEditorControls[idxU]
 	if idxU >= len(gU.drum.instEditorStepBadges) || gU.drum.instEditorStepBadges[idxU] == nil {
 		t.Fatal("filter_cutoff knob has no step badge")
 	}
@@ -352,7 +352,7 @@ func TestSynthKnobShiftWheelIsFiner(t *testing.T) {
 	}
 
 	gS, idxS, rS := setup(t)
-	kS := gS.drum.instEditorKnobs[idxS]
+	kS := gS.drum.instEditorControls[idxS]
 	badgeS := gS.drum.instEditorStepBadges[idxS]
 	stepMulBefore := kS.StepMul
 	idxBefore := badgeS.idx

@@ -6,15 +6,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestOpenSynthKnobWheelPopup verifies that openSynthKnobWheelPopup opens the
-// mobile wheel popup and closeSynthKnobWheelPopup closes it.
+// TestOpenSynthControlWheelPopup verifies that openSynthControlWheelPopup opens the
+// mobile wheel popup and closeSynthControlWheelPopup closes it.
 //
 // Approach: uses the newModularSynthTabGame + expandSynthPanelForTest harness
 // (same as knob_interaction_functional_test.go) to get a fully-wired DrumView
-// with populated instEditorKnobs/instEditorBindings, then calls open/close.
+// with populated instEditorControls/instEditorBindings, then calls open/close.
 // "ut-chip-modular" bound to "synth-modular" provides a continuous knob
 // (filter_cutoff) at a known param name.
-func TestOpenSynthKnobWheelPopup(t *testing.T) {
+func TestOpenSynthControlWheelPopup(t *testing.T) {
 	// Build the game first (newModularSynthTabGame calls assertDefaultParityState
 	// which requires forceSmallScreenForTest==false), then override to mobile.
 	g := newModularSynthTabGame(t)
@@ -28,14 +28,14 @@ func TestOpenSynthKnobWheelPopup(t *testing.T) {
 	dv := g.drum
 	audio.BindInstrumentToRecipe(instID, "synth-modular")
 
-	dv.openSynthKnobWheelPopup(idx, instID)
+	dv.openSynthControlWheelPopup(idx, instID)
 	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Fatal("openSynthKnobWheelPopup should open the wheel popup")
+		t.Fatal("openSynthControlWheelPopup should open the wheel popup")
 	}
 
-	dv.closeSynthKnobWheelPopup()
+	dv.closeSynthControlWheelPopup()
 	if dv.synthWheelPopup.IsOpen() {
-		t.Fatal("closeSynthKnobWheelPopup should close it")
+		t.Fatal("closeSynthControlWheelPopup should close it")
 	}
 }
 
@@ -56,16 +56,16 @@ func synthWheelTestDV(t *testing.T) *DrumView {
 	return g.drum
 }
 
-// firstContinuousSynthKnobIdx returns the binding index of filter_cutoff (the
+// firstContinuousSynthControlIdx returns the binding index of filter_cutoff (the
 // canonical continuous knob used by the wheel-seam tests).
-func (dv *DrumView) firstContinuousSynthKnobIdx(t *testing.T) int {
+func (dv *DrumView) firstContinuousSynthControlIdx(t *testing.T) int {
 	t.Helper()
 	for i, b := range dv.instEditorBindings {
 		if b.def.Name == "filter_cutoff" {
 			return i
 		}
 	}
-	t.Fatal("firstContinuousSynthKnobIdx: filter_cutoff not found in instEditorBindings")
+	t.Fatal("firstContinuousSynthControlIdx: filter_cutoff not found in instEditorBindings")
 	return -1
 }
 
@@ -96,19 +96,24 @@ func TestMobileTapKnobOpensWheel_DesktopStillDrags(t *testing.T) {
 	audio.BindInstrumentToRecipe(instID, "synth-modular")
 
 	dv := g.drum
-	k := dv.instEditorKnobs[idx]
+	k := dv.instEditorControls[idx]
 	kr := k.Rect()
 	if kr.Empty() {
 		t.Fatal("filter_cutoff knob has empty rect on mobile; check expandSynthPanelForTest layout")
 	}
 
-	h := &synthKnobHitAdapter{dv: dv, idx: idx, instID: instID}
-	res := h.OnPress(kr.Min.X+kr.Dx()/2, kr.Min.Y+kr.Dy()/2)
-	if res != InputConsumed {
-		t.Fatalf("mobile knob tap should be consumed to open the wheel, got %v", res)
+	h := &synthControlHitAdapter{dv: dv, idx: idx, instID: instID}
+	cx, cy := kr.Min.X+kr.Dx()/2, kr.Min.Y+kr.Dy()/2
+	res := h.OnPress(cx, cy)
+	if res != InputCaptured {
+		t.Fatalf("mobile control tap should CAPTURE the gesture (so a sweep can scroll), got %v", res)
 	}
+	if dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen() {
+		t.Fatal("mobile control tap must not open the wheel on press; it opens on release")
+	}
+	h.OnRelease(cx, cy)
 	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Fatal("mobile knob tap must open the wheel popup")
+		t.Fatal("mobile control tap must open the wheel popup on release")
 	}
 }
 
@@ -119,7 +124,7 @@ func TestMobileTapKnobOpensWheel_DesktopStillDrags(t *testing.T) {
 //
 // Setup order: build game first (assertDefaultParityState requires
 // forceSmallScreenForTest==false), then switch to mobile, then expand the
-// panel — same pattern as TestOpenSynthKnobWheelPopup.
+// panel — same pattern as TestOpenSynthControlWheelPopup.
 func TestMobileWheelEndToEndDragChangesAudioValue(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	withSmallScreen(t, true)
@@ -131,8 +136,8 @@ func TestMobileWheelEndToEndDragChangesAudioValue(t *testing.T) {
 	audio.BindInstrumentToRecipe(instID, "synth-modular")
 
 	dv := g.drum
-	startVal := dv.instEditorKnobs[idx].Value
-	dv.openSynthKnobWheelPopup(idx, instID)
+	startVal := dv.instEditorControls[idx].Value
+	dv.openSynthControlWheelPopup(idx, instID)
 	w := dv.synthWheelPopup
 
 	// Press in the lower quarter of the barrel — well outside the center-value
@@ -146,7 +151,7 @@ func TestMobileWheelEndToEndDragChangesAudioValue(t *testing.T) {
 	w.HandleInput(cx, y1, true)
 	w.HandleInput(cx, y1, false)
 
-	if dv.instEditorKnobs[idx].Value <= startVal {
+	if dv.instEditorControls[idx].Value <= startVal {
 		t.Fatalf("end-to-end drag should raise the knob value from %v", startVal)
 	}
 }
@@ -156,7 +161,7 @@ func TestMobileWheelEndToEndDragChangesAudioValue(t *testing.T) {
 //
 // Setup order: build game first (assertDefaultParityState requires
 // forceSmallScreenForTest==false), then switch to mobile — same pattern
-// as TestOpenSynthKnobWheelPopup.
+// as TestOpenSynthControlWheelPopup.
 func TestMobileWheelCenterTapOpensNumericEditor(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	withSmallScreen(t, true)
@@ -168,7 +173,7 @@ func TestMobileWheelCenterTapOpensNumericEditor(t *testing.T) {
 	audio.BindInstrumentToRecipe(instID, "synth-modular")
 
 	dv := g.drum
-	dv.openSynthKnobWheelPopup(idx, instID)
+	dv.openSynthControlWheelPopup(idx, instID)
 	w := dv.synthWheelPopup
 
 	cx := (w.centerH.Min.X + w.centerH.Max.X) / 2
@@ -192,17 +197,22 @@ func TestDesktopTapKnobOpensWheel(t *testing.T) {
 	selectSectionForKnobIdx(t, g, instID, idx)
 	audio.BindInstrumentToRecipe(instID, "synth-modular")
 	dv := g.drum
-	k := dv.instEditorKnobs[idx]
+	k := dv.instEditorControls[idx]
 	kr := k.Rect()
 	if kr.Empty() {
 		t.Fatal("filter_cutoff knob has empty rect on desktop")
 	}
-	h := &synthKnobHitAdapter{dv: dv, idx: idx, instID: instID}
-	res := h.OnPress(kr.Min.X+kr.Dx()/2, kr.Min.Y+kr.Dy()/2)
-	if res != InputConsumed {
-		t.Fatalf("desktop knob tap should be consumed to open the wheel, got %v", res)
+	h := &synthControlHitAdapter{dv: dv, idx: idx, instID: instID}
+	cx, cy := kr.Min.X+kr.Dx()/2, kr.Min.Y+kr.Dy()/2
+	res := h.OnPress(cx, cy)
+	if res != InputCaptured {
+		t.Fatalf("desktop control tap should CAPTURE the gesture (so a drag can scroll), got %v", res)
 	}
+	if dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen() {
+		t.Fatal("desktop control tap must not open the wheel on press; it opens on release")
+	}
+	h.OnRelease(cx, cy)
 	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Fatal("desktop knob tap must open the wheel popup (universal tap-to-popup)")
+		t.Fatal("desktop control tap must open the wheel popup on release (universal tap-to-popup)")
 	}
 }

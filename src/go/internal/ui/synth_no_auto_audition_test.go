@@ -44,11 +44,11 @@ func newSnareSynthTabGame(t *testing.T) *Game {
 	return g
 }
 
-// firstVisibleSynthKnob returns the index, knob, and hit area of the first
+// firstVisibleSynthControl returns the index, knob, and hit area of the first
 // laid-out (non-empty rect) synth knob.
-func firstVisibleSynthKnob(t *testing.T, g *Game) (int, *Knob, *HitArea) {
+func firstVisibleSynthControl(t *testing.T, g *Game) (int, *Knob, *HitArea) {
 	t.Helper()
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	idx := -1
 	for i, k := range knobs {
 		if !k.Rect().Empty() {
@@ -62,7 +62,7 @@ func firstVisibleSynthKnob(t *testing.T, g *Game) (int, *Knob, *HitArea) {
 	var hit *HitArea
 	hits := g.drum.eqPanelZone.HitAreas()
 	for i, h := range hits {
-		if h.Tag == fmt.Sprintf("synth-knob-%d", idx) {
+		if h.Tag == fmt.Sprintf("synth-control-%d", idx) {
 			hit = &hits[i]
 			break
 		}
@@ -72,7 +72,7 @@ func firstVisibleSynthKnob(t *testing.T, g *Game) (int, *Knob, *HitArea) {
 		for _, h := range hits {
 			tags = append(tags, h.Tag)
 		}
-		t.Fatalf("no hit area for synth-knob-%d; tags=%s", idx, strings.Join(tags, ","))
+		t.Fatalf("no hit area for synth-control-%d; tags=%s", idx, strings.Join(tags, ","))
 	}
 	return idx, knobs[idx], hit
 }
@@ -139,16 +139,16 @@ func TestSetInstrumentParam_NeverTriggersPlayback(t *testing.T) {
 	}
 }
 
-// TestSynthKnobWheelNudge_DoesNotAutoAudition drives the Task-5 desktop wheel
-// nudge (synthKnobHitAdapter.OnWheel): a notch over the card must propagate the
+// TestSynthControlWheelNudge_DoesNotAutoAudition drives the Task-5 desktop wheel
+// nudge (synthControlHitAdapter.OnWheel): a notch over the card must propagate the
 // param (next-trigger model) and NOT fire an audition.
-func TestSynthKnobWheelNudge_DoesNotAutoAudition(t *testing.T) {
+func TestSynthControlWheelNudge_DoesNotAutoAudition(t *testing.T) {
 	g := newSnareSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	var auditions []string
 	prev := SwapSynthAuditionFnForTest(func(id string) { auditions = append(auditions, id) })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
-	idx, knob, hit := firstVisibleSynthKnob(t, g)
+	idx, knob, hit := firstVisibleSynthControl(t, g)
 	paramName := g.drum.SynthTabBindings()[idx].def.Name
 	r := knob.Rect()
 	cx := (r.Min.X + r.Max.X) / 2

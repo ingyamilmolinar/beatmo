@@ -75,7 +75,11 @@ func (dv *DrumView) pushNotif(msg string, isErr bool) {
 	if dv.notifStore == nil {
 		dv.notifStore = newNotificationStore(notifHistoryCap)
 	}
-	dv.notifStore.Push(notification{text: msg, isErr: isErr, unixMs: nowUnixMilli()})
+	n := notification{text: msg, isErr: isErr, unixMs: nowUnixMilli()}
+	dv.notifStore.Push(n)
+	if isErr {
+		dv.pushErrorToast(n.display())
+	}
 }
 
 // pendingNotif is an off-thread-queued notification carrying the i18n key +
@@ -97,7 +101,11 @@ func (dv *DrumView) pushNotifKey(key i18n.Key, args []string, isErr bool) {
 	if dv.notifStore == nil {
 		dv.notifStore = newNotificationStore(notifHistoryCap)
 	}
-	dv.notifStore.Push(notification{key: key, args: args, isErr: isErr, unixMs: nowUnixMilli()})
+	n := notification{key: key, args: args, isErr: isErr, unixMs: nowUnixMilli()}
+	dv.notifStore.Push(n)
+	if isErr {
+		dv.pushErrorToast(n.display())
+	}
 }
 
 // anyDropdownOpen returns true if any dropdown menu is currently open.
@@ -159,6 +167,18 @@ func (dv *DrumView) IsNamingOpen() bool {
 	return dv.tree != nil && dv.portal().Has("naming")
 }
 
+// tapInScrollDeadZone reports whether a tap at (x,y) fell in the mobile
+// row-scroll dead zone — the ONLY region where the hold-press is blocked from
+// live dispatch (see anyDragActive), so the tap must be delivered by
+// injectTouchTap. Everywhere else the single-touch override publishes the
+// hold-press and the tree dispatches the touch-down live, so a second, injected
+// replay would double-process the gesture. The spatial half of the anyDragActive
+// dead-zone predicate, evaluated at the gesture's lift coordinates (where the
+// touch override is already gone).
+func (dv *DrumView) tapInScrollDeadZone(x, y int) bool {
+	return Profile().IsMobile() && !dv.MobileEQMode() && pt(x, y, dv.rowsRect())
+}
+
 // anyDragActive reports whether any drag, scrub, slider, hold interaction,
 // or mobile touch dead zone is in progress. When true, the tree skips
 // dispatching new presses.
@@ -200,7 +220,7 @@ func (dv *DrumView) Capturing() bool {
 }
 
 // PortalHasBlocking reports whether a BLOCKING overlay (modal or scrim-backed
-// menu/picker/dropdown/popup, e.g. the mobile synth-knob wheel popup) is open
+// menu/picker/dropdown/popup, e.g. the mobile synth-control wheel popup) is open
 // in any of the drum view's composed input trees. While one is up the overlay
 // owns input exclusively: gestures handled OUTSIDE the tree in Game.Update (grid
 // tap, camera pan/zoom, two-finger pan) must not act, so they never leak
@@ -208,6 +228,16 @@ func (dv *DrumView) Capturing() bool {
 // overlay may have is closing it (the tree's click-outside / Esc path).
 func (dv *DrumView) PortalHasBlocking() bool {
 	return dv.rootTree != nil && dv.rootTree.HasBlockingPortal()
+}
+
+// PortalOwnsInput reports whether ANY interactive (non-passive) overlay — a
+// blocking menu/popup OR a non-blocking docked panel / dropdown — is open in the
+// drum view's composed trees. Broader than PortalHasBlocking: it is the gate the
+// out-of-tree Game handlers consult so an outside tap on the FX panel or EQ
+// channel dropdown closes it (via the tree's click-outside) without leaking to
+// the grid/camera. Passive tooltips are excluded.
+func (dv *DrumView) PortalOwnsInput() bool {
+	return dv.rootTree != nil && dv.rootTree.HasInputOwningPortal()
 }
 
 // logCapturingState logs a detailed breakdown of what makes Capturing() true.

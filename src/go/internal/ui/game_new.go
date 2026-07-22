@@ -148,6 +148,16 @@ func New(logger *game_log.Logger) *Game {
 	// in the transport bar. Reuses the shared Button widget.
 	g.gridHelpBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleSettingsOverlay)
 	g.gridHelpBtn.Icon = string(IconSettings)
+	// Folder button, one gap left of the gear: opens the file menu (Upload /
+	// Import / Export / Load Template). Both platforms. Routed through
+	// gridFileInputHandler alongside the gear.
+	g.gridFileBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleFileMenu)
+	g.gridFileBtn.Icon = string(IconFolder)
+	// Logs button, one gap left of the folder button: opens the Logs Navigation
+	// Panel (event stream + notifications). Both platforms. Routed through
+	// gridLogsInputHandler alongside the gear/folder.
+	g.gridLogsBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleLogsPanel)
+	g.gridLogsBtn.Icon = string(IconLogs)
 	// Input is routed through the grid pane's inputDispatcher via
 	// gridHelpInputHandler (z=gridHelpInputZ). The button fires OnClick once per
 	// press edge; the release-time GestureTap path (handleTapInGrid) deliberately

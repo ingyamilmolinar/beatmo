@@ -18,10 +18,9 @@
 #     MIME is non-deterministic (depends on the host's Python mimetypes db) and
 #     a wrong MIME breaks the streaming compile on Safari + Chrome.
 #   - audio.js fetches worklets and workers via relative URLs at runtime
-#     (insert_fx_worklet.js, recording_capture_worklet.js,
-#     recording_encoder_worker.js, synth_render_worker.js — the off-thread synth
-#     renderer, which in turn imports drums.single.js) and statically imports
-#     synth_param_abi.gen.js.
+#     (recording_capture_worklet.js, recording_encoder_worker.js,
+#     synth_render_worker.js — the off-thread synth renderer, which in turn
+#     imports drums.single.js) and statically imports synth_param_abi.gen.js.
 #     They must all ship together; the drift test
 #     src/go/internal/deploy/manifest_drift_test.go enforces this.
 #   - Cloud CDN happily caches both the entry HTML and the assets; we must set
@@ -113,7 +112,6 @@ ASSET_FILES=(
   "audio.js"
   "wasm_exec.js"
   "drums.single.js"
-  "insert_fx_worklet.js"
   "recording_capture_worklet.js"
   "recording_encoder_worker.js"
   "synth_render_worker.js"

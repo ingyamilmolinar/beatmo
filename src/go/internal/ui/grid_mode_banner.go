@@ -9,50 +9,55 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// gridModeBannerText builds the localized helper-banner line for an armed
-// grid mode. Pure — tests and the draw path share this one source. escHint
-// appends the desktop-only " (Esc to cancel)" suffix (Profile().ShowEscHint
-// at the call site).
-func gridModeBannerText(kind GridModeKind, subject *uiNode, escHint bool) string {
-	var s string
-	switch kind {
+// gridModeBannerText returns the localized banner string for the currently
+// active armed grid mode (move / copy / connect), or "" when idle
+// (GridModeNone). Single source of truth shared by the draw path and tests —
+// pure, and deliberately excludes the Esc-hint suffix, which is the draw
+// path's job (drawGridModeBanner) since it depends on Profile().ShowEscHint.
+func (g *Game) gridModeBannerText() string {
+	s := g.modes.Subject()
+	switch g.modes.Active() {
 	case GridModeMove:
-		s = fmt.Sprintf(i18n.T(i18n.KeyBannerMoving), subject.I, subject.J)
+		if s == nil {
+			return ""
+		}
+		return fmt.Sprintf(i18n.T(i18n.KeyBannerMoving), s.I, s.J)
 	case GridModeCopy:
-		s = i18n.T(i18n.KeyBannerPasting)
+		return i18n.T(i18n.KeyBannerPasting)
 	case GridModeConnect:
-		s = fmt.Sprintf(i18n.T(i18n.KeyBannerConnectFrom), subject.I, subject.J)
-	default:
-		return ""
+		if s == nil {
+			return ""
+		}
+		return fmt.Sprintf(i18n.T(i18n.KeyBannerConnecting), s.I, s.J)
 	}
-	if escHint {
-		s += i18n.T(i18n.KeyBannerEscHint)
-	}
-	return s
+	return ""
 }
 
-// drawGridModeBanner renders an armed-mode helper banner centered at the top
-// of the grid pane: RoleBody chrome text on a Surface-2 rounded panel, sized
-// from the role's metrics and spacing tokens per DESIGN.md's typography
-// roles (no bitmap font, no magic paddings).
-func (g *Game) drawGridModeBanner(dst *ebiten.Image, text string) {
+// drawGridModeBanner renders the armed-mode helper banner centered at the top
+// of the grid pane: RoleBody chrome text on a panel, sized from the role's
+// metrics and spacing tokens per DESIGN.md's typography roles (no bitmap
+// font, no magic paddings). Returns early when idle. Single shared draw site
+// for Move, Copy and Connect — replaces the three former bespoke banners
+// (Task 9).
+func (g *Game) drawGridModeBanner(dst *ebiten.Image) {
+	text := g.gridModeBannerText()
 	if text == "" {
 		return
 	}
-	txtW := StyledTextWidth(text, RoleBody)
-	txtH := StyledTextHeight(RoleBody)
-	w := txtW + 2*SpaceSM
-	h := txtH + 2*SpaceXS
+	if Profile().ShowEscHint {
+		text += "  " + i18n.T(i18n.KeyEscToCancel)
+	}
+	w := StyledTextWidth(text, RoleBody) + 2*SpaceMD
 	gridW := g.split.GridW(g.winW)
 	x := (gridW - w) / 2
 	if x < 0 {
 		x = 0
 	}
-	r := image.Rect(x, SpaceXS, x+w, SpaceXS+h)
+	rect := image.Rect(x, SpaceXS, x+w, SpaceXS+StyledTextHeight(RoleBody)+2*SpaceXS)
 	// Keep clear of the settings gear's protected top-right zone (same
-	// no-invade contract as the long-press popup).
-	r = avoidReservedRect(r, g.gridHelpReservedRect(), gridW, g.split.GridH(g.winH))
-	drawRoundedRect(dst, r, TokenSurface2(), popupCornerRadius(), true)
-	drawRoundedRect(dst, r, TokenBorderMedium(), popupCornerRadius(), false)
-	DrawTextStyled(dst, text, r.Min.X+SpaceSM, r.Min.Y+SpaceXS, RoleBody, TokenTextPrimary())
+	// no-invade contract as the long-press popup — see
+	// feedback_settings_gear_protected_zone).
+	rect = avoidReservedRect(rect, g.gridHelpReservedRect(), gridW, g.split.GridH(g.winH))
+	drawPanel(dst, rect)
+	DrawTextStyled(dst, text, rect.Min.X+SpaceMD, rect.Min.Y+SpaceXS, RoleBody, colTextPrimary)
 }

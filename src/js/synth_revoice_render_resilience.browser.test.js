@@ -122,7 +122,16 @@ try {
   await waitForGameLoopRelease(page);
   if (!(await page.evaluate(() => rowSoloed(window.__row)))) fail("could not solo");
 
-  const base = await measure(1000);
+  // Baseline audibility must poll, not sample a fixed window. Under
+  // make test-real's 4-way parallel browser load the WASM game loop is starved
+  // hard enough that the sequencer stalls for >300ms against a 4ms tick (see the
+  // measureUntil comment above and project_revoice_resilience_acoustic_flake), so
+  // a single 1s window can read exact zero even though the soloed instrument IS
+  // audible a beat later — the post-revoice measurement below already uses this
+  // same resilient poll for exactly that reason. Assert "is it audible", not
+  // "was it audible within one second under contention". A real dead-instrument
+  // regression still fails: it never crosses RMS_MIN across the full 8s budget.
+  const base = await measureUntil(RMS_MIN, 8000, 500);
   console.log(`[TEST] baseline (Native, soloed) rms=${base.toFixed(5)}`);
   if (!(base > RMS_MIN)) fail(`no audio at baseline rms=${base}`);
   const floor = Math.max(RMS_MIN, base * 0.05);

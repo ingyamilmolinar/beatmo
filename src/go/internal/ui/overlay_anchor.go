@@ -98,3 +98,86 @@ func ClampRectInto(r, bounds image.Rectangle) image.Rectangle {
 	}
 	return r
 }
+
+// GridAnchorOpts configures anchoredPopupRect / (*Game).gridAnchoredPopupRect.
+type GridAnchorOpts struct {
+	// Prefer is the placement side relative to the anchor; the zero value
+	// (PopupBelow) drops the popup under its trigger.
+	Prefer PopupSide
+	// Avoid lists exclusion zones the popup must clear (e.g. the grid-pane
+	// gear/folder button cluster). Each is applied via avoidReservedRect.
+	Avoid []image.Rectangle
+}
+
+// anchoredPopupRect positions a popup of size (w,h) adjacent to anchor inside
+// winBounds, then nudges it clear of each Avoid zone. It reuses AnchorPopupRect
+// for the flip/clamp and avoidReservedRect for exclusion, so a popup anchored to
+// a grid-pane trigger drops next to that trigger instead of being pinned into
+// the bottom drum pane (the dv.Bounds-clamp bug). winBounds MUST have origin
+// (0,0) — it is the whole window; avoidReservedRect clamps against its extent.
+func anchoredPopupRect(anchor image.Rectangle, w, h int, winBounds image.Rectangle, opts GridAnchorOpts) image.Rectangle {
+	r := AnchorPopupRect(winBounds, anchor, w, h, opts.Prefer)
+	for _, zone := range opts.Avoid {
+		r = avoidReservedRect(r, zone, winBounds.Dx(), winBounds.Dy())
+	}
+	return r
+}
+
+// floatOffPaneEdges nudges a popup inward from any pane edge it welds to, by
+// `gutter` px, but only on an axis that has at least `gutter` of slack (so a
+// popup that fills the pane on an axis is never resized or shoved off the
+// opposite edge). This is what makes the grid-pane button menus read as
+// floating cards instead of chrome bolted to the frame. Pure geometry —
+// unit-tested in overlay_anchor_gutter_test.go.
+func floatOffPaneEdges(r, pane image.Rectangle, gutter int) image.Rectangle {
+	if gutter <= 0 {
+		return r
+	}
+	if pane.Dx()-r.Dx() >= gutter { // horizontal slack
+		if r.Max.X > pane.Max.X-gutter {
+			r = r.Add(image.Pt(pane.Max.X-gutter-r.Max.X, 0)) // pull left off the right edge
+		}
+		if r.Min.X < pane.Min.X+gutter {
+			r = r.Add(image.Pt(pane.Min.X+gutter-r.Min.X, 0)) // push right off the left edge
+		}
+	}
+	if pane.Dy()-r.Dy() >= gutter { // vertical slack
+		if r.Max.Y > pane.Max.Y-gutter {
+			r = r.Add(image.Pt(0, pane.Max.Y-gutter-r.Max.Y)) // pull up off the bottom edge
+		}
+		if r.Min.Y < pane.Min.Y+gutter {
+			r = r.Add(image.Pt(0, pane.Min.Y+gutter-r.Min.Y)) // push down off the top edge
+		}
+	}
+	return r
+}
+
+// gridAnchoredPopupRect positions a popup anchored to a grid-pane trigger rect,
+// CLAMPED TO THE GRID PANE (not the whole window) so the popup drops beside its
+// trigger and never spills past the split line into the bottom drum-view panel —
+// matching the node pop-up. It always dodges the reserved gear/folder cluster.
+// This is the single positioning path for the grid-pane top-right button menus
+// (Settings, Logs). A popup taller than the grid pane is capped to it; callers
+// whose content can exceed the pane clip/scroll it to the returned rect.
+func (g *Game) gridAnchoredPopupRect(anchor image.Rectangle, w, h int, opts GridAnchorOpts) image.Rectangle {
+	// Avoid the WHOLE top-right button cluster (gear+file+logs) so the popup's own
+	// controls (e.g. its close button) never land under a higher-z grid button.
+	if z := g.gridTopButtonsReservedRect(); !z.Empty() {
+		opts.Avoid = append(opts.Avoid, z)
+	}
+	gridPane := image.Rect(0, 0, g.split.GridW(g.winW), g.split.GridH(g.winH))
+	// Cap the requested size so it never fills the pane edge-to-edge: this
+	// guarantees floatOffPaneEdges finds at least a gutter of slack on both
+	// axes, so even a panel taller than the short grid pane floats off the top
+	// and bottom (its content scrolls) instead of welding to the frame.
+	if maxW := gridPane.Dx() - 2*SpaceMD; maxW > 0 && w > maxW {
+		w = maxW
+	}
+	if maxH := gridPane.Dy() - 2*SpaceMD; maxH > 0 && h > maxH {
+		h = maxH
+	}
+	r := anchoredPopupRect(anchor, w, h, gridPane, opts)
+	// Float the panel off the pane frame so it reads as a card, not chrome
+	// welded to the top/right/bottom edge.
+	return floatOffPaneEdges(r, gridPane, SpaceMD)
+}

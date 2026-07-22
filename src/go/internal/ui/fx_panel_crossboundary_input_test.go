@@ -56,8 +56,8 @@ func openTallFXPanel(t *testing.T, dv *DrumView) image.Point {
 	if overlap.Empty() {
 		t.Fatalf("FX panel (%v) does not overlap EQ panel (%v) — repro precondition unmet", fxR, eqR)
 	}
-	if dv.fxScrollMaxPx <= 0 {
-		t.Fatalf("FX panel is not scrollable (fxScrollMaxPx=%d) — repro precondition unmet", dv.fxScrollMaxPx)
+	if !dv.fxHasScroll() {
+		t.Fatalf("FX panel is not scrollable — repro precondition unmet")
 	}
 	return image.Pt(overlap.Min.X+overlap.Dx()/2, overlap.Min.Y+overlap.Dy()/2)
 }
@@ -73,14 +73,14 @@ func TestFXPanelWheelScrollsInsideEQPanelRegion(t *testing.T) {
 
 	pt := openTallFXPanel(t, dv)
 
-	before := dv.fxScrollOffsetPx
+	before := dv.fxScrollOffset()
 	for i := 0; i < 4; i++ {
 		injectWheelAt(t, dv, pt.X, pt.Y, 0, -1) // scroll down
 	}
-	after := dv.fxScrollOffsetPx
+	after := dv.fxScrollOffset()
 	if after == before {
 		t.Fatalf("wheel inside FX panel over the EQ-panel region did not scroll it: "+
-			"fxScrollOffsetPx stayed %d at point %v (panel must own every point in its rect)", before, pt)
+			"offset stayed %d at point %v (panel must own every point in its rect)", before, pt)
 	}
 }
 

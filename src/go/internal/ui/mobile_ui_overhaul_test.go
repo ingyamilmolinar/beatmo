@@ -93,14 +93,8 @@ func TestMobileOverflowMenuHidesFileButtons(t *testing.T) {
 		}
 	}
 
-	overflow := dv.OverflowBtn()
-	if overflow == nil {
-		t.Fatal("overflow button is nil")
-	}
-	or := overflow.Rect()
-	if or.Dx() < 14 || or.Dy() < 12 {
-		t.Fatalf("overflow button rect too small: %v (need Dx>=14, Dy>=12)", or)
-	}
+	// The overflow/kebab button was removed; file options open from the grid
+	// folder button (covered by TestGridFileButtonPresentBothPlatforms).
 }
 
 // TestMobileTransportNoOverlap checks that no pair of transport buttons
@@ -120,9 +114,6 @@ func TestMobileTransportNoOverlap(t *testing.T) {
 	}
 	if dv.eqToggleMobile() != nil {
 		btns = append(btns, dv.eqToggleMobile())
-	}
-	if dv.overflowBtn() != nil {
-		btns = append(btns, dv.overflowBtn())
 	}
 	for i := 0; i < len(btns); i++ {
 		for j := i + 1; j < len(btns); j++ {
@@ -263,8 +254,8 @@ func TestMobileContextMenuOpens(t *testing.T) {
 		t.Fatal("context menu not open")
 	}
 	btns := dv.ContextMenuBtns()
-	if len(btns) != 5 {
-		t.Fatalf("expected 5 context menu buttons (4 items + close), got %d", len(btns))
+	if len(btns) != 4 {
+		t.Fatalf("expected 4 context menu buttons (4 items, no close × on mobile), got %d", len(btns))
 	}
 	rect := dv.ContextMenuRectVal()
 	if rect.Empty() {
@@ -366,13 +357,8 @@ func TestMobileBeatInfoVisible(t *testing.T) {
 	if r := dv.lenIncBtn.Rect(); !r.Empty() {
 		t.Errorf("lenIncBtn should be hidden on mobile (A7); got %v", r)
 	}
-	// Overflow button should be visible
-	if dv.overflowBtn() == nil {
-		t.Fatal("overflowBtn is nil")
-	}
-	if dv.overflowBtn().Rect().Empty() {
-		t.Error("overflowBtn should be visible on mobile")
-	}
+	// The overflow/kebab button was removed; file options open from the grid
+	// folder button (covered by TestGridFileButtonPresentBothPlatforms).
 }
 
 // ────────────────────── Negative tests (desktop unchanged) ──────────────────────
@@ -479,17 +465,11 @@ func TestDesktopTransportFull(t *testing.T) {
 	} {
 		r := pair.btn.Rect()
 		if r.Dx()*r.Dy() != 0 {
-			t.Errorf("desktop: %s button should be hidden inline (behind overflow menu), got %v", pair.name, r)
+			t.Errorf("desktop: %s button should be hidden inline (behind file menu), got %v", pair.name, r)
 		}
 	}
-	// Overflow button should be visible on desktop (the single menu trigger).
-	if dv.overflowBtn() == nil {
-		t.Fatal("desktop: overflow button missing")
-	}
-	or := dv.overflowBtn().Rect()
-	if or.Dx()*or.Dy() == 0 {
-		t.Errorf("desktop: overflow button should have non-zero area, got %v", or)
-	}
+	// The overflow/kebab button was removed; file options open from the grid
+	// folder button (covered by TestGridFileButtonPresentBothPlatforms).
 }
 
 // TestDesktopNoContextMenu verifies that contextMenuOpen stays false on

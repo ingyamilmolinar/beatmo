@@ -41,11 +41,11 @@ func TestParityDetectsMissingAudioJustBehindPlayhead(t *testing.T) {
 	g.paritySeqDecisions = make(map[int]map[int]paritySeqDecision)
 	g.paritySeqDecisions[0] = map[int]paritySeqDecision{
 		0: {
-			Row:        0,
-			Abs:        0,
-			Audible:    true,
-			NodeType:   model.NodeTypeRegular,
-			Missing:    false,
+			Row:      0,
+			Abs:      0,
+			Audible:  true,
+			NodeType: model.NodeTypeRegular,
+			Missing:  false,
 			// Match the current parity generation so the scan's gen filter does
 			// not discard this directly-injected decision. Production code path
 			// is recordSeqDecision which captures gen; tests that bypass it must

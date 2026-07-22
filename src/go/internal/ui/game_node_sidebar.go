@@ -104,7 +104,11 @@ func NewNodeSidebar(g *Game) *NodeSidebar {
 	}
 }
 
-// Open activates the sidebar for the given node.
+// Open activates the sidebar for the given node. The sidebar renders through the
+// grid pane's own tree (GridTree, see registerGridTree) — NOT the global portal —
+// so its node-anchored card is clipped to the grid pane and can never paint over
+// the bottom drum-view panel (a separate component tree). Input flows through the
+// grid inputDispatcher.
 func (sb *NodeSidebar) Open(node *uiNode) {
 	sb.open = true
 	sb.node = node
@@ -285,8 +289,8 @@ func (sb *NodeSidebar) layout() {
 	}
 	sb.width = w
 
-	// Panel rect: left-anchored, full grid height
-	sb.rects["panel"] = image.Rect(0, 0, w, gridH)
+	// Panel rect is set below, after content sizing: a compact card sized to its
+	// content (not the full pane) and anchored beside the tapped node.
 
 	// Determine node type visibility
 	nodeType := model.NodeTypeRegular
@@ -301,15 +305,35 @@ func (sb *NodeSidebar) layout() {
 	showLogic := !isSilent
 	showGroove := !isSilent
 
-	// Fixed header (NOT scrolled)
+	// Fixed header (NOT scrolled): a snug title band + an always-visible
+	// coordinate readout (grid coords + circuit beat/subdivision). The title band
+	// is sized to the title glyphs — not the full legacy sidebarHeaderH — so the
+	// always-visible line costs only a few px of content height, keeping controls
+	// reachable on short panels. A second line (live last/next fire) is reserved
+	// only while playing, since when stopped the home line already IS the
+	// next-from-0 position.
 	closeSize := sidebarBtnH
-	headerRect := image.Rect(sidebarPad, sidebarPad, w-sidebarPad, sidebarPad+sidebarHeaderH)
+	lineH := StyledTextHeight(RoleCaption)
+	titleBandH := StyledTextHeight(menuTitleRole) + 4
+	coordLines := 1
+	if g.Playing() {
+		coordLines = 2
+	}
+	headerH := titleBandH + coordLines*lineH
+	headerRect := image.Rect(sidebarPad, sidebarPad, w-sidebarPad, sidebarPad+headerH)
 	sb.rects["header"] = headerRect
-	sb.rects["close"] = image.Rect(w-sidebarPad-closeSize, sidebarPad, w-sidebarPad, sidebarPad+closeSize)
+	sb.rects["coords"] = image.Rect(sidebarPad, sidebarPad+titleBandH, w-sidebarPad, sidebarPad+headerH)
+	// Close × is desktop-only (shared desktopCloseVisible gate); on mobile the
+	// node card dismisses via tap-away, so no rect is published and the button is
+	// never built below. delete keeps a profile flip (tests) from leaving a stale rect.
+	if desktopCloseVisible() {
+		sb.rects["close"] = image.Rect(w-sidebarPad-closeSize, sidebarPad, w-sidebarPad, sidebarPad+closeSize)
+	} else {
+		delete(sb.rects, "close")
+	}
 
-	// Content starts below header
-	contentTop := sidebarPad + sidebarHeaderH + sidebarGap
-	viewportH := gridH - contentTop
+	// Content starts below the header band.
+	contentTop := headerRect.Max.Y + sidebarGap
 
 	// Layout scrollable content
 	y := contentTop - sb.scroll.VS.First
@@ -367,10 +391,43 @@ func (sb *NodeSidebar) layout() {
 
 	// Compute scroll limits via ScrollBehavior
 	contentH := y + sb.scroll.VS.First - contentTop
+	// Compact card: height = content (header + sections), capped to the grid pane
+	// so a tall node keeps the card on-screen and scrolls the overflow.
+	cardH := contentTop + contentH + sidebarPad
+	if cardH > gridH {
+		cardH = gridH
+	}
+	viewportH := cardH - contentTop
+	sb.rects["panel"] = image.Rect(0, 0, w, cardH)
 	sb.scroll.VS.Total = contentH
 	sb.scroll.VS.Visible = viewportH
 	sb.scroll.VS.View = image.Rect(w-sb.scroll.Style.Width, contentTop, w, contentTop+viewportH)
 	sb.scroll.VS.Clamp()
+
+	// Anchor the card beside the tapped node, CLAMPED TO THE GRID PANE (not the
+	// window) so it stays entirely within the grid pane's own tree and can never
+	// render over the bottom drum-view panel — a separate component tree.
+	// AnchorPopupRect flips above/below to keep it inside the pane; avoidReservedRect
+	// dodges the gear cluster. All child rects (and the scroll viewport) were
+	// computed at origin (0,0); translate them to the anchored origin.
+	x1, y1, x2, y2 := g.nodeScreenRect(sb.node)
+	nodeR := image.Rect(int(x1), int(y1), int(x2), int(y2))
+	gridPane := image.Rect(0, 0, g.split.GridW(g.winW), gridH)
+	anchored := AnchorPopupRect(gridPane, nodeR, w, cardH, PopupBelow)
+	// Avoid the WHOLE top-right button cluster (gear + file + logs): the sidebar's
+	// close button sits at the card's top-right and would otherwise collide with
+	// the higher-z logs button, which swallows the click. (gridHelpReservedRect
+	// covers only gear+file, kept narrower for the group menu's placement spec.)
+	if avoid := g.gridTopButtonsReservedRect(); !avoid.Empty() {
+		anchored = avoidReservedRect(anchored, avoid, gridPane.Dx(), gridPane.Dy())
+	}
+	origin := anchored.Min
+	if origin.X != 0 || origin.Y != 0 {
+		for k, r := range sb.rects {
+			sb.rects[k] = r.Add(origin)
+		}
+		sb.scroll.VS.View = sb.scroll.VS.View.Add(origin)
+	}
 
 	// Wire button objects
 	sb.wireButtons()
@@ -973,7 +1030,8 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 		}
 	}
-	// Close button
+	// Close button (desktop only — no rect published on mobile, so skip + drop
+	// any stale button from a prior desktop layout).
 	{
 		r, ok := sb.rects["close"]
 		if ok && !r.Empty() {
@@ -990,6 +1048,8 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 			sb.btns["close"].SetRect(r)
 			sb.btns["close"].ConsumeOnPress = true
+		} else {
+			delete(sb.btns, "close")
 		}
 	}
 }
@@ -1100,9 +1160,8 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 
 	// 6. Press in scroll viewport → begin deferred tap + touch scroll simultaneously
 	//    Exclude scrollbar track area so track clicks reach step 11.
-	contentTop := sidebarPad + sidebarHeaderH + sidebarGap
-	gridH := sb.game.split.GridH(sb.game.winH)
-	viewport := image.Rect(panelR.Min.X, contentTop, panelR.Max.X, gridH)
+	contentTop := sb.contentTopY()
+	viewport := image.Rect(panelR.Min.X, contentTop, panelR.Max.X, panelR.Max.Y)
 	onScrollbarTrack := sb.scroll.HasScroll() && pt.In(sb.scroll.BarRect())
 	if pressed && pt.In(viewport) && !onScrollbarTrack && !sb.scroll.TouchActive() && !sb.scroll.Dragging() {
 		if sb.deferredTap.Begin(x, y) {
@@ -1404,12 +1463,28 @@ func (sb *NodeSidebar) buttonOrder() []string {
 	return order
 }
 
+// contentTopY is the single source of truth for the Y where scrollable content
+// begins — directly below the fixed header band. It derives from the laid-out
+// header rect so the input-press, inViewport, and Draw paths stay in lockstep
+// with layout(), which grows the header when the coordinate readout adds a second
+// (playing) line. It falls back to the legacy fixed header height only before
+// layout() has populated the header rect.
+func (sb *NodeSidebar) contentTopY() int {
+	if hr, ok := sb.rects["header"]; ok && !hr.Empty() {
+		return hr.Max.Y + sidebarGap
+	}
+	return sidebarPad + sidebarHeaderH + sidebarGap
+}
+
 // inViewport reports whether a rectangle is at least partially visible within
 // the scrollable content area (below the fixed header and above the panel bottom).
 func (sb *NodeSidebar) inViewport(r image.Rectangle) bool {
-	contentTop := sidebarPad + sidebarHeaderH + sidebarGap
-	gridH := sb.game.split.GridH(sb.game.winH)
-	return r.Max.Y > contentTop && r.Min.Y < gridH
+	contentTop := sb.contentTopY()
+	bottom := sb.game.split.GridH(sb.game.winH)
+	if p, ok := sb.rects["panel"]; ok && !p.Empty() {
+		bottom = p.Max.Y // compact card bottom (panel is content-sized + anchored)
+	}
+	return r.Max.Y > contentTop && r.Min.Y < bottom
 }
 
 // ─── Draw ──────────────────────────────────────────────────────────────────
@@ -1463,9 +1538,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		durVal = mn.Params.Duration
 	}
 
-	contentTop := sidebarPad + sidebarHeaderH + sidebarGap
-	gridH := g.split.GridH(g.winH)
-	_, _ = contentTop, gridH // used by inViewport via sb receiver
+	contentTop := sb.contentTopY()
 
 	// Draw sections. Section headers now self-compute their text baseline via
 	// StyledTextHeight; the legacy secTextOffY arg is retained for signature
@@ -1488,7 +1561,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	// paint over the title band. The shadowed dst keeps the section-draw
 	// code identical; coordinates stay absolute.
 	dstFull := dst
-	dst = dstFull.SubImage(image.Rect(panel.Min.X, contentTop, panel.Max.X, gridH)).(*ebiten.Image)
+	dst = dstFull.SubImage(image.Rect(panel.Min.X, contentTop, panel.Max.X, panel.Max.Y)).(*ebiten.Image)
 
 	// Volume section
 	if showVol {
@@ -1745,7 +1818,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 
 	// Fixed header, drawn after the clipped content so it always sits on top.
 	sb.drawHeader(dst)
-	sepY := sidebarPad + sidebarHeaderH
+	sepY := sb.rects["header"].Max.Y
 	drawRect(dst, image.Rect(sidebarPad, sepY, panel.Max.X-sidebarPad, sepY+1), WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection), true)
 
 	// Close button — visible neutral chip with the standard hairline border;
@@ -1809,8 +1882,28 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 		swatchCol = dr.Color
 		label = dr.Name
 	}
-	titleRect := image.Rect(headerRect.Min.X+2, headerRect.Min.Y, headerRect.Max.X, headerRect.Min.Y+sidebarHeaderH)
+	coordR := sb.rects["coords"]
+	titleBottom := headerRect.Min.Y + sidebarHeaderH
+	if !coordR.Empty() {
+		titleBottom = coordR.Min.Y
+	}
+	titleRect := image.Rect(headerRect.Min.X+2, headerRect.Min.Y, headerRect.Max.X, titleBottom)
 	drawMenuTitle(dst, titleRect, label, swatchCol)
+
+	// Coordinate readout: grid coords + circuit beat/subdivision (always). While
+	// playing, a second line shows the node's live last/next fire; when stopped
+	// the home line already conveys the next-from-0 position, so it is omitted to
+	// keep the fixed header short on small panels.
+	if !coordR.Empty() && sb.node != nil {
+		tm := g.nodeLiveTiming(sb.node.ID)
+		x := coordR.Min.X + 2
+		DrawTextStyled(dst, g.formatNodeCoordHome(sb.node.I, sb.node.J, tm), x, coordR.Min.Y, RoleCaption, colTextSecondary)
+		if g.Playing() {
+			if line2 := g.formatNodeFireLine(tm, true); line2 != "" {
+				DrawTextStyled(dst, line2, x, coordR.Min.Y+StyledTextHeight(RoleCaption), RoleCaption, colTextSecondary)
+			}
+		}
+	}
 }
 
 // drawSectionHeader draws a collapsible section header using the shared menu

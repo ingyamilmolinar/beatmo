@@ -21,6 +21,7 @@ const (
 	GZGroupBadges    = 41
 	GZMoveMode       = 42
 	GZConnectMode    = 44
+	GZModeBanner     = 45
 	GZMarquee        = 46
 	GZLongPress      = 50
 	GZSidebar        = 60

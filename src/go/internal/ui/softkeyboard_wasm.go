@@ -13,6 +13,8 @@ var (
 	kbEscFn          js.Func
 	kbArrowLeftFn    js.Func
 	kbArrowRightFn   js.Func
+	kbHomeFn         js.Func
+	kbEndFn          js.Func
 	kbInitialized    bool
 )
 
@@ -47,6 +49,20 @@ func softKeyboardInit() {
 		return nil
 	})
 	g.Set("_kbProxyArrowRightGo", kbArrowRightFn)
+	// Home / End caret-jump keys, same out-of-band bridge as the arrows (the
+	// proxy holds focus so the canvas never sees them). Delete (forward-delete)
+	// needs no bridge func — the proxy keydown handler buffers it as the '\x7f'
+	// DEL sentinel into charBuf, drained by softKeyboardDrainChars.
+	kbHomeFn = js.FuncOf(func(js.Value, []js.Value) any {
+		SignalSoftKeyboardHome()
+		return nil
+	})
+	g.Set("_kbProxyHomeGo", kbHomeFn)
+	kbEndFn = js.FuncOf(func(js.Value, []js.Value) any {
+		SignalSoftKeyboardEnd()
+		return nil
+	})
+	g.Set("_kbProxyEndGo", kbEndFn)
 	mobileInputInit()
 }
 

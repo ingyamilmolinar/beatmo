@@ -321,16 +321,13 @@ func TestEQChannelMenuSuppressBlocksDeferredTap(t *testing.T) {
 	}
 }
 
-// TestInstMenuCloseButtonViaDeferredTap reproduces the mobile close button bug:
-// on mobile, the close button rect is inside m.scroll.VS.View, so a touch press
-// captures it as a deferred tap. On release, fireTapAt must check the close
-// button to properly close the menu.
-func TestInstMenuCloseButtonViaDeferredTap(t *testing.T) {
+// TestInstMenuCloseButtonAbsentOnMobile asserts the new contract: the mobile
+// instrument bottom sheet carries NO close × (it dismisses via tap-away). This
+// replaces the former "close via deferred tap" test — that mobile affordance
+// was removed so the close × is desktop-only. Opened here via a row-label click.
+func TestInstMenuCloseButtonAbsentOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// The deferred-tap (fire-on-release) close path is a mobile affordance;
-	// desktop closes on the press edge. Force mobile so this exercises the
-	// deferred-tap path the test name describes.
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
@@ -348,58 +345,18 @@ func TestInstMenuCloseButtonViaDeferredTap(t *testing.T) {
 		t.Fatal("instMenuComp should be open")
 	}
 
-	// Let suppress clear.
+	// Let suppress clear + layout settle so the close × (if any) would be built.
 	ri := idleFrames(dv, 3, W, H)
 	ri()
 
-	closeBtn := comp.CloseBtn()
-	if closeBtn == nil {
-		t.Fatal("close button missing")
+	if closeBtn := comp.CloseBtn(); closeBtn != nil {
+		t.Fatalf("mobile instrument menu must have no close ×; got rect %+v", closeBtn.Rect())
 	}
-	cr := closeBtn.Rect()
-	if cr.Empty() {
-		t.Fatal("close button rect is empty")
-	}
-	closedCalled := false
-	origOnClose := comp.props.OnClose
-	comp.props.OnClose = func() {
-		closedCalled = true
-		if origOnClose != nil {
-			origOnClose()
-		}
-	}
-
-	cbx := cr.Min.X + cr.Dx()/2
-	cby := cr.Min.Y + cr.Dy()/2
-
-	// Simulate touch press at close button position (captures as deferred tap).
-	r := pressDrumView(dv, cbx, cby, W, H)
-	dv.Update()
-	r()
-
-	// Menu should still be open (touch is held).
-	if !dv.IsInstMenuOpen() {
-		t.Fatal("menu should still be open during press")
-	}
-
-	// Simulate touch release at same position (fires deferred tap).
-	r = releaseDrumView(dv, cbx, cby, W, H)
-	dv.Update()
-	r()
-
-	if dv.IsInstMenuOpen() {
-		t.Fatal("menu should be closed after tapping close button via deferred tap")
-	}
-	if !closedCalled {
-		t.Fatal("OnClose callback was not called")
-	}
-
-	t.Log("close button via deferred tap — PASS")
 }
 
-// TestInstMenuCloseButtonViaDeferredTapMobile is the same test but with mobile
-// layout where the bottom-sheet covers a larger area.
-func TestInstMenuCloseButtonViaDeferredTapMobile(t *testing.T) {
+// TestInstMenuCloseButtonAbsentOnMobileProgrammatic is the same contract via the
+// programmatic open path + a full mobile bottom-sheet viewport.
+func TestInstMenuCloseButtonAbsentOnMobileProgrammatic(t *testing.T) {
 	assertDefaultParityState(t)
 
 	forceSmallScreenForTest = true
@@ -423,48 +380,9 @@ func TestInstMenuCloseButtonViaDeferredTapMobile(t *testing.T) {
 	ri := idleFrames(dv, 3, W, H)
 	ri()
 
-	closeBtn := comp.CloseBtn()
-	if closeBtn == nil {
-		t.Fatal("close button missing")
+	if closeBtn := comp.CloseBtn(); closeBtn != nil {
+		t.Fatalf("mobile instrument menu must have no close ×; got rect %+v", closeBtn.Rect())
 	}
-	cr := closeBtn.Rect()
-	if cr.Empty() {
-		t.Fatal("close button rect is empty")
-	}
-	closedCalled := false
-	origOnClose := comp.props.OnClose
-	comp.props.OnClose = func() {
-		closedCalled = true
-		if origOnClose != nil {
-			origOnClose()
-		}
-	}
-
-	cbx := cr.Min.X + cr.Dx()/2
-	cby := cr.Min.Y + cr.Dy()/2
-
-	// Simulate touch press at close button position.
-	r := pressDrumView(dv, cbx, cby, W, H)
-	dv.Update()
-	r()
-
-	if !dv.IsInstMenuOpen() {
-		t.Fatal("menu should still be open during press")
-	}
-
-	// Simulate touch release (fires deferred tap).
-	r = releaseDrumView(dv, cbx, cby, W, H)
-	dv.Update()
-	r()
-
-	if dv.IsInstMenuOpen() {
-		t.Fatal("menu should be closed after mobile close button deferred tap")
-	}
-	if !closedCalled {
-		t.Fatal("OnClose callback was not called on mobile")
-	}
-
-	t.Log("mobile close button via deferred tap — PASS")
 }
 
 // TestInstMenuAllPopupsHeldMouseStable verifies that for each popup type,
