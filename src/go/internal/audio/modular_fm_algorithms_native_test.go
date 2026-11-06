@@ -31,7 +31,7 @@ func renderModularFMAlg(t *testing.T, alg float64) []float32 {
 	}
 	const sr = 44100
 	buf := make([]float32, sr/4)
-	renderModularP(buf, sr, len(buf), recipeParamsToModular(rp))
+	renderModularBlock(buf, sr, len(buf), initBlockForTest(rp))
 	for i, v := range buf {
 		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
 			t.Fatalf("alg %v: buf[%d] not finite", alg, i)
@@ -75,30 +75,4 @@ func buffersEqualF32(a, b []float32) bool {
 		}
 	}
 	return true
-}
-
-// renderModularPad is the unparameterized fast path for the pad preset; it
-// was never invoked by tests (engine_instruments wires it, but no native
-// test triggered that instrument).
-func TestRenderModularPad(t *testing.T) {
-	const sr = 44100
-	buf := make([]float32, sr/4)
-	renderModularPad(buf, sr, len(buf))
-
-	var energy float64
-	for i, v := range buf {
-		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-			t.Fatalf("buf[%d] not finite", i)
-		}
-		energy += float64(v) * float64(v)
-	}
-	if energy == 0 {
-		t.Fatal("pad preset rendered silence")
-	}
-
-	// Guard branches: empty buffer / zero samples / oversized samples are
-	// no-ops, not crashes.
-	renderModularPad(nil, sr, 0)
-	renderModularPad(buf, sr, 0)
-	renderModularPad(make([]float32, 4), sr, 8)
 }

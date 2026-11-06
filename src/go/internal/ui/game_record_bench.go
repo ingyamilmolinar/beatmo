@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // startBenchRecording is invoked from the bench lifecycle once playback
@@ -18,14 +20,14 @@ func (g *Game) startBenchRecording() {
 		return
 	}
 	instruments := make([]audio.InstrumentMeta, 0, len(g.drum.Rows))
-	seen := map[string]bool{}
+	seen := map[instrument.ID]bool{}
 	for _, row := range g.drum.Rows {
 		if row.Instrument == "" || seen[row.Instrument] {
 			continue
 		}
 		seen[row.Instrument] = true
 		instruments = append(instruments, audio.InstrumentMeta{
-			ID:   row.Instrument,
+			ID:   channel.Of(row.Instrument),
 			Name: row.Name,
 		})
 	}

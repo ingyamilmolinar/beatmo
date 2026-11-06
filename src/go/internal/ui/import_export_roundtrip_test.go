@@ -8,16 +8,18 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // roleOfInstrument finds the exported Role for instrument id, "" if absent.
-func roleOfInstrument(f exportFile, id string) string {
+func roleOfInstrument(f projectFile, id instrument.ID) instrument.Role {
 	for _, in := range f.Instruments {
 		if in.ID == id {
 			return in.Role
 		}
 	}
-	return ""
+	return instrument.RoleNone
 }
 
 // TestImportExportRoundtripPreservesAllFields is the durable guarantee behind
@@ -50,38 +52,35 @@ func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 		p.Pitch = 3
 		p.Duration = 0.5
 		p.Volume = 0.8
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.5
-		p.GrooveKind = "rush"
+		p.GrooveKind = model.GrooveRush
 		p.GroovePct = 0.4
 		g.graph.SetNodeParams(b.ID, p)
 	}
 
-	// Row fields: name, instrument, origin, volume, role, pan, sends.
+	// Row fields: name, instrument, origin, volume, role.
 	r0 := g.drum.Rows[0]
 	r0.Name = "Kick"
-	g.drum.SetInstrument("kick")
+	g.drum.SetInstrument(roster.Kick)
 	r0.Origin = a.ID
 	r0.Node = a
 	r0.Volume = 0.9
-	r0.Role = "kick"
-	r0.Pan = -0.3
-	r0.DelaySend = 0.2
-	r0.ReverbSend = 0.4
+	r0.Role = instrument.RoleKick
 	g.drum.SetBPM(132)
 
 	// A registered kit (top-level Kits field).
 	audio.RegisterKit(audio.Kit{
 		ID:          "kit.rt",
 		DisplayName: "Roundtrip Kit",
-		Members:     map[string]string{"kick": "kick"},
+		Members:     map[instrument.Role]instrument.ID{instrument.RoleKick: roster.Kick},
 	})
 
 	bytes1, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("first export: %v", err)
 	}
-	var f1 exportFile
+	var f1 projectFile
 	if err := json.Unmarshal(bytes1, &f1); err != nil {
 		t.Fatalf("unmarshal export1: %v", err)
 	}
@@ -89,7 +88,7 @@ func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 	if len(f1.Kits) != 1 {
 		t.Fatalf("precondition: source export Kits=%d, want 1", len(f1.Kits))
 	}
-	if roleOfInstrument(f1, "kick") != "kick" {
+	if roleOfInstrument(f1, roster.Kick) != instrument.RoleKick {
 		t.Fatalf("precondition: source export missing kick Role")
 	}
 
@@ -108,7 +107,7 @@ func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second export: %v", err)
 	}
-	var f2 exportFile
+	var f2 projectFile
 	if err := json.Unmarshal(bytes2, &f2); err != nil {
 		t.Fatalf("unmarshal export2: %v", err)
 	}
@@ -126,23 +125,23 @@ func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 	if len(f2.Instruments) != len(f1.Instruments) {
 		t.Errorf("instrument count: export2=%d export1=%d", len(f2.Instruments), len(f1.Instruments))
 	}
-	// Kits asymmetry (would be 0 without the importFile.Kits + RegisterKit fix).
+	// Kits asymmetry (would be 0 without the projectFile.Kits + RegisterKit fix).
 	if len(f2.Kits) != 1 {
 		t.Errorf("Kits dropped on import: export2 Kits=%d, want 1", len(f2.Kits))
-	} else if f2.Kits[0].ID != "kit.rt" || f2.Kits[0].Members["kick"] != "kick" {
+	} else if f2.Kits[0].ID != "kit.rt" || f2.Kits[0].Members[instrument.RoleKick] != roster.Kick {
 		t.Errorf("Kit corrupted on round-trip: %+v", f2.Kits[0])
 	}
 	// Role asymmetry (would be "" without the row.Role = inst.Role fix).
-	if got := roleOfInstrument(f2, "kick"); got != "kick" {
+	if got := roleOfInstrument(f2, roster.Kick); got != instrument.RoleKick {
 		t.Errorf("Role dropped on import: export2 kick Role=%q, want \"kick\"", got)
 	}
 
 	// Spot-check a node's optional params survived export→import→export.
 	var found bool
 	for _, n := range f2.Nodes {
-		if n.LogicKind == "probability" {
+		if n.LogicKind == model.LogicProbability {
 			found = true
-			if n.GrooveKind != "rush" {
+			if n.GrooveKind != model.GrooveRush {
 				t.Errorf("node GrooveKind=%q, want rush", n.GrooveKind)
 			}
 			if n.Pitch != 3 {
@@ -152,20 +151,5 @@ func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("node with logic_kind=probability not found after round-trip")
-	}
-
-	// Per-instrument pan/sends round-trip.
-	for _, in := range f2.Instruments {
-		if in.ID == "kick" {
-			if in.Pan != -0.3 {
-				t.Errorf("kick Pan=%v, want -0.3", in.Pan)
-			}
-			if in.DelaySend != 0.2 {
-				t.Errorf("kick DelaySend=%v, want 0.2", in.DelaySend)
-			}
-			if in.ReverbSend != 0.4 {
-				t.Errorf("kick ReverbSend=%v, want 0.4", in.ReverbSend)
-			}
-		}
 	}
 }

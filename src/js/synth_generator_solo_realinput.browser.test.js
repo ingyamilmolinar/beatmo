@@ -15,10 +15,7 @@
  * the mouse wheel over the control (synthControlHitAdapter.OnWheel). This test
  * drives that wheel; see the value-change block below.
  *
- * POST-NATIVE-DEPRECATION: the gen_type "Generator" selector was REMOVED
- * (MigrateGenType is an import-time shim only). The generator knob is now the
- * per-family `<family>_wave` knob — `snare_wave` for the snare (0=Sine default,
- * 1=Saw, 2=Square, 3=Triangle). `osc_type` only exists on the unified modular
+ * The generator knob is the gen-slot `gen1_wave` knob (0=Sine default, 1=Saw, 2=Square, 3=Triangle). `osc_type` only exists on the unified modular
  * recipe, kept here as a fallback in case the row is rebound.
  *
  * CHIP-STRIP REDESIGN: the Synth tab now renders one compact chip per pipeline
@@ -26,7 +23,7 @@
  * stage expanded into a detail pane. synthControlRects() still returns one entry
  * per wired knob, but knobs of collapsed (non-selected) stages have ZERO-SIZE
  * rects (w=0,h=0) — only the selected stage's knobs are interactable. The
- * `<family>_wave` knob (snare_wave) lives in the VOICE stage; osc_type lives in
+ * `gen1_wave` knob lives in the VOICE stage; osc_type lives in
  * the OSC stage. We call selectSynthSection() to open the owning stage, then
  * filter for the knob with a non-zero rect.
  */
@@ -35,6 +32,8 @@ import {
   buildMainWasm, createServer, clickUntilStateChanges,
   rectCenter, assertValidRect, waitForGameLoopRelease,
 } from "./real_input_test_helpers.js";
+import { waitForAudioReady } from "./browser_test_helpers.js";
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 
 if (!buildMainWasm({ logLevel: "INFO" })) throw new Error("go build main.wasm failed");
 const server = await createServer();
@@ -76,13 +75,25 @@ const measure = async (ms) => {
 };
 const RMS_MIN = 1e-4;
 
+// A purpose-built circuit (never the startup demo, which is hand-edited): a
+// kick loop and a snare loop, so soloing the snare silences the kick and a
+// snare-silencing bug presents as "all audio dies".
+const loop = (base, j) => [0, 4, 8, 12].map((i, k) => ({ id: base + k, i, j, type: "regular", outputs: [base + ((k + 1) % 4)] }));
+const CIRCUIT = JSON.stringify({
+  schema_version: "0.0.1", subdiv: 8, bpm: 160,
+  instruments: [
+    { name: "Kick", id: "kick", kind: "builtin", volume: 1.0, origin: 1, color: "#C87850FF" },
+    { name: "Snare", id: "snare", kind: "builtin", volume: 1.0, origin: 5, color: "#50A0C8FF" },
+  ],
+  nodes: [...loop(1, 0), ...loop(5, 2)],
+});
+
 try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
-  await page.waitForFunction(() => typeof startPlay === "function" && typeof rowSoloBtnRect === "function" && typeof synthControlRects === "function", { timeout: 30000 });
-  await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
-  // Let the production demo circuit build (5 rows: kick, snare, hats, clap).
-  await page.evaluate(() => { forceDraw?.(); });
-  await page.waitForFunction(() => typeof totalRows === "function" && totalRows() >= 2, { timeout: 15000 });
+  await page.waitForFunction(() => typeof startPlay === "function" && typeof rowSoloBtnRect === "function" && typeof synthControlRects === "function", null, { timeout: 30000 });
+  await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 30000 });
+  await page.evaluate((j) => { importJSON(j); forceDraw?.(); }, CIRCUIT);
+  await page.waitForFunction(() => typeof totalRows === "function" && totalRows() === 2, null, { timeout: 15000 });
   await page.waitForTimeout(300);
   await waitForGameLoopRelease(page);
 
@@ -98,13 +109,13 @@ try {
     if (inst === "snare") { snareRow = i; break; }
   }
   console.log(`[TEST] rows=${nRows} snareRow=${snareRow}`);
-  if (snareRow < 0) throw new Error("no snare row in the demo circuit");
+  if (snareRow < 0) throw new Error("the imported circuit has no snare row");
 
-  // Unlock audio with a real gesture, then Play.
+  // Unlock audio with a real gesture, then Play (ignored until the import's
+  // warm-up gate opens).
   await page.mouse.click(200, 200);
-  await page.evaluate(async () => { try { await window.audioReady; } catch (_) {} });
-  await page.evaluate(() => startPlay());
-  await page.waitForFunction(() => typeof isPlaying === "function" && isPlaying() === true, { timeout: 10000 });
+  await waitForAudioReady(page, { allowReject: true });
+  await startPlaybackWhenReady(page);
 
   // Solo the Snare. We try the real solo-button click first (faithful), and
   // fall back to toggleSolo() — same solo STATE — if the desktop layout doesn't
@@ -137,9 +148,9 @@ try {
   await page.waitForTimeout(400);
   await waitForGameLoopRelease(page);
 
-  // CHIP-STRIP: the generator knob (snare_wave / osc_type) lives in a collapsed
+  // CHIP-STRIP: the generator knob (gen1_wave / osc_type) lives in a collapsed
   // stage by default unless that stage happens to be the first knobbed enabled
-  // stage. Open its owning stage so its rect is laid out (non-zero). snare_wave
+  // stage. Open its owning stage so its rect is laid out (non-zero). gen1_wave
   // → VOICE, osc_type → OSC. We try VOICE first (drum recipe default), and if
   // the row is the modular voice the OSC fallback path handles osc_type.
   await page.evaluate(() => { if (typeof selectSynthSection === "function") selectSynthSection("VOICE"); });
@@ -151,7 +162,10 @@ try {
   // stages report w=0/h=0 and are not interactable.
   let knobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
   const laidOut = (k) => k && k.w > 0 && k.h > 0;
-  let gen = knobs.find((k) => k.name === "snare_wave" && laidOut(k));
+  // The snare (synth-modular-snare) exposes its generator waveform as the
+  // gen-slot knob gen1_wave.
+  const GEN_KNOBS = ["gen1_wave"];
+  let gen = knobs.find((k) => GEN_KNOBS.includes(k.name) && laidOut(k));
   if (!gen) {
     // Modular voice fallback: osc_type lives in the OSC stage.
     await page.evaluate(() => { if (typeof selectSynthSection === "function") selectSynthSection("OSC"); });
@@ -161,27 +175,27 @@ try {
     gen = knobs.find((k) => k.name === "osc_type" && laidOut(k));
   }
   console.log("[TEST] synth knob names =", JSON.stringify(knobs.map((k) => k.name)));
-  if (!gen) { fail("no laid-out generator knob (snare_wave/osc_type) on the Synth tab — solo did not target snare, owning stage not selected, or tab not open."); }
+  if (!gen) { fail("no laid-out generator knob (gen1_wave/osc_type) on the Synth tab — solo did not target snare, owning stage not selected, or tab not open."); }
   else {
     const genName = gen.name;
     const cx = Math.round(gen.x + gen.w / 2), cy = Math.round(gen.y + gen.h / 2);
-    const before = await page.evaluate((n) => (getInstrumentParams("snare") || {})[n] ?? 0, genName);
-    // POP-UP-CONTROLS MODEL: the horizontal rotary drag was removed. A TAP on a
-    // synth control now opens the value-wheel popup; a real value change in place
-    // comes from the mouse WHEEL over the control (synthControlHitAdapter.OnWheel
-    // → nudgeKnobByWheel). Scroll UP (negative deltaY) increases the discrete
-    // enum — 5 notches sweeps the full snare_wave range (Sine 0 → Triangle 3),
-    // crossing waveform boundaries one notch at a time. Each notch reads
-    // instEditorControls[idx]/instEditorBindings[idx] fresh (by-index), which is
-    // the exact window a schema rebind would fire in — the historical mid-drag
-    // gen_type-era bespoke→modular swap this test was written to exercise. This
-    // stays REAL canvas input (wheel events through the dispatcher), not the
-    // setInstrumentParam export.
-    await page.mouse.move(cx, cy);
-    for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(40); }
+    const paramsBefore = await page.evaluate(() => getInstrumentParams("snare") || {});
+    const before = paramsBefore[genName] ?? 0;
+    // ARMED-CONTROL MODEL: a click arms the Synth control and the arrow keys
+    // step its value (Up = next value; armedControlKeys claims them), Enter
+    // accepts. The earlier wheel-over-control nudge no longer exists — five
+    // wheel notches changed no knob at all, which left this test failing on
+    // the gesture before it ever reached the regression it guards. Two Up
+    // presses move the enum Sine 0 → Square 2, crossing a waveform boundary
+    // one step at a time (the window a mid-gesture schema rebind would fire
+    // in). Still REAL canvas + keyboard input, not the setInstrumentParam export.
+    await page.mouse.click(cx, cy);
+    await waitForGameLoopRelease(page);
+    for (let i = 0; i < 2; i++) { await page.keyboard.press("ArrowUp"); await page.waitForTimeout(80); }
+    await page.keyboard.press("Enter");
     await waitForGameLoopRelease(page);
     const after = await page.evaluate((n) => (getInstrumentParams("snare") || {})[n] ?? 0, genName);
-    console.log(`[TEST] ${genName} via real wheel: ${before} -> ${after}`);
+    console.log(`[TEST] ${genName} via real input: ${before} -> ${after}`);
     if (after === before) fail(`the generator wheel did not change snare ${genName} (${before} -> ${after}) — control not hit / not targeting snare.`);
 
     // ROOT-CAUSE GUARD: a generator change must touch ONLY the generator param.
@@ -194,9 +208,12 @@ try {
     // TestSynthKnobAdapter_PropagateIsIndexSafe /
     // TestSynthKnobAdapter_PropagateWritesStableParam
     // (synth_knob_adapter_index_safe_test.go).
+    // getInstrumentParams returns the instrument's whole document (every
+    // value), so compare it before and after: only the generator may move.
     const params = await page.evaluate(() => getInstrumentParams("snare") || {});
-    const foreign = Object.keys(params).filter((k) => k !== genName);
-    console.log(`[TEST] snare params after generator change = ${JSON.stringify(params)}`);
+    const foreign = [...new Set([...Object.keys(paramsBefore), ...Object.keys(params)])]
+      .filter((k) => k !== genName && paramsBefore[k] !== params[k]);
+    console.log(`[TEST] snare params changed by the generator change: ${JSON.stringify(Object.fromEntries(foreign.concat(genName).map((k) => [k, [paramsBefore[k], params[k]]])))}`);
     if (foreign.length) {
       fail(`generator change scrambled foreign param(s) [${foreign.join(", ")}] — a generator change must touch only ${genName} (mid-gesture schema swap regression).`);
     }

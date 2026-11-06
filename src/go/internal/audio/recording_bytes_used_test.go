@@ -6,6 +6,10 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestPipelineStatsBytesUsed verifies that CurrentPipelineStats.BytesUsed
@@ -18,12 +22,12 @@ import (
 // the same field is derived from the streaming pipeline's existing
 // per-channel sample counters.
 func TestPipelineStatsBytesUsed(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 
 	if err := StartRecording(RecordingOptions{
 		Format: FormatWAV24,
 		Instruments: []InstrumentMeta{
-			{ID: "kick", Name: "Kick"},
+			{ID: channel.Of(roster.Kick), Name: "Kick"},
 		},
 		BPM: 120,
 	}); err != nil {
@@ -61,7 +65,7 @@ func TestPipelineStatsBytesUsed(t *testing.T) {
 		master[i] = 0.5
 		instBufs[0][i] = 0.5
 	}
-	slotIDs := []string{"kick"}
+	slotIDs := []channel.ID{channel.Of(roster.Kick)}
 	activeSlots := []int{0}
 	const blocks = 16
 	for i := 0; i < blocks; i++ {

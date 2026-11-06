@@ -33,14 +33,35 @@ type ControlGrid struct {
 	rowH    int // cellH + vGap; the scroll item height
 	hGap    int
 	visRows int
-	peekH   int // bottom peek-band height (0 when the grid fits or has no room)
-	maxCols int // 0 = unlimited; caps the adaptive column count (overrides the floor)
+	peekH   int  // bottom peek-band height (0 when the grid fits or has no room)
+	maxCols int  // 0 = unlimited; caps the adaptive column count (overrides the floor)
+	noPeek  bool // SetPeekBand(false): never reserve the bottom peek band
+
+	// smooth opts this grid into the continuous pixel + momentum scroll path
+	// (BeginContentDrag/DragTo/EndDrag/WheelStep) instead of the default
+	// row-by-row stepped path. Off by default so shared callers (sampler knob
+	// grid, synth macro grid) keep the original stepped feel byte-for-byte;
+	// the synth section grids opt in via SetSmoothScroll(true). The scrollbar
+	// THUMB grab (BeginDrag) is unaffected by this flag — it always stays
+	// stepped/direct.
+	smooth bool
 }
+
+// SetSmoothScroll opts this grid into continuous pixel + momentum content
+// scrolling (see the smooth field doc). Callers that don't call this keep the
+// original stepped behavior unchanged.
+func (g *ControlGrid) SetSmoothScroll(v bool) { g.smooth = v }
 
 // controlGridPeekFrac is the fraction of one row height reserved as a bottom
 // "peek band" when the grid overflows — a clipped sliver of the next row that
 // signals more controls lie below. Draw-only; it publishes no hit area.
 const controlGridPeekFrac = 0.4
+
+// SetPeekBand opts this grid in (default) or out of the bottom peek band. A
+// grid whose rows are tall relative to its window opts out: reserving the band
+// can cost a whole row (the Synth root's dial cards on a phone showed one card
+// above ~110 px of blank where two fit), and the scrollbar still says "more".
+func (g *ControlGrid) SetPeekBand(v bool) { g.noPeek = !v }
 
 // SetMaxCols caps how many columns Layout will use, overriding both the
 // width-adaptive count AND the 2-column floor. 0 (default) leaves the grid
@@ -113,7 +134,7 @@ func (g *ControlGrid) Layout(rect image.Rectangle, count, cellIdealW, cellH, hGa
 	}
 	visRows := fullRows
 	g.peekH = 0
-	if totalRows > fullRows {
+	if totalRows > fullRows && !g.noPeek {
 		ph := int(float64(g.rowH) * controlGridPeekFrac)
 		if ph > 0 && (rect.Dy()-ph)/g.rowH >= 1 {
 			g.peekH = ph
@@ -204,6 +225,75 @@ func (g *ControlGrid) ShowBottomFade() bool {
 // Cols reports the current column count.
 func (g *ControlGrid) Cols() int { return g.cols }
 
+// CellW / CellH / RowH / HGap expose the laid-out cell geometry so a caller can
+// build a masonry reflow (armed-control 2×2 block) over the same lattice.
+func (g *ControlGrid) CellW() int { return g.cellW }
+func (g *ControlGrid) CellH() int { return g.cellH }
+func (g *ControlGrid) RowH() int  { return g.rowH }
+func (g *ControlGrid) HGap() int  { return g.hGap }
+
+// CellAt returns the slot for an explicit (row,col), honoring the scroll window.
+// Unlike CellRect it is NOT bounded by `count` — a reflow addresses lattice cells
+// beyond the uniform count. ok=false when col is out of range or the row is
+// off-window.
+func (g *ControlGrid) CellAt(row, col int) (image.Rectangle, bool) {
+	if g.cols <= 0 || col < 0 || col >= g.cols {
+		return image.Rectangle{}, false
+	}
+	first := g.scroll.VS.First
+	if row < first || row >= first+g.visRows {
+		return image.Rectangle{}, false
+	}
+	x0 := g.rect.Min.X + col*(g.cellW+g.hGap)
+	y0 := g.rect.Min.Y + (row-first)*g.rowH
+	return image.Rect(x0, y0, x0+g.cellW, y0+g.cellH), true
+}
+
+// CellAtUnclipped returns the lattice slot for (row,col) IGNORING the scroll
+// window: a row below the window yields a rect below the visible rows. ok=false
+// only when the column is out of range.
+//
+// CellAt's off-window return is `image.Rectangle{}` — a "not visible" SENTINEL
+// that happens to be a zero-size rect anchored at the SCREEN ORIGIN. Anything
+// that animates a control toward a destination must not treat that sentinel as
+// geometry: interpolating toward it flies the control up-and-left to (0,0)
+// instead of down to its real slot. Callers that need a real destination for an
+// off-window cell use this and clip the result with ClipBottom.
+func (g *ControlGrid) CellAtUnclipped(row, col int) (image.Rectangle, bool) {
+	if g.cols <= 0 || col < 0 || col >= g.cols {
+		return image.Rectangle{}, false
+	}
+	x0 := g.rect.Min.X + col*(g.cellW+g.hGap)
+	y0 := g.rect.Min.Y + (row-g.scroll.VS.First)*g.rowH
+	return image.Rect(x0, y0, x0+g.cellW, y0+g.cellH), true
+}
+
+// ClipBottom is the lowest Y a control may paint to. It is the content rect's
+// bottom, except when the rect is too short for even one row (Layout floors
+// visRows at 1, so resting cells legitimately overhang) — there the last resting
+// row's bottom wins, so clipping against this never moves a cell the plain
+// resting layout already produced.
+func (g *ControlGrid) ClipBottom() int {
+	bottom := g.rect.Max.Y
+	if g.visRows > 0 && g.rowH > 0 {
+		if last := g.rect.Min.Y + (g.visRows-1)*g.rowH + g.cellH; last > bottom {
+			bottom = last
+		}
+	}
+	return bottom
+}
+
+// SetContentRows overrides the scrollable total-row count — used when a reflow
+// occupies more rows than count/cols so the grid scrolls to reveal them instead
+// of clipping. Re-clamps the scroll window. No-op for total <= 0.
+func (g *ControlGrid) SetContentRows(total int) {
+	if total <= 0 {
+		return
+	}
+	g.scroll.VS.Total = total
+	g.scroll.VS.Clamp()
+}
+
 // ScrollToIndex scrolls the minimal amount so control i's row lies inside the
 // visible window. No-op when i is already visible. Used to bring a freshly
 // focused control (e.g. a selected synth knob on a scrolled-off row) into view.
@@ -258,17 +348,62 @@ const (
 // BeginDrag / BeginContentDrag / DragTo / EndDrag / WheelStep / Tick are thin
 // wrappers over the embedded ScrollBehavior's step-by-step API (shared with the
 // row rack). BeginDrag is the scrollbar THUMB grab (direct — the thumb follows
-// the finger). BeginContentDrag is the card-BODY grab (natural — the content
-// follows the finger, so dragging down reveals earlier rows). Both share DragTo/
-// EndDrag; the direction is chosen at Begin time.
-func (g *ControlGrid) BeginDrag(y int) bool        { return g.scroll.BeginStepDrag(y) }
-func (g *ControlGrid) BeginContentDrag(y int) bool { return g.scroll.BeginStepDragNatural(y) }
-func (g *ControlGrid) DragTo(y int) bool           { return g.scroll.StepDragTo(y, controlGridDragStepPx) }
-func (g *ControlGrid) EndDrag()                    { g.scroll.EndStepDrag() }
+// the finger) and is ALWAYS stepped, in both modes. BeginContentDrag is the
+// card-BODY grab (natural — the content follows the finger, so dragging down
+// reveals earlier rows); when SetSmoothScroll(true) was called it switches to
+// the continuous pixel + momentum touch path instead of the stepped one. DragTo/
+// EndDrag branch on which path is live by checking ScrollBehavior.TS.Active() —
+// that's only true when BeginContentDrag took the smooth path, so a thumb drag
+// on a smooth grid still routes to the stepped path untouched.
+func (g *ControlGrid) BeginDrag(y int) bool { return g.scroll.BeginStepDrag(y) }
+
+func (g *ControlGrid) BeginContentDrag(y int) bool {
+	if g.smooth {
+		if !g.scroll.HasScroll() {
+			return false
+		}
+		g.scroll.HandleTouchBegin(0, y)
+		return true
+	}
+	return g.scroll.BeginStepDragNatural(y)
+}
+
+func (g *ControlGrid) DragTo(y int) bool {
+	if g.smooth && g.scroll.TS.Active() {
+		return g.scroll.HandleTouchMove(0, y)
+	}
+	return g.scroll.StepDragTo(y, controlGridDragStepPx)
+}
+
+func (g *ControlGrid) EndDrag() {
+	if g.smooth && g.scroll.TS.Active() {
+		g.scroll.HandleTouchEnd()
+		return
+	}
+	g.scroll.EndStepDrag()
+}
+
+// WheelStep advances the scroll window. In the default (stepped) mode it moves
+// exactly one row per notch with a cooldown (see ScrollBehavior.WheelStep). In
+// smooth mode it scrolls continuously via ScrollBehavior.HandleWheel, honoring
+// the notch magnitude instead of capping at one row.
 func (g *ControlGrid) WheelStep(steps int) bool {
+	if g.smooth {
+		return g.scroll.HandleWheel(steps)
+	}
 	return g.scroll.WheelStep(steps, controlGridScrollCooldownFrames)
 }
+
 func (g *ControlGrid) Tick() { g.scroll.TickStep() }
+
+// UpdateMomentum advances one frame of fling decay for a smooth grid; call once
+// per frame while HasMomentum() is true. No-op (always returns false) for a
+// default (non-smooth) grid, since it never accrues touch velocity.
+func (g *ControlGrid) UpdateMomentum() bool { return g.scroll.UpdateMomentum() }
+
+// HasMomentum reports whether a smooth grid is still coasting from a flick.
+// Always false for a default (non-smooth) grid.
+func (g *ControlGrid) HasMomentum() bool { return g.scroll.HasMomentum() }
 
 // Draw paints the scrollbar (no-op when the grid fits without scrolling).
 func (g *ControlGrid) Draw(dst *ebiten.Image) { g.scroll.Draw(dst) }

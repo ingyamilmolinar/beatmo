@@ -63,17 +63,13 @@ var allowedStyleBudget = map[string]int{
 	// anchor registry (review priority P4) lets this go through Spec(ID),
 	// so this stays at 1 until the registry lands.
 	"row_rack_zone.go": 1,
-	// RowKebabChipStyle is a token-derived chip style (WithAlpha fill, RadiusSM)
-	// with no equivalent ComponentSpec in DESIGN.md yet. Once a
-	// `row-kebab-chip` component spec is added to the design system, replace
-	// with ButtonStyleFromSpec(ComponentRowKebabChip) and remove this entry.
-	"button_styles.go": 1,
-	// row_instrument_shades.go derives per-row mute/solo/FX/kebab ButtonStyles
-	// DYNAMICALLY from each instrument's color (rowToggleStyle + rowKebabStyle).
-	// These cannot come from a static ComponentSpec because the fill/border are
-	// per-instrument shades computed at draw time. Fills/borders use the
-	// adjustColor / WithAlphaFromColor token helpers — no inline literals here.
-	"row_instrument_shades.go": 2,
+	"button_styles.go": 0,
+	// row_instrument_shades.go derives the per-row mute/solo/FX ACTIVE fills
+	// DYNAMICALLY from each instrument's color (rowToggleStyle; the kebab and
+	// every off state reuse it with the neutral row-control fill). These cannot
+	// come from a static ComponentSpec because the active fill is a
+	// per-instrument shade computed at draw time (adjustColor — no literals).
+	"row_instrument_shades.go": 1,
 }
 
 // styleConstructionRE matches `XxxStyle{` literal construction sites for

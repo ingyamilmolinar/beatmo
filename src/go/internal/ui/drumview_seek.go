@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/ingyamilmolinar/beatmo/internal/hooks"
+
 // seekReqMode discriminates the three flavors of navigation intent a
 // seekRequest can carry: an absolute subdivision target, a beat-snapped
 // delta, or a subdivision-granular delta.
@@ -19,30 +21,30 @@ const (
 type seekRequest struct {
 	value  int // steps (abs) OR delta (beats/steps), per mode
 	mode   seekReqMode
-	origin string
+	origin hooks.SeekOrigin
 }
 
 // RequestSeekSteps queues an absolute seek to subdivision `steps`.
-func (dv *DrumView) RequestSeekSteps(steps int, origin string) {
+func (dv *DrumView) RequestSeekSteps(steps int, origin hooks.SeekOrigin) {
 	dv.pendingSeek = &seekRequest{value: steps, mode: seekReqAbs, origin: origin}
 }
 
 // RequestSeekDeltaBeats queues a relative seek of `deltaBeats` whole beats.
-func (dv *DrumView) RequestSeekDeltaBeats(deltaBeats int, origin string) {
+func (dv *DrumView) RequestSeekDeltaBeats(deltaBeats int, origin hooks.SeekOrigin) {
 	dv.pendingSeek = &seekRequest{value: deltaBeats, mode: seekReqDeltaBeats, origin: origin}
 }
 
 // RequestSeekDeltaSteps queues a relative seek of `deltaSteps` subdivisions —
 // no beat snap, unlike RequestSeekDeltaBeats.
-func (dv *DrumView) RequestSeekDeltaSteps(deltaSteps int, origin string) {
+func (dv *DrumView) RequestSeekDeltaSteps(deltaSteps int, origin hooks.SeekOrigin) {
 	dv.pendingSeek = &seekRequest{value: deltaSteps, mode: seekReqDeltaSteps, origin: origin}
 }
 
 // TakeSeekRequest returns and clears any queued request (last-wins per frame).
-func (dv *DrumView) TakeSeekRequest() (value int, mode seekReqMode, origin string, ok bool) {
+func (dv *DrumView) TakeSeekRequest() (value int, mode seekReqMode, origin hooks.SeekOrigin, ok bool) {
 	r := dv.pendingSeek
 	if r == nil {
-		return 0, seekReqAbs, "", false
+		return 0, seekReqAbs, 0, false
 	}
 	dv.pendingSeek = nil
 	return r.value, r.mode, r.origin, true

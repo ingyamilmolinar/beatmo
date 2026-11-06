@@ -158,7 +158,7 @@ var drawRoundedButton = func(dst *ebiten.Image, r image.Rectangle, fill, border 
 }
 
 // popupButtonRadius returns the corner radius for popup action buttons.
-func popupButtonRadius() int { return RadiusMD }
+func popupButtonRadius() int { return RadiusControl }
 
 // adjustColor lightens or darkens a color by delta (-255..255).
 func adjustColor(c color.Color, delta int) color.Color {
@@ -231,16 +231,72 @@ func cornerSprite(radius int, c color.Color, filled bool) *ebiten.Image {
 	return img
 }
 
+// maxRoundedRadius is the anti-pill ceiling for a rect of the given size: a
+// quarter of its shorter side. Single definition shared by the drawRoundedRect
+// clamp and TestNoPillShapedControls. See DESIGN.md "The anti-pill invariant".
+func maxRoundedRadius(w, h int) int {
+	return minI(w, h) / 4
+}
+
+// fitRadius returns a role radius bounded by what r can actually carry without
+// becoming a capsule.
+//
+// Shared chrome helpers (Button.Draw, drawPanel, the toast, the FX header) each
+// serve rects across a wide size range, so a fixed role radius would be right
+// for the common case and over-rounded for the small one. The rule this encodes
+// is "a container gets container rounding unless it is too short to carry it,
+// in which case it takes the ceiling" — the role still picks the intent, the
+// geometry just can't be violated.
+//
+// A call site drawing ONE known control should name its role token directly;
+// reach for this only where the size genuinely varies.
+func fitRadius(role int, r image.Rectangle) int {
+	if ceil := maxRoundedRadius(r.Dx(), r.Dy()); role > ceil {
+		return ceil
+	}
+	return role
+}
+
+// radiusCapsule is a sentinel radius meaning "semicircular ends, sized from the
+// rect". It is the ONE legitimate escape from the anti-pill ceiling, and being a
+// sentinel rather than a pixel value is the point: a call site cannot arrive at
+// it by typing a plausible number, so the escape is always deliberate.
+const radiusCapsule = -1
+
+// drawCapsule draws a fully-rounded bar — a shape whose ends are semicircles.
+// A drag handle, a slider rail and a slider thumb are capsules by design, not
+// buttons that someone over-rounded.
+//
+// It routes through drawRoundedRect rather than around it so that the package
+// keeps exactly ONE interceptable rounded-drawing chokepoint; tests that
+// capture draw calls see capsules too.
+func drawCapsule(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+	drawRoundedRect(dst, r, c, radiusCapsule, filled)
+}
+
 // drawRoundedRect draws a filled or stroked rectangle with rounded corners.
 // Uses sprite-cached corner arcs: the 4 corners are pre-rendered as small
 // radius×radius images and blitted with flips, reducing DrawImage calls from
 // 3 + 4×radius (filled) to 7 (body + 4 corners).
+//
+// The radius is clamped to the anti-pill ceiling — see maxRoundedRadius. A
+// shape that genuinely needs semicircular ends is a capsule; use drawCapsule.
 var drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
 	if r.Empty() {
 		return
 	}
-	maxR := minI(r.Dx(), r.Dy()) / 2
-	if radius > maxR {
+	// The anti-pill invariant (DESIGN.md "Shapes"): a radius at half the
+	// shorter side IS a pill, so the ceiling is a QUARTER of it. This is the
+	// runtime backstop — a pill cannot reach the screen whatever a call site
+	// asks for. TestNoPillShapedControls intercepts this func var to catch the
+	// over-asking call site itself, since the clamp would otherwise hide it.
+	//
+	// A genuine capsule (drag handle, slider rail/thumb) is a different shape,
+	// not an over-rounded rect — it passes radiusCapsule and is sized from the
+	// rect instead of being clamped.
+	if radius == radiusCapsule {
+		radius = minI(r.Dx(), r.Dy()) / 2
+	} else if maxR := maxRoundedRadius(r.Dx(), r.Dy()); radius > maxR {
 		radius = maxR
 	}
 	if radius < 1 {
@@ -294,24 +350,7 @@ func drawPanelShadow(dst *ebiten.Image, r image.Rectangle, offset int) {
 	}
 	shadowColor := color.NRGBA{0, 0, 0, 80}
 	shadow := image.Rect(r.Min.X+offset, r.Min.Y+offset, r.Max.X+offset, r.Max.Y+offset)
-	drawRoundedRect(dst, shadow, shadowColor, popupCornerRadius(), true)
-}
-
-// drawAccentStripe draws a vertical stripe at the left edge of r.
-// Used for instrument color identity on mobile row controls.
-// On mobile: 4px wide with 1px vertical inset; desktop: 3px flush.
-// Skips silently when col is nil (rare test paths build DrumRow values
-// directly without going through AddRow's color allocator).
-func drawAccentStripe(dst *ebiten.Image, r image.Rectangle, col color.Color) {
-	if r.Empty() || col == nil {
-		return
-	}
-	p := Profile()
-	w := p.AccentStripeWidth
-	yTop := r.Min.Y + p.AccentStripeInsetY
-	yBot := r.Max.Y - p.AccentStripeInsetY
-	stripe := image.Rect(r.Min.X, yTop, r.Min.X+w, yBot)
-	drawRect(dst, stripe, col, true)
+	drawRoundedRect(dst, shadow, shadowColor, fitRadius(popupCornerRadius(), shadow), true)
 }
 
 // (icon implementations live in drawing_icons.go)
@@ -369,22 +408,28 @@ func drawScrim(dst *ebiten.Image) {
 // drawPanel draws a rounded popup/menu panel with background, border, and
 // optional shadow. This is the unified drawing function for all overlay panels.
 func drawPanel(dst *ebiten.Image, r image.Rectangle) {
-	radius := popupCornerRadius()
+	radius := fitRadius(popupCornerRadius(), r)
 	drawPanelShadow(dst, r, 6)
 	drawRoundedRect(dst, r, colPanelBG, radius, true)
 	drawRoundedRect(dst, r, colPanelBorder, radius, false)
 }
 
 // drawBottomSheetPanel draws a panel for mobile bottom sheets with rounded top
-// corners (RadiusXL) and flat bottom corners (flush with screen bottom).
+// corners (RadiusSheet) and flat bottom corners (flush with screen bottom).
 // Achieves top-only rounding by drawing a rounded rect that extends past the
 // bottom of the destination, so the bottom corners are naturally clipped.
 func drawBottomSheetPanel(dst *ebiten.Image, r image.Rectangle) {
-	radius := RadiusXL
+	// Sheet rounding is sized for a SHEET. The same helper also paints the
+	// mobile bottom action bar, which is a ~38 px strip — 20 px corners on that
+	// would round away half its height, so a short surface takes the anti-pill
+	// ceiling instead. The rect the corners are actually drawn on is `extended`
+	// (r plus the radius that falls off-screen), so the ceiling is computed
+	// against r itself, the visible surface.
+	radius := fitRadius(RadiusSheet, r)
 	// Shadow offset at top only (bottom is flush with screen edge).
 	shadowColor := color.NRGBA{0, 0, 0, 80}
 	shadow := image.Rect(r.Min.X+6, r.Min.Y+6, r.Max.X+6, r.Max.Y)
-	drawRoundedRect(dst, shadow, shadowColor, radius, true)
+	drawRoundedRect(dst, shadow, shadowColor, fitRadius(radius, shadow), true)
 
 	// Extend the rect below by radius so the bottom corners are drawn as
 	// straight edges (the rounded bottom corners fall off-screen).

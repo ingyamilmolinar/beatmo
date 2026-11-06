@@ -16,6 +16,9 @@ func (s *playbackSlate) refreshDrumRow() {
 		g.drumBeatInfos = nil
 		return
 	}
+	// Freeze the cells the playhead has passed before a pending SetPaths below
+	// can change what they would show.
+	g.freezePlayedThroughPlayhead()
 	// Mark render state as rebuilding so parity checks ignore in-flight buffers.
 	g.renderReady = false
 	// Always use predictions (single source of truth). Ensure horizon covers window.
@@ -139,7 +142,7 @@ func (s *playbackSlate) refreshDrumRow() {
 			for abs := start; abs <= limit; abs++ {
 				if v, _, kind, ok := g.timelineCommittedWithKind(rowIdx, abs); ok {
 					bi := g.beatInfoAtRow(rowIdx, abs)
-					if g.Playing() && (bi.NodeType == model.NodeTypeRegular || bi.NodeType == model.NodeTypeSilent) &&
+					if g.Playing() && (bi.NodeType.Fires() || bi.NodeType == model.NodeTypeSilent) &&
 						bi.NodeType != model.NodeTypeInvisible && bi.NodeID != model.InvalidNodeID {
 						continue
 					}

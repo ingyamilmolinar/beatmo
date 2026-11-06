@@ -40,8 +40,8 @@ func TestApplyBandGainLive_WritesClampsAndFiresLive(t *testing.T) {
 	}
 }
 
-// eqDBOpenAdapter.OnPress routes to OnOpenValueWheel when set, and falls back
-// to the numeric editor when it is nil (preserving legacy behavior).
+// eqDBOpenAdapter.OnPress routes to OnOpenValueWheel (the only dB-entry path
+// besides the curve handles).
 func TestEQDBOpenAdapter_RoutesToWheelCallback(t *testing.T) {
 	wheelBand := -1
 	z := NewEQPanelZone(EQCallbacks{
@@ -54,15 +54,12 @@ func TestEQDBOpenAdapter_RoutesToWheelCallback(t *testing.T) {
 	if wheelBand != 4 {
 		t.Fatalf("OnOpenValueWheel band = %d, want 4", wheelBand)
 	}
-	if z.paramEditor != nil && z.paramEditor.Active() {
-		t.Fatal("numeric editor must NOT open when wheel callback is set")
-	}
 
-	// Nil callback → falls back to numeric editor.
+	// Nil callback → nothing opens (typed entry was retired); the press is still
+	// consumed so it cannot fall through to a sibling.
 	z2 := NewEQPanelZone(EQCallbacks{})
 	a2 := &eqDBOpenAdapter{z: z2, band: 1}
-	a2.OnPress(0, 0)
-	if z2.paramEditor == nil || !z2.paramEditor.Active() {
-		t.Fatal("fallback: numeric editor must open when wheel callback is nil")
+	if res := a2.OnPress(0, 0); res != InputConsumed {
+		t.Fatalf("nil-callback OnPress = %v, want InputConsumed", res)
 	}
 }

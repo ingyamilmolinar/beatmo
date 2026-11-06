@@ -106,7 +106,7 @@ func TestSidebarOpenResetsSections(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 
 	// Verify sections are expanded.
-	for _, sec := range []string{"vol", "pit", "dur", "logic", "groove"} {
+	for _, sec := range []sbSection{secVol, secPit, secDur, secLogic, secGroove} {
 		if !g.sidebar.sectionOpen[sec] {
 			t.Fatalf("section %q should be open after ExpandAllSections", sec)
 		}
@@ -117,7 +117,7 @@ func TestSidebarOpenResetsSections(t *testing.T) {
 	g.sidebar.Open(n2)
 
 	// All sections should be collapsed.
-	for _, sec := range []string{"vol", "pit", "dur", "logic", "groove"} {
+	for _, sec := range []sbSection{secVol, secPit, secDur, secLogic, secGroove} {
 		if g.sidebar.sectionOpen[sec] {
 			t.Fatalf("section %q should be closed after reopening on new node", sec)
 		}
@@ -173,7 +173,7 @@ func TestSidebarLayoutNodeTypeSections(t *testing.T) {
 	g.sidebar.Open(nReg)
 	g.sidebar.layout()
 
-	for _, sec := range []string{"sec-vol", "sec-pit", "sec-dur", "sec-logic", "sec-groove"} {
+	for _, sec := range []sbID{sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secDur), sbSectionHeader(secLogic), sbSectionHeader(secGroove)} {
 		if r, ok := g.sidebar.rects[sec]; !ok || r.Empty() {
 			t.Fatalf("Regular node: section rect %q should exist and be non-empty", sec)
 		}
@@ -184,13 +184,13 @@ func TestSidebarLayoutNodeTypeSections(t *testing.T) {
 	g.sidebar.Open(nSilent)
 	g.sidebar.layout()
 
-	for _, sec := range []string{"sec-vol", "sec-pit", "sec-dur", "sec-logic", "sec-groove"} {
+	for _, sec := range []sbID{sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secDur), sbSectionHeader(secLogic), sbSectionHeader(secGroove)} {
 		if _, ok := g.sidebar.rects[sec]; ok {
 			t.Fatalf("Silent node: section rect %q should NOT exist", sec)
 		}
 	}
 	// Audible section should still be present.
-	if r, ok := g.sidebar.rects["sec-aud"]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbSectionHeader(secAud)]; !ok || r.Empty() {
 		t.Fatal("Silent node: sec-aud should exist")
 	}
 
@@ -199,12 +199,12 @@ func TestSidebarLayoutNodeTypeSections(t *testing.T) {
 	g.sidebar.Open(nMute)
 	g.sidebar.layout()
 
-	for _, sec := range []string{"sec-vol", "sec-pit", "sec-dur"} {
+	for _, sec := range []sbID{sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secDur)} {
 		if _, ok := g.sidebar.rects[sec]; ok {
 			t.Fatalf("Mute node: section rect %q should NOT exist", sec)
 		}
 	}
-	for _, sec := range []string{"sec-logic", "sec-groove"} {
+	for _, sec := range []sbID{sbSectionHeader(secLogic), sbSectionHeader(secGroove)} {
 		if r, ok := g.sidebar.rects[sec]; !ok || r.Empty() {
 			t.Fatalf("Mute node: section rect %q should exist and be non-empty", sec)
 		}
@@ -225,7 +225,7 @@ func TestSidebarHitInsidePanel(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.layout()
 
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if panel.Empty() {
 		t.Fatal("panel rect should not be empty")
 	}
@@ -354,19 +354,19 @@ func TestSidebarToggleSection(t *testing.T) {
 	g.sidebar.layout()
 
 	// Initially closed.
-	if g.sidebar.sectionOpen["vol"] {
+	if g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should be closed initially")
 	}
 
 	// Toggle open.
-	g.sidebar.toggleSection("vol")
-	if !g.sidebar.sectionOpen["vol"] {
+	g.sidebar.toggleSection(secVol)
+	if !g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should be open after first toggle")
 	}
 
 	// Toggle closed.
-	g.sidebar.toggleSection("vol")
-	if g.sidebar.sectionOpen["vol"] {
+	g.sidebar.toggleSection(secVol)
+	if g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should be closed after second toggle")
 	}
 }
@@ -381,11 +381,11 @@ func TestSidebarLogicDropdownToggle(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 
 	// Verify logic button exists.
-	btn, ok := g.sidebar.btns["logic"]
+	btn, ok := g.sidebar.btns[sbLogicSelect]
 	if !ok || btn == nil {
 		t.Fatal("logic button should exist when logic section is open")
 	}
@@ -408,7 +408,7 @@ func TestSidebarLogicDropdownToggle(t *testing.T) {
 
 	// Re-layout to get dropdown rects, then fire again to close.
 	g.sidebar.layout()
-	btn2 := g.sidebar.btns["logic"]
+	btn2 := g.sidebar.btns[sbLogicSelect]
 	if btn2 == nil {
 		t.Fatal("logic button should still exist")
 	}
@@ -433,12 +433,12 @@ func TestSidebarGrooveDropdownMutualExclusion(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
 	g.sidebar.layout()
 
 	// Open logic dropdown via button callback.
-	logicBtn := g.sidebar.btns["logic"]
+	logicBtn := g.sidebar.btns[sbLogicSelect]
 	if logicBtn == nil {
 		t.Fatal("logic button should exist")
 	}
@@ -456,7 +456,7 @@ func TestSidebarGrooveDropdownMutualExclusion(t *testing.T) {
 	g.sidebar.layout()
 
 	// Open groove dropdown via button callback.
-	grvBtn := g.sidebar.btns["grv"]
+	grvBtn := g.sidebar.btns[sbGrooveSelect]
 	if grvBtn == nil {
 		t.Fatal("groove button should exist")
 	}
@@ -475,7 +475,7 @@ func TestSidebarGrooveDropdownMutualExclusion(t *testing.T) {
 
 	// Re-layout and open logic again — groove should close.
 	g.sidebar.layout()
-	logicBtn2 := g.sidebar.btns["logic"]
+	logicBtn2 := g.sidebar.btns[sbLogicSelect]
 	if logicBtn2 == nil {
 		t.Fatal("logic button should exist")
 	}
@@ -503,7 +503,7 @@ func TestSidebarCloseDropdownsOutside(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
@@ -531,7 +531,7 @@ func TestSidebarVolumeButtons(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["vol"] = true
+	g.sidebar.sectionOpen[secVol] = true
 	g.sidebar.layout()
 
 	// Get initial volume.
@@ -542,7 +542,7 @@ func TestSidebarVolumeButtons(t *testing.T) {
 	initialVol := mn.Params.Volume
 
 	// Fire vol+ callback.
-	volPlus := g.sidebar.btns["vol+"]
+	volPlus := g.sidebar.btns[sbPlus(fieldVol)]
 	if volPlus == nil {
 		t.Fatal("vol+ button should exist when vol section is open")
 	}
@@ -558,7 +558,7 @@ func TestSidebarVolumeButtons(t *testing.T) {
 	}
 
 	// Fire vol- callback.
-	volMinus := g.sidebar.btns["vol-"]
+	volMinus := g.sidebar.btns[sbMinus(fieldVol)]
 	if volMinus == nil {
 		t.Fatal("vol- button should exist")
 	}
@@ -585,7 +585,7 @@ func TestSidebarPitchButtons(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["pit"] = true
+	g.sidebar.sectionOpen[secPit] = true
 	g.sidebar.layout()
 
 	// Get initial pitch.
@@ -596,7 +596,7 @@ func TestSidebarPitchButtons(t *testing.T) {
 	initialPitch := mn.Params.Pitch
 
 	// Fire pit+ callback.
-	pitPlus := g.sidebar.btns["pit+"]
+	pitPlus := g.sidebar.btns[sbPlus(fieldPit)]
 	if pitPlus == nil {
 		t.Fatal("pit+ button should exist when pit section is open")
 	}
@@ -612,7 +612,7 @@ func TestSidebarPitchButtons(t *testing.T) {
 	}
 
 	// Fire pit- callback.
-	pitMinus := g.sidebar.btns["pit-"]
+	pitMinus := g.sidebar.btns[sbMinus(fieldPit)]
 	if pitMinus == nil {
 		t.Fatal("pit- button should exist")
 	}
@@ -639,7 +639,7 @@ func TestSidebarDurationButtons(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["dur"] = true
+	g.sidebar.sectionOpen[secDur] = true
 	g.sidebar.layout()
 
 	mn, ok := g.graph.GetNodeByID(n.ID)
@@ -649,7 +649,7 @@ func TestSidebarDurationButtons(t *testing.T) {
 	initialDur := mn.Params.Duration
 
 	// Fire dur+ callback.
-	durPlus := g.sidebar.btns["dur+"]
+	durPlus := g.sidebar.btns[sbPlus(fieldDur)]
 	if durPlus == nil {
 		t.Fatal("dur+ button should exist when dur section is open")
 	}
@@ -667,7 +667,7 @@ func TestSidebarDurationButtons(t *testing.T) {
 	}
 
 	// Fire dur- callback.
-	durMinus := g.sidebar.btns["dur-"]
+	durMinus := g.sidebar.btns[sbMinus(fieldDur)]
 	if durMinus == nil {
 		t.Fatal("dur- button should exist")
 	}
@@ -701,7 +701,7 @@ func TestSidebarPanelRectDimensions(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.layout()
 
-	panel, ok := g.sidebar.rects["panel"]
+	panel, ok := g.sidebar.rects[sbPanel]
 	if !ok || panel.Empty() {
 		t.Fatal("panel rect should exist and be non-empty")
 	}
@@ -717,16 +717,20 @@ func TestSidebarPanelRectDimensions(t *testing.T) {
 
 	// The card is anchored beside the tapped node (a compact popup), not
 	// docked at a fixed left-edge origin: opening on a node at a different
-	// grid cell must move the panel's origin.
-	n2 := g.tryAddNode(5, 5, model.NodeTypeRegular)
+	// grid cell must move the panel's origin. The second node sits to the
+	// LEFT of the first: at 800x600 a card anchored to the right of the
+	// origin collides with the four-button corner cluster (gear/file/logs/
+	// theme) and is pushed to the same clamped x, which would mask the
+	// anchoring under test.
+	n2 := g.tryAddNode(-5, 5, model.NodeTypeRegular)
 	g.sidebar.Open(n2)
 	g.sidebar.layout()
-	panel2, ok := g.sidebar.rects["panel"]
+	panel2, ok := g.sidebar.rects[sbPanel]
 	if !ok || panel2.Empty() {
 		t.Fatal("panel2 rect should exist and be non-empty")
 	}
 	if panel2.Min == panel.Min {
-		t.Fatalf("panel should be anchored beside its own node, not fixed: panel=%v (node@0,0) panel2=%v (node@5,5) share the same origin",
+		t.Fatalf("panel should be anchored beside its own node, not fixed: panel=%v (node@0,0) panel2=%v (node@-5,5) share the same origin",
 			panel, panel2)
 	}
 }
@@ -743,11 +747,11 @@ func TestSidebarCloseButtonRectInHeader(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.layout()
 
-	closeR, ok := g.sidebar.rects["close"]
+	closeR, ok := g.sidebar.rects[sbClose]
 	if !ok || closeR.Empty() {
 		t.Fatal("close rect should exist")
 	}
-	headerR, ok := g.sidebar.rects["header"]
+	headerR, ok := g.sidebar.rects[sbHeader]
 	if !ok || headerR.Empty() {
 		t.Fatal("header rect should exist")
 	}
@@ -771,21 +775,21 @@ func TestSidebarExpandedSectionCreatesButtonRects(t *testing.T) {
 	g.sidebar.layout()
 
 	// Volume section collapsed: no vol+/vol- rects.
-	if _, ok := g.sidebar.rects["vol+"]; ok {
+	if _, ok := g.sidebar.rects[sbPlus(fieldVol)]; ok {
 		t.Fatal("vol+ rect should not exist when section is collapsed")
 	}
-	if _, ok := g.sidebar.rects["vol-"]; ok {
+	if _, ok := g.sidebar.rects[sbMinus(fieldVol)]; ok {
 		t.Fatal("vol- rect should not exist when section is collapsed")
 	}
 
 	// Expand volume section.
-	g.sidebar.sectionOpen["vol"] = true
+	g.sidebar.sectionOpen[secVol] = true
 	g.sidebar.layout()
 
-	if r, ok := g.sidebar.rects["vol+"]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbPlus(fieldVol)]; !ok || r.Empty() {
 		t.Fatal("vol+ rect should exist when vol section is expanded")
 	}
-	if r, ok := g.sidebar.rects["vol-"]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbMinus(fieldVol)]; !ok || r.Empty() {
 		t.Fatal("vol- rect should exist when vol section is expanded")
 	}
 }
@@ -800,14 +804,14 @@ func TestSidebarCloseSectionClosesDropdown(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
 	// Close the logic section.
-	g.sidebar.toggleSection("logic")
+	g.sidebar.toggleSection(secLogic)
 
-	if g.sidebar.sectionOpen["logic"] {
+	if g.sidebar.sectionOpen[secLogic] {
 		t.Fatal("logic section should be closed after toggle")
 	}
 	if g.sidebar.logicDropdownOpen {
@@ -829,7 +833,7 @@ func TestSidebarInputBounds(t *testing.T) {
 
 	// When open, InputBounds should match panel rect.
 	bounds := g.sidebar.InputBounds()
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if bounds != panel {
 		t.Fatalf("InputBounds should match panel rect when open: got %v, want %v", bounds, panel)
 	}
@@ -895,12 +899,12 @@ func TestSidebarLogicDropdownItemSetsKind(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
 	// Find the "probability" dropdown item button.
-	btn, ok := g.sidebar.btns["logic:probability"]
+	btn, ok := g.sidebar.btns[sbLogicOption(model.LogicProbability)]
 	if !ok || btn == nil {
 		t.Fatal("logic:probability button should exist when dropdown is open")
 	}
@@ -912,7 +916,7 @@ func TestSidebarLogicDropdownItemSetsKind(t *testing.T) {
 	g.uiQueue = nil
 
 	mn, _ := g.graph.GetNodeByID(n.ID)
-	if mn.Params.LogicKind != "probability" {
+	if mn.Params.LogicKind != model.LogicProbability {
 		t.Fatalf("LogicKind should be 'probability', got %q", mn.Params.LogicKind)
 	}
 	if mn.Params.LogicP <= 0 {
@@ -933,12 +937,12 @@ func TestSidebarGrooveDropdownItemSetsKind(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["groove"] = true
+	g.sidebar.sectionOpen[secGroove] = true
 	g.sidebar.grooveDropdownOpen = true
 	g.sidebar.layout()
 
 	// Find the "delay" dropdown item button.
-	btn, ok := g.sidebar.btns["groove:delay"]
+	btn, ok := g.sidebar.btns[sbGrooveOption(model.GrooveDelay)]
 	if !ok || btn == nil {
 		t.Fatal("groove:delay button should exist when dropdown is open")
 	}
@@ -950,7 +954,7 @@ func TestSidebarGrooveDropdownItemSetsKind(t *testing.T) {
 	g.uiQueue = nil
 
 	mn, _ := g.graph.GetNodeByID(n.ID)
-	if mn.Params.GrooveKind != "delay" {
+	if mn.Params.GrooveKind != model.GrooveDelay {
 		t.Fatalf("GrooveKind should be 'delay', got %q", mn.Params.GrooveKind)
 	}
 	if g.sidebar.grooveDropdownOpen {
@@ -1007,7 +1011,7 @@ func TestSidebar_LogicDropdownSelection(t *testing.T) {
 	g.sidebar.layout()
 
 	// Select "every_n_triggers".
-	itemBtn := g.sidebar.btns["logic:every_n_triggers"]
+	itemBtn := g.sidebar.btns[sbLogicOption(model.LogicEveryN)]
 	if itemBtn == nil {
 		t.Fatal("expected 'logic:every_n_triggers' button")
 	}
@@ -1025,7 +1029,7 @@ func TestSidebar_LogicDropdownSelection(t *testing.T) {
 	if !ok {
 		t.Fatal("node not found in graph")
 	}
-	if mn.Params.LogicKind != "every_n_triggers" {
+	if mn.Params.LogicKind != model.LogicEveryN {
 		t.Errorf("expected LogicKind='every_n_triggers', got %q", mn.Params.LogicKind)
 	}
 	if mn.Params.LogicN < 2 {
@@ -1050,7 +1054,7 @@ func TestSidebar_GrooveDropdownSelection(t *testing.T) {
 	g.sidebar.layout()
 
 	// Select "delay".
-	itemBtn := g.sidebar.btns["groove:delay"]
+	itemBtn := g.sidebar.btns[sbGrooveOption(model.GrooveDelay)]
 	if itemBtn == nil {
 		t.Fatal("expected 'groove:delay' button")
 	}
@@ -1067,7 +1071,7 @@ func TestSidebar_GrooveDropdownSelection(t *testing.T) {
 	if !ok {
 		t.Fatal("node not found in graph")
 	}
-	if mn.Params.GrooveKind != "delay" {
+	if mn.Params.GrooveKind != model.GrooveDelay {
 		t.Errorf("expected GrooveKind='delay', got %q", mn.Params.GrooveKind)
 	}
 }
@@ -1107,7 +1111,7 @@ func TestSidebar_DeferredTapInScroll(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
 	// Use the panel rect for touch start.
-	panelR := g.sidebar.rects["panel"]
+	panelR := g.sidebar.rects[sbPanel]
 	if panelR.Empty() {
 		t.Skip("no panel rect")
 	}
@@ -1156,22 +1160,22 @@ func TestSidebar_SilentNodeHidesParams(t *testing.T) {
 	g.sidebar.layout()
 
 	// Silent node should hide vol, pit, dur, logic, groove sections.
-	for _, key := range []string{"sec-vol", "sec-pit", "sec-dur", "sec-logic", "sec-groove"} {
+	for _, key := range []sbID{sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secDur), sbSectionHeader(secLogic), sbSectionHeader(secGroove)} {
 		if r, ok := g.sidebar.rects[key]; ok && !r.Empty() {
 			t.Errorf("expected section %q hidden for silent node, got rect %v", key, r)
 		}
 	}
 
 	// Logic and groove buttons should not be wired.
-	if g.sidebar.btns["logic"] != nil {
+	if g.sidebar.btns[sbLogicSelect] != nil {
 		t.Error("expected no 'logic' button for silent node")
 	}
-	if g.sidebar.btns["grv"] != nil {
+	if g.sidebar.btns[sbGrooveSelect] != nil {
 		t.Error("expected no 'grv' button for silent node")
 	}
 
 	// "aud" section should still exist.
-	if _, ok := g.sidebar.rects["sec-aud"]; !ok {
+	if _, ok := g.sidebar.rects[sbSectionHeader(secAud)]; !ok {
 		t.Error("expected 'sec-aud' section for silent node")
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -18,7 +19,7 @@ import (
 // during playback hangs the game" regression (2026-07 user report, WASM).
 //
 // THE BUG: with the Synth tab open, every frame re-derives the instrument's
-// merged param map from scratch — audio.MergeRecipeDefaults over the FULL
+// merged param map from scratch — a fresh flat-value map over the FULL
 // modular schema (~1030 ParamDefs, ~115 KB per call) runs in buildSynthTab
 // (Layout, every frame), in DrumView.synthParamsHash (the mirror's re-render
 // gate, every Draw), and again inside every preview/concept wave render
@@ -109,11 +110,13 @@ func TestSynthTab_LiveControlEditFrameByteBudget(t *testing.T) {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Kick"
-	g.drum.Rows[0].Instrument = "dnb-kick"
-	if audio.RecipeForInstrument("dnb-kick") == "" {
-		t.Fatal("dnb-kick has no recipe binding — harness assumption broken")
+	g.drum.Rows[0].Instrument = roster.DnbKick
+	if !audio.HasInstrumentDoc(roster.DnbKick) {
+		if _, ok := audio.EnsureInstrumentDoc(roster.DnbKick); !ok {
+			t.Fatal("dnb-kick has no instrument document — harness assumption broken")
+		}
 	}
-	t.Cleanup(func() { audio.ResetInstrumentParams("dnb-kick") })
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.DnbKick) })
 	g.updateBeatInfos()
 
 	expandSynthPanelForTest(t, g)
@@ -122,7 +125,7 @@ func TestSynthTab_LiveControlEditFrameByteBudget(t *testing.T) {
 	// laid out below the in-grid divider (no expander), so selectSectionForKnobIdx
 	// opens the owning stage and scrolls the knob into view.
 	idx := synthBindingIdxByName(t, g, "gen1_kick_attack")
-	selectSectionForKnobIdx(t, g, "dnb-kick", idx)
+	selectSectionForKnobIdx(t, g, roster.DnbKick, idx)
 	knobs := g.drum.SynthTabControls()
 	knob := knobs[idx]
 	rect := knob.Rect()
@@ -143,34 +146,67 @@ func TestSynthTab_LiveControlEditFrameByteBudget(t *testing.T) {
 	idleBytes := measureFrameBytes(g, screen, 60, nil)
 	t.Logf("idle synth-tab frame: %.0f KB/frame (budget %d KB)", idleBytes/1024, synthTabIdleFrameByteBudget>>10)
 
-	// Phase 2: a real drag on the Punch knob, moving every frame.
+	// Phase 2: a real ARMED wheel-spin on the Punch control, moving every
+	// frame — Task 9 made the NOT-armed wheel scroll the section's row
+	// instead of nudging the value, so arming is now the real path a user
+	// edits a value through (synth_armed_control.go / synth_armed_editor.go).
+	g.drum.armSynthControl(roster.DnbKick, idx)
+	// One more layout pass so placeKnobsInSection's growArmedCard (Task 7)
+	// extends the armed control's own Rect() to the grown card size before we
+	// read it. buildSynthTab can rebuild instEditorControls wholesale on any
+	// layout (see synthControlHitAdapter's doc comment), so re-fetch the
+	// *Knob slice/pointer rather than trust the one captured before arming.
+	_ = g.Update()
+	knobs = g.drum.SynthTabControls()
+	knob = knobs[idx]
+	e := g.drum.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("armSynthControl did not create an ArmedControlEditor")
+	}
+	// The real Draw path (drawArmedControlCard) also calls this every frame;
+	// call it directly here so the lane rects are guaranteed populated before
+	// Phase 2 starts measuring, independent of Draw-order timing.
+	e.SetCardRect(knob.Rect())
+	valRect := e.ValueLaneRect()
+	if valRect.Empty() {
+		t.Fatalf("armed editor's value lane rect is empty after SetCardRect(%v)", knob.Rect())
+	}
+	valCenter := image.Pt((valRect.Min.X+valRect.Max.X)/2, (valRect.Min.Y+valRect.Max.Y)/2)
+
 	hits := g.drum.eqPanelZone.HitAreas()
 	var pressHit *HitArea
-	center := image.Pt((rect.Min.X+rect.Max.X)/2, (rect.Min.Y+rect.Max.Y)/2)
 	for i, h := range hits {
-		if h.Tag != "" && strings.HasPrefix(h.Tag, "synth-control-") && center.In(h.Rect) {
+		if h.Tag != "" && strings.HasPrefix(h.Tag, "synth-control-") && valCenter.In(h.Rect) {
 			pressHit = &hits[i]
 			break
 		}
 	}
 	if pressHit == nil {
-		t.Fatalf("no synth-control HitArea covers the Punch knob center %v", center)
+		t.Fatalf("no synth-control HitArea covers the armed Punch control's value-lane center %v", valCenter)
 	}
 	dragBytes := measureFrameBytes(g, screen, 60, func(i int) {
-		// Task-5: value edits are the desktop wheel nudge. Alternate direction so
-		// the value (and params hash) changes every frame, like a user spinning
-		// the wheel back and forth.
+		// Alternate direction so the value (and params hash) changes every
+		// frame, like a user spinning the armed value-lane wheel back and
+		// forth. OnWheel on an ARMED control routes to
+		// ArmedControlEditor.Wheel (synth_armed_control.go), which adds a
+		// kinetic impulse to the barrel; the g.Update() call below ticks the
+		// editor every frame (EQPanelZone.Update -> SynthTabUpdate ->
+		// instEditorArmedEditor.Tick), which is what actually crosses detents
+		// and propagates the param to the audio engine — exercising the real
+		// per-frame armed-edit animation cost (the armed card draws directly,
+		// bypassing the per-card sprite cache, every animating frame — see
+		// TestArmedCardSkipsPerCardSpriteCache).
 		dir := 1
 		if (i/8)%2 == 1 {
 			dir = -1
 		}
-		pressHit.Handler.OnWheel(center.X, center.Y, dir)
+		pressHit.Handler.OnWheel(valCenter.X, valCenter.Y, dir)
 	})
 	t.Logf("drag synth-tab frame: %.0f KB/frame (budget %d KB)", dragBytes/1024, synthTabDragFrameByteBudget>>10)
 
 	// Sanity: the drag actually reached the audio engine (the live-edit path
 	// under measurement is the real one).
-	if p := audio.GetInstrumentParams("dnb-kick"); len(p) == 0 {
+	if p := audio.GetInstrumentParams(roster.DnbKick); len(p) == 0 {
 		t.Fatal("drag did not propagate any param to the audio engine — measurement exercised nothing")
 	}
 

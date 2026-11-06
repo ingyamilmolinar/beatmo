@@ -36,8 +36,10 @@ const (
 	SubjectContextMenu    Subject = "context_menu"
 	SubjectOverflowMenu   Subject = "overflow_menu"
 	SubjectInstrumentMenu Subject = "instrument_menu"
-	SubjectSynthWheel     Subject = "synth_wheel"
 	SubjectGroupMenu      Subject = "group_menu"
+	SubjectThemeEditor    Subject = "theme_editor" // the Theme editor overlay panel (grid palette button)
+	SubjectNavMenu        Subject = "nav_menu"     // the navigation menu card (beat counter) incl. the go-to wheel
+	SubjectWarmupToast    Subject = "warmup_toast" // the circuit-loading progress toast (logsToast)
 )
 
 // AllSubjects returns every named subject in declaration order. Used by
@@ -62,7 +64,6 @@ func AllSubjects() []Subject {
 		SubjectContextMenu,
 		SubjectOverflowMenu,
 		SubjectInstrumentMenu,
-		SubjectSynthWheel,
 		SubjectGroupMenu,
 	}
 }
@@ -176,16 +177,29 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 			return image.Rectangle{}, false
 		}
 		return clamp(dv.InstrumentMenuRect())
-	case SubjectSynthWheel:
-		if dv == nil {
-			return image.Rectangle{}, false
-		}
-		return clamp(dv.SynthWheelPopupRect())
 	case SubjectGroupMenu:
 		if g.groupMenu == nil || !g.groupMenu.IsOpen() {
 			return image.Rectangle{}, false
 		}
 		return clamp(g.groupMenu.InputBounds())
+	case SubjectNavMenu:
+		if dv == nil || dv.navMenuComp == nil || !dv.navMenuComp.IsOpen() {
+			return image.Rectangle{}, false
+		}
+		return clamp(dv.navMenuComp.Bounds())
+	case SubjectThemeEditor:
+		if dv == nil || dv.portal() == nil {
+			return image.Rectangle{}, false
+		}
+		if ov, ok := dv.portal().TopOverlay().(*ThemeOverlay); ok && ov != nil {
+			return clamp(ov.Rect())
+		}
+		return image.Rectangle{}, false
+	case SubjectWarmupToast:
+		if dv == nil {
+			return image.Rectangle{}, false
+		}
+		return clamp(dv.logsToast.rectIn(g.toastHostRect()))
 	}
 	return image.Rectangle{}, false
 }

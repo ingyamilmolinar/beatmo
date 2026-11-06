@@ -7,94 +7,69 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// indicatorTrackHeight is the thickness of the slider-level marker.
-// Rounded 4px bar gives the indicator enough height to carry the pill shape
-// from drawSliderRail without competing with the icon glyph.
-const indicatorTrackHeight = 4
+// indicatorMinWidth is the narrowest button that still gets a level gauge.
+// Below this the strip is not legible.
+const indicatorMinWidth = 8
 
-// indicatorGapBelowIcon is the vertical breathing room between the icon
-// glyph's bottom edge and the indicator's top edge. The indicator may
-// shrink/shift up if the button rect is too tight, but never below 1px.
-const indicatorGapBelowIcon = 3
+// volumeGaugeRect is the DESIGN.md "gauge" strip of a volume button: a
+// hairline (densities.paramCardGaugeH) on the body's bottom inner edge,
+// spanning the body width minus a side inset. Empty when the button is too
+// small to carry one.
+func volumeGaugeRect(btnR image.Rectangle) image.Rectangle {
+	if btnR.Dx() < indicatorMinWidth {
+		return image.Rectangle{}
+	}
+	gh := Profile().DensityValues().ParamCardGaugeH
+	if gh < 2 {
+		gh = 2
+	}
+	side := SpaceSM
+	if q := btnR.Dx() / 4; q < side {
+		side = q
+	}
+	y1 := btnR.Max.Y - SpaceXS
+	y0 := y1 - gh
+	if y0 <= btnR.Min.Y {
+		return image.Rectangle{}
+	}
+	return image.Rect(btnR.Min.X+side, y0, btnR.Max.X-side, y1)
+}
 
-// indicatorMinIconWidth is the smallest icon footprint that still gets an
-// indicator. Below this the bar is not legible.
-const indicatorMinIconWidth = 8
-
-// drawSliderLevelIndicator draws a thin underline beneath an icon button to
-// show the 0..1 level of the slider that the icon toggles. The bar spans the
-// icon glyph's horizontal footprint and sits a few pixels below it, but is
-// always clamped inside btnR so dense toolbars (e.g., master volume on
-// desktop) cannot clip it. Track is dim; fill carries the icon's foreground
-// color at full alpha. When off (muted/zero), the track renders alone —
-// communicating "this control exists, currently silent."
-//
-// btnR is the button hit-area; iconR is the centered glyph rect inside it.
-// Value is clamped to [0,1]. Empty/too-small iconR is a no-op. If btnR has
-// no room below iconR for even a 1px track, the indicator is also a no-op
-// (the layout would clip it anyway).
+// drawSliderLevelIndicator draws the at-a-glance level gauge of a volume
+// button: the shared gauge strip (drawGaugeStrip — the same renderer the
+// Synth param cards use) along the bottom inner edge of btnR. The fill
+// carries fgCol (the instrument color on a row, the volume glyph color on
+// master); when off (muted/zero) the track renders alone — "this control
+// exists, currently silent." Value is clamped to [0,1]; a button narrower
+// than indicatorMinWidth gets no gauge. iconR is accepted for the callers'
+// symmetry and as the "is there a glyph" guard.
 func drawSliderLevelIndicator(dst *ebiten.Image, btnR, iconR image.Rectangle, value float64, fgCol color.Color, off bool) {
 	if iconR.Empty() {
 		return
 	}
-	width := iconR.Dx()
-	if width < indicatorMinIconWidth {
+	gr := volumeGaugeRect(btnR)
+	if gr.Empty() {
 		return
 	}
-	if value < 0 {
-		value = 0
+	v := clamp01(value)
+	if off {
+		v = 0
 	}
-	if value > 1 {
-		value = 1
-	}
-
-	// Position below the icon, clamped so the bar always fits inside btnR.
-	maxY := iconR.Max.Y + indicatorGapBelowIcon + indicatorTrackHeight
-	if !btnR.Empty() && maxY > btnR.Max.Y {
-		maxY = btnR.Max.Y
-	}
-	y1 := maxY
-	y0 := y1 - indicatorTrackHeight
-	if y0 <= iconR.Max.Y {
-		// No gap left between icon and bar; pull bar down to sit flush below the icon.
-		y0 = iconR.Max.Y
-		y1 = y0 + indicatorTrackHeight
-		if !btnR.Empty() && y1 > btnR.Max.Y {
-			y1 = btnR.Max.Y
-		}
-	}
-	if y1-y0 < 1 {
-		return
-	}
-
-	rail := image.Rect(iconR.Min.X, y0, iconR.Max.X, y1)
-	railVal := value
-	if off || value <= 0 {
-		railVal = 0
-	}
-	// drawSliderRail wants a concrete color.RGBA. The icon color is frequently a
-	// color.NRGBA — per-row tints come from WithAlphaFromColor — so convert
-	// through color.RGBAModel rather than a type assertion. A plain
-	// fgCol.(color.RGBA) assertion fails for every colored row and would
-	// silently fall back to cyan, painting the wrong fill color.
-	fg, ok := fgCol.(color.RGBA)
-	if !ok {
-		fg = color.RGBAModel.Convert(fgCol).(color.RGBA)
-	}
-	drawSliderRail(dst, rail, railVal, true /*horizontal*/, fg)
+	drawGaugeStrip(dst, gr, paramCardGauge{kind: gaugeFill, frac: v}, fgCol)
 }
 
-// drawVolumeButton renders the canonical volume control: a centered speaker
-// glyph (on/off variant by mute or zero level) plus the at-a-glance level
-// indicator beneath it. This is the SINGLE source of truth for both the
-// per-row volume cells AND the master volume button — they differ only in
-// which channel they're wired to. Any visual tweak (icon size, indicator
-// thickness, off-state behavior) propagates to both surfaces automatically.
+// drawVolumeButton renders the canonical volume control: a speaker glyph
+// (on/off variant by mute or zero level) centered above the level gauge. This
+// is the SINGLE source of truth for both the per-row volume cells AND the
+// master volume button — they differ only in which channel they're wired to.
+// Any visual tweak (icon size, gauge, off-state behavior) propagates to both
+// surfaces automatically.
 //
-// btnR is the button hit-area; the speaker glyph is centered inside it at
-// 60% height (clamped on mobile to IconSizeMD). rowColor optionally tints
-// the glyph (per-row uses the row's instrument color); pass nil for the
-// master button to fall back to colVolumeIconOn.
+// btnR is the button hit-area; the speaker glyph is 60% of its height
+// (clamped on mobile to IconSizeMD), centered in the band above the gauge.
+// rowColor optionally tints the glyph and gauge (per-row uses the row's
+// instrument color); pass nil for the master button to fall back to
+// colVolumeIconOn.
 func drawVolumeButton(dst *ebiten.Image, btnR image.Rectangle, vol float64, muted bool, rowColor color.Color) {
 	if btnR.Empty() {
 		return
@@ -107,9 +82,28 @@ func drawVolumeButton(dst *ebiten.Image, btnR image.Rectangle, vol float64, mute
 	if iconH < 8 {
 		iconH = 8
 	}
+	// Center the glyph in the band above the gauge so the two never touch.
+	bandBottom := btnR.Max.Y
+	if gr := volumeGaugeRect(btnR); !gr.Empty() {
+		bandBottom = gr.Min.Y
+	}
+	if band := bandBottom - btnR.Min.Y; iconH > band-2 && band > 8 {
+		iconH = band - 2
+	}
 	cx := btnR.Min.X + btnR.Dx()/2
-	cy := btnR.Min.Y + btnR.Dy()/2
+	cy := btnR.Min.Y + (bandBottom-btnR.Min.Y)/2
 	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
+
+	// Keycap body first: the volume button is a pressable control and shares
+	// the button-secondary spec body with every neighbouring keycap (transport
+	// Play/Stop/undo, the per-row M/S/FX cells). Static state — the volume hit
+	// adapter opens the popup on press, so there is no hover/press tint here.
+	// Guard: TestVolumeButtonsAndInputsShareKeycapBody.
+	// fitRadius: narrow mobile cells (14 px wide) fall under the anti-pill
+	// ceiling min(w,h)/4 at the spec's radius (TestNoPillShapedControls).
+	spec := Spec(ComponentButtonSecondary)
+	spec.Radius = fitRadius(spec.Radius, btnR)
+	Render(dst, btnR, spec, ComponentState{})
 
 	iconCol := volIconColor(vol, muted, rowColor)
 	glyph := IconSpeaker

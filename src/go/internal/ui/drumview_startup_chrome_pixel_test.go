@@ -201,7 +201,13 @@ func beatCounterCapCalls(rec *drawCallRecorder, bc image.Rectangle) []drawCall {
 	hoverFill := color.RGBAModel.Convert(adjustColor(TransportMiscStyle.Fill, 12)).(color.RGBA)
 	var out []drawCall
 	for _, c := range rec.calls {
-		if c.Kind != drawCallRoundedButton {
+		// Flat-tonal (2026-07-25): the counter body is a FILLED rounded rect
+		// (drawFlatButtonBody), no longer a drawRoundedButton fill+border
+		// composite. Accept both so this helper survives either path.
+		switch {
+		case c.Kind == drawCallRoundedButton:
+		case c.Kind == drawCallRoundedRect && c.Filled:
+		default:
 			continue
 		}
 		if c.Color != restFill && c.Color != hoverFill {

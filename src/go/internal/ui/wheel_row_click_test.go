@@ -153,19 +153,21 @@ func TestWheelCenterClickCommitsDirtyDiscreteOnce(t *testing.T) {
 	}
 }
 
-// Continuous wheels keep their existing center contract: click accepts (closes)
-// and hands off to the numeric editor.
-func TestWheelCenterClickContinuousStillOpensEditor(t *testing.T) {
+// Continuous wheels share the centre contract: a click CONFIRMS — accepts
+// (commits once when dirty) and closes. (It used to hand off to a typed numeric
+// editor; typed entry was retired.)
+func TestWheelCenterClickContinuousConfirms(t *testing.T) {
 	w, _ := openContinuousWheel(t)
-	opened := 0
-	w.binding.OpenEditor = func() { opened++ }
+	commits := 0
+	w.binding.OnCommit = func() { commits++ }
+	w.StepValue(+1)
 	cx := (w.centerH.Min.X + w.centerH.Max.X) / 2
 	cy := (w.centerH.Min.Y + w.centerH.Max.Y) / 2
 	tapAt(w, cx, cy)
 	if w.IsOpen() {
-		t.Fatal("continuous center click must still close the wheel")
+		t.Fatal("continuous center click must close the wheel")
 	}
-	if opened != 1 {
-		t.Fatalf("continuous center click must still open the numeric editor once, got %d", opened)
+	if commits != 1 {
+		t.Fatalf("continuous center click on a dirty wheel must commit exactly once, got %d", commits)
 	}
 }

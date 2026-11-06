@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // solo_analyzer_cost_bench_test.go — quantifies the AUDIO-THREAD cost that the
@@ -54,7 +57,7 @@ func eqBlockCost(ch *Channel, blockSize, blocks int) time.Duration {
 // stackAnalyzers simulates n solo toggles' worth of EnableChannelAnalyzer calls.
 func stackAnalyzers(id string, n int) {
 	for i := 0; i < n; i++ {
-		_ = EnableChannelAnalyzer(id, 512)
+		_ = EnableChannelAnalyzer(channel.Of(instrument.ID(id)), 512)
 	}
 }
 
@@ -79,13 +82,13 @@ func TestSoloAnalyzerStackCostTable(t *testing.T) {
 	for _, toggles := range []int{0, 1, 2, 4, 8, 16} {
 		resetChains(t)
 		id := fmt.Sprintf("solo-cost-organ-%d", toggles)
-		_ = InstrumentChannel(id)
+		_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
 		// Baseline focus (what boot does), then `toggles` more re-focuses.
 		stackAnalyzers(id, 1+toggles)
 
-		n := ChannelAnalyzerCount(id)
-		cost := eqBlockCost(chanMgr.ensureChannel(id), blockSize, blocks)
+		n := ChannelAnalyzerCount(channel.Of(instrument.ID(id)))
+		cost := eqBlockCost(chanMgr.ensureChannel(channel.Of(instrument.ID(id))), blockSize, blocks)
 		pct := float64(cost) / float64(budget) * 100
 
 		fmt.Printf("%-14d %-12d %-12.4f %-10.1f\n", toggles, n, ms(cost), pct)
@@ -118,16 +121,16 @@ func benchEQBlock(b *testing.B, enables int) {
 	b.Helper()
 	const blockSize = 512
 	id := fmt.Sprintf("solo-bench-organ-%d", enables)
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 	stackAnalyzers(id, enables)
-	ch := chanMgr.ensureChannel(id)
+	ch := chanMgr.ensureChannel(channel.Of(instrument.ID(id)))
 
 	in := make([]float64, blockSize)
 	out := make([]float64, blockSize)
 	for i := range in {
 		in[i] = float64(i%64)/32.0 - 1.0
 	}
-	b.ReportMetric(float64(ChannelAnalyzerCount(id)), "analyzers")
+	b.ReportMetric(float64(ChannelAnalyzerCount(channel.Of(instrument.ID(id)))), "analyzers")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

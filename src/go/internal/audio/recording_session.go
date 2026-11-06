@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // RecordingOptions configures a recording session.
@@ -21,8 +23,12 @@ type RecordingOptions struct {
 // the absolute path of the WAV file already written to disk during
 // recording. In legacy/WASM in-memory mode, Data holds the encoded bytes
 // and Path is empty.
+// RecordingMasterID names the master-bus stem of a recording (its file is
+// "master.<ext>"; the instrument stems are named by their channel).
+const RecordingMasterID = "master"
+
 type EncodedChannel struct {
-	ID       string // instrument ID or "master"
+	ID       string // the instrument channel recorded, or RecordingMasterID
 	Name     string // human-readable name
 	Filename string // e.g., "kick-deep.wav"
 	Data     []byte // encoded audio bytes (nil in streaming mode and in WASM worker mode)
@@ -71,7 +77,7 @@ var platformRecordingStart = func(instruments []InstrumentMeta) {}
 // platformRecordingStop is called when recording stops. On WASM, this
 // retrieves captured samples from the JS per-channel capture nodes.
 // Returns nil, nil, 0 when no platform capture is available.
-var platformRecordingStop = func() (map[string][]float64, []float64, int) { return nil, nil, 0 }
+var platformRecordingStop = func() (map[channel.ID][]float64, []float64, int) { return nil, nil, 0 }
 
 // MetadataJSON returns the session metadata as formatted JSON bytes.
 func (r *RecordingResult) MetadataJSON() ([]byte, error) {
@@ -80,7 +86,7 @@ func (r *RecordingResult) MetadataJSON() ([]byte, error) {
 
 // InstrumentMeta holds metadata for an instrument being recorded.
 type InstrumentMeta struct {
-	ID   string
+	ID   channel.ID
 	Name string
 }
 

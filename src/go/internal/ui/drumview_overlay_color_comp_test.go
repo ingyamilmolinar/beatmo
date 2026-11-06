@@ -249,7 +249,9 @@ func TestColorSwatchClickPicksExactPaletteColor(t *testing.T) {
 		t.Fatalf("picked color %v != palette swatch %v", picked, want)
 	}
 
-	// Deferred close: stays open while held, closes on release.
+	// Selecting APPLIES and leaves the picker open (see
+	// picker_confirm_on_reselect_test.go); the gesture still owns input until
+	// its release.
 	if !comp.IsOpen() {
 		t.Error("expected picker to remain open until release")
 	}
@@ -258,10 +260,21 @@ func TestColorSwatchClickPicksExactPaletteColor(t *testing.T) {
 	}
 	res = comp.HandleInput(cx, cy, false)
 	if res != InputConsumed {
-		t.Errorf("expected InputConsumed on deferred close, got %v", res)
+		t.Errorf("expected InputConsumed on release, got %v", res)
 	}
+	if !comp.IsOpen() {
+		t.Error("expected picker to stay open after applying a colour")
+	}
+
+	// Re-selecting the applied colour is the confirm gesture: deferred close
+	// on release, exactly as the single pick used to behave.
+	comp.HandleInput(cx, cy, true)
+	if !comp.IsOpen() {
+		t.Error("expected picker open while the confirm press is held")
+	}
+	comp.HandleInput(cx, cy, false)
 	if comp.IsOpen() {
-		t.Error("expected picker closed after release")
+		t.Error("expected picker closed after confirming the applied colour")
 	}
 }
 

@@ -1,0 +1,51 @@
+[
+  {
+    "inst": "oboe",
+    "why": "ear n: \"way too airy/breathy, they need warmness\"; map #14 on oboe_A4, noisier (noise 0.13 vs 0.00) and #9 on the acclivity A440"
+  },
+  {
+    "inst": "flute",
+    "why": "ear: \"very breathy\"; map #39 on flute_A4, colour +0.35, noisier (noise 0.29 vs 0.02)"
+  },
+  {
+    "inst": "clarinet",
+    "why": "ear p; map #14 on clarinet_A4, loses on colour +0.17"
+  },
+  {
+    "inst": "trombone",
+    "why": "ear p; map #66 on trombone_A3, colour +0.88, darker (503 vs 1622 Hz) -- five partials cannot reach the real centroid, so the search may raise six more harmonics from silence",
+    "add_harmonics": 6
+  },
+  {
+    "inst": "tuba",
+    "why": "ear p; map #63 on tuba_A2, colour +0.72, darker (279 vs 768 Hz) -- five partials, so the search may raise six more harmonics from silence",
+    "add_harmonics": 6
+  },
+  {
+    "inst": "cello",
+    "why": "ear: \"still too airy and breathy\", match note \"needs more deep string bowing texture\"; map #2/#3, brighter (845 vs 547 Hz), noisier on cello_freesound (0.26 vs 0.17)"
+  },
+  {
+    "inst": "violin",
+    "why": "ear: \"still has this slightly fluty quality\"; map #10/#15, darker (1386 vs 1812 Hz). A bow bite needs the post-filter stage (spec D2); this run only moves what the document can"
+  },
+  {
+    "inst": "rimshot",
+    "why": "ear n: \"much more full, deep, lower in tone and rattly/vibrational and cracky (snap)\"; ab-tuned 10-23: \"totally different, sound like a high tom or conga\". map #34 on rimshot_vcsl, darker (974 vs 1459 Hz), cleaner (noise 0.15 vs 0.72): the shipped voice is two tuned tones (500 + 1050 Hz, a drum-machine clave) whose nearest recording is the cowbell, and a search near its own values only reached #17 (1.537 -> 1.295). The recording is a SNARE rimshot (head, wires and rim at once) and snare-fat's document played as it already ranks #1 (0.683, noise 0.74), so the search starts from snare-fat and moves it toward the rimshot",
+    "from": "snare-fat"
+  },
+  {
+    "inst": "snare",
+    "why": "ear n: \"these need a LOT of work. Totally different sound\"; map: rimshot outranks the snare on snare_vcsl, the synth is brighter (789 vs 472 Hz)"
+  },
+  {
+    "inst": "guitar-nylon",
+    "why": "ear: \"too pitched up or bright\"; map #2 on guitar_nylon_freesound, brighter (1280 vs 909 Hz)"
+  },
+  {
+    "inst": "harp",
+    "why": "ear n: \"needs much longer decay and let it ring\"; match note \"brighter, louder, more metallic and last for longer\". The map already ranks it #1/#2, and harp_vcsl_e5 is DARKER than the synth (1227 vs 1529 Hz) while the note asks for brighter, so brightness is not searched (a first run with the cutoff free darkened it 3300 -> 2203 Hz). Only the string's sustain and the body are searched, and the voice is held twice as long (render.seconds 1 -> 2), as the listener asked. Brighter / more metallic needs plucked-string engine work (spec D6)",
+    "only": ["gen1_ks_sustain", "body_mix"],
+    "set": {"render.seconds": 2}
+  }
+]

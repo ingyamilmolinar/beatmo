@@ -3,33 +3,36 @@
 package audio
 
 import (
-	"log"
-	"os"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// bypassNormalize skips peak normalization when set via BYPASS_NORMALIZE=1.
-// Use this to test if normalization is causing distortion.
-var bypassNormalize = os.Getenv("BYPASS_NORMALIZE") == "1"
-
 func init() {
-	if bypassNormalize {
-		log.Println("[AUDIO DEBUG] BYPASS_NORMALIZE=1 - Skipping peak normalization")
+	if env.BypassNormalize.Get() {
+		log.Warnf("[audio] BYPASS_NORMALIZE=1: skipping peak normalization")
 	}
 }
 
 // amplitudeForInstrument returns the amplitude scalar for the given instrument.
-// Uses the shared InstrumentConfigs as the single source of truth.
-func amplitudeForInstrument(id string) float32 {
+// It is the document's render.amplitude (ConfigForInstrument).
+func amplitudeForInstrument(id instrument.ID) float32 {
 	return ConfigForInstrument(id).Amplitude
 }
 
 // normalizeAndScale applies peak normalization followed by amplitude scaling
 // to match the WASM audio processing pipeline in audio.js.
 // This ensures cross-platform audio parity.
-func normalizeAndScale(buf []float32, instrumentID string) {
-	if bypassNormalize {
+func normalizeAndScale(buf []float32, instrumentID instrument.ID) {
+	normalizeAndScaleAmp(buf, amplitudeForInstrument(instrumentID))
+}
+
+// normalizeAndScaleAmp is normalizeAndScale with the amplitude given
+// directly — a document render must use ITS amplitude, never whatever is
+// registered under its id (a candidate document is never registered).
+func normalizeAndScaleAmp(buf []float32, amp float32) {
+	if env.BypassNormalize.Get() {
 		// Just apply amplitude scaling, no normalization
-		amp := amplitudeForInstrument(instrumentID)
 		for i := range buf {
 			buf[i] *= amp
 		}
@@ -58,7 +61,6 @@ func normalizeAndScale(buf []float32, instrumentID string) {
 	}
 
 	// 3. Scale by instrument amplitude
-	amp := amplitudeForInstrument(instrumentID)
 	for i := range buf {
 		buf[i] *= amp
 	}
@@ -98,18 +100,18 @@ func applyFadeOut(buf []float32) {
 
 // ExportVoice returns a Voice for the given instrument ID, or nil if not found.
 // This is used for cross-platform audio comparison tests.
-func ExportVoice(id string, bpm, sampleRate int) Voice {
+func ExportVoice(id instrument.ID, sampleRate int) Voice {
 	instMu.RLock()
 	inst, ok := instruments[id]
 	instMu.RUnlock()
 	if !ok {
 		return nil
 	}
-	return inst.NewVoice(bpm, sampleRate)
+	return inst.NewVoice(sampleRate)
 }
 
 // AmplitudeForInstrumentExport returns the amplitude for the given instrument ID.
 // This is exported for cross-platform comparison tests.
-func AmplitudeForInstrumentExport(id string) float64 {
+func AmplitudeForInstrumentExport(id instrument.ID) float64 {
 	return float64(amplitudeForInstrument(id))
 }

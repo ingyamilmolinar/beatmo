@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // renameInstrumentTo sets a metadata-only display-name override for the
@@ -21,22 +22,35 @@ func (dv *DrumView) renameInstrumentTo(row int, name string) {
 	if id == "" {
 		return
 	}
+	dv.applyInstrumentDisplayName(id, name)
+	// The id is unchanged, so this is NOT an instrument swap — do NOT call
+	// onRowInstrumentChanged. Emit the rename event (publishes
+	// EventInstrumentRenamed + records undo via recordUndo). For a
+	// metadata-only rename old==new id.
+	emitInstrumentRenamed(id, id)
+}
+
+// applyInstrumentDisplayName sets id's display-name override and refreshes
+// every row playing id (label, caches, open menu). Metadata only: the id
+// never changes. Shared by rename and Save As (which names the instrument).
+func (dv *DrumView) applyInstrumentDisplayName(id instrument.ID, name string) {
 	audio.SetInstrumentDisplayName(id, name)
 	dv.invalidateLabelCaches()
-	dv.Rows[row].Name = dv.computeInstLabel(id)
-	if row < len(dv.rowLabels()) {
-		dv.rowLabels()[row].Text = dv.Rows[row].Name
+	labels := dv.rowLabels()
+	for i, r := range dv.Rows {
+		if r == nil || r.Instrument != id {
+			continue
+		}
+		r.Name = dv.computeInstLabel(id)
+		if i < len(labels) {
+			labels[i].Text = r.Name
+		}
 	}
 	if dv.IsInstMenuOpen() {
 		dv.refreshInstMenuComponent()
 	}
 	dv.markRowControlsDirty()
 	dv.bgDirty = true
-	// The id is unchanged, so this is NOT an instrument swap — do NOT call
-	// onRowInstrumentChanged. Emit the rename event (publishes
-	// EventInstrumentRenamed + records undo via recordUndo). For a
-	// metadata-only rename old==new id.
-	emitInstrumentRenamed(id, id)
 }
 
 func (dv *DrumView) refreshInstruments() {
@@ -53,13 +67,13 @@ func (dv *DrumView) refreshInstruments() {
 	dv.instRegistryVersion = instVer
 	dv.instRefreshDirty = false
 	meta := audio.Catalog()
-	dv.instMeta = map[string]audio.SoundMeta{}
+	dv.instMeta = map[instrument.ID]audio.SoundMeta{}
 	for _, m := range meta {
 		dv.instMeta[m.ID] = m
 	}
 
-	seen := map[string]bool{}
-	opts := []string{}
+	seen := map[instrument.ID]bool{}
+	opts := []instrument.ID{}
 	for _, id := range audio.Instruments() {
 		if !seen[id] {
 			opts = append(opts, id)
@@ -75,35 +89,31 @@ func (dv *DrumView) refreshInstruments() {
 
 	// Canonical category per instrument, plus the ordered taxonomy filtered to
 	// categories that actually have at least one instrument.
-	dv.instCatByID = map[string]string{}
-	catNameByID := map[audio.CategoryID]string{}
-	for _, c := range audio.Categories() {
-		catNameByID[c.ID] = c.Name
-	}
-	usedCats := map[audio.CategoryID]bool{}
+	dv.instCatByID = map[instrument.ID]audio.Category{}
+	usedCats := map[audio.Category]bool{}
 	for _, id := range opts {
-		cid := audio.CategoryOf(id)
-		dv.instCatByID[id] = catNameByID[cid]
-		usedCats[cid] = true
+		cat := audio.CategoryOf(id)
+		dv.instCatByID[id] = cat
+		usedCats[cat] = true
 	}
-	cats := []string{}
+	cats := []audio.Category{}
 	for _, c := range audio.Categories() {
-		if usedCats[c.ID] {
-			cats = append(cats, c.Name)
+		if usedCats[c] {
+			cats = append(cats, c)
 		}
 	}
 	dv.instCategories = cats
-	if len(dv.instCategories) > 0 && dv.instMenuActiveCat == "" {
+	if len(dv.instCategories) > 0 && dv.instMenuActiveCat == audio.CatNone {
 		dv.instMenuActiveCat = dv.instCategories[0]
 	}
 
-	prevSet := map[string]bool{}
+	prevSet := map[instrument.ID]bool{}
 	for _, id := range dv.instOptions {
 		prevSet[id] = true
 	}
 
 	dv.instMu.Lock()
-	dv.instAvail = map[string]bool{}
+	dv.instAvail = map[instrument.ID]bool{}
 	for _, id := range opts {
 		dv.instAvail[id] = true // known catalog or registered
 	}
@@ -112,7 +122,7 @@ func (dv *DrumView) refreshInstruments() {
 	}
 	// Initialize missing map if needed
 	if dv.missingInst == nil {
-		dv.missingInst = map[string]bool{}
+		dv.missingInst = map[instrument.ID]bool{}
 	}
 	// Remove from missing any IDs that just became available
 	for id := range dv.missingInst {
@@ -121,10 +131,10 @@ func (dv *DrumView) refreshInstruments() {
 		}
 	}
 	// Build options: available first, then missing IDs (sorted for stability).
-	combined := make([]string, 0, len(opts)+len(dv.missingInst))
+	combined := make([]instrument.ID, 0, len(opts)+len(dv.missingInst))
 	combined = append(combined, opts...)
 	if len(dv.missingInst) > 0 {
-		var missing []string
+		var missing []instrument.ID
 		for id := range dv.missingInst {
 			if !dv.instAvail[id] {
 				missing = append(missing, id)
@@ -133,24 +143,6 @@ func (dv *DrumView) refreshInstruments() {
 		slices.Sort(missing)
 		combined = append(combined, missing...)
 	}
-	// Optional custom ordering override.
-	if len(dv.instOrderIndex) > 0 {
-		slices.SortStableFunc(combined, func(a, b string) int {
-			ia, oka := dv.instOrderIndex[a]
-			ib, okb := dv.instOrderIndex[b]
-			switch {
-			case oka && okb:
-				return ia - ib
-			case oka:
-				return -1
-			case okb:
-				return 1
-			default:
-				return 0
-			}
-		})
-	}
-
 	changed := !slices.Equal(combined, dv.instOptions)
 	if changed {
 		// Bias only when a newly registered/playable instrument appears.
@@ -185,7 +177,7 @@ func (dv *DrumView) refreshInstruments() {
 }
 
 // IsInstrumentAvailable reports whether an instrument id is currently available.
-func (dv *DrumView) IsInstrumentAvailable(id string) bool {
+func (dv *DrumView) IsInstrumentAvailable(id instrument.ID) bool {
 	if id == "" {
 		return false
 	}
@@ -198,7 +190,7 @@ func (dv *DrumView) IsInstrumentAvailable(id string) bool {
 // EnsureInstrumentKnown records an instrument id so it appears in menus even
 // when not currently available (e.g., imported from another machine). Once the
 // instrument becomes available, it will be removed from the missing list.
-func (dv *DrumView) EnsureInstrumentKnown(id string) {
+func (dv *DrumView) EnsureInstrumentKnown(id instrument.ID) {
 	if id == "" {
 		return
 	}
@@ -208,7 +200,7 @@ func (dv *DrumView) EnsureInstrumentKnown(id string) {
 	}
 	dv.instMu.Lock()
 	if dv.missingInst == nil {
-		dv.missingInst = map[string]bool{}
+		dv.missingInst = map[instrument.ID]bool{}
 	}
 	dv.missingInst[id] = true
 	dv.instMu.Unlock()
@@ -237,13 +229,13 @@ func (dv *DrumView) refreshInstMenuComponent() {
 	}
 	var instOpts []InstrumentOption
 	for _, id := range dv.instOptions {
-		label := id
+		label := string(id)
 		if dv.instLabelCache != nil {
 			if l, ok := dv.instLabelCache[id]; ok {
 				label = l
 			}
 		}
-		cat := ""
+		cat := audio.CatNone
 		if dv.instCatByID != nil {
 			cat = dv.instCatByID[id]
 		}
@@ -260,15 +252,4 @@ func (dv *DrumView) refreshInstMenuComponent() {
 	dv.instMenuComp.SetProps(props)
 	dv.instMenuComp.Refresh()
 	dv.syncInstMenuScrollFromComp()
-}
-
-// SetInstrumentOrder allows callers to impose a custom ordering for instruments.
-// IDs not present in the order slice keep their existing relative order.
-func (dv *DrumView) SetInstrumentOrder(order []string) {
-	dv.instOrderIndex = map[string]int{}
-	for i, id := range order {
-		dv.instOrderIndex[id] = i
-	}
-	dv.instRefreshDirty = true
-	dv.refreshInstruments()
 }

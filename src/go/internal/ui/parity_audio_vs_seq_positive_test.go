@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestParityDetectsAudioWithoutSeqDecision is the true-positive counterpart to
@@ -51,7 +52,7 @@ func TestParityDetectsAudioWithoutSeqDecision(t *testing.T) {
 	// current parity/audio generation so the gen filters keep it. This is the
 	// genuine "audio fired with no audible decision behind it" bug that
 	// audio_vs_seq exists to catch.
-	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
+	g.recordParityAudio(0, abs, 1.0, roster.Kick, 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 	g.parityScan("test-audio-vs-seq-positive")
 
 	found := false

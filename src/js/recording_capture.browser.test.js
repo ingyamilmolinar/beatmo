@@ -184,7 +184,7 @@ try {
       typeof startRecording === "function" &&
       typeof stopRecording === "function" &&
       typeof availableFormats === "function" &&
-      typeof recordingElapsedMs === "function",
+      typeof recordingElapsedMs === "function", null,
     { timeout: 15000 }
   );
   console.log("Recording exports available");

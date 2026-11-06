@@ -60,6 +60,12 @@ type TraceSprite struct {
 	minInterval time.Duration
 	// now is injectable for deterministic throttle tests; nil = time.Now.
 	now func() time.Time
+	// themeGen is the ThemeGeneration the texture was rendered under. Every
+	// TraceSprite bakes token colors, so the theme is an implicit part of
+	// EVERY caller's key — checked here once instead of trusting each
+	// adopter to fold it in (the EQ bar backdrop kept the previous theme's
+	// colors after a Theme-editor pick).
+	themeGen int
 }
 
 func (s *TraceSprite) clock() time.Time {
@@ -92,6 +98,10 @@ func (s *TraceSprite) Draw(dst *ebiten.Image, rect image.Rectangle, key any, ren
 		// A stale-size blit would smear: force the render below regardless
 		// of the throttle by dropping key validity.
 		s.keyOK = false
+	}
+	if tg := ThemeGeneration(); s.themeGen != tg {
+		s.themeGen = tg
+		s.keyOK = false // immediate: an invalid key bypasses the throttle
 	}
 	if !s.keyOK || key != s.key {
 		throttled := s.keyOK && s.minInterval > 0 && s.clock().Sub(s.lastRender) < s.minInterval

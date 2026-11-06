@@ -6,6 +6,9 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestServicePublishesState(t *testing.T) {
@@ -24,7 +27,7 @@ func TestServicePublishesState(t *testing.T) {
 	for i := range buf {
 		buf[i] = math.Sin(2 * math.Pi * float64(i) / 64)
 	}
-	svc.PushSamples(StageSynth, "kick", buf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Kick), buf)
 
 	// Wait for the ticker to process.
 	deadline := time.Now().Add(2 * time.Second)
@@ -37,7 +40,7 @@ func TestServicePublishesState(t *testing.T) {
 			if st.TapA.Stage != StageSynth {
 				t.Fatalf("expected stage StageSynth, got %v", st.TapA.Stage)
 			}
-			if st.TapA.InstID != "kick" {
+			if st.TapA.InstID != channel.Of(roster.Kick) {
 				t.Fatalf("expected instID kick, got %q", st.TapA.InstID)
 			}
 			if st.TapA.PeakDB > 1 || st.TapA.PeakDB < -80 {
@@ -73,7 +76,7 @@ func TestServiceFreeze(t *testing.T) {
 	for i := range buf1 {
 		buf1[i] = 0.5
 	}
-	svc.PushSamples(StageEQ, "snare", buf1)
+	svc.PushSamples(StageEQ, channel.Of(roster.Snare), buf1)
 
 	// Wait for state to be published with buf1.
 	deadline := time.Now().Add(2 * time.Second)
@@ -102,7 +105,7 @@ func TestServiceFreeze(t *testing.T) {
 	for i := range buf2 {
 		buf2[i] = -0.9
 	}
-	svc.PushSamples(StageEQ, "snare", buf2)
+	svc.PushSamples(StageEQ, channel.Of(roster.Snare), buf2)
 
 	// Wait enough time for at least one tick to process.
 	time.Sleep(100 * time.Millisecond)
@@ -129,7 +132,7 @@ func TestServiceFreeze(t *testing.T) {
 	for i := range buf3 {
 		buf3[i] = 0.3
 	}
-	svc.PushSamples(StageEQ, "snare", buf3)
+	svc.PushSamples(StageEQ, channel.Of(roster.Snare), buf3)
 
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -158,8 +161,8 @@ func TestServiceTapBoth(t *testing.T) {
 	for i := range buf {
 		buf[i] = 0.7
 	}
-	svc.PushSamples(StageSynth, "kick", buf)
-	svc.PushSamples(StageMaster, "kick", buf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Kick), buf)
+	svc.PushSamples(StageMaster, channel.Of(roster.Kick), buf)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -208,7 +211,7 @@ func TestServiceInstrumentFilter(t *testing.T) {
 	})
 
 	svc.SetTapA(StageSynth)
-	svc.SetInstrument("kick")
+	svc.SetInstrument(channel.Of(roster.Kick))
 
 	go svc.Run()
 	defer svc.Stop()
@@ -218,7 +221,7 @@ func TestServiceInstrumentFilter(t *testing.T) {
 	for i := range buf {
 		buf[i] = 0.5
 	}
-	svc.PushSamples(StageSynth, "snare", buf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Snare), buf)
 
 	time.Sleep(100 * time.Millisecond)
 	st := svc.State()
@@ -227,13 +230,13 @@ func TestServiceInstrumentFilter(t *testing.T) {
 	}
 
 	// Push with matching instrument.
-	svc.PushSamples(StageSynth, "kick", buf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Kick), buf)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		st = svc.State()
 		if st != nil && st.TapA.Active {
-			if st.TapA.InstID != "kick" {
+			if st.TapA.InstID != channel.Of(roster.Kick) {
 				t.Fatalf("expected kick, got %q", st.TapA.InstID)
 			}
 			return
@@ -261,8 +264,8 @@ func TestServiceTapCarryForward(t *testing.T) {
 	}
 
 	// Push to both taps to establish initial state.
-	svc.PushSamples(StageSynth, "kick", buf)
-	svc.PushSamples(StageMaster, "master", buf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Kick), buf)
+	svc.PushSamples(StageMaster, channel.Master, buf)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -279,7 +282,7 @@ func TestServiceTapCarryForward(t *testing.T) {
 
 	// Now push ONLY to TapB for several ticks. TapA should carry forward.
 	for i := 0; i < 5; i++ {
-		svc.PushSamples(StageMaster, "master", buf)
+		svc.PushSamples(StageMaster, channel.Master, buf)
 		time.Sleep(50 * time.Millisecond)
 	}
 
@@ -315,7 +318,7 @@ func TestServiceTapStageChangeDropsStale(t *testing.T) {
 	}
 
 	// Push to establish TapA at StageSynth.
-	svc.PushSamples(StageSynth, "kick", buf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Kick), buf)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -343,8 +346,7 @@ func TestServiceMasterStageBypassesFilter(t *testing.T) {
 	})
 
 	svc.SetTapA(StageMaster)
-	svc.SetTapB(StageSends)
-	svc.SetInstrument("kick")
+	svc.SetInstrument(channel.Of(roster.Kick))
 
 	go svc.Run()
 	defer svc.Stop()
@@ -354,29 +356,25 @@ func TestServiceMasterStageBypassesFilter(t *testing.T) {
 		buf[i] = 0.7
 	}
 	// Push with "master" id — should bypass instrument filter for master stages.
-	svc.PushSamples(StageMaster, "master", buf)
-	svc.PushSamples(StageSends, "master", buf)
+	svc.PushSamples(StageMaster, channel.Master, buf)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		st := svc.State()
-		if st != nil && st.TapA.Active && st.TapB.Active {
+		if st != nil && st.TapA.Active {
 			if st.TapA.Stage != StageMaster {
 				t.Fatalf("TapA stage: got %v, want StageMaster", st.TapA.Stage)
-			}
-			if st.TapB.Stage != StageSends {
-				t.Fatalf("TapB stage: got %v, want StageSends", st.TapB.Stage)
 			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("timed out: master stages should bypass instrument filter")
+	t.Fatal("timed out: the master stage should bypass the instrument filter")
 }
 
 func TestBuildTapData(t *testing.T) {
 	samples := []float64{0.0, 0.5, -1.0, 0.25}
-	td := buildTapData(StageInsertFX, "hihat", samples)
+	td := buildTapData(StageInsertFX, channel.Of(roster.Hihat), samples)
 
 	if !td.Active {
 		t.Fatal("expected Active=true")
@@ -384,7 +382,7 @@ func TestBuildTapData(t *testing.T) {
 	if td.Stage != StageInsertFX {
 		t.Fatalf("expected StageInsertFX, got %v", td.Stage)
 	}
-	if td.InstID != "hihat" {
+	if td.InstID != channel.Of(roster.Hihat) {
 		t.Fatalf("expected hihat, got %q", td.InstID)
 	}
 
@@ -404,10 +402,10 @@ func TestBuildTapData(t *testing.T) {
 // TestServicePushAllStages verifies that every Stage in the pipeline can be
 // pushed through the scope service and surface as an active TapData with the
 // correct stage, instrument id, and non-empty samples. Previously only
-// StageSynth/StageEQ/StageSends/StageMaster were exercised; this pins the
-// full six-stage contract that the Chain panel relies on after the
+// StageSynth/StageEQ/StageMaster were exercised; this pins the full
+// five-stage contract that the Chain panel relies on after the
 // StageInsertFX desktop tap was added (engine_stop.go) and the WASM bridge
-// was extended to cover AntiPop/InsertFX/Sends.
+// was extended to cover AntiPop/InsertFX.
 func TestServicePushAllStages(t *testing.T) {
 	for _, stage := range AllStages() {
 		stage := stage // capture
@@ -417,8 +415,8 @@ func TestServicePushAllStages(t *testing.T) {
 			go svc.Run()
 			defer svc.Stop()
 
-			id := "kick"
-			if stage == StageSends || stage == StageMaster {
+			id := roster.Kick
+			if stage == StageMaster {
 				// Master-path stages carry the composite mix; the service
 				// records its inst id as "master" (see engine_stop.go).
 				id = "master"
@@ -428,7 +426,7 @@ func TestServicePushAllStages(t *testing.T) {
 			for i := range buf {
 				buf[i] = math.Sin(2 * math.Pi * float64(i) / 32)
 			}
-			svc.PushSamples(stage, id, buf)
+			svc.PushSamples(stage, channel.Of(id), buf)
 
 			deadline := time.Now().Add(2 * time.Second)
 			for time.Now().Before(deadline) {
@@ -437,7 +435,7 @@ func TestServicePushAllStages(t *testing.T) {
 					if st.TapA.Stage != stage {
 						t.Fatalf("stage: got %v want %v", st.TapA.Stage, stage)
 					}
-					if st.TapA.InstID != id {
+					if st.TapA.InstID != channel.Of(id) {
 						t.Fatalf("instID: got %q want %q", st.TapA.InstID, id)
 					}
 					if len(st.TapA.Samples) == 0 {
@@ -460,17 +458,17 @@ func TestRingBufDrain(t *testing.T) {
 	if samples != nil {
 		t.Fatal("expected nil from empty drain")
 	}
-	if id != "" {
+	if !id.IsZero() {
 		t.Fatalf("expected empty id, got %q", id)
 	}
 
 	// Push and drain with max limit.
-	r.push("kick", []float64{1, 2, 3, 4, 5})
+	r.push(channel.Of(roster.Kick), []float64{1, 2, 3, 4, 5})
 	samples, id = r.drain(3)
 	if len(samples) != 3 {
 		t.Fatalf("expected 3 samples, got %d", len(samples))
 	}
-	if id != "kick" {
+	if id != channel.Of(roster.Kick) {
 		t.Fatalf("expected kick, got %q", id)
 	}
 	// Should keep last 3: [3, 4, 5]

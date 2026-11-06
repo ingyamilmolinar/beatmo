@@ -103,3 +103,14 @@ func (h *mobileWheelAnchorCloseHandler) OnRelease(x, y int) {}
 func (h *mobileWheelAnchorCloseHandler) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
 }
+
+// ClaimedKeys / HandleClaimedKeys implement KeyboardKeyClaimant by forwarding to
+// the popup, so the arrows it handles are masked for the grid's arrow-pan while
+// it is open (keyboard_key_claim.go).
+func (o *mobileWheelPopupPortalOverlay) ClaimedKeys() []ebiten.Key {
+	return o.popup.ClaimedKeys()
+}
+
+func (o *mobileWheelPopupPortalOverlay) HandleClaimedKeys() bool {
+	return o.popup.HandleClaimedKeys()
+}

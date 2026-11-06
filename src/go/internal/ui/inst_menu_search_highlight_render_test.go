@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // proportionalInkMeasure mimics how real (non-test) builds measure text:
@@ -96,7 +97,7 @@ func TestInstMenuSearchHighlightCellsAlignWithGlyphs(t *testing.T) {
 	for _, id := range comp.state.filteredInsts {
 		l := comp.state.displayLabelByID[id]
 		if l == "" {
-			l = id
+			l = string(id)
 		}
 		if len([]rune(l)) < 2 {
 			continue
@@ -108,7 +109,7 @@ func TestInstMenuSearchHighlightCellsAlignWithGlyphs(t *testing.T) {
 			better = false
 		}
 		if target == "" || better {
-			target, label = id, l
+			target, label = string(id), l
 		}
 	}
 	if target == "" {
@@ -117,14 +118,14 @@ func TestInstMenuSearchHighlightCellsAlignWithGlyphs(t *testing.T) {
 
 	// Type the full label: the exact-substring fast path highlights every rune.
 	feedNativeSearch(t, g, strings.ToLower(label))
-	if got := comp.state.searchHighlights[target]; len(got) != len([]rune(label)) {
+	if got := comp.state.searchHighlights[instrument.ID(target)]; len(got) != len([]rune(label)) {
 		t.Fatalf("expected every rune of %q highlighted, got positions %v", label, got)
 	}
 
 	// Locate the target's visible row button.
 	var btn *Button
 	for i, id := range comp.instIDs {
-		if id == target && i < len(comp.instBtns) {
+		if id == instrument.ID(target) && i < len(comp.instBtns) {
 			btn = comp.instBtns[i]
 			break
 		}

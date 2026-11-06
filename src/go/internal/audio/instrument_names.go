@@ -4,6 +4,8 @@ import (
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // instNameOverrides holds user-set display-name overrides keyed by the
@@ -11,13 +13,13 @@ import (
 // else — the ID never moves, so no other map needs re-keying.
 var (
 	instNameMu        sync.RWMutex
-	instNameOverrides = map[string]string{}
+	instNameOverrides = map[instrument.ID]string{}
 )
 
 // SetInstrumentDisplayName records a display-name override for an instrument
 // ID. An empty name clears the override (the instrument falls back to its
 // catalog/pretty default). The ID is unchanged — this is pure metadata.
-func SetInstrumentDisplayName(id, name string) {
+func SetInstrumentDisplayName(id instrument.ID, name string) {
 	if id == "" {
 		return
 	}
@@ -30,8 +32,16 @@ func SetInstrumentDisplayName(id, name string) {
 	instNameMu.Unlock()
 }
 
+// InstrumentDisplayNameOverride returns id's display-name override ("" when
+// none is set).
+func InstrumentDisplayNameOverride(id instrument.ID) string {
+	instNameMu.RLock()
+	defer instNameMu.RUnlock()
+	return instNameOverrides[id]
+}
+
 // ClearInstrumentDisplayName removes any override for the instrument ID.
-func ClearInstrumentDisplayName(id string) {
+func ClearInstrumentDisplayName(id instrument.ID) {
 	instNameMu.Lock()
 	delete(instNameOverrides, id)
 	instNameMu.Unlock()
@@ -43,7 +53,7 @@ func ClearInstrumentDisplayName(id string) {
 // one test would otherwise change a builtin's label for every later test).
 func clearInstrumentDisplayNames() {
 	instNameMu.Lock()
-	instNameOverrides = map[string]string{}
+	instNameOverrides = map[instrument.ID]string{}
 	instNameMu.Unlock()
 }
 
@@ -51,7 +61,7 @@ func clearInstrumentDisplayNames() {
 // Resolution order: user override → catalog SoundMeta.Name → catalog RelPath
 // basename (pretty-cased) → PrettyName(id). This is the single source of
 // truth for instrument labels across UI and non-UI callers.
-func InstrumentDisplayName(id string) string {
+func InstrumentDisplayName(id instrument.ID) string {
 	if id == "" {
 		return ""
 	}
@@ -73,5 +83,5 @@ func InstrumentDisplayName(id string) string {
 			}
 		}
 	}
-	return PrettyName(id)
+	return PrettyName(string(id))
 }

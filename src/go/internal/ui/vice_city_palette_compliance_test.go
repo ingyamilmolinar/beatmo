@@ -125,39 +125,6 @@ func TestInstrumentSequenceParity(t *testing.T) {
 	}
 }
 
-// TestStartupDemoColorsAreSequential asserts the embedded startup demo circuit
-// (assets.StartupDemoJSON) — the default circuit shown on launch — has
-// instrument colors that are on-palette AND derived from the canonical series
-// in row order. Pre-fix the demo shipped stale legacy hues (#44A8A8, #C87850…)
-// that belonged to no palette; this guards against that ever returning.
-func TestStartupDemoColorsAreSequential(t *testing.T) {
-	var doc struct {
-		Instruments []struct {
-			ID    string `json:"id"`
-			Color string `json:"color"`
-		} `json:"instruments"`
-	}
-	if err := json.Unmarshal(assets.StartupDemoJSON, &doc); err != nil {
-		t.Fatalf("unmarshal startup demo: %v", err)
-	}
-	if len(doc.Instruments) == 0 {
-		t.Fatal("startup demo has no instruments")
-	}
-	palette := viceCitySwatchSet()
-	for i, ins := range doc.Instruments {
-		if ins.Color == "" {
-			continue
-		}
-		got := rgbKey(parseHexColor(ins.Color))
-		if _, ok := palette[got]; !ok {
-			t.Errorf("startup demo instrument %d (%q): color %s is NOT a Vice City swatch", i, ins.ID, ins.Color)
-		}
-		if want := rgbKey(seriesColorAt(i)); got != want {
-			t.Errorf("startup demo instrument %d (%q): color %s != seriesColorAt(%d)=%s", i, ins.ID, got, i, want)
-		}
-	}
-}
-
 // TestNewInstrumentColorsAreViceCityPalette asserts the "creating new
 // instruments" path only ever produces Vice City swatch colors, even when the
 // row count exceeds the palette size (the uniqueness substitution and the

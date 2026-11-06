@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.0.1",
+  "id": "guitar-nylon",
+  "name": "Guitar Nylon",
+  "category": "modular",
+  "notes": "guitarNylonSeed: KS gen-bank slot; osc silent; warm nylon guitar body filter.\nReal nylon guitar: warm rolloff ~1500Hz, slow decay, plucked (near-instant attack),\nfundamental-dominant (P2 falls off naturally with KS). Less sustain than steel.\nTuned to a real nylon-strung guitar (kyster 2-oct-c, CC0, C5≈525Hz). The pluck is MELLOW and\nFUNDAMENTAL-DOMINANT: just after the pluck H2 −10, H3 −38 (H3+ nearly absent — a mandolin/banjo has\nstrong bright upper harmonics, which is why the old seed read as a mandolin). It RINGS ~1.1s (decay\nto −20dB) with the upper harmonics decaying faster than the fundamental (the natural KS loop-damping),\nand a soft ~40ms attack. So: high ks_sustain (long ring at this pitch), low ks_pluck (dark/soft pluck →\nkill the mid twang), a warm body LP, and a soft amp attack.",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.8409,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.009,
+        "amp_curve": 1,
+        "amp_decay": 2.6,
+        "amp_release": 0.3,
+        "amp_sustain": 0
+      },
+      "notes": "amp_attack: bright/harpy); a touch more attack softens the razor pluck-click without organ.\namp_decay: (was 45ms soft onset = organ-like swell; a finger pluck is ~0ms transient)."
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0.3,
+        "body_model": 2,
+        "bow_dynamics": 0
+      },
+      "notes": "body_model: CLASSICAL-GUITAR BODY (body_model:2, modular.c) — low-mid box resonances (Helmholtz ~100Hz, top\n~195Hz, back ~270Hz...) give the \"box\"/warmth that separates a guitar from a bare plucked string (harp)."
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.95,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 3600,
+        "filter_resonance": 0.8,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: harmonic into a \"harp/organ\" formant. WARM nylon roll-off (ear: 1700 was too\nfilter_resonance: FLAT (was 2.6): the Q-peak sat on H2 (~1048Hz=H2 of C5) boosting the 2nd"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "ks",
+      "v": 1,
+      "on": true,
+      "values": {
+        "atk_amt": 0,
+        "atk_rate": 0,
+        "env_fast_rate": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "ks_blow": 0,
+        "ks_pluck": 0.09,
+        "ks_sustain": 0.997,
+        "out_scale": 1
+      },
+      "notes": "gen1_ks_pluck: softer/darker pluck (was 0.13) — less harpy high-harmonic click\ngen1_ks_sustain: long ring — ~1.1s decay at C5 (old 0.972 died in ~160ms = plinky mandolin)"
+    }
+  ]
+}

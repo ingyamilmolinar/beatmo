@@ -7,43 +7,29 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestReproSynthConfigRoundtrip reproduces "synth config edits on an instrument
-// don't persist/load". It edits an instrument's synth knobs the way the Synth
-// tab does (audio.SetInstrumentParam → per-instrument overlay), exports, then
-// imports into a brand-new instance (audio reset) and checks the params + recipe
-// binding survived.
+// don't persist/load": edit the knobs the way the Synth tab does, export, wipe
+// to a clean machine, import — the edited document must come back.
 func TestReproSynthConfigRoundtrip(t *testing.T) {
-	withDefaultAudio(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
+	g := newDocsGame(t)
 	inst := g.drum.Rows[0].Instrument
-	t.Logf("row0 instrument=%q recipe=%q", inst, audio.RecipeForInstrument(inst))
 
-	// Edit synth knobs (UI path).
 	audio.SetInstrumentParam(inst, "drive", 0.66)
 	audio.SetInstrumentParam(inst, "pitch", 4)
-	pre := audio.GetInstrumentParams(inst)
-	t.Logf("after edit: params=%v recipe=%q", map[string]float64(pre), audio.RecipeForInstrument(inst))
-	if math.Abs(pre["drive"]-0.66) > 1e-6 {
-		t.Fatalf("precondition: drive not stored, got %v", pre["drive"])
+	if math.Abs(docField(t, string(inst), "drive")-0.66) > 1e-6 {
+		t.Fatalf("precondition: drive not stored, got %v", docField(t, string(inst), "drive"))
 	}
-
 	bytes1, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
-	// Brand-new instance: clear this instrument's overlay + binding so only the
-	// import can restore them (the params manager is a process-global that
-	// ResetInstruments does not touch).
-	audio.ResetInstrumentParams(inst)
-	audio.BindInstrumentToRecipe(inst, "")
-	if rem := audio.GetInstrumentParams(inst); len(rem) != 0 {
-		t.Fatalf("precondition: params not cleared: %v", map[string]float64(rem))
+	wipeToCleanLibrary(t)
+	if audio.InstrumentDocModified(inst) {
+		t.Fatal("precondition: the wipe left the edit in place")
 	}
 
 	g2 := New(testLogger)
@@ -52,122 +38,78 @@ func TestReproSynthConfigRoundtrip(t *testing.T) {
 	if err := g2.Import(bytes1); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-
-	post := audio.GetInstrumentParams(inst)
-	t.Logf("after import: params=%v recipe=%q", map[string]float64(post), audio.RecipeForInstrument(inst))
-	if math.Abs(post["drive"]-0.66) > 1e-6 {
-		t.Errorf("drive not restored: got %v want 0.66", post["drive"])
+	if got := docField(t, string(inst), "drive"); math.Abs(got-0.66) > 1e-6 {
+		t.Errorf("drive not restored: got %v want 0.66", got)
 	}
-	if math.Abs(post["pitch"]-4) > 1e-6 {
-		t.Errorf("pitch not restored: got %v want 4", post["pitch"])
+	if got := docField(t, string(inst), "pitch"); math.Abs(got-4) > 1e-6 {
+		t.Errorf("pitch not restored: got %v want 4", got)
 	}
 }
 
-// TestReproSynthSaveRoundtrip reproduces the Synth-tab "Save" round-trip
-// faithfully: the real Save (saveRecipeForInstrument) bakes the effective tone
-// into the recipe's registered defaults AND keeps the per-instrument overlay.
-// On a brand-new instance the recipe registry is shipped-default and userprefs
-// are empty, so the project file alone must reproduce the saved tone.
+// TestReproSynthSaveRoundtrip: a Synth-tab Save moves the tone into the user
+// library; the project file alone must still reproduce it on a clean machine
+// (whose library has never seen the Save).
 func TestReproSynthSaveRoundtrip(t *testing.T) {
-	withDefaultAudio(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
+	g := newDocsGame(t)
 	inst := g.drum.Rows[0].Instrument
-	recipe := audio.RecipeForInstrument(inst)
-	if recipe == "" {
-		t.Skipf("row0 instrument %q has no recipe binding; nothing to Save", inst)
-	}
-	shipped := audio.RecipeShippedDefaults(recipe)
-	if _, ok := shipped["drive"]; !ok {
-		t.Skipf("recipe %q has no 'drive' param", recipe)
-	}
 
-	// User edits a knob, then presses Save (mirror saveRecipeForInstrument:
-	// mutate recipe defaults to the effective params, keep the overlay).
 	audio.SetInstrumentParam(inst, "drive", 0.7)
-	effPre := audio.MergeRecipeDefaults(recipe, audio.GetInstrumentParams(inst))
-	audio.UpdateRecipeDefaultsAndInvalidate(recipe, map[string]float64(effPre))
-	wantDrive := effPre["drive"]
-	t.Logf("after Save: effective drive=%v overlay=%v", wantDrive, map[string]float64(audio.GetInstrumentParams(inst)))
-
+	if saveRecipeForInstrument(inst) == "" {
+		t.Fatalf("Save of %q saved nothing", inst)
+	}
 	bytes1, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
-	// Brand-new instance: recipe shipped, overlay cleared, binding gone.
-	audio.ResetRecipeToShipped(recipe)
-	audio.ResetInstrumentParams(inst)
-	audio.BindInstrumentToRecipe(inst, "")
-
+	wipeToCleanLibrary(t)
 	g2 := New(testLogger)
 	t.Cleanup(g2.CloseForTest)
 	g2.Layout(800, 600)
 	if err := g2.Import(bytes1); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-
-	effPost := audio.MergeRecipeDefaults(recipe, audio.GetInstrumentParams(inst))
-	t.Logf("after import: effective drive=%v overlay=%v recipe=%q",
-		effPost["drive"], map[string]float64(audio.GetInstrumentParams(inst)), audio.RecipeForInstrument(inst))
-	if math.Abs(effPost["drive"]-wantDrive) > 1e-6 {
-		t.Errorf("Synth Save tone LOST on round-trip: effective drive=%v want %v", effPost["drive"], wantDrive)
+	if got := docField(t, string(inst), "drive"); math.Abs(got-0.7) > 1e-6 {
+		t.Errorf("Synth Save tone LOST on round-trip: drive=%v want 0.7", got)
 	}
 }
 
-// TestReproRecipeDefaultOnlyRoundtrip reproduces the realistic broken flow:
-// a Synth-tab "Save" persists the customization to the recipe DEFAULTS (and
-// userprefs), keeping a per-instrument overlay only for the rest of the session.
-// After an app restart, ApplyUserRecipeOverrides restores the recipe default but
-// the overlay is EMPTY. Exporting then must still capture the customized tone so
-// it loads on a brand-new instance (different machine / cleared storage). The
-// fix: export the effective params as a delta from the recipe's shipped defaults.
+// TestReproRecipeDefaultOnlyRoundtrip: the user library holds a saved version
+// and the project copy is a fresh, UNEDITED pick of it (a prior Save + restart).
+// The file must still carry the saved tone to a clean machine.
 func TestReproRecipeDefaultOnlyRoundtrip(t *testing.T) {
-	withDefaultAudio(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
+	g := newDocsGame(t)
 	inst := g.drum.Rows[0].Instrument
-	recipe := audio.RecipeForInstrument(inst)
-	if recipe == "" {
-		t.Skipf("row0 instrument %q has no recipe binding", inst)
+	lib, ok := audio.LibraryDoc(inst)
+	if !ok {
+		t.Fatalf("row0 instrument %q has no library document", inst)
 	}
-	shipped := audio.RecipeShippedDefaults(recipe)
-	if _, ok := shipped["drive"]; !ok {
-		t.Skipf("recipe %q has no 'drive' param", recipe)
+	want := instrument.FieldValues(lib, audio.BuiltinModuleRegistry())["drive"] + 0.4
+	saved, err := instrument.SetField(lib, audio.BuiltinModuleRegistry(), "drive", want)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// Customized recipe default with NO per-instrument overlay (the
-	// startup-from-userprefs state after a prior Save + restart).
-	wantDrive := shipped["drive"] + 0.4
-	audio.UpdateRecipeDefaultsAndInvalidate(recipe, map[string]float64{"drive": wantDrive})
-	audio.ResetInstrumentParams(inst) // overlay empty
-	t.Logf("recipe-default drive=%v overlay=%v", audio.RecipeDefaultParams(recipe)["drive"], map[string]float64(audio.GetInstrumentParams(inst)))
-
+	if err := audio.SaveLibraryDoc(saved); err != nil {
+		t.Fatal(err)
+	}
+	audio.ResetInstrumentDocs() // the project copy is a fresh pick of the saved entry
+	if audio.InstrumentDocModified(inst) || math.Abs(docField(t, string(inst), "drive")-want) > 1e-6 {
+		t.Fatalf("precondition: fresh copy of the saved entry, drive=%v", docField(t, string(inst), "drive"))
+	}
 	bytes1, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
-	// Brand-new instance: recipe shipped, overlay empty, binding gone.
-	audio.ResetRecipeToShipped(recipe)
-	audio.ResetInstrumentParams(inst)
-	audio.BindInstrumentToRecipe(inst, "")
-
+	wipeToCleanLibrary(t)
 	g2 := New(testLogger)
 	t.Cleanup(g2.CloseForTest)
 	g2.Layout(800, 600)
 	if err := g2.Import(bytes1); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-
-	effPost := audio.MergeRecipeDefaults(recipe, audio.GetInstrumentParams(inst))
-	t.Logf("after import: effective drive=%v overlay=%v", effPost["drive"], map[string]float64(audio.GetInstrumentParams(inst)))
-	if math.Abs(effPost["drive"]-wantDrive) > 1e-6 {
-		t.Errorf("Saved recipe tone LOST on round-trip (no overlay): effective drive=%v want %v", effPost["drive"], wantDrive)
+	if got := docField(t, string(inst), "drive"); math.Abs(got-want) > 1e-6 {
+		t.Errorf("Saved tone LOST on round-trip (unedited copy): drive=%v want %v", got, want)
 	}
 }
 
@@ -190,7 +132,7 @@ func TestReproSamplerSaveRoundtrip(t *testing.T) {
 		raw[i] = float32(math.Sin(float64(i) * 0.05))
 	}
 	baked := audio.BakeSample(raw, 48000, audio.SampleEdit{
-		StartFrac: 0.1, EndFrac: 0.9, GainDB: -6, Normalize: true, FadeInMs: 5, FadeOutMs: 5,
+		StartFrac: 0.1, EndFrac: 0.9, GainDB: -6, Normalize: true, Fade: true,
 	})
 	audio.SaveUserSample(inst, baked, 48000)
 	if rec, ok := audio.UserSamplePCM(inst); !ok || len(rec.PCM) != len(baked) {

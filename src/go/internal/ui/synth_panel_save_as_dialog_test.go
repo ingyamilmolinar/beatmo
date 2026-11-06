@@ -3,13 +3,13 @@
 package ui
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // pressFooterTag drives a press at the visible center of the footer button
@@ -59,13 +59,13 @@ func TestSaveAsDialog_OpensOnSaveAsPress(t *testing.T) {
 
 // TestSaveAsDialog_SubmitPersistsTypedName — typing a name into the dialog
 // and confirming routes through SaveActiveRecipeAs with the typed string as
-// the displayName. The persisted RecipeDoc must carry that DisplayName.
+// the displayName. The persisted document must carry that name.
 func TestSaveAsDialog_SubmitPersistsTypedName(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
-	stub := withStubSink(t)
+	lib := withPrivateInstrumentLibrary(t)
 
-	audio.SetInstrumentParam(env.instID, "decay", 1.8)
+	audio.SetInstrumentParam(env.instID, "post_decay", 1.8)
 	_ = pressFooterTag(t, env, synthSaveAsButtonTag)
 	dlg := dv.SynthSaveAsDialog()
 	if dlg == nil {
@@ -79,30 +79,22 @@ func TestSaveAsDialog_SubmitPersistsTypedName(t *testing.T) {
 	if dv.SynthSaveAsDialog() != nil {
 		t.Errorf("dialog should close after confirm")
 	}
-	// Find the newly-registered user recipe whose doc was sent to the sink.
-	var (
-		newID string
-		doc   audio.RecipeDoc
-	)
-	stub.mu.Lock()
-	for id, raw := range stub.recipes {
-		if !strings.HasPrefix(id, "user.snare.") {
-			continue
+	// Find the new user instrument whose document reached the library sink.
+	var newID string
+	for id := range lib.docs {
+		if strings.HasPrefix(string(id), "user.") {
+			newID = string(id)
 		}
-		newID = id
-		if err := json.Unmarshal(raw, &doc); err != nil {
-			t.Fatalf("doc decode: %v", err)
-		}
-		break
 	}
-	stub.mu.Unlock()
 	if newID == "" {
-		t.Fatal("no user.snare.* recipe received by stub sink")
+		t.Fatal("no user.* instrument reached the library sink")
 	}
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(newID) })
-
-	if doc.DisplayName != typed {
-		t.Errorf("RecipeDoc.DisplayName = %q, want %q (typed name not propagated)", doc.DisplayName, typed)
+	d, err := instrument.ParseFile(lib.docs[instrument.ID(newID)])
+	if err != nil {
+		t.Fatalf("doc decode: %v", err)
+	}
+	if d.Name != typed {
+		t.Errorf("saved document name = %q, want %q (typed name not propagated)", d.Name, typed)
 	}
 }
 
@@ -111,9 +103,9 @@ func TestSaveAsDialog_SubmitPersistsTypedName(t *testing.T) {
 func TestSaveAsDialog_CancelDiscards(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
-	stub := withStubSink(t)
+	lib := withPrivateInstrumentLibrary(t)
 
-	audio.SetInstrumentParam(env.instID, "decay", 1.8)
+	audio.SetInstrumentParam(env.instID, "post_decay", 1.8)
 	_ = pressFooterTag(t, env, synthSaveAsButtonTag)
 	if dv.SynthSaveAsDialog() == nil {
 		t.Fatal("dialog not open")
@@ -123,13 +115,9 @@ func TestSaveAsDialog_CancelDiscards(t *testing.T) {
 	if dv.SynthSaveAsDialog() != nil {
 		t.Errorf("dialog should close after cancel")
 	}
-	stub.mu.Lock()
-	for id := range stub.recipes {
-		if strings.HasPrefix(id, "user.snare.") {
-			t.Errorf("stub sink received recipe %q after cancel — should be a no-op", id)
-		}
+	for id := range lib.docs {
+		t.Errorf("library sink received %q after cancel — should be a no-op", id)
 	}
-	stub.mu.Unlock()
 }
 
 // TestSaveAsDialog_EscapeKeyDismisses — pressing Escape while the dialog
@@ -137,9 +125,9 @@ func TestSaveAsDialog_CancelDiscards(t *testing.T) {
 func TestSaveAsDialog_EscapeKeyDismisses(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
-	stub := withStubSink(t)
+	lib := withPrivateInstrumentLibrary(t)
 
-	audio.SetInstrumentParam(env.instID, "decay", 1.8)
+	audio.SetInstrumentParam(env.instID, "post_decay", 1.8)
 	_ = pressFooterTag(t, env, synthSaveAsButtonTag)
 	if dv.SynthSaveAsDialog() == nil {
 		t.Fatal("dialog not open")
@@ -157,11 +145,7 @@ func TestSaveAsDialog_EscapeKeyDismisses(t *testing.T) {
 	if dv.SynthSaveAsDialog() != nil {
 		t.Errorf("dialog should close after Escape")
 	}
-	stub.mu.Lock()
-	for id := range stub.recipes {
-		if strings.HasPrefix(id, "user.snare.") {
-			t.Errorf("stub sink received recipe %q after Escape — should be a no-op", id)
-		}
+	for id := range lib.docs {
+		t.Errorf("library sink received %q after Escape — should be a no-op", id)
 	}
-	stub.mu.Unlock()
 }

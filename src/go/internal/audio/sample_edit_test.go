@@ -138,7 +138,7 @@ func TestApplyFadesEndpointsZero(t *testing.T) {
 		buf[i] = 1.0
 	}
 	sr := 1000 // 10ms == 10 samples
-	out := ApplyFades(buf, sr, 10, 10)
+	out := ApplyFades(buf, sr, 10)
 	approxF32(t, out[0], 0.0, 1e-3, "fade-in start")
 	approxF32(t, out[n-1], 0.0, 1e-3, "fade-out end")
 	approxF32(t, out[n/2], 1.0, 1e-3, "fade middle untouched")
@@ -305,8 +305,7 @@ func TestBakeSampleExtremePipeline(t *testing.T) {
 		TransposeSemis: -24,
 		DetuneCents:    -100,
 		GainDB:         12,
-		FadeInMs:       5,
-		FadeOutMs:      5,
+		Fade:           true,
 		Reverse:        true,
 		Normalize:      true,
 	}

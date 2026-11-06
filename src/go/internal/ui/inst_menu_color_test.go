@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstrumentMenuActiveRowTintsToInstrumentColor verifies the currently-
@@ -21,11 +23,11 @@ func TestInstrumentMenuActiveRowTintsToInstrumentColor(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 200, 124),
 		VertBounds:        image.Rect(0, 50, 400, 700),
-		CurrentInstrument: "kick",
-		Categories:        []string{"Kicks"},
+		CurrentInstrument: roster.Kick,
+		Categories:        []audio.Category{audio.CatKick},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Kicks"},
-			{ID: "snare", Label: "Snare", Category: "Kicks"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatKick},
 		},
 		RowHeight:     28,
 		LabelWidth:    120,
@@ -35,7 +37,7 @@ func TestInstrumentMenuActiveRowTintsToInstrumentColor(t *testing.T) {
 	comp.state.mode = InstMenuModeInstruments
 	comp.rebuildMenu()
 
-	want := color.RGBAModel.Convert(instColor("kick")).(color.RGBA)
+	want := color.RGBAModel.Convert(instColor(roster.Kick)).(color.RGBA)
 	azure := color.RGBAModel.Convert(colAccent).(color.RGBA)
 	if want == azure {
 		t.Skip("kick color coincides with azure; pick a different fixture")

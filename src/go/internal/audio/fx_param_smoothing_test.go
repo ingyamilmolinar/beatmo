@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 const smoothSR = 44100
@@ -189,9 +192,9 @@ func TestEffectToggleNoCrossfadePop(t *testing.T) {
 	const amp = 0.3
 
 	id := "smooth-toggle"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, map[string]float64{"drive": 10, "tone": 4000, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectDistortion, map[string]float64{"drive": 10, "tone": 4000, "mix": 1})
 
 	changeAt := peakIdx(freq, 2000)
 	total := changeAt + 500
@@ -202,7 +205,7 @@ func TestEffectToggleNoCrossfadePop(t *testing.T) {
 	}
 
 	// Disable the effect — processor chain swapped atomically.
-	ToggleInsertEffect(id, 0, false)
+	ToggleInsertEffect(instrument.ID(id), 0, false)
 
 	for i := changeAt; i < total; i++ {
 		output[i] = ch.ProcessSampleLocal(sineAt(freq, amp, i))

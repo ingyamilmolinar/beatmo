@@ -38,6 +38,11 @@ type playbackSlate struct {
 	seqCh       <-chan engine.Event
 	seqNextIdxs []int
 	seqQuit     chan struct{}
+	// lookaheadFloor/lookaheadGen ratchet runtimeAudioLookahead within one
+	// transport generation (g.audioGen) so UI timings can grow the audio
+	// cushion but never make it oscillate. Accessed under seqMu (scheduleSound).
+	lookaheadFloor float64
+	lookaheadGen   uint64
 	// seqPathSnap holds an immutable snapshot of per-row beat paths for the
 	// background sequencer so path rebuilds do not race with scheduling.
 	seqPathSnap atomic.Pointer[seqPathSnapshot]
@@ -124,4 +129,8 @@ type playbackSlate struct {
 	muteUntilByRow []int
 	// Loop completion counts per row.
 	loopCountByRow []int
+	// playedGraveyard keeps the played history of rows deleted during this
+	// playback session, keyed by the row's origin node, so undoing the delete
+	// brings the row's past back with it. Cleared with the timeline.
+	playedGraveyard map[model.NodeID]*timeline.PlayedHistory
 }

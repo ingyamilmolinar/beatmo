@@ -15,7 +15,7 @@ func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
 	}
 	defer os.Remove(tmp.Name())
 	json := `{
-        "version":1,
+        "schema_version":"0.0.1",
         "subdiv":32,
         "bpm":120,
         "instruments":[{"name":"Test","id":"snare","kind":"builtin","volume":1,"origin":0,"color":"#FFFFFFFF"}],
@@ -59,7 +59,7 @@ func TestDemoLoadsFromEnvConfig_NoInstruments_FallbackRowAndStart(t *testing.T) 
 	defer os.Remove(tmp.Name())
 	// No instruments provided; expect buildDemo to add a default row and set start.
 	json := `{
-        "version":1,
+        "schema_version":"0.0.1",
         "subdiv":32,
         "bpm":110,
         "nodes":[{"id":0,"i":0,"j":0,"type":"regular","outputs":[1]},{"id":1,"i":16,"j":0,"type":"regular","outputs":[0]}]
@@ -95,7 +95,7 @@ func TestDemoLoadsFromEnvConfig_TildePath(t *testing.T) {
 	dir := t.TempDir()
 	tmp := dir + "/beatmo-demo.json"
 	json := `{
-        "version":1,
+        "schema_version":"0.0.1",
         "subdiv":32,
         "bpm":100,
         "nodes":[{"id":0,"i":0,"j":0,"type":"regular","outputs":[1]},{"id":1,"i":16,"j":0,"type":"regular","outputs":[0]}]

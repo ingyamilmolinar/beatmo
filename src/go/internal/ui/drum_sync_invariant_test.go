@@ -87,7 +87,7 @@ func TestNodeLogicUpdatesRefreshDrumView(t *testing.T) {
 		t.Fatalf("graph node %d missing", b.ID)
 	}
 	params := node.Params
-	params.LogicKind = "probability"
+	params.LogicKind = model.LogicProbability
 	params.LogicP = 0
 	g.graph.SetNodeParams(b.ID, params)
 

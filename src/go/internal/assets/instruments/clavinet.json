@@ -1,0 +1,97 @@
+{
+  "schema_version": "0.0.1",
+  "id": "clavinet",
+  "name": "Clavinet",
+  "category": "modular",
+  "notes": "clavinetSeed: a funky, bright, plucky clav — a medium-short KS with a hard bright\npluck and light drive for the characteristic bite.",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 0.7,
+        "amp_release": 0.12,
+        "amp_sustain": 0
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0.2
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 3800,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "ks",
+      "v": 1,
+      "on": true,
+      "values": {
+        "atk_amt": 0,
+        "atk_rate": 0,
+        "env_fast_rate": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "ks_blow": 0,
+        "ks_pluck": 0.4,
+        "ks_sustain": 0.975,
+        "out_scale": 1
+      },
+      "notes": "gen1_source: pluck brightness pulled back (was 0.58 — the raw render's energy sat on the\n7th harmonic = thin/plinky) so the fundamental carries the body; darker LP +\ngentler drive keep it funky-bright without going nasal."
+    }
+  ]
+}

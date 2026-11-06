@@ -14,27 +14,27 @@ import (
 // alpha values are scope-internal (180/150 for the line, 18/15 for the
 // fill, etc.) and stay as numeric arguments to WithAlpha; only the base
 // hex moves to DESIGN.md.
+// Derived in rebuildThemeAliases (theme.go) so a runtime theme re-tints them.
 var (
-	colScopeA = WithAlpha(genColorVizScopeTraceA, 180)
-	colScopeB = WithAlpha(genColorVizScopeTraceB, 150)
+	colScopeA color.NRGBA
+	colScopeB color.NRGBA
 	// Synthwave "outrun" fills beneath the A/B scope traces — raised from
 	// the old 18/15 hints to AlphaSubtle so the wash from trace to the
 	// zero-line reads as the defining sunset move, while the trace stays a
 	// crisp line on top. Per-lane color so split/overlay keep their tint.
-	colScopeAFill = WithAlpha(genColorVizScopeTraceA, AlphaSubtle)
-	colScopeBFill = WithAlpha(genColorVizScopeTraceB, AlphaSubtle)
+	colScopeAFill color.NRGBA
+	colScopeBFill color.NRGBA
 )
 
 var (
-	colScopeDiff     = WithAlpha(genColorVizScopeTraceDiff, 200)
-	colScopeDiffFill = WithAlpha(genColorVizScopeTraceDiff, AlphaSubtle)
+	colScopeDiff     color.NRGBA
+	colScopeDiffFill color.NRGBA
 )
 
 var (
-	colScopeBg      = genColorVizScopeBg
-	colScopeGrid    = WithAlpha(genColorBorder, 20)
-	colScopeGridMid = WithAlpha(genColorBorder, 35)
-	colScopeTrigger = genColorVizScopeTrigger
+	colScopeBg      color.RGBA
+	colScopeGrid    color.NRGBA
+	colScopeGridMid color.NRGBA
 )
 
 // colScopeFrozenBorder marks the frozen waveform with the azure accent at
@@ -42,7 +42,7 @@ var (
 // red — which violated "three reds, three roles" (error text / mute fill /
 // destructive fill). Freeze is neither destructive nor an error, so it uses
 // the chrome accent instead (bug #6). The FROZEN caption still names the state.
-var colScopeFrozenBorder = WithAlpha(genColorPrimary, AlphaMedium)
+var colScopeFrozenBorder color.NRGBA // derived in rebuildThemeAliases (theme.go)
 
 // chainAxisDecimals picks ONE decimal precision for the entire time axis from
 // the window's full scale, so every tick on the axis is formatted identically
@@ -216,11 +216,6 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 		drawChainOverlay(dst, rect, waveRect, state, windowMs, lh, yGain, showA, showB)
 	}
 
-	// Phase 3 audio-panel redesign: trigger marker at 10 % of the
-	// trace area. Reads as a beat-anchor reference so the user can
-	// correlate "the moment of the hit" with the rendered waveform.
-	drawChainTriggerMarker(dst, waveRect)
-
 	// Legend in its reserved strip below the waveform (never over it).
 	drawChainLegend(dst, legendStrip, state, displayMode, showA, showB)
 
@@ -249,10 +244,6 @@ func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 
 	// --- Grid lines ---
 	drawScopeGrid(dst, waveRect, w, h)
-
-	// --- Trigger marker at 10% from left ---
-	trigX := waveRect.Min.X + w/10
-	drawRect(dst, image.Rect(trigX, waveRect.Min.Y, trigX+1, waveRect.Max.Y), colScopeTrigger, true)
 
 	// --- Amplitude labels, right-aligned in the (density-aware) left gutter ---
 	topLabel, botLabel := "+1", "-1"
@@ -308,10 +299,6 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 	// Grid for this half.
 	drawScopeGrid(dst, halfRect, w, h)
 
-	// Trigger marker.
-	trigX := halfRect.Min.X + w/10
-	drawRect(dst, image.Rect(trigX, halfRect.Min.Y, trigX+1, halfRect.Max.Y), colScopeTrigger, true)
-
 	// Amplitude labels.
 	topLabel, botLabel := "+1", "-1"
 	if yGain != 1.0 {
@@ -351,10 +338,6 @@ func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state 
 	h := waveRect.Dy()
 
 	drawScopeGrid(dst, waveRect, w, h)
-
-	// Trigger marker.
-	trigX := waveRect.Min.X + w/10
-	drawRect(dst, image.Rect(trigX, waveRect.Min.Y, trigX+1, waveRect.Max.Y), colScopeTrigger, true)
 
 	// Amplitude labels (right-aligned in the gutter).
 	topLabel, botLabel := "+1", "-1"

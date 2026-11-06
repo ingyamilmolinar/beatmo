@@ -2,7 +2,11 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // A sample-edit must rotate the binding, NOT blanket-drop every other pitch's
 // cached voice. hashSampleEdit is already XORed into paramsHash, so the key
@@ -10,7 +14,7 @@ import "testing"
 // recreates the 93%-miss knob-drag storm that SetInstrumentParam was fixed to
 // avoid (synth_recipe.go:256-267).
 func TestSetSampleEditDoesNotBlanketInvalidateOtherPitches(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	globalVoiceCache.Clear()
 	ClearSampleEdit(id)
 	ResetInstrumentParams(id)

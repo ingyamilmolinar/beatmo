@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstMenuStaysOpenAfterClick verifies that clicking the row label opens
@@ -20,13 +23,13 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -140,13 +143,13 @@ func TestInstMenuStaysOpenQuickClick(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -200,13 +203,13 @@ func TestInstMenuToggleOnSecondClick(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -294,13 +297,13 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap", "cowbell", "ride", "crash"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap, roster.Cowbell, roster.Ride, roster.Crash}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -397,13 +400,13 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -509,20 +512,20 @@ func TestInstMenuMobileWithCategories(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap"}
-	dv.instCategories = []string{"Drums", "Cymbals"}
-	dv.instCatByID = map[string]string{
-		"kick":  "Drums",
-		"snare": "Drums",
-		"tom":   "Drums",
-		"hihat": "Cymbals",
-		"clap":  "Cymbals",
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap}
+	dv.instCategories = []audio.Category{audio.CatPercussion, audio.CatCymbal}
+	dv.instCatByID = map[instrument.ID]audio.Category{
+		roster.Kick:  audio.CatPercussion,
+		roster.Snare: audio.CatPercussion,
+		roster.Tom:   audio.CatPercussion,
+		roster.Hihat: audio.CatCymbal,
+		roster.Clap:  audio.CatCymbal,
 	}
 	dv.instMenuForceCategories = true
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}

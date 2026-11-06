@@ -157,8 +157,8 @@ func drawMenuTitle(dst *ebiten.Image, headerRect image.Rectangle, label string, 
 	textX := headerRect.Min.X
 	if swatch != nil {
 		sr := menuTitleSwatchRect(headerRect)
-		drawRoundedRect(dst, sr.Inset(-2), WithAlphaFromColor(swatch, AlphaSubtle), RadiusXXS, true)
-		drawRoundedRect(dst, sr, swatch, RadiusXXS, true)
+		drawRoundedRect(dst, sr.Inset(-2), WithAlphaFromColor(swatch, AlphaSubtle), fitRadius(RadiusControl, sr.Inset(-2)), true)
+		drawRoundedRect(dst, sr, swatch, fitRadius(RadiusControl, sr), true)
 		textX = sr.Max.X + SpaceSM
 	}
 	DrawTextStyled(dst, label, textX, ty, menuTitleRole, colTextPrimary)
@@ -212,6 +212,10 @@ type MenuRowSpec struct {
 	TrailLabel  string        // optional right-aligned muted caption (e.g. an instrument's category, a count, "♩ BPM")
 	TrailIconID IconID        // optional trailing icon at the far right (e.g. drill-in chevron); "" → none
 	TrailTint   color.Color   // trailing icon tint; nil → colMenuIcon
+	// LeadW reserves a custom leading slot of this width (the caller paints
+	// its own art there AFTER drawMenuRow, e.g. the theme preset swatch
+	// strip); the label starts after it. Ignored when Swatch/IconID is set.
+	LeadW int
 }
 
 // drawMenuRow renders one list-menu row with the unified flat styling:
@@ -221,7 +225,10 @@ type MenuRowSpec struct {
 // set (mirrors the instrument menu, which has a swatch and no icon). The
 // btn carries geometry, text and input state only — rows never paint the
 // keycap chrome (flat-menu invariant; guard: TestDrawMenuRowIsFlatNoKeycap).
-func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
+// drawMenuRow is a func var (like drawRect / drawRoundedRect) so tests can
+// intercept it to count how many rows a menu actually renders per frame — the
+// guard behind the scrolling-menu row-culling invariant.
+var drawMenuRow = func(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 	r := btn.Rect()
 	if r.Empty() {
 		return
@@ -251,7 +258,7 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 		sx := r.Min.X + SpaceSM
 		sy := r.Min.Y + (r.Dy()-sz)/2
 		sr := image.Rect(sx, sy, sx+sz, sy+sz)
-		drawRoundedRect(dst, sr, spec.Swatch, RadiusXXS, true)
+		drawRoundedRect(dst, sr, spec.Swatch, fitRadius(RadiusControl, sr), true)
 		labelX = sr.Max.X + SpaceSM
 	case spec.IconID != "":
 		tint := spec.IconTint
@@ -260,6 +267,8 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 		}
 		DrawIcon(dst, spec.IconID, menuRowIconRect(r), tint)
 		labelX = menuRowLabelX(r)
+	case spec.LeadW > 0:
+		labelX = r.Min.X + SpaceSM + spec.LeadW + SpaceSM
 	}
 
 	// 4. Centered label (subdivision selector) overrides the leading-x layout.
@@ -268,17 +277,17 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 		labelX = r.Min.X + (r.Dx()-tw)/2
 	}
 
-	// 5. Fuzzy-match highlights behind the label, then the label itself. The
-	// label is rendered with the styled role font, so the highlight cells must
-	// be measured with the same styled metric or they drift off the glyphs.
-	if len(spec.Highlights) > 0 {
-		drawTextHighlights(dst, spec.Label, spec.Highlights, labelX, ty, 1.0, th,
-			func(s string) int { return StyledTextWidth(s, role) })
-	}
-	DrawTextStyled(dst, spec.Label, labelX, ty, role, labelCol)
-
-	// 6. Trailing slots, right to left: an optional drill-in icon at the far
-	// right, then an optional muted caption (category, count, BPM) beside it.
+	// 5. Trailing slots are laid out BEFORE the label is drawn, right to left:
+	// an optional drill-in icon at the far right, then an optional muted
+	// caption (category, count, BPM) beside it. Their left edge is what bounds
+	// the label.
+	//
+	// Order matters. Drawing the label first and the trail afterwards let a
+	// long label run straight under the caption: the template menu rendered
+	// "Clara Schumann — Ich stand in dunklen Träumen" overlapping its "70 BPM"
+	// readout, two sets of glyphs on the same pixels. Every menu row in the app
+	// shares this renderer, so the clip belongs here rather than in a shorter
+	// display string — a title long enough to collide will turn up again.
 	rx := r.Max.X - SpaceMD
 	if spec.TrailIconID != "" {
 		s := IconSizeSM
@@ -295,7 +304,42 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 		tth := StyledTextHeight(RoleCaption)
 		tty := r.Min.Y + (r.Dy()-tth)/2
 		DrawTextStyled(dst, spec.TrailLabel, rx-tw, tty, RoleCaption, colTextSecondary)
+		rx -= tw
 	}
+
+	// 6. The label, clipped to the space the trailing block leaves. A centered
+	// label (the subdivision selector) is never paired with a trail, so it
+	// keeps the full row width.
+	label := spec.Label
+	if !spec.CenterLabel {
+		label = clipMenuRowLabel(label, role, labelX, rx)
+	}
+
+	// Fuzzy-match highlights sit behind the label and must be measured with the
+	// same styled metric, or they drift off the glyphs. They are dropped when
+	// the label had to be clipped: their rune offsets index the FULL string, so
+	// painting them over a shortened one would highlight the wrong characters.
+	if len(spec.Highlights) > 0 && label == spec.Label {
+		drawTextHighlights(dst, spec.Label, spec.Highlights, labelX, ty, 1.0, th,
+			func(s string) int { return StyledTextWidth(s, role) })
+	}
+	DrawTextStyled(dst, label, labelX, ty, role, labelCol)
+}
+
+// clipMenuRowLabel trims a menu row's label to the space left between its
+// starting x and the left edge of the trailing block (drill-in icon and/or
+// muted caption), ellipsizing when it does not fit.
+//
+// Extracted from drawMenuRow so the geometry is unit-testable: the collision it
+// prevents is invisible to every test that only checks a row's data, and shows
+// up solely as two sets of glyphs painted on the same pixels.
+func clipMenuRowLabel(label string, role TextRole, labelX, trailLeft int) string {
+	avail := trailLeft - SpaceSM - labelX
+	measure := func(s string) int { return StyledTextWidth(s, role) }
+	if avail >= measure(label) {
+		return label
+	}
+	return clipTextToWidthMeasure(label, avail, measure)
 }
 
 // drawSheetDragHandle paints the standard bottom-sheet drag-handle pill
@@ -306,8 +350,8 @@ func drawSheetDragHandle(dst *ebiten.Image, sheetRect image.Rectangle) {
 	const handleW, handleH = 36, 4
 	hx := sheetRect.Min.X + sheetRect.Dx()/2 - handleW/2
 	hy := sheetRect.Min.Y + 8
-	drawRoundedRect(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
-		WithAlpha(genColorBorder, genAlphaScrollbarThumb), handleH/2, true)
+	drawCapsule(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
+		WithAlpha(genColorBorder, genAlphaScrollbarThumb), true)
 }
 
 // drawMenuChevron draws the icon-system chevron (down=expanded, right=collapsed)

@@ -9,6 +9,9 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -33,13 +36,13 @@ func newTestEQPanelZoneWithFilters(rows []*DrumRow) (*EQPanelZone, *eqTestCallba
 		OnMuteToggle: func(band int) {
 			log.muteToggles = append(log.muteToggles, band)
 		},
-		OnChannelChange: func(id string) {
+		OnChannelChange: func(id channel.ID) {
 			log.channelChanges = append(log.channelChanges, id)
 		},
 		OnToggleHPF: func() { log.hpfToggles++ },
 		OnToggleLPF: func() { log.lpfToggles++ },
 		OnApplyEQ:   func() { log.applyCount++ },
-		AnalyzerSnapshot: func(ch string) audio.AnalyzerSnapshot {
+		AnalyzerSnapshot: func(ch channel.ID) audio.AnalyzerSnapshot {
 			return audio.AnalyzerSnapshot{}
 		},
 		ActiveRows:  func() []*DrumRow { return rows },
@@ -213,7 +216,7 @@ func TestDesktopHPFHandleDrag(t *testing.T) {
 	if result == InputIgnored {
 		t.Fatal("expected HPF handle press to be captured")
 	}
-	if z.curveDragFilter != "hpf" {
+	if z.curveDragFilter != hooks.FilterHPF {
 		t.Fatalf("expected curveDragFilter='hpf', got %q", z.curveDragFilter)
 	}
 
@@ -231,7 +234,7 @@ func TestDesktopHPFHandleDrag(t *testing.T) {
 
 	// Release.
 	curveArea.Handler.OnRelease(newX, hy)
-	if z.curveDragFilter != "" {
+	if z.curveDragFilter != hooks.FilterNone {
 		t.Errorf("expected curveDragFilter='' after release, got %q", z.curveDragFilter)
 	}
 	if log.applyCount == 0 {
@@ -273,7 +276,7 @@ func TestDesktopLPFHandleDrag(t *testing.T) {
 	if result == InputIgnored {
 		t.Fatal("expected LPF handle press to be captured")
 	}
-	if z.curveDragFilter != "lpf" {
+	if z.curveDragFilter != hooks.FilterLPF {
 		t.Fatalf("expected curveDragFilter='lpf', got %q", z.curveDragFilter)
 	}
 
@@ -290,7 +293,7 @@ func TestDesktopLPFHandleDrag(t *testing.T) {
 	}
 
 	curveArea.Handler.OnRelease(newX, ly)
-	if z.curveDragFilter != "" {
+	if z.curveDragFilter != hooks.FilterNone {
 		t.Errorf("expected curveDragFilter='' after release, got %q", z.curveDragFilter)
 	}
 	if log.applyCount == 0 {
@@ -334,7 +337,7 @@ func TestMobileHPFHandleDrag(t *testing.T) {
 	if result == InputIgnored {
 		t.Fatal("expected HPF handle press to be captured on mobile")
 	}
-	if z.curveDragFilter != "hpf" {
+	if z.curveDragFilter != hooks.FilterHPF {
 		t.Fatalf("expected curveDragFilter='hpf', got %q", z.curveDragFilter)
 	}
 
@@ -366,7 +369,7 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 	// Add one row so the DrumView is non-empty.
 	dv.Rows = append(dv.Rows, &DrumRow{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	})
@@ -440,7 +443,7 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 		// anyDragActive may be true due to eqCurveDragBand being set (which is
 		// correct — the EQ curve handler captured). But it must NOT be true
 		// because of the touch dead zone.
-		if dv.eqCurveDragBand < 0 && dv.eqCurveDragFilter == "" {
+		if dv.eqCurveDragBand < 0 && dv.eqCurveDragFilter == hooks.FilterNone {
 			t.Fatal("anyDragActive is true but no EQ drag is active — " +
 				"touch dead zone is incorrectly blocking in mobileEQMode")
 		}
@@ -464,7 +467,7 @@ func TestMobileEQDragTouchDeadZoneStillBlocksRows(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})

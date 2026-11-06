@@ -3,6 +3,7 @@ package ui
 import (
 	"sync"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
@@ -16,7 +17,7 @@ type persistedFavorites struct {
 	backend userprefs.Store
 
 	mu  sync.RWMutex
-	set map[string]struct{}
+	set map[instrument.ID]struct{}
 }
 
 // NewPersistedFavoritesStore wraps a userprefs.Store. Loading happens
@@ -26,7 +27,7 @@ type persistedFavorites struct {
 func NewPersistedFavoritesStore(backend userprefs.Store) FavoritesStore {
 	s := &persistedFavorites{
 		backend: backend,
-		set:     map[string]struct{}{},
+		set:     map[instrument.ID]struct{}{},
 	}
 	if backend != nil {
 		if loaded, _ := backend.LoadFavorites(); loaded != nil {
@@ -40,7 +41,7 @@ func NewPersistedFavoritesStore(backend userprefs.Store) FavoritesStore {
 	return s
 }
 
-func (s *persistedFavorites) Get(key string) bool {
+func (s *persistedFavorites) Get(key instrument.ID) bool {
 	if key == "" {
 		return false
 	}
@@ -50,7 +51,7 @@ func (s *persistedFavorites) Get(key string) bool {
 	return ok
 }
 
-func (s *persistedFavorites) Set(key string, fav bool) {
+func (s *persistedFavorites) Set(key instrument.ID, fav bool) {
 	if key == "" {
 		return
 	}
@@ -67,10 +68,10 @@ func (s *persistedFavorites) Set(key string, fav bool) {
 	}
 }
 
-func (s *persistedFavorites) Keys() []string {
+func (s *persistedFavorites) Keys() []instrument.ID {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]string, 0, len(s.set))
+	out := make([]instrument.ID, 0, len(s.set))
 	for k := range s.set {
 		out = append(out, k)
 	}
@@ -78,11 +79,11 @@ func (s *persistedFavorites) Keys() []string {
 	return out
 }
 
-// snapshotLocked builds a fresh map[string]bool from the internal set;
+// snapshotLocked builds a fresh id → bool map from the internal set;
 // caller holds s.mu. Returned to the backend so it can mutate the map
 // without affecting the mirror.
-func (s *persistedFavorites) snapshotLocked() map[string]bool {
-	out := make(map[string]bool, len(s.set))
+func (s *persistedFavorites) snapshotLocked() map[instrument.ID]bool {
+	out := make(map[instrument.ID]bool, len(s.set))
 	for k := range s.set {
 		out[k] = true
 	}

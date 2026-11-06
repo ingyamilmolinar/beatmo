@@ -1,8 +1,8 @@
 /**
  * Off-main-thread synth renderer (WASM perf fix).
  *
- * The synth voice renderers (`render_modular_p`, `render_X`, …) are synchronous
- * C functions that take ~30–40 ms for a 2 s melodic / physical-model voice.
+ * The synth voice renderer (`render_modular_p`) is a synchronous
+ * C function that take ~30–40 ms for a 2 s melodic / physical-model voice.
  * Running them via `ccall` on the main thread blocked the UI + audio scheduler
  * whenever a live param edit invalidated the cache during playback (see
  * webaudio_synth_param_stress.browser.test.js). This worker hosts its OWN
@@ -18,17 +18,20 @@
  *
  * Protocol (main → worker):
  *   { type:'render', reqId, renderFn, sr, frames, allocCount,
- *     params:Float32Array|null, postAmp:number|null }
+ *     params:Float64Array|Float32Array|null, post:object|null }
  * Reply (worker → main):
  *   { type:'rendered', reqId, data:Float32Array(frames) }   (data.buffer transferred)
  *   { type:'error',    reqId, err:string }
  *   { type:'ready' }                                          (after module init)
  *
- * postAmp (P4): when finite, the worker also peak-normalizes then amp-scales
- * the buffer before transfer, keeping those O(frames) passes off the main
- * thread. The loops mirror audio.js's sync-fallback post-processing EXACTLY
- * (same float32 op order) so both paths stay bit-identical.
+ * post (P4): when set, the worker also applies the voice post-processing —
+ * voice FX, gate tail, peak-normalise × amplitude, end fade (voice_post.js,
+ * desktop's renderDocBlock step for step) — before transfer, keeping those
+ * O(frames) passes off the main thread. The main-thread fallback runs the same
+ * function, so both paths stay bit-identical.
  */
+
+import { applyVoicePost } from "./voice_post.js";
 
 let modulePromise = null;
 
@@ -62,32 +65,22 @@ self.onmessage = async (ev) => {
   try {
     ptr = m._malloc(n * 4);
     if (!ptr) throw new Error("malloc(output) failed");
-    if (msg.params && msg.params.length > 0) {
-      const allocCount = Math.max(msg.params.length, msg.allocCount | 0);
-      paramsPtr = m._malloc(allocCount * 4);
-      if (!paramsPtr) throw new Error("malloc(params) failed");
-      const pheap = m.HEAPF32.subarray(paramsPtr >> 2, (paramsPtr >> 2) + allocCount);
-      pheap.fill(0);
-      pheap.set(msg.params);
-      m.ccall(renderFn, null, ["number", "number", "number", "number"], [ptr, sr, n, paramsPtr]);
-    } else {
-      m.ccall(renderFn, null, ["number", "number", "number"], [ptr, sr, n]);
-    }
+    // Every render passes a full param block: the engine has no defaults.
+    if (!(msg.params && msg.params.length > 0)) throw new Error("no param block for " + renderFn);
+    const allocCount = Math.max(msg.params.length, msg.allocCount | 0);
+    // The modular param block is double (structured clone keeps the
+    // Float64Array); write it through HEAPF64.
+    if (!m.HEAPF64) throw new Error("drums module has no HEAPF64 — the C glue (drums.single.js) is older than the double param block; run `make wasm`");
+    paramsPtr = m._malloc(allocCount * 8);
+    if (!paramsPtr) throw new Error("malloc(params) failed");
+    const pheap = m.HEAPF64.subarray(paramsPtr >> 3, (paramsPtr >> 3) + allocCount);
+    pheap.fill(0);
+    pheap.set(msg.params);
+    m.ccall(renderFn, null, ["number", "number", "number", "number"], [ptr, sr, n, paramsPtr]);
     const heap = m.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + n);
     const data = new Float32Array(n);
     data.set(heap);
-    if (typeof msg.postAmp === "number" && Number.isFinite(msg.postAmp)) {
-      let peak = 0;
-      for (let i = 0; i < data.length; i++) {
-        const a = Math.abs(data[i]);
-        if (a > peak) peak = a;
-      }
-      if (peak > 0) {
-        const inv = 1 / peak;
-        for (let i = 0; i < data.length; i++) data[i] *= inv;
-      }
-      for (let i = 0; i < data.length; i++) data[i] *= msg.postAmp;
-    }
+    applyVoicePost(m, data, sr, msg.post || null);
     postMessage({ type: "rendered", reqId, data }, [data.buffer]);
   } catch (e) {
     postMessage({ type: "error", reqId, err: String(e && e.message ? e.message : e) });

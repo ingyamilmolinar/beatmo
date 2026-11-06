@@ -177,7 +177,7 @@ func (g *Game) groupBadgeRects() []groupBadgeRect {
 	}
 	gridW, gridH := g.split.GridW(g.winW), g.split.GridH(g.winH)
 	viewport := image.Rect(0, 0, gridW, gridH)
-	reserved := g.gridHelpReservedRect()
+	reserved := g.gridTopButtonsReservedRect() // clear the whole gear+folder+logs cluster
 
 	out := make([]groupBadgeRect, 0, len(groups))
 	for _, grp := range groups {
@@ -292,8 +292,9 @@ func (g *Game) drawGridGroupBadges(dst *ebiten.Image) {
 			continue
 		}
 		gc := g.groupColor(b.gid)
-		drawRoundedRect(dst, b.rect, g.groupBadgeFillColor(b.gid), RadiusSM, true)
-		drawRoundedRect(dst, b.rect, WithAlpha(gc, AlphaStrong), RadiusSM, false)
+		badgeRad := fitRadius(RadiusControl, b.rect)
+		drawRoundedRect(dst, b.rect, g.groupBadgeFillColor(b.gid), badgeRad, true)
+		drawRoundedRect(dst, b.rect, WithAlpha(gc, AlphaStrong), badgeRad, false)
 		ty := b.rect.Min.Y + (b.rect.Dy()-StyledTextHeight(RoleCaption))/2
 		DrawTextStyled(dst, grp.Name, b.rect.Min.X+groupBadgePadX, ty, RoleCaption, colTextPrimary)
 	}

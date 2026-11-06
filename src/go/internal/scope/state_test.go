@@ -11,7 +11,6 @@ func TestStageLabel(t *testing.T) {
 		{StageAntiPop, "AntiPop"},
 		{StageInsertFX, "FX"},
 		{StageEQ, "EQ"},
-		{StageSends, "Bus"},
 		{StageMaster, "Master"},
 	}
 	for _, c := range cases {
@@ -44,7 +43,7 @@ func TestStageLabelUnknownReturnsEmpty(t *testing.T) {
 
 func TestAllStagesOrderAndLength(t *testing.T) {
 	got := AllStages()
-	want := []Stage{StageSynth, StageAntiPop, StageInsertFX, StageEQ, StageSends, StageMaster}
+	want := []Stage{StageSynth, StageAntiPop, StageInsertFX, StageEQ, StageMaster}
 	if len(got) != len(want) {
 		t.Fatalf("AllStages length=%d want %d (got %v)", len(got), len(want), got)
 	}

@@ -1,6 +1,10 @@
 package ui
 
-import "image"
+import (
+	"image"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // synthMobileFocusRect is the right column beside the knob grid (empty on
 // desktop) reserved on mobile for "Your sound" + the focus graph (on desktop the
@@ -31,7 +35,7 @@ func (p *synthPanel) synthSectionsRectForTest() image.Rectangle {
 // synthSelectedControlIdx returns the knob index the focus graph should explain for
 // instID within the open section: the stored selection when it belongs to this
 // section, else the section's first (main) knob.
-func (p *synthPanel) synthSelectedControlIdx(instID string, sec *synthSection) int {
+func (p *synthPanel) synthSelectedControlIdx(instID instrument.ID, sec *synthSection) int {
 	dv := p.dv
 
 	if sec == nil || len(sec.knobIdxs) == 0 {
@@ -50,14 +54,14 @@ func (p *synthPanel) synthSelectedControlIdx(instID string, sec *synthSection) i
 }
 
 // setSynthSelectedControl records the focus-graph selection for instID.
-func (p *synthPanel) setSynthSelectedControl(instID string, kIdx int) {
+func (p *synthPanel) setSynthSelectedControl(instID instrument.ID, kIdx int) {
 	dv := p.dv
 
 	if instID == "" {
 		return
 	}
 	if dv.instEditorSelectedControl == nil {
-		dv.instEditorSelectedControl = map[string]int{}
+		dv.instEditorSelectedControl = map[instrument.ID]int{}
 	}
 	dv.instEditorSelectedControl[instID] = kIdx
 }
@@ -72,10 +76,10 @@ func (dv *DrumView) synthSectionsRectForTest() image.Rectangle {
 	return dv.synp().synthSectionsRectForTest()
 }
 
-func (dv *DrumView) synthSelectedControlIdx(instID string, sec *synthSection) int {
+func (dv *DrumView) synthSelectedControlIdx(instID instrument.ID, sec *synthSection) int {
 	return dv.synp().synthSelectedControlIdx(instID, sec)
 }
 
-func (dv *DrumView) setSynthSelectedControl(instID string, kIdx int) {
+func (dv *DrumView) setSynthSelectedControl(instID instrument.ID, kIdx int) {
 	dv.synp().setSynthSelectedControl(instID, kIdx)
 }

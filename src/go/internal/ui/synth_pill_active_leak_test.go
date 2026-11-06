@@ -2,7 +2,11 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+)
 
 // The Synth/Sampler tab pills are disabled under the Master channel to stop
 // the user ENTERING them — but once the tab IS active (programmatic open;
@@ -15,7 +19,7 @@ func TestSynthPillNotDisabledWhileSynthTabActive(t *testing.T) {
 	g.Layout(1280, 720)
 	z := g.drum.eqPanelZone
 
-	z.SetActiveChannel("main")
+	z.SetActiveChannel(channel.Master)
 	if !z.synthTabDisabled() {
 		t.Fatal("precondition: Synth pill should be blocked on Master while elsewhere")
 	}

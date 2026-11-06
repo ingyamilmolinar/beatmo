@@ -1,0 +1,101 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-808",
+  "name": "808 Kick",
+  "category": "modular",
+  "notes": "kick808Seed: a long boomy 808 sub kick — a near-pure deep sub with the 808\n\"pew\" pitch drop and a LONG ringing tail (the sustained sub-bass note).\nkick808Seed: a deep progressive-house / 808 sub kick, tuned (harness +\nfingerprint metrics) toward 860393__cat-fox_alex__progressivehouse-kick-2:\nsub-dominant (<60 Hz carries most energy) BUT with real body in 60-120 Hz\n(~28% in the ref — a pure sub reads weak), a BIG fast pitch drop (~150→~40 Hz,\nthe house \"pew\"), and a long sustained tail. The old seed barely dropped\n(pe_amt 0.4) and was ~89% sub with no body; these values restore the drop +\nbody while keeping the boom.\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nsat 1.2→1.5, pe_amt 2.4→2.175, h2 0.20→0.32, attack 0.3→0.05, pe_rate\n25→29, env1 2.5→1.75, noise 0.04→0.0275",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.5829,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 44
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.deep",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0.05,
+        "kick_click": 0.3,
+        "kick_env0": 2.4,
+        "kick_env1": 1.75,
+        "kick_fade": 1.3,
+        "kick_h2": 0.32,
+        "kick_h3": 0.05,
+        "kick_noise": 0.0275,
+        "kick_pe_amt": 2.175,
+        "kick_pe_rate": 29,
+        "kick_sat": 1.5,
+        "wave": 0
+      },
+      "notes": "gen1_kick_attack: long tail, warm\ngen1_kick_click: a bit of transport punch\ngen1_kick_env0: sustained boom\ngen1_kick_env1: sustained boom\ngen1_kick_fade: long tail, warm\ngen1_kick_h2: sub + a body in 60-120 (not a pure sub)\ngen1_kick_h3: sub + a body in 60-120 (not a pure sub)\ngen1_kick_noise: a bit of transport punch\ngen1_kick_pe_amt: BIG 808/house pitch drop ~150→44 Hz\ngen1_kick_pe_rate: BIG 808/house pitch drop ~150→44 Hz\ngen1_kick_sat: long tail, warm\ngen1_kick_variant: deep"
+    }
+  ]
+}

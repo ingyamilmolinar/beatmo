@@ -114,7 +114,9 @@ func orderedTransportControls(z *TransportZone) []struct {
 // TestDesktopTransportNoSpacerGap asserts there is no large empty gap between
 // any two adjacent transport controls — in particular none between the
 // subdivision button and the master volume control (the old weight-0.6
-// "spacer" cell). Gaps between adjacent controls must be uniform and small.
+// "spacer" cell). Gaps take exactly two values: the uniform in-group gap, and
+// spacing.cluster at the three group boundaries (transport | tempo | level |
+// history — DESIGN.md "Groups are spacing, not containers").
 func TestDesktopTransportNoSpacerGap(t *testing.T) {
 	assertDefaultParityState(t)
 	UpdateProfile()
@@ -135,8 +137,8 @@ func TestDesktopTransportNoSpacerGap(t *testing.T) {
 		// a button, so the row reads as one continuous cluster.
 		side := z.playBtn.Rect().Dy()
 
+		groupBoundary := map[string]bool{"record": true, "subdiv": true, "vol": true}
 		minGap, maxGap := 1<<30, -(1 << 30)
-		var subdivVolGap int
 		for i := 0; i+1 < len(controls); i++ {
 			a, b := controls[i].r, controls[i+1].r
 			if a.Empty() || b.Empty() {
@@ -146,14 +148,17 @@ func TestDesktopTransportNoSpacerGap(t *testing.T) {
 				t.Errorf("w=%d: %s %v overlaps %s %v", w, controls[i].name, a, controls[i+1].name, b)
 			}
 			gap := b.Min.X - a.Max.X
+			if groupBoundary[controls[i].name] {
+				if gap != SpaceCluster {
+					t.Errorf("w=%d: %s→%s group gap %d, want spacing.cluster %d", w, controls[i].name, controls[i+1].name, gap, SpaceCluster)
+				}
+				continue
+			}
 			if gap < minGap {
 				minGap = gap
 			}
 			if gap > maxGap {
 				maxGap = gap
-			}
-			if controls[i].name == "subdiv" && controls[i+1].name == "vol" {
-				subdivVolGap = gap
 			}
 		}
 
@@ -161,14 +166,10 @@ func TestDesktopTransportNoSpacerGap(t *testing.T) {
 		if maxGap >= side {
 			t.Errorf("w=%d: largest inter-control gap %d >= button side %d (spacer void present)", w, maxGap, side)
 		}
-		// Gaps must be uniform — the spread between the widest and narrowest
-		// gap is at most a couple of pixels of rounding.
+		// In-group gaps must be uniform — the spread between the widest and
+		// narrowest is at most a couple of pixels of rounding.
 		if maxGap-minGap > 2 {
-			t.Errorf("w=%d: inter-control gaps not uniform: min=%d max=%d", w, minGap, maxGap)
-		}
-		// The subdiv→vol gap must match the uniform gap (no leftover spacer).
-		if subdivVolGap > maxGap {
-			t.Errorf("w=%d: subdiv→vol gap %d exceeds uniform max gap %d", w, subdivVolGap, maxGap)
+			t.Errorf("w=%d: in-group gaps not uniform: min=%d max=%d", w, minGap, maxGap)
 		}
 	}
 }

@@ -5,6 +5,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // l1 returns the sum of absolute sample differences between two buffers.
@@ -21,104 +24,80 @@ func l1(a, b []float32) float64 {
 	return d
 }
 
+// saveCopyToLibraryForTest is the audio-layer half of the Synth tab's Save:
+// the project copy becomes its library entry.
+func saveCopyToLibraryForTest(t *testing.T, id string) {
+	t.Helper()
+	d, ok := InstrumentDoc(instrument.ID(id))
+	if !ok {
+		t.Fatalf("no document for %q", id)
+	}
+	d.ID = instrument.ID(id)
+	if err := SaveLibraryDoc(d); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestSynthSavePersists_RenderUnchangedAfterSave is the faithful root-cause
-// test for the reported bug: turning a knob produces a liked sound, but after
-// Save the sound reverts. It drives the NATIVE dispatcher (newRecipeAwareVoice
-// — the -tags test stub Play is a no-op and cannot exercise this) and proves
-// that the post-save / reload state (recipe defaults customized, per-instrument
-// overlay empty) still renders the liked tone rather than the bare baseline.
+// test for "after Save the sound reverts". It drives the NATIVE dispatcher
+// (newRecipeAwareVoice — the -tags test stub Play is a no-op and cannot
+// exercise this) and proves that after Save and a later Reset (the copy back
+// on its library entry — also the state after a restart) the voice still
+// renders the liked tone, not the bare baseline.
 //
-// Uses drum-kick: a pitched-sine renderer with no noise, so renders are
+// Uses kick: a pitched-sine renderer with no noise, so renders are
 // deterministic and byte-comparable across cache invalidations.
 func TestSynthSavePersists_RenderUnchangedAfterSave(t *testing.T) {
-	const id = "kick"
-	recipeID := RecipeForInstrument(id)
-	if recipeID == "" {
-		t.Fatalf("no recipe bound to %q (fixture broken)", id)
-	}
+	resetLibraryForTest(t)
+	const id = roster.Kick
 
-	// Snapshot original defaults and restore them on cleanup — the registry
-	// is process-global, so a leaked customization would flip the gate for
-	// every other test in this package.
-	orig := RecipeDefaultParams(recipeID)
-	t.Cleanup(func() {
-		UpdateRecipeDefaultsAndInvalidate(recipeID, map[string]float64(orig))
-		ResetInstrumentParams(id)
-	})
+	base := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
 
-	// Baseline: bare instrument, no overrides.
-	ResetInstrumentParams(id)
-	base := drainVoiceToBuffer(newRecipeAwareVoice(id, 120, 44100), 44100)
-
-	// User turns the pitch knob up an octave — the "liked" sound.
-	SetInstrumentParam(id, "pitch", 12)
-	edited := drainVoiceToBuffer(newRecipeAwareVoice(id, 120, 44100), 44100)
-
+	// User transposes the voice up an octave — the "liked" sound.
+	SetInstrumentParam(id, "post_pitch", 12)
+	edited := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
 	if len(base) == 0 || len(edited) == 0 {
 		t.Fatalf("empty buffers: base=%d edited=%d", len(base), len(edited))
 	}
 	if l1(base, edited) == 0 {
-		t.Fatal("sanity: pitch=+12 produced an identical buffer to baseline; knob has no effect")
+		t.Fatal("sanity: post_pitch=+12 produced an identical buffer to baseline; knob has no effect")
 	}
 
-	// Simulate Save's audio-layer effect AND the post-restart reload state:
-	// the effective params are folded into the recipe defaults, and the
-	// per-instrument overlay is empty (cleared by today's Save, and always
-	// empty after an app restart that reloads saved defaults from disk).
-	effective := MergeRecipeDefaults(recipeID, GetInstrumentParams(id))
-	UpdateRecipeDefaultsAndInvalidate(recipeID, map[string]float64(effective))
-	ResetInstrumentParams(id)
+	saveCopyToLibraryForTest(t, string(id))
+	afterSave := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
+	ResetInstrumentParams(id) // back to the (saved) library entry
+	afterReset := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
 
-	saved := drainVoiceToBuffer(newRecipeAwareVoice(id, 120, 44100), 44100)
-
-	// The whole point of Save: the sound must NOT change. The post-save render
-	// must equal the liked (edited) render and must differ from the bare
-	// baseline. Pre-fix, the empty overlay drops to the legacy path which
-	// ignores the saved defaults, so saved == base and saved != edited.
-	if d := l1(saved, edited); d != 0 {
+	if d := l1(afterSave, edited); d != 0 {
 		t.Errorf("post-save render differs from the liked sound (L1=%v); Save changed the sound", d)
 	}
-	if l1(saved, base) == 0 {
-		t.Error("post-save render reverted to the bare baseline; the saved recipe defaults were ignored")
+	if d := l1(afterReset, edited); d != 0 {
+		t.Errorf("render after Save + Reset differs from the liked sound (L1=%v); the saved entry was ignored", d)
 	}
 }
 
-// TestSynthReset_RenderReturnsToOriginal drives the native dispatcher through a
-// Save (defaults customized) then a Reset, and proves the rendered voice
-// returns to the bare baseline — i.e. Reset restores the original sound even
-// after a Save overwrote the recipe defaults.
+// TestSynthReset_RenderReturnsToOriginal: after a Save over a shipped
+// instrument, Restore shipped (drop the user entry) + Reset brings the
+// original sound back, byte for byte.
 func TestSynthReset_RenderReturnsToOriginal(t *testing.T) {
-	const id = "kick"
-	recipeID := RecipeForInstrument(id)
-	if recipeID == "" {
-		t.Fatalf("no recipe bound to %q (fixture broken)", id)
-	}
-	t.Cleanup(func() {
-		ResetRecipeToShipped(recipeID)
-		ResetInstrumentParams(id)
-	})
+	resetLibraryForTest(t)
+	const id = roster.Kick
 
-	// Clean baseline.
-	ResetRecipeToShipped(recipeID)
+	base := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
+	SetInstrumentParam(id, "post_pitch", 12)
+	saveCopyToLibraryForTest(t, string(id))
 	ResetInstrumentParams(id)
-	base := drainVoiceToBuffer(newRecipeAwareVoice(id, 120, 44100), 44100)
-
-	// Edit + Save (defaults customized, overlay cleared).
-	SetInstrumentParam(id, "pitch", 12)
-	effective := MergeRecipeDefaults(recipeID, GetInstrumentParams(id))
-	UpdateRecipeDefaultsAndInvalidate(recipeID, map[string]float64(effective))
-	ResetInstrumentParams(id)
-	saved := drainVoiceToBuffer(newRecipeAwareVoice(id, 120, 44100), 44100)
+	saved := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
 	if l1(saved, base) == 0 {
-		t.Fatal("sanity: saved render should differ from baseline before Reset")
+		t.Fatal("sanity: saved render should differ from baseline")
 	}
 
-	// Reset → restore shipped defaults + clear overlay.
-	ResetRecipeToShipped(recipeID)
+	if err := DeleteUserLibraryDoc(id); err != nil {
+		t.Fatal(err)
+	}
 	ResetInstrumentParams(id)
-	reset := drainVoiceToBuffer(newRecipeAwareVoice(id, 120, 44100), 44100)
-
+	reset := drainVoiceToBuffer(newRecipeAwareVoice(id, 44100), 44100)
 	if d := l1(reset, base); d != 0 {
-		t.Errorf("after Reset, render differs from the original baseline (L1=%v); Reset did not restore the original sound", d)
+		t.Errorf("after Restore shipped + Reset, render differs from the original baseline (L1=%v)", d)
 	}
 }

@@ -3,10 +3,10 @@
 package audio
 
 import (
-	"sync"
 	"syscall/js"
-	"time"
 	"unsafe"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // Per-tap snapshot caches. The bridge dispatcher routes ChannelAnalyzer-
@@ -17,8 +17,6 @@ var (
 	channelSnapCache = newSnapshotCache()
 	preEQSnapCache   = newSnapshotCache()
 	synthSnapCache   = newSnapshotCache()
-	sendBusSnap      = snapshotCacheEntry{}
-	sendBusSnapMu    sync.Mutex
 )
 
 // SnapshotCacheBypassForTest unconditionally clears the per-snapshot
@@ -26,17 +24,14 @@ var (
 // without TTL interference.
 func SnapshotCacheBypassForTest() {
 	channelSnapCache.mu.Lock()
-	channelSnapCache.entries = make(map[string]*snapshotCacheEntry)
+	channelSnapCache.entries = make(map[channel.ID]*snapshotCacheEntry)
 	channelSnapCache.mu.Unlock()
 	preEQSnapCache.mu.Lock()
-	preEQSnapCache.entries = make(map[string]*snapshotCacheEntry)
+	preEQSnapCache.entries = make(map[channel.ID]*snapshotCacheEntry)
 	preEQSnapCache.mu.Unlock()
 	synthSnapCache.mu.Lock()
-	synthSnapCache.entries = make(map[string]*snapshotCacheEntry)
+	synthSnapCache.entries = make(map[channel.ID]*snapshotCacheEntry)
 	synthSnapCache.mu.Unlock()
-	sendBusSnapMu.Lock()
-	sendBusSnap = snapshotCacheEntry{}
-	sendBusSnapMu.Unlock()
 }
 
 // readSnapshotF64FromTypedArray reads a Float32Array view (exposed as a
@@ -105,25 +100,4 @@ func readSnapshotF64(val js.Value, typedKey, lenKey, legacyKey string) []float64
 		return out
 	}
 	return readSnapshotF64Legacy(val, legacyKey)
-}
-
-// sendBusSnapshotCachedOrFetch wraps the dispatcher used by
-// SendBusAnalyzerSnapshot — the send bus is a single shared analyser
-// (no id keying) so it has its own scalar cache entry rather than a
-// map-backed snapshotCache.
-func sendBusSnapshotCachedOrFetch(fetch func() AnalyzerSnapshot) AnalyzerSnapshot {
-	sendBusSnapMu.Lock()
-	now := time.Now()
-	if !sendBusSnap.lastFetch.IsZero() && now.Sub(sendBusSnap.lastFetch) < snapshotCacheTTL {
-		snap := sendBusSnap.snap
-		sendBusSnapMu.Unlock()
-		return snap
-	}
-	sendBusSnapMu.Unlock()
-
-	snap := fetch()
-	sendBusSnapMu.Lock()
-	sendBusSnap = snapshotCacheEntry{lastFetch: time.Now(), snap: snap}
-	sendBusSnapMu.Unlock()
-	return snap
 }

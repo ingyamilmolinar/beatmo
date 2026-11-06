@@ -8,16 +8,18 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func filterState() *analyzer.State {
 	return &analyzer.State{
 		Instruments: []analyzer.InstrumentMetrics{
-			{ID: "kick", Name: "kick", PeakDB: -6, RMSDB: -18, Active: true},
-			{ID: "snare", Name: "snare", PeakDB: -8, RMSDB: -20, Active: true},
-			{ID: "hat", Name: "hat", PeakDB: -10, RMSDB: -22, Active: true},
+			{ID: channel.Of(roster.Kick), Name: "kick", PeakDB: -6, RMSDB: -18, Active: true},
+			{ID: channel.Of(roster.Snare), Name: "snare", PeakDB: -8, RMSDB: -20, Active: true},
+			{ID: channel.Of(roster.Hihat), Name: "hat", PeakDB: -10, RMSDB: -22, Active: true},
 		},
-		Master: analyzer.ChannelMetrics{ID: "main", Name: "Master", PeakDB: -3, RMSDB: -14, Active: true},
+		Master: analyzer.ChannelMetrics{ID: channel.Master, Name: "Master", PeakDB: -3, RMSDB: -14, Active: true},
 	}
 }
 
@@ -44,7 +46,7 @@ func collectDrawnTexts(t *testing.T, fn func()) map[string]bool {
 func TestLevelsVisibleFilter_OnlyVisibleStrips(t *testing.T) {
 	rect := image.Rect(0, 0, 800, 120)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
-	visible := map[string]bool{"hat": true}
+	visible := map[channel.ID]bool{channel.Of(roster.Hihat): true}
 
 	labels := collectDrawnTexts(t, func() {
 		drawLevelsMultiChannel(dst, rect, filterState(), NewMultiLevelsLatch(), visible)
@@ -92,8 +94,8 @@ func TestEQPanelLevels_SoloRestrictsStrips(t *testing.T) {
 	}
 
 	rows := []*DrumRow{
-		{Instrument: "kick"},
-		{Instrument: "snare", Solo: true},
+		{Instrument: roster.Kick},
+		{Instrument: roster.Snare, Solo: true},
 	}
 	z.callbacks.ActiveRows = func() []*DrumRow { return rows }
 	st := filterState() // kick(-6) loudest, snare(-8), hat(-10) + master

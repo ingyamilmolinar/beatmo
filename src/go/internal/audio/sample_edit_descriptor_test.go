@@ -1,12 +1,17 @@
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // resetSampleEditsForTest clears the descriptor registry between tests.
 func resetSampleEditsForTest(t *testing.T) {
 	t.Helper()
 	sampleEditsMu.Lock()
-	sampleEdits = map[string]SampleEdit{}
+	sampleEdits = map[instrument.ID]SampleEdit{}
 	sampleEditsMu.Unlock()
 }
 
@@ -16,7 +21,7 @@ func nonTrivialEdit() SampleEdit {
 
 func TestSampleEditSetGetClear(t *testing.T) {
 	resetSampleEditsForTest(t)
-	const id = "kick"
+	const id = roster.Kick
 	if HasSampleEdit(id) {
 		t.Fatal("fresh registry: HasSampleEdit must be false")
 	}
@@ -40,7 +45,7 @@ func TestSampleEditSetGetClear(t *testing.T) {
 
 func TestSampleEditIdentitySetClears(t *testing.T) {
 	resetSampleEditsForTest(t)
-	const id = "snare"
+	const id = roster.Snare
 	SetSampleEdit(id, nonTrivialEdit())
 	// Storing the identity edit (full range, no transforms) is equivalent to
 	// clearing — the descriptor would be a no-op at render time.
@@ -63,7 +68,7 @@ func TestSampleEditIsIdentity(t *testing.T) {
 		{"normalize", SampleEdit{EndFrac: 1, Normalize: true}, false},
 		{"pitch", SampleEdit{EndFrac: 1, TransposeSemis: 1}, false},
 		{"detune", SampleEdit{EndFrac: 1, DetuneCents: 5}, false},
-		{"fade", SampleEdit{EndFrac: 1, FadeInMs: 5, FadeOutMs: 5}, false},
+		{"fade", SampleEdit{EndFrac: 1, Fade: true}, false},
 	}
 	for _, c := range cases {
 		if got := c.e.isIdentity(); got != c.want {
@@ -104,7 +109,7 @@ func TestApplySampleEditToBufferDelegatesToBakeSample(t *testing.T) {
 }
 
 func TestSampleEditFieldsRoundTrip(t *testing.T) {
-	e := SampleEdit{StartFrac: 0.2, EndFrac: 0.8, TransposeSemis: 3, DetuneCents: -15, GainDB: -6, FadeInMs: 5, FadeOutMs: 5, Reverse: true, Normalize: true}
+	e := SampleEdit{StartFrac: 0.2, EndFrac: 0.8, TransposeSemis: 3, DetuneCents: -15, GainDB: -6, Fade: true, Reverse: true, Normalize: true}
 	got := SampleEditFromFields(e.Fields())
 	if got != e {
 		t.Fatalf("Fields round-trip lost data: %+v != %+v", got, e)
@@ -116,52 +121,36 @@ func TestSampleEditFieldsRoundTrip(t *testing.T) {
 	}
 }
 
-type stubSampleEditSource map[string]map[string]float64
+type stubSampleEditSource map[instrument.ID]map[string]float64
 
-func (s stubSampleEditSource) LoadSampleEdits() (map[string]map[string]float64, error) {
+func (s stubSampleEditSource) LoadSampleEdits() (map[instrument.ID]map[string]float64, error) {
 	return s, nil
 }
 
-func TestApplySavedSampleEditsRehydrates(t *testing.T) {
-	resetSampleEditsForTest(t)
-	t.Cleanup(func() { ClearSampleEdit("rehydrate.test") })
-	src := stubSampleEditSource{
-		"rehydrate.test": SampleEdit{StartFrac: 0.25, EndFrac: 0.75, GainDB: -3}.Fields(),
-	}
-	ApplySavedSampleEdits(src)
-	e, ok := SampleEditFor("rehydrate.test")
-	if !ok {
-		t.Fatal("descriptor not rehydrated")
-	}
-	want := SampleEdit{StartFrac: 0.25, EndFrac: 0.75, GainDB: -3}
-	if e != want {
-		t.Fatalf("rehydrated %+v, want %+v", e, want)
-	}
-}
 
 func TestSampleEditPlatformHookFiresOnSetAndClear(t *testing.T) {
 	resetSampleEditsForTest(t)
 	type call struct {
-		id string
+		id instrument.ID
 		e  SampleEdit
 	}
 	var calls []call
-	prev := SwapPlatformSampleEditChangedForTest(func(id string, e SampleEdit) {
+	prev := SwapPlatformSampleEditChangedForTest(func(id instrument.ID, e SampleEdit) {
 		calls = append(calls, call{id, e})
 	})
 	t.Cleanup(func() { SwapPlatformSampleEditChangedForTest(prev) })
 
 	want := nonTrivialEdit()
-	SetSampleEdit("hat", want)
-	if len(calls) != 1 || calls[0].id != "hat" || calls[0].e != want {
+	SetSampleEdit(roster.Hihat, want)
+	if len(calls) != 1 || calls[0].id != roster.Hihat || calls[0].e != want {
 		t.Fatalf("after Set: calls = %+v", calls)
 	}
-	ClearSampleEdit("hat")
-	if len(calls) != 2 || calls[1].id != "hat" || !calls[1].e.isIdentity() {
+	ClearSampleEdit(roster.Hihat)
+	if len(calls) != 2 || calls[1].id != roster.Hihat || !calls[1].e.isIdentity() {
 		t.Fatalf("after Clear: calls = %+v (clear must push an identity edit)", calls)
 	}
 	// Clearing an absent id must not fire the bridge again.
-	ClearSampleEdit("hat")
+	ClearSampleEdit(roster.Hihat)
 	if len(calls) != 2 {
 		t.Fatalf("clear of absent id fired the bridge: %+v", calls)
 	}

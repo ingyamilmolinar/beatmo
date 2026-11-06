@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // synthSectionContaining returns the section id that owns a knob whose param
@@ -40,7 +41,7 @@ func TestSynthControlCellReservesNoVizBand(t *testing.T) {
 	expandSynthPanelForTest(t, g)
 
 	secID, _ := synthSectionContaining(t, g, "filter")
-	g.drum.setSelectedSynthSection("modular", secID)
+	g.drum.setSelectedSynthSection(roster.Modular, secID)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	dv2 := Profile().DensityValues()
@@ -92,7 +93,7 @@ func TestSynthControlDrawsNoConceptBand(t *testing.T) {
 	expandSynthPanelForTest(t, g)
 
 	secID, _ := synthSectionContaining(t, g, "filter")
-	g.drum.setSelectedSynthSection("modular", secID)
+	g.drum.setSelectedSynthSection(roster.Modular, secID)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	grid := g.drum.sectionGrid(secID)
@@ -122,7 +123,7 @@ func TestSynthControlDrawsNoConceptBand(t *testing.T) {
 	// And the detail pane still draws fine (no panic, produces chrome ink).
 	scratch := ebiten.NewImage(640, 480)
 	rects := collectFilledRects(t, func() {
-		g.drum.drawSynthDetailPane(scratch, "modular")
+		g.drum.drawSynthDetailPane(scratch, roster.Modular)
 	})
 	if len(rects) == 0 {
 		t.Fatalf("synth detail pane drew nothing")
@@ -166,7 +167,7 @@ func TestSynthSectionGridFlowsColumnsDesktop(t *testing.T) {
 	if secID < 0 {
 		t.Skip("no modular section with >2 knobs to exercise the column flow")
 	}
-	g.drum.setSelectedSynthSection("modular", secID)
+	g.drum.setSelectedSynthSection(roster.Modular, secID)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	if cols := g.drum.sectionGrid(secID).Cols(); cols <= 2 {

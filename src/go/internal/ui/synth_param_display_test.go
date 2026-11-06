@@ -7,25 +7,20 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSynthParamDisplayName_EveryReachableParamResolves enumerates EVERY
-// ParamDef reachable through the recipe registry and asserts each resolves to a
+// ParamDef of the engine schema and asserts each resolves to a
 // non-empty display NAME that is NOT its raw snake_case id. This is the guard
 // against the "bare value / leaked raw id" caption bugs — no knob may ever show
 // "osc_detune" or render anonymous.
 func TestSynthParamDisplayName_EveryReachableParamResolves(t *testing.T) {
-	regs := audio.RecipeRegistrations()
-	if len(regs) == 0 {
-		t.Fatal("no recipe registrations — cannot enumerate the param universe")
-	}
 	seen := map[string]bool{}
 	checked := 0
-	for id, reg := range regs {
-		if reg == nil {
-			continue
-		}
-		for _, d := range reg.Params {
+	for _, id := range []instrument.ID{roster.Modular} {
+		for _, d := range audio.InstrumentParamDefs(id) {
 			if seen[d.Name] {
 				continue
 			}
@@ -33,16 +28,16 @@ func TestSynthParamDisplayName_EveryReachableParamResolves(t *testing.T) {
 			checked++
 			name := synthParamDisplayName(d.Name)
 			if name == "" {
-				t.Errorf("recipe %q param %q: display name is empty", id, d.Name)
+				t.Errorf("instrument %q param %q: display name is empty", id, d.Name)
 				continue
 			}
 			if name == d.Name && strings.Contains(d.Name, "_") {
-				t.Errorf("recipe %q param %q: display name leaks the raw snake_case id (%q)", id, d.Name, name)
+				t.Errorf("instrument %q param %q: display name leaks the raw snake_case id (%q)", id, d.Name, name)
 			}
 			// No display name should contain an underscore (the prettifier
 			// replaces them with spaces; the override table never uses them).
 			if strings.Contains(name, "_") {
-				t.Errorf("recipe %q param %q: display name %q still contains an underscore", id, d.Name, name)
+				t.Errorf("instrument %q param %q: display name %q still contains an underscore", id, d.Name, name)
 			}
 		}
 	}

@@ -5,7 +5,7 @@ import "testing"
 // modularSchemaWant is the canonical FROZEN PREFIX of the modular voice param
 // block: every pre-Phase-1 field, in ABI order. It MUST mirror the leading
 // field declaration order of the C modular_params struct (src/c/modular.h) and
-// the ModularParams Go struct (modular_c.go), because the WASM bridge fills
+// the modularBlock Go struct (modular_c.go), because the WASM bridge fills
 // heap[MODULAR_PARAM_INDEX[name]] and passes the block as a const
 // modular_params*. The Phase-1 gen bank is APPENDED after this prefix (its
 // contiguous field-major layout is asserted by TestModularGenBankSchemaShape),
@@ -39,7 +39,7 @@ func TestModularParamSchemaShape(t *testing.T) {
 			t.Errorf("modular index map %q = %d, want %d", n, idx[n], i)
 		}
 	}
-	ident := ModularParamSchemaIdentity()
+	ident := modularFieldInits()
 	if len(ident) != len(got) {
 		t.Errorf("modular identity map has %d entries, want %d (one per schema field)", len(ident), len(got))
 	}

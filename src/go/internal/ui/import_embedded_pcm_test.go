@@ -10,6 +10,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestImportEmbeddedPCM reproduces the reported failure: a freshly-exported
@@ -62,7 +64,8 @@ func TestImportEmbeddedPCM(t *testing.T) {
 	}
 
 	// Each embedded-PCM instrument must be registered as a user sample.
-	for _, id := range []string{"kick-1", "snare", "hihat", "fm-epiano-1"} {
+	//
+	for _, id := range []instrument.ID{roster.KickSnap, roster.Snare, roster.Hihat, roster.FmEpianoDrive} {
 		if !audio.IsUserSample(id) {
 			t.Errorf("instrument %q: embedded PCM not registered (IsUserSample=false)", id)
 			continue

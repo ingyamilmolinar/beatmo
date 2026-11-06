@@ -5,7 +5,12 @@
 
 package ui
 
-import "image/color"
+import (
+	"image/color"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // ── Colors ─────────────────────────────────────────────────────────────────
 //
@@ -101,7 +106,6 @@ var (
 	genColorVizScopeTraceB           = color.RGBA{255, 122, 61, 255}  // colors.viz-scope-trace-b = #FF7A3D
 	genColorVizScopeTraceDiff        = color.RGBA{63, 214, 122, 255}  // colors.viz-scope-trace-diff = #3FD67A
 	genColorVizScopeBg               = color.RGBA{18, 10, 28, 255}    // colors.viz-scope-bg = #120A1C
-	genColorVizScopeTrigger          = color.RGBA{255, 211, 25, 255}  // colors.viz-scope-trigger = #FFD319
 	genColorVizSpectrumPeakMarker    = color.RGBA{253, 242, 255, 255} // colors.viz-spectrum-peak-marker = #FDF2FF
 	genColorPlayDesktopFill          = color.RGBA{43, 200, 92, 255}   // colors.play-desktop-fill = #2BC85C
 	genColorPlayDesktopBorder        = color.RGBA{63, 214, 122, 255}  // colors.play-desktop-border = #3FD67A
@@ -138,6 +142,8 @@ var (
 	genColorPopupTextSecondary       = color.RGBA{201, 184, 214, 255} // colors.popup-text-secondary = #C9B8D6
 	genColorScopeLabelDim            = color.RGBA{56, 35, 84, 255}    // colors.scope-label-dim = #382354
 	genColorTransportBarBg           = color.RGBA{18, 10, 28, 255}    // colors.transport-bar-bg = #120A1C
+	genColorRackBed                  = color.RGBA{28, 18, 48, 255}    // colors.rack-bed = #1C1230
+	genColorToolbarBed               = color.RGBA{28, 18, 48, 255}    // colors.toolbar-bed = #1C1230
 	genColorDimBlack                 = color.RGBA{0, 0, 0, 255}       // colors.dim-black = #000000
 	genColorGridLine                 = color.RGBA{28, 18, 48, 255}    // colors.grid-line = #1C1230
 	genColorGridHalf                 = color.RGBA{28, 18, 48, 255}    // colors.grid-half = #1C1230
@@ -162,6 +168,312 @@ var (
 	genColorMenuDeleteTint           = color.RGBA{232, 74, 31, 255}   // colors.menu-delete-tint = #E84A1F
 )
 
+// genColorByName maps every DESIGN.md color token name to its LIVE variable so
+// the runtime theme engine (theme_runtime.go) can overwrite tokens by name.
+// genColorDefaultByName is the immutable generation-time value used to derive
+// and restore the default theme.
+var genColorByName = map[string]*color.RGBA{
+	"sunset-gold-100":            &genColorSunsetGold100,
+	"sunset-gold-200":            &genColorSunsetGold200,
+	"sunset-gold-300":            &genColorSunsetGold300,
+	"sunset-gold-400":            &genColorSunsetGold400,
+	"sunset-gold-500":            &genColorSunsetGold500,
+	"tangerine-100":              &genColorTangerine100,
+	"tangerine-200":              &genColorTangerine200,
+	"tangerine-300":              &genColorTangerine300,
+	"tangerine-400":              &genColorTangerine400,
+	"tangerine-500":              &genColorTangerine500,
+	"hot-pink-100":               &genColorHotPink100,
+	"hot-pink-200":               &genColorHotPink200,
+	"hot-pink-300":               &genColorHotPink300,
+	"hot-pink-400":               &genColorHotPink400,
+	"hot-pink-500":               &genColorHotPink500,
+	"orchid-100":                 &genColorOrchid100,
+	"orchid-200":                 &genColorOrchid200,
+	"orchid-300":                 &genColorOrchid300,
+	"orchid-400":                 &genColorOrchid400,
+	"orchid-500":                 &genColorOrchid500,
+	"electric-blue-100":          &genColorElectricBlue100,
+	"electric-blue-200":          &genColorElectricBlue200,
+	"electric-blue-300":          &genColorElectricBlue300,
+	"electric-blue-400":          &genColorElectricBlue400,
+	"electric-blue-500":          &genColorElectricBlue500,
+	"cyan-100":                   &genColorCyan100,
+	"cyan-200":                   &genColorCyan200,
+	"cyan-300":                   &genColorCyan300,
+	"cyan-400":                   &genColorCyan400,
+	"cyan-500":                   &genColorCyan500,
+	"mint-100":                   &genColorMint100,
+	"mint-200":                   &genColorMint200,
+	"mint-300":                   &genColorMint300,
+	"mint-400":                   &genColorMint400,
+	"mint-500":                   &genColorMint500,
+	"night-bg":                   &genColorNightBg,
+	"night-surface-1":            &genColorNightSurface1,
+	"night-surface-2":            &genColorNightSurface2,
+	"night-surface-3":            &genColorNightSurface3,
+	"night-surface-overlay":      &genColorNightSurfaceOverlay,
+	"night-text-hi":              &genColorNightTextHi,
+	"night-text-mid":             &genColorNightTextMid,
+	"night-text-dim":             &genColorNightTextDim,
+	"primary":                    &genColorPrimary,
+	"primary-bright":             &genColorPrimaryBright,
+	"primary-dim":                &genColorPrimaryDim,
+	"background":                 &genColorBackground,
+	"surface-1":                  &genColorSurface1,
+	"surface-2":                  &genColorSurface2,
+	"surface-3":                  &genColorSurface3,
+	"surface-overlay":            &genColorSurfaceOverlay,
+	"on-surface":                 &genColorOnSurface,
+	"on-surface-muted":           &genColorOnSurfaceMuted,
+	"on-surface-disabled":        &genColorOnSurfaceDisabled,
+	"on-surface-accent":          &genColorOnSurfaceAccent,
+	"border":                     &genColorBorder,
+	"success":                    &genColorSuccess,
+	"error":                      &genColorError,
+	"mute":                       &genColorMute,
+	"destructive":                &genColorDestructive,
+	"destructive-border":         &genColorDestructiveBorder,
+	"record-idle":                &genColorRecordIdle,
+	"record-active":              &genColorRecordActive,
+	"viz-bg":                     &genColorVizBg,
+	"viz-bar":                    &genColorVizBar,
+	"viz-bar-peak":               &genColorVizBarPeak,
+	"viz-curve":                  &genColorVizCurve,
+	"viz-wave-a":                 &genColorVizWaveA,
+	"viz-wave-b":                 &genColorVizWaveB,
+	"viz-meter-low":              &genColorVizMeterLow,
+	"viz-meter-mid":              &genColorVizMeterMid,
+	"viz-meter-high":             &genColorVizMeterHigh,
+	"viz-meter-bg":               &genColorVizMeterBg,
+	"viz-meter-clip":             &genColorVizMeterClip,
+	"viz-bass":                   &genColorVizBass,
+	"viz-mids":                   &genColorVizMids,
+	"viz-treble":                 &genColorVizTreble,
+	"viz-glow":                   &genColorVizGlow,
+	"focus-ring":                 &genColorFocusRing,
+	"slider-thumb-fill":          &genColorSliderThumbFill,
+	"slider-thumb-shadow":        &genColorSliderThumbShadow,
+	"slider-track-fill":          &genColorSliderTrackFill,
+	"slider-fill":                &genColorSliderFill,
+	"sidebar-section-bg":         &genColorSidebarSectionBg,
+	"viz-scope-trace-a":          &genColorVizScopeTraceA,
+	"viz-scope-trace-b":          &genColorVizScopeTraceB,
+	"viz-scope-trace-diff":       &genColorVizScopeTraceDiff,
+	"viz-scope-bg":               &genColorVizScopeBg,
+	"viz-spectrum-peak-marker":   &genColorVizSpectrumPeakMarker,
+	"play-desktop-fill":          &genColorPlayDesktopFill,
+	"play-desktop-border":        &genColorPlayDesktopBorder,
+	"stop-desktop-fill":          &genColorStopDesktopFill,
+	"stop-desktop-border":        &genColorStopDesktopBorder,
+	"disabled-fill":              &genColorDisabledFill,
+	"destructive-confirm-fill":   &genColorDestructiveConfirmFill,
+	"destructive-confirm-border": &genColorDestructiveConfirmBorder,
+	"mute-active-border":         &genColorMuteActiveBorder,
+	"solo-active-border":         &genColorSoloActiveBorder,
+	"fx-active-fill":             &genColorFxActiveFill,
+	"eq-filter-active-fill":      &genColorEqFilterActiveFill,
+	"eq-filter-active-border":    &genColorEqFilterActiveBorder,
+	"error-text":                 &genColorErrorText,
+	"eq-mute-active-fill":        &genColorEqMuteActiveFill,
+	"sidebar-chip-fill":          &genColorSidebarChipFill,
+	"sidebar-chip-border":        &genColorSidebarChipBorder,
+	"sidebar-swatch-fallback":    &genColorSidebarSwatchFallback,
+	"sidebar-badge-bg":           &genColorSidebarBadgeBg,
+	"row-rack-color-fallback":    &genColorRowRackColorFallback,
+	"viz-debug-edge":             &genColorVizDebugEdge,
+	"viz-debug-node":             &genColorVizDebugNode,
+	"viz-pill-fill":              &genColorVizPillFill,
+	"viz-pill-border":            &genColorVizPillBorder,
+	"divider-base":               &genColorDividerBase,
+	"divider-shadow":             &genColorDividerShadow,
+	"divider-highlight":          &genColorDividerHighlight,
+	"drum-stripe-even":           &genColorDrumStripeEven,
+	"drum-stripe-odd":            &genColorDrumStripeOdd,
+	"drum-glow":                  &genColorDrumGlow,
+	"drum-cell-off":              &genColorDrumCellOff,
+	"drum-cell-highlight":        &genColorDrumCellHighlight,
+	"eq-readout-bg":              &genColorEqReadoutBg,
+	"popup-text-secondary":       &genColorPopupTextSecondary,
+	"scope-label-dim":            &genColorScopeLabelDim,
+	"transport-bar-bg":           &genColorTransportBarBg,
+	"rack-bed":                   &genColorRackBed,
+	"toolbar-bed":                &genColorToolbarBed,
+	"dim-black":                  &genColorDimBlack,
+	"grid-line":                  &genColorGridLine,
+	"grid-half":                  &genColorGridHalf,
+	"grid-quarter":               &genColorGridQuarter,
+	"grid-eighth":                &genColorGridEighth,
+	"grid-sixteenth":             &genColorGridSixteenth,
+	"grid-thirty-second":         &genColorGridThirtySecond,
+	"grid-horizon":               &genColorGridHorizon,
+	"node-fill":                  &genColorNodeFill,
+	"node-border":                &genColorNodeBorder,
+	"edge-color":                 &genColorEdgeColor,
+	"splitter-handle":            &genColorSplitterHandle,
+	"timeline-total-bg":          &genColorTimelineTotalBg,
+	"timeline-view":              &genColorTimelineView,
+	"timeline-view-hi":           &genColorTimelineViewHi,
+	"timeline-cursor":            &genColorTimelineCursor,
+	"timeline-beat":              &genColorTimelineBeat,
+	"drum-mute-cell":             &genColorDrumMuteCell,
+	"drum-mute-highlight":        &genColorDrumMuteHighlight,
+	"wave-trace-dry":             &genColorWaveTraceDry,
+	"eq-zero-line":               &genColorEqZeroLine,
+	"menu-delete-tint":           &genColorMenuDeleteTint,
+}
+
+var genColorDefaultByName = map[string]color.RGBA{
+	"sunset-gold-100":            {255, 233, 138, 255},
+	"sunset-gold-200":            {255, 211, 25, 255},
+	"sunset-gold-300":            {255, 179, 10, 255},
+	"sunset-gold-400":            {255, 158, 31, 255},
+	"sunset-gold-500":            {245, 138, 18, 255},
+	"tangerine-100":              {255, 194, 153, 255},
+	"tangerine-200":              {255, 158, 84, 255},
+	"tangerine-300":              {255, 122, 61, 255},
+	"tangerine-400":              {255, 92, 42, 255},
+	"tangerine-500":              {232, 74, 31, 255},
+	"hot-pink-100":               {255, 168, 224, 255},
+	"hot-pink-200":               {255, 106, 213, 255},
+	"hot-pink-300":               {255, 45, 158, 255},
+	"hot-pink-400":               {238, 0, 221, 255},
+	"hot-pink-500":               {196, 0, 181, 255},
+	"orchid-100":                 {224, 168, 255, 255},
+	"orchid-200":                 {194, 79, 255, 255},
+	"orchid-300":                 {160, 48, 255, 255},
+	"orchid-400":                 {140, 30, 255, 255},
+	"orchid-500":                 {110, 18, 224, 255},
+	"electric-blue-100":          {168, 200, 255, 255},
+	"electric-blue-200":          {94, 138, 255, 255},
+	"electric-blue-300":          {58, 106, 240, 255},
+	"electric-blue-400":          {42, 95, 214, 255},
+	"electric-blue-500":          {30, 71, 181, 255},
+	"cyan-100":                   {154, 240, 255, 255},
+	"cyan-200":                   {63, 224, 232, 255},
+	"cyan-300":                   {0, 200, 224, 255},
+	"cyan-400":                   {0, 168, 201, 255},
+	"cyan-500":                   {14, 115, 145, 255},
+	"mint-100":                   {179, 245, 194, 255},
+	"mint-200":                   {107, 232, 154, 255},
+	"mint-300":                   {63, 214, 122, 255},
+	"mint-400":                   {43, 200, 92, 255},
+	"mint-500":                   {31, 168, 74, 255},
+	"night-bg":                   {18, 10, 28, 255},
+	"night-surface-1":            {28, 18, 48, 255},
+	"night-surface-2":            {40, 26, 64, 255},
+	"night-surface-3":            {56, 35, 84, 255},
+	"night-surface-overlay":      {31, 20, 56, 255},
+	"night-text-hi":              {253, 242, 255, 255},
+	"night-text-mid":             {201, 184, 214, 255},
+	"night-text-dim":             {138, 122, 156, 255},
+	"primary":                    {255, 179, 10, 255},
+	"primary-bright":             {255, 211, 25, 255},
+	"primary-dim":                {255, 158, 31, 255},
+	"background":                 {18, 10, 28, 255},
+	"surface-1":                  {28, 18, 48, 255},
+	"surface-2":                  {40, 26, 64, 255},
+	"surface-3":                  {56, 35, 84, 255},
+	"surface-overlay":            {31, 20, 56, 255},
+	"on-surface":                 {253, 242, 255, 255},
+	"on-surface-muted":           {201, 184, 214, 255},
+	"on-surface-disabled":        {138, 122, 156, 255},
+	"on-surface-accent":          {255, 179, 10, 255},
+	"border":                     {255, 255, 255, 255},
+	"success":                    {63, 214, 122, 255},
+	"error":                      {255, 92, 42, 255},
+	"mute":                       {196, 0, 181, 255},
+	"destructive":                {232, 74, 31, 255},
+	"destructive-border":         {255, 92, 42, 255},
+	"record-idle":                {232, 74, 31, 255},
+	"record-active":              {255, 92, 42, 255},
+	"viz-bg":                     {18, 10, 28, 255},
+	"viz-bar":                    {255, 179, 10, 255},
+	"viz-bar-peak":               {255, 233, 138, 255},
+	"viz-curve":                  {255, 179, 10, 255},
+	"viz-wave-a":                 {255, 211, 25, 255},
+	"viz-wave-b":                 {138, 122, 156, 255},
+	"viz-meter-low":              {255, 179, 10, 255},
+	"viz-meter-mid":              {255, 122, 61, 255},
+	"viz-meter-high":             {232, 74, 31, 255},
+	"viz-meter-bg":               {28, 18, 48, 255},
+	"viz-meter-clip":             {232, 74, 31, 255},
+	"viz-bass":                   {255, 122, 61, 255},
+	"viz-mids":                   {201, 184, 214, 255},
+	"viz-treble":                 {58, 106, 240, 255},
+	"viz-glow":                   {255, 233, 138, 255},
+	"focus-ring":                 {255, 45, 158, 255},
+	"slider-thumb-fill":          {253, 242, 255, 255},
+	"slider-thumb-shadow":        {0, 0, 0, 255},
+	"slider-track-fill":          {40, 26, 64, 255},
+	"slider-fill":                {255, 158, 31, 255},
+	"sidebar-section-bg":         {56, 35, 84, 255},
+	"viz-scope-trace-a":          {255, 179, 10, 255},
+	"viz-scope-trace-b":          {255, 122, 61, 255},
+	"viz-scope-trace-diff":       {63, 214, 122, 255},
+	"viz-scope-bg":               {18, 10, 28, 255},
+	"viz-spectrum-peak-marker":   {253, 242, 255, 255},
+	"play-desktop-fill":          {43, 200, 92, 255},
+	"play-desktop-border":        {63, 214, 122, 255},
+	"stop-desktop-fill":          {232, 74, 31, 255},
+	"stop-desktop-border":        {255, 92, 42, 255},
+	"disabled-fill":              {40, 26, 64, 255},
+	"destructive-confirm-fill":   {232, 74, 31, 255},
+	"destructive-confirm-border": {255, 92, 42, 255},
+	"mute-active-border":         {255, 106, 213, 255},
+	"solo-active-border":         {255, 211, 25, 255},
+	"fx-active-fill":             {40, 26, 64, 255},
+	"eq-filter-active-fill":      {255, 158, 31, 255},
+	"eq-filter-active-border":    {255, 179, 10, 255},
+	"error-text":                 {255, 92, 42, 255},
+	"eq-mute-active-fill":        {232, 74, 31, 255},
+	"sidebar-chip-fill":          {56, 35, 84, 255},
+	"sidebar-chip-border":        {138, 122, 156, 255},
+	"sidebar-swatch-fallback":    {201, 184, 214, 255},
+	"sidebar-badge-bg":           {28, 18, 48, 255},
+	"row-rack-color-fallback":    {253, 242, 255, 255},
+	"viz-debug-edge":             {255, 211, 25, 255},
+	"viz-debug-node":             {255, 92, 42, 255},
+	"viz-pill-fill":              {28, 18, 48, 255},
+	"viz-pill-border":            {138, 122, 156, 255},
+	"divider-base":               {253, 242, 255, 255},
+	"divider-shadow":             {0, 0, 0, 255},
+	"divider-highlight":          {56, 35, 84, 255},
+	"drum-stripe-even":           {28, 18, 48, 255},
+	"drum-stripe-odd":            {18, 10, 28, 255},
+	"drum-glow":                  {255, 179, 10, 255},
+	"drum-cell-off":              {40, 26, 64, 255},
+	"drum-cell-highlight":        {253, 242, 255, 255},
+	"eq-readout-bg":              {28, 18, 48, 255},
+	"popup-text-secondary":       {201, 184, 214, 255},
+	"scope-label-dim":            {56, 35, 84, 255},
+	"transport-bar-bg":           {18, 10, 28, 255},
+	"rack-bed":                   {28, 18, 48, 255},
+	"toolbar-bed":                {28, 18, 48, 255},
+	"dim-black":                  {0, 0, 0, 255},
+	"grid-line":                  {28, 18, 48, 255},
+	"grid-half":                  {28, 18, 48, 255},
+	"grid-quarter":               {40, 26, 64, 255},
+	"grid-eighth":                {40, 26, 64, 255},
+	"grid-sixteenth":             {56, 35, 84, 255},
+	"grid-thirty-second":         {56, 35, 84, 255},
+	"grid-horizon":               {56, 35, 84, 255},
+	"node-fill":                  {40, 26, 64, 255},
+	"node-border":                {138, 122, 156, 255},
+	"edge-color":                 {138, 122, 156, 255},
+	"splitter-handle":            {255, 179, 10, 255},
+	"timeline-total-bg":          {18, 10, 28, 255},
+	"timeline-view":              {255, 158, 31, 255},
+	"timeline-view-hi":           {255, 179, 10, 255},
+	"timeline-cursor":            {255, 211, 25, 255},
+	"timeline-beat":              {138, 122, 156, 255},
+	"drum-mute-cell":             {138, 122, 156, 255},
+	"drum-mute-highlight":        {253, 242, 255, 255},
+	"wave-trace-dry":             {138, 122, 156, 255},
+	"eq-zero-line":               {138, 122, 156, 255},
+	"menu-delete-tint":           {232, 74, 31, 255},
+}
+
 // ── Spacing ───────────────────────────────────────────────────────────────
 const (
 	genSpacingXs       = 3  // spacing.xs
@@ -184,13 +496,16 @@ const (
 
 // ── Rounded (corner radii) ────────────────────────────────────────────────
 const (
-	genRoundedXxs  = 4   // rounded.xxs
-	genRoundedXs   = 6   // rounded.xs
-	genRoundedSm   = 8   // rounded.sm
-	genRoundedMd   = 12  // rounded.md
-	genRoundedLg   = 16  // rounded.lg
-	genRoundedXl   = 20  // rounded.xl
-	genRoundedFull = 999 // rounded.full
+	genRoundedXxs       = 4  // rounded.xxs
+	genRoundedXs        = 6  // rounded.xs
+	genRoundedSm        = 8  // rounded.sm
+	genRoundedMd        = 12 // rounded.md
+	genRoundedLg        = 16 // rounded.lg
+	genRoundedXl        = 20 // rounded.xl
+	genRoundedNone      = 0  // rounded.none
+	genRoundedControl   = 4  // rounded.control
+	genRoundedContainer = 8  // rounded.container
+	genRoundedSheet     = 20 // rounded.sheet
 )
 
 // ── Icon system (logical 24-unit grid) ────────────────────────────────────
@@ -372,12 +687,12 @@ var (
 	genInstrumentDefaultClap  = color.RGBA{0, 200, 224, 255}  // instrumentDefaults.clap = #00C8E0
 )
 
-var genInstrumentDefaults = map[string]color.RGBA{
-	"kick":  genInstrumentDefaultKick,
-	"snare": genInstrumentDefaultSnare,
-	"hihat": genInstrumentDefaultHihat,
-	"tom":   genInstrumentDefaultTom,
-	"clap":  genInstrumentDefaultClap,
+var genInstrumentDefaults = map[instrument.ID]color.RGBA{
+	roster.Kick:  genInstrumentDefaultKick,
+	roster.Snare: genInstrumentDefaultSnare,
+	roster.Hihat: genInstrumentDefaultHihat,
+	roster.Tom:   genInstrumentDefaultTom,
+	roster.Clap:  genInstrumentDefaultClap,
 }
 
 // ── Instrument fallback palette (cycled for unknown ids) ──────────────────

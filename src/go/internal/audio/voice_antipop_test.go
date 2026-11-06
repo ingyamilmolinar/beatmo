@@ -72,7 +72,7 @@ func TestAntiPopFadeOut(t *testing.T) {
 		t.Fatal("expected IsStopping() to be true after RequestStop()")
 	}
 
-	// First fade-out sample should still be near 1.0 (quadratic: (1-0/N)^2 = 1).
+	// First fade-out sample is still 1.0 (linear: 1-0/N).
 	s0, done := v.Sample()
 	if done {
 		t.Fatal("voice done immediately after RequestStop")
@@ -81,14 +81,15 @@ func TestAntiPopFadeOut(t *testing.T) {
 		t.Errorf("first fade-out sample should be near 1.0, got %f", s0)
 	}
 
-	// Midpoint of fade-out: t=0.5, envelope = (1-0.5)^2 = 0.25.
+	// Midpoint of fade-out: envelope = 1-0.5 = 0.5, the browser's gain ramp
+	// at the same frame (a linear stop on both platforms).
 	half := fadeOutSamples / 2
 	for i := 1; i < half; i++ {
 		v.Sample()
 	}
 	sMid, _ := v.Sample()
-	if sMid < 0.1 || sMid > 0.4 {
-		t.Errorf("mid fade-out sample should be ~0.25 (quadratic), got %f", sMid)
+	if math.Abs(sMid-0.5) > 1e-9 {
+		t.Errorf("mid fade-out sample should be 0.5 (linear), got %f", sMid)
 	}
 
 	// After fade-out completes, should be done.

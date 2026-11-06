@@ -9,6 +9,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // --- Grid drag hit adapter tests ---
@@ -175,7 +177,7 @@ func TestGridDragHitAdapter_OnWheel_NotConsumed(t *testing.T) {
 func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 	scrubCalled := false
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnSeekToStep = func(int, string) { scrubCalled = true }
+	z.callbacks.OnSeekToStep = func(int, hooks.SeekOrigin) { scrubCalled = true }
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	adapter := &timelineScrubHitAdapter{zone: z}
@@ -201,7 +203,7 @@ func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 func TestTimelineScrubHitAdapter_OnDrag(t *testing.T) {
 	scrubCount := 0
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnSeekToStep = func(int, string) { scrubCount++ }
+	z.callbacks.OnSeekToStep = func(int, hooks.SeekOrigin) { scrubCount++ }
 	z.callbacks.TimelineBeats = func() int { return 16 }
 	z.callbacks.TimelineUnitsPerBeat = func() int { return 4 }
 	z.Layout(image.Rect(0, 0, 400, 300))
@@ -224,7 +226,7 @@ func TestTimelineScrubHitAdapter_OnDrag(t *testing.T) {
 func TestTimelineScrubHitAdapter_OnDrag_NotScrubbing(t *testing.T) {
 	scrubCalled := false
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnSeekToStep = func(int, string) { scrubCalled = true }
+	z.callbacks.OnSeekToStep = func(int, hooks.SeekOrigin) { scrubCalled = true }
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	adapter := &timelineScrubHitAdapter{zone: z}
@@ -625,7 +627,7 @@ func TestTimelineZone_EnsureHighlightSprites_ZeroHeight(t *testing.T) {
 
 func TestTimelineZone_DrawGapFill(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Steps: make([]bool, 8)},
+		{Instrument: roster.Kick, Steps: make([]bool, 8)},
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -641,7 +643,7 @@ func TestTimelineZone_DrawGapFill(t *testing.T) {
 func TestTimelineZone_DrawGapFill_NoGap(t *testing.T) {
 	rows := make([]*DrumRow, 10)
 	for i := range rows {
-		rows[i] = &DrumRow{Instrument: "kick", Steps: make([]bool, 8)}
+		rows[i] = &DrumRow{Instrument: roster.Kick, Steps: make([]bool, 8)}
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -658,8 +660,8 @@ func TestTimelineZone_DrawGapFill_NoGap(t *testing.T) {
 
 func TestTimelineZone_DrawMuteSoloDimming_NoSoloOrMute(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Steps: make([]bool, 8), Color: color.RGBA{255, 0, 0, 255}},
-		{Instrument: "snare", Steps: make([]bool, 8), Color: color.RGBA{0, 255, 0, 255}},
+		{Instrument: roster.Kick, Steps: make([]bool, 8), Color: color.RGBA{255, 0, 0, 255}},
+		{Instrument: roster.Snare, Steps: make([]bool, 8), Color: color.RGBA{0, 255, 0, 255}},
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -673,8 +675,8 @@ func TestTimelineZone_DrawMuteSoloDimming_NoSoloOrMute(t *testing.T) {
 
 func TestTimelineZone_DrawMuteSoloDimming_MutedRow(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Steps: make([]bool, 8), Muted: true, Color: color.RGBA{255, 0, 0, 255}},
-		{Instrument: "snare", Steps: make([]bool, 8), Color: color.RGBA{0, 255, 0, 255}},
+		{Instrument: roster.Kick, Steps: make([]bool, 8), Muted: true, Color: color.RGBA{255, 0, 0, 255}},
+		{Instrument: roster.Snare, Steps: make([]bool, 8), Color: color.RGBA{0, 255, 0, 255}},
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -689,8 +691,8 @@ func TestTimelineZone_DrawMuteSoloDimming_MutedRow(t *testing.T) {
 
 func TestTimelineZone_DrawMuteSoloDimming_SoloRow(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Steps: make([]bool, 8), Solo: true, Color: color.RGBA{255, 0, 0, 255}},
-		{Instrument: "snare", Steps: make([]bool, 8), Color: color.RGBA{0, 255, 0, 255}},
+		{Instrument: roster.Kick, Steps: make([]bool, 8), Solo: true, Color: color.RGBA{255, 0, 0, 255}},
+		{Instrument: roster.Snare, Steps: make([]bool, 8), Color: color.RGBA{0, 255, 0, 255}},
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -707,7 +709,7 @@ func TestTimelineZone_DrawMuteSoloDimming_SoloRow(t *testing.T) {
 
 func TestTimelineZone_DrawHighlights_NoHighlights(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{255, 0, 0, 255}},
+		{Instrument: roster.Kick, Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{255, 0, 0, 255}},
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -724,7 +726,7 @@ func TestTimelineZone_DrawHighlights_NoHighlights(t *testing.T) {
 func TestTimelineZone_DrawHighlights_WithHighlights(t *testing.T) {
 	rows := []*DrumRow{
 		{
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			CellTypes:  make([]model.NodeType, 8),
 			Color:      color.RGBA{255, 0, 0, 255},
@@ -752,7 +754,7 @@ func TestTimelineZone_DrawHighlights_WithHighlights(t *testing.T) {
 func TestTimelineZone_DrawHighlights_SimpleDraw(t *testing.T) {
 	rows := []*DrumRow{
 		{
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			CellTypes:  make([]model.NodeType, 8),
 			Color:      color.RGBA{255, 0, 0, 255},
@@ -782,7 +784,7 @@ func TestTimelineZone_DrawHighlights_SimpleDraw(t *testing.T) {
 func TestTimelineZone_DrawHighlights_MuteHighlight(t *testing.T) {
 	rows := []*DrumRow{
 		{
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			CellTypes:  make([]model.NodeType, 8),
 			Color:      color.RGBA{255, 0, 0, 255},
@@ -809,7 +811,7 @@ func TestTimelineZone_DrawHighlights_MuteHighlight(t *testing.T) {
 func TestTimelineZone_DrawHighlights_MuteSimpleDraw(t *testing.T) {
 	rows := []*DrumRow{
 		{
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			CellTypes:  make([]model.NodeType, 8),
 			Color:      color.RGBA{255, 0, 0, 255},
@@ -1039,7 +1041,7 @@ func TestTimelineZone_SetTimelineBarHeight(t *testing.T) {
 func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 	var scrubbed int
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnSeekToStep = func(n int, origin string) { scrubbed = n }
+	z.callbacks.OnSeekToStep = func(n int, origin hooks.SeekOrigin) { scrubbed = n }
 	z.callbacks.TimelineBeats = func() int { return 16 }
 	z.callbacks.Length = func() int { return 8 }
 	z.callbacks.TimelineUnitsPerBeat = func() int { return 4 }
@@ -1074,7 +1076,7 @@ func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 func TestTimelineZone_DrawHighlights_OutOfRangeIndex(t *testing.T) {
 	rows := []*DrumRow{
 		{
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			CellTypes:  make([]model.NodeType, 8),
 			Color:      color.RGBA{255, 0, 0, 255},
@@ -1129,9 +1131,9 @@ func TestGridDragHitAdapter_OnWheel_NoCallback(t *testing.T) {
 
 func TestTimelineZone_DrawHighlights_WithRowOffset(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{255, 0, 0, 255}},
-		{Instrument: "snare", Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{0, 255, 0, 255}},
-		{Instrument: "hat", Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{0, 0, 255, 255}},
+		{Instrument: roster.Kick, Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{255, 0, 0, 255}},
+		{Instrument: roster.Snare, Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{0, 255, 0, 255}},
+		{Instrument: roster.Hihat, Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Color: color.RGBA{0, 0, 255, 255}},
 	}
 	z, _ := newTestTimelineZone()
 	z.callbacks.Rows = func() []*DrumRow { return rows }
@@ -1157,7 +1159,7 @@ func TestTimelineZone_DrawHighlights_WithRowOffset(t *testing.T) {
 func TestTimelineZone_DrawHighlights_StepsLengthMismatch(t *testing.T) {
 	rows := []*DrumRow{
 		{
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 4), // Mismatched: Steps len=4 but Length=8.
 			CellTypes:  make([]model.NodeType, 4),
 			Color:      color.RGBA{255, 0, 0, 255},

@@ -48,6 +48,7 @@ func TestGridLayerZOrder(t *testing.T) {
 		{"grid-sidebar", GZSidebar},
 		{"grid-group-menu", GZGroupMenu},
 		{"grid-cursor-label", GZCursorLabel},
+		{"grid-toast", GZToast},
 		{"grid-help-button", GZGridHelpButton},
 	}
 	if len(got) != len(want) {

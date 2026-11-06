@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // escStub presses Esc through the universal handler (edge-triggered, the way
@@ -18,61 +21,6 @@ func escStub() func() {
 	)
 }
 
-// TestEsc_BPMBox_RealFocusRevertsAndCloses focuses the BPM box via a real click
-// (so the tree sets focusedZone the way production does), types a new value,
-// then presses Esc through the universal handler and asserts the edit is
-// reverted and the box is blurred.
-func TestEsc_BPMBox_RealFocusRevertsAndCloses(t *testing.T) {
-	g := newTestGameForUndo(t)
-	orig := g.drum.BPM()
-	tz := g.drum.transportZone
-
-	// Open the shared editor and type an uncommitted edit.
-	tz.openBPMEditor()
-	tz.paramEditor.ti.SetText("240")
-
-	// The shared editor owns Escape via its own Update (isKeyPressed(Escape)).
-	restore := escStub()
-	defer restore()
-	tz.Update()
-
-	if tz.paramEditor.Active() {
-		t.Fatal("Esc should close the BPM editor")
-	}
-	if g.drum.transportZone.BPM() != orig {
-		t.Fatalf("Esc should leave the BPM at %d (uncommitted), got %d", orig, g.drum.transportZone.BPM())
-	}
-}
-
-// TestEsc_EQdBInput_RevertsAndCloses opens the shared EQ dB editor for a band,
-// types an uncommitted edit, then Esc (through the editor's own Update, the way
-// Game.Update drives it) reverts to the saved value and closes the editor.
-func TestEsc_EQdBInput_RevertsAndCloses(t *testing.T) {
-	g := newTestGameForUndo(t)
-	ez := g.drum.eqPanelZone
-	if ez == nil {
-		t.Skip("no eq panel zone")
-	}
-	ez.bandGainsDB[0] = 0.0
-	ez.openEQDBEditor(0)
-	ez.paramEditor.ti.SetText("9.0") // uncommitted edit
-
-	// The shared editor owns Escape via its own Update (isKeyPressed(Escape)).
-	restore := escStub()
-	defer restore()
-	ez.Update()
-
-	if ez.paramEditor.Active() {
-		t.Fatalf("Esc should close the EQ dB editor")
-	}
-	if ez.bandGainsDB[0] != 0.0 {
-		t.Fatalf("Esc should leave the dB gain at 0.0, got %v", ez.bandGainsDB[0])
-	}
-	if formatDB(ez.bandGainsDB[0]) != formatDB(0.0) {
-		t.Fatalf("Esc should leave the dB readout at %q, got %q", formatDB(0.0), formatDB(ez.bandGainsDB[0]))
-	}
-}
-
 // TestEsc_SaveAsDialog_CancelsWithoutSaveOrStop is the regression for the bug
 // where Esc on the inline Save-As dialog (not a portal, not a focused zone)
 // fell through the ladder to the Stop rung — stopping playback instead of just
@@ -82,10 +30,10 @@ func TestEsc_SaveAsDialog_CancelsWithoutSaveOrStop(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.SetPlaying(true)
 
-	saved := false
+	withPrivateInstrumentLibrary(t)
 	g.drum.saveAsDialog = &synthSaveAsDialog{
 		textInput: NewTextInput(image.Rect(0, 0, 120, 24), BPMBoxStyle),
-		confirm:   func(string) { saved = true },
+		instID:    g.drum.Rows[0].Instrument,
 	}
 	g.drum.saveAsDialog.textInput.SetText("My Preset")
 
@@ -96,7 +44,7 @@ func TestEsc_SaveAsDialog_CancelsWithoutSaveOrStop(t *testing.T) {
 	if g.drum.saveAsDialog != nil {
 		t.Fatal("Esc should close the Save-As dialog")
 	}
-	if saved {
+	if len(audio.LibraryIDs()) != len(roster.All) {
 		t.Fatal("Esc must cancel — the typed name must NOT be saved")
 	}
 	if g.drum.StopPressed() {

@@ -3,6 +3,8 @@ package audio
 import (
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestLastTriggerAt_UnknownIDIsZero(t *testing.T) {
@@ -28,17 +30,17 @@ func TestRecordVoiceTriggerThenReads(t *testing.T) {
 	t.Cleanup(ResetTriggerTimestamps)
 
 	before := time.Now()
-	RecordVoiceTrigger("kick")
+	RecordVoiceTrigger(roster.Kick)
 	after := time.Now()
 
-	got := LastTriggerAt("kick")
+	got := LastTriggerAt(roster.Kick)
 	if got.IsZero() {
 		t.Fatalf("LastTriggerAt(kick) = zero after RecordVoiceTrigger")
 	}
 	if got.Before(before) || got.After(after) {
 		t.Errorf("LastTriggerAt(kick) = %v; want in [%v, %v]", got, before, after)
 	}
-	since := SinceLastTrigger("kick")
+	since := SinceLastTrigger(roster.Kick)
 	if since > time.Second {
 		t.Errorf("SinceLastTrigger(kick) = %v; want < 1s", since)
 	}

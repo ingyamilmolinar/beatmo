@@ -3,10 +3,13 @@ package userprefs
 import (
 	"encoding/json"
 	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Instrument data (user recipes, per-recipe overrides, sample-edit descriptors,
-// and the WAV version registry) lives in its OWN store, physically separate from
+// Instrument data (the user's instrument library, sample-edit descriptors, and
+// the WAV version registry) lives in its OWN store, physically separate from
 // the prefs blob — so sharing/importing instruments never touches favorites,
 // language, or UI state, and vice-versa. See
 // docs/superpowers/specs/2026-07-19-portable-instrument-format-design.md.
@@ -24,30 +27,32 @@ const (
 
 // instrumentsDoc is the on-the-wire schema for the instrument store.
 type instrumentsDoc struct {
-	UserRecipes     map[string]json.RawMessage    `json:"user_recipes,omitempty"`
-	RecipeOverrides map[string]map[string]float64 `json:"recipe_overrides,omitempty"`
-	SampleEdits     map[string]map[string]float64 `json:"sample_edits,omitempty"`
-	WavRegistry     json.RawMessage               `json:"wav_registry,omitempty"`
+	schema.Envelope
+	SampleEdits map[instrument.ID]map[string]float64 `json:"sample_edits,omitempty"`
+	WavRegistry json.RawMessage                      `json:"wav_registry,omitempty"`
+	// Instruments holds the user's library: one instrument document per id
+	// (spec 2026-10-04 §6). Opaque bytes here; audio parses and validates.
+	Instruments map[instrument.ID]json.RawMessage `json:"instruments,omitempty"`
+	// Library is the versioned instrument library (audio's objects store).
+	// Since it exists, Instruments is only ever read (once, into it) and is
+	// kept as it was.
+	Library json.RawMessage `json:"library,omitempty"`
 }
 
 // InstrumentStore is the decoupled persistence surface for instrument data. It
-// satisfies the audio package's UserRecipeSource (LoadRecipeOverrides +
-// LoadUserRecipes) and the RecipeStore write surface, so bootstraps can point
-// audio.ApplyUserRecipeOverrides + ui.SetRecipeSink at it instead of prefs.
+// satisfies audio.InstrumentLibrarySource + InstrumentLibrarySink (the user's
+// instrument documents), so bootstraps point audio.LoadUserInstrumentLibrary +
+// audio.SetInstrumentLibrarySink at it instead of prefs.
 type InstrumentStore interface {
-	LoadUserRecipes() (map[string][]byte, error)
-	SaveUserRecipe(id string, doc []byte) error
-	DeleteUserRecipe(id string) error
-
-	LoadRecipeOverrides() (map[string]map[string]float64, error)
-	SaveRecipeOverride(recipeID string, params map[string]float64) error
-	DeleteRecipeOverride(recipeID string) error
-
-	LoadSampleEdits() (map[string]map[string]float64, error)
-	SaveSampleEdit(instID string, fields map[string]float64) error
+	LoadSampleEdits() (map[instrument.ID]map[string]float64, error)
+	SaveSampleEdit(instID instrument.ID, fields map[string]float64) error
 
 	LoadWavRegistry() ([]byte, error)
 	SaveWavRegistry(raw []byte) error
+
+	LoadInstrumentDocs() (map[instrument.ID][]byte, error)
+	LoadLibrary() ([]byte, error)
+	SaveLibrary(blob []byte) error
 
 	WaitFlushed()
 	Close()
@@ -95,118 +100,57 @@ func (s *instrumentStore) ensureLoadedLocked() {
 	if len(raw) == 0 {
 		return
 	}
-	if err := json.Unmarshal(raw, &s.doc); err != nil && s.logf != nil {
-		s.logf("instrument store: parse failed: %v", err)
-	}
-}
-
-// persistLocked marshals the current doc and writes it through the backend.
-func (s *instrumentStore) persistLocked() {
-	raw, err := json.MarshalIndent(&s.doc, "", "  ")
-	if err != nil {
+	var doc instrumentsDoc
+	if err := json.Unmarshal(raw, &doc); err != nil {
 		if s.logf != nil {
-			s.logf("instrument store: marshal failed: %v", err)
+			s.logf("instrument store: parse failed: %v", err)
 		}
 		return
 	}
-	if err := s.backend.write(raw); err != nil && s.logf != nil {
+	// Same strict rule as prefs, and the same recovery: this store is loaded
+	// automatically at boot, so an unreadable version — an absent one
+	// included — starts from empty (WARN) rather than failing startup.
+	if err := doc.Validate("instrument store"); err != nil {
+		if s.logf != nil {
+			s.logf("instrument store: %v; starting from empty", err)
+		}
+		return
+	}
+	// The recipe-era sections (user_recipes / recipe_overrides) predate
+	// instrument documents and are not read; say so once, and the next write
+	// drops them (spec 2026-10-04 §6: no migration before the first release).
+	var legacy struct {
+		UserRecipes     json.RawMessage `json:"user_recipes"`
+		RecipeOverrides json.RawMessage `json:"recipe_overrides"`
+	}
+	if json.Unmarshal(raw, &legacy) == nil && (len(legacy.UserRecipes) > 0 || len(legacy.RecipeOverrides) > 0) && s.logf != nil {
+		s.logf("instrument store: ignoring legacy user_recipes/recipe_overrides (instrument documents replace them; re-save the instruments in this build)")
+	}
+	s.doc = doc
+}
+
+// persistLocked marshals the current doc and writes it through the backend.
+// persistLocked writes the whole file; a failure is logged and returned.
+func (s *instrumentStore) persistLocked() error {
+	s.doc.Envelope = schema.Current()
+	raw, err := json.MarshalIndent(&s.doc, "", "  ")
+	if err == nil {
+		err = s.backend.write(raw)
+	}
+	if err != nil && s.logf != nil {
 		s.logf("instrument store: write failed: %v", err)
 	}
+	return err
 }
 
-func (s *instrumentStore) LoadUserRecipes() (map[string][]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	out := make(map[string][]byte, len(s.doc.UserRecipes))
-	for id, raw := range s.doc.UserRecipes {
-		cp := make([]byte, len(raw))
-		copy(cp, raw)
-		out[id] = cp
-	}
-	return out, nil
-}
-
-func (s *instrumentStore) SaveUserRecipe(id string, doc []byte) error {
-	if id == "" {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	if s.doc.UserRecipes == nil {
-		s.doc.UserRecipes = map[string]json.RawMessage{}
-	}
-	cp := make([]byte, len(doc))
-	copy(cp, doc)
-	s.doc.UserRecipes[id] = cp
-	s.persistLocked()
-	return nil
-}
-
-func (s *instrumentStore) DeleteUserRecipe(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	if _, ok := s.doc.UserRecipes[id]; !ok {
-		return nil
-	}
-	delete(s.doc.UserRecipes, id)
-	s.persistLocked()
-	return nil
-}
-
-func (s *instrumentStore) LoadRecipeOverrides() (map[string]map[string]float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	return copyFloatMap2(s.doc.RecipeOverrides), nil
-}
-
-func (s *instrumentStore) SaveRecipeOverride(recipeID string, params map[string]float64) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	if len(params) == 0 {
-		delete(s.doc.RecipeOverrides, recipeID)
-		s.persistLocked()
-		return nil
-	}
-	if s.doc.RecipeOverrides == nil {
-		s.doc.RecipeOverrides = map[string]map[string]float64{}
-	}
-	cp := make(map[string]float64, len(params))
-	for k, v := range params {
-		cp[k] = v
-	}
-	s.doc.RecipeOverrides[recipeID] = cp
-	s.persistLocked()
-	return nil
-}
-
-func (s *instrumentStore) DeleteRecipeOverride(recipeID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	if _, ok := s.doc.RecipeOverrides[recipeID]; !ok {
-		return nil
-	}
-	delete(s.doc.RecipeOverrides, recipeID)
-	s.persistLocked()
-	return nil
-}
-
-func (s *instrumentStore) LoadSampleEdits() (map[string]map[string]float64, error) {
+func (s *instrumentStore) LoadSampleEdits() (map[instrument.ID]map[string]float64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureLoadedLocked()
 	return copyFloatMap2(s.doc.SampleEdits), nil
 }
 
-func (s *instrumentStore) SaveSampleEdit(instID string, fields map[string]float64) error {
+func (s *instrumentStore) SaveSampleEdit(instID instrument.ID, fields map[string]float64) error {
 	if instID == "" {
 		return nil
 	}
@@ -219,7 +163,7 @@ func (s *instrumentStore) SaveSampleEdit(instID string, fields map[string]float6
 		return nil
 	}
 	if s.doc.SampleEdits == nil {
-		s.doc.SampleEdits = map[string]map[string]float64{}
+		s.doc.SampleEdits = map[instrument.ID]map[string]float64{}
 	}
 	cp := make(map[string]float64, len(fields))
 	for k, v := range fields {
@@ -258,8 +202,8 @@ func (s *instrumentStore) SaveWavRegistry(raw []byte) error {
 func (s *instrumentStore) WaitFlushed() {}
 func (s *instrumentStore) Close()       {}
 
-func copyFloatMap2(m map[string]map[string]float64) map[string]map[string]float64 {
-	out := make(map[string]map[string]float64, len(m))
+func copyFloatMap2(m map[instrument.ID]map[string]float64) map[instrument.ID]map[string]float64 {
+	out := make(map[instrument.ID]map[string]float64, len(m))
 	for k, inner := range m {
 		cp := make(map[string]float64, len(inner))
 		for ik, iv := range inner {
@@ -268,4 +212,42 @@ func copyFloatMap2(m map[string]map[string]float64) map[string]map[string]float6
 		out[k] = cp
 	}
 	return out
+}
+
+func (s *instrumentStore) LoadInstrumentDocs() (map[instrument.ID][]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make(map[instrument.ID][]byte, len(s.doc.Instruments))
+	for id, raw := range s.doc.Instruments {
+		out[id] = append([]byte(nil), raw...)
+	}
+	return out, nil
+}
+
+// LoadLibrary returns the versioned instrument library (audio's objects
+// store, opaque here); nil when none was saved yet.
+func (s *instrumentStore) LoadLibrary() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	if len(s.doc.Library) == 0 {
+		return nil, nil
+	}
+	return append([]byte(nil), s.doc.Library...), nil
+}
+
+// SaveLibrary replaces the versioned library. A write that fails returns its
+// error and leaves the stored library as it was.
+func (s *instrumentStore) SaveLibrary(blob []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	prev := s.doc.Library
+	s.doc.Library = append(json.RawMessage(nil), blob...)
+	if err := s.persistLocked(); err != nil {
+		s.doc.Library = prev
+		return err
+	}
+	return nil
 }

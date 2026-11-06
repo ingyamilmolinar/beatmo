@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
@@ -127,7 +128,12 @@ for (const scenario of activeScenarios) {
   const client = await page.context().newCDPSession(page);
 
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof startPlay === "function", { timeout: 30000 });
+  // Wait for EVERY Go export used below, not just one: Go registers them one
+  // at a time, and under load the page runs between registrations — `x?.()`
+  // does not guard an undeclared global (ReferenceError: resetPerfStats).
+  await page.waitForFunction(() => ["startPlay", "stopPlay", "resetPerfStats", "perfStats", "resetAudioScheduleMetrics",
+    "getAudioScheduleMetrics", "buildPerfRect", "setBPM", "forceDraw", "totalRows"].every((f) => typeof window[f] === "function"),
+    null, { timeout: 30000 });
 
   // ---------------------------------------------------------------------------
   // 1a. Capture CDP Performance.getMetrics BEFORE
@@ -169,10 +175,13 @@ for (const scenario of activeScenarios) {
     }
 
     if (origBatchFlat) {
-      window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen) => {
+      // Forward EVERY argument: the trailing ones carry the sequencer identity
+      // and the audio lane's voice ids — dropped, every lane note became an
+      // uncancellable vid-0 voice and the profile measured another engine.
+      window.playSoundsBatchFlat = (ids, ...rest) => {
         const t0 = performance.now();
         const size = ids ? ids.length : 0;
-        origBatchFlat(ids, vols, pitches, durs, whens, hasWhen);
+        origBatchFlat(ids, ...rest);
         const t1 = performance.now();
         fp.batchArrivals.push({ timestamp: t0, batchSize: size, source: "flat" });
         fp.crossingTimings.push({ jsEntryTime: t0, enqueueDuration: t1 - t0, batchSize: size });
@@ -210,7 +219,7 @@ for (const scenario of activeScenarios) {
   // ---------------------------------------------------------------------------
   // Run playback
   // ---------------------------------------------------------------------------
-  await page.evaluate(() => startPlay());
+  await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
   await page.waitForTimeout(DURATION_SEC * 1000);
   await page.evaluate(() => stopPlay?.());
 

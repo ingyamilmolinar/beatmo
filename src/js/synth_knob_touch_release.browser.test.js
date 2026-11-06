@@ -168,8 +168,16 @@ try {
     // (min>=0). For each, write a value at ~30% of the range — provably
     // distinct from BOTH min and max — then assert EXACT round-trip equality.
     // A snap-to-max, snap-to-min, OR snap-to-any-other-value bug now fails.
-    const bipolar = knobs.find(k => k.min < 0 && k.max > 0);
-    const unipolar = knobs.find(k => k.min >= 0 && k.max > k.min);
+    // Probe the WRITTEN instrument's own continuous knobs: the Synth tab's
+    // controls belong to whatever instrument it shows; instrumentParamDefs is
+    // the whole ABI schema, of which a document declares only its modules'
+    // values (getInstrumentParams — the Synth tab's visibility rule); and a
+    // discrete knob (enum) never holds a 30% value.
+    const { defs, declared } = await page.evaluate((id) => ({ defs: instrumentParamDefs(id), declared: getInstrumentParams(id) }), instID);
+    const continuous = defs.filter(d => d.name in declared && d.group !== "hidden" && !(d.enum && d.enum.length) &&
+      Number.isFinite(d.min) && Number.isFinite(d.max) && d.max > d.min);
+    const bipolar = continuous.find(k => k.min < 0 && k.max > 0);
+    const unipolar = continuous.find(k => k.min >= 0 && k.max > k.min);
 
     // The original regression was "mid-range write snaps to max". The probe
     // value at 30% of range is far from max, far from min, and far from the

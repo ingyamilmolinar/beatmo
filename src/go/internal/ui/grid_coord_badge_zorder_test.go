@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"testing"
@@ -184,10 +183,14 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 	if bcy < 2 {
 		bcy = 2
 	}
-	badgeText := fmt.Sprintf("(%d, %d)", g.coordBadgeNode.I, g.coordBadgeNode.J)
-	tw := len(badgeText)*7 + 8
+	// Use the real formatter and the real width metric rather than restating
+	// them: this test had its own fmt.Sprintf("(%d, %d)") with raw grid units,
+	// which already disagreed with the shipped beat-axis format and would drift
+	// further every time the badge's contents change.
+	badgeText := g.coordBadgeText(g.coordBadgeNode)
+	tw := coordBadgePillWidth(badgeText)
 	badgePill := image.Rect(bcx-tw/2, bcy-1, bcx+tw/2, bcy+13)
-	panelRect := g.sidebar.rects["panel"]
+	panelRect := g.sidebar.rects[sbPanel]
 	if panelRect.Empty() {
 		t.Fatal("sidebar panel rect should be non-empty once open")
 	}

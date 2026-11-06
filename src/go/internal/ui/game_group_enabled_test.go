@@ -48,7 +48,7 @@ func TestEnableToggleDirtiesSave(t *testing.T) {
 
 	g.groupMenu.OpenAt(gid, 100, 100)
 	drawGroupMenuFrame(g)
-	b, ok := g.groupMenu.btns["save"]
+	b, ok := g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing")
 	}
@@ -64,7 +64,7 @@ func TestEnableToggleDirtiesSave(t *testing.T) {
 	advanceFrames(g, 2)
 	drawGroupMenuFrame(g)
 
-	b, ok = g.groupMenu.btns["save"]
+	b, ok = g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing after toggle")
 	}
@@ -79,7 +79,7 @@ func TestEnableToggleDirtiesSave(t *testing.T) {
 	if got := len(g.undoManager.undo) - undoBefore; got != 1 {
 		t.Fatalf("save must record exactly 1 undo step, got delta %d", got)
 	}
-	b, ok = g.groupMenu.btns["save"]
+	b, ok = g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing after save")
 	}

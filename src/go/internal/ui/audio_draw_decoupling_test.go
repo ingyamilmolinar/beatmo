@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Ensure that heavy DrumView.Draw work (many rows, long timelines) does not
@@ -31,12 +33,12 @@ func TestAudioDecoupledDuringHeavyDraw(t *testing.T) {
 	// Capture play callbacks.
 	const total = 64
 	var played atomic.Int32
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { played.Add(1) })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { played.Add(1) })
 
 	// Hammer Draw while queueing sounds.
 	img := ebiten.NewImage(w, h)
 	for i := 0; i < total; i++ {
-		g.queueSoundParams("snare", 1, 0, 1)
+		g.queueSoundParams(roster.Snare, 1, 0, 1)
 		g.drawDrumPane(img)
 	}
 

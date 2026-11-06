@@ -2,7 +2,12 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // TestVoiceEmissionPublishesReport exercises the Task 3.2 wiring: a voice
 // scheduled with a parity identity (row, abs) publishes exactly one
@@ -14,7 +19,7 @@ func TestVoiceEmissionPublishesReport(t *testing.T) {
 
 	// Schedule a voice to start after 128 samples, tagged (row=3, abs=9).
 	m.pos = 0
-	m.Schedule("kick", newSineVoice(440, sampleRate, 4096), 128, 3, 9)
+	m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, 4096), 128, 3, 9)
 
 	// Drive Read for enough samples to cross the start boundary.
 	buf := make([]byte, 2*512)
@@ -51,11 +56,11 @@ func TestProcessBlockEmitPathAllocFree(t *testing.T) {
 
 	// Warm up slot/channel/instBuf lazy-init paths before measuring so the
 	// measured loop only exercises the steady-state per-block code.
-	slot := m.instrumentSlot("kick")
-	ch := channelForInstrument("kick")
+	slot := m.instrumentSlot(channel.Of(roster.Kick))
+	ch := channelForInstrument(channel.Of(roster.Kick))
 	// Long enough to survive every measured iteration without exhausting.
 	voice := newSineVoice(440, sampleRate, blockSize*1000)
-	vs := &voiceState{start: 0, id: "kick", slot: slot, v: voice, ch: ch, row: 3, abs: 9}
+	vs := &voiceState{start: 0, id: channel.Of(roster.Kick), slot: slot, v: voice, ch: ch, row: 3, abs: 9}
 	m.mu.Lock()
 	m.voices = append(m.voices, vs)
 	m.mu.Unlock()

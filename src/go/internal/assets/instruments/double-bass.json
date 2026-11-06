@@ -1,0 +1,135 @@
+{
+  "schema_version": "0.0.1",
+  "id": "double-bass",
+  "name": "Double Bass",
+  "category": "modular",
+  "notes": "doubleBassSeed: the dark bowed bass of the string section — bowed physical model\nthrough the cello body, a slow heavy onset, more bow friction, dark roll-off.\nDefaults to A3 like everything else; a rich low timbre — pitch nodes down for a\nwalking bass.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.5066,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.12,
+        "amp_curve": 1,
+        "amp_decay": 0.12,
+        "amp_release": 0.3,
+        "amp_sustain": 0.9
+      }
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0.6,
+        "body_model": 3,
+        "bow_dynamics": 0.32
+      },
+      "notes": "body_mix: cello body — big, dark\nbody_model: cello body — big, dark"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.55,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 1600,
+        "filter_resonance": 0.6,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.2,
+        "lfo_depth": 0.025,
+        "lfo_rate": 3.8,
+        "lfo_target": 1
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 0,
+        "unison_drift_depth": 0,
+        "unison_drift_rate": 0,
+        "unison_mix": 0.5,
+        "unison_voices": 1
+      }
+    }
+  },
+  "source": {
+    "type": "osc.bowed",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_bow_loss": 0.55,
+      "osc_bow_pos": 0.13,
+      "osc_bow_slope": 3,
+      "osc_bow_vel": 0.25
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.5,
+        "env_fast_rate": 9,
+        "env_tail_mix": 0.7,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1100,
+        "filt_q": 0.7,
+        "filt_type": 4,
+        "gain": 0.03,
+        "noise_offset": 0
+      }
+    }
+  ]
+}

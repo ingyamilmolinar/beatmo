@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Ensure parity tap stays quiet when DrumView slate matches predictor/audio.
@@ -89,8 +90,8 @@ func TestSchedulerParityTime_DetectsMismatch(t *testing.T) {
 			inst := ""
 			missing := false
 			if g.drum != nil && len(g.drum.Rows) > 0 {
-				inst = g.drum.Rows[0].Instrument
-				missing = !g.drum.IsInstrumentAvailable(inst)
+				inst = string(g.drum.Rows[0].Instrument)
+				missing = !g.drum.IsInstrumentAvailable(instrument.ID(inst))
 			}
 			t.Fatalf("expected panic, got nil (expected=%v visible=%v slate=%v inst=%q missing=%v seqNextIdxs=%v nextBeatIdxs=%v renderReady=%v)", expected, visible, g.drum.Rows[0].Steps[0], inst, missing, g.seqNextIdxs, g.nextBeatIdxs, g.renderReady)
 		}

@@ -8,7 +8,11 @@ import (
 )
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
-	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) {
+	// Keyed on ThemeGeneration: the fill is colBGBottom, so a runtime theme
+	// change must rebuild it (it used to keep the previous theme's background
+	// until a resize).
+	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) || dv.bgCacheThemeGen != ThemeGeneration() {
+		dv.bgCacheThemeGen = ThemeGeneration()
 		for _, old := range dv.bgCache {
 			releaseImage(old)
 		}
@@ -41,7 +45,7 @@ func (dv *DrumView) updateRowRects() {
 	if len(dv.Rows[0].Steps) == 0 {
 		return
 	}
-	w := dv.timelineRect.Dx()
+	w := dv.cellGridRect.Dx()
 	if w <= 0 {
 		w = dv.Bounds.Dx() - dv.labelW - dv.controlsW
 	}

@@ -107,7 +107,7 @@ func extractDeployManifest(t *testing.T, script string) map[string]struct{} {
 	t.Helper()
 	out := map[string]struct{}{}
 	// Match `NAME_FILES=( ... )` non-greedy, then strip quoted entries.
-	arrayRE := regexp.MustCompile(`(?s)(?:ENTRY_FILES|ASSET_FILES|WASM_FILES)=\(\s*(.*?)\)`)
+	arrayRE := regexp.MustCompile(`(?s)(?:ENTRY_FILES|ASSET_FILES|WASM_FILES|MEDIA_FILES)=\(\s*(.*?)\)`)
 	itemRE := regexp.MustCompile(`"([^"]+)"`)
 	matches := arrayRE.FindAllStringSubmatch(script, -1)
 	if len(matches) == 0 {
@@ -134,6 +134,7 @@ func TestDeployManifestCoversRuntimeRefs(t *testing.T) {
 	root := repoRoot(t)
 	html := mustRead(t, filepath.Join(root, "src", "js", "index.html"))
 	audio := mustRead(t, filepath.Join(root, "src", "js", "audio.js"))
+	landing := mustRead(t, filepath.Join(root, "src", "js", "landing.js"))
 	script := mustRead(t, filepath.Join(root, "scripts", "deploy-wasm-gcs.sh"))
 
 	runtimeRefs := map[string]struct{}{}
@@ -141,6 +142,11 @@ func TestDeployManifestCoversRuntimeRefs(t *testing.T) {
 		runtimeRefs[k] = struct{}{}
 	}
 	for k := range extractJSRefs(audio) {
+		runtimeRefs[k] = struct{}{}
+	}
+	// The landing (loaded by index.html's head script) references its worker
+	// and its media through new URL(..., import.meta.url).
+	for k := range extractJSRefs(landing) {
 		runtimeRefs[k] = struct{}{}
 	}
 

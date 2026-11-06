@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // samplerGainDiaDesktop returns the Gain knob's dial diameter on the desktop
@@ -17,10 +18,10 @@ func samplerGainDiaDesktop(t *testing.T, loc i18n.Locale) int {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
 	i18n.SetLocale(loc)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	// A realistic desktop audio-panel content height (the 180px rect other
 	// tests use is artificially short — it can't fit a min-diameter dial).
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 260), "kick")
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 260), roster.Kick)
 	return g.drum.sampler.knobs[samplerKnobGain].Rect().Dx()
 }
 

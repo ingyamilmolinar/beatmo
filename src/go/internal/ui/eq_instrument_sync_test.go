@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestEQActiveChannelFollowsInstrumentChange verifies the regression: when
@@ -21,18 +23,18 @@ func TestEQActiveChannelFollowsInstrumentChange(t *testing.T) {
 	dv.recalcButtons()
 
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
 
 	dv.selRow = 0
-	dv.setEQActiveChannel("kick")
-	if dv.eqActiveChannel != "kick" {
+	dv.setEQActiveChannel(channel.Of(roster.Kick))
+	if dv.eqActiveChannel != channel.Of(roster.Kick) {
 		t.Fatalf("setup: eqActiveChannel = %q, want %q", dv.eqActiveChannel, "kick")
 	}
 
-	dv.SetInstrument("hihat")
+	dv.SetInstrument(roster.Hihat)
 
-	if dv.eqActiveChannel != "hihat" {
+	if dv.eqActiveChannel != channel.Of(roster.Hihat) {
 		t.Fatalf("eqActiveChannel = %q, want %q (EQ should follow row's new instrument)", dv.eqActiveChannel, "hihat")
 	}
 	if dv.eqChannelBtn() == nil {
@@ -62,20 +64,20 @@ func TestEQActiveChannelUnchangedWhenNotTracking(t *testing.T) {
 	dv.recalcButtons()
 
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[1].Instrument = "snare"
+	dv.Rows[1].Instrument = roster.Snare
 	dv.Rows[1].Name = "Snare"
 
-	dv.setEQActiveChannel("snare")
-	if dv.eqActiveChannel != "snare" {
+	dv.setEQActiveChannel(channel.Of(roster.Snare))
+	if dv.eqActiveChannel != channel.Of(roster.Snare) {
 		t.Fatalf("setup: eqActiveChannel = %q, want %q", dv.eqActiveChannel, "snare")
 	}
 
 	dv.selRow = 0
-	dv.SetInstrument("hihat")
+	dv.SetInstrument(roster.Hihat)
 
-	if dv.eqActiveChannel != "snare" {
+	if dv.eqActiveChannel != channel.Of(roster.Snare) {
 		t.Fatalf("eqActiveChannel = %q, want %q (EQ was not tracking the changed row)", dv.eqActiveChannel, "snare")
 	}
 }
@@ -93,13 +95,13 @@ func TestEQDropdownClosedWhenTrackedInstrumentChanges(t *testing.T) {
 	dv.recalcButtons()
 
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[1].Instrument = "snare"
+	dv.Rows[1].Instrument = roster.Snare
 	dv.Rows[1].Name = "Snare"
 
 	dv.selRow = 0
-	dv.setEQActiveChannel("kick")
+	dv.setEQActiveChannel(channel.Of(roster.Kick))
 
 	// Open the dropdown via real input simulation, mirroring
 	// TestEQChannelDropdownOpensAndSelects.
@@ -133,12 +135,12 @@ func TestEQDropdownClosedWhenTrackedInstrumentChanges(t *testing.T) {
 	}
 
 	// Mutating the tracked instrument must close the dropdown.
-	dv.SetInstrument("hihat")
+	dv.SetInstrument(roster.Hihat)
 
 	if dv.eqPanelZone.ChannelDropdownOpen() {
 		t.Fatalf("ChannelDropdownOpen() = true after instrument change, want false")
 	}
-	if dv.eqActiveChannel != "hihat" {
+	if dv.eqActiveChannel != channel.Of(roster.Hihat) {
 		t.Fatalf("eqActiveChannel = %q, want %q", dv.eqActiveChannel, "hihat")
 	}
 }

@@ -66,21 +66,18 @@ func TestGroupMenuParamControlAbsent(t *testing.T) {
 	}
 	g.groupMenu.OpenAt(gid, 100, 100)
 	advanceFrames(g, 1)
-	if _, ok := g.groupMenu.rects["param"]; ok {
+	if _, ok := g.groupMenu.laidOutID("param"); ok {
 		t.Fatalf("param control rect must not exist (rects=%v)", g.groupMenu.rects)
-	}
-	if _, ok := g.groupMenu.btns["param"]; ok {
-		t.Fatalf("param button must not exist")
 	}
 
 	g.groupMenu.stepRuleDelta(model.GroupParamVolume, 1)
 	advanceFrames(g, 2)
-	if _, ok := g.groupMenu.rects["param"]; ok {
+	if _, ok := g.groupMenu.laidOutID("param"); ok {
 		t.Fatalf("param control must stay absent after enabling a rule")
 	}
 	// "delta-"/"delta+" (the old shared control ids) must also be gone.
 	for _, id := range []string{"delta", "delta-", "delta+", "deltaval"} {
-		if _, ok := g.groupMenu.rects[id]; ok {
+		if _, ok := g.groupMenu.laidOutID(id); ok {
 			t.Fatalf("old shared delta control %q must not exist", id)
 		}
 	}

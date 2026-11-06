@@ -118,6 +118,21 @@ func (a *rowArchive) trimAfter(maxAbs int) {
 	}
 }
 
+// takeFrom removes and returns the entries with abs >= minAbs (abs order).
+func (a *rowArchive) takeFrom(minAbs int) []archiveEntry {
+	if a == nil || len(a.entries) == 0 {
+		return nil
+	}
+	n := len(a.entries)
+	pos := sort.Search(n, func(i int) bool { return int(a.entries[i].abs) >= minAbs })
+	if pos >= n {
+		return nil
+	}
+	out := append([]archiveEntry(nil), a.entries[pos:]...)
+	a.entries = a.entries[:pos]
+	return out
+}
+
 // clear empties the archive while retaining capacity for reuse.
 func (a *rowArchive) clear() {
 	if a == nil {

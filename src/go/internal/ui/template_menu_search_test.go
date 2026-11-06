@@ -40,14 +40,14 @@ func templateRowLabels(dv *DrumView) []string {
 
 func TestTemplateMenu_SearchFiltersRows(t *testing.T) {
 	dv := openTemplatePageForSearch(t)
-	dv.setTemplateSearchQuery("hotel")
+	dv.setTemplateSearchQuery("brandenburg")
 
 	labels := templateRowLabels(dv)
-	if !containsStr(labels, "Eagles — Hotel California") {
-		t.Fatalf("query 'hotel' dropped its own template; got %v", labels)
+	if !containsStr(labels, "Bach — Brandenburg Concerto No. 3") {
+		t.Fatalf("query 'brandenburg' dropped its own template; got %v", labels)
 	}
 	if containsStr(labels, "Miles Davis — So What") {
-		t.Fatalf("query 'hotel' should exclude unrelated templates; got %v", labels)
+		t.Fatalf("query 'brandenburg' should exclude unrelated templates; got %v", labels)
 	}
 }
 
@@ -59,8 +59,8 @@ func TestTemplateMenu_EmptyQueryShowsAllInOrder(t *testing.T) {
 	if want := len(assets.Templates()); len(labels) != want {
 		t.Fatalf("empty query = %d template rows, want %d (all)", len(labels), want)
 	}
-	if labels[0] != "Bach — Toccata & Fugue in D minor" {
-		t.Fatalf("empty query first row = %q, want the first templateOrder entry", labels[0])
+	if want := assets.Templates()[0].Display; labels[0] != want {
+		t.Fatalf("empty query first row = %q, want the first templateOrder entry %q", labels[0], want)
 	}
 }
 
@@ -139,11 +139,11 @@ func TestTemplateMenu_HeaderAndSearchPinnedUnderScroll(t *testing.T) {
 
 func TestTemplateMenu_SearchHighlightsMatches(t *testing.T) {
 	dv := openTemplatePageForSearch(t)
-	dv.setTemplateSearchQuery("hotel")
+	dv.setTemplateSearchQuery("brandenburg")
 
 	var found bool
 	for _, it := range dv.overflowItems() {
-		if it.iconID != IconTemplate || it.label != "Eagles — Hotel California" {
+		if it.iconID != IconTemplate || it.label != "Bach — Brandenburg Concerto No. 3" {
 			continue
 		}
 		found = true
@@ -158,7 +158,7 @@ func TestTemplateMenu_SearchHighlightsMatches(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("Eagles template row not present for query 'hotel'")
+		t.Fatal("Brandenburg template row not present for query 'brandenburg'")
 	}
 }
 
@@ -183,7 +183,7 @@ func TestTemplateMenu_EscapeClearsQueryKeepsOpen(t *testing.T) {
 
 func TestTemplateMenu_CloseResetsQuery(t *testing.T) {
 	dv := openTemplatePageForSearch(t)
-	dv.setTemplateSearchQuery("hotel")
+	dv.setTemplateSearchQuery("brandenburg")
 	dv.closeOverflowMenu()
 
 	if dv.templateSearchQuery != "" {
@@ -216,13 +216,13 @@ func TestTemplateMenu_TypingUpdatesQueryAndFilters(t *testing.T) {
 	dv := openTemplatePageForSearch(t)
 	dv.overflowPopupBtns(dv.overflowPopupRect()) // create the box
 	// Simulate a committed edit in the box, then poll (mirrors a typed frame).
-	dv.templateSearchBox.SetText("hotel")
+	dv.templateSearchBox.SetText("brandenburg")
 	dv.updateTemplateSearch()
 
-	if dv.templateSearchQuery != "hotel" {
+	if dv.templateSearchQuery != "brandenburg" {
 		t.Fatalf("poll did not read the box value into the query; got %q", dv.templateSearchQuery)
 	}
-	if !containsStr(templateRowLabels(dv), "Eagles — Hotel California") {
+	if !containsStr(templateRowLabels(dv), "Bach — Brandenburg Concerto No. 3") {
 		t.Fatalf("typed query did not filter the list")
 	}
 }

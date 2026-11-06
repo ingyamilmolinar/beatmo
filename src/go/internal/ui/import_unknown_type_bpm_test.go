@@ -3,9 +3,12 @@ package ui
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Unknown node types are treated as regular and should not break import.
+// An unknown node type rejects the file (one spelling per type); a negative
+// BPM in an otherwise valid file is ignored.
 func TestImportUnknownNodeTypeAndNegativeBPM(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -22,16 +25,21 @@ func TestImportUnknownNodeTypeAndNegativeBPM(t *testing.T) {
 		Origin                int
 	}
 	f := struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Nodes       []node `json:"nodes"`
-		Instruments []inst `json:"instruments"`
-	}{Version: 1, Subdiv: 32, BPM: -10,
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Nodes         []node `json:"nodes"`
+		Instruments   []inst `json:"instruments"`
+	}{SchemaVersion: schema.Version, Subdiv: 32, BPM: -10,
 		Nodes:       []node{{ID: 1, I: 0, J: 0, Type: "mystery"}},
 		Instruments: []inst{{Name: "R", ID: "snare", Kind: "builtin", Color: "#FFFFFFFF", Volume: 1, Origin: 1}},
 	}
 	data, _ := json.Marshal(f)
+	if err := g.Import(data); err == nil {
+		t.Fatal("import accepted node type \"mystery\"")
+	}
+	f.Nodes[0].Type = "regular"
+	data, _ = json.Marshal(f)
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import failed: %v", err)
 	}
@@ -50,6 +58,6 @@ func TestImportUnknownNodeTypeAndNegativeBPM(t *testing.T) {
 		}
 	}
 	if got == 0 {
-		t.Fatalf("no regular node created from unknown type")
+		t.Fatalf("no regular node created")
 	}
 }

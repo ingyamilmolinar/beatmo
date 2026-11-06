@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestSchedulerVsDrumRow_MultiRowMixedRules verifies both rows stay in lockstep
@@ -32,37 +33,37 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 	g.addEdge(F, A)
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(B.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(C.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(C.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(D.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(D.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(E.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 4
 		g.graph.SetNodeParams(E.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(F.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 4
 		g.graph.SetNodeParams(F.ID, p)
 	}
@@ -79,19 +80,19 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 	g.addEdge(I, G)
 	if n, ok := g.graph.GetNodeByID(G.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(G.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(H.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(H.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(I.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(I.ID, p)
 	}
@@ -116,7 +117,7 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 
 	got0 := make([]bool, horizon)
 	got1 := make([]bool, horizon)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) {
 		switch id {
 		case g.drum.Rows[0].Instrument:
 			if len(g.seqNextIdxs) < 1 {

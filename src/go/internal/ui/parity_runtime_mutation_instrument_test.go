@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestParityToleratesInstrumentChangeMidPlay reproduces the cross-row parity
@@ -55,7 +56,7 @@ func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 		t.Fatalf("expected row labels for selection")
 	}
 	g.drum.rowLabels()[1].OnClick()
-	g.drum.SetInstrument("snare")
+	g.drum.SetInstrument(roster.Snare)
 	g.drum.Rows[1].Origin = b0.ID
 	g.drum.Rows[1].Node = g.nodeByID(b0.ID)
 
@@ -83,8 +84,8 @@ func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 	// Then change it again (simulating the user scrolling through the menu —
 	// matches the exact field repro: cowbell-1 -> cowbell-2 in rapid succession).
 	g.drum.selRow = 1
-	g.drum.SetInstrument("hihat")
-	g.drum.SetInstrument("clap")
+	g.drum.SetInstrument(roster.Hihat)
+	g.drum.SetInstrument(roster.Clap)
 
 	// Continue advancing the sequencer past the mutation. This is when the
 	// freeze loop and parity scan have historically tripped.
@@ -139,7 +140,7 @@ func TestParityToleratesSameRowInstrumentChange(t *testing.T) {
 	}
 
 	g.drum.selRow = 0
-	g.drum.SetInstrument("hihat")
+	g.drum.SetInstrument(roster.Hihat)
 
 	for abs := 16; abs < 48; abs++ {
 		scheduleAbsForMuteTest(g, abs)

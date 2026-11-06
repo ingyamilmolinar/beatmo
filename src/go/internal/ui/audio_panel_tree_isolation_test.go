@@ -10,6 +10,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // ─── Audio-panel ↔ drum-rows input isolation ────────────────────────────────
@@ -53,7 +55,7 @@ func activateSynthTab(t *testing.T, dv *DrumView) {
 	// ParamDef set to render (mirrors soak_heap_bound_helper_test.go).
 	if len(dv.Rows) > 0 && dv.Rows[0] != nil && dv.Rows[0].Instrument != "" {
 		id := dv.Rows[0].Instrument
-		audio.BindInstrumentToRecipe(id, "drum-snare")
+		_ = audio.InstallInstrumentDocForTest(id, roster.Snare)
 		t.Cleanup(func() { audio.ResetInstrumentParams(id) })
 	}
 	dv.eqPanelZone.SetActiveTab(TabSynth)
@@ -96,7 +98,7 @@ func firstNonScrollableSynthControlRect(t *testing.T, dv *DrumView) image.Rectan
 	// visible knob (leaving that section active for the caller).
 	instID := ""
 	if len(dv.Rows) > 0 && dv.Rows[0] != nil {
-		instID = dv.resolveSynthInstrument(dv.Rows[0].Instrument)
+		instID = string(dv.resolveSynthInstrument(dv.Rows[0].Instrument))
 	}
 	ids := make([]synthSectionID, 0, len(dv.instEditorSections))
 	for _, s := range dv.instEditorSections {
@@ -104,7 +106,7 @@ func firstNonScrollableSynthControlRect(t *testing.T, dv *DrumView) image.Rectan
 	}
 	for _, id := range ids {
 		if instID != "" {
-			dv.setSelectedSynthSection(instID, id)
+			dv.setSelectedSynthSection(instrument.ID(instID), id)
 			dv.layoutForTest()
 		}
 		grid := dv.sectionGrid(id)
@@ -440,62 +442,6 @@ func TestPressInRowsNeverChangesPanel(t *testing.T) {
 	}
 	if got := dv.activeEQChannel(); got != chanBefore {
 		t.Errorf("press in rows changed panel active channel: %q -> %q", chanBefore, got)
-	}
-}
-
-// TestCardTapPopupBlocksRowRackPresses: tapping a synth param card opens the
-// modal value-wheel popup (the ParamCard contract replaced the old knob-drag
-// capture). While the popup is open, presses over the rows region must NOT
-// leak to row-rack controls — the modal filter gives the popup exclusive
-// dispatch; the only sanctioned outside-press effect is dismissing the popup
-// (Accept). After dismissal, normal dispatch resumes.
-func TestCardTapPopupBlocksRowRackPresses(t *testing.T) {
-	dv := newTestDrumViewWithRows(t, 12)
-	activateSynthTab(t, dv)
-	dv.layoutForTest()
-
-	knob := firstNonScrollableSynthControlRect(t, dv)
-	if knob.Empty() {
-		t.Fatal("no synth knob rect available")
-	}
-	kx, ky := knob.Min.X+knob.Dx()/2, knob.Min.Y+knob.Dy()/2
-
-	// Tap the card: the value-wheel popup opens (modal + scrim).
-	injectPressAt(t, dv, kx, ky)
-	injectRelease(t, dv, kx, ky)
-	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Fatal("card tap should open the value-wheel popup")
-	}
-
-	// A press on a row-rack control while the popup is open must not reach
-	// the row rack. (It may dismiss the popup — that is the sanctioned
-	// click-outside Accept — but the press itself is consumed.)
-	leaked := rowRackSpy(dv)
-	mx, my, ok := rowMuteCenter(dv)
-	if !ok {
-		t.Fatal("no row-0 mute button rect in the rows region")
-	}
-	muteBefore := dv.Rows[0].Muted
-	injectPressAt(t, dv, mx, my)
-	injectRelease(t, dv, mx, my)
-	if len(*leaked) > 0 {
-		t.Errorf("press over rows while popup open leaked to row-rack: %v", *leaked)
-	}
-	if dv.Rows[0].Muted != muteBefore {
-		t.Error("press over rows while popup open toggled a row control")
-	}
-	if dv.synthWheelPopup.IsOpen() {
-		t.Fatal("outside press should have dismissed the popup (click-outside Accept)")
-	}
-
-	// Normal dispatch resumes: a fresh press+release on the mute control now
-	// reaches the row rack.
-	leaked2 := rowRackSpy(dv)
-	before := dv.Rows[0].Muted
-	injectPressAt(t, dv, mx, my)
-	injectRelease(t, dv, mx, my)
-	if dv.Rows[0].Muted == before && len(*leaked2) == 0 {
-		t.Error("after popup dismissal, a fresh press in the rows region must reach the row rack")
 	}
 }
 
@@ -971,19 +917,20 @@ func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 	}
 
 	// Release ends the drum-view capture; normal dispatch resumes and a fresh
-	// tap on the card now opens the AUDIO subtree's value popup. (The ParamCard
-	// conversion replaced the old synth knob-drag capture with a tap-to-open
-	// modal popup — Capturing() is no longer the resume signal for synth cards.)
+	// tap on the card now ARMS it inline. (Task 13 retired the tap-to-open
+	// modal popup in favor of tap-to-arm — Capturing() is no longer the
+	// resume signal for synth cards, and neither is a popup opening.)
 	injectRelease(t, dv, kx, ky)
 	if dv.tree.Capturing() {
 		t.Fatal("drum-view capture should clear after release")
 	}
+	instID := dv.resolveSynthInstrument(dv.Rows[0].Instrument)
 	injectPressAt(t, dv, kx, ky)
 	injectRelease(t, dv, kx, ky)
-	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Error("after release, a fresh tap on a synth card must open the value popup (dispatch did not resume)")
+	if _, armed := dv.synthControlArmed(instID); !armed {
+		t.Error("after release, a fresh tap on a synth card must arm it (dispatch did not resume)")
 	}
-	dv.closeSynthControlWheelPopup()
+	dv.lockSynthControl(instID)
 }
 
 // TestDrumViewModalBlocksPanel is the symmetric counterpart of
@@ -1020,21 +967,21 @@ func TestDrumViewModalBlocksPanel(t *testing.T) {
 	}
 
 	// A synth card tap while the drum-view modal is open must NOT reach the
-	// audio panel: the sibling modal has exclusive dispatch, so the value-wheel
-	// popup does not open. (The ParamCard conversion replaced the old knob-drag
-	// subtree capture with a tap-to-open modal popup — mirror
-	// TestCardTapPopupBlocksRowRackPresses; Capturing() is no longer the signal.)
+	// audio panel: the sibling modal has exclusive dispatch, so the control
+	// does not arm. (Task 13 retired the tap-to-open modal popup in favor of
+	// tap-to-arm; arming is the new "did dispatch reach the card" signal.)
+	instID := dv.resolveSynthInstrument(dv.Rows[0].Instrument)
 	tabBefore := dv.eqPanelZone.ActiveTab()
 	injectPressAt(t, dv, kx, ky)
 	injectRelease(t, dv, kx, ky)
-	if dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen() {
-		t.Error("synth card tap opened the value popup while a drum-view modal was open — the modal did not block the sibling subtree")
+	if _, armed := dv.synthControlArmed(instID); armed {
+		t.Error("synth card tap armed the control while a drum-view modal was open — the modal did not block the sibling subtree")
 	}
 	if got := dv.eqPanelZone.ActiveTab(); got != tabBefore {
 		t.Errorf("audio panel active tab changed while a drum-view modal was open: %v -> %v", tabBefore, got)
 	}
 
-	// Close the modal; a fresh tap on the card now opens the value popup.
+	// Close the modal; a fresh tap on the card now arms it.
 	dv.tree.Portal().Close("test-drumview-modal")
 	dv.updateForTest()
 	if dv.tree.PortalHasBlocking() {
@@ -1042,10 +989,10 @@ func TestDrumViewModalBlocksPanel(t *testing.T) {
 	}
 	injectPressAt(t, dv, kx, ky)
 	injectRelease(t, dv, kx, ky)
-	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Error("after closing the drum-view modal, a synth card tap must open the value popup (dispatch did not resume)")
+	if _, armed := dv.synthControlArmed(instID); !armed {
+		t.Error("after closing the drum-view modal, a synth card tap must arm it (dispatch did not resume)")
 	}
-	dv.closeSynthControlWheelPopup()
+	dv.lockSynthControl(instID)
 }
 
 // TestDrumViewModalDrawsAbovePanel is the symmetric counterpart of

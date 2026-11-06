@@ -218,6 +218,14 @@ func (g *Game) drainAndDecayHighlights() {
 		select {
 		case ev := <-g.hlCh:
 			g.applySequencerHighlight(ev.row, ev.idx, ev.info)
+			// Sync handoff to the Synth tab's graph (the trigger glow). A no-op
+			// unless the tab is showing this row's instrument — and only for a
+			// row that is HEARD: a graph shining for a muted or soloed-out row
+			// would claim a sound that never played.
+			if g.drum != nil && ev.row >= 0 && ev.row < len(g.drum.Rows) && g.drum.Rows[ev.row] != nil &&
+				rowAudible(g.drum.Rows[ev.row], anySoloActive(g.drum.Rows)) {
+				g.drum.onInstrumentTriggered(g.drum.Rows[ev.row].Instrument)
+			}
 		default:
 			goto hlDone
 		}
@@ -227,11 +235,15 @@ hlDone:
 	// Without this, node highlights stay on forever in the browser.
 	g.clearExpiredHighlights()
 
-	// Decay per-node trigger animations
+	// Decay per-node trigger animations. The audio clock is read once per pass,
+	// not per node: on WASM every audio.Now() is a JS bridge call.
 	g.nodeAnimMu.Lock()
+	now, haveNow := 0.0, false
 	for id, v := range g.nodeAnim {
 		if start, end, ok := g.nodeHighlightUntil(id); ok {
-			now := audio.Now()
+			if !haveNow {
+				now, haveNow = audio.Now(), true
+			}
 			if now >= end {
 				g.clearNodeHighlight(id)
 				delete(g.nodeAnim, id)
@@ -304,7 +316,7 @@ func (g *Game) highlightVisualImpl(row, idx int, info model.BeatInfo, duration i
 				}
 			}
 		}
-		if !triggered && info.NodeType == model.NodeTypeRegular {
+		if !triggered && info.NodeType.Fires() {
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.Ensure(idx + 1)
 				if g.engine.Predictor.VisibleAt(row, idx) {
@@ -330,7 +342,7 @@ func (g *Game) highlightVisualImpl(row, idx int, info model.BeatInfo, duration i
 		default:
 			// other node types rely on triggered state
 		}
-		if !shouldHighlight && info.NodeType == model.NodeTypeRegular && !hasState {
+		if !shouldHighlight && info.NodeType.Fires() && !hasState {
 			shouldHighlight = true
 		}
 	}
@@ -343,11 +355,11 @@ func (g *Game) highlightVisualImpl(row, idx int, info model.BeatInfo, duration i
 		return
 	}
 	g.highlightSet(key, encodeHighlight(g.frame+duration, isMute))
-	if info.NodeType == model.NodeTypeRegular && row >= 0 && row < len(g.drum.Rows) {
+	if info.NodeType.Fires() && row >= 0 && row < len(g.drum.Rows) {
 		g.setLastTriggered(row, info.NodeID, true)
 	}
-	if g.highlightHook != nil && (info.NodeType == model.NodeTypeRegular || isMute) {
-		if g.timingTestMode && info.NodeType == model.NodeTypeRegular {
+	if g.highlightHook != nil && (info.NodeType.Fires() || isMute) {
+		if g.timingTestMode && info.NodeType.Fires() {
 			return
 		}
 		if row >= len(g.lastHLIdxByRow) {

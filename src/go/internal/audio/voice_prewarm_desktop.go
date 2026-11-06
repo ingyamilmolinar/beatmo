@@ -2,7 +2,12 @@
 
 package audio
 
-import "log"
+import (
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
+
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+)
 
 // PrewarmVoice renders (id, pitch) into globalVoiceCache off the caller's hot
 // path. It calls the SAME functions the dispatch path uses
@@ -12,46 +17,55 @@ import "log"
 // discarded — the render + globalVoiceCache.Put is the whole point.
 //
 // A cache hit is a cheap no-op, so re-warming an already-warm pitch is safe.
-// Reads the bpm/sampleRate globals exactly like the audioLoop dispatch already
+// Reads the sampleRate global exactly like the audioLoop dispatch already
 // does; the cache is RWMutex-guarded, so concurrent warm + dispatch is safe.
 // See docs/superpowers/specs/2026-07-13-voice-prewarm-off-thread-design.md.
-func PrewarmVoice(id string, pitch float64) {
+func PrewarmVoice(id instrument.ID, pitch float64) {
 	if id == "" {
 		return
 	}
-	if prewarmDebug {
-		log.Printf("[pw] warm-call id=%s pitch=%.2f bpm=%d", id, pitch, bpm)
+	if env.PrewarmDebug.Get() {
+		log.Debugf("[pw] warm-call id=%s pitch=%.2f", id, pitch)
 	}
-	if pitchAwareRecipe(RecipeForInstrument(id)) {
-		newRecipeAwareVoicePitchedOrigin(id, bpm, SampleRate(), pitch, originPrewarm)
+	if docMelodic(id) {
+		newRecipeAwareVoicePitchedOrigin(id, SampleRate(), pitch, originPrewarm)
 		return
 	}
-	newRecipeAwareVoiceOrigin(id, bpm, SampleRate(), originPrewarm)
+	newRecipeAwareVoiceOrigin(id, SampleRate(), originPrewarm)
 }
 
-// PrewarmVoiceParams renders (id, pitch) under an EXPLICIT param snapshot into
-// globalVoiceCache, off the caller's hot path. Unlike PrewarmVoice (which reads
-// the current params internally), this warms the binding a specific edit
-// created, so a fast drag cannot race the warm onto the wrong binding.
-//
-// The key is computed by pitchedVoiceKeyForParams, which is byte-identical to
-// the dispatch key computation — see TestPrewarmVoiceParamsKeyMatchesDispatch.
-// Non-pitch-aware instruments fall back to PrewarmVoice (pitch is a post-render
-// resample for them, so the base render is the only binding that matters).
-func PrewarmVoiceParams(id string, pitch float64, params RecipeParams) {
+// PrewarmVoiceDoc renders (id, pitch) under an EXPLICIT document snapshot into
+// globalVoiceCache — the prospective document of a param edit, so the voice the
+// next trigger will read is warm before it plays. The key is the dispatch key
+// for that document (TestPrewarmVoiceParamsKeyMatchesDispatch).
+func PrewarmVoiceDoc(id instrument.ID, pitch float64, d instrument.Doc) {
 	if id == "" {
 		return
 	}
-	if !pitchAwareRecipe(RecipeForInstrument(id)) {
+	if !d.Render.Melodic {
 		PrewarmVoice(id, pitch)
 		return
 	}
-	renderPitchedIntoCacheForParams(id, bpm, SampleRate(), pitch, params, originPrewarm)
+	renderPitchedIntoCacheForDoc(id, SampleRate(), pitch, d, originPrewarm)
 }
 
-// IsMelodicInstrument reports whether id renders at-pitch (its cache key carries
-// the node pitch). Only melodic instruments benefit from pitch-neighborhood
 // warming — for everything else pitch is a post-render resample (already a hit).
-func IsMelodicInstrument(id string) bool {
-	return pitchAwareRecipe(RecipeForInstrument(id))
+func WarmsPerPitch(id instrument.ID) bool {
+	return docMelodic(id)
+}
+
+// VoiceReady reports whether a trigger of (id, pitch) would find its voice
+// rendered — the audio lane switches a row to an instrument only from its
+// first note whose voice is ready (spec 2026-10-31 §1.3). An instrument
+// without a document voice (a sample) has nothing to render.
+func VoiceReady(id instrument.ID, pitch float64) bool {
+	if !hasDocVoice(id) {
+		return true
+	}
+	melodic := IsMelodicInstrument(id)
+	if !melodic {
+		pitch = 0
+	}
+	key, ok := liveVoiceKey(id, SampleRate(), pitch, melodic, false)
+	return ok && globalVoiceCache.Has(key)
 }

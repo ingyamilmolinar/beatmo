@@ -31,7 +31,7 @@ func TestSidebarCloseButtonVisible(t *testing.T) {
 	g.sidebar.layout()
 
 	// The close button must exist and have a non-empty rect.
-	btn, ok := g.sidebar.btns["close"]
+	btn, ok := g.sidebar.btns[sbClose]
 	if !ok || btn == nil {
 		t.Fatal("close button not found in sidebar btns")
 	}
@@ -41,7 +41,7 @@ func TestSidebarCloseButtonVisible(t *testing.T) {
 	}
 
 	// The close button rect should be within the panel rect.
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if panel.Empty() {
 		t.Fatal("panel rect is empty")
 	}
@@ -62,7 +62,7 @@ func TestSidebarCloseButtonVisible(t *testing.T) {
 	}
 
 	// Verify that tapping the close button actually closes the sidebar.
-	r := g.sidebar.rects["close"]
+	r := g.sidebar.rects[sbClose]
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	g.sidebar.fireTapAt(cx, cy)
 	if g.sidebar.IsOpen() {

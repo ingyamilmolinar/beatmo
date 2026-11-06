@@ -1,6 +1,10 @@
 package fingerprint
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // Span is a labeled time region of a recording plus the instruments expected
 // active in it (manifest ground truth; overrides auto-detection for that span).
@@ -13,9 +17,9 @@ type Span struct {
 
 // TuningPassage is a solo/exposed window to hand to the per-instrument matcher.
 type TuningPassage struct {
-	StartSec   float64 `json:"start_sec"`
-	EndSec     float64 `json:"end_sec"`
-	Instrument string  `json:"instrument"`
+	StartSec   float64       `json:"start_sec"`
+	EndSec     float64       `json:"end_sec"`
+	Instrument instrument.ID `json:"instrument"`
 }
 
 // CompareWindow is the segment of the reference used for whole-segment comparison.

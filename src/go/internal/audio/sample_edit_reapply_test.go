@@ -2,7 +2,11 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // sample_edit_reapply_test.go — SetSampleEdit / ClearSampleEdit re-derive a user
 // sample's playable PCM from its pristine source so a Sampler edit on a WAV /
@@ -53,8 +57,8 @@ func TestClearSampleEditRestoresUserSamplePristine(t *testing.T) {
 func TestSetSampleEditDoesNotReregisterSynth(t *testing.T) {
 	const id = "synth.reapply.noop"
 	// No PutUserSample: a synth has no stored pristine PCM.
-	BindInstrumentToRecipe(id, "drum-kick")
-	t.Cleanup(func() { ClearSampleEdit(id); BindInstrumentToRecipe(id, "") })
+	_ = InstallInstrumentDocForTest(id, roster.Kick)
+	t.Cleanup(func() { ClearSampleEdit(id); RemoveInstrumentDocForTest(id) })
 
 	SetSampleEdit(id, SampleEdit{StartFrac: 0.25, EndFrac: 0.75})
 	if _, ok := LastRegisteredSamplePCMForTest(id); ok {

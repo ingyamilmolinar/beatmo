@@ -7,7 +7,7 @@
 // evidence to localize that transient:
 //
 //   1. Builds the heavy circuit (every instrument: 3 insert effects, shaped
-//      EQ + HPF + LPF, delay/reverb sends, all modular synth stages incl. the
+//      EQ + HPF + LPF, all modular synth stages incl. the
 //      default-OFF PITCH/LFO/BURST modulators).
 //   2. Plays for PROFILE_SECS, sampling a TIME SERIES every second:
 //        - wall-clock vs AudioContext.currentTime  → per-second audio-thread
@@ -97,7 +97,6 @@ const buildCircuit = `(components) => {
     const out = Object.assign({}, inst);
     if (components.fx) out.effects = fxPool[i%fxPool.length].map(type => ({type, enabled:true}));
     if (components.eq) out.eq = { gains_db: eqGains, hpf_enabled:true, hpf_cutoff_hz:60, lpf_enabled:true, lpf_cutoff_hz:12000 };
-    if (components.sends) { out.pan = (i%2?-1:1)*0.4; out.delay_send=0.25; out.reverb_send=0.25; }
     if (components.synth) out.synth_params = Object.assign({}, inst.synth_params||{}, {
       osc_enabled:1, fm_enabled:1, env_enabled:1, filter_enabled:1, drive_enabled:1, post_enabled:1,
       pitchenv_enabled:1, pitchenv_amt:0.4, pitchenv_decay:0.3,
@@ -198,7 +197,7 @@ await page.waitForTimeout(400);
 const report = { ts, bpm: BPM, secs: SECS, runs: [] };
 
 // Main heavy run with CPU profile.
-const heavy = { fx: true, eq: true, sends: true, synth: true };
+const heavy = { fx: true, eq: true, synth: true };
 console.log(`[profile] HEAVY run (${SECS}s @ ${BPM}bpm, profiled)...`);
 const heavyRun = await runVariant(page, cdp, "heavy", heavy, true);
 const heavyTop = topSelfTime(heavyRun.profile);
@@ -208,11 +207,10 @@ printRun(heavyRun, heavyTop);
 
 if (AB) {
   const variants = [
-    ["baseline", { fx: false, eq: false, sends: false, synth: false }],
-    ["fx-only", { fx: true, eq: false, sends: false, synth: false }],
-    ["eq-only", { fx: false, eq: true, sends: false, synth: false }],
-    ["synth-only", { fx: false, eq: false, sends: false, synth: true }],
-    ["sends-only", { fx: false, eq: false, sends: true, synth: false }],
+    ["baseline", { fx: false, eq: false, synth: false }],
+    ["fx-only", { fx: true, eq: false, synth: false }],
+    ["eq-only", { fx: false, eq: true, synth: false }],
+    ["synth-only", { fx: false, eq: false, synth: true }],
   ];
   for (const [label, comp] of variants) {
     console.log(`[profile] A/B ${label}...`);

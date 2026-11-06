@@ -6,6 +6,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -19,7 +21,7 @@ func stubGameForHighlight(nodeType model.NodeType, triggered bool) *Game {
 		logger:           logger,
 		graph:            model.NewGraph(logger),
 		// Prevent highlightBeat from early-returning due to missing instruments in stubbed DrumView.
-		playFn: func(string, float64, ...float64) {},
+		playFn: func(instrument.ID, float64, ...float64) {},
 	}
 	// playbackSlate methods (timelineCommitted, etc.) dereference this
 	// back-reference; struct literals that bypass New() must set it explicitly.
@@ -103,8 +105,8 @@ func TestHighlightBeatRequiresAudibleRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, true)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 	key := makeBeatKey(0, 0)
 
 	g.highlightBeat(0, 0, info, 10)
@@ -120,8 +122,8 @@ func TestHighlightBeatSkipsMutedRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, true)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 	setRowMuted(t, g.drum, 0, true)
 	key := makeBeatKey(0, 0)
 
@@ -138,8 +140,8 @@ func TestHighlightVisualSkipsMutedRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, true)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 	setRowMuted(t, g.drum, 0, true)
 	key := makeBeatKey(0, 0)
 

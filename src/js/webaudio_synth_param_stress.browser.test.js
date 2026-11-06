@@ -56,6 +56,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -127,7 +128,7 @@ await page.waitForFunction(() => typeof window.playSoundParams === "function");
 await page.waitForFunction(() => typeof window.updateSampleEdit === "function");
 await page.waitForFunction(() => typeof window.getAudioScheduleMetrics === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 // Real gesture unlocks + CREATES the AudioContext (resumeAudio alone does not).
 await page.mouse.click(20, 20);

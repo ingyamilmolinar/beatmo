@@ -3,6 +3,8 @@ package ui
 import (
 	"sync/atomic"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // validate the scheduler-driven sequencer triggers audio on engine beats,
@@ -24,7 +26,7 @@ func TestSequencerSchedulesOnBeatsIndependently(t *testing.T) {
 
 	// Capture plays and count them while hammering the UI.
 	var plays int32
-	g.SetPlayFunc(func(string, float64, ...float64) { atomic.AddInt32(&plays, 1) })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { atomic.AddInt32(&plays, 1) })
 
 	g.SetPlaying(true)
 	// Trigger one beat and verify the time-based sequencer advanced.

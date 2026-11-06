@@ -4,33 +4,37 @@ package audio
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestStubPlayDoesNotPanic(t *testing.T) {
 	// Play with no optional args.
-	Play("kick")
+	Play(roster.Kick)
 	// Play with a 'when' argument.
-	Play("snare", 0.5)
+	Play(roster.Snare, 0.5)
 
 	// PlayVol with and without when.
-	PlayVol("kick", 0.8)
-	PlayVol("hihat", 0.5, 1.0)
+	PlayVol(roster.Kick, 0.8)
+	PlayVol(roster.Hihat, 0.5, 1.0)
 
 	// PlayParams with and without when.
-	PlayParams("tom", 0.9, 1.0, 0.5)
-	PlayParams("clap", 0.7, 0.8, 0.3, 2.0)
+	PlayParams(roster.Tom, 0.9, 1.0, 0.5)
+	PlayParams(roster.Clap, 0.7, 0.8, 0.3, 2.0)
 
 	// PlayParamsAt (fixed arity, no varargs).
-	PlayParamsAt("kick", 1.0, 0.0, 1.0, 0.0)
+	PlayParamsAt(roster.Kick, 1.0, 0.0, 1.0, 0.0)
 }
 
 func TestStubStopHook(t *testing.T) {
-	var called string
-	SetStopHook(func(id string) { called = id })
+	var called instrument.ID
+	SetStopHook(func(id instrument.ID) { called = id })
 	t.Cleanup(func() { SetStopHook(nil) })
 
-	Stop("kick")
-	if called != "kick" {
+	Stop(roster.Kick)
+	if called != roster.Kick {
 		t.Fatalf("expected stop hook called with %q, got %q", "kick", called)
 	}
 }
@@ -80,55 +84,11 @@ func TestStubChannelVolumeRoundTrip(t *testing.T) {
 	ResetInstruments()
 	t.Cleanup(ResetInstruments)
 
-	InstrumentChannel("kick") // ensure channel exists
-	SetChannelVolume("kick", 0.7)
-	got := ChannelVolume("kick")
+	InstrumentChannel(channel.Of(roster.Kick)) // ensure channel exists
+	SetChannelVolume(channel.Of(roster.Kick), 0.7)
+	got := ChannelVolume(channel.Of(roster.Kick))
 	if got != 0.7 {
 		t.Fatalf("expected ChannelVolume=0.7, got %v", got)
-	}
-}
-
-func TestStubChannelPanRoundTrip(t *testing.T) {
-	ResetInstruments()
-	t.Cleanup(ResetInstruments)
-
-	InstrumentChannel("snare") // ensure channel exists
-	SetChannelPan("snare", -0.5)
-	got := ChannelPan("snare")
-	if got != -0.5 {
-		t.Fatalf("expected ChannelPan=-0.5, got %v", got)
-	}
-}
-
-func TestStubDelaySendRoundTrip(t *testing.T) {
-	stubSendLevels = map[string][2]float64{}
-	t.Cleanup(func() { stubSendLevels = map[string][2]float64{} })
-
-	SetDelaySend("kick", 0.3)
-	if got := DelaySend("kick"); got != 0.3 {
-		t.Fatalf("expected DelaySend=0.3, got %v", got)
-	}
-
-	// Clamping above 1.
-	SetDelaySend("kick", 1.5)
-	if got := DelaySend("kick"); got != 1.0 {
-		t.Fatalf("expected DelaySend clamped to 1.0, got %v", got)
-	}
-}
-
-func TestStubReverbSendRoundTrip(t *testing.T) {
-	stubSendLevels = map[string][2]float64{}
-	t.Cleanup(func() { stubSendLevels = map[string][2]float64{} })
-
-	SetReverbSend("snare", 0.6)
-	if got := ReverbSend("snare"); got != 0.6 {
-		t.Fatalf("expected ReverbSend=0.6, got %v", got)
-	}
-
-	// Clamping below 0.
-	SetReverbSend("snare", -0.1)
-	if got := ReverbSend("snare"); got != 0 {
-		t.Fatalf("expected ReverbSend clamped to 0, got %v", got)
 	}
 }
 
@@ -141,11 +101,11 @@ func TestStubInsertEffectLifecycle(t *testing.T) {
 	})
 
 	// Add first effect.
-	idx := AddInsertEffect("kick", EffectDistortion, nil)
+	idx := AddInsertEffect(roster.Kick, EffectDistortion, nil)
 	if idx != 0 {
 		t.Fatalf("expected first slot index=0, got %d", idx)
 	}
-	effects := GetInsertEffects("kick")
+	effects := GetInsertEffects(roster.Kick)
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
@@ -157,25 +117,25 @@ func TestStubInsertEffectLifecycle(t *testing.T) {
 	}
 
 	// Toggle off.
-	ToggleInsertEffect("kick", 0, false)
-	effects = GetInsertEffects("kick")
+	ToggleInsertEffect(roster.Kick, 0, false)
+	effects = GetInsertEffects(roster.Kick)
 	if effects[0].Enabled {
 		t.Fatal("expected effect to be disabled after toggle")
 	}
 
 	// Add second effect.
-	idx2 := AddInsertEffect("kick", EffectDelay, nil)
+	idx2 := AddInsertEffect(roster.Kick, EffectDelay, nil)
 	if idx2 != 1 {
 		t.Fatalf("expected second slot index=1, got %d", idx2)
 	}
-	effects = GetInsertEffects("kick")
+	effects = GetInsertEffects(roster.Kick)
 	if len(effects) != 2 {
 		t.Fatalf("expected 2 effects, got %d", len(effects))
 	}
 
 	// Move: swap order (move index 0 to index 1).
-	MoveInsertEffect("kick", 0, 1)
-	effects = GetInsertEffects("kick")
+	MoveInsertEffect(roster.Kick, 0, 1)
+	effects = GetInsertEffects(roster.Kick)
 	if len(effects) != 2 {
 		t.Fatalf("expected 2 effects after move, got %d", len(effects))
 	}
@@ -188,8 +148,8 @@ func TestStubInsertEffectLifecycle(t *testing.T) {
 	}
 
 	// Remove first effect (now delay at index 0).
-	RemoveInsertEffect("kick", 0)
-	effects = GetInsertEffects("kick")
+	RemoveInsertEffect(roster.Kick, 0)
+	effects = GetInsertEffects(roster.Kick)
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect after remove, got %d", len(effects))
 	}

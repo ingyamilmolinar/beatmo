@@ -7,6 +7,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // synth_essential_stage_test.go pins the fix for "a beginner can silence an
@@ -25,18 +27,18 @@ import (
 // pill must NOT disable it (pre-fix, the tap set osc_enabled=0 → total silence).
 func TestSynthTab_EssentialOscPillDoesNotDisable(t *testing.T) {
 	g := setupModularSynthGame(t)
-	restore := SwapSynthAuditionFnForTest(func(string) {})
+	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
 	// Precondition: the OSC stage is the modular synth's sole sound source.
-	if !audio.StageDisableSilences("modular", "osc_enabled") {
+	if !audio.StageDisableSilences(roster.Modular, "osc_enabled") {
 		t.Fatal("precondition: modular OSC must be the sole sound source (essential)")
 	}
-	if !synthStageEnabled("modular", "osc_enabled") {
+	if !synthStageEnabled(roster.Modular, "osc_enabled") {
 		t.Fatal("precondition: OSC must start enabled")
 	}
 
-	selectStageProdHeight(t, g, "modular", synthSectionOsc)
+	selectStageProdHeight(t, g, roster.Modular, synthSectionOsc)
 
 	// The pill stays visible (the stage still shows in the pipeline).
 	pill := g.drum.synthDetailEnablePillRect()
@@ -46,9 +48,9 @@ func TestSynthTab_EssentialOscPillDoesNotDisable(t *testing.T) {
 
 	// Tapping the pill must be a no-op: the sole generator can't be silenced.
 	cx, cy := (pill.Min.X+pill.Max.X)/2, (pill.Min.Y+pill.Max.Y)/2
-	g.drum.handleSynthTabInput(cx, cy, true, "modular")
-	g.drum.handleSynthTabInput(cx, cy, false, "modular")
-	if !synthStageEnabled("modular", "osc_enabled") {
+	g.drum.handleSynthTabInput(cx, cy, true, roster.Modular)
+	g.drum.handleSynthTabInput(cx, cy, false, roster.Modular)
+	if !synthStageEnabled(roster.Modular, "osc_enabled") {
 		t.Error("tapping the greyed OSC pill disabled the sole sound source (must be non-interactive)")
 	}
 
@@ -65,17 +67,17 @@ func TestSynthTab_EssentialOscPillDoesNotDisable(t *testing.T) {
 // bypasses it as before.
 func TestSynthTab_ProcessorPillStillDisables(t *testing.T) {
 	g := setupModularSynthGame(t)
-	restore := SwapSynthAuditionFnForTest(func(string) {})
+	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
-	if audio.StageDisableSilences("modular", "filter_enabled") {
+	if audio.StageDisableSilences(roster.Modular, "filter_enabled") {
 		t.Fatal("precondition: FILTER is a shaper, never the sole sound source")
 	}
-	if !synthStageEnabled("modular", "filter_enabled") {
+	if !synthStageEnabled(roster.Modular, "filter_enabled") {
 		t.Fatal("precondition: FILTER must start enabled")
 	}
 
-	selectStageProdHeight(t, g, "modular", synthSectionFilter)
+	selectStageProdHeight(t, g, roster.Modular, synthSectionFilter)
 
 	pill := g.drum.synthDetailEnablePillRect()
 	if pill.Empty() {
@@ -95,10 +97,10 @@ func TestSynthTab_ProcessorPillStillDisables(t *testing.T) {
 
 	// Tapping bypasses the filter.
 	cx, cy := (pill.Min.X+pill.Max.X)/2, (pill.Min.Y+pill.Max.Y)/2
-	if !g.drum.handleSynthTabInput(cx, cy, true, "modular") {
+	if !g.drum.handleSynthTabInput(cx, cy, true, roster.Modular) {
 		t.Fatal("tap on FILTER pill was not handled")
 	}
-	if synthStageEnabled("modular", "filter_enabled") {
+	if synthStageEnabled(roster.Modular, "filter_enabled") {
 		t.Error("tapping the FILTER pill did not bypass the stage")
 	}
 }
@@ -114,7 +116,7 @@ func TestSynthTab_EssentialOscPillDrawnGreyed(t *testing.T) {
 	// countTrack draws the panel and counts filled rounded rects inside the
 	// selected stage's pill that match wantCol.
 	countTrack := func(sec synthSectionID, wantCol color.Color) int {
-		selectStageProdHeight(t, g, "modular", sec)
+		selectStageProdHeight(t, g, roster.Modular, sec)
 		pill := g.drum.synthDetailEnablePillRect()
 		if pill.Empty() {
 			t.Fatalf("pill rect empty for section %v", sec)

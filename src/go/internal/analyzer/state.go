@@ -2,7 +2,10 @@
 // for metering, FFT spectrum display, and waveform capture.
 package analyzer
 
-import "github.com/ingyamilmolinar/beatmo/internal/wave"
+import (
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/wave"
+)
 
 // State is the atomically-published snapshot the UI reads.
 type State struct {
@@ -30,7 +33,7 @@ type State struct {
 // analyzer changes); the schema landing first lets the renderer side
 // migrate independently.
 type ChannelMetrics struct {
-	ID              string
+	ID              channel.ID
 	Name            string
 	PeakDB          float64
 	RMSDB           float64
@@ -108,7 +111,7 @@ func (c *ChannelMetrics) RMSR() float64 {
 
 // InstrumentMetrics holds lightweight per-instrument data for the meter bridge.
 type InstrumentMetrics struct {
-	ID        string
+	ID        channel.ID
 	Name      string
 	PeakDB    float64
 	RMSDB     float64
@@ -118,7 +121,7 @@ type InstrumentMetrics struct {
 
 // CaptureBuffer holds a captured waveform for static inspection.
 type CaptureBuffer struct {
-	InstID     string
+	InstID     channel.ID
 	Wave       wave.Wave
 	Frozen     bool
 	TriggerIdx int64
@@ -133,7 +136,7 @@ type CaptureBuffer struct {
 
 // Config configures the analyzer service.
 type Config struct {
-	FFTSize        int // power of 2 (default 1024)
+	FFTSize        int // power of 2 (default SpectrumFFTSize)
 	WindowSize     int // analysis window in samples (default 2048)
 	MaxInstruments int // max instrument slots (default 32)
 	SampleRate     int // audio sample rate (default 44100)
@@ -157,7 +160,7 @@ type Config struct {
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		FFTSize:        1024,
+		FFTSize:        SpectrumFFTSize,
 		WindowSize:     2048,
 		MaxInstruments: 32,
 		SampleRate:     44100,

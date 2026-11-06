@@ -4,6 +4,8 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // instMenuFindAlternateInst returns the index of an instrument button whose
@@ -12,8 +14,8 @@ import (
 func instMenuFindAlternateInst(comp *InstrumentMenuComponent, cur string) (idx int, id string) {
 	ids := comp.VisibleInstIDs()
 	for i := range comp.InstBtns() {
-		if i < len(ids) && ids[i] != cur {
-			return i, ids[i]
+		if i < len(ids) && ids[i] != instrument.ID(cur) {
+			return i, string(ids[i])
 		}
 	}
 	return -1, ""
@@ -70,7 +72,7 @@ func TestInstMenuDesktopInstrumentSelectsOnPress(t *testing.T) {
 	comp := openInstMenuInstrumentsMode(t, dv, cx, cy, W, H)
 
 	cur := dv.Rows[0].Instrument
-	idx, wantID := instMenuFindAlternateInst(comp, cur)
+	idx, wantID := instMenuFindAlternateInst(comp, string(cur))
 	if idx < 0 {
 		t.Fatalf("no alternate instrument button found; cur=%q instBtns=%d ids=%v",
 			cur, len(comp.InstBtns()), comp.VisibleInstIDs())
@@ -85,7 +87,7 @@ func TestInstMenuDesktopInstrumentSelectsOnPress(t *testing.T) {
 	dv.Update()
 	rel()
 
-	if dv.Rows[0].Instrument != wantID {
+	if dv.Rows[0].Instrument != instrument.ID(wantID) {
 		t.Fatalf("instrument not selected on press edge: got %q want %q "+
 			"(desktop click is not immediate — routed through deferred-tap path)",
 			dv.Rows[0].Instrument, wantID)
@@ -107,7 +109,7 @@ func TestInstMenuDesktopClickWithDriftSelects(t *testing.T) {
 	comp := openInstMenuInstrumentsMode(t, dv, cx, cy, W, H)
 
 	cur := dv.Rows[0].Instrument
-	idx, wantID := instMenuFindAlternateInst(comp, cur)
+	idx, wantID := instMenuFindAlternateInst(comp, string(cur))
 	if idx < 0 {
 		t.Fatalf("no alternate instrument button found; cur=%q instBtns=%d ids=%v",
 			cur, len(comp.InstBtns()), comp.VisibleInstIDs())
@@ -131,7 +133,7 @@ func TestInstMenuDesktopClickWithDriftSelects(t *testing.T) {
 	dv.Update()
 	rel()
 
-	if dv.Rows[0].Instrument != wantID {
+	if dv.Rows[0].Instrument != instrument.ID(wantID) {
 		t.Fatalf("instrument not selected after a click with minor pointer drift: "+
 			"got %q want %q (click swallowed by touch-scroll dead zone)",
 			dv.Rows[0].Instrument, wantID)
@@ -152,7 +154,7 @@ func TestInstMenuMobileSelectsViaMouseUpdate(t *testing.T) {
 
 	comp := openInstMenuInstrumentsMode(t, dv, cx, cy, W, H)
 	cur := dv.Rows[0].Instrument
-	idx, wantID := instMenuFindAlternateInst(comp, cur)
+	idx, wantID := instMenuFindAlternateInst(comp, string(cur))
 	if idx < 0 {
 		t.Fatalf("no alternate instrument; ids=%v", comp.VisibleInstIDs())
 	}
@@ -162,7 +164,7 @@ func TestInstMenuMobileSelectsViaMouseUpdate(t *testing.T) {
 	clickDrumViewAt(t, dv, tx, ty, W, H)
 	idleFrames(dv, 2, W, H)()
 
-	if dv.Rows[0].Instrument != wantID {
+	if dv.Rows[0].Instrument != instrument.ID(wantID) {
 		t.Fatalf("mobile: instrument not selected via Update loop: got %q want %q", dv.Rows[0].Instrument, wantID)
 	}
 }
@@ -240,7 +242,7 @@ func TestInstMenuMobileSelectsViaRealTouch(t *testing.T) {
 	}
 
 	cur := dv.Rows[0].Instrument
-	idx, wantID := instMenuFindAlternateInst(comp, cur)
+	idx, wantID := instMenuFindAlternateInst(comp, string(cur))
 	if idx < 0 {
 		t.Fatalf("no alternate instrument; cur=%q ids=%v", cur, comp.VisibleInstIDs())
 	}
@@ -250,7 +252,7 @@ func TestInstMenuMobileSelectsViaRealTouch(t *testing.T) {
 
 	realTouchTapGame(t, g, tx, ty, 2)
 
-	if dv.Rows[0].Instrument != wantID {
+	if dv.Rows[0].Instrument != instrument.ID(wantID) {
 		t.Fatalf("mobile real-touch: instrument not selected: got %q want %q "+
 			"(tap on instrument button did not register through the touch path)",
 			dv.Rows[0].Instrument, wantID)
@@ -275,7 +277,7 @@ func TestInstMenuMobileJitteryTapSelects(t *testing.T) {
 	idleFrames(dv, 2, W, H)() // clear suppressClicksUntilRelease
 
 	cur := dv.Rows[0].Instrument
-	idx, wantID := instMenuFindAlternateInst(comp, cur)
+	idx, wantID := instMenuFindAlternateInst(comp, string(cur))
 	if idx < 0 {
 		t.Fatalf("no alternate instrument; ids=%v", comp.VisibleInstIDs())
 	}
@@ -289,7 +291,7 @@ func TestInstMenuMobileJitteryTapSelects(t *testing.T) {
 	comp.HandleInput(tx+8, ty+8, true)
 	comp.HandleInput(tx+8, ty+8, false)
 
-	if dv.Rows[0].Instrument != wantID {
+	if dv.Rows[0].Instrument != instrument.ID(wantID) {
 		t.Fatalf("mobile jittery tap did not select instrument: got %q want %q "+
 			"(scroll dead-zone Euclidean vs gesture per-axis mismatch cancelled the tap)",
 			dv.Rows[0].Instrument, wantID)

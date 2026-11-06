@@ -134,6 +134,19 @@ func (p *OverlayPortal) RefreshEntry(id string) {
 	}
 }
 
+// OverlayByID returns the overlay registered under id, or nil. Nil-safe.
+func (p *OverlayPortal) OverlayByID(id string) PortalOverlay {
+	if p == nil {
+		return nil
+	}
+	for _, e := range p.stack {
+		if e.ID == id {
+			return e.Overlay
+		}
+	}
+	return nil
+}
+
 // Has returns true if an overlay with the given ID is in the stack.
 // Nil-safe: a nil portal has nothing.
 func (p *OverlayPortal) Has(id string) bool {

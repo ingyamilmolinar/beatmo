@@ -1,0 +1,128 @@
+{
+  "schema_version": "0.0.1",
+  "id": "harmonium",
+  "name": "Harmonium",
+  "category": "modular",
+  "notes": "harmoniumSeed: a sustained reed-organ / Indian harmonium — a reedy saw with a\nnasal band-passed formant, a beating detuned-reed unison, and a steady vibrato.\nFull sustain (the bellows drone).",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.7972,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.03,
+        "amp_curve": 1,
+        "amp_decay": 0.1,
+        "amp_release": 0.15,
+        "amp_sustain": 1
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.7,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 3000,
+        "filter_resonance": 1,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.1,
+        "lfo_depth": 0.03,
+        "lfo_rate": 6,
+        "lfo_target": 1
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 10,
+        "unison_drift_depth": 6,
+        "unison_drift_rate": 2,
+        "unison_mix": 0.5,
+        "unison_voices": 3
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 1
+    },
+    "notes": "osc_enabled: saw = reedy\nosc_type: saw = reedy"
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1200,
+        "filt_q": 1.8,
+        "filt_type": 5,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.4,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 1
+      },
+      "notes": "gen1_source: nasal reed formant — a band-passed saw lift in the mids"
+    }
+  ]
+}

@@ -4,22 +4,23 @@ package userprefs
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestInstrumentStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := NewInstrumentStore(Options{Path: dir})
 
-	if err := s.SaveUserRecipe("user.kick.abc", []byte(`{"id":"user.kick.abc"}`)); err != nil {
-		t.Fatalf("save recipe: %v", err)
+	if err := s.SaveLibrary([]byte(`{"objects":{},"histories":{}}`)); err != nil {
+		t.Fatalf("save library: %v", err)
 	}
-	if err := s.SaveRecipeOverride("drum-snare", map[string]float64{"tune": 0.4}); err != nil {
-		t.Fatalf("save override: %v", err)
-	}
-	if err := s.SaveSampleEdit("kick", map[string]float64{"gain_db": -3}); err != nil {
+	if err := s.SaveSampleEdit(roster.Kick, map[string]float64{"gain_db": -3}); err != nil {
 		t.Fatalf("save sample edit: %v", err)
 	}
 	if err := s.SaveWavRegistry([]byte(`{"kick.wav":[{"version":1,"sha256":"h"}]}`)); err != nil {
@@ -28,21 +29,14 @@ func TestInstrumentStoreRoundTrip(t *testing.T) {
 
 	// Reload from disk in a fresh instance.
 	s2 := NewInstrumentStore(Options{Path: dir})
-	recipes, _ := s2.LoadUserRecipes()
-	// Content round-trips (the store may re-indent the opaque JSON; recipes are
-	// re-parsed on load, so compare semantically, not byte-for-byte).
-	var got struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(recipes["user.kick.abc"], &got); err != nil || got.ID != "user.kick.abc" {
-		t.Errorf("user recipe not persisted: %q err=%v", recipes["user.kick.abc"], err)
-	}
-	ov, _ := s2.LoadRecipeOverrides()
-	if ov["drum-snare"]["tune"] != 0.4 {
-		t.Errorf("override not persisted: %v", ov)
+	lib, _ := s2.LoadLibrary()
+	// Content round-trips (the store may re-indent the opaque JSON).
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(lib, &got); err != nil || got["histories"] == nil {
+		t.Errorf("library not persisted: %q err=%v", lib, err)
 	}
 	se, _ := s2.LoadSampleEdits()
-	if se["kick"]["gain_db"] != -3 {
+	if se[roster.Kick]["gain_db"] != -3 {
 		t.Errorf("sample edit not persisted: %v", se)
 	}
 	reg, _ := s2.LoadWavRegistry()
@@ -59,18 +53,58 @@ func TestInstrumentStoreRoundTrip(t *testing.T) {
 	}
 }
 
-func TestInstrumentStoreDeleteAndClear(t *testing.T) {
+// TestInstrumentStoreWarnsOnLegacyRecipeSections: a file from the recipe era
+// loads (its documents and sample edits survive) with ONE warning naming the
+// ignored sections, and the next write drops them.
+func TestInstrumentStoreWarnsOnLegacyRecipeSections(t *testing.T) {
 	dir := t.TempDir()
-	s := NewInstrumentStore(Options{Path: dir})
-	_ = s.SaveUserRecipe("a", []byte(`{}`))
-	_ = s.DeleteUserRecipe("a")
-	if r, _ := s.LoadUserRecipes(); len(r) != 0 {
-		t.Errorf("delete left %d recipes", len(r))
+	legacy := `{"schema_version":"0.0.1","user_recipes":{"user.kick.abc":{"id":"user.kick.abc"}},` +
+		`"recipe_overrides":{"synth-modular-snare":{"tune":0.4}},"sample_edits":{"kick":{"gain_db":-3}}}`
+	if err := os.WriteFile(filepath.Join(dir, InstrumentsFileName), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	// Empty params clears an override.
-	_ = s.SaveRecipeOverride("x", map[string]float64{"a": 1})
-	_ = s.SaveRecipeOverride("x", nil)
-	if o, _ := s.LoadRecipeOverrides(); len(o) != 0 {
-		t.Errorf("empty override not cleared: %v", o)
+	var warns []string
+	s := NewInstrumentStore(Options{Path: dir, Logger: func(f string, a ...any) { warns = append(warns, fmt.Sprintf(f, a...)) }})
+	se, _ := s.LoadSampleEdits()
+	if se[roster.Kick]["gain_db"] != -3 {
+		t.Errorf("sample edits lost next to legacy sections: %v", se)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "user_recipes") {
+		t.Fatalf("want one warning naming the legacy sections, got %q", warns)
+	}
+	if err := s.SaveLibrary([]byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, InstrumentsFileName))
+	if strings.Contains(string(raw), "user_recipes") || strings.Contains(string(raw), "recipe_overrides") {
+		t.Errorf("the next write kept the legacy sections:\n%s", raw)
+	}
+}
+
+// TestInstrumentStoreKeepsDocumentsSavedBeforeVersioning: the documents saved
+// before the versioned library are read into it once and never deleted — a
+// library write keeps them as they were.
+func TestInstrumentStoreKeepsDocumentsSavedBeforeVersioning(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"schema_version":"0.0.1","instruments":{"user.snap.abc123":{"id":"user.snap.abc123"}}}`
+	if err := os.WriteFile(filepath.Join(dir, InstrumentsFileName), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewInstrumentStore(Options{Path: dir}).SaveLibrary([]byte(`{"histories":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	s := NewInstrumentStore(Options{Path: dir})
+	docs, err := s.LoadInstrumentDocs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(docs["user.snap.abc123"], &got); err != nil || got.ID != "user.snap.abc123" || len(docs) != 1 {
+		t.Fatalf("a library write lost the documents saved before it: %q (err %v)", docs, err)
+	}
+	if lib, _ := s.LoadLibrary(); len(lib) == 0 {
+		t.Fatal("the library was not persisted")
 	}
 }

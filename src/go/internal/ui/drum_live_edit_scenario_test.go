@@ -203,7 +203,7 @@ func restoreDetour(t *testing.T, g *Game, ctx *scenarioContext) {
 	g.addEdge(fromNode, toNode)
 }
 
-func setNodeLogic(t *testing.T, g *Game, info model.BeatInfo, kind string, n int, p float64) {
+func setNodeLogic(t *testing.T, g *Game, info model.BeatInfo, kind model.LogicKind, n int, p float64) {
 	node, ok := g.graph.GetNodeByID(info.NodeID)
 	if !ok {
 		t.Fatalf("logic change: node %d not found", info.NodeID)
@@ -377,10 +377,10 @@ func TestDrumLiveEditScenario(t *testing.T) {
 			if ctx.toInfo.NodeID == 0 {
 				addDetourNodes(t, game, 0, ctx)
 			}
-			setNodeLogic(t, game, ctx.toInfo, "probability", 0, 0.35)
+			setNodeLogic(t, game, ctx.toInfo, model.LogicProbability, 0, 0.35)
 		}},
 		{"logic-none", func(t *testing.T, game *Game, ctx *scenarioContext) {
-			setNodeLogic(t, game, ctx.toInfo, "none", 0, 0)
+			setNodeLogic(t, game, ctx.toInfo, model.LogicNone, 0, 0)
 		}},
 		{"node-remove-readd", func(t *testing.T, game *Game, ctx *scenarioContext) {
 			if ctx.toInfo.NodeID == 0 {
@@ -416,18 +416,18 @@ func TestDrumLiveEditScenario(t *testing.T) {
 			ctx.successors = succIDs
 		}},
 		{"logic-skip", func(t *testing.T, game *Game, ctx *scenarioContext) {
-			setNodeLogic(t, game, ctx.toInfo, "skip_every_n", 3, 0)
+			setNodeLogic(t, game, ctx.toInfo, model.LogicSkipEveryN, 3, 0)
 		}},
 		{"logic-reset", func(t *testing.T, game *Game, ctx *scenarioContext) {
-			setNodeLogic(t, game, ctx.toInfo, "none", 0, 0)
+			setNodeLogic(t, game, ctx.toInfo, model.LogicNone, 0, 0)
 		}},
 		{"logic-immediate", func(t *testing.T, game *Game, ctx *scenarioContext) {
 			info, _ := findImmediateBeatInfo(t, game, 0)
-			setNodeLogic(t, game, info, "skip_every_n", 2, 0)
+			setNodeLogic(t, game, info, model.LogicSkipEveryN, 2, 0)
 		}},
 		{"logic-immediate-reset", func(t *testing.T, game *Game, ctx *scenarioContext) {
 			info, _ := findImmediateBeatInfo(t, game, 0)
-			setNodeLogic(t, game, info, "none", 0, 0)
+			setNodeLogic(t, game, info, model.LogicNone, 0, 0)
 		}},
 		{"immediate-remove-readd", func(t *testing.T, game *Game, ctx *scenarioContext) {
 			targetInfo, targetAbs := findImmediateBeatInfo(t, game, 0)
@@ -458,11 +458,11 @@ func TestDrumLiveEditScenario(t *testing.T) {
 		}},
 		{"logic-past", func(t *testing.T, game *Game, ctx *scenarioContext) {
 			info, _ := findPastBeatInfo(t, game, 0)
-			setNodeLogic(t, game, info, "probability", 0, 0.5)
+			setNodeLogic(t, game, info, model.LogicProbability, 0, 0.5)
 		}},
 		{"logic-past-reset", func(t *testing.T, game *Game, ctx *scenarioContext) {
 			info, _ := findPastBeatInfo(t, game, 0)
-			setNodeLogic(t, game, info, "none", 0, 0)
+			setNodeLogic(t, game, info, model.LogicNone, 0, 0)
 		}},
 	}
 

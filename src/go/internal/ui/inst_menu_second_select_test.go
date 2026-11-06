@@ -5,6 +5,9 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstrumentMenuSecondSelectionUpdatesLabel verifies that selecting an
@@ -21,14 +24,14 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 
 	// Create a DrumView with one row
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil // No categories for simplicity
 	dv.instCatByID = nil
 
 	// Initialize with a single row
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -44,7 +47,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	}
 
 	// Verify initial state
-	if dv.Rows[0].Instrument != "kick" {
+	if dv.Rows[0].Instrument != roster.Kick {
 		t.Fatalf("expected initial instrument 'kick', got %q", dv.Rows[0].Instrument)
 	}
 	if dv.rowLabels()[0].Text != "Kick" {
@@ -67,7 +70,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	for _, id := range dv.instOptions {
 		instOpts = append(instOpts, InstrumentOption{
 			ID:    id,
-			Label: id,
+			Label: string(id),
 		})
 	}
 
@@ -81,7 +84,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 		RowHeight:         24,
 		LabelWidth:        100,
 		ControlsWidth:     100,
-		OnSelect: func(instID string) {
+		OnSelect: func(instID instrument.ID) {
 			dv.SetInstrument(instID)
 		},
 	})
@@ -108,7 +111,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	dv.instMenuComp.HandleInput(rect.Min.X+5, rect.Min.Y+5, false)
 
 	// Verify the selection was applied
-	if dv.Rows[0].Instrument != "snare" {
+	if dv.Rows[0].Instrument != roster.Snare {
 		t.Fatalf("after first selection: expected instrument 'snare', got %q", dv.Rows[0].Instrument)
 	}
 	if dv.Rows[0].Name != "Snare" {
@@ -150,7 +153,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 		RowHeight:         24,
 		LabelWidth:        100,
 		ControlsWidth:     100,
-		OnSelect: func(instID string) {
+		OnSelect: func(instID instrument.ID) {
 			dv.SetInstrument(instID)
 		},
 	})
@@ -177,7 +180,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	dv.instMenuComp.HandleInput(rect.Min.X+5, rect.Min.Y+5, false)
 
 	// Verify the selection was applied to Rows
-	if dv.Rows[0].Instrument != "hihat" {
+	if dv.Rows[0].Instrument != roster.Hihat {
 		t.Fatalf("after second selection: expected instrument 'hihat', got %q", dv.Rows[0].Instrument)
 	}
 	if dv.Rows[0].Name != "Hihat" {
@@ -214,13 +217,13 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -240,12 +243,12 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 	for _, id := range dv.instOptions {
 		instOpts = append(instOpts, InstrumentOption{
 			ID:    id,
-			Label: id,
+			Label: string(id),
 		})
 	}
 
 	// Helper to select an instrument
-	selectInstrument := func(instID string) {
+	selectInstrument := func(instID instrument.ID) {
 		// Close old portal entry before reopening to avoid OnClose callback
 		// from closing the newly-opened comp (closeByID fires old OnClose).
 		dv.closeInstMenuPortal()
@@ -262,7 +265,7 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 			RowHeight:         24,
 			LabelWidth:        100,
 			ControlsWidth:     100,
-			OnSelect: func(id string) {
+			OnSelect: func(id instrument.ID) {
 				dv.SetInstrument(id)
 			},
 		})
@@ -272,7 +275,7 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 
 		var btn *Button
 		for _, b := range dv.instMenuComp.InstBtns() {
-			if b.Text == instID {
+			if instrument.ID(b.Text) == instID {
 				btn = b
 				break
 			}
@@ -293,25 +296,25 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 	}
 
 	// Selection 1: kick -> snare
-	selectInstrument("snare")
+	selectInstrument(roster.Snare)
 	if dv.rowLabels()[0].Text != "Snare" {
 		t.Fatalf("after selection 1: expected label 'Snare', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Selection 2: snare -> hihat
-	selectInstrument("hihat")
+	selectInstrument(roster.Hihat)
 	if dv.rowLabels()[0].Text != "Hihat" {
 		t.Fatalf("after selection 2: expected label 'Hihat', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Selection 3: hihat -> tom
-	selectInstrument("tom")
+	selectInstrument(roster.Tom)
 	if dv.rowLabels()[0].Text != "Tom" {
 		t.Fatalf("after selection 3: expected label 'Tom', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Selection 4: tom -> kick (back to original)
-	selectInstrument("kick")
+	selectInstrument(roster.Kick)
 	if dv.rowLabels()[0].Text != "Kick" {
 		t.Fatalf("after selection 4: expected label 'Kick', got %q", dv.rowLabels()[0].Text)
 	}
@@ -329,13 +332,13 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -421,7 +424,7 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 		}
 
 		// Verify the selection
-		if dv.Rows[0].Instrument != expectedID {
+		if dv.Rows[0].Instrument != instrument.ID(expectedID) {
 			t.Fatalf("expected instrument %q, got %q", expectedID, dv.Rows[0].Instrument)
 		}
 		if dv.rowLabels()[0].Text != expectedLabel {
@@ -457,13 +460,13 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -522,7 +525,7 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 		runLayoutUpdate()
 
 		// Verify
-		if dv.Rows[0].Instrument != expectedID {
+		if dv.Rows[0].Instrument != instrument.ID(expectedID) {
 			t.Fatalf("instrument mismatch: got %q, want %q", dv.Rows[0].Instrument, expectedID)
 		}
 		if dv.Rows[0].Name != expectedLabel {
@@ -563,11 +566,11 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 // marks the row controls cache as dirty so the label is redrawn.
 func TestSetInstrumentInvalidatesRowControlsCache(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -584,7 +587,7 @@ func TestSetInstrumentInvalidatesRowControlsCache(t *testing.T) {
 	dv.rowControlsCacheDirty = false
 
 	// Now call SetInstrument
-	dv.SetInstrument("snare")
+	dv.SetInstrument(roster.Snare)
 
 	// Verify that the row controls cache is marked dirty
 	if !dv.rowControlsCacheDirty {

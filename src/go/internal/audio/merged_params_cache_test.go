@@ -2,29 +2,26 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // TestMergedInstrumentParamsRO_InvalidatesOnEveryMutationPath guards the
 // revision plumbing behind the merged-params cache: every mutation that can
-// change MergeRecipeDefaults' output must be visible through the cached
+// change an instrument's flat values must be visible through the cached
 // read-only accessor on the next call. A missed bump would freeze the Synth
 // tab's previews/mirror at stale values (the cache backs every per-frame
 // read — see merged_params_cache.go).
 func TestMergedInstrumentParamsRO_InvalidatesOnEveryMutationPath(t *testing.T) {
-	const inst = "dnb-kick"
-	recipeID := RecipeForInstrument(inst)
-	if recipeID == "" {
-		t.Fatal("dnb-kick has no recipe binding")
-	}
-	t.Cleanup(func() {
-		ResetInstrumentParams(inst)
-		ResetRecipeToShipped(recipeID)
-		BindInstrumentToRecipe(inst, recipeID)
-	})
+	resetLibraryForTest(t)
+	const inst = roster.DnbKick
 
 	base := MergedInstrumentParamsRO(inst)
 	if len(base) == 0 {
-		t.Fatal("empty merged map for a bound modular instrument")
+		t.Fatal("empty merged map for a shipped instrument")
 	}
 	// Same revs → the cached read repeats identically (no re-merge needed).
 	if again := MergedInstrumentParamsRO(inst); len(again) != len(base) {
@@ -44,29 +41,28 @@ func TestMergedInstrumentParamsRO_InvalidatesOnEveryMutationPath(t *testing.T) {
 		t.Errorf("after ResetInstrumentParams: merged gen1_kick_attack=%v, want default %v", got, orig)
 	}
 
-	// 3. A recipe-defaults Save (UpdateRecipeDefaultsAndInvalidate) must
-	// invalidate even with an empty per-instrument overlay.
-	if !UpdateRecipeDefaultsAndInvalidate(recipeID, map[string]float64{"gen1_kick_attack": orig + 0.5}) {
-		t.Fatal("UpdateRecipeDefaultsAndInvalidate reported no change")
+	// 3. Replacing the whole document (import, undo) must invalidate.
+	d, _ := InstrumentDoc(inst)
+	d2, err := instrument.SetField(d, BuiltinModuleRegistry(), "gen1_kick_attack", orig+0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SetInstrumentDoc(inst, d2); err != nil {
+		t.Fatal(err)
 	}
 	if got := MergedInstrumentParamsRO(inst)["gen1_kick_attack"]; got != orig+0.5 {
-		t.Errorf("after defaults Save: merged gen1_kick_attack=%v, want %v", got, orig+0.5)
-	}
-	if !ResetRecipeToShipped(recipeID) {
-		t.Fatal("ResetRecipeToShipped reported no change")
-	}
-	if got := MergedInstrumentParamsRO(inst)["gen1_kick_attack"]; got != orig {
-		t.Errorf("after ResetRecipeToShipped: merged gen1_kick_attack=%v, want shipped %v", got, orig)
+		t.Errorf("after SetInstrumentDoc: merged gen1_kick_attack=%v, want %v", got, orig+0.5)
 	}
 
-	// 4. Re-binding to a different recipe must invalidate.
-	otherRecipe := RecipeForInstrument("snare")
-	if otherRecipe == "" || otherRecipe == recipeID {
-		t.Fatalf("need a distinct second recipe for the rebind check, got %q", otherRecipe)
+	// 4. A library Save then Reset lands on the saved entry.
+	lib := d2.Clone()
+	lib.ID, lib.Origin = inst, ""
+	lib, _ = instrument.SetField(lib, BuiltinModuleRegistry(), "gen1_kick_attack", orig+0.75)
+	if err := SaveLibraryDoc(lib); err != nil {
+		t.Fatal(err)
 	}
-	BindInstrumentToRecipe(inst, otherRecipe)
-	rebound := MergedInstrumentParamsRO(inst)
-	if _, hasKick := rebound["gen1_kick_attack"]; hasKick && len(rebound) == len(base) {
-		t.Error("after rebind: merged map still looks like the old recipe's schema")
+	ResetInstrumentParams(inst)
+	if got := MergedInstrumentParamsRO(inst)["gen1_kick_attack"]; got != orig+0.75 {
+		t.Errorf("after library Save + Reset: merged gen1_kick_attack=%v, want %v", got, orig+0.75)
 	}
 }

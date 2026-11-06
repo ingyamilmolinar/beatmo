@@ -16,8 +16,8 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		return
 	}
 	rowBase := dv.headerH
-	baseX := dv.timelineRect.Min.X - dv.Bounds.Min.X
-	rowWidth := dv.timelineRect.Dx()
+	baseX := dv.cellGridRect.Min.X - dv.Bounds.Min.X
+	rowWidth := dv.cellGridRect.Dx()
 	padPx := max1(dv.rowsLayerPadPx)
 	canReuse := dv.rowsLayer != nil && dv.rowsLayerW == w && dv.rowsLayerH == h && dv.rowsLayerRowOff == dv.rowOffset && dv.rowsLayerBaseX == baseX && dv.rowsLayerRowWidth == rowWidth && dv.rowsLayerLength == dv.Length
 	offsetDelta := dv.Offset - dv.rowsLayerOffset

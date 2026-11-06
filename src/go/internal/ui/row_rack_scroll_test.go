@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestRowRackWheelScrollChangesOffset verifies that scrolling the mouse wheel
@@ -159,7 +160,7 @@ func TestRowRackScrollHitAdapterCallsOnScrollChanged(t *testing.T) {
 	cb := RowRackCallbacks{
 		OnScrollChanged:   func() { called = true },
 		Rows:              func() []*DrumRow { return rows },
-		IsInstrumentAvail: func(id string) bool { return true },
+		IsInstrumentAvail: func(id instrument.ID) bool { return true },
 		RowHeight:         func() int { return TouchRowHeight() },
 		DeleteConfirm:     func() (int, int64) { return -1, 0 },
 		RenameRow:         func() int { return -1 },

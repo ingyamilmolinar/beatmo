@@ -6,6 +6,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // buildGroupLoopCircuitSized mirrors buildGroupLoopCircuit but takes an
@@ -47,16 +48,13 @@ func TestGroupMenuFitsWithinGridPane(t *testing.T) {
 	// while provisional — hence OpenAtProvisional below). The old "param"
 	// cycle button is gone (task-rule-anchor Part B); the three per-param
 	// delta rows (rdpit/rdvol/rddur) replace it.
-	controlIDs := []string{
-		"delete", "n-", "n+", "save", "close", "ruleonoff",
-		"rdpit-", "rdpit+", "rdvol-", "rdvol+", "rddur-", "rddur+",
-	}
+	controlIDs := []gmID{gmDelete, gmMinus(gmStepEveryN), gmPlus(gmStepEveryN), gmSave, gmClose, gmRuleOnOff, gmMinus(gmStepPitch), gmPlus(gmStepPitch), gmMinus(gmStepVolume), gmPlus(gmStepVolume), gmMinus(gmStepDuration), gmPlus(gmStepDuration)}
 
 	// Ruleonoff/Every-N combined row (n- used to render invisible because the
 	// pill's full-sentence label overflowed past its left edge and painted
 	// over the already-drawn n- button — the rect itself was never missing/
 	// zero-width, so plain containment checks above didn't catch it).
-	stepPairIDs := []string{"n-", "nval", "n+"}
+	stepPairIDs := []gmID{gmMinus(gmStepEveryN), gmValue(gmStepEveryN), gmPlus(gmStepEveryN)}
 
 	for _, sz := range sizes {
 		g, aID, bID, cID := buildGroupLoopCircuitSized(t, sz.w, sz.h)
@@ -97,7 +95,7 @@ func TestGroupMenuFitsWithinGridPane(t *testing.T) {
 			// Every rect in the combined delta/everyN row must exist, be
 			// non-empty, and (for the +/- buttons) be at least
 			// sidebarIncBtnW wide.
-			rects := make(map[string]image.Rectangle, len(stepPairIDs))
+			rects := make(map[gmID]image.Rectangle, len(stepPairIDs))
 			for _, id := range stepPairIDs {
 				r, ok := g.groupMenu.rects[id]
 				if !ok || r.Empty() {
@@ -105,7 +103,7 @@ func TestGroupMenuFitsWithinGridPane(t *testing.T) {
 				}
 				rects[id] = r
 			}
-			for _, id := range []string{"n-", "n+"} {
+			for _, id := range []gmID{gmMinus(gmStepEveryN), gmPlus(gmStepEveryN)} {
 				if w := rects[id].Dx(); w < sidebarIncBtnW {
 					t.Fatalf("%dx%d anchor %v: %q width %d < sidebarIncBtnW %d", sz.w, sz.h, a, id, w, sidebarIncBtnW)
 				}
@@ -126,7 +124,7 @@ func TestGroupMenuFitsWithinGridPane(t *testing.T) {
 			// sentence, which measures wider than the pill at every density
 			// and overflowed onto the n- button.
 			label := g.groupMenu.everyNPillLabel(g.groupMenu.sharedEveryN())
-			if tw, pw := StyledTextWidth(label, RoleBody), rects["nval"].Dx(); tw > pw {
+			if tw, pw := StyledTextWidth(label, RoleBody), rects[gmValue(gmStepEveryN)].Dx(); tw > pw {
 				t.Fatalf("%dx%d anchor %v: everyN pill label %q width %d overflows pill width %d", sz.w, sz.h, a, label, tw, pw)
 			}
 		}
@@ -398,10 +396,10 @@ func TestSaveButtonAlwaysPresent(t *testing.T) {
 	g.groupMenu.OpenAt(gid, 100, 100) // committed (non-provisional)
 	drawGroupMenuFrame(g)
 
-	if _, ok := g.groupMenu.rects["save"]; !ok {
+	if _, ok := g.groupMenu.rects[gmSave]; !ok {
 		t.Fatalf("save control rect must exist for a committed group")
 	}
-	b, ok := g.groupMenu.btns["save"]
+	b, ok := g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button must be wired for a committed group")
 	}
@@ -412,7 +410,7 @@ func TestSaveButtonAlwaysPresent(t *testing.T) {
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
 	advanceFrames(g, 2)
 	drawGroupMenuFrame(g)
-	b, ok = g.groupMenu.btns["save"]
+	b, ok = g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing after edit")
 	}
@@ -427,7 +425,7 @@ func TestSaveButtonAlwaysPresent(t *testing.T) {
 	if !g.groupMenu.IsOpen() {
 		t.Fatalf("Save must keep the menu open (task-save-always)")
 	}
-	b, ok = g.groupMenu.btns["save"]
+	b, ok = g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing after Save")
 	}
@@ -552,7 +550,7 @@ func TestSaveKeepsMenuOpen(t *testing.T) {
 	if g.groupMenu.provisional {
 		t.Fatalf("provisional flag must be cleared after Save")
 	}
-	b, ok := g.groupMenu.btns["save"]
+	b, ok := g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing")
 	}
@@ -578,7 +576,7 @@ func TestAnchorChangesDoNotDirty(t *testing.T) {
 
 	g.groupMenu.OpenAt(gid, 100, 100)
 	drawGroupMenuFrame(g)
-	b, ok := g.groupMenu.btns["save"]
+	b, ok := g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing")
 	}
@@ -589,7 +587,7 @@ func TestAnchorChangesDoNotDirty(t *testing.T) {
 	// Real play-start seam (transport button path — TriggerPlayPause consumed
 	// by Game.Update, mirroring rule_anchor_test.go's production-closest
 	// pattern) re-anchors every rule-bearing group's rules.
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.drum.TriggerPlayPause()
 	_ = g.Update()
 	t.Cleanup(func() { stopPlaybackForTest(g) })
@@ -606,7 +604,7 @@ func TestAnchorChangesDoNotDirty(t *testing.T) {
 	}
 
 	drawGroupMenuFrame(g)
-	b, ok = g.groupMenu.btns["save"]
+	b, ok = g.groupMenu.btns[gmSave]
 	if !ok || b == nil {
 		t.Fatalf("save button missing after play-start")
 	}
@@ -672,7 +670,7 @@ func drawGroupMenuFrame(g *Game) {
 // ruleToggleLabel reads the ruleonoff button's current displayed text.
 func ruleToggleLabel(t *testing.T, g *Game) string {
 	t.Helper()
-	b, ok := g.groupMenu.btns["ruleonoff"]
+	b, ok := g.groupMenu.btns[gmRuleOnOff]
 	if !ok || b == nil {
 		t.Fatalf("ruleonoff button missing")
 	}
@@ -697,7 +695,7 @@ func TestGroupMenuRuleToggleLabelUsesI18nKeys(t *testing.T) {
 		t.Fatalf("label (no rules) = %q, want %q (KeyGroupRuleOff)", got, want)
 	}
 
-	clickMenuControl(t, g, "rdpit+")
+	clickMenuControl(t, g, gmPlus(gmStepPitch))
 	advanceFrames(g, 2)
 	if grp, _ := g.graph.Group(gid); len(grp.Rules) != 1 {
 		t.Fatalf("setup: want 1 rule after rdpit+, got %+v", grp.Rules)
@@ -708,7 +706,7 @@ func TestGroupMenuRuleToggleLabelUsesI18nKeys(t *testing.T) {
 		t.Fatalf("label (delta configured, not enabled) = %q, want %q (KeyGroupRuleOff)", got, want)
 	}
 
-	clickMenuControl(t, g, "ruleonoff")
+	clickMenuControl(t, g, gmRuleOnOff)
 	advanceFrames(g, 2)
 	if got, want := ruleToggleLabel(t, g), i18n.T(i18n.KeyGroupRuleOn); got != want {
 		t.Fatalf("label (rule enabled) = %q, want %q (KeyGroupRuleOn)", got, want)
@@ -837,12 +835,12 @@ func TestGroupMenuRuleToggleLabelFitsAtEveryDensity(t *testing.T) {
 		g.groupMenu.OpenAt(gid, 100, 100)
 		advanceFrames(g, 1)
 
-		b, ok := g.groupMenu.btns["ruleonoff"]
+		b, ok := g.groupMenu.btns[gmRuleOnOff]
 		if !ok || b == nil {
 			restore()
 			t.Fatalf("density=%v: ruleonoff button missing", d)
 		}
-		r, ok := g.groupMenu.rects["ruleonoff"]
+		r, ok := g.groupMenu.rects[gmRuleOnOff]
 		if !ok || r.Empty() {
 			restore()
 			t.Fatalf("density=%v: ruleonoff rect missing/empty", d)

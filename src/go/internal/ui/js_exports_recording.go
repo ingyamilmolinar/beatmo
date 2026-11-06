@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
@@ -39,7 +40,7 @@ func (g *Game) initJSRecording() {
 		for _, row := range g.drum.Rows {
 			if row.Instrument != "" {
 				instruments = append(instruments, audio.InstrumentMeta{
-					ID:   row.Instrument,
+					ID:   channel.Of(row.Instrument),
 					Name: row.Name,
 				})
 			}

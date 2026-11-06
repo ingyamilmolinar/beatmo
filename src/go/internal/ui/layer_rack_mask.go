@@ -36,7 +36,8 @@ func (l *RackMaskLayer) Draw(dst *ebiten.Image) {
 	panelRect := dv.widgetRects[WidgetRack]
 	if panelRect.Empty() {
 		panelLeft := dv.Bounds.Min.X
-		panelRight := dv.timelineRect.Min.X
+		// The rack column ends exactly where the cell grid begins.
+		panelRight := dv.cellGridRect.Min.X
 		if panelRight > panelLeft {
 			top := dv.Bounds.Min.Y + dv.headerH
 			bot := dv.Bounds.Max.Y

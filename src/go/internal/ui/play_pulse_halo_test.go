@@ -57,20 +57,17 @@ func TestPlayPulseGated_IconMustBePauseToShowGlow(t *testing.T) {
 	}
 }
 
-// TestPlayPulseHalo_MultiPassFalloff verifies that during playback the glow
-// is rendered as a soft multi-pass halo, not a single hard outline at
-// Inset(-2). The hard 1-pixel outline at exactly Inset(-2) is the
-// screenshot bug: the new implementation must use multiple decreasing-
-// alpha passes (a halo), and one of them must extend wider than 2px from
-// the button edge.
-func TestPlayPulseHalo_MultiPassFalloff(t *testing.T) {
+// TestPlayingIsActiveStateNotHalo verifies a running transport is the play
+// key's ACTIVE state (accent tint + 2 px bottom bar via Button.SetToggled —
+// DESIGN.md "Interaction states") and that NO halo outline is stroked around
+// it. The multi-pass halo stroked square rects outside a rounded key, which
+// read as a square frame around Pause.
+func TestPlayingIsActiveStateNotHalo(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	// Drive the visible state via the public setter so the icon flips to
-	// Pause (the gate the new implementation enforces).
 	g.drum.SetPlaying(true)
 	pb := g.drum.playBtn()
 	if pb == nil {
@@ -79,7 +76,9 @@ func TestPlayPulseHalo_MultiPassFalloff(t *testing.T) {
 	if pb.Icon != string(IconPause) {
 		t.Fatalf("expected Pause icon when playing, got %q", pb.Icon)
 	}
-
+	if !pb.Toggled() {
+		t.Error("playing must latch the play key (active state)")
+	}
 	pr := pb.Rect()
 	if pr.Empty() {
 		t.Fatalf("play button rect is empty after Layout; got %v", pr)
@@ -87,20 +86,8 @@ func TestPlayPulseHalo_MultiPassFalloff(t *testing.T) {
 	rects := captureGlowOutlinesNear(t, pr, func() {
 		g.drum.Draw(ebiten.NewImage(640, 480), nil, 0, nil, 0)
 	})
-	if len(rects) < 2 {
-		t.Fatalf("expected halo to draw multiple falloff passes (≥2), got %d (play btn rect %v)", len(rects), pr)
-	}
-
-	// At least one pass extends ≥3 px from the button edge.
-	maxOutset := 0
-	for _, r := range rects {
-		out := pr.Min.X - r.Rect.Min.X
-		if out > maxOutset {
-			maxOutset = out
-		}
-	}
-	if maxOutset < 3 {
-		t.Fatalf("expected halo to extend ≥3 px from button edge; max outset = %d px", maxOutset)
+	if len(rects) != 0 {
+		t.Fatalf("playing stroked %d halo outline(s) around the play key %v; want none", len(rects), pr)
 	}
 }
 

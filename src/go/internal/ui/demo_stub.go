@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func expandHome(p string) string {
@@ -61,7 +63,7 @@ func (g *Game) buildDemo() {
 				if minID != model.InvalidNodeID {
 					g.drum.AddRow()
 					g.drum.selRow = 0
-					g.drum.SetInstrument("kick")
+					g.drum.SetInstrument(roster.Kick)
 					if len(g.drum.Rows) > 0 {
 						g.drum.Rows[0].Name = "Row"
 						g.drum.Rows[0].Origin = minID
@@ -86,7 +88,7 @@ func (g *Game) RunDemo() {}
 
 // RunBenchmark stores benchmark configuration. Functional under tests so the
 // benchmark lifecycle can be exercised via direct Update() calls.
-func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario, stormInst string) {
+func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario, stormInst instrument.ID) {
 	g.benchBPM = bpm
 	g.benchDuration = dur
 	g.benchStorm = storm

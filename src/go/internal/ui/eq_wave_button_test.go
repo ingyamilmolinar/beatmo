@@ -9,6 +9,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // TestEQWaveButtonRendersWithoutTilde verifies that the EQ/Wave toggle button
@@ -49,9 +50,15 @@ func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	}
 }
 
-// TestEQWaveButtonAlwaysHasBorder verifies that the EQ/Wave toggle button
-// draws a rounded-rect border stroke in both active and inactive states.
-func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
+// TestEQWaveButtonAlwaysHasVisibleBody verifies that the EQ/Wave toggle button
+// has a visible silhouette in BOTH active and inactive states.
+//
+// Formerly TestEQWaveButtonAlwaysHasBorder. The flat-tonal restyle removed
+// borders at rest (DESIGN.md "Elevation & Depth": a control's silhouette is a
+// tone step, never a line), so asserting a stroke would now pin the wrong
+// thing. The real intent — "this control is never invisible" — is preserved by
+// asserting a FILLED body instead.
+func TestEQWaveButtonAlwaysHasVisibleBody(t *testing.T) {
 	assertDefaultParityState(t)
 
 	z := NewEQPanelZone(EQCallbacks{})
@@ -65,14 +72,11 @@ func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
 
 	screen := ebiten.NewImage(400, 200)
 
-	// The keycap pill renders its cap face fill+border as a single cached
-	// drawRoundedButton composite (the border is baked into the sprite), so on
-	// a warm cache no raw stroked drawRoundedRect fires. Accept either form:
-	// an uncached stroked rounded-rect OR a rounded-button composite (which
-	// always carries a border arg) in the button region.
-	hasBorderStroke := func(rec *drawCallRecorder) bool {
+	// Flat-tonal: the pill paints one FILLED rounded rect as its body. Accept
+	// either the uncached primitive or the cached rounded-button composite.
+	hasFilledBody := func(rec *drawCallRecorder) bool {
 		for _, c := range rec.inRegion(toggleRect) {
-			if c.Kind == drawCallRoundedRect && !c.Filled {
+			if c.Kind == drawCallRoundedRect && c.Filled {
 				return true
 			}
 			if c.Kind == drawCallRoundedButton {
@@ -82,19 +86,19 @@ func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
 		return false
 	}
 
-	// Active state (waveformMode=true, shows "EQ") — should have border.
+	// Active state (waveformMode=true, shows "EQ").
 	z.tabState.SetActiveTab(TabWave)
 	var rec drawCallRecorder
 	rec.record(t, func() { z.Draw(screen) })
-	if !hasBorderStroke(&rec) {
-		t.Fatal("active toggle button (EQ) missing rounded-rect border stroke")
+	if !hasFilledBody(&rec) {
+		t.Fatal("active toggle button (EQ) has no filled body — control is invisible")
 	}
 
-	// Inactive state (waveformMode=false, shows "Wave") — should also have border.
+	// Inactive state (waveformMode=false, shows "Wave").
 	z.tabState.SetActiveTab(TabEQ)
 	rec.record(t, func() { z.Draw(screen) })
-	if !hasBorderStroke(&rec) {
-		t.Fatal("inactive toggle button (Wave) missing rounded-rect border stroke")
+	if !hasFilledBody(&rec) {
+		t.Fatal("inactive toggle button (Wave) has no filled body — control is invisible")
 	}
 }
 
@@ -110,7 +114,7 @@ func TestEQPillTabsDrawAboveSpectrumBands(t *testing.T) {
 		mockSpectrum[i] = 0.5
 	}
 	z := NewEQPanelZone(EQCallbacks{
-		AnalyzerSnapshot: func(_ string) audio.AnalyzerSnapshot {
+		AnalyzerSnapshot: func(_ channel.ID) audio.AnalyzerSnapshot {
 			return audio.AnalyzerSnapshot{Spectrum: mockSpectrum}
 		},
 	})

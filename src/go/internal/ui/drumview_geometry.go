@@ -39,6 +39,22 @@ func (dv *DrumView) HeaderRect() image.Rectangle {
 	)
 }
 
+// BelowHeaderRect returns dv.Bounds with the header strip (HeaderRect)
+// sliced off the top — the surface directly below the transport/BPM/lock
+// row: row rack on Pads, the EQ/Wave/Spectrum/… panel on every other mobile
+// view mode. Used as the mobile toast fallback host (toastHostRect,
+// DrumToastLayer) so the sticky progress toast lands on the panel content
+// instead of covering the Play/Stop/Record cluster it's supposed to be
+// explaining the state of.
+func (dv *DrumView) BelowHeaderRect() image.Rectangle {
+	r := dv.Bounds
+	r.Min.Y = dv.HeaderRect().Max.Y
+	if r.Min.Y > r.Max.Y {
+		r.Min.Y = r.Max.Y
+	}
+	return r
+}
+
 // minSynthPanelH is the hard minimum painted height (px) of the bottom audio
 // panel while the Synth tab is active — header + stage sections + knob chrome
 // need this even when the runtime-profile multiplier resolves smaller. Shared
@@ -278,13 +294,11 @@ func (dv *DrumView) refreshWidgetLayout() {
 	if leftW <= 0 {
 		leftW = dv.labelW + dv.controlsW
 	}
-	dv.controlsW = leftW - dv.labelW
-	if dv.controlsW < 180 {
-		dv.controlsW = 180
-	}
-	if dv.controlsW > 520 {
-		dv.controlsW = 520
-	}
+	// controlsW is the rack row's REAL fixed cluster (volume + M/S/FX/⋯ +
+	// gutters + scrollbar lane), not "whatever the column has left after the
+	// label" — that circular definition is what let the label bar grow to
+	// fill a 30%-of-screen column with empty space.
+	dv.controlsW = dv.rackControlsWidth()
 	// On narrow screens, cap controls so label+controls fits in the column.
 	if leftW > 0 && dv.labelW+dv.controlsW > leftW {
 		dv.controlsW = leftW - dv.labelW
@@ -293,37 +307,49 @@ func (dv *DrumView) refreshWidgetLayout() {
 		}
 	}
 
-	// Tighten rack column to actual content width (prevents black gap
-	// between controls and timeline on wide windows). controlsW is
-	// already capped at 520, so when the column is wider than
-	// labelW + controlsW the excess is wasted black space.
-	needW := dv.labelW + dv.controlsW
-	if dv.widgets != nil && len(dv.widgets.cols) >= 2 {
+	// Size the rack column to its content: labelW + controlsW, never more than
+	// the profile's default share of the pane. The rack bed (RackMaskLayer)
+	// paints exactly labelW + controlsW, so a column wider than that showed a
+	// background-colored lane between the rack and the timeline (it used to be
+	// sized to content + SpaceMD — a 10 px dark strip on wide windows).
+	needW := dv.labelW + dv.rackControlsWidth()
+	if dv.widgets != nil && len(dv.widgets.cols) >= 2 && dv.Bounds.Dx() > 0 {
 		col0W := dv.widgets.ColWidth(0)
-		if col0W > needW+SpaceMD {
-			totalWeight := dv.widgets.cols[0] + dv.widgets.cols[1]
-			newCol0 := float64(needW+SpaceMD) / float64(dv.Bounds.Dx()) * totalWeight
-			if newCol0 < 0.3*totalWeight {
-				newCol0 = 0.3 * totalWeight // floor
-			}
+		totalWeight := dv.widgets.cols[0] + dv.widgets.cols[1]
+		maxShare := 0.5
+		if pw := p.ColWeights; len(pw) >= 2 && pw[0]+pw[1] > 0 {
+			maxShare = pw[0] / (pw[0] + pw[1])
+		}
+		target := needW
+		if lim := int(maxShare * float64(dv.Bounds.Dx())); target > lim {
+			target = lim
+		}
+		if target != col0W && target > 0 && !dv.widgets.userColSized {
+			newCol0 := float64(target) / float64(dv.Bounds.Dx()) * totalWeight
 			dv.widgets.cols[0] = newCol0
 			dv.widgets.cols[1] = totalWeight - newCol0
 			dv.widgets.recalc()
-			// Re-read rects after recalc.
-			dv.widgetRects[WidgetTransport] = dv.widgets.Rect(WidgetTransport)
-			dv.widgetRects[WidgetRack] = dv.widgets.Rect(WidgetRack)
-			dv.widgetRects[WidgetTimeline] = dv.widgets.Rect(WidgetTimeline)
-			dv.widgetRects[WidgetWave] = dv.widgets.Rect(WidgetWave)
-			// Re-apply wave-hidden extension after recalc.
-			if p.IsMobile() && dv.mobileEQCollapsed && dv.widgetRects[WidgetWave].Empty() {
-				if r := dv.widgetRects[WidgetRack]; !r.Empty() {
-					r.Max.Y = dv.Bounds.Max.Y
-					dv.widgetRects[WidgetRack] = r
+			// Only the column split moved: take the new X edges from the
+			// board but keep every Y adjustment made above (header cap, EQ
+			// collapse, mobile wave extension) — re-reading whole rects
+			// here undid them, so a second refresh moved the rack.
+			for _, kind := range []WidgetKind{WidgetTransport, WidgetRack, WidgetTimeline, WidgetWave} {
+				r, ok := dv.widgetRects[kind]
+				if !ok || r.Empty() {
+					continue
 				}
-				if r := dv.widgetRects[WidgetTimeline]; !r.Empty() {
-					r.Max.Y = dv.Bounds.Max.Y
-					dv.widgetRects[WidgetTimeline] = r
-				}
+				nr := dv.widgets.Rect(kind)
+				r.Min.X, r.Max.X = nr.Min.X, nr.Max.X
+				dv.widgetRects[kind] = r
+			}
+		}
+		// The rack bed must span the WHOLE column: the board can hold the
+		// column above target (its minimum column width), and whatever the
+		// bed leaves unpainted is a background-colored lane.
+		if c := dv.widgets.ColWidth(0); c > 0 {
+			dv.controlsW = c - dv.labelW
+			if dv.controlsW < 0 {
+				dv.controlsW = 0
 			}
 		}
 	}
@@ -577,4 +603,14 @@ func (dv *DrumView) flushRowScroll() {
 		}
 		dv.calcLayout()
 	}
+}
+
+// rackControlsWidth is the width of a rack row's fixed control cluster —
+// everything right of the label — as the row rack lays it out. 180 px is the
+// historical fallback before the rack zone exists.
+func (dv *DrumView) rackControlsWidth() int {
+	if dv.rowRackZone == nil {
+		return 180
+	}
+	return dv.rowRackZone.FixedControlsWidth()
 }

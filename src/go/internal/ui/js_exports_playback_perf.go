@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) initJSPlaybackPerf() {
@@ -18,6 +20,17 @@ func (g *Game) initJSPlaybackPerf() {
 	js.Global().Set("stopPlay", jsFn(func(args jsArgs) any {
 		g.drum.stopPressed = true
 		return nil
+	}))
+
+	// warmupProgress reports the playback readiness gate's state to JS: the
+	// import-cold bench waits on it, and the re-import acceptance check asserts
+	// total==0 (everything already cached).
+	js.Global().Set("warmupProgress", jsFn(func(args jsArgs) any {
+		done, total := 0, 0
+		if g.warmup != nil {
+			done, total = g.warmup.Progress()
+		}
+		return map[string]any{"done": done, "total": total, "ready": g.playbackReady()}
 	}))
 
 	// __navSegRect(i) – DIAGNOSTIC: bottom-nav segmented-control segment rect.
@@ -283,6 +296,10 @@ func (g *Game) initJSPlaybackPerf() {
 			obj.Set("updateMS", g.lastUpdateMS)
 			obj.Set("refreshMS", g.lastRefreshMS)
 		}
+		// Residency (spec 2026-10-31 §1.1): what Go holds; audio.js reports
+		// its side through audioGraphStats().
+		obj.Set("mixerChannels", len(audio.InstrumentChannelIDs()))
+		obj.Set("registeredInstruments", len(audio.Instruments()))
 		obj.Set("liveImages", g.snapshotLiveImages())
 		obj.Set("imagesAllocatedTotal", float64(MetricImagesAllocatedTotal()))
 		obj.Set("drawCalls", float64(MetricDrawCallsTotal()))
@@ -303,7 +320,13 @@ func (g *Game) initJSPlaybackPerf() {
 	// Stage C). Returns null before any data is observed (count==0).
 	js.Global().Set("getThreeStageLatency", jsFn(func(args jsArgs) any {
 		s := g.PerfSnapshot()
-		return threeStageLatencyJSObject(s.SchedMetrics)
+		o := threeStageLatencyJSObject(s.SchedMetrics)
+		if !o.IsNull() {
+			// The audio lane commits notes from the sequencer pass itself: it
+			// has no enqueue → audioLoop handoff, so Stage B stays empty.
+			o.Set("lane", g.audioLaneOn())
+		}
+		return o
 	}))
 	js.Global().Set("resetThreeStageLatency", jsFn(func(args jsArgs) any {
 		g.schedMetrics.Reset()

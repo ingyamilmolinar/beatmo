@@ -7,14 +7,18 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestApplyKitToDrumView_PreservesMixState is the Phase 6 ship signal:
-// applying a kit must swap each row's Instrument and leave every other
-// piece of per-row mix state byte-equal. Covers Volume, Pan, DelaySend,
-// ReverbSend, Mute / Solo flags, EQ band gains, HPF/LPF, and the insert
-// effects chain. Built without a real Game (no Ebiten); the test only
-// needs the DrumView struct's row slice and the kit_binder bridge.
+// applying a kit must swap each row's Instrument and leave every other piece
+// of the row's mix state as it was. Volume, Mute / Solo stay on the row; the
+// EQ, HPF/LPF and insert effects are the instrument's audio bundle, which
+// carries over to the kit's instrument (it sets none of its own — spec
+// 2026-10-31 §2.9: choosing an instrument never drops settings). Built without
+// a real Game (no Ebiten); the test only needs the DrumView struct's row slice
+// and the kit_binder bridge.
 func TestApplyKitToDrumView_PreservesMixState(t *testing.T) {
 	// Capture EventKitApplied for the hook assertion.
 	var mu sync.Mutex
@@ -26,37 +30,36 @@ func TestApplyKitToDrumView_PreservesMixState(t *testing.T) {
 	})
 	t.Cleanup(unsub)
 
-	originalEQ := []float64{0, +1.5, -2.0, 0, +0.5, 0, 0, 0, 0, 0}
-	originalEQMute := []bool{false, false, true, false, false, false, false, false, false, false}
-	originalEffects := []audio.EffectSlot{
-		{Type: audio.EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 0.6}},
+	eq := audio.NewEQSettings()
+	copy(eq.GainsDB, []float64{0, +1.5, -2.0, 0, +0.5, 0, 0, 0, 0, 0})
+	eq.BandMuted[2] = true
+	eq.HPF, eq.HPFHz = true, 120
+	eq.LPF, eq.LPFHz = true, 8000
+	settings := audio.AudioBundle{
+		EQ:      eq,
+		Effects: []audio.EffectSlot{{Type: audio.EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 0.6}}},
 	}
+	for _, id := range []instrument.ID{roster.Snare, roster.SnareLofi, roster.Kick, roster.KickDeep} {
+		audio.ApplyAudioBundle(id, audio.AudioBundle{})
+		t.Cleanup(func() { audio.ApplyAudioBundle(id, audio.AudioBundle{}) })
+	}
+	audio.ApplyAudioBundle(roster.Snare, settings)
+	settings = audio.CurrentAudioBundle(roster.Snare) // as the stores hold it (params sanitized)
 
 	dv := &DrumView{
 		Rows: []*DrumRow{
 			{
-				Name:        "Snare",
-				Instrument:  "snare",
-				Volume:      0.72,
-				Pan:         -0.3,
-				DelaySend:   0.4,
-				ReverbSend:  0.2,
-				Muted:       false,
-				Solo:        true,
-				EQGainsDB:   append([]float64(nil), originalEQ...),
-				EQBandMuted: append([]bool(nil), originalEQMute...),
-				HPFEnabled:  true,
-				HPFCutoffHz: 120,
-				LPFEnabled:  true,
-				LPFCutoffHz: 8000,
-				Effects:     append([]audio.EffectSlot(nil), originalEffects...),
+				Name:       "Snare",
+				Instrument: roster.Snare,
+				Volume:     0.72,
+				Muted:      false,
+				Solo:       true,
 			},
 			{
 				Name:       "Kick",
-				Instrument: "kick",
+				Instrument: roster.Kick,
 				Volume:     0.95,
-				Pan:        0.1,
-				Role:       "kick", // explicit role beats heuristic
+				Role:       instrument.RoleKick, // explicit role beats heuristic
 			},
 		},
 	}
@@ -64,9 +67,9 @@ func TestApplyKitToDrumView_PreservesMixState(t *testing.T) {
 	kit := audio.Kit{
 		ID:          "kit.fixture",
 		DisplayName: "Fixture Kit",
-		Members: map[string]string{
-			"snare": "snare-2",
-			"kick":  "kick-deep",
+		Members: map[instrument.Role]instrument.ID{
+			instrument.RoleSnare: roster.SnareLofi,
+			instrument.RoleKick:  roster.KickDeep,
 		},
 	}
 	rebound := dv.ApplyKit(kit)
@@ -75,10 +78,10 @@ func TestApplyKitToDrumView_PreservesMixState(t *testing.T) {
 	}
 
 	// Instrument changed.
-	if dv.Rows[0].Instrument != "snare-2" {
+	if dv.Rows[0].Instrument != roster.SnareLofi {
 		t.Errorf("row 0 instrument = %q want snare-2", dv.Rows[0].Instrument)
 	}
-	if dv.Rows[1].Instrument != "kick-deep" {
+	if dv.Rows[1].Instrument != roster.KickDeep {
 		t.Errorf("row 1 instrument = %q want kick-deep", dv.Rows[1].Instrument)
 	}
 
@@ -86,29 +89,14 @@ func TestApplyKitToDrumView_PreservesMixState(t *testing.T) {
 	if dv.Rows[0].Volume != 0.72 {
 		t.Errorf("Volume drifted: %v", dv.Rows[0].Volume)
 	}
-	if dv.Rows[0].Pan != -0.3 {
-		t.Errorf("Pan drifted: %v", dv.Rows[0].Pan)
-	}
-	if dv.Rows[0].DelaySend != 0.4 || dv.Rows[0].ReverbSend != 0.2 {
-		t.Errorf("Sends drifted: delay=%v reverb=%v", dv.Rows[0].DelaySend, dv.Rows[0].ReverbSend)
-	}
 	if dv.Rows[0].Solo != true || dv.Rows[0].Muted != false {
 		t.Errorf("Mute/Solo flags drifted: muted=%v solo=%v", dv.Rows[0].Muted, dv.Rows[0].Solo)
 	}
-	if !floatSliceEqual(dv.Rows[0].EQGainsDB, originalEQ) {
-		t.Errorf("EQ gains drifted: got %v want %v", dv.Rows[0].EQGainsDB, originalEQ)
+	if got := audio.CurrentAudioBundle(roster.SnareLofi); got.Digest() != settings.Digest() {
+		t.Errorf("the row's EQ / filters / effects did not carry over to the kit's snare:\n got %+v\nwant %+v", got, settings)
 	}
-	if !boolSliceEqual(dv.Rows[0].EQBandMuted, originalEQMute) {
-		t.Errorf("EQ band mute drifted: got %v want %v", dv.Rows[0].EQBandMuted, originalEQMute)
-	}
-	if !dv.Rows[0].HPFEnabled || dv.Rows[0].HPFCutoffHz != 120 {
-		t.Errorf("HPF drifted: enabled=%v cutoff=%v", dv.Rows[0].HPFEnabled, dv.Rows[0].HPFCutoffHz)
-	}
-	if !dv.Rows[0].LPFEnabled || dv.Rows[0].LPFCutoffHz != 8000 {
-		t.Errorf("LPF drifted: enabled=%v cutoff=%v", dv.Rows[0].LPFEnabled, dv.Rows[0].LPFCutoffHz)
-	}
-	if len(dv.Rows[0].Effects) != 1 || dv.Rows[0].Effects[0].Type != audio.EffectDistortion {
-		t.Errorf("Effects chain drifted: %+v", dv.Rows[0].Effects)
+	if !audio.CurrentAudioBundle(roster.KickDeep).IsNeutral() {
+		t.Errorf("the kick row had no settings, yet its new instrument got some: %+v", audio.CurrentAudioBundle(roster.KickDeep))
 	}
 
 	// EventKitApplied published with the kit metadata.

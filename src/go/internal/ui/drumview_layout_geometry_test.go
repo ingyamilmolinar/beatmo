@@ -30,7 +30,7 @@ func TestDrumViewClampLengthBounds(t *testing.T) {
 	// Anything above timelineRect.Dx()/MinCellWidth gets capped at that
 	// upper bound, never above. Verify by giving a deliberately huge n.
 	huge := 1_000_000
-	w := dv.timelineRect.Dx()
+	w := dv.CellGridRect().Dx()
 	mcw := MinCellWidth()
 	if w > 0 && mcw > 0 {
 		want := w / mcw
@@ -183,9 +183,14 @@ func TestDrumViewProfileTransitionFlipsButtonStyle(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
 	UpdateProfile()
 	dv.refreshLenButtonsStyle()
-	if dv.lenDecBtn.Style != TransportDecStyle || dv.lenIncBtn.Style != TransportIncStyle {
+	// Both platforms use the neutral stepper recipe (refreshLenButtonsStyle
+	// has no mobile branch). This used to be asserted against
+	// TransportDec/IncStyle, which only passed because the two spec styles
+	// were value-identical; styles now carry their spec tag, so compare
+	// against the style the code actually assigns.
+	if dv.lenDecBtn.Style != LenDecStyle || dv.lenIncBtn.Style != LenIncStyle {
 		t.Errorf("mobile styles wrong: dec=%v inc=%v want dec=%v inc=%v",
-			dv.lenDecBtn.Style, dv.lenIncBtn.Style, TransportDecStyle, TransportIncStyle)
+			dv.lenDecBtn.Style, dv.lenIncBtn.Style, LenDecStyle, LenIncStyle)
 	}
 }
 

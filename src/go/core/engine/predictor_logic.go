@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"strings"
-
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
@@ -15,8 +13,8 @@ func shouldGateMute(n model.Node) bool {
 	if n.Type != model.NodeTypeMute {
 		return false
 	}
-	kind := strings.ToLower(strings.TrimSpace(n.Params.LogicKind))
-	return kind != "" && kind != "none"
+	kind := n.Params.LogicKind
+	return kind != model.LogicNone
 }
 
 // boundedRewalkStart returns the lower bound for the dirty-rebuild re-walk for
@@ -57,19 +55,19 @@ func (p *Predictor) boundedRewalkStart(row, windowStart int, loop bool, loopStar
 // mirrors shouldTriggerNode exactly so the seed is byte-identical to walking.
 func (p *Predictor) seedCountForCell(row, idx, mult int, counts map[model.NodeID]int) {
 	bi := p.beatInfoAtRow(row, idx)
-	if bi.NodeType != model.NodeTypeRegular && bi.NodeType != model.NodeTypeMute {
+	if !bi.NodeType.Fires() && bi.NodeType != model.NodeTypeMute {
 		return
 	}
 	n, ok := p.nodes[bi.NodeID]
 	if !ok {
 		return
 	}
-	switch strings.ToLower(strings.TrimSpace(n.Params.LogicKind)) {
-	case "every_n_triggers":
-		if bi.NodeType == model.NodeTypeRegular && n.Params.LogicN > 0 {
+	switch n.Params.LogicKind {
+	case model.LogicEveryN:
+		if bi.NodeType.Fires() && n.Params.LogicN > 0 {
 			counts[bi.NodeID] += mult
 		}
-	case "skip_every_n":
+	case model.LogicSkipEveryN:
 		if n.Params.LogicN > 0 {
 			counts[bi.NodeID] += mult
 		}
@@ -85,14 +83,14 @@ func incrementTriggerCount(counts map[model.NodeID]int, id model.NodeID) int {
 }
 
 func (p *Predictor) shouldTriggerNode(row, idx int, bi model.BeatInfo, n model.Node, counts map[model.NodeID]int, lastFired *model.NodeID, lastTrig map[model.NodeID]bool) bool {
-	if bi.NodeType != model.NodeTypeRegular && bi.NodeType != model.NodeTypeMute {
+	if !bi.NodeType.Fires() && bi.NodeType != model.NodeTypeMute {
 		return false
 	}
-	kind := strings.ToLower(strings.TrimSpace(n.Params.LogicKind))
+	kind := n.Params.LogicKind
 	switch kind {
-	case "", "none":
+	case model.LogicNone:
 		return true
-	case "every_n_triggers":
+	case model.LogicEveryN:
 		if n.Params.LogicN > 0 {
 			if n.Type == model.NodeTypeMute {
 				cycleLen := len(p.beatInfosByRow[row])
@@ -110,14 +108,14 @@ func (p *Predictor) shouldTriggerNode(row, idx int, bi model.BeatInfo, n model.N
 				}
 			}
 		}
-	case "skip_every_n":
+	case model.LogicSkipEveryN:
 		if n.Params.LogicN > 0 {
 			counts[bi.NodeID]++
 			if counts[bi.NodeID]%n.Params.LogicN == 0 {
 				return false
 			}
 		}
-	case "probability":
+	case model.LogicProbability:
 		pval := n.Params.LogicP
 		if pval <= 0 {
 			return false
@@ -127,12 +125,12 @@ func (p *Predictor) shouldTriggerNode(row, idx int, bi model.BeatInfo, n model.N
 				return false
 			}
 		}
-	case "trigger_if_prev_skipped", "trigger_if_prev_triggered":
+	case model.LogicIfPrevSkipped, model.LogicIfPrevTriggered:
 		j := idx - 1
 		prevID := model.InvalidNodeID
 		for k := 0; k < 64; k++ {
 			prev := p.beatInfoAtRow(row, j)
-			if prev.NodeType == model.NodeTypeRegular {
+			if prev.NodeType.Fires() {
 				prevID = prev.NodeID
 				break
 			}
@@ -147,11 +145,11 @@ func (p *Predictor) shouldTriggerNode(row, idx int, bi model.BeatInfo, n model.N
 			}
 		}
 		switch kind {
-		case "trigger_if_prev_skipped":
+		case model.LogicIfPrevSkipped:
 			if prevID == model.InvalidNodeID || prevTrig {
 				return false
 			}
-		case "trigger_if_prev_triggered":
+		case model.LogicIfPrevTriggered:
 			if prevID == model.InvalidNodeID || !prevTrig {
 				return false
 			}
@@ -194,7 +192,7 @@ func (p *Predictor) evalAudible(row, idx int, bi model.BeatInfo, counts map[mode
 		}
 		return false, trigger
 	}
-	if bi.NodeType != model.NodeTypeRegular {
+	if !bi.NodeType.Fires() {
 		if lastTrig != nil {
 			lastTrig[bi.NodeID] = false
 		}
@@ -204,6 +202,7 @@ func (p *Predictor) evalAudible(row, idx int, bi model.BeatInfo, counts map[mode
 		if lastTrig != nil {
 			lastTrig[bi.NodeID] = false
 		}
+		p.recordDecisionLocked(row, idx, model.NodeDecision{}, false)
 		return false, false
 	}
 	nNode, ok := p.nodes[bi.NodeID]
@@ -217,8 +216,10 @@ func (p *Predictor) evalAudible(row, idx int, bi model.BeatInfo, counts map[mode
 		if lastTrig != nil {
 			lastTrig[bi.NodeID] = false
 		}
+		p.recordDecisionLocked(row, idx, model.NodeDecision{}, false)
 		return false, false
 	}
+	p.recordDecisionLocked(row, idx, model.NodeDecision{}, false)
 	if nNode.Params.Logic != nil {
 		count := incrementTriggerCount(triggerCounts, bi.NodeID)
 		dec := nNode.Params.Logic(model.NodeContext{
@@ -233,6 +234,7 @@ func (p *Predictor) evalAudible(row, idx int, bi model.BeatInfo, counts map[mode
 			}
 			return false, false
 		}
+		p.recordDecisionLocked(row, idx, dec, true)
 	}
 	if lastTrig != nil {
 		lastTrig[bi.NodeID] = true

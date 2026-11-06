@@ -1,0 +1,267 @@
+{
+  "schema_version": "0.0.1",
+  "id": "organ",
+  "name": "Organ",
+  "category": "modular",
+  "notes": "organSeed: additive Hammond-style drawbars — sine partials at organ footage\nratios (16',8',5⅓',4',2⅔',2',1⅓') with a SUSTAINED envelope and a shallow\nLeslie chorus (LFO→pitch). OSC disabled; gen slots set the drawbar spectrum.\nA static additive sine spectrum is exactly the \"organ\" timbre the brass seed\nwarns against — here that is the intent. Used by Bach (full pipe voicing via\nper-template SynthParams), house pads, techno held chords, reggae bubble.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.6001,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.012,
+        "amp_curve": 1,
+        "amp_decay": 0.05,
+        "amp_release": 0.1,
+        "amp_sustain": 1
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.85,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 9000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: was 6000 — open up so the high mixtures sparkle (air band)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0,
+        "lfo_depth": 0.25,
+        "lfo_rate": 6.2,
+        "lfo_target": 1
+      },
+      "notes": "lfo_enabled: Shallow Leslie chorus.\nlfo_target: pitch"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 0.5,
+        "freq_mode": 0,
+        "gain": 0.4,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_freq: 16' (was 0.30)\ngen1_freq_mode: 16' (was 0.30)\ngen1_gain: 16' (was 0.30)\ngen1_source: 16' (was 0.30)\ngen1_wave: 16' (was 0.30)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.38,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: 8' fundamental (was 0.55 — cut low/mid)\ngen2_freq_mode: 8' fundamental (was 0.55 — cut low/mid)\ngen2_gain: 8' fundamental (was 0.55 — cut low/mid)\ngen2_source: 8' fundamental (was 0.55 — cut low/mid)\ngen2_wave: 8' fundamental (was 0.55 — cut low/mid)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1.5,
+        "freq_mode": 0,
+        "gain": 0.18,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: 5⅓' (was 0.22)\ngen3_freq_mode: 5⅓' (was 0.22)\ngen3_gain: 5⅓' (was 0.22)\ngen3_source: 5⅓' (was 0.22)\ngen3_wave: 5⅓' (was 0.22)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.28,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_freq: 4' (was 0.45 — cut mid)\ngen4_freq_mode: 4' (was 0.45 — cut mid)\ngen4_gain: 4' (was 0.45 — cut mid)\ngen4_source: 4' (was 0.45 — cut mid)\ngen4_wave: 4' (was 0.45 — cut mid)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.18,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_freq: 2⅔'\ngen5_freq_mode: 2⅔'\ngen5_gain: 2⅔'\ngen5_source: 2⅔'\ngen5_wave: 2⅔'"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.22,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen6_freq: 2'\ngen6_freq_mode: 2'\ngen6_gain: 2'\ngen6_source: 2'\ngen6_wave: 2'"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.22,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen7_freq: 1⅓' (was 0.10 — more air)\ngen7_freq_mode: 1⅓' (was 0.10 — more air)\ngen7_gain: 1⅓' (was 0.10 — more air)\ngen7_source: 1⅓' (was 0.10 — more air)\ngen7_wave: 1⅓' (was 0.10 — more air)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 0.25,
+        "freq_mode": 0,
+        "gain": 0.26,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen8_freq: 32' sub (deep pipe body)\ngen8_freq_mode: 32' sub (deep pipe body)\ngen8_gain: 32' sub (deep pipe body)\ngen8_source: vs real cathedral organ (BWV532): scoop toward sub + air, away from low/mid. 32' sub (deep pipe body)\ngen8_wave: 32' sub (deep pipe body)"
+    }
+  ]
+}

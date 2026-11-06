@@ -23,6 +23,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -76,7 +77,7 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof setInstrumentParam === "function");
 await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 // Capture the baseline render with NO user params — the C unparameterized
 // `render_snare` is used, all knobs at their hardcoded identity.

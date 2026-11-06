@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // sampler_wav_instrument_test.go — a WAV instrument imported via the file
@@ -25,14 +26,14 @@ import (
 func TestSamplerWAVInstrumentClassifiedAsWAVSource(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "user.wav.rawsample"
-	// A file-picker WAV: registered for playback but NOT recipe-bound and NOT in
+	// A file-picker WAV: registered for playback but NOT a synth document and NOT in
 	// the user-sample store (mirrors registerInstrument → audio.RegisterWAV).
 	if err := audio.RegisterWAV(id, "dummy.wav"); err != nil {
 		t.Fatalf("RegisterWAV: %v", err)
 	}
 	t.Cleanup(func() { audio.ClearSampleEdit(id) })
-	if audio.RecipeForInstrument(id) != "" {
-		t.Fatalf("precondition: %q must have NO recipe binding", id)
+	if audio.HasInstrumentDoc(id) {
+		t.Fatalf("precondition: %q must have NO instrument document", id)
 	}
 
 	g.drum.ensureSamplerLoaded(id)
@@ -134,7 +135,7 @@ func TestSamplerWAVEditReloadKeepsPristineSource(t *testing.T) {
 	g.drum.commitSamplerEdit()
 
 	// Switch away and back: forces a fresh ensureSamplerLoaded.
-	g.drum.ensureSamplerLoaded("kick")
+	g.drum.ensureSamplerLoaded(roster.Kick)
 	g.drum.ensureSamplerLoaded(id)
 
 	if len(s.raw) != pristineLen {

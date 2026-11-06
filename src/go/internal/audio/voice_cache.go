@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // RoundRobinVariants is the number of pre-rendered voice variants per cache
@@ -17,23 +19,19 @@ import (
 // one).
 const RoundRobinVariants = 3
 
-// voiceCacheKey uniquely identifies a rendered voice buffer. Core instruments
-// (snare, kick, etc.) use fixed DurationSec from config — they do NOT depend
-// on BPM, so bpm is 0 for them. Variant instruments use bpm for duration, so
-// bpm is included. WAV samples are pre-loaded and bypass the cache entirely.
-// paramsHash is a deterministic FNV-1a fingerprint of the RecipeParams map
-// (see hashRecipeParams in synth_recipe.go); the zero value means "default
-// params" so the cache key is byte-identical for all-zero SynthParams and
-// for instruments that don't carry recipe params at all.
+// voiceCacheKey uniquely identifies a rendered voice buffer. There is no
+// tempo in it: a voice is render.seconds long, so it sounds the same at every
+// tempo and a BPM change re-renders nothing. WAV samples are pre-loaded and
+// bypass the cache entirely. paramsHash is the hash of the instrument document's flattened block (the
+// zero value means "no document": a sample or a non-synth voice).
 //
-// pitch is the node semitone offset used by pitch-aware melodic recipes
-// (pitchAwareRecipe). For drums and non-pitch-aware instruments pitch is
+// pitch is the node semitone offset used by melodic instruments
+// (IsMelodicInstrument). For drums and non-melodic instruments pitch is
 // always 0, so their keys are unchanged — drum cache + goldens stay
 // byte-identical. For melodic synths pitch is the rounded node semitone
 // value so each pitch level gets its own rendered-at-pitch buffer.
 type voiceCacheKey struct {
-	instrumentID string
-	bpm          int // 0 for core instruments that don't depend on BPM
+	instrumentID instrument.ID
 	sampleRate   int
 	paramsHash   uint64
 	pitch        float64 // 0 for non-pitch-aware; rounded semitones for melodic
@@ -67,17 +65,17 @@ const defaultVoiceCacheMaxEntries = 1024
 type voiceCache struct {
 	mu          sync.RWMutex
 	entries     map[voiceCacheKey]*roundRobinEntry
-	maxEntries  int                  // secondary guard: bounds map size + scan cost
-	budgetBytes int64                // primary memory ceiling (retained buffer bytes)
-	curBytes    int64                // current retained bytes (sum of entry.bytes)
-	lastSamples map[string][]float32 // most recently Put'd buffer per instrumentID (Phase 4)
+	maxEntries  int                         // secondary guard: bounds map size + scan cost
+	budgetBytes int64                       // primary memory ceiling (retained buffer bytes)
+	curBytes    int64                       // current retained bytes (sum of entry.bytes)
+	lastSamples map[instrument.ID][]float32 // most recently Put'd buffer per instrumentID (Phase 4)
 }
 
 var globalVoiceCache = &voiceCache{
 	entries:     make(map[voiceCacheKey]*roundRobinEntry),
 	maxEntries:  defaultVoiceCacheMaxEntries,
 	budgetBytes: defaultVoiceCacheBudgetBytes,
-	lastSamples: make(map[string][]float32),
+	lastSamples: make(map[instrument.ID][]float32),
 }
 
 // SetVoiceCacheBudgetBytes sets the retained-buffer ceiling (0 disables the
@@ -120,7 +118,7 @@ func (vc *voiceCache) Get(key voiceCacheKey) ([]float32, bool) {
 // Put stores buf as one variant in the cache. Accumulates up to
 // RoundRobinVariants before the entry is considered "full".
 //
-// CONTRACT: callers (tryRecipeVoice, CVariantInstrument render paths)
+// CONTRACT: callers (tryRecipeVoice / docInstrument → renderDocIntoCache)
 // must not mutate buf after calling Put — the cache and any concurrent
 // Get reader share the backing array. The clone removed here saved
 // ~80 KB per cache-miss trigger; per-trigger ownership transfer is now
@@ -148,7 +146,7 @@ func (vc *voiceCache) Put(key voiceCacheKey, buf []float32) {
 	// Synth-tab waveform preview (Phase 4). Shares the backing array
 	// per the Put contract — readers must treat it as read-only.
 	if vc.lastSamples == nil {
-		vc.lastSamples = make(map[string][]float32)
+		vc.lastSamples = make(map[instrument.ID][]float32)
 	}
 	vc.lastSamples[key.instrumentID] = buf
 	// Enforce the byte ceiling, never evicting the entry we just wrote (it has
@@ -201,7 +199,7 @@ func (vc *voiceCache) evictToBudgetLocked(keep voiceCacheKey) {
 // LatestSample returns the most recently Put-cached buffer for the
 // given instrument, or nil if the instrument has never been rendered.
 // The slice shares the cache's backing array — read-only. Phase 4.
-func (vc *voiceCache) LatestSample(instrumentID string) []float32 {
+func (vc *voiceCache) LatestSample(instrumentID instrument.ID) []float32 {
 	vc.mu.RLock()
 	defer vc.mu.RUnlock()
 	return vc.lastSamples[instrumentID]
@@ -211,7 +209,7 @@ func (vc *voiceCache) LatestSample(instrumentID string) []float32 {
 // render the Synth-tab cached waveform preview. Returns nil if the
 // instrument has never been rendered. Native build only — the stub
 // in voice_cache_stub.go returns nil unconditionally.
-func LatestVoiceSample(instrumentID string) []float32 {
+func LatestVoiceSample(instrumentID instrument.ID) []float32 {
 	return globalVoiceCache.LatestSample(instrumentID)
 }
 
@@ -249,7 +247,7 @@ func (vc *voiceCache) Clear() {
 // ClearInstrument removes every cache entry for a single instrument id.
 // Used by SetInstrumentParam / SetInstrumentParams in synth_recipe.go so
 // param edits invalidate stale buffers without touching unrelated entries.
-func (vc *voiceCache) ClearInstrument(instrumentID string) {
+func (vc *voiceCache) ClearInstrument(instrumentID instrument.ID) {
 	vc.mu.Lock()
 	for k, e := range vc.entries {
 		if k.instrumentID == instrumentID {
@@ -282,7 +280,7 @@ func ClearVoiceCacheForTest() { globalVoiceCache.Clear() }
 // best-available fallback source: when the exact binding is not rendered yet,
 // an older-params render of the SAME note at the SAME pitch is far closer to
 // correct than either blocking (a late beat) or silence (a dropped beat).
-func (vc *voiceCache) getAnyForInstrumentPitch(id string, pitch float64) ([]float32, bool) {
+func (vc *voiceCache) getAnyForInstrumentPitch(id instrument.ID, pitch float64) ([]float32, bool) {
 	rounded := roundPitchForCache(pitch)
 	vc.mu.RLock()
 	defer vc.mu.RUnlock()
@@ -312,7 +310,7 @@ func (vc *voiceCache) getAnyForInstrumentPitch(id string, pitch float64) ([]floa
 // still targets the correct pitch, so the mismatch self-corrects on the very
 // next trigger. Only reached once per (instrument, never-seen-pitch) — every
 // subsequent trigger at that pitch hits getAnyForInstrumentPitch instead.
-func (vc *voiceCache) getAnyForInstrument(id string) ([]float32, bool) {
+func (vc *voiceCache) getAnyForInstrument(id instrument.ID) ([]float32, bool) {
 	vc.mu.RLock()
 	defer vc.mu.RUnlock()
 	var best *roundRobinEntry

@@ -7,14 +7,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// fxActiveStyle / fxInactiveStyle are the per-instrument FX-chip styles the row
-// rack now applies: FX-on = the full instrument hue, FX-off = a dim tint of it
-// (see row_instrument_shades.go). They replace the former fixed FXActiveStyle /
-// InstButtonStyle the FX button used before per-instrument shading.
-func fxActiveStyle(dv *DrumView, row int) ButtonStyle {
+// fxActiveStyle / fxInactiveStyle are the FX-chip styles the row rack
+// applies: FX-on = the full instrument hue, FX-off = the neutral row-control
+// body (see row_instrument_shades.go).
+func fxActiveStyle(dv *DrumView, row int) rowToggleVisual {
 	return rowToggleStyle(dv.Rows[row].Color, roleFX, true)
 }
-func fxInactiveStyle(dv *DrumView, row int) ButtonStyle {
+func fxInactiveStyle(dv *DrumView, row int) rowToggleVisual {
 	return rowToggleStyle(dv.Rows[row].Color, roleFX, false)
 }
 
@@ -43,7 +42,6 @@ func TestFXButton_HighlightedWhenAnyEffectEnabled(t *testing.T) {
 	}
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	renderRowControlsDirect(t, dv)
 	btn := fxButtonForRow(t, dv, 0)
@@ -59,7 +57,6 @@ func TestFXButton_InactiveWhenAllEffectsDisabled(t *testing.T) {
 	}
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	renderRowControlsDirect(t, dv)
 	btn := fxButtonForRow(t, dv, 0)
@@ -69,7 +66,6 @@ func TestFXButton_InactiveWhenAllEffectsDisabled(t *testing.T) {
 
 	// Disable the only effect — button must become inactive.
 	audio.ToggleInsertEffect(instID, 0, false)
-	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
 	if btn.Style != fxInactiveStyle(dv, 0) {
 		t.Errorf("with all effects disabled, expected dim instrument-hue FX style, got %v", btn.Style)
@@ -77,7 +73,6 @@ func TestFXButton_InactiveWhenAllEffectsDisabled(t *testing.T) {
 
 	// Re-enable — button must become highlighted again.
 	audio.ToggleInsertEffect(instID, 0, true)
-	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
 	if btn.Style != fxActiveStyle(dv, 0) {
 		t.Errorf("after re-enable, expected active instrument-hue FX style, got %v", btn.Style)
@@ -92,7 +87,6 @@ func TestFXButton_StaysHighlightedIfAnyEffectEnabled(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
-	dv.syncFXToRow(0)
 
 	btn := fxButtonForRow(t, dv, 0)
 
@@ -103,7 +97,6 @@ func TestFXButton_StaysHighlightedIfAnyEffectEnabled(t *testing.T) {
 
 	// Disable just one — still highlighted because second remains enabled.
 	audio.ToggleInsertEffect(instID, 0, false)
-	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
 	if btn.Style != fxActiveStyle(dv, 0) {
 		t.Errorf("one of two enabled, expected active instrument-hue FX style, got %v", btn.Style)
@@ -111,7 +104,6 @@ func TestFXButton_StaysHighlightedIfAnyEffectEnabled(t *testing.T) {
 
 	// Disable the second — now inactive.
 	audio.ToggleInsertEffect(instID, 1, false)
-	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
 	if btn.Style != fxInactiveStyle(dv, 0) {
 		t.Errorf("both disabled, expected dim instrument-hue FX style, got %v", btn.Style)
@@ -125,7 +117,6 @@ func TestFXButton_InactiveAfterRemovingAllEffects(t *testing.T) {
 	}
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	btn := fxButtonForRow(t, dv, 0)
 	renderRowControlsDirect(t, dv)
@@ -134,7 +125,6 @@ func TestFXButton_InactiveAfterRemovingAllEffects(t *testing.T) {
 	}
 
 	audio.RemoveInsertEffect(instID, 0)
-	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
 	if btn.Style != fxInactiveStyle(dv, 0) {
 		t.Errorf("after removing all effects, expected dim instrument-hue FX style, got %v", btn.Style)
@@ -153,7 +143,6 @@ func TestFXButton_ControlsCacheInvalidatesOnDisable(t *testing.T) {
 	}
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dst := ebiten.NewImage(800, 300)
 	dv.rowRackZone.drawRowControls(dst)
@@ -162,7 +151,6 @@ func TestFXButton_ControlsCacheInvalidatesOnDisable(t *testing.T) {
 	}
 
 	audio.ToggleInsertEffect(instID, 0, false)
-	dv.syncFXToRow(0)
 	if dv.rowRackZone.controlsCacheValid() {
 		t.Error("cache reported valid after disabling all effects; UI would show stale FX highlight")
 	}
@@ -175,7 +163,6 @@ func TestFXButton_ControlsCacheInvalidatesOnRemove(t *testing.T) {
 	}
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dst := ebiten.NewImage(800, 300)
 	dv.rowRackZone.drawRowControls(dst)
@@ -184,7 +171,6 @@ func TestFXButton_ControlsCacheInvalidatesOnRemove(t *testing.T) {
 	}
 
 	audio.RemoveInsertEffect(instID, 0)
-	dv.syncFXToRow(0)
 	if dv.rowRackZone.controlsCacheValid() {
 		t.Error("cache reported valid after removing all effects; UI would show stale FX highlight")
 	}
@@ -198,7 +184,6 @@ func TestFXButton_ControlsCacheInvalidatesOnEnable(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.ToggleInsertEffect(instID, 0, false)
-	dv.syncFXToRow(0)
 
 	dst := ebiten.NewImage(800, 300)
 	dv.rowRackZone.drawRowControls(dst)
@@ -207,7 +192,6 @@ func TestFXButton_ControlsCacheInvalidatesOnEnable(t *testing.T) {
 	}
 
 	audio.ToggleInsertEffect(instID, 0, true)
-	dv.syncFXToRow(0)
 	if dv.rowRackZone.controlsCacheValid() {
 		t.Error("cache reported valid after enabling an effect; UI would show stale inactive FX button")
 	}

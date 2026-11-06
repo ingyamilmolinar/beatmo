@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Regression: parity scans must ignore audio events from prior audio generations
@@ -41,7 +42,7 @@ func TestParityIgnoresStaleAudioGeneration(t *testing.T) {
 	// Bump audio generation and insert a stale audio event.
 	g.audioGen.Add(1)
 	staleGen := g.audioGen.Load() - 1
-	g.recordParityAudio(0, 0, 0, "kick", 1, 0, 1, staleGen, g.parityGen.Load())
+	g.recordParityAudio(0, 0, 0, roster.Kick, 1, 0, 1, staleGen, g.parityGen.Load())
 
 	defer func() {
 		if r := recover(); r != nil {

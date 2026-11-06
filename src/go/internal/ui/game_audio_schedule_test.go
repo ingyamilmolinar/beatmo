@@ -9,6 +9,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestRuntimeAudioLookaheadMaxCap(t *testing.T) {
@@ -73,7 +75,7 @@ func TestExpectedHighlightSecondsUnknownInstrumentFallback(t *testing.T) {
 
 	g.drum.bpm = 120
 
-	sec := g.expectedHighlightSeconds("kick", 0, 1)
+	sec := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 
 	expected := (60.0 / 120.0) * 0.25 // 0.125
 	if math.Abs(sec-expected) > 0.001 {
@@ -98,7 +100,7 @@ func TestExpectedHighlightSecondsHighBPMFallback(t *testing.T) {
 
 	g.drum.bpm = 600
 
-	sec := g.expectedHighlightSeconds("kick", 0, 1)
+	sec := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 
 	raw := (60.0 / 600.0) * 0.25 // 0.025
 	if raw >= minHighlightSeconds {
@@ -120,7 +122,7 @@ func TestExpectedHighlightSecondsLowBPMFallback(t *testing.T) {
 
 	g.drum.bpm = 15
 
-	sec := g.expectedHighlightSeconds("kick", 0, 1)
+	sec := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 
 	raw := (60.0 / 15.0) * 0.25 // 1.0
 	if raw <= maxHighlightSeconds {
@@ -142,7 +144,7 @@ func TestExpectedHighlightSecondsAlwaysPositive(t *testing.T) {
 	bpms := []int{1, 10, 30, 60, 90, 120, 180, 240, 300, 500, 999}
 	for _, bpm := range bpms {
 		g.drum.bpm = bpm
-		sec := g.expectedHighlightSeconds("kick", 0, 1)
+		sec := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 		if sec <= 0 {
 			t.Errorf("BPM=%d: expectedHighlightSeconds returned non-positive %.6f", bpm, sec)
 		}
@@ -165,10 +167,10 @@ func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 	g.Layout(800, 600)
 
 	// Register and set up the instrument so the row is valid.
-	ensureInstrumentAvailable(t, g, "kick")
+	ensureInstrumentAvailable(t, g, roster.Kick)
 
-	var stopped string
-	audio.SetStopHook(func(id string) { stopped = id })
+	var stopped instrument.ID
+	audio.SetStopHook(func(id instrument.ID) { stopped = id })
 	t.Cleanup(func() { audio.SetStopHook(nil) })
 
 	muteNodeID := g.graph.AddNode(0, 0, model.NodeTypeMute)
@@ -178,9 +180,9 @@ func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 		I:        0, J: 0,
 	}
 
-	g.scheduleSound(0, 0, info, "kick", 1.0, 0, 1, 0, false)
+	g.scheduleSound(0, 0, info, roster.Kick, 1.0, 0, 1, 0, false)
 
-	if stopped != "kick" {
+	if stopped != roster.Kick {
 		t.Fatalf("expected audio.Stop called with %q, got %q", "kick", stopped)
 	}
 }
@@ -190,3 +192,33 @@ func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 // game_sequencer_schedule.go). Kept intentionally blank to make the removal
 // auditable in git history; the deleted test body referenced
 // g.audioChNearFull() which no longer exists.
+
+// TestRuntimeAudioLookaheadNeverShrinksMidPlay pins the ratchet: once UI
+// pressure grows the cushion, a calmer frame must not shrink it again within
+// the same transport generation — every change shifts all later notes, so an
+// oscillating cushion is audible as tempo hiccups. A new generation (Stop,
+// Pause, seek) starts from the base again.
+func TestRuntimeAudioLookaheadNeverShrinksMidPlay(t *testing.T) {
+	assertDefaultParityState(t)
+	g := buildTestGame(t)
+	g.audioLookaheadSec = 0.06
+	g.SetPlayingForTest(true)
+
+	setDrawAvg := func(ms int64) {
+		g.perf.reset()
+		atomic.StoreInt64(&g.perf.frames, 10)
+		atomic.StoreInt64(&g.perf.drawSumNS, ms*10*1_000_000)
+	}
+	setDrawAvg(25) // > 18ms → +30ms
+	if got := g.runtimeAudioLookahead(); math.Abs(got-0.09) > 1e-9 {
+		t.Fatalf("under pressure: want 0.090, got %.3f", got)
+	}
+	setDrawAvg(1) // calm frame: raw value would drop back to 0.06
+	if got := g.runtimeAudioLookahead(); math.Abs(got-0.09) > 1e-9 {
+		t.Fatalf("calm frame in the same session shrank the cushion to %.3f; want 0.090", got)
+	}
+	g.audioGen.Add(1) // Stop/Pause/seek → new transport generation
+	if got := g.runtimeAudioLookahead(); math.Abs(got-0.06) > 1e-9 {
+		t.Fatalf("new transport generation: want base 0.060, got %.3f", got)
+	}
+}

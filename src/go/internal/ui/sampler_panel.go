@@ -19,7 +19,7 @@ type samplerPanel struct {
 	// samplerButtons (Rev/Norm/Fade etc.) stay in-panel; these are separate so
 	// the two owners never fight over the same button's rect.
 	mobilePreviewBtn  *Button
-	mobileSaveBtn     *Button
+	mobileSaveAsBtn   *Button
 	mobileOverflowBtn *Button
 }
 

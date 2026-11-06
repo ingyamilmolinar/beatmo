@@ -3,7 +3,8 @@
 
 #include "modular.h"
 
-#define MODULAR_GEN_SLOTS 12
+/* MODULAR_GEN_SLOTS and the per-family MODULAR_<BLOCK>_SLOTS come from the
+ * generated modular_params.gen.h (via modular.h). */
 
 /* ── RBJ biquad (LP/HP/BP), shared between modular.c's FILTER stage and the
  * gen-bank slot filters. Moved here verbatim from modular.c (de-static'd, the
@@ -39,8 +40,8 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
  * Phase-16: `dry` (0..1) scales the stage's dry-blend amount; dry=1 (identity)
  * reproduces the pre-Phase-16 dryAmt exactly. */
 void modular_formant_process(float *out, int sampleRate, int samples,
-                             int voice_type, float vowel, float mix,
-                             float shift, float sing,
-                             float morph_rate, float morph_to, float dry);
+                             int voice_type, double vowel, double mix,
+                             double shift, double sing,
+                             double morph_rate, double morph_to, double dry);
 
 #endif /* MODULAR_STAGES_H */

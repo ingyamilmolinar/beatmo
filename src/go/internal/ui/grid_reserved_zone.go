@@ -28,7 +28,7 @@ func (g *Game) gridHelpReservedRect() image.Rectangle {
 }
 
 // gridTopButtonsReservedRect is the WHOLE top-right button cluster (gear + file +
-// logs), inflated by the reserved margin. A grid-pane popup's own controls (e.g.
+// logs + theme), inflated by the reserved margin. A grid-pane popup's own controls (e.g.
 // its close button) must clear this whole cluster, or a higher-z grid button
 // under them swallows the click. gridHelpReservedRect covers only gear+file — it
 // is kept narrower for the group menu's tiny-window placement spec, so the
@@ -38,11 +38,36 @@ func (g *Game) gridTopButtonsReservedRect() image.Rectangle {
 	if logs := g.gridLogsButtonRect(); !logs.Empty() {
 		lz := logs.Inset(-gridHelpReservedMargin)
 		if zone.Empty() {
-			return lz
+			zone = lz
+		} else {
+			zone = zone.Union(lz)
 		}
-		zone = zone.Union(lz)
+	}
+	if th := g.gridThemeButtonRect(); !th.Empty() {
+		tz := th.Inset(-gridHelpReservedMargin)
+		if zone.Empty() {
+			zone = tz
+		} else {
+			zone = zone.Union(tz)
+		}
 	}
 	return zone
+}
+
+// inTopRightButtonZone reports whether (x,y) lies inside the protected top-right
+// grid-button cluster (settings gear + folder + logs + theme), including the reserved
+// margin, the gaps BETWEEN the buttons and every button's touch target.
+// Node/component creation is barred here: a tap that misses a button by a few
+// pixels must be inert, never fall through to the grid and spawn a node between
+// or around the buttons. Uses gridTopButtonsInputRect — the cluster handler's
+// own InputBounds — so "a button took the press" and "the grid may act here"
+// can never disagree. False when the buttons are absent.
+func (g *Game) inTopRightButtonZone(x, y int) bool {
+	zone := g.gridTopButtonsInputRect()
+	if zone.Empty() {
+		return false
+	}
+	return image.Pt(x, y).In(zone)
 }
 
 // avoidReservedRect nudges panel out of reserved — a top-right-corner exclusion

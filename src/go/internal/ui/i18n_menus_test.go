@@ -4,7 +4,9 @@ import (
 	"image"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestOverflowMenuLabelsLocalized(t *testing.T) {
@@ -51,8 +53,8 @@ func TestInstMenuBreadcrumbLocalized(t *testing.T) {
 		AnchorRect:      image.Rect(0, 0, 200, 24),
 		VertBounds:      image.Rect(0, 0, 400, 800),
 		RowHeight:       24,
-		Categories:      []string{"Drums", "Synths"},
-		Instruments:     []InstrumentOption{{ID: "kick", Label: "Kick", Category: "Drums"}},
+		Categories:      []audio.Category{audio.CatPercussion, audio.CatLead},
+		Instruments:     []InstrumentOption{{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion}},
 		ForceCategories: true,
 	})
 	comp.Open()
@@ -79,7 +81,7 @@ func TestInstMenuBreadcrumbLocalized(t *testing.T) {
 func TestSynthActionLabelsLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)
-	for _, action := range []string{"preview", "save", "save-as", "reset"} {
+	for _, action := range []string{"preview", "save-as"} {
 		if got := synthActionLabel(action); got == "" {
 			t.Fatalf("synthActionLabel(%q) resolved empty under es-419", action)
 		}

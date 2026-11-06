@@ -4,10 +4,11 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // hasActiveEffects reports whether the slot list contains any enabled effect.
@@ -33,39 +34,46 @@ func activeEffectsCount(slots []audio.EffectSlot) int {
 	return n
 }
 
-// drawFXBadge overlays a small accent badge on the top-right of the FX button
-// when one or more effects are enabled. Single-effect rows show only the dot;
-// multi-effect rows show a numeric count rendered in caption-size text. The
-// badge replaces the previous icon-swap convention so the FX button keeps a
-// consistent identity (IconFx) across states.
+// fxCountMaxDots caps the FX chip's count gauge; more enabled effects than
+// this still show this many dots (the FX panel lists them all).
+const fxCountMaxDots = 4
+
+// drawFXBadge marks how many effects a row has enabled: one small dot per
+// effect along the FX chip's bottom inner edge — the DESIGN.md "gauge"
+// affordance in its discrete-dot form, the same strip position the volume
+// gauge uses. It used to be a corner badge that, once the chip carried the
+// "FX" letters, covered the X. Dots are drawn in the chip's letter color so
+// they contrast with the active (full-hue) fill on any instrument color.
 func drawFXBadge(dst *ebiten.Image, btnRect image.Rectangle, count int, instColor color.Color) {
 	if count <= 0 || btnRect.Empty() {
 		return
 	}
-	radius := 5
-	if count > 1 {
-		radius = 7
+	n := count
+	if n > fxCountMaxDots {
+		n = fxCountMaxDots
 	}
-	cx := btnRect.Max.X - radius - 1
-	cy := btnRect.Min.Y + radius + 1
-	r := image.Rect(cx-radius, cy-radius, cx+radius, cy+radius)
-	// Badge fill is a brightened shade of the row's instrument color so it pops
-	// on the full-hue FX button while staying in the instrument's color family.
-	badgeCol := rowToggleFillRGBA(instColor, roleSolo, true)
-	drawRoundedRect(dst, r, badgeCol, radius, true)
-	if count > 1 {
-		label := strconv.Itoa(count)
-		scale := FontSizeCaption / FontSizeBody
-		w := int(float64(TextWidth(label)) * scale)
-		h := int(float64(TextHeight()) * scale)
-		tx := cx - w/2
-		ty := cy - h/2
-		DrawTextColorAtScale(dst, label, tx, ty, colTextPrimary, scale)
+	d := Profile().DensityValues().ParamCardGaugeH
+	if d < 2 {
+		d = 2
+	}
+	stride := d + 2
+	w := n*stride - 2
+	x0 := btnRect.Min.X + (btnRect.Dx()-w)/2
+	y1 := btnRect.Max.Y - SpaceXS
+	col := rowToggleLabelColor(instColor, roleFX, true)
+	for k := 0; k < n; k++ {
+		x := x0 + k*stride
+		drawCapsule(dst, image.Rect(x, y1-d, x+d, y1), col, true)
 	}
 }
 
-// addRowButtonStyle is a ButtonVisual for the add-row "+" button.
-// It draws a rounded rect with colSurface1 fill and a dashed colBorderMedium border.
+// addRowButtonStyle is the ButtonVisual for the add-row ghost row: the
+// neutral row-control body (the same tone as a row label, so it reads as
+// "one more row") carrying a "+" in the swatch slot and a muted "Add
+// instrument" label, left-aligned exactly like the row names above it. No
+// dashed outline: DESIGN.md Rule 1 forbids borders at rest — the old dashed
+// hairline over a bed-colored fill was the only thing marking the control,
+// which is why it read as invisible.
 type addRowButtonStyle struct{}
 
 // addRowBtnKey identifies a cached add-row button sprite.
@@ -73,31 +81,42 @@ type addRowBtnKey struct {
 	w, h    int
 	pressed bool
 	hovered bool
+	locale  i18n.Locale
 }
 
 var addRowBtnCache = map[addRowBtnKey]*ebiten.Image{}
+
+// invalidateAddRowBtnCache drops the add-row sprites; the key carries no
+// color, so a theme change must clear it or the row keeps the old body
+// (Game.OnThemeChanged).
+func invalidateAddRowBtnCache() { addRowBtnCache = map[addRowBtnKey]*ebiten.Image{} }
 
 func (addRowButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
 	if r.Empty() {
 		return
 	}
-	k := addRowBtnKey{w: r.Dx(), h: r.Dy(), pressed: pressed, hovered: hovered}
+	k := addRowBtnKey{w: r.Dx(), h: r.Dy(), pressed: pressed, hovered: hovered, locale: i18n.ActiveLocale()}
 	if spr, ok := addRowBtnCache[k]; ok {
 		var op ebiten.DrawImageOptions
 		op.GeoM.Translate(float64(r.Min.X), float64(r.Min.Y))
 		dst.DrawImage(spr, &op)
 		return
 	}
-	var fill color.Color = colSurface1
-	if pressed {
-		fill = adjustColor(fill, -20)
-	} else if hovered {
-		fill = adjustColor(fill, 12)
-	}
 	spr := ebiten.NewImage(r.Dx(), r.Dy())
 	zr := image.Rect(0, 0, r.Dx(), r.Dy())
-	drawRoundedRect(spr, zr, fill, RadiusMD, true)
-	drawDashedRoundedBorder(spr, zr, colBorderMedium, RadiusMD)
+	InstButtonStyle.Draw(spr, zr, pressed, hovered)
+	// "+" in the (desktop) swatch slot, then the label.
+	sz := SwatchSizeMD
+	if sz > zr.Dy() {
+		sz = zr.Dy()
+	}
+	pr := image.Rect(SpaceSM, (zr.Dy()-sz)/2, SpaceSM+sz, (zr.Dy()-sz)/2+sz)
+	DrawIcon(spr, IconPlus, pr, colTextSecondary)
+	lx := pr.Max.X + SpaceSM
+	label := clipTextToWidthMeasure(i18n.T(i18n.KeyRackAddInstrument), zr.Dx()-lx-SpaceSM,
+		func(t string) int { return StyledTextWidth(t, RoleBody) })
+	ty := (zr.Dy() - StyledTextHeight(RoleBody)) / 2
+	DrawTextStyled(spr, label, lx, ty, RoleBody, colTextSecondary)
 	addRowBtnCache[k] = spr
 	var op ebiten.DrawImageOptions
 	op.GeoM.Translate(float64(r.Min.X), float64(r.Min.Y))
@@ -159,17 +178,39 @@ func drawDashedRoundedBorder(dst *ebiten.Image, r image.Rectangle, c color.Color
 	}
 }
 
-// drawRowLabelTint paints a very faint wash of the row's instrument color
-// across the label rect so each rack row reads as "owned" by its hue —
-// threading the same color the graph cluster uses. Kept at AlphaFaint
-// (~6-10%) so it never fights text legibility or the single azure chrome
-// accent; the bright accent stripe still carries the primary identity.
-// nil color is a no-op (test paths that build DrumRow values directly).
-func drawRowLabelTint(dst *ebiten.Image, r image.Rectangle, col color.Color) {
-	if r.Empty() || col == nil {
+// newRowToggleButton builds a per-row M / S / FX toggle: a letter on the
+// neutral row-control body, crisp through the styled text role. Its on/off
+// visual is applied per draw by applyRowToggle.
+func newRowToggleButton(letter string) *Button {
+	b := NewButton(letter, rowToggleStyle(nil, roleMute, false), nil)
+	b.SetTextRole(RoleBody)
+	b.TextColor = colTextSecondary
+	return b
+}
+
+// fitRowToggleRole sets a toggle letter's text role to body, stepping down to
+// caption when the chip is too narrow for it (an 18 px mobile chip cannot fit
+// a body-size "FX", and a clipped "..." is not a label).
+func fitRowToggleRole(b *Button) {
+	if b == nil {
 		return
 	}
-	drawRect(dst, r, WithAlphaFromColor(col, AlphaFaint), true)
+	role := RoleBody
+	if StyledTextWidth(b.Text, RoleBody) > b.Rect().Dx()-2 {
+		role = RoleCaption
+	}
+	if r, ok := b.StyledTextRole(); !ok || r != role {
+		b.SetTextRole(role)
+	}
+}
+
+// rowIdentityColor is the color of a row's identity swatch — the instrument
+// color, or the rack fallback for rows built without one (headless tests).
+func rowIdentityColor(c color.Color) color.Color {
+	if c == nil {
+		return genColorRowRackColorFallback
+	}
+	return c
 }
 
 // RowRackCallbacks contains callbacks for the RowRackZone to communicate
@@ -196,7 +237,7 @@ type RowRackCallbacks struct {
 
 	// Read-only accessors for shared state.
 	Rows              func() []*DrumRow
-	IsInstrumentAvail func(id string) bool
+	IsInstrumentAvail func(id instrument.ID) bool
 	RowHeight         func() int
 	DeleteConfirm     func() (row int, frame int64)
 	RenameRow         func() int
@@ -291,7 +332,6 @@ func NewRowRackZone(cb RowRackCallbacks) *RowRackZone {
 			z.callbacks.OnAddRow()
 		}
 	})
-	z.addRowBtn.Icon = string(IconPlus)
 	z.addRowBtn.ConsumeOnPress = true
 	z.rowVolGroup = NewSliderGroup(nil, func(idx int, val float64) {
 		if z.callbacks.OnVolPopupOpen != nil {
@@ -706,16 +746,14 @@ func (z *RowRackZone) rebuildEntries() {
 
 		slider := NewSlider(r.Volume)
 
-		mute := NewButton("", InstButtonStyle, nil)
-		mute.Icon = string(IconMute)
+		mute := newRowToggleButton(rowMuteLabel)
 		mute.OnClick = func() {
 			if z.callbacks.OnMuteToggle != nil {
 				z.callbacks.OnMuteToggle(idx)
 			}
 		}
 
-		solo := NewButton("", InstButtonStyle, nil)
-		solo.Icon = string(IconSolo)
+		solo := newRowToggleButton(rowSoloLabel)
 		solo.OnClick = func() {
 			if z.callbacks.OnSoloToggle != nil {
 				z.callbacks.OnSoloToggle(idx)
@@ -743,16 +781,16 @@ func (z *RowRackZone) rebuildEntries() {
 			del.Style = DisabledButtonStyle
 		}
 
-		menu := NewButton("", RowKebabChipStyle, nil)
+		menu := NewButton("", rowKebabStyle(nil), nil)
 		menu.Icon = "overflow"
+		menu.IconColor = colTextSecondary
 		menu.OnClick = func() {
 			if z.callbacks.OnContextMenuOpen != nil {
 				z.callbacks.OnContextMenuOpen(idx)
 			}
 		}
 
-		fx := NewButton("", InstButtonStyle, nil)
-		fx.Icon = string(IconFx)
+		fx := newRowToggleButton(rowFXLabel)
 		fx.OnClick = func() {
 			if z.callbacks.OnFXPanelToggle != nil {
 				z.callbacks.OnFXPanelToggle(idx)
@@ -935,8 +973,67 @@ func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 	z.layoutRowControls(e, rowRect)
 }
 
+// rowControlBand returns the one vertical band every control in a rack row
+// occupies — the row rect inset by the hairline breathing gap top and bottom.
+// Label, volume and every toggle share it exactly (DESIGN.md "Cluster
+// alignment"): the label/volume used to be inset while the toggles were a
+// smaller centered square, so one row held three heights and three gutters.
+func rowControlBand(rowRect image.Rectangle) (top, bottom int) {
+	top, bottom = rowRect.Min.Y+SpaceXS, rowRect.Max.Y-SpaceXS
+	if bottom-top < 1 {
+		return rowRect.Min.Y, rowRect.Max.Y
+	}
+	return top, bottom
+}
+
+// rowGroupGap is the gutter between the row's three groups (label | volume |
+// M S FX ⋯); controls INSIDE the toggle group sit ControlGap apart. Two gaps,
+// each with one meaning — the rhythm reads as "name, level, switches".
+func rowGroupGap() int { return SpaceSM }
+
+// rowContentSpan returns the horizontal extent the row's controls span:
+// from the left breathing margin to the right edge of the toggle group
+// (inside the scrollbar reserve). The add-row ghost row shares it so its
+// edges line up with the rows above it.
+func (z *RowRackZone) rowContentSpan(r image.Rectangle) (minX, maxX int) {
+	return r.Min.X + SpaceXS, r.Max.X - SpaceXS - z.scrollReserve()
+}
+
+// scrollReserve is the width kept free at the rack's right edge for the row
+// scrollbar, so the right-anchored ⋯ chip never renders under the thumb.
+// Reserved unconditionally so control positions stay stable whether or not
+// the scrollbar is currently visible; the lane is painted as rack bed.
+func (z *RowRackZone) scrollReserve() int {
+	if z.rowScroll == nil || z.rowScroll.Style.Width <= 0 {
+		return 0
+	}
+	gap := Profile().ControlGap
+	if gap < SpaceXS {
+		gap = SpaceXS
+	}
+	return z.rowScroll.Style.Width + gap
+}
+
+// FixedControlsWidth is the width a row needs right of its label: the
+// label→volume gutter, the volume cell, the group gutter, four toggles with
+// their gaps, both breathing margins and the scrollbar lane. DrumView sizes
+// the rack column to labelW + this, so the column is exactly its content.
+func (z *RowRackZone) FixedControlsWidth() int {
+	btnW := RowControlBtnSize()
+	volW := btnW * 2
+	if Profile().IsMobile() {
+		volW = btnW
+	}
+	gap := Profile().ControlGap
+	if gap < SpaceXS {
+		gap = SpaceXS
+	}
+	return 2*SpaceXS + rowGroupGap() + volW + rowGroupGap() + 4*btnW + 3*gap + z.scrollReserve()
+}
+
 // layoutRowControls right-anchors the fixed-width control cluster (volume +
 // mute/solo/fx/menu) and flexes the label to fill the remaining left space.
+// Every control shares the row's control band (rowControlBand).
 func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	btnW := RowControlBtnSize()
 	volW := btnW * 2
@@ -944,49 +1041,26 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	if gap < SpaceXS {
 		gap = SpaceXS
 	}
-	margin := SpaceXS
+	groupGap := rowGroupGap()
 	labelMinW := btnW * 2
 	// Mobile: the per-row volume renders as a compact speaker icon, not a wide
 	// draggable track (precise control lives in the tap-to-open volume popup),
 	// so the default 2×-button-width reservation is dead space that the
 	// narrow-row clamp pays for by shrinking the mute/solo/fx/⋯ keys. Right-size
-	// it to a single key width so the four primary controls win that space and
-	// render larger ("buttons too small" report). Label reservation is left
-	// untouched.
+	// it to a single key width so the four primary controls win that space.
 	if Profile().IsMobile() {
 		volW = btnW
 	}
 
-	// Reserve horizontal space at the panel's right edge for the row-rack
-	// scrollbar so the right-anchored control cluster — most visibly the ⋯
-	// overflow chip — never renders underneath or flush against the scrollbar
-	// thumb. The scrollbar is drawn at the panel's right edge
-	// (VS.BarRect == [View.Max.X-width, View.Max.X]); without this reserve the
-	// kebab chip overlapped the thumb whenever the kit held more instruments
-	// than the EQ-squeezed rack could show (only the scrollbar made the hidden
-	// rows reachable, so it is shown exactly when the controls are most cramped).
-	// Reserve unconditionally — the scrollbar width plus one gap of breathing
-	// room — so control positions stay stable whether or not the scrollbar is
-	// currently visible, and the cluster never touches it.
-	//
-	// The reserve is taken out of the LABEL's flex space only: it shifts the
-	// right anchor inward but is deliberately NOT subtracted from `avail`, so
-	// the narrow-row clamp (control sizing) is unaffected. Folding it into
-	// `avail` would shrink every control to make room for the scrollbar on
-	// already-tight columns — the opposite of "give the buttons room".
-	scrollReserve := 0
-	if z.rowScroll != nil && z.rowScroll.Style.Width > 0 {
-		scrollReserve = z.rowScroll.Style.Width + gap
-	}
-
-	// Width consumed by the cluster: volume + 4 buttons + 4 inter-cell gaps.
-	clusterW := volW + btnW*4 + gap*4
-	avail := rowRect.Dx() - 2*margin
+	left, right := z.rowContentSpan(rowRect)
+	// Width consumed by the cluster: volume + group gap + 4 toggles + 3 gaps.
+	clusterW := volW + groupGap + btnW*4 + gap*3
+	avail := right - left
 
 	// Narrow-row clamp: if there isn't room for the cluster plus a readable
 	// label, shrink the control widths proportionally so the label survives.
-	if labelMinW+gap+clusterW > avail && clusterW > 0 {
-		space := avail - labelMinW - gap
+	if labelMinW+groupGap+clusterW > avail && clusterW > 0 {
+		space := avail - labelMinW - groupGap
 		if space < btnW {
 			space = btnW
 		}
@@ -997,89 +1071,46 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 		}
 	}
 
-	right := rowRect.Max.X - margin - scrollReserve
-	// Place buttons from the right edge inward: ⋯, FX, Solo, Mute.
-	//
-	// The control buttons fill their cell instead of rendering a small
-	// btnW-square centered in the (taller) row, which left big empty bands
-	// above and below each key and made them read far smaller than their
-	// boundaries ("buttons smaller than they should be" report). The cell is
-	// btnW wide, so the key grows to fill the row height (minus a hairline
-	// breathing inset) — a larger, easier touch target that uses the space it
-	// already owns. centerSquareIn is retained only as the floor for degenerate
-	// (sub-btnW) cells so a clamped narrow row never produces an inverted rect.
-	fillKeys := Profile().IsMobile()
-	vPad := SpaceXS
+	top, bottom := rowControlBand(rowRect)
+	// Place toggles from the right edge inward: ⋯, FX, Solo, Mute.
 	placeBtn := func(b *Button) {
-		cell := image.Rect(right-btnW, rowRect.Min.Y, right, rowRect.Max.Y)
-		filled := centerSquareIn(cell, btnW)
-		if fillKeys {
-			// Mobile: grow the key to fill the row height (minus a hairline
-			// breathing inset) instead of the small centered square; desktop
-			// keeps the centered square. Guarded so a clamped/short row never
-			// produces an inverted or sub-square key.
-			grown := image.Rect(cell.Min.X, cell.Min.Y+vPad, cell.Max.X, cell.Max.Y-vPad)
-			if grown.Dx() > 0 && grown.Dy() >= filled.Dy() {
-				filled = grown
-			}
-		}
-		b.SetRect(filled)
+		b.SetRect(image.Rect(right-btnW, top, right, bottom))
 		right -= btnW + gap
 	}
 	placeBtn(e.menuBtn)
 	placeBtn(e.fxBtn)
 	placeBtn(e.soloBtn)
 	placeBtn(e.muteBtn)
+	fitRowToggleRole(e.muteBtn)
+	fitRowToggleRole(e.soloBtn)
+	fitRowToggleRole(e.fxBtn)
+	right += gap - groupGap
 
-	// Volume cell (wider, near-full row height for a draggable track).
-	volCell := image.Rect(right-volW, rowRect.Min.Y, right, rowRect.Max.Y)
-	e.volSlider.SetRect(insetRect(volCell, SpaceXS))
-	right -= volW + gap
+	e.volSlider.SetRect(image.Rect(right-volW, top, right, bottom))
+	right -= volW + groupGap
 
 	// Label flexes to fill everything to the left of the volume cell.
-	labelCell := image.Rect(rowRect.Min.X+margin, rowRect.Min.Y, right, rowRect.Max.Y)
-	if labelCell.Max.X < labelCell.Min.X {
-		labelCell.Max.X = labelCell.Min.X
+	if right < left {
+		right = left
 	}
-	e.label.SetRect(insetRect(labelCell, SpaceXS))
+	e.label.SetRect(image.Rect(left, top, right, bottom))
 }
 
-// centerSquareIn returns a square of side `size` centered inside cell, clamped
-// to the cell when the cell is smaller than the requested size.
-func centerSquareIn(cell image.Rectangle, size int) image.Rectangle {
-	if size > cell.Dx() {
-		size = cell.Dx()
-	}
-	if size > cell.Dy() {
-		size = cell.Dy()
-	}
-	if size < 1 {
-		return image.Rectangle{}
-	}
-	cx := (cell.Min.X + cell.Max.X) / 2
-	cy := (cell.Min.Y + cell.Max.Y) / 2
-	half := size / 2
-	return image.Rect(cx-half, cy-half, cx-half+size, cy-half+size)
-}
-
-// positionAddRowBtn sets the "+" button rect.
+// positionAddRowBtn sets the add-row ghost row's rect.
 //
-// **Anchoring contract:** the addRowBtn is always pinned to the bottom
-// of the rack column (`panelRect.Max.Y - rh`) — predictable click
-// targets matter more than tracking the row count.
+// **Anchoring contract:** the ghost row sits directly UNDER the last visible
+// row — one more slot of the same list, sharing the rows' content span and
+// control band, so its edges line up with every row above it. When the rows
+// overflow the rack (scrolling), the slot below the last row is off the
+// bottom, so it pins to the rack bottom instead, where ReserveAddRowSpace
+// kept one row height free for it (desktop).
 //
-// Tight-layout invariant: the rack rect itself is contracted in
-// `drumview_layout.go` to fit `rendered_rows + 1` slots exactly, with
-// any modulo slack absorbed by the bottom action bar growing upward
-// (mobile only). That means `panelRect.Max.Y - rh` is always flush
-// with the last rendered row's bottom AND the bar's top — no orphan
-// rack-background strip can appear above OR below the button.
+// It used to ALWAYS pin to the rack bottom on the promise that the rack rect
+// was contracted to `rows + 1` slots; whenever the drum pane was taller than
+// that (a user-dragged splitter, few rows) the promise broke and an empty
+// rack-bed strip opened between the last row and a floating "+".
 func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle) {
 	rh := z.rowHeight()
-	addY := panelRect.Max.Y - rh
-	if addY < rowsTop {
-		addY = rowsTop
-	}
 	// Mobile EQ mode hides the rack entirely; suppress the button so it does
 	// not render through the bottom sheet.
 	if Profile().IsMobile() && z.isMobileEQMode() {
@@ -1091,13 +1122,28 @@ func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle) 
 		z.addRowBtn.SetRect(image.Rectangle{})
 		return
 	}
-	z.addRowBtn.Text = ""
-	z.addRowBtn.Icon = string(IconPlus)
-	addMaxX := panelRect.Max.X
-	if z.addRowRightReserve > 0 && addMaxX-z.addRowRightReserve > panelRect.Min.X {
-		addMaxX -= z.addRowRightReserve
+	shown := len(z.rows()) - z.rowOffset
+	if vis := z.VisibleRows(); shown > vis {
+		shown = vis
 	}
-	z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, addMaxX, addY+rh), SpaceXS))
+	if shown < 0 {
+		shown = 0
+	}
+	addY := rowsTop + shown*rh
+	if addY+rh > panelRect.Max.Y {
+		addY = panelRect.Max.Y - rh
+	}
+	if addY < rowsTop {
+		addY = rowsTop
+	}
+	z.addRowBtn.Text = ""
+	slot := image.Rect(panelRect.Min.X, addY, panelRect.Max.X, addY+rh)
+	minX, maxX := z.rowContentSpan(slot)
+	if z.addRowRightReserve > 0 && maxX-z.addRowRightReserve > minX {
+		maxX -= z.addRowRightReserve
+	}
+	top, bottom := rowControlBand(slot)
+	z.addRowBtn.SetRect(image.Rect(minX, top, maxX, bottom))
 }
 
 // SetAddRowRightReserve declares how many pixels the addRow button must
@@ -1408,7 +1454,7 @@ func (z *RowRackZone) controlsCacheValid() bool {
 			z.cacheInvalidSoloDesync++
 			return false
 		}
-		if !e.fxBtn.Rect().Empty() && e.fxBtn.pressed != hasActiveEffects(rows[i].Effects) {
+		if !e.fxBtn.Rect().Empty() && e.fxBtn.pressed != (audio.ActiveInsertEffectCount(rows[i].Instrument) > 0) {
 			return false
 		}
 	}
@@ -1526,14 +1572,6 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 			continue
 		}
 		e := &z.entries[i]
-		// Faint instrument-color wash so the row reads as "owned" by its hue.
-		// Drawn first so the zebra band and accent stripe layer on top.
-		{
-			lblR := e.label.Rect()
-			if !lblR.Empty() {
-				drawRowLabelTint(cache, lblR.Sub(image.Pt(offsetX, offsetY)), rows[i].Color)
-			}
-		}
 		if mobile && i%2 == 1 {
 			lblR := e.label.Rect()
 			if !lblR.Empty() {
@@ -1541,35 +1579,27 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 				drawRect(cache, zebraR, WithAlpha(genColorBorder, genAlphaRowRackZebra), true)
 			}
 		}
-		// Draw accent stripe for all platforms (mobile and desktop).
-		{
-			lblR := e.label.Rect()
-			if !lblR.Empty() {
-				stripeR := lblR.Sub(image.Pt(offsetX, offsetY))
-				drawAccentStripe(cache, stripeR, rows[i].Color)
-			}
-		}
+		// The row's identity at rest: a leading swatch beside the name (the
+		// instrument menu's swatch + text row). The swatch is painted by the
+		// label itself so it sits ON the body — the old wash + accent stripe
+		// were drawn first and the opaque label body covered both.
+		e.label.LeadSwatch = rowIdentityColor(rows[i].Color)
 		if renameRow != i {
 			drawBtnOff(cache, e.label, offsetX, offsetY)
 		}
 		drawBtnOff(cache, e.editBtn, offsetX, offsetY)
 		drawBtnOff(cache, e.saveBtn, offsetX, offsetY)
 		if !e.menuBtn.Rect().Empty() {
-			e.menuBtn.Style = rowKebabStyle(rows[i].Color)
 			drawBtnOff(cache, e.menuBtn, offsetX, offsetY)
 		}
 		drawBtnOff(cache, e.colorBtn, offsetX, offsetY)
 		drawVolCellOff(cache, e.volSlider, rows[i].Volume, offsetX, offsetY, rows[i].Color, rows[i].Muted)
 		if !e.muteBtn.Rect().Empty() {
-			syncToggleVisual(e.muteBtn, rows[i].Muted,
-				rowToggleStyle(rows[i].Color, roleMute, true), rowToggleStyle(rows[i].Color, roleMute, false),
-				"", "", nil, nil)
+			applyRowToggle(e.muteBtn, rows[i].Color, roleMute, rows[i].Muted)
 			drawBtnOff(cache, e.muteBtn, offsetX, offsetY)
 		}
 		if !e.soloBtn.Rect().Empty() {
-			syncToggleVisual(e.soloBtn, rows[i].Solo,
-				rowToggleStyle(rows[i].Color, roleSolo, true), rowToggleStyle(rows[i].Color, roleSolo, false),
-				"", "", nil, nil)
+			applyRowToggle(e.soloBtn, rows[i].Color, roleSolo, rows[i].Solo)
 			drawBtnOff(cache, e.soloBtn, offsetX, offsetY)
 		}
 		if !e.fxBtn.Rect().Empty() {
@@ -1579,13 +1609,12 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 			// rebuild the cache in real time when the user toggles or removes
 			// effects. The FX chip is a shade of the row's instrument color:
 			// full hue when active, dim tint when off.
-			active := hasActiveEffects(rows[i].Effects)
-			e.fxBtn.Style = rowToggleStyle(rows[i].Color, roleFX, active)
-			e.fxBtn.pressed = active
+			active := (audio.ActiveInsertEffectCount(rows[i].Instrument) > 0)
+			applyRowToggle(e.fxBtn, rows[i].Color, roleFX, active)
 			drawBtnOff(cache, e.fxBtn, offsetX, offsetY)
 			if active {
 				badgeR := e.fxBtn.Rect().Sub(image.Pt(offsetX, offsetY))
-				drawFXBadge(cache, badgeR, activeEffectsCount(rows[i].Effects), rows[i].Color)
+				drawFXBadge(cache, badgeR, audio.ActiveInsertEffectCount(rows[i].Instrument), rows[i].Color)
 			}
 		}
 		drawBtnOff(cache, e.originBtn, offsetX, offsetY)
@@ -1637,45 +1666,29 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 			continue
 		}
 		e := &z.entries[i]
-		// Faint instrument-color wash so the row reads as "owned" by its hue.
-		{
-			lblR := e.label.Rect()
-			if !lblR.Empty() {
-				drawRowLabelTint(dst, lblR, rows[i].Color)
-			}
-		}
 		if mobile && i%2 == 1 {
 			lblR := e.label.Rect()
 			if !lblR.Empty() {
 				drawRect(dst, lblR, WithAlpha(genColorBorder, genAlphaRowRackDim), true)
 			}
 		}
-		// Draw accent stripe for all platforms (mobile and desktop).
-		{
-			lblR := e.label.Rect()
-			if !lblR.Empty() {
-				drawAccentStripe(dst, lblR, rows[i].Color)
-			}
-		}
+		e.label.LeadSwatch = rowIdentityColor(rows[i].Color)
 		if renameRow != i {
 			e.label.Draw(dst)
 		}
 		e.editBtn.Draw(dst)
 		e.saveBtn.Draw(dst)
 		if !e.menuBtn.Rect().Empty() {
-			e.menuBtn.Style = rowKebabStyle(rows[i].Color)
 			e.menuBtn.Draw(dst)
 		}
 		e.colorBtn.Draw(dst)
 		drawVolCell(dst, e.volSlider, rows[i].Volume, rows[i].Color, rows[i].Muted)
 		if !e.muteBtn.Rect().Empty() {
-			e.muteBtn.Style = rowToggleStyle(rows[i].Color, roleMute, rows[i].Muted)
-			e.muteBtn.pressed = false
+			applyRowToggle(e.muteBtn, rows[i].Color, roleMute, rows[i].Muted)
 			e.muteBtn.Draw(dst)
 		}
 		if !e.soloBtn.Rect().Empty() {
-			e.soloBtn.Style = rowToggleStyle(rows[i].Color, roleSolo, rows[i].Solo)
-			e.soloBtn.pressed = false
+			applyRowToggle(e.soloBtn, rows[i].Color, roleSolo, rows[i].Solo)
 			e.soloBtn.Draw(dst)
 		}
 		e.originBtn.Draw(dst)
@@ -1694,12 +1707,11 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 		}
 		e.deleteBtn.Draw(dst)
 		if !e.fxBtn.Rect().Empty() {
-			active := hasActiveEffects(rows[i].Effects)
-			e.fxBtn.Style = rowToggleStyle(rows[i].Color, roleFX, active)
-			e.fxBtn.pressed = active
+			active := (audio.ActiveInsertEffectCount(rows[i].Instrument) > 0)
+			applyRowToggle(e.fxBtn, rows[i].Color, roleFX, active)
 			e.fxBtn.Draw(dst)
 			if active {
-				drawFXBadge(dst, e.fxBtn.Rect(), activeEffectsCount(rows[i].Effects), rows[i].Color)
+				drawFXBadge(dst, e.fxBtn.Rect(), audio.ActiveInsertEffectCount(rows[i].Instrument), rows[i].Color)
 			}
 		}
 		if mobile {

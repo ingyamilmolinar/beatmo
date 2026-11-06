@@ -8,10 +8,14 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synthSaveAsDialog is the inline modal that prompts the user for a custom
-// display name when cloning a synth recipe via Save As. The dialog lives
+// synthSaveAsDialog is the inline modal of Save As, the only save (Synth and
+// Sampler tabs alike): prefilled with the instrument's current name, its
+// confirm button says what will happen as the user types — "Save over <name>"
+// for the name of the library instrument being edited, "Save as new" for a new
+// name — and another instrument's name is refused in place. The dialog lives
 // inside the synth tab's content rect, blocks clicks behind it via its own
 // HitArea (registered at ZSendPopover + 1), and is dismissed by OK / Cancel
 // / Escape / tap-outside. The TextInput reuses the BPMBoxStyle chrome and
@@ -23,15 +27,12 @@ type synthSaveAsDialog struct {
 	textInput  *TextInput
 	okBtn      *Button
 	cancelBtn  *Button
-	instID     string
-	baseID     string
+	instID     instrument.ID
 	suggestion string
-	// title overrides the dialog heading. Empty defaults to the synth-recipe
-	// wording. The Sampler tab sets "Save sample as…".
-	title string
-	// confirm runs on OK with the trimmed typed name. When nil, the dialog
-	// falls back to the synth-recipe Save As (back-compat for the synth tab).
-	confirm func(name string)
+	// typed is the text classified last (classified once per change);
+	// verdict is what confirming it would do.
+	typed   string
+	verdict saveAsVerdict
 }
 
 const (
@@ -40,66 +41,65 @@ const (
 	synthSaveAsDialogMaxLen = 48
 )
 
-// openSaveAsDialog initializes dv.saveAsDialog with a suggested default name
-// derived from the active recipe's DisplayName. No-op when no instrument /
-// recipe is bound. Idempotent — repeated calls re-suggest but don't lose any
+// saveAsMobileInputID is the native-input id of the Save As name box (Synth
+// preset and Sampler sample share the dialog, never open at once).
+const saveAsMobileInputID = "save-as-name"
+
+// openSaveAsDialog opens Save As for the Synth tab's instrument.
+func (dv *DrumView) openSaveAsDialog() { dv.openSaveAsDialogFor(dv.synthTabActiveInstrument()) }
+
+// openSaveAsDialogFor opens the Save As dialog for instID, prefilled with the
+// instrument's current name — the one the header and the row show. No-op
+// without an instrument; idempotent, so a repeated call never loses
 // in-progress text.
-func (dv *DrumView) openSaveAsDialog() {
-	if dv == nil {
+func (dv *DrumView) openSaveAsDialogFor(instID instrument.ID) {
+	if dv == nil || instID == "" || dv.saveAsDialog != nil {
 		return
 	}
-	instID := dv.synthTabActiveInstrument()
-	if instID == "" {
-		return
+	suggestion := audio.InstrumentDisplayName(instID)
+	if doc, ok := audio.InstrumentDoc(instID); ok && suggestion == "" {
+		suggestion = doc.Name
 	}
-	recipeID := audio.RecipeForInstrument(instID)
-	if recipeID == "" {
-		return
-	}
-	reg := audio.RecipeRegistrations()[recipeID]
-	suggestion := recipeID + " (saved)"
-	if reg != nil && reg.DisplayName != "" {
-		suggestion = reg.DisplayName + " (saved)"
-	}
-	// Idempotent: don't blow away an open dialog the user is mid-typing.
-	if dv.saveAsDialog != nil {
-		return
-	}
-	dlg := &synthSaveAsDialog{
-		instID:     instID,
-		baseID:     recipeID,
-		suggestion: suggestion,
-		title:      "Save preset as…",
-		confirm:    func(name string) { dv.SaveActiveRecipeAs(name) },
-	}
+	dlg := &synthSaveAsDialog{instID: instID, suggestion: suggestion}
 	dlg.layout(dv.eqPanelZone.ContentRect())
-	dlg.textInput = NewTextInput(dlg.inputRect(), BPMBoxStyle)
-	dlg.textInput.MaxLen = synthSaveAsDialogMaxLen
-	dlg.textInput.InputMode = "text"
+	dlg.textInput = NewTextField(dv.textFields, TextFieldSpec{ID: saveAsMobileInputID, Owner: "eq-panel"}, synthSaveAsDialogMaxLen)
+	dlg.textInput.Rect = dlg.inputRect()
 	dlg.textInput.SetText(suggestion)
 	dlg.textInput.SetFocus(true)
-	dlg.okBtn = NewButtonKey(i18n.KeyOK, ComponentButtonPrimary, nil)
+	dlg.okBtn = NewSpecButton("", ComponentButtonPrimary, nil)
 	dlg.cancelBtn = NewButtonKey(i18n.KeyCancel, ComponentButtonSecondary, nil)
-	dlg.okBtn.SetRect(dlg.okBtnRect())
+	dlg.classify()
 	dlg.cancelBtn.SetRect(dlg.cancelBtnRect())
 	dv.saveAsDialog = dlg
 }
 
-// ConfirmSaveAsDialog finalises the open dialog: snapshots the typed name,
-// calls SaveActiveRecipeAs(displayName), closes the dialog. Public so the
-// HitArea handler + tests + JS bridge can drive it uniformly.
+// classify re-reads what confirming the typed name would do, when it changed,
+// and labels the confirm button with it.
+func (d *synthSaveAsDialog) classify() {
+	typed := d.textInput.Value()
+	if typed == d.typed && d.okBtn.Text != "" {
+		return
+	}
+	d.typed = typed
+	d.verdict = classifySaveAsName(typed, d.instID)
+	d.okBtn.Text = d.verdict.label()
+	d.okBtn.SetRect(d.okBtnRect())
+}
+
+// ConfirmSaveAsDialog runs the save the dialog shows and closes it. A refused
+// (or empty) name keeps the dialog open. Public so the HitArea handler + tests
+// + JS bridge drive it uniformly.
 func (dv *DrumView) ConfirmSaveAsDialog() {
 	if dv == nil || dv.saveAsDialog == nil {
 		return
 	}
-	name := strings.TrimSpace(dv.saveAsDialog.textInput.Value())
-	confirm := dv.saveAsDialog.confirm
-	dv.saveAsDialog = nil
-	if confirm != nil {
-		confirm(name)
+	dlg := dv.saveAsDialog
+	dlg.classify()
+	if !dlg.verdict.ok() {
 		return
 	}
-	dv.SaveActiveRecipeAs(name)
+	dv.saveAsDialog = nil
+	dv.saveAsInstrument(dlg.instID, strings.TrimSpace(dlg.typed))
 }
 
 // CancelSaveAsDialog closes the dialog without saving.
@@ -141,7 +141,13 @@ func (dv *DrumView) updateSaveAsDialog() {
 		dlg.okBtn.SetRect(dlg.okBtnRect())
 		dlg.cancelBtn.SetRect(dlg.cancelBtnRect())
 	}
+	// Mobile: the name is typed into the native <input>; mirror it so OK
+	// confirms what the user sees.
+	if v, ok := dlg.textInput.NativeLiveValue(); ok {
+		dlg.textInput.SetText(v)
+	}
 	dlg.textInput.Update()
+	dlg.classify()
 	if isKeyPressed(ebiten.KeyEnter) {
 		dv.ConfirmSaveAsDialog()
 		return
@@ -158,16 +164,17 @@ func (dv *DrumView) drawSaveAsDialog(dst *ebiten.Image) {
 		return
 	}
 	dlg := dv.saveAsDialog
-	title := dlg.title
-	if title == "" {
-		title = "Save preset as…"
-	}
-	drawRoundedRect(dst, dlg.rect, TokenSurface2(), RadiusMD, true)
-	drawRoundedRect(dst, dlg.rect, TokenBorderMedium(), RadiusMD, false)
-	DrawTextStyled(dst, title,
+	drawRoundedRect(dst, dlg.rect, TokenSurface2(), RadiusContainer, true)
+	drawRoundedRect(dst, dlg.rect, TokenBorderMedium(), RadiusContainer, false)
+	DrawTextStyled(dst, i18n.T(i18n.KeySaveAs),
 		dlg.rect.Min.X+SpaceMD, dlg.rect.Min.Y+SpaceMD, RolePanelTitle, TokenTextPrimary())
 	dlg.textInput.Draw(dst)
-	dlg.okBtn.Draw(dst)
+	if msg := dlg.Refused(); msg != "" {
+		in := dlg.inputRect()
+		DrawTextStyled(dst, msg, in.Min.X, in.Max.Y+SpaceXS, RoleCaption, colError)
+	} else {
+		dlg.okBtn.Draw(dst)
+	}
 	dlg.cancelBtn.Draw(dst)
 }
 
@@ -186,6 +193,23 @@ func (d *synthSaveAsDialog) Focused() bool {
 // (keyboard_focus.go).
 func (d *synthSaveAsDialog) ClaimsKeyboard() bool {
 	return d != nil && d.textInput != nil && d.textInput.Focused()
+}
+
+// ConfirmLabel is what the confirm button says ("" while refused).
+func (d *synthSaveAsDialog) ConfirmLabel() string {
+	if d == nil || !d.verdict.ok() {
+		return ""
+	}
+	return d.verdict.label()
+}
+
+// Refused is the in-place message for a name that belongs to another
+// instrument ("" when the name can be saved).
+func (d *synthSaveAsDialog) Refused() string {
+	if d == nil || d.verdict.kind != saveAsTaken {
+		return ""
+	}
+	return i18n.Tf(i18n.KeyNameTakenFmt, d.verdict.name)
 }
 
 // Value returns the current text. Test-friendly mirror of TextInput.Value.
@@ -227,38 +251,6 @@ func (d *synthSaveAsDialog) CancelRect() image.Rectangle {
 		return image.Rectangle{}
 	}
 	return d.cancelBtn.Rect()
-}
-
-// openSamplerSaveAsDialog opens the Save As name prompt for the Sampler tab.
-// Reuses the shared dialog widget; confirm routes to samplerSaveAsConfirmed.
-// No-op without a working buffer or when a dialog is already open.
-func (dv *DrumView) openSamplerSaveAsDialog() {
-	if dv == nil || dv.saveAsDialog != nil {
-		return
-	}
-	if !dv.sampler.hasBuffer() {
-		return
-	}
-	base := dv.sampler.captureID
-	suggestion := samplerSaveAsSuggestion(dv, base)
-	dlg := &synthSaveAsDialog{
-		instID:     base,
-		baseID:     base,
-		suggestion: suggestion,
-		title:      "Save sample as…",
-		confirm:    func(name string) { dv.samplerSaveAsConfirmed(name) },
-	}
-	dlg.layout(dv.eqPanelZone.ContentRect())
-	dlg.textInput = NewTextInput(dlg.inputRect(), BPMBoxStyle)
-	dlg.textInput.MaxLen = synthSaveAsDialogMaxLen
-	dlg.textInput.InputMode = "text"
-	dlg.textInput.SetText(suggestion)
-	dlg.textInput.SetFocus(true)
-	dlg.okBtn = NewButtonKey(i18n.KeyOK, ComponentButtonPrimary, nil)
-	dlg.cancelBtn = NewButtonKey(i18n.KeyCancel, ComponentButtonSecondary, nil)
-	dlg.okBtn.SetRect(dlg.okBtnRect())
-	dlg.cancelBtn.SetRect(dlg.cancelBtnRect())
-	dv.saveAsDialog = dlg
 }
 
 // saveAsDialogHitAreas returns the OK / Cancel / frame hit areas for the open
@@ -323,9 +315,16 @@ func (d *synthSaveAsDialog) inputRect() image.Rectangle {
 	)
 }
 
+// okBtnRect is as wide as its label ("Save over <name>" is long) and no
+// wider than the space beside Cancel.
 func (d *synthSaveAsDialog) okBtnRect() image.Rectangle {
 	inset := SpaceMD
-	btnW, btnH := 80, 32
+	btnH := 32
+	btnW := 80
+	if d.okBtn != nil {
+		btnW = max(btnW, audioTabActionButtonWidth(d.okBtn.Text))
+	}
+	btnW = min(btnW, d.rect.Dx()-2*inset-80-SpaceSM)
 	return image.Rect(
 		d.rect.Max.X-inset-btnW,
 		d.rect.Max.Y-inset-btnH,
@@ -334,13 +333,88 @@ func (d *synthSaveAsDialog) okBtnRect() image.Rectangle {
 	)
 }
 
+// cancelBtnRect sits at the left edge, clear of the confirm button's width.
 func (d *synthSaveAsDialog) cancelBtnRect() image.Rectangle {
 	inset := SpaceMD
 	btnW, btnH := 80, 32
 	return image.Rect(
-		d.rect.Max.X-inset-btnW-SpaceSM-btnW,
+		d.rect.Min.X+inset,
 		d.rect.Max.Y-inset-btnH,
-		d.rect.Max.X-inset-btnW-SpaceSM,
+		d.rect.Min.X+inset+btnW,
 		d.rect.Max.Y-inset,
 	)
 }
+
+// saveAsKind is what confirming a typed Save As name does.
+type saveAsKind int
+
+const (
+	saveAsEmpty saveAsKind = iota // nothing typed: no save
+	saveAsOver                    // the name of the instrument being edited: a new version of it
+	saveAsNew                     // a new name: a new instrument
+	saveAsTaken                   // another instrument's name: refused
+)
+
+type saveAsVerdict struct {
+	kind saveAsKind
+	name string // the instrument's name as shown (over / taken)
+}
+
+func (v saveAsVerdict) ok() bool { return v.kind == saveAsOver || v.kind == saveAsNew }
+
+func (v saveAsVerdict) label() string {
+	switch v.kind {
+	case saveAsOver:
+		return i18n.Tf(i18n.KeySaveOverFmt, v.name)
+	case saveAsNew:
+		return i18n.T(i18n.KeySaveAsNew)
+	}
+	return ""
+}
+
+// classifySaveAsName says what saving editing as typed would do. Names
+// compare ignoring case and surrounding spaces, against every name an
+// instrument goes by — its current name, its library name, and a shipped
+// instrument's name in every language.
+func classifySaveAsName(typed string, editing instrument.ID) saveAsVerdict {
+	key := normalizeSaveAsName(typed)
+	if key == "" {
+		return saveAsVerdict{kind: saveAsEmpty}
+	}
+	own := saveAsIdentity(editing)
+	for _, n := range append(instrumentNames(own), audio.InstrumentDisplayName(editing)) {
+		if normalizeSaveAsName(n) == key {
+			return saveAsVerdict{kind: saveAsOver, name: audio.InstrumentDisplayName(editing)}
+		}
+	}
+	for _, id := range audio.LibraryIDs() {
+		if id == own {
+			continue
+		}
+		for _, n := range instrumentNames(id) {
+			if normalizeSaveAsName(n) == key {
+				return saveAsVerdict{kind: saveAsTaken, name: strings.TrimSpace(n)}
+			}
+		}
+	}
+	return saveAsVerdict{kind: saveAsNew}
+}
+
+// saveAsIdentity is the library instrument a Save As over editing saves to.
+func saveAsIdentity(editing instrument.ID) instrument.ID {
+	if doc, ok := audio.InstrumentDoc(editing); ok {
+		return audio.InstrumentLibraryIdentity(editing, doc)
+	}
+	return editing
+}
+
+// instrumentNames lists every name id goes by.
+func instrumentNames(id instrument.ID) []string {
+	names := append(i18n.InstrumentNames(id), audio.InstrumentDisplayName(id))
+	if d, ok := audio.UserLibraryDoc(id); ok {
+		names = append(names, d.Name)
+	}
+	return names
+}
+
+func normalizeSaveAsName(s string) string { return strings.ToLower(strings.TrimSpace(s)) }

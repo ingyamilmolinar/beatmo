@@ -15,12 +15,27 @@ const (
 	TabSampler // sample editor: trim/pitch a WAV or synth-capture, save as an instrument
 )
 
-// AllPanelTabs returns all tabs in display order. Synth is appended at the
-// end of the strip so existing scene catalogs / pixel tests that anchor on
-// the legacy 5-tab layout stay valid; mobile uses an abbreviated label.
+// AllPanelTabs returns the AVAILABLE tabs in display order. Synth is appended
+// at the end of the strip so existing scene catalogs / pixel tests that anchor
+// on the legacy 5-tab layout stay valid; mobile uses an abbreviated label.
+// The Chain tab (TabScope) is a developer tool: the production UI omits it
+// (devToolsOn, devtools.go). Package-level slices, so the per-frame callers
+// allocate nothing; read-only by convention.
 func AllPanelTabs() []PanelTab {
-	return []PanelTab{TabEQ, TabWave, TabSpectrum, TabMeters, TabScope, TabSynth, TabSampler}
+	if devToolsOn() {
+		return allPanelTabsDev
+	}
+	return allPanelTabsProduction
 }
+
+var (
+	allPanelTabsDev        = []PanelTab{TabEQ, TabWave, TabSpectrum, TabMeters, TabScope, TabSynth, TabSampler}
+	allPanelTabsProduction = []PanelTab{TabEQ, TabWave, TabSpectrum, TabMeters, TabSynth, TabSampler}
+)
+
+// panelTabAvailable reports whether tab may become active: every tab in a
+// developer build, every tab but Chain in the production UI.
+func panelTabAvailable(tab PanelTab) bool { return tab != TabScope || devToolsOn() }
 
 // PanelTabLabel returns the human-readable label for a tab.
 //
@@ -138,7 +153,13 @@ func (p *PanelTabState) SetOnLeave(fn func(prev PanelTab)) { p.onLeave = fn }
 
 // SetActiveTab switches to the given tab, invoking the onLeave hook (if any)
 // with the previously-active tab when this is an actual transition.
+//
+// A tab the build does not offer (Chain in the production UI) is refused here,
+// the chokepoint every route reaches, so the current tab stays active.
 func (p *PanelTabState) SetActiveTab(tab PanelTab) {
+	if !panelTabAvailable(tab) {
+		return
+	}
 	prev := p.activeTab
 	p.activeTab = tab
 	if prev != tab && p.onLeave != nil {

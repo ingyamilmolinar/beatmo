@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/async"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // uniquePoolName returns a per-test pool name so concurrent tests do
@@ -52,7 +54,7 @@ func TestStoreLoadMissingFileReturnsEmpty(t *testing.T) {
 
 func TestStoreRoundTrip(t *testing.T) {
 	s, path := newTestStore(t)
-	in := map[string]bool{"kick-808": true, "snare-fat": true, "missing": false}
+	in := map[instrument.ID]bool{roster.Kick808: true, roster.SnareFat: true, "missing": false}
 	if err := s.SaveFavorites(in); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -72,7 +74,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	if len(out) != 2 {
 		t.Fatalf("expected 2 entries, got %d: %v", len(out), out)
 	}
-	if !out["kick-808"] || !out["snare-fat"] {
+	if !out[roster.Kick808] || !out[roster.SnareFat] {
 		t.Fatalf("expected kick-808 and snare-fat, got %v", out)
 	}
 	if out["missing"] {
@@ -86,7 +88,7 @@ func TestStoreSaveDoesNotBlockCaller(t *testing.T) {
 	deadline := 100 * time.Millisecond
 	start := time.Now()
 	for i := 0; i < N; i++ {
-		if err := s.SaveFavorites(map[string]bool{"id": true}); err != nil {
+		if err := s.SaveFavorites(map[instrument.ID]bool{"id": true}); err != nil {
 			t.Fatalf("Save[%d]: %v", i, err)
 		}
 	}
@@ -128,7 +130,7 @@ func TestStoreConcurrentReadWriteSafe(t *testing.T) {
 				case <-stop:
 					return
 				default:
-					_ = s.SaveFavorites(map[string]bool{
+					_ = s.SaveFavorites(map[instrument.ID]bool{
 						"a": j%2 == 0,
 						"b": seed%2 == 0,
 					})
@@ -174,7 +176,7 @@ func TestStoreAtomicWriteUsesTempFile(t *testing.T) {
 	// can verify the write goes through a `.tmp` companion file that is
 	// renamed into place — the standard atomic-rename idiom.
 	s, path := newTestStore(t)
-	if err := s.SaveFavorites(map[string]bool{"a": true}); err != nil {
+	if err := s.SaveFavorites(map[instrument.ID]bool{"a": true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	if err := s.WaitFlushed(); err != nil {
@@ -211,7 +213,7 @@ func TestStorePoolLazyAcquired(t *testing.T) {
 		t.Fatalf("pool was allocated by LoadFavorites; expected lazy on first SaveFavorites")
 	}
 
-	if err := s.SaveFavorites(map[string]bool{"x": true}); err != nil {
+	if err := s.SaveFavorites(map[instrument.ID]bool{"x": true}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	if err := s.WaitFlushed(); err != nil {
@@ -223,13 +225,24 @@ func TestStorePoolLazyAcquired(t *testing.T) {
 }
 
 func TestStoreParsePrefsEmptyData(t *testing.T) {
-	favs, overrides, recipes := parsePrefs(nil, nil)
-	if len(favs) != 0 || len(overrides) != 0 || len(recipes) != 0 {
-		t.Fatalf("expected empty state for nil data, got favs=%v overrides=%v recipes=%v", favs, overrides, recipes)
-	}
-	favs, overrides, recipes = parsePrefs([]byte{}, nil)
-	if len(favs) != 0 || len(overrides) != 0 || len(recipes) != 0 {
-		t.Fatalf("expected empty state for empty slice, got favs=%v overrides=%v recipes=%v", favs, overrides, recipes)
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{{"nil", nil}, {"empty slice", []byte{}}} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap, err := parsePrefs(tc.data, nil)
+			if err != nil {
+				t.Fatalf("parsePrefs: %v", err)
+			}
+			if len(snap.favorites) != 0 || len(snap.sampleEdits) != 0 {
+				t.Fatalf("expected empty state, got %+v", snap)
+			}
+			// Load path promises non-nil maps so callers can write
+			// through them without a nil check.
+			if snap.favorites == nil || snap.sampleEdits == nil || snap.knobSteps == nil {
+				t.Fatalf("expected non-nil maps, got %+v", snap)
+			}
+		})
 	}
 }
 
@@ -243,7 +256,7 @@ func TestStoreRespectsSubmitContext(t *testing.T) {
 	cancel()
 	_ = ctx // not used directly; future-proof guard
 
-	if err := s.SaveFavorites(map[string]bool{"a": true}); err != nil {
+	if err := s.SaveFavorites(map[instrument.ID]bool{"a": true}); err != nil {
 		t.Fatalf("Save returned err with cancelled-but-unused ctx: %v", err)
 	}
 	if err := s.WaitFlushed(); err != nil {

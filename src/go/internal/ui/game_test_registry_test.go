@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"go.uber.org/goleak"
 )
 
@@ -34,6 +35,19 @@ func init() {
 		testGamesMu.Lock()
 		testGames = append(testGames, g)
 		testGamesMu.Unlock()
+	}
+	unregisterGameForTest = func(g *Game) {
+		if g == nil {
+			return
+		}
+		testGamesMu.Lock()
+		defer testGamesMu.Unlock()
+		for i, q := range testGames {
+			if q == g {
+				testGames = append(testGames[:i], testGames[i+1:]...)
+				return
+			}
+		}
 	}
 }
 
@@ -161,20 +175,16 @@ func resetTestEnvAndGlobals() {
 	timelineTrace = false
 	timelineTraceRow = 0
 	debugGeom = false
-	parityWatchDefault = parityWatchOff
+	parityWatchDefault = testParityWatchDefault
 	parityFatalEnabled.Store(true)
 	parityScanEveryFrames = parityScanEveryDefault
 	parityScanStride = parityScanStrideDefault
-	if runtime.GOOS == "js" {
-		parityWatchDefault = parityWatchLog
-		parityFatalEnabled.Store(false)
-	}
 	predictorPerfThrottleEnabled = (runtime.GOARCH == "wasm")
 
 	audio.ResetInstruments()
 	audio.SetStopHook(nil)
 	audio.SetBPMFuncForTest(func(int) {})
-	audio.SetChannelEQ("main", 0)
+	audio.SetChannelEQ(channel.Master, 0)
 
 	drawRect = defaultDrawRect
 	drawEdgeLine = defaultDrawEdgeLine

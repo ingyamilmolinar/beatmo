@@ -85,9 +85,17 @@ func (r *keyboardShortcutRouter) dispatchUngated() bool {
 	return claimed
 }
 
-// dispatchGated runs the gated tier. Called only when no surface owns the
+// dispatchGated runs the gated tier. Called only when no surface owns the WHOLE
 // keyboard. Runs every gated node (keys are disjoint — see file header).
-func (r *keyboardShortcutRouter) dispatchGated() {
+//
+// blocked holds the keys a partial claimant already consumed this frame (an open
+// value popup owns the arrows; see keyboard_key_claim.go). They are filtered out
+// for the duration of the dispatch — PER KEY, not per node, so a popup that owns
+// only the arrows still leaves the grid node's [ ] zoom and 0 reset working.
+func (r *keyboardShortcutRouter) dispatchGated(blocked map[ebiten.Key]bool) {
+	if len(blocked) > 0 {
+		defer suppressKeys(blocked)()
+	}
 	for _, c := range r.children {
 		if !c.gated {
 			continue

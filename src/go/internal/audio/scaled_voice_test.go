@@ -79,8 +79,13 @@ func TestScaledVoiceSampleBlockFallsBackForNonBlockVoice(t *testing.T) {
 	if n != 32 {
 		t.Fatalf("SampleBlock returned n=%d, want 32", n)
 	}
-	if !done {
-		t.Error("SampleBlock should report done after all samples consumed")
+	// It never reads ahead to find the end (that consumed — dropped — a
+	// sample per block): the next block reports done with nothing in it.
+	if done {
+		t.Error("SampleBlock must not read past the block to detect the end")
+	}
+	if n2, done2 := sv.SampleBlock(make([]float64, 8)); n2 != 0 || !done2 {
+		t.Errorf("next SampleBlock = (%d, %v), want (0, true)", n2, done2)
 	}
 	expected := 0.6 * 0.25
 	for i := 0; i < n; i++ {

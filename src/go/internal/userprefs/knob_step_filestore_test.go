@@ -5,6 +5,9 @@ package userprefs
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestFileStoreKnobStepRoundTrip verifies that SaveKnobStep persists to disk
@@ -70,7 +73,7 @@ func TestFileStoreKnobStepOtherSectionsUnaffected(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	// Seed favorites first.
-	if err := s.SaveFavorites(map[string]bool{"kick": true, "snare": true}); err != nil {
+	if err := s.SaveFavorites(map[instrument.ID]bool{roster.Kick: true, roster.Snare: true}); err != nil {
 		t.Fatalf("SaveFavorites: %v", err)
 	}
 
@@ -95,7 +98,7 @@ func TestFileStoreKnobStepOtherSectionsUnaffected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFavorites: %v", err)
 	}
-	if !favs["kick"] || !favs["snare"] {
+	if !favs[roster.Kick] || !favs[roster.Snare] {
 		t.Errorf("favorites lost after SaveKnobStep: %v", favs)
 	}
 

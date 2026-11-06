@@ -256,7 +256,7 @@ func (p *Predictor) Ensure(horizon int) {
 			}
 			for i := rewalkFrom; i < startIdx; i++ {
 				bi := p.beatInfoAtRow(row, i)
-				if bi.NodeType != model.NodeTypeRegular && bi.NodeType != model.NodeTypeMute {
+				if !bi.NodeType.Fires() && bi.NodeType != model.NodeTypeMute {
 					continue
 				}
 				_, triggered := p.evalAudible(row, i, bi, counts, triggerCounts, &lastFired, lastTrig, &gate)
@@ -266,7 +266,7 @@ func (p *Predictor) Ensure(horizon int) {
 					}
 				}
 				switch bi.NodeType {
-				case model.NodeTypeRegular:
+				case model.NodeTypeRegular, model.NodeTypeChord:
 					if triggered {
 						lastFired = bi.NodeID
 						lastTrig[bi.NodeID] = true
@@ -304,7 +304,7 @@ func (p *Predictor) Ensure(horizon int) {
 				if n, ok := p.nodes[bi.NodeID]; ok && shouldGateMute(n) {
 					visGate = idx + 1
 				}
-			} else if bi.NodeType == model.NodeTypeRegular {
+			} else if bi.NodeType.Fires() {
 				if visGate >= 0 && idx <= visGate {
 					vis = false
 				}
@@ -318,7 +318,7 @@ func (p *Predictor) Ensure(horizon int) {
 			}
 			p.visibleByRow[row][rel] = vis
 			switch bi.NodeType {
-			case model.NodeTypeRegular:
+			case model.NodeTypeRegular, model.NodeTypeChord:
 				if audible {
 					lastFired = bi.NodeID
 					lastTrig[bi.NodeID] = true
@@ -365,6 +365,7 @@ func (p *Predictor) RebaseAt(idx int) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.epoch.Add(1)
 	if p.windowCap <= 0 {
 		p.windowCap = defaultPredictorWindowCap
 	}
@@ -466,7 +467,7 @@ func (p *Predictor) RebaseAt(idx int) {
 			bi := p.beatInfoAtRow(row, i)
 			rel := i - p.windowStart
 			inWindow := rel >= 0 && rel < len(p.audibleByRow[row])
-			if bi.NodeType != model.NodeTypeRegular && bi.NodeType != model.NodeTypeMute {
+			if !bi.NodeType.Fires() && bi.NodeType != model.NodeTypeMute {
 				if inWindow {
 					p.audibleByRow[row][rel] = false
 					p.visibleByRow[row][rel] = false
@@ -485,7 +486,7 @@ func (p *Predictor) RebaseAt(idx int) {
 				if n, ok := p.nodes[bi.NodeID]; ok && shouldGateMute(n) {
 					visGate = i + 1
 				}
-			} else if bi.NodeType == model.NodeTypeRegular {
+			} else if bi.NodeType.Fires() {
 				if visGate >= 0 && i <= visGate {
 					vis = false
 				}
@@ -501,7 +502,7 @@ func (p *Predictor) RebaseAt(idx int) {
 				p.visibleByRow[row][rel] = vis
 			}
 			switch bi.NodeType {
-			case model.NodeTypeRegular:
+			case model.NodeTypeRegular, model.NodeTypeChord:
 				if audible {
 					lastFired = bi.NodeID
 					lastTrig[bi.NodeID] = true

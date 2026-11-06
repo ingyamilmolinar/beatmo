@@ -75,7 +75,7 @@ try {
       () =>
         typeof addNode === "function" &&
         typeof exportJSON === "function" &&
-        typeof importJSON === "function",
+        typeof importJSON === "function", null,
       { timeout: 30000 }
     );
     await page.waitForTimeout(500);
@@ -94,7 +94,7 @@ try {
     // Verify openJSONFile checks for pending mobile picks.
     // We simulate a pending import result and verify openJSONFile consumes it.
     const testJSON = JSON.stringify({
-      version: 1,
+      schema_version: "0.0.1",
       subdiv: 16,
       bpm: 90,
       instruments: [{ name: "Kick", id: "kick", kind: "builtin", volume: 1.0, origin: 0, color: "#C87850FF" }],
@@ -122,7 +122,7 @@ try {
       };
       // Now call openJSONFile — it should consume the pending pick.
       const result = await window.openJSONFile();
-      return { length: result.length, hasVersion: result.indexOf('"version"') >= 0 };
+      return { length: result.length, hasVersion: result.indexOf('"schema_version"') >= 0 };
     }, testJSON);
 
     if (!importResult.hasVersion || importResult.length === 0) {
@@ -163,7 +163,7 @@ try {
     await page.goto(`http://localhost:${port}/`);
 
     await page.waitForFunction(
-      () => typeof addNode === "function" && typeof window.openWAVFile === "function",
+      () => typeof addNode === "function" && typeof window.openWAVFile === "function", null,
       { timeout: 30000 }
     );
     await page.waitForTimeout(500);
@@ -206,7 +206,7 @@ try {
       () =>
         typeof addNode === "function" &&
         typeof exportJSON === "function" &&
-        typeof importJSON === "function",
+        typeof importJSON === "function", null,
       { timeout: 30000 }
     );
     await page.waitForTimeout(500);
@@ -222,7 +222,7 @@ try {
 
     // Test direct import via importJSON (desktop path).
     const testJSON = JSON.stringify({
-      version: 1,
+      schema_version: "0.0.1",
       subdiv: 8,
       bpm: 140,
       instruments: [{ name: "Snare", id: "snare", kind: "builtin", volume: 1.0, origin: 0, color: "#5080C8FF" }],

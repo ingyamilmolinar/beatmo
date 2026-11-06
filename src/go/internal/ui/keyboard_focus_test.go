@@ -131,24 +131,14 @@ func TestKeyboardClaimed_AllSurfaces(t *testing.T) {
 	}
 	g.drum.tree.SetFocus("")
 
-	// 4. R2: valueEditorActive() arm — open the BPM editor directly so the
-	// shared ParamValueEditor is active, and assert KeyboardClaimed() is true.
-	// This covers the dv.valueEditorActive() branch of KeyboardClaimed().
-	tz := g.drum.transportZone
-	if tz == nil {
-		t.Skip("no transport zone in this environment")
-	}
-	tz.openBPMEditor()
-	if !g.drum.valueEditorActive() {
-		t.Skip("openBPMEditor did not activate paramEditor in this environment")
-	}
-	if !g.drum.KeyboardClaimed() {
-		t.Fatal("active BPM value editor must claim the keyboard via valueEditorActive()")
-	}
-	// Cancel to close the editor cleanly.
-	tz.paramEditor.cancel()
-	if g.drum.valueEditorActive() {
-		t.Fatal("after cancel the value editor should no longer be active")
+	// 4. An open value wheel (BPM) is a PARTIAL claimant (arrows only), never a
+	// whole-keyboard claim: Space must still play while it is open.
+	if b := g.drum.bpmBox(); b != nil {
+		g.drum.openBPMWheel(b.Rect)
+		if g.drum.KeyboardClaimed() {
+			t.Fatal("an open BPM value wheel must not claim the whole keyboard")
+		}
+		g.drum.CloseAllPopups()
 	}
 
 	if g.drum.KeyboardClaimed() {

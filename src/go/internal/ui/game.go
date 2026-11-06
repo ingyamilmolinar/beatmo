@@ -98,6 +98,13 @@ var parityWatchDefault parityWatchMode
 
 func init() {
 	parityWatchDefault = parityWatchOff
+	// Every go test binary — `-tags test` and the real-Ebiten `make test-real`
+	// build alike — runs parity in panic mode, so a desync can never pass a
+	// test silently. (testutil_test.go's testParityWatchDefault re-asserts it
+	// per test for the -tags test suite.)
+	if runningUnderGoTest() {
+		parityWatchDefault = parityWatchPanic
+	}
 	if v := strings.TrimSpace(os.Getenv("PARITY_WATCH")); v != "" {
 		switch strings.ToLower(v) {
 		case "1", "true", "log":
@@ -114,7 +121,7 @@ func init() {
 // parity mismatch does not terminate the Go runtime and break browser tests.
 // Opt back into fatal behaviour with PARITY_WASM_FATAL=1|true|panic.
 func init() {
-	if !RuntimeProf().IsBrowser {
+	if !RuntimeProf().IsBrowser || runningUnderGoTest() {
 		return
 	}
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("PARITY_WASM_FATAL"))); v == "1" || v == "true" || v == "panic" {

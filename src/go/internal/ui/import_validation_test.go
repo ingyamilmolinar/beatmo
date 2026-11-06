@@ -3,6 +3,11 @@ package ui
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // minimal JSON structs for composing import payloads
@@ -22,20 +27,20 @@ type tNode struct {
 }
 
 type tInst struct {
-	Name   string  `json:"name"`
-	ID     string  `json:"id"`
-	Kind   string  `json:"kind"`
-	Volume float64 `json:"volume"`
-	Origin int     `json:"origin"`
-	Color  string  `json:"color"`
+	Name   string        `json:"name"`
+	ID     instrument.ID `json:"id"`
+	Kind   string        `json:"kind"`
+	Volume float64       `json:"volume"`
+	Origin int           `json:"origin"`
+	Color  string        `json:"color"`
 }
 
 type tFile struct {
-	Version     int     `json:"version"`
-	Subdiv      int     `json:"subdiv"`
-	BPM         int     `json:"bpm"`
-	Instruments []tInst `json:"instruments"`
-	Nodes       []tNode `json:"nodes"`
+	SchemaVersion string  `json:"schema_version"`
+	Subdiv        int     `json:"subdiv"`
+	BPM           int     `json:"bpm"`
+	Instruments   []tInst `json:"instruments"`
+	Nodes         []tNode `json:"nodes"`
 }
 
 func TestImportClampsColorLogicAndCoords(t *testing.T) {
@@ -48,11 +53,11 @@ func TestImportClampsColorLogicAndCoords(t *testing.T) {
 	// Construct payload with invalid color and out-of-range logic and coords.
 	huge := 1_000_000_000
 	f := tFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     100,
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           100,
 		Instruments: []tInst{{
-			Name: "X", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#nothex",
+			Name: "X", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#nothex",
 		}},
 		Nodes: []tNode{{
 			ID: 1, I: huge, J: -huge, Type: "regular",
@@ -100,7 +105,7 @@ func TestImportClampsColorLogicAndCoords(t *testing.T) {
 
 	// Check logic clamp applied in graph params (LogicP <= 1.0)
 	if mn, ok := g.graph.GetNodeByID(found.ID); ok {
-		if mn.Params.LogicKind != "probability" {
+		if mn.Params.LogicKind != model.LogicProbability {
 			t.Fatalf("logic kind not set: %q", mn.Params.LogicKind)
 		}
 		if !(mn.Params.LogicP >= 0 && mn.Params.LogicP <= 1) {
@@ -121,7 +126,7 @@ func TestImportRejectsTooManyInstruments(t *testing.T) {
 	for i := range insts {
 		insts[i] = tInst{Name: "I", ID: "id", Kind: "builtin", Volume: 1, Origin: 0, Color: "#FFFFFFFF"}
 	}
-	f := tFile{Version: 1, Subdiv: 32, BPM: 120, Instruments: insts}
+	f := tFile{SchemaVersion: schema.Version, Subdiv: 32, BPM: 120, Instruments: insts}
 	data, _ := json.Marshal(f)
 	if err := g.Import(data); err == nil {
 		t.Fatalf("expected error on too many instruments")

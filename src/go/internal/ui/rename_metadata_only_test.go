@@ -19,26 +19,19 @@ func TestRenameIsMetadataOnly(t *testing.T) {
 
 	// Seed per-row audio state that the spec requires a rename to preserve
 	// (rename is metadata-only — it must touch ONLY the display name).
-	dv.Rows[row].Pan = -0.37
-	dv.Rows[row].ReverbSend = 0.21
-	dv.Rows[row].DelaySend = 0.14
-	if len(dv.Rows[row].EQGainsDB) == 0 {
-		dv.Rows[row].EQGainsDB = make([]float64, 10)
+	if len(rowEQ(dv.Rows[row]).GainsDB) == 0 {
+		rowEQ(dv.Rows[row]).GainsDB = make([]float64, 10)
 	}
-	dv.Rows[row].EQGainsDB[3] = 4.5
+	rowEQ(dv.Rows[row]).GainsDB[3] = 4.5
 
 	dv.renameInstrumentTo(row, "My Custom Name")
 
 	if dv.Rows[row].Instrument != origID {
 		t.Fatalf("rename changed ID: got %q want %q (must be metadata-only)", dv.Rows[row].Instrument, origID)
 	}
-	// EQ / pan / sends must survive the rename verbatim.
-	if dv.Rows[row].Pan != -0.37 || dv.Rows[row].ReverbSend != 0.21 || dv.Rows[row].DelaySend != 0.14 {
-		t.Fatalf("rename disturbed row audio state: pan=%v reverb=%v delay=%v",
-			dv.Rows[row].Pan, dv.Rows[row].ReverbSend, dv.Rows[row].DelaySend)
-	}
-	if dv.Rows[row].EQGainsDB[3] != 4.5 {
-		t.Fatalf("rename disturbed EQ: band3=%v want 4.5", dv.Rows[row].EQGainsDB[3])
+	// EQ must survive the rename verbatim.
+	if rowEQ(dv.Rows[row]).GainsDB[3] != 4.5 {
+		t.Fatalf("rename disturbed EQ: band3=%v want 4.5", rowEQ(dv.Rows[row]).GainsDB[3])
 	}
 	if dv.instDisplayLabel(origID) != "My Custom Name" {
 		t.Fatalf("display label not updated: got %q", dv.instDisplayLabel(origID))

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Regression: audio parity checks must be anchored to the playhead, not the
@@ -40,7 +41,7 @@ func TestParityDetectsAudioMismatchWhenViewIsPannedAway(t *testing.T) {
 
 	abs := 4
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
-	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
+	g.recordParityAudio(0, abs, 1.0, roster.Kick, 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
 	// Pan DrumView far away from the playhead so the rendered window doesn't
 	// include abs=4.

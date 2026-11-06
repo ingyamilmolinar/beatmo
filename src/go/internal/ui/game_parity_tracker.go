@@ -46,6 +46,10 @@ type parityTracker struct {
 	parityPruneMaxMinAbsForTest int
 	parityScanCallsForTest      int64
 	parityScanReturnsForTest    [10]int64 // by early-return slot
+	// parityScanStoppedForTest opts ONE test Game into scanning a stopped
+	// transport, which production never does. Default false, so tests scan
+	// exactly when production does.
+	parityScanStoppedForTest bool
 	// parityGen monotonically advances on every runtime structural mutation
 	// (instrument change, BPM, length, graph edit, row add/del, etc). All
 	// parity event records (audio, seq decisions, highlights) carry the gen at

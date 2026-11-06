@@ -40,36 +40,35 @@ import (
 // does not wire automatic variant lookup — callers must pass a
 // pre-resolved disabled spec when state.Disabled is true.
 func Render(dst *ebiten.Image, r image.Rectangle, spec ComponentSpec, state ComponentState) {
-	topEdge := Profile().DrawTopEdgeHighlight
-	// Fast-path zero-delta case: identical work to the legacy
-	// ButtonStyle.Draw, identical allocation count. The state checks
-	// below are short-circuited so spec entries with no Interaction
-	// (panels, decorations, dynamic widgets) never pay for unused logic.
-	if state.Disabled || (!state.Hovered && !state.Focused) {
-		drawButton(dst, r, spec.Fill, spec.Border.Resolve(), state.Pressed, topEdge)
-		return
-	}
-
-	// Slow path: at least one interaction delta needs applying.
+	// Flat-tonal (2026-07-25): every spec-driven component renders as ONE
+	// filled body — no border, no top-edge highlight, no press bevel. A
+	// control's silhouette is the tone step against its container, and hover /
+	// press are brightness deltas on the fill. The focus ring below is the one
+	// surviving outline in the system. See DESIGN.md "Elevation & Depth".
+	//
+	// spec.Border is intentionally ignored here rather than deleted from the
+	// generated specs, so a component's YAML recipe stays readable and the
+	// change is one chokepoint instead of a token sweep.
 	var fill color.Color = spec.Fill
-	var border color.Color = spec.Border.Resolve()
-	if state.Hovered && !state.Pressed {
-		if d := spec.Interaction.Hover.FillDelta; d != 0 {
-			fill = adjustColor(fill, int(d))
+	switch {
+	case state.Disabled:
+		fill = colSurface1
+	default:
+		if state.Hovered && !state.Pressed {
+			if d := spec.Interaction.Hover.FillDelta; d != 0 {
+				fill = adjustColor(fill, int(d))
+			}
 		}
-		if d := spec.Interaction.Hover.BorderDelta; d != 0 {
-			border = adjustColor(border, int(d))
+		if state.Focused {
+			if d := spec.Interaction.Focus.FillDelta; d != 0 {
+				fill = adjustColor(fill, int(d))
+			}
+		}
+		if state.Pressed {
+			fill = adjustColor(fill, -20)
 		}
 	}
-	if state.Focused {
-		if d := spec.Interaction.Focus.FillDelta; d != 0 {
-			fill = adjustColor(fill, int(d))
-		}
-		if d := spec.Interaction.Focus.BorderDelta; d != 0 {
-			border = adjustColor(border, int(d))
-		}
-	}
-	drawButton(dst, r, fill, border, state.Pressed, topEdge)
+	drawFlatButtonBody(dst, r, fill, spec.Radius)
 	if state.Focused {
 		// Focus accent ring inside the rect — matches the TextInputStyle
 		// focused-input look. Drawn at AlphaStrong over the focus-ring

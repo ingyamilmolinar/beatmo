@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -67,10 +65,10 @@ func marqueeSelectPair(g *Game, aID, bID model.NodeID) {
 
 // mergeChipRects returns every "mergechip:*" key currently in the menu's
 // rects map.
-func mergeChipRects(g *Game) map[string]bool {
-	out := map[string]bool{}
+func mergeChipRects(g *Game) map[gmID]bool {
+	out := map[gmID]bool{}
 	for id := range g.groupMenu.rects {
-		if strings.HasPrefix(id, "mergechip:") {
+		if id.el == gmElMergeChip {
 			out[id] = true
 		}
 	}
@@ -145,15 +143,15 @@ func TestMergeChipsShownOnlyWhenProvisionalWithCandidates(t *testing.T) {
 
 	chips := mergeChipRects(g)
 	for _, gid := range wantOrder {
-		id := fmt.Sprintf("mergechip:%d", gid)
+		id := gmMergeChip(gid)
 		if !chips[id] {
 			t.Fatalf("want chip %q present, chips=%v", id, chips)
 		}
 	}
-	if id := fmt.Sprintf("mergechip:%d", gid5); chips[id] {
+	if id := gmMergeChip(gid5); chips[id] {
 		t.Fatalf("gid5's chip must be absent (cap at %d by ascending gid), chips=%v", mergeChipCandidateCap, chips)
 	}
-	if id := fmt.Sprintf("mergechip:%d", gidSuper); chips[id] {
+	if id := gmMergeChip(gidSuper); chips[id] {
 		t.Fatalf("superset group's chip must be absent (already contains every selected member), chips=%v", chips)
 	}
 	if len(chips) != mergeChipCandidateCap {
@@ -202,7 +200,7 @@ func TestMergeChipAddsSelectionToExistingGroup(t *testing.T) {
 			provID, g.groupMenu.IsOpen(), g.groupMenu.GroupID(), g.groupMenu.provisional)
 	}
 
-	clickMenuControl(t, g, fmt.Sprintf("mergechip:%d", gidA))
+	clickMenuControl(t, g, gmMergeChip(gidA))
 	advanceFrames(g, 2)
 
 	grpA, ok := g.graph.Group(gidA)
@@ -295,7 +293,7 @@ func TestMergeChipOverlappingSelection(t *testing.T) {
 		t.Fatalf("group A must be an addable candidate (selB is still addable), candidates=%+v", cands)
 	}
 
-	clickMenuControl(t, g, fmt.Sprintf("mergechip:%d", gidA))
+	clickMenuControl(t, g, gmMergeChip(gidA))
 	advanceFrames(g, 2)
 
 	grpA, ok := g.graph.Group(gidA)
@@ -343,9 +341,9 @@ func TestMergeChipRespectsTransactionalRules(t *testing.T) {
 
 	// Dirty the provisional group's rules through the real menu (rdpit+ +
 	// ruleonoff), mirroring TestGroupMenuE2E_RuleOnOffClickTogglesRule.
-	clickMenuControl(t, g, "rdpit+")
+	clickMenuControl(t, g, gmPlus(gmStepPitch))
 	advanceFrames(g, 2)
-	clickMenuControl(t, g, "ruleonoff")
+	clickMenuControl(t, g, gmRuleOnOff)
 	advanceFrames(g, 2)
 
 	provID := g.groupMenu.GroupID()
@@ -354,7 +352,7 @@ func TestMergeChipRespectsTransactionalRules(t *testing.T) {
 		t.Fatalf("setup: provisional group must have a pending, enabled rule before the merge, got %+v ok=%v", provGrp, ok)
 	}
 
-	clickMenuControl(t, g, fmt.Sprintf("mergechip:%d", gidA))
+	clickMenuControl(t, g, gmMergeChip(gidA))
 	advanceFrames(g, 2)
 
 	if _, ok := g.graph.Group(provID); ok {
@@ -411,12 +409,9 @@ func TestGroupMenuFitsWithinGridPaneWithMergeChips(t *testing.T) {
 		t.Fatalf("panel %v not contained in grid pane %v", panel, gridRect)
 	}
 
-	controlIDs := []string{
-		"delete", "n-", "n+", "save", "close", "ruleonoff",
-		"rdpit-", "rdpit+", "rdvol-", "rdvol+", "rddur-", "rddur+",
-	}
+	controlIDs := []gmID{gmDelete, gmMinus(gmStepEveryN), gmPlus(gmStepEveryN), gmSave, gmClose, gmRuleOnOff, gmMinus(gmStepPitch), gmPlus(gmStepPitch), gmMinus(gmStepVolume), gmPlus(gmStepVolume), gmMinus(gmStepDuration), gmPlus(gmStepDuration)}
 	for _, gid := range gids {
-		controlIDs = append(controlIDs, fmt.Sprintf("mergechip:%d", gid))
+		controlIDs = append(controlIDs, gmMergeChip(gid))
 	}
 	for _, id := range controlIDs {
 		r, ok := g.groupMenu.rects[id]

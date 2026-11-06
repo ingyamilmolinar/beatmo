@@ -1,11 +1,9 @@
 package ui
 
 import (
-	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func TestCameraReset(t *testing.T) {
@@ -304,60 +302,6 @@ func TestSlashTogglesHelpOverlay(t *testing.T) {
 	}
 }
 
-func TestEscRevertsBPMEdit(t *testing.T) {
-	g := newTestGameForUndo(t)
-	tz := g.drum.transportZone
-	if tz == nil || tz.bpmBox == nil {
-		t.Skip("no transport bpm box")
-	}
-	orig := g.drum.BPM()
-	// Open the shared editor and type a different (uncommitted) value. Escape is
-	// owned by the editor's own Update — it cancels without writing.
-	tz.openBPMEditor()
-	tz.paramEditor.ti.SetText("240")
-
-	restore := stubKeys(
-		map[ebiten.Key]bool{ebiten.KeyEscape: true},
-		map[ebiten.Key]bool{ebiten.KeyEscape: true},
-	)
-	defer restore()
-	tz.Update()
-
-	if tz.paramEditor.Active() {
-		t.Fatal("Esc should close the BPM editor")
-	}
-	if g.drum.transportZone.BPM() != orig {
-		t.Fatalf("Esc should leave BPM at %d (uncommitted), got %d", orig, g.drum.transportZone.BPM())
-	}
-}
-
-func TestEscRevertsEQDBEdit(t *testing.T) {
-	g := newTestGameForUndo(t)
-	ez := g.drum.eqPanelZone
-	if ez == nil {
-		t.Skip("no eq panel zone")
-	}
-	// Open the shared dB editor for band 0 with a saved prior value of 0.0 and
-	// a changed (uncommitted) text. Escape is owned by the editor's own Update.
-	ez.bandGainsDB[0] = 0.0
-	ez.openEQDBEditor(0)
-	ez.paramEditor.ti.SetText("12.0")
-
-	restore := stubKeys(
-		map[ebiten.Key]bool{ebiten.KeyEscape: true},
-		map[ebiten.Key]bool{ebiten.KeyEscape: true},
-	)
-	defer restore()
-	ez.Update()
-
-	if ez.paramEditor.Active() {
-		t.Fatalf("Esc should close the EQ dB editor")
-	}
-	if ez.bandGainsDB[0] != 0.0 {
-		t.Fatalf("Esc should leave the dB gain at 0.0, got %v", ez.bandGainsDB[0])
-	}
-}
-
 func TestEscClearsInstrumentSearchThenCloses(t *testing.T) {
 	g := newTestGameForUndo(t)
 	m := g.drum.instMenuComp
@@ -518,41 +462,5 @@ func TestGridHelpButtonBlocksGridEditAndPan(t *testing.T) {
 	}
 	if !g.menuHit(cx, cy) {
 		t.Fatal("menuHit should be true over the help button (no camera pan)")
-	}
-}
-
-func TestArrowKeysYieldToSynthValueEditor(t *testing.T) {
-	g := newTestGameForUndo(t)
-	g.drum.paramEditor = NewParamValueEditor()
-	g.drum.paramEditor.Open(audio.ParamDef{Name: "g", Min: 0, Max: 1000}, image.Rect(0, 0, 80, 24),
-		func() float64 { return 120 }, func(float64) {})
-	g.cam.OffsetX = 0
-
-	restore := stubKeys(map[ebiten.Key]bool{ebiten.KeyArrowLeft: true}, nil)
-	defer restore()
-	g.handleGlobalShortcuts()
-
-	if g.cam.OffsetX != 0 {
-		t.Fatalf("ArrowLeft must NOT pan the grid while the synth/sampler value editor is active (OffsetX=%v); keys must reach the editor caret", g.cam.OffsetX)
-	}
-}
-
-func TestArrowKeysYieldToEQValueEditor(t *testing.T) {
-	g := newTestGameForUndo(t)
-	if g.drum.eqPanelZone == nil {
-		t.Skip("no eq panel zone")
-	}
-	if g.drum.eqPanelZone.paramEditor == nil {
-		g.drum.eqPanelZone.paramEditor = NewParamValueEditor()
-	}
-	g.drum.eqPanelZone.openEQDBEditor(0)
-	g.cam.OffsetX = 0
-
-	restore := stubKeys(map[ebiten.Key]bool{ebiten.KeyArrowRight: true}, nil)
-	defer restore()
-	g.handleGlobalShortcuts()
-
-	if g.cam.OffsetX != 0 {
-		t.Fatalf("ArrowRight must NOT pan the grid while the EQ dB editor is active (OffsetX=%v)", g.cam.OffsetX)
 	}
 }

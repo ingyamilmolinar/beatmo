@@ -11,6 +11,10 @@ func PlayBatch(reqs []BatchParam) {
 		if r.HasWhen {
 			when = r.When
 		}
+		if r.VoiceID != 0 {
+			PlayLaneAt(r.ID, r.Vol, r.Pitch, r.Dur, when, r.Row, r.Abs, r.VoiceID)
+			continue
+		}
 		PlayParamsAt(r.ID, r.Vol, r.Pitch, r.Dur, when, r.Row, r.Abs)
 	}
 }

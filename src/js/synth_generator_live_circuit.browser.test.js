@@ -17,8 +17,9 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, waitForAudioReady } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
@@ -54,7 +55,7 @@ const port = server.address().port;
 
 // A 4-node loop driving a single Snare row at 200 BPM so hits land frequently.
 const CIRCUIT = JSON.stringify({
-  version: 1, subdiv: 8, bpm: 200,
+  schema_version: "0.0.1", subdiv: 8, bpm: 200,
   instruments: [{ name: "Snare", id: "snare", kind: "builtin", volume: 1.0, origin: 1, color: "#C87850FF" }],
   nodes: [
     { id: 1, i: 0, j: 0, type: "regular", outputs: [2] },
@@ -92,7 +93,7 @@ try {
   await page.goto(`http://localhost:${port}/`);
   await page.waitForFunction(() => typeof importJSON === "function" && typeof startPlay === "function" && typeof setInstrumentParam === "function");
   await page.waitForFunction(() => window.audioReady !== undefined);
-  await page.evaluate(async () => { await window.audioReady; });
+  await waitForAudioReady(page);
   await page.evaluate(() => { window.__beatmoDebugSynthDispatch = true; window.BEATMO_AUDIO_DEBUG = true; });
 
   const abi = await page.evaluate(() => window.__synthABI || null);
@@ -101,7 +102,7 @@ try {
 
   await page.evaluate((j) => { importJSON(j); }, CIRCUIT);
   await page.evaluate(() => { if (typeof forceDraw === "function") forceDraw(); });
-  await page.evaluate(() => startPlay());
+  await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 
   // Open the Synth tab so its live re-layout (the section-schema swap on
   // re-voicing) runs every frame against the playing engine — the exact UI
@@ -116,22 +117,22 @@ try {
     fail(`baseline circuit produced no audio (peak=${base.peak}) — the loop isn't firing the snare; test setup issue.`);
   }
 
-  // Change the Snare generator off Native (Saw) WHILE the circuit plays.
+  // Change the Snare generator waveform (gen1_wave → Saw) WHILE the circuit plays.
   synthLogs.length = 0;
-  await page.evaluate(() => setInstrumentParam("snare", "gen_type", 2));
+  await page.evaluate(() => setInstrumentParam("snare", "gen1_wave", 1));
   const after = await captureWindowRMS(1500);
-  console.log(`[TEST] LIVE after gen_type=Saw peak=${after.peak.toFixed(5)} rms=${after.rms.toFixed(6)} n=${after.n}`);
+  console.log(`[TEST] LIVE after gen1_wave=Saw peak=${after.peak.toFixed(5)} rms=${after.rms.toFixed(6)} n=${after.n}`);
   console.log("[TEST] dispatch logs after change:\n  " + synthLogs.slice(0, 12).join("\n  "));
   if (!(after.peak > 0.0001)) {
-    fail(`AUDIO STOPPED after changing the Snare generator off Native (peak=${after.peak}). Reproduces the user report.`);
+    fail(`AUDIO STOPPED after changing the Snare generator waveform (peak=${after.peak}). Reproduces the user report.`);
   }
 
   // And a few more waveforms, still live.
-  for (const [gt, label] of [[6, "Noise White"], [0, "Native (back)"]]) {
-    await page.evaluate(([v]) => setInstrumentParam("snare", "gen_type", v), [gt]);
+  for (const [gt, label] of [[2, "Square"], [0, "Sine (back)"]]) {
+    await page.evaluate(([v]) => setInstrumentParam("snare", "gen1_wave", v), [gt]);
     const w = await captureWindowRMS(1200);
-    console.log(`[TEST] LIVE gen_type=${gt} (${label}) peak=${w.peak.toFixed(5)} rms=${w.rms.toFixed(6)}`);
-    if (!(w.peak > 0.0001)) fail(`live audio stopped at gen_type=${gt} (${label})`);
+    console.log(`[TEST] LIVE gen1_wave=${gt} (${label}) peak=${w.peak.toFixed(5)} rms=${w.rms.toFixed(6)}`);
+    if (!(w.peak > 0.0001)) fail(`live audio stopped at gen1_wave=${gt} (${label})`);
   }
 
   await page.evaluate(() => stopPlay());

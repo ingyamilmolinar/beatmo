@@ -175,6 +175,9 @@ func computeSpectral(w wave.Wave, fp *Fingerprint) {
 		}
 	}
 
+	// ---- Partial ratios (string-vs-bar/tube discriminator) ----------------
+	fp.PartialRatioProfile = AnalyzePartialRatios(mag, binHz, f0)
+
 	// ---- Noise ratio -------------------------------------------------------
 	if f0 > 0 && totalEnergy > 1e-12 {
 		var harmonicEnergy float64

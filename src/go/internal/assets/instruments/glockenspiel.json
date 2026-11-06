@@ -1,0 +1,159 @@
+{
+  "schema_version": "0.0.1",
+  "id": "glockenspiel",
+  "name": "Glockenspiel",
+  "category": "modular",
+  "notes": "glockenspielSeed: struck steel bars — very bright, glassy, long metallic ring.\nHigh inharmonic partials (5.4x, 10.4x, 17x) give the bell-tree sparkle; a thin\nHP strike chiff supplies the \"tink\".",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.64,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 1.9,
+        "amp_release": 0.3,
+        "amp_sustain": 0
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.85,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 9500,
+        "filter_resonance": 0.8,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 1.8,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5.4,
+        "freq_mode": 0,
+        "gain": 0.28,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 3,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 10.4,
+        "freq_mode": 0,
+        "gain": 0.16,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 5,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 17,
+        "freq_mode": 0,
+        "gain": 0.07,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 90,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 6000,
+        "filt_q": 0.7,
+        "filt_type": 4,
+        "gain": 0.05,
+        "noise_offset": 0
+      }
+    }
+  ]
+}

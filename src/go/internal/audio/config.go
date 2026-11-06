@@ -1,67 +1,33 @@
-//go:build !test && !js
-
 package audio
 
+import (
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
+
 // InstrumentConfig defines rendering parameters for an instrument.
-// This is the single source of truth used by both desktop and WASM.
 type InstrumentConfig struct {
-	ID          string
+	ID          instrument.ID
 	DurationSec float64
 	Amplitude   float32
 }
 
-// InstrumentConfigs maps instrument IDs to their rendering configuration.
-// These values must match the RENDER_INFO in src/js/audio.js for cross-platform parity.
-var InstrumentConfigs = func() map[string]InstrumentConfig {
-	m := map[string]InstrumentConfig{
-		"snare":     {ID: "snare", DurationSec: 1.0, Amplitude: 0.8},
-		"kick":      {ID: "kick", DurationSec: 0.5, Amplitude: 0.8},
-		"hihat":     {ID: "hihat", DurationSec: 0.25, Amplitude: 0.8},
-		"tom":       {ID: "tom", DurationSec: 0.5, Amplitude: 0.8},
-		"clap":      {ID: "clap", DurationSec: 0.5, Amplitude: 0.8},
-		"cowbell":   {ID: "cowbell", DurationSec: 0.4, Amplitude: 0.8},
-		"rimshot":   {ID: "rimshot", DurationSec: 0.3, Amplitude: 0.8},
-		"sidestick": {ID: "sidestick", DurationSec: 0.25, Amplitude: 0.8},
-		"kick-deep": {ID: "kick-deep", DurationSec: 0.8, Amplitude: 0.8},
-		"shaker":    {ID: "shaker", DurationSec: 0.3, Amplitude: 0.8},
-		"ride":      {ID: "ride", DurationSec: 2.5, Amplitude: 0.8},
-		"crash":     {ID: "crash", DurationSec: 1.5, Amplitude: 0.8},
-		"fm-bass":   {ID: "fm-bass", DurationSec: 1.5, Amplitude: 0.8},
-		"fm-bell":   {ID: "fm-bell", DurationSec: 2.0, Amplitude: 0.8},
-		"fm-lead":   {ID: "fm-lead", DurationSec: 1.0, Amplitude: 0.8},
-		"fm-epiano": {ID: "fm-epiano", DurationSec: 2.0, Amplitude: 0.8},
-		"fm-pluck":  {ID: "fm-pluck", DurationSec: 0.5, Amplitude: 0.8},
-		"modular":   {ID: "modular", DurationSec: 1.0, Amplitude: 0.8},
-	}
-	// The configurable-KICK-stage playable configs are CONFIG-FIRST: merged in
-	// from the single declarative table in modular_instruments.go.
-	for k, v := range modularTableConfigs() {
-		m[k] = v
-	}
-	return m
-}()
-
-// DefaultDurationSec is the fallback duration for unknown instruments.
+// DefaultDurationSec is the duration of an instrument without a document
+// (a user WAV sample).
 const DefaultDurationSec = 0.5
 
-// DefaultAmplitude is the fallback amplitude for unknown instruments.
+// DefaultAmplitude is the amplitude of an instrument without a document or a
+// recorded runtime loudness.
 const DefaultAmplitude float32 = 0.8
-
-// MixHeadroom is the gain reduction applied during mixing to prevent clipping.
-// Value of 0.25 equals -12dB, allowing ~4 voices at full amplitude.
-const MixHeadroom = 0.25
 
 // ConfigForInstrument returns the config for the given instrument ID.
 // Returns a default config if the instrument is not found.
-func ConfigForInstrument(id string) InstrumentConfig {
-	cfg, ok := InstrumentConfigs[id]
-	if !ok {
-		cfg = InstrumentConfig{
-			ID:          id,
-			DurationSec: DefaultDurationSec,
-			Amplitude:   DefaultAmplitude,
-		}
+func ConfigForInstrument(id instrument.ID) InstrumentConfig {
+	// A synth instrument's render metadata lives in its document (loudness
+	// already folded into Amplitude), never in a table.
+	if d, ok := InstrumentDoc(id); ok {
+		return InstrumentConfig{ID: id, DurationSec: d.Render.Seconds, Amplitude: float32(d.Render.Amplitude)}
 	}
+	cfg := InstrumentConfig{ID: id, DurationSec: DefaultDurationSec, Amplitude: DefaultAmplitude}
 	if amp, ok := loudnessAmp(id); ok {
 		cfg.Amplitude = amp
 	}

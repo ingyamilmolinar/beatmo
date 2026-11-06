@@ -42,6 +42,11 @@ var inTests = func() bool {
 	return false
 }()
 
+// testLogVerbose reports whether test logging prints live.
+func testLogVerbose() bool {
+	return os.Getenv("BEATMO_TEST_LOG") == "1" || testVerboseFlag()
+}
+
 func testVerboseFlag() bool {
 	for _, arg := range os.Args[1:] {
 		if arg == "-test.v" || strings.HasPrefix(arg, "-test.v=") {
@@ -110,11 +115,12 @@ func New(out io.Writer, level Level) *Logger {
 	if out == nil {
 		out = io.Discard
 	}
-	// In tests, default to silent to keep suites quiet. Opt-in via
-	// BEATMO_TEST_LOG=1 or -test.v. Level can be overridden via env.
+	// In tests, default to silent to keep suites quiet: lines go to the
+	// failure tail (test_tail.go) at the logger's own level, printed only by a
+	// failing test that asked for them (TailOnFailure). Opt-in to live output
+	// via BEATMO_TEST_LOG=1 or -test.v. Level can be overridden via env.
 	if inTests {
-		verbose := os.Getenv("BEATMO_TEST_LOG") == "1" || testVerboseFlag()
-		if verbose {
+		if testLogVerbose() {
 			if lvl := strings.TrimSpace(os.Getenv("BEATMO_TEST_LOG_LEVEL")); lvl != "" {
 				level = LevelFromString(lvl)
 			} else if level > LevelDebug {
@@ -122,8 +128,7 @@ func New(out io.Writer, level Level) *Logger {
 			}
 			out = os.Stdout
 		} else {
-			level = LevelNone
-			out = io.Discard
+			out = testTail
 		}
 	}
 	return &Logger{

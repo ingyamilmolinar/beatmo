@@ -7,13 +7,16 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// demoInstruments mirrors the startup_demo.json instrument set — the exact ones
-// whose cold render can stall the audioLoop dispatch goroutine and trip the
-// overdue timing gate.
-var demoInstruments = []string{
-	"dnb-kick", "snare", "hihat-1", "clap", "shaker", "organ-church",
+// demoInstruments is a launch-circuit-sized instrument set — the kind whose
+// cold render can stall the audioLoop dispatch goroutine and trip the overdue
+// timing gate.
+var demoInstruments = []instrument.ID{
+	roster.DnbKick, roster.Snare, roster.HihatOpenBright, roster.Clap, roster.Shaker, roster.OrganChurch,
 }
 
 // TestSynthRenderCostTable measures the cold (cache-miss) render cost of each
@@ -21,12 +24,10 @@ var demoInstruments = []string{
 // for melodic, newRecipeAwareVoice otherwise), at the instrument's natural render
 // window. This is the "how expensive is one voice render on the dispatch
 // goroutine" evidence table. Run:
-//   xvfb-run -a go test ./internal/audio/ -run TestSynthRenderCostTable -v
+//
+//	xvfb-run -a go test ./internal/audio/ -run TestSynthRenderCostTable -v
 func TestSynthRenderCostTable(t *testing.T) {
-	const (
-		sr  = 44100
-		bpm = 120
-	)
+	const sr = 44100
 	type row struct {
 		id       string
 		pitch    float64
@@ -39,9 +40,9 @@ func TestSynthRenderCostTable(t *testing.T) {
 	pitches := []float64{0, 5, -2, 7, 12}
 
 	for _, id := range demoInstruments {
-		recipeID := RecipeForInstrument(id)
-		pa := pitchAwareRecipe(recipeID)
-		samples, _ := instrumentDurationSamples(id, bpm, sr)
+		pa := IsMelodicInstrument(id)
+		d, _ := InstrumentDoc(id)
+		samples := VoiceFrames(d.Render.Seconds, sr)
 
 		globalVoiceCache.Clear()
 		ResetRenderLatencyMetrics()
@@ -49,22 +50,22 @@ func TestSynthRenderCostTable(t *testing.T) {
 		// Cold render (cache miss) — the cost paid on the dispatch goroutine.
 		coldStart := time.Now()
 		if pa {
-			newRecipeAwareVoicePitched(id, bpm, sr, 5)
+			newRecipeAwareVoicePitched(id, sr, 5)
 		} else {
-			newRecipeAwareVoice(id, bpm, sr)
+			newRecipeAwareVoice(id, sr)
 		}
 		cold := time.Since(coldStart)
 
 		// Warm render (cache hit) — the cost when pre-warmed.
 		warmStart := time.Now()
 		if pa {
-			newRecipeAwareVoicePitched(id, bpm, sr, 5)
+			newRecipeAwareVoicePitched(id, sr, 5)
 		} else {
-			newRecipeAwareVoice(id, bpm, sr)
+			newRecipeAwareVoice(id, sr)
 		}
 		warm := time.Since(warmStart)
 
-		rows = append(rows, row{id, 5, samples, cold.Nanoseconds(), warm.Nanoseconds(), pa})
+		rows = append(rows, row{string(id), 5, samples, cold.Nanoseconds(), warm.Nanoseconds(), pa})
 		_ = pitches
 	}
 
@@ -91,28 +92,27 @@ func TestSynthRenderCostTable(t *testing.T) {
 
 // BenchmarkOrganChurchColdRender isolates the single most expensive demo voice
 // (church organ) render cost + allocations. Run with a CPU profile to see where
-// the time goes inside recipe.Render:
-//   xvfb-run -a go test ./internal/audio/ -run=^$ -bench=BenchmarkOrganChurchColdRender -benchmem -cpuprofile=/tmp/organ.prof
+// the time goes inside the C render:
+//
+//	xvfb-run -a go test ./internal/audio/ -run=^$ -bench=BenchmarkOrganChurchColdRender -benchmem -cpuprofile=/tmp/organ.prof
 func BenchmarkOrganChurchColdRender(b *testing.B) {
 	const (
-		sr  = 44100
-		bpm = 120
-		id  = "organ-church"
+		sr = 44100
+		id = roster.OrganChurch
 	)
-	recipeID := RecipeForInstrument(id)
-	recipe := NewRecipe(recipeID)
-	if recipe == nil {
-		b.Fatalf("no recipe for %s", id)
+	shipped, _ := InstrumentDoc(id)
+	samples := VoiceFrames(shipped.Render.Seconds, sr)
+	d, err := InstrumentDocWithFields(id, map[string]float64{"pitch": 5})
+	if err != nil {
+		b.Fatal(err)
 	}
-	samples, _ := instrumentDurationSamples(id, bpm, sr)
-	merged := MergeRecipeDefaults(recipeID, GetInstrumentParams(id))
-	merged["pitch"] = 5.0
+	block := modularBlock(instrument.Flatten(d, BuiltinModuleRegistry()))
 	buf := make([]float32, samples)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		recipe.Render(buf, sr, samples, 0, merged)
+		renderModularBlock(buf, sr, samples, block)
 	}
 	b.StopTimer()
 	b.ReportMetric(float64(samples)/sr*1000, "renderedAudioMS/op")

@@ -3,37 +3,20 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// pitchTestRecipe registers a recipe carrying the pitch-affecting knobs so the
-// offset math can be exercised, returning a cleanup func. Category is
-// irrelevant to the pitched decision (that keys off melodicRecipeIDs), so these
-// synthetic recipes are used only for the offset-math cases.
-func pitchTestRecipe(t *testing.T, id string) func() {
-	t.Helper()
-	reg := RecipeRegistration{
-		ID:          id,
-		DisplayName: id,
-		Category:    "modular",
-		Params: []ParamDef{
-			{Name: "osc_octave", Min: -2, Max: 2, Default: 0},
-			{Name: "osc_detune", Min: -100, Max: 100, Default: 0},
-			{Name: "fundamental", Min: 0, Max: 4000, Default: 0},
-		},
-		New: func() SynthRecipe { return newFakeRecipe(id).New() },
-	}
-	RegisterRecipe(reg)
-	return func() { unregisterRecipeForTest(id) }
-}
-
 func TestInstrumentPitchInfo_KnobsFoldIn(t *testing.T) {
-	const rec, inst = "test-pitch-knobs", "test-pitch-inst-b"
-	t.Cleanup(pitchTestRecipe(t, rec))
-	BindInstrumentToRecipe(inst, rec)
-	t.Cleanup(func() {
-		ResetInstrumentParams(inst)
-		BindInstrumentToRecipe(inst, "")
-	})
+	// A document copied from the bare modular voice: every pitch knob at 0, and
+	// an id the fundamentals table does not know, so the offset is the declared
+	// computation alone. (gen1_fm_base is covered by TestFMBaseKnobMovesTheNote:
+	// the bare voice has no FM layer to carry it.)
+	const inst = "test-pitch-inst-b"
+	if err := InstallInstrumentDocForTest(inst, roster.Modular); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { RemoveInstrumentDocForTest(inst) })
 
 	cases := []struct {
 		name  string
@@ -44,8 +27,8 @@ func TestInstrumentPitchInfo_KnobsFoldIn(t *testing.T) {
 		{"octave up one", "osc_octave", 1, 12},
 		{"octave down one", "osc_octave", -1, -12},
 		{"detune +50 cents", "osc_detune", 50, 0.5},
-		{"fundamental 440 = +12", "fundamental", 440, 12},
-		{"fundamental 110 = -12", "fundamental", 110, -12},
+		{"voice_freq_hz 440 = +12", "voice_freq_hz", 440, 12},
+		{"voice_freq_hz 110 = -12", "voice_freq_hz", 110, -12},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -61,9 +44,10 @@ func TestInstrumentPitchInfo_KnobsFoldIn(t *testing.T) {
 
 func TestInstrumentPitchInfo_MelodicRecipeIsPitched(t *testing.T) {
 	const inst = "test-pitch-inst-melodic"
-	// synth-modular-cello is in melodicRecipeIDs (a real bowed-string recipe).
-	BindInstrumentToRecipe(inst, "synth-modular-cello")
-	t.Cleanup(func() { BindInstrumentToRecipe(inst, "") })
+	// synth-modular-violin is in melodicRecipeIDs and carries no pitch-shifting
+	// default, so an untouched instrument bound to it sits on the A3 baseline.
+	_ = InstallInstrumentDocForTest(inst, roster.Violin)
+	t.Cleanup(func() { RemoveInstrumentDocForTest(inst) })
 
 	off, pitched := InstrumentPitchInfo(inst)
 	if !pitched {
@@ -74,13 +58,53 @@ func TestInstrumentPitchInfo_MelodicRecipeIsPitched(t *testing.T) {
 	}
 }
 
-func TestInstrumentPitchInfo_DrumRecipeNotPitched(t *testing.T) {
+// A melodic recipe whose SEED shifts pitch must report that shift. This case
+// previously asserted 0 for synth-modular-cello — which carries osc_octave:-1
+// — encoding the very defect that let the score importer mis-compensate the
+// bass parts. The baseline case above now uses an offset-free recipe so both
+// halves of the contract are covered.
+func TestInstrumentPitchInfo_MelodicRecipeSeedOffsetIsReported(t *testing.T) {
+	const inst = "test-pitch-inst-melodic-shifted"
+	_ = InstallInstrumentDocForTest(inst, roster.Cello)
+	t.Cleanup(func() { RemoveInstrumentDocForTest(inst) })
+
+	off, pitched := InstrumentPitchInfo(inst)
+	if !pitched {
+		t.Errorf("melodic recipe should be pitched")
+	}
+	if off != -12 {
+		t.Errorf("cello offset = %v, want -12 (celloSeed osc_octave:-1)", off)
+	}
+}
+
+// A drum recipe that declares a FUNDAMENTAL is pitched: drum-kick's head is
+// tuned to 55 Hz, so a node on it sounds A1 and saying so is a measurement, not
+// a guess. This asserted the opposite until note display went universal
+// (2026-09-13), back when "pitched" meant "is in melodicRecipeIDs".
+func TestInstrumentPitchInfo_TunedDrumRecipeIsPitched(t *testing.T) {
 	const inst = "test-pitch-inst-drum"
-	BindInstrumentToRecipe(inst, "drum-kick") // not in melodicRecipeIDs
-	t.Cleanup(func() { BindInstrumentToRecipe(inst, "") })
+	_ = InstallInstrumentDocForTest(inst, roster.Kick) // declares fundamental=55 Hz
+	t.Cleanup(func() { RemoveInstrumentDocForTest(inst) })
+
+	off, pitched := InstrumentPitchInfo(inst)
+	if !pitched {
+		t.Fatalf("a drum recipe declaring a 55 Hz fundamental should be pitched")
+	}
+	if want := -24.0; math.Abs(off-want) > 0.01 {
+		t.Errorf("drum-kick offset = %v, want %v (55 Hz is two octaves below A3)", off, want)
+	}
+}
+
+// A recipe with NO fundamental stays unpitched however it is bound: drum-hihat
+// is noise, and there is nothing for a note name to refer to. This is the limit
+// that keeps "universal" from meaning "invented".
+func TestInstrumentPitchInfo_NoiseRecipeNotPitched(t *testing.T) {
+	const inst = "test-pitch-inst-noise"
+	_ = InstallInstrumentDocForTest(inst, roster.Hihat) // declares no base frequency
+	t.Cleanup(func() { RemoveInstrumentDocForTest(inst) })
 
 	if _, pitched := InstrumentPitchInfo(inst); pitched {
-		t.Errorf("drum recipe must not be pitched")
+		t.Errorf("a noise recipe with no declared fundamental must not be pitched")
 	}
 }
 

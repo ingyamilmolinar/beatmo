@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -22,21 +24,19 @@ func TestEQCurveGainsSyncOnChannelSwitch(t *testing.T) {
 
 	// Need at least 2 rows with distinct instruments.
 	g.drum.AddRow()
-	g.drum.Rows[0].Instrument = "kick"
-	g.drum.Rows[1].Instrument = "snare"
+	g.drum.Rows[0].Instrument = roster.Kick
+	g.drum.Rows[1].Instrument = roster.Snare
 
 	// Initialize EQ gains for both rows.
-	g.drum.ensureRowEQ(0)
-	g.drum.ensureRowEQ(1)
 
 	// Set distinct gains: row 0 band 3 = +8 dB, row 1 band 5 = -6 dB.
-	g.drum.Rows[0].EQGainsDB[3] = 8.0
-	g.drum.Rows[1].EQGainsDB[5] = -6.0
+	rowEQ(g.drum.Rows[0]).GainsDB[3] = 8.0
+	rowEQ(g.drum.Rows[1]).GainsDB[5] = -6.0
 
 	z := g.drum.eqPanelZone
 
 	// Switch to row 0's instrument.
-	g.drum.setEQActiveChannel("kick")
+	g.drum.setEQActiveChannel(channel.Of(roster.Kick))
 
 	if z.bandGainsDB[3] != 8.0 {
 		t.Errorf("after switching to kick: bandGainsDB[3] = %v, want 8.0", z.bandGainsDB[3])
@@ -46,7 +46,7 @@ func TestEQCurveGainsSyncOnChannelSwitch(t *testing.T) {
 	}
 
 	// Switch to row 1's instrument.
-	g.drum.setEQActiveChannel("snare")
+	g.drum.setEQActiveChannel(channel.Of(roster.Snare))
 
 	if z.bandGainsDB[5] != -6.0 {
 		t.Errorf("after switching to snare: bandGainsDB[5] = %v, want -6.0", z.bandGainsDB[5])
@@ -56,7 +56,7 @@ func TestEQCurveGainsSyncOnChannelSwitch(t *testing.T) {
 	}
 
 	// Switch back to master — should reflect master gains (all zero by default).
-	g.drum.setEQActiveChannel("main")
+	g.drum.setEQActiveChannel(channel.Master)
 
 	for i, v := range z.bandGainsDB {
 		if v != 0.0 {
@@ -84,7 +84,7 @@ func TestEQCurveDirtySyncOnChannelSwitch(t *testing.T) {
 	g.drum.eqCurveDirty = false
 
 	// Switch channel.
-	g.drum.setEQActiveChannel(inst)
+	g.drum.setEQActiveChannel(channel.Of(inst))
 
 	if !z.curveDirty {
 		t.Error("z.curveDirty should be true after channel switch")
@@ -100,24 +100,22 @@ func TestEQCurveMuteSyncOnChannelSwitch(t *testing.T) {
 	g.Layout(640, 480)
 
 	g.drum.AddRow()
-	g.drum.Rows[0].Instrument = "kick"
+	g.drum.Rows[0].Instrument = roster.Kick
 
 	// Initialize and mute band 2 on row 0.
-	g.drum.ensureRowEQ(0)
-	g.drum.ensureRowEQMuted(0)
-	g.drum.Rows[0].EQBandMuted[2] = true
+	rowEQ(g.drum.Rows[0]).BandMuted[2] = true
 
 	z := g.drum.eqPanelZone
 
 	// Switch to row 0's instrument.
-	g.drum.setEQActiveChannel("kick")
+	g.drum.setEQActiveChannel(channel.Of(roster.Kick))
 
 	if !z.bandMuted[2] {
 		t.Error("after switching to kick: bandMuted[2] should be true")
 	}
 
 	// Switch to master (no mutes).
-	g.drum.setEQActiveChannel("main")
+	g.drum.setEQActiveChannel(channel.Master)
 
 	if z.bandMuted[2] {
 		t.Error("after switching to main: bandMuted[2] should be false")
@@ -135,7 +133,7 @@ func TestEQGainUpdatesBandGainsOnPerInstrument(t *testing.T) {
 	z := dv.eqPanelZone
 
 	// Simulate switching to a per-instrument channel.
-	z.activeChannel = "kick"
+	z.activeChannel = channel.Of(roster.Kick)
 
 	// Set the gain directly on bandGainsDB (as the curve drag handler does).
 	band := 4
@@ -159,14 +157,13 @@ func TestEQCurveReflectsChannelAfterSwitch(t *testing.T) {
 	g.Layout(640, 480)
 
 	g.drum.AddRow()
-	g.drum.Rows[0].Instrument = "kick"
-	g.drum.ensureRowEQ(0)
-	g.drum.Rows[0].EQGainsDB[5] = 10.0 // band 5 ≈ 1 kHz
+	g.drum.Rows[0].Instrument = roster.Kick
+	rowEQ(g.drum.Rows[0]).GainsDB[5] = 10.0 // band 5 ≈ 1 kHz
 
 	z := g.drum.eqPanelZone
 
 	// Switch to kick — should sync gains and mark curve dirty.
-	g.drum.setEQActiveChannel("kick")
+	g.drum.setEQActiveChannel(channel.Of(roster.Kick))
 
 	// Force curve recompute.
 	z.curveDirty = true
@@ -203,15 +200,13 @@ func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 
 	// Set up two instruments with distinct EQ profiles.
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
-	dv.Rows[1].Instrument = "snare"
-	dv.ensureRowEQ(0)
-	dv.ensureRowEQ(1)
-	dv.Rows[0].EQGainsDB[3] = 12.0  // kick: big boost on band 3
-	dv.Rows[1].EQGainsDB[7] = -12.0 // snare: big cut on band 7
+	dv.Rows[0].Instrument = roster.Kick
+	dv.Rows[1].Instrument = roster.Snare
+	rowEQ(dv.Rows[0]).GainsDB[3] = 12.0  // kick: big boost on band 3
+	rowEQ(dv.Rows[1]).GainsDB[7] = -12.0 // snare: big cut on band 7
 
 	// Start on master (flat).
-	dv.setEQActiveChannel("main")
+	dv.setEQActiveChannel(channel.Master)
 
 	// Prime the curve cache by triggering a recompute.
 	z.curveDirty = true
@@ -229,7 +224,7 @@ func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 
 	// --- Simulate dropdown click to switch to kick ---
 	// Use the same callback path as the actual dropdown button onClick.
-	dv.setEQActiveChannel("kick")
+	dv.setEQActiveChannel(channel.Of(roster.Kick))
 
 	// The curve should be dirty now; recompute as drawEQCurve would.
 	if !z.curveDirty && z.curveCache != nil {
@@ -251,7 +246,7 @@ func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 	}
 
 	// --- Switch to snare ---
-	dv.setEQActiveChannel("snare")
+	dv.setEQActiveChannel(channel.Of(roster.Snare))
 	z.curveCache = audio.ComputeFreqResponse(audio.SampleRate(),
 		z.buildCurrentBands(), eqCurvePoints, 20, 20000)
 	z.curveDirty = false
@@ -268,7 +263,7 @@ func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 	}
 
 	// --- Switch back to master ---
-	dv.setEQActiveChannel("main")
+	dv.setEQActiveChannel(channel.Master)
 	z.curveCache = audio.ComputeFreqResponse(audio.SampleRate(),
 		z.buildCurrentBands(), eqCurvePoints, 20, 20000)
 

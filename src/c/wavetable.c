@@ -13,7 +13,7 @@
 
 /* ── Waveform generation ─────────────────────────────────────────────────── */
 
-EXPORT void wt_generate_sine(wavetable_t *wt, float *buf, int length) {
+void wt_generate_sine(wavetable_t *wt, float *buf, int length) {
     wt->table  = buf;
     wt->length = length;
     double inc = TWO_PI / (double)length;
@@ -24,7 +24,7 @@ EXPORT void wt_generate_sine(wavetable_t *wt, float *buf, int length) {
     buf[length] = buf[0];
 }
 
-EXPORT void wt_generate_saw(wavetable_t *wt, float *buf, int length, int harmonics) {
+void wt_generate_saw(wavetable_t *wt, float *buf, int length, int harmonics) {
     wt->table  = buf;
     wt->length = length;
     memset(buf, 0, (size_t)(length + 1) * sizeof(float));
@@ -41,7 +41,7 @@ EXPORT void wt_generate_saw(wavetable_t *wt, float *buf, int length, int harmoni
     buf[length] = buf[0];
 }
 
-EXPORT void wt_generate_glottal(wavetable_t *wt, float *buf, int length, int harmonics) {
+void wt_generate_glottal(wavetable_t *wt, float *buf, int length, int harmonics) {
     wt->table  = buf;
     wt->length = length;
     memset(buf, 0, (size_t)(length + 1) * sizeof(float));
@@ -59,7 +59,7 @@ EXPORT void wt_generate_glottal(wavetable_t *wt, float *buf, int length, int har
     buf[length] = buf[0];
 }
 
-EXPORT void wt_generate_square(wavetable_t *wt, float *buf, int length, int harmonics) {
+void wt_generate_square(wavetable_t *wt, float *buf, int length, int harmonics) {
     wt->table  = buf;
     wt->length = length;
     memset(buf, 0, (size_t)(length + 1) * sizeof(float));
@@ -76,7 +76,7 @@ EXPORT void wt_generate_square(wavetable_t *wt, float *buf, int length, int harm
     buf[length] = buf[0];
 }
 
-EXPORT void wt_generate_triangle(wavetable_t *wt, float *buf, int length, int harmonics) {
+void wt_generate_triangle(wavetable_t *wt, float *buf, int length, int harmonics) {
     wt->table  = buf;
     wt->length = length;
     memset(buf, 0, (size_t)(length + 1) * sizeof(float));
@@ -96,7 +96,7 @@ EXPORT void wt_generate_triangle(wavetable_t *wt, float *buf, int length, int ha
 
 /* ── Oscillator functions ────────────────────────────────────────────────── */
 
-EXPORT void wt_osc_init(wt_osc_t *osc, const wavetable_t *wt,
+void wt_osc_init(wt_osc_t *osc, const wavetable_t *wt,
                           double freq, int sampleRate) {
     osc->wt    = wt;
     osc->phase = 0;
@@ -108,61 +108,17 @@ EXPORT void wt_osc_init(wt_osc_t *osc, const wavetable_t *wt,
     }
 }
 
-EXPORT void wt_osc_set_freq(wt_osc_t *osc, double freq, int sampleRate) {
+void wt_osc_set_freq(wt_osc_t *osc, double freq, int sampleRate) {
     if (sampleRate > 0 && osc->wt) {
         osc->phase_inc = freq * (double)osc->wt->length / (double)sampleRate;
     }
 }
 
-EXPORT void wt_osc_set_phase(wt_osc_t *osc, double phase01) {
+void wt_osc_set_phase(wt_osc_t *osc, double phase01) {
     if (!osc->wt) return;
     double len = (double)osc->wt->length;
     double p = phase01 - floor(phase01); /* wrap into [0,1) */
     osc->phase = p * len;
     if (osc->phase >= len) osc->phase -= len; /* guard floating edge */
     if (osc->phase < 0.0) osc->phase = 0.0;
-}
-
-EXPORT void wt_osc_process(wt_osc_t *osc, float *out, int samples) {
-    const float  *table = osc->wt->table;
-    int           len   = osc->wt->length;
-    double        phase = osc->phase;
-    double        inc   = osc->phase_inc;
-    double        dlen  = (double)len;
-
-    for (int i = 0; i < samples; i++) {
-        int idx = (int)phase;
-        float frac = (float)(phase - (double)idx);
-        out[i] = table[idx] * (1.0f - frac) + table[idx + 1] * frac;
-        phase += inc;
-        /* See wt_osc_tick's comment (wavetable.h): a single conditional
-         * subtract only wraps one table-length overshoot; wrap fully so an
-         * extreme phase_inc (freq > sampleRate) can't push `phase` (and thus
-         * the next tick's `idx`) out of the table bounds. */
-        while (phase >= dlen) phase -= dlen;
-        while (phase < 0.0) phase += dlen;
-    }
-    osc->phase = phase;
-}
-
-EXPORT void wt_osc_process_fm(wt_osc_t *osc, const float *freq_mod,
-                                float *out, int samples, int sampleRate) {
-    const float  *table = osc->wt->table;
-    int           len   = osc->wt->length;
-    double        phase = osc->phase;
-    double        base_inc = osc->phase_inc;
-    double        dlen  = (double)len;
-    double        sr    = (double)sampleRate;
-
-    for (int i = 0; i < samples; i++) {
-        int idx = (int)phase;
-        float frac = (float)(phase - (double)idx);
-        out[i] = table[idx] * (1.0f - frac) + table[idx + 1] * frac;
-        /* Modulate phase increment by freq_mod */
-        double mod_inc = (double)freq_mod[i] * dlen / sr;
-        phase += base_inc + mod_inc;
-        while (phase >= dlen) phase -= dlen;
-        while (phase < 0)    phase += dlen;
-    }
-    osc->phase = phase;
 }

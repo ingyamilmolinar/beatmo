@@ -23,13 +23,13 @@ func TestImportClearsTimelineHistory(t *testing.T) {
 
 	// Import a minimal project that re-adds a single node/row.
 	data := []byte(`{
-		"version": 1,
+		"schema_version": "0.0.1",
 		"subdiv": 8,
 		"bpm": 120,
 		"instruments": [{
 			"name": "Kick",
 			"id": "kick",
-			"kind": "sample",
+			"kind": "builtin",
 			"volume": 1,
 			"origin": 0
 		}],

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // beatCounterPillPadX/PadY define the pill chrome around the beat-counter
@@ -48,9 +49,9 @@ type TimelineCallbacks struct {
 
 	// Action callbacks
 	OnOffsetChange   func(newOffset int)
-	OnSeekToStep     func(step int, origin string) // ribbon seek commit
-	PlayheadStep     func() int                    // current absolute subdivision
-	OnRowsLayerDirty func()                        // signal that the rows layer composite needs rebuild
+	OnSeekToStep     func(step int, origin hooks.SeekOrigin) // ribbon seek commit
+	PlayheadStep     func() int                              // current absolute subdivision
+	OnRowsLayerDirty func()                                  // signal that the rows layer composite needs rebuild
 	SetTimelineBeats func(int)
 	OnOpenNavigation func() // beat-counter tap: open the navigation menu (dv.OpenNavigation)
 
@@ -69,6 +70,8 @@ type TimelineCallbacks struct {
 type TimelineZone struct {
 	rect       image.Rectangle
 	needLayout bool
+	// layouts counts Layout calls (recalcButtons' layout gate is judged by it).
+	layouts int
 	callbacks  TimelineCallbacks
 	portal     *OverlayPortal
 
@@ -84,6 +87,10 @@ type TimelineZone struct {
 	// Scrub state (timeline bar seek)
 	scrubbing      bool
 	scrubGhostBeat int // beat under the pointer during a scrub drag
+	// gotoGhost marks the navigation menu's PENDING go-to position (a preview;
+	// no seek until Go). gotoGhostStep is an absolute subdivision step.
+	gotoGhost      bool
+	gotoGhostStep  int
 	scrubPressBeat int // beat committed on press (so a tap re-seeks at most once)
 
 	// Timeline bar height (set by DrumView before Layout)
@@ -95,6 +102,7 @@ type TimelineZone struct {
 	// upward (to cover the beat-counter chrome above the bar) without
 	// shifting the bar itself.
 	explicitBarRect image.Rectangle
+	cellGridRect    image.Rectangle // X anchor for row step cells (see SetCellGridRect)
 
 	// Buttons positioned in the timeline area by DrumView.calcLayout().
 	// TimelineZone registers them as hit areas; DrumView owns the buttons.
@@ -116,14 +124,16 @@ type TimelineZone struct {
 	// --- Per-row sprite cache (owned by zone, aliased to DrumView) ---
 
 	// Timeline base cache (background + beat markers)
-	TlCache       *ebiten.Image
-	TlCacheW      int
-	TlCacheH      int
-	TlCacheBeats  int
-	TlCacheStep   int
-	LastInfoCurMS int
-	LastInfoTotMS int
-	LastInfoText  string
+	TlCache      *ebiten.Image
+	TlCacheW     int
+	TlCacheH     int
+	TlCacheBeats int
+	// TlCacheThemeGen is the ThemeGeneration the ribbon was baked under.
+	TlCacheThemeGen int
+	TlCacheStep     int
+	LastInfoCurMS   int
+	LastInfoTotMS   int
+	LastInfoText    string
 
 	// Per-row cached sprites
 	RowCache        []*ebiten.Image
@@ -193,6 +203,22 @@ func (z *TimelineZone) SetTimelineBarHeight(h int) {
 // top of zone" behavior.
 func (z *TimelineZone) SetTimelineBarRect(r image.Rectangle) { z.explicitBarRect = r }
 
+// SetCellGridRect supplies the X span row step cells are drawn into. It is a
+// separate rect from the ribbon bar: the bar reserves room for header-only
+// chrome and maps the whole song, while cells map the current window and fill
+// the full width dedicated to the grid. See DrumView.cellGridRect.
+func (z *TimelineZone) SetCellGridRect(r image.Rectangle) { z.cellGridRect = r }
+
+// cellGridAnchor returns the X span to align cell-indexed overlays
+// (highlights, mute dimming) to. Falls back to the bar rect when DrumView has
+// not supplied a grid rect (legacy/standalone zone construction in tests).
+func (z *TimelineZone) cellGridAnchor() image.Rectangle {
+	if z.cellGridRect.Empty() {
+		return z.timelineBarRect
+	}
+	return z.cellGridRect
+}
+
 // --- Zone interface ---
 
 func (z *TimelineZone) ID() string          { return "timeline" }
@@ -203,6 +229,7 @@ func (z *TimelineZone) HitAreas() []HitArea { return z.hitAreas }
 func (z *TimelineZone) Layout(rect image.Rectangle) {
 	z.rect = rect
 	z.needLayout = false
+	z.layouts++
 
 	barH := z.timelineBarH
 	if barH <= 0 {
@@ -366,7 +393,9 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	// tree until the heap exhausted (reported OOM at ~41 min playback,
 	// atlas depth >125). See: ebiten/v2/internal/packing/packing.go alloc().
 	dimChanged := z.TlCache == nil || z.TlCacheW != cacheKeyW || z.TlCacheH != cacheKeyH
-	contentChanged := dimChanged || z.TlCacheBeats != beats
+	// The ribbon bakes colTimelineTotal / timeline-view / tick colors, so a
+	// runtime theme change is a content change too.
+	contentChanged := dimChanged || z.TlCacheBeats != beats || z.TlCacheThemeGen != ThemeGeneration()
 	if dimChanged {
 		if z.TlCache != nil {
 			z.TlCache.Deallocate()
@@ -376,6 +405,7 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	}
 	if contentChanged {
 		z.TlCacheBeats, z.TlCacheStep = beats, 0
+		z.TlCacheThemeGen = ThemeGeneration()
 		if !dimChanged {
 			z.TlCache.Clear()
 		}
@@ -413,17 +443,30 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 
 	drawRect(dst, barRect, colButtonBorder, false)
 
-	// Ghost preview of the pending seek position while dragging the ribbon.
+	// Ghost preview of the pending seek position while dragging the ribbon,
+	// or of the navigation menu's pending go-to position.
 	if z.scrubbing {
-		z.drawScrubGhost(dst)
+		z.drawScrubGhost(dst, z.scrubGhostBeat)
+	} else if z.gotoGhost {
+		z.drawScrubGhost(dst, z.gotoGhostStep)
 	}
 }
+
+// SetGotoGhost shows (on) or clears the ghost marking the navigation menu's
+// pending go-to step. A preview only: nothing seeks.
+func (z *TimelineZone) SetGotoGhost(step int, on bool) {
+	z.gotoGhost = on
+	z.gotoGhostStep = step
+}
+
+// GotoGhost reports the pending go-to ghost (step, shown).
+func (z *TimelineZone) GotoGhost() (int, bool) { return z.gotoGhostStep, z.gotoGhost }
 
 // drawScrubGhost renders the pending seek position (a vertical line + beat
 // chip) while the user drags the ribbon. The ghost tracks z.scrubGhostBeat,
 // which OnDrag updates without dispatching a seek — the seek commits only
 // on OnRelease, and only if the drag moved to a different beat.
-func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image) {
+func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image, step int) {
 	bar := z.timelineBarRect
 	if bar.Empty() {
 		return
@@ -440,7 +483,7 @@ func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image) {
 			div = d
 		}
 	}
-	ghostBeat := z.scrubGhostBeat / div
+	ghostBeat := step / div
 	frac := float64(ghostBeat) / float64(beats)
 	gx := bar.Min.X + int(math.Round(frac*float64(bar.Dx())))
 	if gx < bar.Min.X {
@@ -449,8 +492,9 @@ func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image) {
 		gx = bar.Max.X - 1
 	}
 	drawRect(dst, image.Rect(gx, bar.Min.Y, gx+1, bar.Max.Y), colAccentBright, true)
-	// Beat chip near the top of the bar.
-	DrawTextAt(dst, strconv.Itoa(ghostBeat), gx+3, bar.Min.Y+2)
+	// Beat chip near the top of the bar: 1-based, the number the beat counter
+	// shows for that beat.
+	DrawTextAt(dst, strconv.Itoa(ghostBeat+1), gx+3, bar.Min.Y+2)
 }
 
 // drawRibbonTicks paints hierarchical beat ticks for the visible window
@@ -515,10 +559,12 @@ func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 	} else if curMS == z.LastInfoCurMS && totMS == z.LastInfoTotMS && z.LastInfoText != "" {
 		return z.LastInfoText
 	}
-	curS := curMS / 1000
 	z.LastInfoCurMS = curMS
 	z.LastInfoTotMS = totMS
-	z.LastInfoText = formatBeatReadout(int(elapsedBeats)+1, curS)
+	// Beat/second pair resolved by playheadPosAt — the same derivation the
+	// navigation menu's position title reads, so the two never disagree.
+	p := playheadPosAt(elapsedBeats, secPerBeat, unitsPerBeat)
+	z.LastInfoText = formatBeatReadout(p.DisplayBeat, p.Seconds)
 	return z.LastInfoText
 }
 
@@ -584,12 +630,12 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	pillX := beatCounterRect.Min.X
 	pillY := beatCounterRect.Min.Y + (beatCounterRect.Dy()-pillH)/2
 	pillR := image.Rect(pillX, pillY, pillX+pillW, pillY+pillH)
-	// Hover: read the live cursor so the keycap lifts (drawKeycapPanelButton
-	// brightens fill+border) when the pointer is over it. Press is momentary
+	// Hover: read the live cursor so the chip lifts (drawFlatPanelButton
+	// brightens the fill) when the pointer is over it. Press is momentary
 	// (the tap opens the menu immediately), so only hover is reflected.
 	cx, cy := cursorPosition()
 	hovered := image.Pt(cx, cy).In(pillR)
-	cap := drawKeycapPanelButton(dst, pillR, TransportMiscStyle.Fill, TransportMiscStyle.Border, hovered)
+	cap := drawFlatPanelButton(dst, pillR, TransportMiscStyle.Fill, hovered)
 	// Leading target icon, vertically centered on the cap face.
 	iconY := cap.Min.Y + (cap.Dy()-iconSz)/2
 	iconR := image.Rect(cap.Min.X+beatCounterPillPadX, iconY, cap.Min.X+beatCounterPillPadX+iconSz, iconY+iconSz)
@@ -608,7 +654,11 @@ func (z *TimelineZone) rowsTopY() int {
 	return z.stepsRect.Min.Y
 }
 
-// drawGapFill fills the gap below visible rows with the step-off color.
+// drawGapFill fills the gap below visible rows with the rack bed, so the
+// empty area under the last row reads as ONE surface across the rack column
+// and the timeline. It used to take the cell-off (surface-2) tone — a control
+// tone that made the empty area read as one giant raised cell, lighter than
+// the rack beside it.
 func (z *TimelineZone) drawGapFill(dst *ebiten.Image) {
 	rows := z.callbacks.Rows()
 	vis := z.callbacks.VisibleRows()
@@ -625,7 +675,7 @@ func (z *TimelineZone) drawGapFill(dst *ebiten.Image) {
 	tlRight := z.stepsRect.Max.X
 	if bottomOfRows < rackBottom && tlRight > tlLeft {
 		gapRect := image.Rect(tlLeft, bottomOfRows, tlRight, rackBottom)
-		drawRect(dst, gapRect, colStepOff, true)
+		drawRect(dst, gapRect, colRackSurface, true)
 	}
 }
 
@@ -653,7 +703,7 @@ func (z *TimelineZone) ensureHighlightSprites() {
 // isNonAudibleCellType returns true for node types that don't produce sound.
 // These get a subdued grey highlight instead of the bright white flash.
 func isNonAudibleCellType(t model.NodeType) bool {
-	return t != model.NodeTypeRegular
+	return !t.Fires()
 }
 
 // drawHighlights renders per-row highlight overlays for active beats.
@@ -667,14 +717,14 @@ func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 	offset := z.callbacks.Offset()
 	length := z.callbacks.Length()
 	rowsTop := z.rowsTopY()
-	// Cell-X anchor: row step cells are drawn at dv.timelineRect bounds
-	// (see drumview_cache_rows_layer.go). z.stepsRect is wider on desktop —
-	// drumview_layout.go unions chrome rects (track button, len ± buttons)
-	// into the zone rect, pulling z.stepsRect.Min.X ~48 px left of where
-	// cells actually start. z.timelineBarRect == dv.timelineRect via
-	// SetTimelineBarRect, so it gives the correct cell anchor.
-	startX := z.timelineBarRect.Min.X
-	totalW := z.timelineBarRect.Dx()
+	// Cell-X anchor: row step cells are drawn at dv.cellGridRect bounds
+	// (see drumview_cache_rows_layer.go), NOT at the ribbon bar's bounds.
+	// The bar is narrowed by header-only chrome (track/lock chip, len ±
+	// buttons) and maps the whole song; the grid maps the current window and
+	// fills the full dedicated width. Highlights must follow the grid.
+	anchor := z.cellGridAnchor()
+	startX := anchor.Min.X
+	totalW := anchor.Dx()
 
 	z.ensureHighlightSprites()
 
@@ -755,13 +805,14 @@ func (z *TimelineZone) drawMuteSoloDimming(dst *ebiten.Image) {
 	rowOffset := z.callbacks.RowOffset()
 	rh := z.callbacks.RowHeight()
 	rowsTop := z.rowsTopY()
+	// Dim the cell strip only, not the chrome column to its left. Anchored to
+	// the cell grid, not the ribbon bar — see drawHighlights for the rationale.
+	anchor := z.cellGridAnchor()
 	for i := rowOffset; i < rowOffset+vis && i < len(rows); i++ {
 		shouldDim := rows[i].Muted || (anySolo && !rows[i].Solo)
 		if shouldDim {
 			y := rowsTop + (i-rowOffset)*rh
-			// Dim the cell strip only, not the chrome column to its left.
-			// See drawHighlights for the same rationale.
-			dimRect := image.Rect(z.timelineBarRect.Min.X, y, z.timelineBarRect.Max.X, y+rh)
+			dimRect := image.Rect(anchor.Min.X, y, anchor.Max.X, y+rh)
 			drawRect(dst, dimRect, WithAlpha(genColorDimBlack, genAlphaSidebarSection), true)
 		}
 	}
@@ -1264,7 +1315,9 @@ func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
 	// a diagonal gesture never moves both at once. (The vertical wheel path
 	// reaching only OnRowScrollWheel was the bug — horizontal intent was
 	// dropped and its incidental vertical component scrolled the rows.)
-	wx, wy := wheel()
+	// Detents, not raw platform units — see input_dynamics.go. Reading the raw
+	// wheel here is what let one browser notch fly the timeline across the song.
+	wx, wy := wheelNotches()
 	ax, ay := wx, wy
 	if ax < 0 {
 		ax = -ax
@@ -1273,7 +1326,7 @@ func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
 		ay = -ay
 	}
 	if ax > ay {
-		sx := wheelStepsFromDelta(wx)
+		sx := wheelRowsFromNotches(wx)
 		if sx == 0 || z.callbacks.OnOffsetChange == nil || z.callbacks.Offset == nil {
 			return InputIgnored
 		}
@@ -1383,7 +1436,7 @@ func (h *timelineScrubHitAdapter) OnRelease(x, y int) {
 		// (drag-only ribbon), so a pure tap (final == press beat) emits NO
 		// seek; a drag emits exactly one EventSeek, on release.
 		if final != z.scrubPressBeat {
-			z.callbacks.OnSeekToStep(final, seekOriginRibbon)
+			z.callbacks.OnSeekToStep(final, hooks.SeekRibbon)
 		}
 	}
 	z.scrubbing = false

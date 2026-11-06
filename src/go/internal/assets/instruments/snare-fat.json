@@ -1,0 +1,98 @@
+{
+  "schema_version": "0.0.1",
+  "id": "snare-fat",
+  "name": "Fat Snare",
+  "category": "modular",
+  "notes": "snareFatSeed: the fat-bottom snare retuned for CRACK (2026-09-30, picked by\near as \"pretty fire\"). Every shipped snare measured weak against real snare\nrecordings at equal peak — the app plays each one at the loudness cap, so\nwhat counts is energy density, not peak: the 1-5 kHz crack over 5-50 ms sat\n4-9 dB under the recordings (median -17.5 dB at peak 1), and the body under a\n0 ms fizzy spike. Fitted against the median of nine real snares (1/3-octave x\ntime map + an early-loudness floor + a crack floor + a >7 kHz fizz ceiling):\nthe wire bands move DOWN (snare_tune 0.55 -> 0.41 puts the fixed 1.8/3.2/4.5\nkHz bands at ~0.7/1.3/1.8 kHz), the wires come up and the body drives harder\ninto the voice's soft-saturation — denser, like a compressed recorded snare.\nCrack -21 -> -17 dB, early RMS -10.5 -> -6 dB.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 186
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "snare.main",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "snare_attack": 0.02487,
+        "snare_noise_d": 7,
+        "snare_noise_m": 0.3073,
+        "snare_tail_d": 13.5,
+        "snare_tone2": 280,
+        "snare_tone_d": 46,
+        "snare_tone_m": 2.7556,
+        "snare_tune": 0.4074,
+        "snare_wire_m": 1.9683,
+        "wave": 0
+      }
+    }
+  ]
+}

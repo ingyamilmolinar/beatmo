@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // genSine generates n samples of a sine wave at the given frequency and sample rate.
@@ -129,8 +132,8 @@ func TestProcessBlockLocalPreservesSignalCoherence(t *testing.T) {
 
 	// 3-phase approach: sum A+B with headroom into instBuf, then process through channel.
 	instID := "bq-coherence-test"
-	SetChannelProcessors(instID, bq1)
-	instCh := InstrumentChannel(instID)
+	SetChannelProcessors(channel.Of(instrument.ID(instID)), bq1)
+	instCh := InstrumentChannel(channel.Of(instrument.ID(instID)))
 
 	instBuf := make([]float64, n)
 	for i := 0; i < n; i++ {
@@ -145,8 +148,8 @@ func TestProcessBlockLocalPreservesSignalCoherence(t *testing.T) {
 		t.Fatal("failed to create reference biquad")
 	}
 	refID := "bq-coherence-ref"
-	SetChannelProcessors(refID, bq2)
-	refCh := InstrumentChannel(refID)
+	SetChannelProcessors(channel.Of(instrument.ID(refID)), bq2)
+	refCh := InstrumentChannel(channel.Of(instrument.ID(refID)))
 
 	refBuf := make([]float64, n)
 	for i := 0; i < n; i++ {
@@ -182,8 +185,8 @@ func TestInterleavedChannelProcessingProducesDistortion(t *testing.T) {
 
 	// Clean: sum A+B, process through channel.
 	cleanID := "interleave-clean"
-	SetChannelProcessors(cleanID, bqClean)
-	cleanCh := InstrumentChannel(cleanID)
+	SetChannelProcessors(channel.Of(instrument.ID(cleanID)), bqClean)
+	cleanCh := InstrumentChannel(channel.Of(instrument.ID(cleanID)))
 
 	cleanOut := make([]float64, n)
 	for i := 0; i < n; i++ {
@@ -197,8 +200,8 @@ func TestInterleavedChannelProcessingProducesDistortion(t *testing.T) {
 		t.Fatal("failed to create interleaved biquad")
 	}
 	interleavedID := "interleave-bad"
-	SetChannelProcessors(interleavedID, bqBad)
-	interleavedCh := InstrumentChannel(interleavedID)
+	SetChannelProcessors(channel.Of(instrument.ID(interleavedID)), bqBad)
+	interleavedCh := InstrumentChannel(channel.Of(instrument.ID(interleavedID)))
 
 	interleavedOut := make([]float64, n)
 	for off := 0; off < n; off += blockSize {

@@ -20,6 +20,20 @@ import { cdpTap } from "./touch_cdp_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const repoRoot = path.resolve(jsDir, "..", "..");
+
+// eqCircuitJSON: the stable multi-row test fixture with a non-flat EQ on EVERY
+// instrument, so importing it runs setChannelEQ → rewireChannel per channel.
+// Built here instead of borrowing the shipped startup demo, whose contents are
+// free to change (and whose EQ was the only reason Scenarios 5/7 used it).
+function eqCircuitJSON() {
+  const f = JSON.parse(fs.readFileSync(path.join(repoRoot, "src/go/internal/assets/test_fixture_demo.json"), "utf-8"));
+  const bands = [[22, 44], [44, 88], [88, 177], [177, 354], [354, 707], [707, 1414], [1414, 2828], [2828, 5657], [5657, 11314], [11314, 20000]];
+  for (const inst of f.instruments) {
+    inst.eq = { gains_db: [1.1, 1.7, -2.4, -6, -3, 0, -0.8, 0, 0, 0], bands_hz: bands, hpf_cutoff_hz: 20, lpf_enabled: true, lpf_cutoff_hz: 8000 };
+  }
+  if (!f.instruments.length) throw new Error("test fixture has no instruments");
+  return JSON.stringify(f);
+}
 const goDir = path.resolve(repoRoot, "src/go");
 const GO = resolveGoBinary();
 
@@ -308,7 +322,7 @@ try {
     // rewritten to structural verification for the same reason. We therefore
     // keep only the gross-divergence guards and WARN (not fail) on the
     // contention-sensitive low side; absolute audio existence (above) plus the
-    // full startup-demo playback in Scenarios 5 & 7 cover the real regressions.
+    // full EQ'd-circuit playback in Scenarios 5 & 7 cover the real regressions.
     const ratio = mobileResult.rms / desktopResult.rms;
     console.log(`  RMS ratio (mobile/desktop): ${ratio.toFixed(4)}`);
     if (ratio > 10) {
@@ -343,7 +357,7 @@ try {
       typeof startOutputCapture === "function" &&
       typeof getOutputCaptureStats === "function" &&
       typeof setChannelEQ === "function" &&
-      typeof window.__getMainLimiter === "function"
+      typeof window.__getMasterOut === "function"
     );
 
     await page.evaluate(() => {
@@ -361,7 +375,7 @@ try {
       }
 
       // Step 2: Spy on limiter.disconnect to verify rewireChannel doesn't touch it.
-      const limiter = window.__getMainLimiter?.();
+      const limiter = window.__getMasterOut?.();
       if (!limiter) {
         return { error: "mainLimiter not available" };
       }
@@ -425,13 +439,13 @@ try {
   }
 
   // ========================================================================
-  // Scenario 5: Startup demo playback on mobile produces audio
-  // Imports the actual startup demo (with per-instrument EQ and kick-tight),
+  // Scenario 5: EQ'd multi-row circuit playback on mobile produces audio
+  // Imports a circuit with per-instrument EQ on every row (eqCircuitJSON),
   // starts playback, and verifies output capture detects audio. This exercises
   // the full import path including setChannelEQ → rewireChannel for every
   // instrument, which was previously breaking the audio routing.
   // ========================================================================
-  console.log("\n--- Scenario 5: Startup demo playback on mobile ---");
+  console.log("\n--- Scenario 5: EQ'd circuit playback on mobile ---");
   {
     const context = await browser.newContext({
       ...iPhone,
@@ -456,21 +470,19 @@ try {
     });
     await page.waitForTimeout(100);
 
-    // Read the startup demo JSON from disk and import it.
-    const startupDemoPath = path.join(repoRoot, "src/go/internal/assets/startup_demo.json");
-    const startupDemoJSON = fs.readFileSync(startupDemoPath, "utf-8");
+    const circuitJSON = eqCircuitJSON();
 
     await page.evaluate((json) => {
       importJSON?.(json);
       forceDraw?.();
-    }, startupDemoJSON);
+    }, circuitJSON);
     await page.waitForTimeout(500);
 
     const s5 = await page.evaluate(async () => {
       enableOutputCapture?.();
       startOutputCapture?.();
       startPlay?.();
-      // Let the demo play for 2 seconds to ensure multiple instruments fire.
+      // Let the circuit play for 2 seconds to ensure multiple instruments fire.
       await new Promise((r) => setTimeout(r, 2000));
       stopPlay?.();
       await new Promise((r) => setTimeout(r, 200));
@@ -489,7 +501,7 @@ try {
 
     console.log(`  Samples: ${s5.samples}, Peak: ${s5.peak.toFixed(6)}, RMS: ${s5.rms.toFixed(6)}`);
     if (s5.samples === 0) throw new Error("Scenario 5 FAIL: no samples captured");
-    if (s5.rms < 0.0001) throw new Error(`Scenario 5 FAIL: no audio energy from startup demo on mobile (RMS=${s5.rms})`);
+    if (s5.rms < 0.0001) throw new Error(`Scenario 5 FAIL: no audio energy from the EQ'd circuit on mobile (RMS=${s5.rms})`);
     // Output capture samples are pre-clamp, so peaks can exceed 1.0 when
     // multiple voices overlap. We only check for extreme values.
     if (s5.peak > 10) throw new Error(`Scenario 5 FAIL: extreme peak detected (peak=${s5.peak})`);
@@ -514,9 +526,15 @@ try {
     const page = await context.newPage();
     await page.goto(`http://localhost:${port}/`);
 
+    // Wait for Go to have pushed the two instruments this scenario plays: a
+    // page without Go has no instruments, and audio.js loading first raced it
+    // (under load the notes reached audio.js before their documents did).
     await page.waitForFunction(() =>
       typeof playSound === "function" &&
-      typeof resumeAudio === "function"
+      typeof resumeAudio === "function" &&
+      typeof window.__instrumentBlockForTest === "function" &&
+      !!window.__instrumentBlockForTest("kick") && !!window.__instrumentBlockForTest("snare"),
+      null, { timeout: 60000 }
     );
 
     // Ensure audio context is created and running first.
@@ -592,14 +610,15 @@ try {
   }
 
   // ========================================================================
-  // Scenario 7: Startup demo while suspended → resume
-  // Suspends the AudioContext, imports the startup demo (triggering
+  // Scenario 7: EQ'd circuit import while suspended → resume
+  // Warms the EQ'd circuit (like the launch circuit at boot), then suspends
+  // the AudioContext, re-imports it (triggering
   // setChannelEQ → rewireChannel for each instrument), starts playback
   // while still suspended, then resumes the context and verifies audio
   // output. This exercises the full startup path: EQ setup during suspend
   // + playback scheduling during suspend + deferred flush on resume.
   // ========================================================================
-  console.log("\n--- Scenario 7: Startup demo while suspended → resume ---");
+  console.log("\n--- Scenario 7: EQ'd circuit import while suspended → resume ---");
   {
     const context = await browser.newContext({
       ...iPhone,
@@ -626,12 +645,26 @@ try {
     });
     await page.waitForTimeout(200);
 
-    const startupDemoPath2 = path.join(repoRoot, "src/go/internal/assets/startup_demo.json");
-    const startupDemoJSON2 = fs.readFileSync(startupDemoPath2, "utf-8");
+    const circuitJSON2 = eqCircuitJSON();
 
     const s7 = await page.evaluate(async (json) => {
       const ctx = window.__audioCtx;
       if (!ctx) return { error: "no AudioContext" };
+
+      // Play is ignored until the readiness gate has warmed a newly loaded
+      // circuit's voices (scenarios/playback_ready.js), and warming resumes a
+      // suspended context. So warm the circuit FIRST, as the launch circuit is
+      // warm at boot: load it once while running and wait for the gate.
+      const waitGate = async () => {
+        const by = Date.now() + 20000;
+        while (typeof window.warmupProgress === "function" && window.warmupProgress().ready !== true) {
+          if (Date.now() > by) return false;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return true;
+      };
+      importJSON?.(json);
+      if (!(await waitGate())) return { error: "playback-readiness gate never opened (warm load)" };
 
       // Enable output capture before suspending.
       enableOutputCapture?.();
@@ -642,14 +675,27 @@ try {
         return { error: `expected suspended after suspend(), got ${ctx.state}` };
       }
 
-      // Import the startup demo while suspended — triggers setChannelEQ
-      // for each instrument, which calls rewireChannel internally.
+      // Re-import while suspended — triggers setChannelEQ for each instrument,
+      // which calls rewireChannel internally. Its voices are warm, so the gate
+      // opens without rendering.
       importJSON?.(json);
       forceDraw?.();
+      const gateOpenAtImport = typeof window.warmupProgress !== "function" || window.warmupProgress().ready === true;
+      if (!(await waitGate())) return { error: "playback-readiness gate never opened (suspended load)" };
+      if (ctx.state !== 'suspended') {
+        return { error: `context left suspended during the suspended import (${ctx.state})` };
+      }
 
       // Start playback while still suspended — audio events get queued.
       startOutputCapture?.();
-      startPlay?.();
+      startPlay?.(); // a press flag the next frame consumes
+      if (typeof window.isPlaying === "function") {
+        const by = Date.now() + 2000;
+        while (!window.isPlaying()) {
+          if (Date.now() > by) return { error: "startPlay was ignored (transport not running)" };
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      }
 
       // Small wait for events to queue up.
       await new Promise((r) => setTimeout(r, 200));
@@ -672,13 +718,13 @@ try {
         sum += captured[i] * captured[i];
       }
       const rms = captured.length > 0 ? Math.sqrt(sum / captured.length) : 0;
-      return { samples: captured.length, peak, rms, state: ctx.state };
-    }, startupDemoJSON2);
+      return { samples: captured.length, peak, rms, state: ctx.state, gateOpenAtImport };
+    }, circuitJSON2);
 
     if (s7.error) throw new Error(`Scenario 7 FAIL: ${s7.error}`);
-    console.log(`  Samples: ${s7.samples}, Peak: ${s7.peak.toFixed(6)}, RMS: ${s7.rms.toFixed(6)}, State: ${s7.state}`);
+    console.log(`  Samples: ${s7.samples}, Peak: ${s7.peak.toFixed(6)}, RMS: ${s7.rms.toFixed(6)}, State: ${s7.state}, gate open at import: ${s7.gateOpenAtImport}`);
     if (s7.samples === 0) throw new Error("Scenario 7 FAIL: no samples captured");
-    if (s7.rms < 0.0001) throw new Error(`Scenario 7 FAIL: no audio after suspended demo import + resume (RMS=${s7.rms})`);
+    if (s7.rms < 0.0001) throw new Error(`Scenario 7 FAIL: no audio after suspended circuit import + resume (RMS=${s7.rms})`);
     console.log("  PASS");
 
     if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "mobile_audio");

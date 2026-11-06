@@ -149,3 +149,20 @@ func SetTouchForTest(
 		touchPosition = oldPos
 	}
 }
+
+// suppressKeys installs a scoped filter over the key readers so that the keys
+// a partial keyboard claimant already consumed this frame read as "not pressed"
+// for the duration. Returns the restore func (call it via defer).
+//
+// It WRAPS the current readers rather than replacing them, so it composes with
+// SetInputForTest's stubs. This is the single place a key is masked — never
+// add an inline "is a popup open?" check at a shortcut site.
+func suppressKeys(blocked map[ebiten.Key]bool) func() {
+	if len(blocked) == 0 {
+		return func() {}
+	}
+	prevPressed, prevJust := isKeyPressed, isKeyJustPressed
+	isKeyPressed = func(k ebiten.Key) bool { return !blocked[k] && prevPressed(k) }
+	isKeyJustPressed = func(k ebiten.Key) bool { return !blocked[k] && prevJust(k) }
+	return func() { isKeyPressed, isKeyJustPressed = prevPressed, prevJust }
+}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // setEQCursorForTest points the package cursor at (x, y) and leaves every
@@ -80,7 +81,7 @@ func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 		if z.curveHoverBand != 3 {
 			t.Fatalf("cursor over band-3 handle: curveHoverBand=%d, want 3", z.curveHoverBand)
 		}
-		if z.curveHoverFilter != "" {
+		if z.curveHoverFilter != hooks.FilterNone {
 			t.Fatalf("cursor over band handle: curveHoverFilter=%q, want empty", z.curveHoverFilter)
 		}
 	})
@@ -100,7 +101,7 @@ func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 
 		z.Update()
 
-		if z.curveHoverFilter != "hpf" {
+		if z.curveHoverFilter != hooks.FilterHPF {
 			t.Fatalf("cursor over HPF handle: curveHoverFilter=%q, want %q", z.curveHoverFilter, "hpf")
 		}
 		if z.curveHoverBand != -1 {
@@ -122,7 +123,7 @@ func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 		if z.curveHoverBand != -1 {
 			t.Fatalf("cursor off all handles: curveHoverBand=%d, want -1", z.curveHoverBand)
 		}
-		if z.curveHoverFilter != "" {
+		if z.curveHoverFilter != hooks.FilterNone {
 			t.Fatalf("cursor off all handles: curveHoverFilter=%q, want empty", z.curveHoverFilter)
 		}
 	})
@@ -143,7 +144,7 @@ func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 		if z.curveHoverBand != -1 {
 			t.Fatalf("mobile: curveHoverBand=%d, want -1 (no pointer hover on touch)", z.curveHoverBand)
 		}
-		if z.curveHoverFilter != "" {
+		if z.curveHoverFilter != hooks.FilterNone {
 			t.Fatalf("mobile: curveHoverFilter=%q, want empty", z.curveHoverFilter)
 		}
 	})

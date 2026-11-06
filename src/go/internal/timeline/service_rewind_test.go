@@ -6,7 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-func TestRewindToArchivesPostAbsImmutables(t *testing.T) {
+func TestRewindToRetainsPostAbsImmutablesAsSuperseded(t *testing.T) {
 	s := NewService()
 	// Record immutable playback hits at abs 0..9 on row 0.
 	for abs := 0; abs < 10; abs++ {
@@ -21,14 +21,19 @@ func TestRewindToArchivesPostAbsImmutables(t *testing.T) {
 			t.Fatalf("abs %d below seek point should stay committed", abs)
 		}
 	}
-	// 5..9 are no longer in immutables/ring, but remain retrievable in the
-	// archive tier (history is archived, not dropped).
+	// 5..9 are no longer in immutables/ring and no longer answer the live
+	// lookup (that pass was abandoned), but are retained in the superseded
+	// store (history is retained, not dropped).
 	if s.LastImmutableAbs(0) >= 5 {
-		t.Fatalf("immutables >= 5 should have been archived, last=%d", s.LastImmutableAbs(0))
+		t.Fatalf("immutables >= 5 should have been moved out, last=%d", s.LastImmutableAbs(0))
 	}
-	// Archive retains at least one of the superseded entries.
-	if got := archivedCountForTest(s, 0); got == 0 {
-		t.Fatal("expected archived entries after rewind, got 0")
+	for abs := 5; abs < 10; abs++ {
+		if _, _, _, ok := s.CommittedKind(0, abs); ok {
+			t.Fatalf("abs %d of the abandoned pass still answers the live lookup", abs)
+		}
+	}
+	if got := supersededCountForTest(s, 0); got != 5 {
+		t.Fatalf("expected the 5 superseded entries retained, got %d", got)
 	}
 }
 
@@ -53,4 +58,51 @@ func archivedCountForTest(s *Service, row int) int {
 		return 0
 	}
 	return arch.lenForTest()
+}
+
+// A backward seek ABANDONS the pass after the seek point: the cells from abs on
+// are about to be replayed, possibly under an edited circuit. RewindTo retains
+// that pass (full-history rule) but it must stop answering the LIVE lookup —
+// the row window, the played-snapshot freeze (preview.CrossingCell prefers a
+// Playback commit over the predictor) and parity all read CommittedKind, and a
+// superseded commit there reads as immutable history for a cell that has not
+// been played in this pass. That holds for the hot tiers AND for entries that
+// had already aged into the scroll-back archive.
+func TestRewindToSupersededPassIsNotLiveHistory(t *testing.T) {
+	s := NewService()
+	s.SetArchiveMaxEntries(0)
+	const n = immutablesPerRowMax * 3 // ages the oldest third+ into the archive
+	for abs := 0; abs < n; abs++ {
+		s.RecordCommitKind(0, abs, true, model.NodeTypeRegular, CommitKindPlayback, 64, 64)
+	}
+	if archivedCountForTest(s, 0) == 0 {
+		t.Fatal("setup: nothing aged into the archive")
+	}
+	const target = 100 // below the archived range's top: archived AND hot entries are superseded
+	s.RewindTo(0, target)
+	for _, abs := range []int{target, target + 1, immutablesPerRowMax, n - 1} {
+		if v, _, k, ok := s.CommittedKind(0, abs); ok {
+			t.Fatalf("abs %d (abandoned pass) still answers the live lookup: val=%v kind=%v", abs, v, k)
+		}
+	}
+	if _, _, _, ok := s.CommittedKind(0, target-1); !ok {
+		t.Fatal("abs below the seek point must keep its scroll-back history")
+	}
+	if supersededCountForTest(s, 0) != n-target {
+		t.Fatalf("superseded pass must be retained, not dropped: have %d want %d", supersededCountForTest(s, 0), n-target)
+	}
+	// The replay writes the NEW pass; once it ages out of the hot tiers the
+	// scroll-back archive must hold the replay, not the abandoned pass.
+	for abs := target; abs < n+immutablesPerRowMax*2; abs++ {
+		s.RecordCommitKind(0, abs, false, model.NodeTypeRegular, CommitKindPlayback, 64, 64)
+	}
+	if v, _, _, ok := s.CommittedKind(0, target+1); !ok || v {
+		t.Fatalf("replayed cell must read the replay (false), got ok=%v val=%v", ok, v)
+	}
+}
+
+func supersededCountForTest(s *Service, row int) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.superseded[row].lenForTest()
 }

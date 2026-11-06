@@ -36,16 +36,54 @@ import (
 // Go. Adding a name here requires the function to exist in audio.js.
 var jsNativeCatalogueEntries = map[string]bool{
 	"captureInstrumentPCM": true,
-	"decodeWavToPCM":       true,
-	"idbDeleteSample":      true,
-	"idbGetAllSamples":     true,
-	"idbPutSample":         true,
-	"registerSamplePCM":    true,
+	// The Synth-tab graph render (audio.RenderDocForGraph's browser half).
+	"renderDocPCM":      true,
+	"decodeWavToPCM":    true,
+	"idbDeleteSample":   true,
+	"idbGetAllSamples":  true,
+	"idbPutSample":      true,
+	"registerSamplePCM": true,
 	// Parity timing-sync: WebAudio emission-timing ring lives in audio.js
 	// (window.getTimingTraces / window.resetTimingTraces), pulled by the
 	// //go:build js Stage-D drain — no Go-side js.Global().Set registration.
 	"getTimingTraces":   true,
 	"resetTimingTraces": true,
+	// Playback probe + insert-effect host diagnostics: audio.js-only (no Go
+	// registration); consumed by the browser benches.
+	"startAudioProbe":   true,
+	"stopAudioProbe":    true,
+	"audioProbeRaw":     true,
+	"audioProbeReport":  true,
+	"insertEffectHosts": true,
+	// WebAudio graph churn counters + the in-place insert-FX param edit and
+	// the DSP-state reset Go calls from internal/audio/insert_effects_wasm.go
+	// (out of this scan).
+	"audioGraphStats":    true,
+	"retuneInsertEffect": true,
+	"resetDSPState":      true,
+	// Audio lane: audio.js functions called from internal/audio/lane_wasm.go
+	// (a different package, out of this file's scan).
+	"cancelLaneVoices":      true,
+	"stopLaneAt":            true,
+	"cancelAllLaneFuture":   true,
+	"laneVoiceStateForTest": true,
+	// Playback-readiness warm-up gate bridge: these three live in audio.js and
+	// are read via js.Global().Get from internal/audio/voice_prewarm_js.go
+	// (a different package, out of this file's scan), not js.Global().Set
+	// from internal/ui.
+	"warmInstrumentBatch":   true,
+	"voiceCachedFor":        true,
+	"isMelodicInstrumentJS": true,
+	// flushPendingChannelOps: forces the AudioContext + drains
+	// pendingChannelOps. Read via js.Global().Get from
+	// internal/audio/audio_graph_ready_js.go (EnsureAudioGraphReady), a
+	// different package, out of this file's scan.
+	"flushPendingChannelOps": true,
+	// Instrument documents: audio.js receives each instrument's flattened
+	// param block from internal/audio/instrument_docs_wasm.go (a different
+	// package, out of this file's scan).
+	"setInstrumentBlock":   true,
+	"clearInstrumentBlock": true,
 }
 
 var jsGlobalSetRe = regexp.MustCompile(`js\.Global\(\)\.Set\("([^"]+)"`)

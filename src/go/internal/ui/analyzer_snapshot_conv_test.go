@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -53,11 +55,11 @@ func TestSnapshotToChannelMetrics_Active(t *testing.T) {
 		Spectrum: []float64{1.0, 0.5, 0.25, 0.1},
 		Waveform: []float64{0.1, -0.1, 0.2, -0.2},
 	}
-	m := SnapshotToChannelMetrics("kick", "Kick", snap, 8000)
+	m := SnapshotToChannelMetrics(channel.Of(roster.Kick), "Kick", snap, 8000)
 	if !m.Active {
 		t.Fatal("expected Active=true when peak>0")
 	}
-	if m.ID != "kick" || m.Name != "Kick" {
+	if m.ID != channel.Of(roster.Kick) || m.Name != "Kick" {
 		t.Fatalf("id/name mismatch: %q/%q", m.ID, m.Name)
 	}
 	if len(m.Waveform) != 4 {
@@ -77,7 +79,7 @@ func TestSnapshotToChannelMetrics_InactiveOnZero(t *testing.T) {
 		Spectrum: []float64{0, 0, 0, 0},
 		Waveform: []float64{0, 0, 0, 0},
 	}
-	m := SnapshotToChannelMetrics("main", "Master", snap, 8000)
+	m := SnapshotToChannelMetrics(channel.Master, "Master", snap, 8000)
 	if m.Active {
 		t.Fatal("expected Active=false when everything is zero")
 	}
@@ -85,8 +87,8 @@ func TestSnapshotToChannelMetrics_InactiveOnZero(t *testing.T) {
 
 func TestSnapshotToInstrumentMetrics_Fields(t *testing.T) {
 	snap := audio.AnalyzerSnapshot{RMS: 0.5, Peak: 0.9}
-	im := SnapshotToInstrumentMetrics("snare", "Snare", snap)
-	if im.ID != "snare" || im.Name != "Snare" {
+	im := SnapshotToInstrumentMetrics(channel.Of(roster.Snare), "Snare", snap)
+	if im.ID != channel.Of(roster.Snare) || im.Name != "Snare" {
 		t.Fatalf("id/name mismatch: %q/%q", im.ID, im.Name)
 	}
 	if !im.Active {
@@ -99,20 +101,20 @@ func TestSnapshotToInstrumentMetrics_Fields(t *testing.T) {
 func TestSynthesizeAnalyzerState_InstrumentRows(t *testing.T) {
 	master := audio.AnalyzerSnapshot{RMS: 0.2, Peak: 0.6, Spectrum: []float64{1.0, 0.5}, Waveform: []float64{0, 0.5}}
 	rows := []RowSnapshot{
-		{ID: "kick", Name: "Kick", Snap: audio.AnalyzerSnapshot{Peak: 0.4, RMS: 0.2}},
-		{ID: "snare", Name: "Snare", Snap: audio.AnalyzerSnapshot{Peak: 0.3, RMS: 0.1}},
+		{ID: channel.Of(roster.Kick), Name: "Kick", Snap: audio.AnalyzerSnapshot{Peak: 0.4, RMS: 0.2}},
+		{ID: channel.Of(roster.Snare), Name: "Snare", Snap: audio.AnalyzerSnapshot{Peak: 0.3, RMS: 0.1}},
 	}
-	st := SynthesizeAnalyzerState("main", "Master", master, rows, nil, "", "", 8000)
+	st := SynthesizeAnalyzerState(channel.Master, "Master", master, rows, nil, channel.ID{}, "", 8000)
 	if st == nil {
 		t.Fatal("expected non-nil state")
 	}
-	if st.Master.ID != "main" || st.Master.Name != "Master" {
+	if st.Master.ID != channel.Master || st.Master.Name != "Master" {
 		t.Fatalf("master id/name wrong: %q/%q", st.Master.ID, st.Master.Name)
 	}
 	if len(st.Instruments) != 2 {
 		t.Fatalf("expected 2 instruments, got %d", len(st.Instruments))
 	}
-	if st.Instruments[0].ID != "kick" || st.Instruments[1].ID != "snare" {
+	if st.Instruments[0].ID != channel.Of(roster.Kick) || st.Instruments[1].ID != channel.Of(roster.Snare) {
 		t.Fatalf("instrument IDs mismatch: %+v", st.Instruments)
 	}
 	if st.Detail != nil {
@@ -123,11 +125,11 @@ func TestSynthesizeAnalyzerState_InstrumentRows(t *testing.T) {
 func TestSynthesizeAnalyzerState_DetailPopulated(t *testing.T) {
 	master := audio.AnalyzerSnapshot{}
 	detail := audio.AnalyzerSnapshot{Peak: 0.8, RMS: 0.4, Spectrum: []float64{0.9, 0.2}}
-	st := SynthesizeAnalyzerState("main", "Master", master, nil, &detail, "kick", "Kick", 8000)
+	st := SynthesizeAnalyzerState(channel.Master, "Master", master, nil, &detail, channel.Of(roster.Kick), "Kick", 8000)
 	if st.Detail == nil {
 		t.Fatal("expected Detail to be populated when detail arg is non-nil")
 	}
-	if st.Detail.ID != "kick" || st.Detail.Name != "Kick" {
+	if st.Detail.ID != channel.Of(roster.Kick) || st.Detail.Name != "Kick" {
 		t.Fatalf("detail id/name wrong: %q/%q", st.Detail.ID, st.Detail.Name)
 	}
 	if !st.Detail.Active {
@@ -139,7 +141,7 @@ func TestSynthesizeScopeState_StageMapping(t *testing.T) {
 	synth := audio.AnalyzerSnapshot{Peak: 0.5, RMS: 0.2, Waveform: []float64{0.1, 0.2, 0.3}}
 	post := audio.AnalyzerSnapshot{Peak: 0.4, RMS: 0.15, Waveform: []float64{0.05, 0.1, 0.15}}
 	snaps := ScopeStageSnapshots{Synth: synth, PostEQ: post}
-	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageEQ, snaps)
+	st := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageEQ, snaps)
 	if st == nil {
 		t.Fatal("expected non-nil scope state")
 	}
@@ -152,7 +154,7 @@ func TestSynthesizeScopeState_StageMapping(t *testing.T) {
 	if len(st.TapA.Samples) != 3 || len(st.TapB.Samples) != 3 {
 		t.Fatalf("samples not forwarded: A=%d B=%d", len(st.TapA.Samples), len(st.TapB.Samples))
 	}
-	if st.TapA.InstID != "kick" || st.TapB.InstID != "kick" {
+	if st.TapA.InstID != channel.Of(roster.Kick) || st.TapB.InstID != channel.Of(roster.Kick) {
 		t.Fatalf("inst id mismatch: A=%q B=%q", st.TapA.InstID, st.TapB.InstID)
 	}
 }
@@ -173,7 +175,6 @@ func TestSynthesizeScopeState_AllSixStagesBridged(t *testing.T) {
 		Synth:  mkSnap("synth"),
 		PreEQ:  mkSnap("preeq"),
 		PostEQ: mkSnap("posteq"),
-		Sends:  mkSnap("sends"),
 		Master: mkSnap("master"),
 	}
 
@@ -185,13 +186,12 @@ func TestSynthesizeScopeState_AllSixStagesBridged(t *testing.T) {
 		{scope.StageAntiPop, float64(len("synth"))}, // shares Synth
 		{scope.StageInsertFX, float64(len("preeq"))},
 		{scope.StageEQ, float64(len("posteq"))},
-		{scope.StageSends, float64(len("sends"))},
 		{scope.StageMaster, float64(len("master"))},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(scope.StageLabel(tc.stage), func(t *testing.T) {
-			st := SynthesizeScopeState("kick", tc.stage, tc.stage, snaps)
+			st := SynthesizeScopeState(channel.Of(roster.Kick), tc.stage, tc.stage, snaps)
 			if !st.TapA.Active {
 				t.Fatalf("stage %s: TapA should be Active when its snapshot has non-empty waveform", scope.StageLabel(tc.stage))
 			}
@@ -207,7 +207,7 @@ func TestSynthesizeScopeState_AllSixStagesBridged(t *testing.T) {
 }
 
 func TestSynthesizeScopeState_InactiveOnEmpty(t *testing.T) {
-	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageEQ, ScopeStageSnapshots{})
+	st := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageEQ, ScopeStageSnapshots{})
 	if st.TapA.Active || st.TapB.Active {
 		t.Fatalf("expected inactive taps on empty snapshots: A=%v B=%v", st.TapA.Active, st.TapB.Active)
 	}
@@ -229,7 +229,7 @@ func TestSynthesizeScopeState_PerInstrumentSplitActive(t *testing.T) {
 		Peak: 0.3, RMS: 0.21,
 		Waveform: []float64{0.05, 0.1, 0.15, 0.2},
 	}
-	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
+	st := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
 		Synth: synth,
 		PreEQ: preEQ,
 	})
@@ -239,13 +239,13 @@ func TestSynthesizeScopeState_PerInstrumentSplitActive(t *testing.T) {
 	if !st.TapB.Active {
 		t.Fatalf("TapB(InsertFX) should be Active with non-empty PreEQ snapshot: %+v", st.TapB)
 	}
-	if st.TapA.InstID != "kick" || st.TapB.InstID != "kick" {
+	if st.TapA.InstID != channel.Of(roster.Kick) || st.TapB.InstID != channel.Of(roster.Kick) {
 		t.Fatalf("InstID lost in synthesise: A=%q B=%q", st.TapA.InstID, st.TapB.InstID)
 	}
 	// Pin the bug-shaped failure mode too: with an empty Synth slot the
 	// renderer drops trace A (active=false) and the Chn legend loses its
 	// "A:" line — exactly the screenshot symptom.
-	stBroken := SynthesizeScopeState("kick", scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
+	stBroken := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
 		Synth: audio.AnalyzerSnapshot{},
 		PreEQ: preEQ,
 	})

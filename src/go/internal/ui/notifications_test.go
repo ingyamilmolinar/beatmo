@@ -64,22 +64,3 @@ func TestNotificationOnUploadError(t *testing.T) {
 		t.Fatalf("expected error notification for upload failure")
 	}
 }
-
-func TestNotificationOnInvalidBPM(t *testing.T) {
-	assertDefaultParityState(t)
-	g := game_log.New(nil, game_log.LevelError)
-	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, g)
-	dv.calcLayout()
-	// Open the shared editor, type an invalid value, then commit.
-	dv.transportZone.openBPMEditor()
-	ed := dv.transportZone.paramEditor
-	ed.ti.SetText("abc")
-	ed.commit()
-
-	if ed.errorAnim == 0 {
-		t.Fatalf("expected editor error animation on invalid entry")
-	}
-	if dv.notifStore.Len() == 0 || !dv.notifStore.Latest().isErr {
-		t.Fatalf("expected error notification on invalid BPM")
-	}
-}

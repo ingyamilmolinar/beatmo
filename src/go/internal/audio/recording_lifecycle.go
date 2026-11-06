@@ -4,10 +4,10 @@ package audio
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // finalizeRecording is the async tail of StopRecording on desktop. It
@@ -21,7 +21,7 @@ import (
 //  2. Update result.Metadata.Channels with final sample counts
 //  3. Call SaveRecording to write session.json
 //  4. Publish hooks.EventRecordStop with the finalized RecordRecordPayload
-func finalizeRecording(session *recordingSession, result *RecordingResult, logger func(string, ...any)) {
+func finalizeRecording(session *recordingSession, result *RecordingResult) {
 	defer finalizeDone()
 
 	// Workers have already been drained synchronously in StopRecording —
@@ -29,7 +29,7 @@ func finalizeRecording(session *recordingSession, result *RecordingResult, logge
 	// disk-bound systems).
 	metas, err := session.pipe.CloseWriters()
 	if err != nil {
-		logger("[RECORDING] CloseWriters: %v", err)
+		log.Errorf("[record] CloseWriters: %v", err)
 	}
 	// Finalized counts replace any placeholder counts populated at sync
 	// stop time.
@@ -39,7 +39,7 @@ func finalizeRecording(session *recordingSession, result *RecordingResult, logge
 
 	// Persist session.json next to the WAV files.
 	if _, err := SaveRecording(result); err != nil {
-		logger("[RECORDING] SaveRecording: %v", err)
+		log.Errorf("[record] SaveRecording: %v", err)
 	}
 
 	payload := RecordStopPayload{
@@ -50,7 +50,7 @@ func finalizeRecording(session *recordingSession, result *RecordingResult, logge
 		Err:      err,
 	}
 	hooks.PublishWithSource(hooks.EventRecordStop, payload, hooks.CaptureSource(0))
-	logger("[RECORDING] finalize complete dir=%s drops=%d", session.dir, payload.Drops)
+	log.Debugf("[record] finalize complete dir=%s drops=%d", session.dir, payload.Drops)
 }
 
 // queueFinalize schedules finalizeRecording on the lifecycle pool. If
@@ -60,16 +60,13 @@ func finalizeRecording(session *recordingSession, result *RecordingResult, logge
 func queueFinalize(session *recordingSession, result *RecordingResult) {
 	finalizeBegin()
 
-	loggerFn := func(format string, args ...any) {
-		log.Printf(format, args...)
-	}
 	err := lifecyclePool().Submit(func(_ context.Context) {
-		finalizeRecording(session, result, loggerFn)
+		finalizeRecording(session, result)
 	})
 	if err != nil {
 		// Pool full or closed — fall through to sync finalize so we
 		// never lose data. This is a rare path; lifecycle queue is 8.
-		log.Printf("[RECORDING] lifecycle pool busy, finalizing sync: %v", err)
-		finalizeRecording(session, result, loggerFn)
+		log.Warnf("[record] lifecycle pool busy, finalizing sync: %v", err)
+		finalizeRecording(session, result)
 	}
 }

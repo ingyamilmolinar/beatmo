@@ -91,7 +91,7 @@ func TestDrumView_LiveEditRandomizedKeepsParity(t *testing.T) {
 			if n := g.nodeAt(pos, 0); n != nil {
 				if node, ok := g.graph.GetNodeByID(n.ID); ok {
 					params := node.Params
-					params.LogicKind = "probability"
+					params.LogicKind = model.LogicProbability
 					params.LogicP = 0.2 + rng.Float64()*0.6
 					g.graph.SetNodeParams(n.ID, params)
 					g.cacheNode(n.ID)

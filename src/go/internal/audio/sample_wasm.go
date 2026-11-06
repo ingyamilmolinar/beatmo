@@ -3,22 +3,69 @@
 package audio
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// RegisterWAV loads a wav file via JavaScript and registers it.
-func RegisterWAV(id, path string) error {
-	js.Global().Call("loadWav", id, path)
+// RegisterWAV decodes a WAV the page can fetch (a file picker's object URL)
+// at its OWN rate (JS decodeWavToPCM) and registers it through
+// RegisterSamplePCM, which converts it to the engine rate with the same Go
+// desktop uses — never with the browser's decodeAudioData resampler. The
+// decode is asynchronous: the instrument exists now, its sound when decoded.
+func RegisterWAV(id instrument.ID, path string) error {
 	instrumentsMu.Lock()
 	instruments = append(instruments, id)
 	instrumentsMu.Unlock()
+	go func() {
+		pcm, sr, err := decodeWAVURL(path)
+		if err != nil {
+			log.Warnf("[audio] WAV %q for %s: %v", path, id, err)
+			return
+		}
+		RegisterSamplePCM(id, pcm, sr)
+	}()
 	return nil
 }
 
-// RegisterAudio mirrors RegisterWAV for API parity; decoding is delegated to JS.
-func RegisterAudio(id, path string) error {
+// decodeWAVURL decodes url to mono PCM at the file's own rate.
+func decodeWAVURL(url string) ([]float32, int, error) {
+	done := make(chan struct{})
+	var pcm []float32
+	var sr int
+	var derr error
+	then := js.FuncOf(func(this js.Value, args []js.Value) any {
+		r := args[0]
+		b := r.Get("bytes")
+		raw := make([]byte, b.Get("byteLength").Int())
+		js.CopyBytesToGo(raw, b)
+		pcm = make([]float32, len(raw)/4)
+		for i := range pcm {
+			pcm[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[4*i:]))
+		}
+		sr = r.Get("sr").Int()
+		close(done)
+		return nil
+	})
+	catch := js.FuncOf(func(this js.Value, args []js.Value) any {
+		derr = fmt.Errorf("decode failed: %s", args[0].Call("toString").String())
+		close(done)
+		return nil
+	})
+	defer then.Release()
+	defer catch.Release()
+	js.Global().Call("decodeWavToPCM", url).Call("then", then, catch)
+	<-done
+	return pcm, sr, derr
+}
+
+// RegisterAudio mirrors RegisterWAV for API parity.
+func RegisterAudio(id instrument.ID, path string) error {
 	return RegisterWAV(id, path)
 }
 

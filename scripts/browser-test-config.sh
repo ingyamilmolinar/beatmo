@@ -22,6 +22,9 @@ SEQUENTIAL_TESTS=(
     "webaudio_bpm_stress.browser.test.js"
     "webaudio_perf.browser.test.js"
     "webaudio_stress_complex.browser.test.js"
+    # UI-load → heard-audio isolation matrix (playback probe): timing is the
+    # measurement, so it must not share the CPU with parallel instances.
+    "webaudio_audio_isolation_bench.browser.test.js"
     # Live-edit latency gates (deferAbsMsP90 / event-loop-gap ceilings + CDP CPU
     # throttle scenario): parallel Playwright instances starve the WASM
     # sequencer and the render worker pool, invalidating the on-grid gates.
@@ -54,6 +57,43 @@ SEQUENTIAL_TESTS=(
     # reliably one-at-a-time. Same starvation class as mobile_sanity /
     # instrument_params_e2e_real_drag above.
     "mobile_audio_unlock.browser.test.js"
+    # Boots the full app in THREE engines (Chromium + Firefox + WebKit) in one
+    # process. Three renderers plus the parallel jobs' own browsers starve the
+    # single WASM thread, so a fresh page's boot poll (waitForFunction on the Go
+    # exports) can miss its gate — same starvation class as mobile_audio_unlock
+    # above. It has no timing thresholds of its own; it just needs each engine to
+    # finish booting.
+    "xplat_browser_export_import.browser.test.js"
+    # Cold-load timing of the landing page under CDP network + CPU throttling
+    # (landing vs no-landing TTI ratio gate when BASELINE_INDEX is set):
+    # parallel browsers would skew the very boot times it measures.
+    "landing_load.browser.test.js"
+    # The entries below each failed in a 4-job parallel run (2026-10-28/29) and pass
+    # alone, every time, on the same tree — each measures real time:
+    # Heard-audio gates (playback probe) under an injected main-thread stall,
+    # plus an in-page timer edit storm whose edit count is gated: parallel jobs
+    # starved the timers (17 edits marked vs 30 alone, floor 20).
+    "audio_lane_e2e.browser.test.js"
+    # f0 measured from a REAL-TIME output capture of each note: under parallel
+    # load the 0.25-beat violin read an octave low (-1204 cents); alone, 0 cents.
+    "melodic_duration_pitch.browser.test.js"
+    # Output captured through a main-thread ScriptProcessor with a 5 s window
+    # (same starvation class as instrument_params_e2e_real_drag above): under
+    # parallel load it captured nothing (nonZero=0); alone, ~10k samples.
+    "sampler_register_pcm.browser.test.js"
+    "sampler_unregister_pcm.browser.test.js"
+    # Same main-thread ScriptProcessor capture, of a fixed ~0.83 s window from
+    # AudioContext creation, around two COLD voice renders: under parallel load
+    # the renders outlasted the window ("missing audio data for multiple
+    # beats", make test-real 2026-10-29); 6/6 alone.
+    "webaudio_smoke.browser.test.js"
+    # CPU + heap profile with HARD scheduling / CPU-share gates (overdue,
+    # minLead, audio-flush %, WASM overhead %): the profile is the measurement.
+    "webaudio_profile_cdp.browser.test.js"
+    # HARD overdue gate during synth-param spam (sibling of
+    # webaudio_all_knob_bpm_stress above): 1 note 4 ms late under parallel
+    # load; 0 alone.
+    "webaudio_synth_param_stress.browser.test.js"
 )
 
 # Tests that are known to be flaky or run separately and should be skipped
@@ -73,6 +113,11 @@ SKIP_TESTS=(
     "visual_regression.browser.test.js"
     "visual_device_parity.browser.test.js"
     "webaudio_fx_chain_stress.browser.test.js"
+    # Real devices on BrowserStack only ("On-demand only — real devices, not
+    # CI", its header): with no credentials it exits 1, and with them it opens a
+    # paid tunnel per run. Run it by hand (DEVICE_FILTER=iPhone|Pixel optional):
+    #   GO=$(pwd)/.tools/go/bin/go node src/js/mobile_import_realdevice.browser.test.js
+    "mobile_import_realdevice.browser.test.js"
 )
 
 # Function to get env vars for a specific test

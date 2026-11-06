@@ -22,6 +22,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -67,7 +68,7 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof setInstrumentParam === "function");
 await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 // 1) Default modular voice renders non-silent.
 await page.evaluate(() => resetInstrumentParams("modular"));
@@ -119,10 +120,9 @@ if (!restoredMatches) {
 console.log("[TEST] reset restored the default modular voice");
 
 // 5) The second shipped preset (modular-pad) must render DISTINCTLY from the
-// base modular voice WITHOUT any user edit — proving the bootstrap defaults
-// push (Go SeedInstrumentDefaultsToPlatform → window.seedInstrumentDefaults →
-// instrumentDefaultParams) reaches render_modular_p in the browser. Without it,
-// modular-pad would sound identical to base modular (no param block).
+// base modular voice WITHOUT any user edit — proving each instrument's own
+// document block (Go → window.setInstrumentBlock) reaches render_modular_p in
+// the browser.
 await page.evaluate(() => resetInstrumentParams("modular"));
 const padBase = await page.evaluate(() => window.__testCaptureSynthRender("modular"));
 const pad = await page.evaluate(() => window.__testCaptureSynthRender("modular-pad"));

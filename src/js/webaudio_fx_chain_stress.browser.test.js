@@ -27,7 +27,7 @@
 //
 // The circuit is built export→mutate→import so the heavy config exercises the
 // exact production import wiring (insert-effect chains, per-instrument EQ,
-// sends, synth_params pinning) rather than test-only setters.
+// sends, instrument documents) rather than test-only setters.
 //
 // Usage:
 //   GO=$(pwd)/.tools/go/bin/go node src/js/webaudio_fx_chain_stress.browser.test.js
@@ -246,15 +246,23 @@ try {
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   const page = await browser.newPage();
   if (process.env.TEST_LOG) page.on("console", (m) => console.log(`  [page] ${m.text()}`));
-  // Optional runtime-profile override (knob sweeps): JSON injected as
-  // window.__beatmoProfileOverride before WASM init.
-  if (process.env.BEATMO_PROFILE_OVERRIDE) {
+  // Optional runtime-profile override (knob sweeps): JSON object keyed by
+  // BEATMO_* variable names (internal/env/vars.go), injected as
+  // window.__beatmoEnv before WASM init (index.html folds it into go.env;
+  // applyEnvProfileOverride in internal/ui/runtime_profile_env.go reads it).
+  if (process.env.BEATMO_ENV_OVERRIDE) {
     try {
-      const ov = JSON.parse(process.env.BEATMO_PROFILE_OVERRIDE);
-      console.log(`[fx-stress] profile override: ${JSON.stringify(ov)}`);
-      await page.addInitScript((cfg) => { window.__beatmoProfileOverride = cfg; }, ov);
+      const ov = JSON.parse(process.env.BEATMO_ENV_OVERRIDE);
+      console.log(`[fx-stress] env override: ${JSON.stringify(ov)}`);
+      // Values must be strings; wasm_exec.js builds KEY=value via a template
+      // literal, so non-strings are silently toString()-coerced.
+      await page.addInitScript((cfg) => {
+        window.__beatmoEnv = Object.fromEntries(
+          Object.entries(cfg).map(([k, v]) => [k, String(v)]),
+        );
+      }, ov);
     } catch (e) {
-      console.warn(`[fx-stress] invalid BEATMO_PROFILE_OVERRIDE: ${e.message}`);
+      console.warn(`[fx-stress] invalid BEATMO_ENV_OVERRIDE: ${e.message}`);
     }
   }
   await page.goto(`http://localhost:${port}/`);
@@ -263,6 +271,19 @@ try {
 
   // ── Build the heavy circuit: export the demo, crank every instrument ──
   const importErr = await page.evaluate((fxCount) => {
+    // Default-ON stages stay on; force-enable the default-OFF modulator stages
+    // plus FINISH so every pipeline step renders — through each instrument's
+    // document, so the export below carries them in instrument_docs.
+    const tweaks = {
+      osc_enabled: 1, fm_enabled: 1, env_enabled: 1, filter_enabled: 1, drive_enabled: 1,
+      post_decay: 0.8,
+      pitchenv_enabled: 1, pitchenv_amt: 0.4, pitchenv_decay: 0.3,
+      lfo_enabled: 1, lfo_rate: 4, lfo_depth: 0.3,
+      burst_enabled: 1, burst_sharp: 0.5,
+    };
+    for (const inst of JSON.parse(exportJSON()).instruments || []) {
+      for (const [k, v] of Object.entries(tweaks)) setInstrumentParam(inst.id, k, v);
+    }
     const doc = JSON.parse(exportJSON());
     const fxPool = [
       ["distortion", "delay", "reverb"],
@@ -273,15 +294,6 @@ try {
     const eqGains = [3, -2, 2, -1, 1, 2, -2, 2, -3, 2];
     doc.instruments = (doc.instruments || []).map((inst, i) => {
       const fx = fxPool[i % fxPool.length].slice(0, fxCount).map((type) => ({ type, enabled: true }));
-      const sp = Object.assign({}, inst.synth_params || {}, {
-        // Default-ON stages stay on; force-enable the default-OFF modulator
-        // stages plus POST so every pipeline step renders.
-        osc_enabled: 1, fm_enabled: 1, env_enabled: 1, filter_enabled: 1, drive_enabled: 1,
-        post_enabled: 1,
-        pitchenv_enabled: 1, pitchenv_amt: 0.4, pitchenv_decay: 0.3,
-        lfo_enabled: 1, lfo_rate: 4, lfo_depth: 0.3,
-        burst_enabled: 1, burst_sharp: 0.5,
-      });
       return Object.assign({}, inst, {
         effects: fx,
         eq: {
@@ -289,10 +301,6 @@ try {
           hpf_enabled: true, hpf_cutoff_hz: 60,
           lpf_enabled: true, lpf_cutoff_hz: 12000,
         },
-        pan: (i % 2 === 0 ? 1 : -1) * 0.4,
-        delay_send: 0.25,
-        reverb_send: 0.25,
-        synth_params: sp,
       });
     });
     doc.eq = Object.assign({}, doc.eq || {}, { gains_db: eqGains });
@@ -313,14 +321,10 @@ try {
       fx: (i.effects || []).map((e) => e.type).join("+"),
       hpf: !!(i.eq && i.eq.hpf_enabled),
       lpf: !!(i.eq && i.eq.lpf_enabled),
-      // Only the three DEFAULT-OFF modulator stages reliably survive the
-      // export round-trip: synth_params export writes effective-delta from
-      // the shipped recipe, so a stage we set to 1 that the recipe already
-      // ships ON (e.g. post_enabled / osc_enabled) is elided as a no-op
-      // delta. pitchenv/lfo/burst start at 0, so forcing them on always
-      // produces a visible delta — they are the honest "heavy synth" proof.
+      // The instrument's live document (a stage the instrument ships ON — e.g.
+      // organ-church's vibrato LFO — counts like one the circuit turned on).
       modulators: ["pitchenv_enabled", "lfo_enabled", "burst_enabled"]
-        .filter((k) => (i.synth_params || {})[k] >= 0.5).length,
+        .filter((k) => ((getInstrumentParams(i.id) || {})[k] || 0) >= 0.5).length,
     }));
   });
   console.log("[fx-stress] circuit:", JSON.stringify(fxSummary));
@@ -331,6 +335,9 @@ try {
   );
 
   // ── Play + record under load ──
+  // Play is ignored while the warm-up gate is closed (the button is disabled
+  // then): wait for it before the reset + play + record block below.
+  await page.waitForFunction(() => typeof warmupProgress !== "function" || warmupProgress().ready === true, null, { timeout: 30000, polling: 100 });
   const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
   const clocks0 = await page.evaluate(async (bpm) => {
     document.dispatchEvent(new Event("pointerdown"));

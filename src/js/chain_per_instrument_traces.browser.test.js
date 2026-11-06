@@ -17,7 +17,7 @@
  *      so the AudioContext leaves the suspended state.
  *   2. runScene("crop_chain_default") to put the panel on the Chain tab
  *      and start the sequencer.
- *   3. Resolve the first per-instrument row id (e.g. "kick-1").
+ *   3. Resolve the first per-instrument row id (e.g. "kick").
  *
  * Per case (synth_vs_insertfx, antipop_vs_eq, insertfx_vs_eq,
  * + main_baseline):
@@ -39,7 +39,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { startServer, initPage } from "./visual_test_helpers.js";
-import { resolveGoBinary } from "./browser_test_helpers.js";
+import { resolveGoBinary, waitForAudioReady } from "./browser_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -262,7 +262,7 @@ try {
     {},
     { timeout: 10000 }
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
   // Boot the Chain-default scene. crop_chain_default's Setup runs
   // activateScopeTab(g) which assigns default taps and calls

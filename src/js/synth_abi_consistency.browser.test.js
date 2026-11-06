@@ -64,7 +64,7 @@ const fail = (m) => { failed = true; console.error("[FAIL] " + m); };
 
 try {
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof window.__synthABI === "object" && window.__synthABI !== null, { timeout: 10000 });
+  await page.waitForFunction(() => typeof window.__synthABI === "object" && window.__synthABI !== null, null, { timeout: 10000 });
   const abi = await page.evaluate(() => window.__synthABI);
   console.log("[TEST] __synthABI =", JSON.stringify(abi));
 

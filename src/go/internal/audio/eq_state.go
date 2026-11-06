@@ -1,24 +1,32 @@
 package audio
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+)
 
 // eqRecord captures the EQ configuration applied to a channel. Used by
 // UI/export tests to assert the correct band values were propagated into the
 // audio layer.
 type eqRecord struct {
-	ID         string
+	ID         channel.ID
 	SampleRate int
 	Bands      []EQBand
+	// proc is the channel's live EQ processor (nil on platforms whose EQ runs
+	// outside Go). An insert-chain edit reuses it, so editing a row's effects
+	// never resets its EQ filters — the browser keeps them too.
+	proc Processor
 }
 
 var (
 	channelEQMu  sync.RWMutex
-	channelEQMap = make(map[string]eqRecord)
+	channelEQMap = make(map[channel.ID]eqRecord)
 )
 
 // recordChannelEQ stores the EQ record for one channel.
 // Called from SetChannelEQ on every build path.
-func recordChannelEQ(id string, rec eqRecord) {
+func recordChannelEQ(id channel.ID, rec eqRecord) {
 	channelEQMu.Lock()
 	if len(rec.Bands) == 0 {
 		delete(channelEQMap, id)
@@ -30,7 +38,7 @@ func recordChannelEQ(id string, rec eqRecord) {
 
 // lookupChannelEQ returns the EQ record for a channel, or the zero value if
 // no EQ has ever been set for it.
-func lookupChannelEQ(id string) eqRecord {
+func lookupChannelEQ(id channel.ID) eqRecord {
 	channelEQMu.RLock()
 	defer channelEQMu.RUnlock()
 	return channelEQMap[id]
@@ -49,32 +57,11 @@ type ChannelEQ struct {
 // channel. Returns the zero value when no EQ has been set for the
 // channel. Callers receive an independent copy of the Bands slice so
 // later mutations to the internal record do not alias the snapshot.
-func ChannelEQSnapshot(id string) ChannelEQ {
+func ChannelEQSnapshot(id channel.ID) ChannelEQ {
 	rec := lookupChannelEQ(id)
-	out := ChannelEQ{ID: rec.ID, SampleRate: rec.SampleRate}
+	out := ChannelEQ{ID: rec.ID.String(), SampleRate: rec.SampleRate}
 	if len(rec.Bands) > 0 {
 		out.Bands = append([]EQBand(nil), rec.Bands...)
 	}
 	return out
-}
-
-// GetChannelEQResponse returns the magnitude response of the per-
-// channel EQ chain at numPoints log-spaced frequencies between
-// startHz and endHz. Used by the Synth tab's filter preview to
-// render the active channel's biquad cascade alongside the recipe
-// knob cards. Returns nil when the channel has no EQ bands set or
-// when numPoints is non-positive.
-func GetChannelEQResponse(channelID string, numPoints int, startHz, endHz float64) []FreqResponsePoint {
-	if numPoints <= 0 {
-		return nil
-	}
-	rec := lookupChannelEQ(channelID)
-	if len(rec.Bands) == 0 {
-		return nil
-	}
-	sr := rec.SampleRate
-	if sr <= 0 {
-		sr = 48000
-	}
-	return ComputeFreqResponse(sr, rec.Bands, numPoints, startHz, endHz)
 }

@@ -35,7 +35,6 @@ type densityValues struct {
 	ChainScopeLeftMargin   int // densities.chainScopeLeftMargin
 	ChainStageColW         int // densities.chainStageColW
 	ChainStageRowH         int // densities.chainStageRowH
-	ChainTriggerMarkerW    int // densities.chainTriggerMarkerW
 	CloseButtonSize        int // densities.closeButtonSize
 	ControlGap             int // densities.controlGap
 	ControlGroupPad        int // densities.controlGroupPad
@@ -87,6 +86,8 @@ type densityValues struct {
 	SplitterGrabThreshold  int // densities.splitterGrabThreshold
 	SplitterHandleLen      int // densities.splitterHandleLen
 	SplitterHandleThk      int // densities.splitterHandleThk
+	SynthArmedCardH        int // densities.synthArmedCardH
+	SynthArmedCardW        int // densities.synthArmedCardW
 	SynthChipH             int // densities.synthChipH
 	SynthChipMinW          int // densities.synthChipMinW
 	SynthChipStripH        int // densities.synthChipStripH
@@ -95,13 +96,18 @@ type densityValues struct {
 	SynthControlIdeal      int // densities.synthControlIdeal
 	SynthControlMin        int // densities.synthControlMin
 	SynthDetailHeaderH     int // densities.synthDetailHeaderH
+	SynthDialD             int // densities.synthDialD
 	SynthFocusGraphH       int // densities.synthFocusGraphH
+	SynthGaugeH            int // densities.synthGaugeH
 	SynthHeaderButtonH     int // densities.synthHeaderButtonH
-	SynthHeaderThumbW      int // densities.synthHeaderThumbW
+	SynthKnobD             int // densities.synthKnobD
 	SynthPreviewMinW       int // densities.synthPreviewMinW
 	SynthPreviewTargetW    int // densities.synthPreviewTargetW
 	SynthRightCardMinH     int // densities.synthRightCardMinH
 	SynthSectionMinH       int // densities.synthSectionMinH
+	SynthWheelLaneW        int // densities.synthWheelLaneW
+	SynthWheelRowH         int // densities.synthWheelRowH
+	SynthWheelVisibleRows  int // densities.synthWheelVisibleRows
 	TimelineBarH           int // densities.timelineBarH
 	TransportBtnSize       int // densities.transportBtnSize
 	WaveCursorStroke       int // densities.waveCursorStroke
@@ -132,7 +138,6 @@ var (
 		ChainScopeLeftMargin:   34,
 		ChainStageColW:         64,
 		ChainStageRowH:         26,
-		ChainTriggerMarkerW:    3,
 		CloseButtonSize:        22,
 		ControlGap:             2,
 		ControlGroupPad:        3,
@@ -184,6 +189,8 @@ var (
 		SplitterGrabThreshold:  0,
 		SplitterHandleLen:      50,
 		SplitterHandleThk:      8,
+		SynthArmedCardH:        120,
+		SynthArmedCardW:        300,
 		SynthChipH:             26,
 		SynthChipMinW:          64,
 		SynthChipStripH:        34,
@@ -192,13 +199,18 @@ var (
 		SynthControlIdeal:      72,
 		SynthControlMin:        28,
 		SynthDetailHeaderH:     34,
+		SynthDialD:             22,
 		SynthFocusGraphH:       120,
-		SynthHeaderButtonH:     28,
-		SynthHeaderThumbW:      120,
+		SynthGaugeH:            5,
+		SynthHeaderButtonH:     24,
+		SynthKnobD:             26,
 		SynthPreviewMinW:       160,
 		SynthPreviewTargetW:    280,
 		SynthRightCardMinH:     40,
 		SynthSectionMinH:       72,
+		SynthWheelLaneW:        54,
+		SynthWheelRowH:         26,
+		SynthWheelVisibleRows:  5,
 		TimelineBarH:           12,
 		TransportBtnSize:       32,
 		WaveCursorStroke:       1,
@@ -227,7 +239,6 @@ var (
 		ChainScopeLeftMargin:   28,
 		ChainStageColW:         48,
 		ChainStageRowH:         20,
-		ChainTriggerMarkerW:    2,
 		CloseButtonSize:        20,
 		ControlGap:             2,
 		ControlGroupPad:        2,
@@ -279,6 +290,8 @@ var (
 		SplitterGrabThreshold:  0,
 		SplitterHandleLen:      44,
 		SplitterHandleThk:      7,
+		SynthArmedCardH:        104,
+		SynthArmedCardW:        260,
 		SynthChipH:             22,
 		SynthChipMinW:          56,
 		SynthChipStripH:        28,
@@ -287,13 +300,18 @@ var (
 		SynthControlIdeal:      56,
 		SynthControlMin:        24,
 		SynthDetailHeaderH:     28,
+		SynthDialD:             18,
 		SynthFocusGraphH:       96,
-		SynthHeaderButtonH:     24,
-		SynthHeaderThumbW:      96,
+		SynthGaugeH:            4,
+		SynthHeaderButtonH:     22,
+		SynthKnobD:             24,
 		SynthPreviewMinW:       140,
 		SynthPreviewTargetW:    240,
 		SynthRightCardMinH:     34,
 		SynthSectionMinH:       56,
+		SynthWheelLaneW:        48,
+		SynthWheelRowH:         22,
+		SynthWheelVisibleRows:  5,
 		TimelineBarH:           10,
 		TransportBtnSize:       28,
 		WaveCursorStroke:       1,
@@ -322,7 +340,6 @@ var (
 		ChainScopeLeftMargin:   48,
 		ChainStageColW:         72,
 		ChainStageRowH:         36,
-		ChainTriggerMarkerW:    4,
 		CloseButtonSize:        28,
 		ControlGap:             4,
 		ControlGroupPad:        4,
@@ -374,6 +391,8 @@ var (
 		SplitterGrabThreshold:  8,
 		SplitterHandleLen:      56,
 		SplitterHandleThk:      6,
+		SynthArmedCardH:        148,
+		SynthArmedCardW:        340,
 		SynthChipH:             32,
 		SynthChipMinW:          72,
 		SynthChipStripH:        40,
@@ -382,13 +401,18 @@ var (
 		SynthControlIdeal:      88,
 		SynthControlMin:        40,
 		SynthDetailHeaderH:     44,
+		SynthDialD:             30,
 		SynthFocusGraphH:       140,
+		SynthGaugeH:            6,
 		SynthHeaderButtonH:     44,
-		SynthHeaderThumbW:      80,
+		SynthKnobD:             34,
 		SynthPreviewMinW:       180,
 		SynthPreviewTargetW:    320,
 		SynthRightCardMinH:     44,
 		SynthSectionMinH:       96,
+		SynthWheelLaneW:        64,
+		SynthWheelRowH:         32,
+		SynthWheelVisibleRows:  5,
 		TimelineBarH:           14,
 		TransportBtnSize:       44,
 		WaveCursorStroke:       3,

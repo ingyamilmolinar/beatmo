@@ -8,6 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -30,9 +31,9 @@ func setupMobileSynthTab(t *testing.T, w, h int) *Game {
 	uiNode := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 	g.drum.SetMobileEQMode(true)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -86,11 +87,10 @@ func TestSynthMobileActionsOnStickyBar(t *testing.T) {
 	}
 }
 
-// TestSynthMobileOverflowMenuHasSaveAsReset — tapping the ⋯ overflow opens the
-// shared action menu with Save As…, the portable Export/Import instrument
-// actions, and a destructive Reset (see instrumentActionMenuItems in
-// action_menu_open.go).
-func TestSynthMobileOverflowMenuHasSaveAsReset(t *testing.T) {
+// TestSynthMobileOverflowMenuHasSaveAs — tapping the ⋯ overflow opens the
+// shared action menu with Save As… and the portable Export/Import instrument
+// actions (see instrumentActionMenuItems in action_menu_open.go).
+func TestSynthMobileOverflowMenuHasSaveAs(t *testing.T) {
 	g := setupMobileSynthTab(t, 360, 760)
 	actions := g.drum.synthPanelMobileActions()
 	if len(actions) != 3 || actions[2].OnClick == nil {
@@ -103,24 +103,19 @@ func TestSynthMobileOverflowMenuHasSaveAsReset(t *testing.T) {
 		t.Fatal("overflow tap did not open the action menu")
 	}
 	items := m.Buttons()
-	// Save As · Export · Import · Reset (destructive), in that order.
+	// Save As · Export · Import, in that order (no Reset: Save As is the only save).
 	wantLabels := []string{
 		i18n.T(i18n.KeySaveAs),
 		i18n.T(i18n.KeyMenuExport),
 		i18n.T(i18n.KeyMenuImport),
-		i18n.T(i18n.KeyReset),
 	}
 	if len(items) != len(wantLabels) {
-		t.Fatalf("want %d menu items (Save As / Export / Import / Reset), got %d",
+		t.Fatalf("want %d menu items (Save As / Export / Import), got %d",
 			len(wantLabels), len(items))
 	}
 	for i, want := range wantLabels {
 		if items[i].Text != want {
 			t.Errorf("item %d = %q, want %q", i, items[i].Text, want)
 		}
-	}
-	// Reset is the destructive action and must use the error color.
-	if items[len(items)-1].TextColor != colError {
-		t.Errorf("Reset item must use the destructive/error color")
 	}
 }

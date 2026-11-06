@@ -86,7 +86,16 @@ func styledCacheLen() int {
 
 // TextSprite returns a cached image containing the provided text rendered
 // using TrueType fonts (when available) or Ebiten's debug font as fallback.
+// textSpriteHook, when non-nil, sees every string any text draw path renders
+// (all of them resolve their sprite through TextSprite or StyledTextSprite on
+// every draw). Test-only seam (zero cost when nil): the showcase tour's
+// no-"tetris" guard reads every string drawn during the tour through it.
+var textSpriteHook func(string)
+
 func TextSprite(s string) *ebiten.Image {
+	if textSpriteHook != nil {
+		textSpriteHook(s)
+	}
 	k := textKey{s: s, gen: i18n.FontGeneration()}
 	textCacheMu.RLock()
 	if spr := textSprites[k]; spr != nil {
@@ -218,6 +227,9 @@ func StyledTextHeight(role TextRole) int {
 
 // StyledTextSprite returns a cached sprite for s at role's size+weight.
 func StyledTextSprite(s string, role TextRole) *ebiten.Image {
+	if textSpriteHook != nil {
+		textSpriteHook(s)
+	}
 	key := styledKey{s: s, size: int(role.size() * 100), bold: role.bold(), gen: i18n.FontGeneration()}
 	styledCacheMu.RLock()
 	if spr := styledSprites[key]; spr != nil {
@@ -247,6 +259,9 @@ func StyledTextSprite(s string, role TextRole) *ebiten.Image {
 func DrawTextStyled(dst *ebiten.Image, s string, x, y int, role TextRole, col color.Color) {
 	if drawTextStyledHook != nil {
 		drawTextStyledHook(s)
+	}
+	if drawTextStyledPosHook != nil {
+		drawTextStyledPosHook(s, x, y)
 	}
 	spr := StyledTextSprite(s, role)
 	var op ebiten.DrawImageOptions
@@ -301,6 +316,12 @@ var drawTextColorAtScaleHook func(string)
 // tests that observe rendered strings keep working as call sites migrate
 // off the legacy scaled-bitmap path. Test-only seam (zero cost when nil).
 var drawTextStyledHook func(string)
+
+// drawTextStyledPosHook is the positional sibling of drawTextStyledHook: it
+// also receives the draw origin, so a test can assert WHERE a label landed and
+// not merely that it was drawn. Needed by the barrel-lane direction guards,
+// which are entirely about vertical ordering. Test-only seam (zero cost when nil).
+var drawTextStyledPosHook func(s string, x, y int)
 
 // DrawTextColorAtScale draws cached text at (x,y) scaled and tinted with col.
 // Combines GeoM.Scale for size and ColorScale for tint in a single blit.

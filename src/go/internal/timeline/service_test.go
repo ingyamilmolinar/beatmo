@@ -599,8 +599,8 @@ func TestLastImmutableAbsNegativeAndEmpty(t *testing.T) {
 func TestClearRowNegativeAndOutOfBounds(t *testing.T) {
 	s := NewService()
 	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindPlayback, 4, 4)
-	s.ClearRow(-1)  // no-op
-	s.ClearRow(99)  // no-op
+	s.ClearRow(-1) // no-op
+	s.ClearRow(99) // no-op
 	// Row 0 still intact.
 	if _, _, ok := s.Committed(0, 0); !ok {
 		t.Fatal("clearing -1/99 should not touch row 0")

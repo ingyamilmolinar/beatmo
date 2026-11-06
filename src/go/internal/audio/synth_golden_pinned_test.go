@@ -3,8 +3,11 @@
 package audio
 
 import (
-	"sort"
+	"slices"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // synthGoldens pins the deterministic one-shot render checksum {sampleCount,
@@ -21,7 +24,7 @@ import (
 // to the seeded render (trumpet/trumpet-mellow/bass-guitar seeds also corrected
 // to their honest ParamDef-clamped values — zero audible change). Guarded by
 // TestModularNoEditFastPathMatchesRecipe (one-shot == recipe render, per id).
-// Re-pinned 2026-07-06 (snare family only): snare/snare-1/snare-2/snare-ghost
+// Re-pinned 2026-07-06 (snare family only): snare/snare-crack/snare-lofi/snare-ghost
 // adopt the FAT-BOTTOM drum-snare retune (snareVariantSpecs push lits synced
 // to the new C/recipe defaults, so the no-edit fast path now renders the
 // retuned sound); rimshot re-pinned after reverting the stray C tone-mix bump
@@ -36,10 +39,47 @@ import (
 // is byte-exact, so every affected instrument's golden moved too. Verified:
 // diffing the regenerated instrument_loudness_gen.go against its pre-regen
 // content shows the changed-amp id set is (modulo id-alias variants like
-// cowbell-1/tom-1/fm-*-1 that inherit their base id's amp) exactly the set of
+// cowbell-drive/tom-high-drive/fm-*-drive that inherit their base id's amp) exactly the set of
 // checksums that moved here — no C/DSP change, no unrelated instrument's
 // sound actually changed. Only sax and the two Phase-15 voice-family blocks
 // carry their own more specific comments below.
+// Re-pinned 2026-10-03 (config-only engine refactor Phase C, task C2): 9 of the
+// FM instruments. The FM voice used to narrow its knobs with explicit (float)
+// casts, and GCC -O2 elided some of them (native rounding depended on the
+// optimizer); the knobs are now read as exact doubles. Change <= 3.6e-7 per
+// sample (~1-3 float ULP, about -130 dB).
+//
+// Re-pinned 2026-10-02 (config-only engine refactor Phase A: modular_params
+// float → double). 111 ids moved, EXACTLY the set TestRenderParityCompare
+// reported changed. Proof the switch itself is exact: with every param rounded
+// back to float32 (renderModularRoundParamsToFloat32) all 150 renders are
+// bit-identical to the pre-switch dump. The remaining change is the seed values
+// now arriving exactly instead of float32-rounded — ≤2.3e-5 waveform drift on
+// long ringing tones, and kick-boom-bap's 30 ms hold landing one sample later.
+// Then (same window, final-review fix) every READ of a param was widened too —
+// mp_get/locals/helper params/fm_preset/adsr_t/synth_params were float, so ~111
+// fields were still rounded to float32 at use (TestModularParamsAreNeverNarrowed
+// pins 0 implicit narrowings). 98 more ids moved: envelopes ≤0.003 dB, pitch
+// ±0.0000 cents, the difference sitting at one ADSR stage crossing. "modular"
+// (the NULL fast path) moved once more when mp_get's fallback literals became
+// doubles, which keeps NULL == identity-params byte-exact.
+// Re-pinned 2026-10-02 (kick fullness pass, INTENTIONAL): 12 kicks retuned
+// louder/punchier/fuller at equal peak after user A/B (dnb-kick, kick, kick-808,
+// kick-acoustic, kick-deep, kick-electro, kick-lofi, kick-punchy, kick-snap,
+// kick-tight, raw-kick, zgump-kick) and 10 new kicks added (kick-fat,
+// kick-acoustic-heavy and the variant-8 PHYSICAL kicks). The new rows moved the
+// loudness population median, so the 85 non-capped non-kick instruments moved by
+// that sub-dB amplitude only — verified: every changed non-kick id is uncapped
+// in instrument_loudness_gen.go and no capped instrument's checksum moved.
+// Re-pinned 2026-08-22 (reference-audio-corpus tuning round 1, INTENTIONAL
+// sound changes): bassoon, cello, harp, kalimba, oboe (+ oboe-full, which
+// clones oboeSeed's gen1), and tubular-bells (full rebuild) were re-tuned
+// against `refs diagnose`'s per-axis measurements to close listener-verdict
+// gaps recorded in internal/audio/testdata/ear_verdicts.jsonl -- see
+// docs/superpowers/specs/2026-08-22-verdict-to-metric-mapping.md and
+// .superpowers/sdd/2026-08-19-reference-audio-corpus/tuning-round-1-report.md.
+// No other instrument's golden moved; verified via `git stash` isolation that
+// only these seven ids' checksums changed relative to this branch's baseline.
 // Re-keyed 2026-07-08 (Phase-15 voice/choir re-categorization, NOT a sound
 // change): the user ear-tested the six new voice/choir instruments and ruled
 // four of them synths, not voices. choir-ahh/choir-ooh/voice-bass/voice-pad
@@ -47,167 +87,279 @@ import (
 // moved out of Voice; the same {n, bits} values are re-keyed under the new
 // ids (byte-identical renders — see per-id comments below). voice-soprano and
 // voice-whisper are untouched.
-var synthGoldens = map[string]struct {
+// Re-pinned 2026-09-28 (INTENTIONAL, ride + the four hi-hats only): ride rebuilt
+// as a modal plate against its jazz-ride reference (gen_cymbal_modal in
+// modular_stages.c) and lengthened 1.0s -> 1.8s to carry the ring; hihat,
+// hihat-open-bright, hihat-lofi and hihat-pedal rebuilt on the same plate with
+// collision rattle against an acoustic closed hi-hat, then re-pinned to the takes
+// the user picked by ear (closed "H4 tight", open "O2" with a quiet legacy
+// metal layer; the lofi/pedal ids share hihatSeed). New 2026-09-29: snare-deep and
+// tom-high-acoustic (organic layered modal head + driven-plate wires). No other
+// golden moved.
+var synthGoldens = map[instrument.ID]struct {
 	n    int
 	bits uint64
 }{
-	"accordion":            {44100, 0x036684763d7878d9},
-	"banjo":                {33075, 0xb86b95f174e182a1},
-	"bass-808":             {33075, 0xb77e326e7b2e65ee},
-	"bass-acid":            {33075, 0xbea7cea02feac4bd},
-	"bass-fm":              {33075, 0x6f0c2727af3dc541},
-	"bass-guitar":          {33075, 0x5a165d74ac2c6994},
-	"bassoon":              {44100, 0x62d29ae4b2bf1779},
-	"bass-reese":           {33075, 0xe2ccf3d356455062},
-	"bass-wobble":          {33075, 0x3318473319fd95ef},
-	"brass-stab":           {33075, 0xff1e6812cf312723},
-	"celesta":              {44100, 0x4b5e327b34dcfd97},
-	"cello":                {44100, 0x935475378afe8c60},
-	"cello-warm":           {44100, 0xd822990ba08333f3},
-	"clap-1":               {5512, 0xdb062cb5305e2365},
-	"clap":                 {22050, 0x5c9380e43b2cafce},
-	"clap-2":               {6615, 0xa2f9c6f4edc3ee3e},
-	"clap-tight":           {5512, 0xf5df356fddc81c6e},
-	"clarinet":             {44100, 0xfe9106fbbe930c3e},
-	"clavinet":             {33075, 0xc2e17c39832c2b46},
-	"conga":                {11025, 0x0d18b05e1385e53a},
-	"conga-open":           {11025, 0xe15392ee2f456b0c},
-	"conga-tumba":          {11025, 0xa5265516aee5bd71},
-	"cowbell-1":            {6615, 0x537e25732f24f548},
-	"cowbell":              {17640, 0x34bd4e72b04571d7},
-	"cowbell-2":            {8820, 0xb1afdb5b489009ba},
-	"crash":                {66150, 0xa7db070c9bc82e55},
-	"dnb-kick":             {22050, 0xd621d79ad8e6f2b5},
-	"double-bass":          {44100, 0xbe00945f914b4f2d},
-	"ensemble-lead":        {44100, 0x466466c669087e99},
-	"ensemble-lead-dark":   {44100, 0x750fa79542fc2732},
-	"flute":                {44100, 0xb9a408f69a253f69},
-	"flute-breathy":        {44100, 0x193740b32ebcb586},
-	"fm-bass-1":            {22050, 0xe6b807aca774b4c3},
-	"fm-bass":              {33075, 0xc2e25a9f24d12766},
-	"fm-bell-1":            {33075, 0x300027be3997a7ad},
-	"fm-bell":              {44100, 0xea8097eb9c03509f},
-	"fm-epiano-1":          {33075, 0x9c8932fd083cff79},
-	"fm-epiano":            {44100, 0xdd07eaf806c85e9e},
-	"fm-lead-1":            {15434, 0x2a071a2e78a37c7c},
-	"fm-lead":              {22050, 0x7f1237d0da820c5e},
-	"fm-pluck":             {11025, 0x7e30cbab1804409f},
-	"fm-pluck-1":           {6615, 0xb19e0eab30b722a7},
-	"french-horn":          {44100, 0x67dc41361b32e428},
-	"french-horn-loud":     {44100, 0x308c94c15ef401a9},
-	"gamelan":              {44100, 0x740011c288fb55a9},
-	"ghost-bass":           {44100, 0x79e1cb9ec150c9c4},
-	"glass-armonica":       {55125, 0x1ee22676b31348b9},
-	"glass-wash":           {55125, 0x4470f324615f2bae},
-	"glockenspiel":         {44100, 0x56f60a6cca758423},
-	"guitar-electric":      {33075, 0x7aac10c420afb7d0},
-	"guitar-electric-neck": {33075, 0xc191b16a436ad242},
-	"guitar-nylon":         {33075, 0x64fc3278f1e2cd7b},
-	"guitar-nylon-bright":  {33075, 0xe58f400ea80248d6},
-	"guitar-steel":         {33075, 0xfaa07c333f042127},
-	"guitar-steel-warm":    {33075, 0x1257f2e17e911b31},
-	"harmonium":            {44100, 0xe2d541a3da8eefe1},
-	"harp":                 {44100, 0x98bbd7391b049510},
-	"harpsichord":          {44100, 0x575a0971b75e932b},
-	"high-tom-organic":     {19845, 0xb31127f68ea99171},
-	"hihat":                {11025, 0xf0c39bd8c8192146},
-	"hihat-1":              {15434, 0xf4d1fe136a35c90b},
-	"hihat-2":              {4410, 0xa2fd6c9810b88f29},
-	"hihat-pedal":          {3307, 0x53934574b344f142},
-	"kalimba":              {33075, 0x36b833b8e2d85508},
-	"kick-1":               {6615, 0xdffda245c8db743b},
-	"kick-2":               {11025, 0xd2768974b854193c},
-	"kick":                 {22050, 0x37657e6eb663c5eb},
-	"kick-808":             {33075, 0xfac6a0f5f0422603},
-	"kick-acoustic":        {28665, 0x1c4f14d63e2c2972},
-	"kick-deep":            {35280, 0x9b674c43c296aeef},
-	"kick-electro":         {11025, 0xce975e4b64fb9b82},
-	"kick-punchy":          {11025, 0x14e2f90a9bf113f2},
-	"kick-tight":           {6615, 0xe38a2d2a53273829},
-	"koto":                 {44100, 0x028f4500a823c949},
-	"lead-chip":            {33075, 0xa11fcda253b71d54},
-	"lead-hoover":          {44100, 0xd2896ff300dc7d17},
-	"lead-supersaw":        {44100, 0xaf9f5c206582556e},
-	"mandolin":             {33075, 0x4ee727a4ac25b1fc},
-	"marimba":              {33075, 0xcaa271571bc4c3fa},
-	"modular":              {22050, 0xe9a8619fbc957e59},
-	"modular-pad":          {22050, 0xad6695deaf016731},
-	"moog-bass":            {33075, 0x0ae733a4c601a317},
-	"music-box":            {44100, 0x1a2f963b50b3bc0d},
-	"muted-trumpet":        {44100, 0x6795a81fe1f18f8c},
-	"oboe":                 {44100, 0xca8ee30005e02054},
-	"oboe-full":            {44100, 0x2478840acd5c6371},
-	"organ":                {44100, 0x72b0d509e86c2903},
-	"organ-church":         {44100, 0x0f1371bf3c5a06bc},
-	"pan-flute":            {44100, 0xb2a72921545f8181},
-	"piano-felt":           {44100, 0x4d0862958da83221},
-	"piano-grand":          {44100, 0x752ad08901d8337d},
-	"piano-rhodes":         {44100, 0xfce9e37af7594df7},
-	"piccolo":              {44100, 0xdd3d490fb6419096},
-	"pizz-strings":         {33075, 0x2921b25eb4647bcb},
-	"pwm-pad":              {55125, 0x7a4e92fed3d05c65},
-	"raw-kick":             {15434, 0xc7f909b01191a499},
-	"ride":                 {110250, 0xd6397ac45cf3cc65},
-	"rimshot":              {13230, 0x4c00bcc102a84525},
-	"sax":                  {44100, 0x4a98bc107fc7b509},
-	"scifi-lead":           {44100, 0x9a8f5a803301346a},
-	"shaker":               {13230, 0x6d9ec9345e4e172a},
-	"sidestick":            {11025, 0x3ec30ced219e7ed2},
-	"singing-bowl":         {66150, 0x1a3403ecc24c5a25},
-	"sitar":                {44100, 0xe4489d2ce98b1788},
-	"snare-1":              {11025, 0x7b9ac59f5a3bc745},
-	"snare-2":              {13230, 0x2c300dc035678802},
-	"snare":                {44100, 0x21052f62164ba936},
-	"snare-ghost":          {8820, 0x127d61221e5303bf},
-	"steel-drum":           {44100, 0xff15ce556e3a709c},
-	"sub-bass-1":           {33075, 0x739b69824e3927b5},
-	"sub-bass":             {44100, 0x17566a2c9cd4c81a},
-	"theremin":             {44100, 0x168415781a8b9502},
-	"tom-1":                {6615, 0xa693718cc417c9ec},
-	"tom-2":                {15434, 0xe6d2cb065d530e02},
-	"tom":                  {22050, 0xb7f1f76b146256cb},
-	"trombone":             {44100, 0x462f2d030c925f3f},
-	"trumpet":              {44100, 0x75e96fe0f61bff62},
-	"trumpet-mellow":       {44100, 0x17db9294fca39729},
-	"tuba":                 {44100, 0xb96374e2b65e8c58},
-	"tubular-bells":        {66150, 0x66a77ae13b397feb},
-	"ukulele":              {33075, 0x10e5eb6242ac64a4},
-	"vibraphone":           {55125, 0x313280633917735d},
-	"viola":                {44100, 0x5153e3d81a2613cc},
-	"viola-pad":            {44100, 0x3d0436aa5ddd07e3},
-	"violin":               {44100, 0x58db1388f0ce2e06},
-	"violin-ensemble":      {44100, 0xd21090269406dc46},
-	"voice-ahh":            {55125, 0x393990562a9b0fe2},
-	"voice-alien":          {55125, 0x3147d05c7bb7dc68},
-	"voice-opera":          {55125, 0xb0a6704a4ca4ca68},
-	"voice-soprano":        {44100, 0xda046912c7b247b4},
-	"voice-whisper":        {44100, 0x73d0311d403c274a},
-	"xylophone":            {22050, 0xc773bdc98878ff54},
-	"zgump-kick":           {15434, 0x46c50af8e7c862f9},
+	roster.Accordion:          {48000, 0x8368832bf176ce5e},
+	roster.Banjo:              {36000, 0x5c0010e9f1ae9e29},
+	roster.Bass808:            {36000, 0x3d92af2d6f49a54c},
+	roster.BassAcid:           {36000, 0xe7d4a8266f01038c},
+	roster.BassFm:             {36000, 0xdf93e155683ccf96},
+	roster.BassGuitar:         {36000, 0x268f584b9ceece30},
+	roster.BassReese:          {36000, 0x4f5e7ad49dae0ec8},
+	roster.BassWobble:         {36000, 0x6599d385fbb6f06e},
+	roster.Bassoon:            {48000, 0x7edf4edba6928aff},
+	roster.BrassStab:          {36000, 0x6ad3af8ffc740e4e},
+	roster.Celesta:            {48000, 0x43aa3c708f4fb2e1},
+	roster.Cello:              {48000, 0xe454b408cca141ff},
+	roster.CelloWarm:          {48000, 0xc3dd294e1ec968af},
+	roster.Clap:               {24000, 0xdbc5a3e61b996645},
+	roster.ClapBright:         {6000, 0x70b9f09962a8c491},
+	roster.ClapLofi:           {7200, 0x35921ee4c5ff01a1},
+	roster.ClapTight:          {6000, 0x07a8a183b0c84f36},
+	roster.Clarinet:           {48000, 0xc0f12eae58fffa24},
+	roster.Clavinet:           {36000, 0xb647596ebe26d7ba},
+	roster.Conga:              {12000, 0xce3ed2996d6705b6},
+	roster.CongaOpen:          {12000, 0x48f7a7bca343abbd},
+	roster.CongaOrganic:       {38400, 0x062ffa17befc589c},
+	roster.CongaOrganicDry:    {38400, 0xacb17fc683b15759},
+	roster.CongaTumba:         {12000, 0x7b6e083992e4f1d8},
+	roster.Cowbell:            {19200, 0x0f57270c96b54f9c},
+	roster.CowbellDrive:       {7200, 0x649f4b134ebfb82c},
+	roster.CowbellLofi:        {9600, 0xeeb009acc6d64fbc},
+	roster.Crash:              {72000, 0x12120f57b5a652ff},
+	roster.DnbKick:            {24000, 0x990f9c6793ba4aeb},
+	roster.DoubleBass:         {48000, 0xf6c78cd5e2a9faff},
+	roster.EnsembleLead:       {48000, 0xcb0e4859d3628b48},
+	roster.EnsembleLeadDark:   {48000, 0xfccaa540395c0a02},
+	roster.Flute:              {48000, 0x4393e8c6c0ab19dc},
+	roster.FluteBreathy:       {48000, 0xf24a4c2fefa9e408},
+	roster.FmBass:             {36000, 0xf2263013bf2675b4},
+	roster.FmBassDrive:        {24000, 0xe2343f45c4fc2e60},
+	roster.FmBell:             {48000, 0x9754f16f0f183694},
+	roster.FmBellSoft:         {36000, 0xdc5bb9592083d2f7},
+	roster.FmEpiano:           {48000, 0x55005c382044c808},
+	roster.FmEpianoDrive:      {36000, 0x220cf63508bd9730},
+	roster.FmLead:             {24000, 0xb53fad81c177f20e},
+	roster.FmLeadCrush:        {16800, 0x67381a76076dbb17},
+	roster.FmPluck:            {12000, 0x195865bfed74f8f2},
+	roster.FmPluckTight:       {7200, 0x5f737b992cf17e35},
+	roster.FrenchHorn:         {48000, 0xf3ab6b6594cb2d01},
+	roster.FrenchHornLoud:     {48000, 0xc00cc84a77102d5d},
+	roster.Gamelan:            {48000, 0xe91f8106b8c6ed08},
+	roster.GhostBass:          {48000, 0x105697ce13c22432},
+	roster.GlassArmonica:      {60000, 0x0c5bdd25911541f1},
+	roster.GlassWash:          {60000, 0xa59ed34eae8a1c21},
+	roster.Glockenspiel:       {48000, 0xca63a1dce1f7ac47},
+	roster.GuitarElectric:     {36000, 0x2d040e7bb45b0ed8},
+	roster.GuitarElectricNeck: {36000, 0x4c26b085e59b2d75},
+	roster.GuitarNylon:        {36000, 0x4b3c38e92e710122},
+	roster.GuitarNylonBright:  {36000, 0x44d71a44485e3422},
+	roster.GuitarSteel:        {36000, 0x023ba1d656ed6116},
+	roster.GuitarSteelWarm:    {36000, 0x13448b1d2314aaf9},
+	roster.Harmonium:          {48000, 0x10eccf8f5fd1f4a9},
+	roster.Harp:               {48000, 0xde349788a37ece32},
+	roster.Harpsichord:        {48000, 0x38c59b72db78275e},
+	roster.HighTomOrganic:     {21600, 0x625952d074d3b120},
+	roster.Hihat:              {12000, 0x27e1ab853ab144de},
+	roster.HihatLofi:          {4800, 0xd2309782c366bf82},
+	roster.HihatOpenBright:    {16800, 0x93d6c14fb3126f0f},
+	roster.HihatPedal:         {3600, 0xe731aeaf4f715c63},
+	roster.Kalimba:            {36000, 0xe50985121b6fb76e},
+	roster.Kick:               {24000, 0x6e45e1f487456d5e},
+	roster.Kick808:            {36000, 0x6bd253957fb58463},
+	roster.KickAcoustic:       {31200, 0x96d998e5c01df7f9},
+	roster.KickAcousticHeavy:  {31200, 0x3970fee68faf349d},
+	roster.KickAiry:           {24000, 0x20022d0201e5251e},
+	roster.KickBoomBap:        {24000, 0x9de07a6a93e38c24},
+	roster.KickBrutal:         {24000, 0x612d75a76f34dae4},
+	roster.KickDeep:           {38400, 0x19aa8d873aed2632},
+	roster.KickElectro:        {19200, 0x88b62790a908db40},
+	roster.KickFat:            {24000, 0x90894630bceaec07},
+	roster.KickLofi:           {12000, 0x8fc6fb760319f161},
+	roster.KickMuted:          {24000, 0xc4cd307008111d2e},
+	roster.KickMutedRoom:      {24000, 0x02780284c45ae387},
+	roster.KickOrganicTight:   {24000, 0x41b98b247e2f0e43},
+	roster.KickPunchy:         {12000, 0x160688cf5947a7d2},
+	roster.KickRock:           {24000, 0xa110016d823ac450},
+	roster.KickSnap:           {12000, 0xd4882305d50f7047},
+	roster.KickTight:          {7200, 0xd8e8ce6b52fce823},
+	roster.KickWood:           {24000, 0x7f220cfde47dc7ef},
+	roster.Koto:               {48000, 0x8493fdd08b490370},
+	roster.LeadChip:           {36000, 0xb5136907314d9bf6},
+	roster.LeadHoover:         {48000, 0xe6fc649c49ceb4ad},
+	roster.LeadSupersaw:       {48000, 0xedea4156b2365a9b},
+	roster.Mandolin:           {36000, 0xdbb04e2b0ee8a3c1},
+	roster.Marimba:            {36000, 0x6618933cdc34885d},
+	roster.Modular:            {24000, 0xe21a3a540f3e9779},
+	roster.ModularPad:         {24000, 0x3123d25a65731a2a},
+	roster.MoogBass:           {36000, 0x038f2d02c45dbde7},
+	roster.MusicBox:           {48000, 0xb95836131d01beac},
+	roster.MutedTrumpet:       {48000, 0x6cba4cc3570b4ce5},
+	roster.Oboe:               {48000, 0xc4df4f2186afa4c1},
+	roster.OboeFull:           {48000, 0x195356cead56eb47},
+	roster.Organ:              {48000, 0x082a2d709cde5ccf},
+	roster.OrganChurch:        {48000, 0x4c79461388ecd694},
+	roster.PanFlute:           {48000, 0xf95f809cd98c47a7},
+	roster.PianoFelt:          {48000, 0x9544a8e5e77de7eb},
+	roster.PianoGrand:         {48000, 0x9e9c1e0fa5596656},
+	roster.PianoRhodes:        {48000, 0xb970c026fabc3c8e},
+	roster.Piccolo:            {48000, 0x1c292dd035b53b58},
+	roster.PizzStrings:        {36000, 0x26ac51ea45595321},
+	roster.PwmPad:             {60000, 0x8dcb0790528017d1},
+	roster.RawKick:            {16800, 0xd5f5b990bc2b8d3d},
+	roster.Ride:               {86400, 0xd6312cf1ee78b301},
+	roster.Rimshot:            {14400, 0xe753508fb8782670},
+	roster.Sax:                {48000, 0x0e24230aa6021d31},
+	roster.ScifiLead:          {48000, 0x83054709823b8098},
+	roster.Shaker:             {14400, 0x8a91b38a1bc5e421},
+	roster.Sidestick:          {12000, 0x7dce50117dc6989a},
+	roster.SingingBowl:        {72000, 0xeb022def20591abc},
+	roster.Sitar:              {48000, 0x5125332c02ed5b8f},
+	roster.Snare:              {48000, 0xb8c0a015938c6ff1},
+	roster.SnareAcoustic:      {67200, 0xefc8434f4e6cdda2},
+	roster.SnareCrack:         {12000, 0xda8851610f7bb9c4},
+	roster.SnareDeep:          {67200, 0x3b2251186c50bf02},
+	roster.SnareFat:           {48000, 0x5b8f006376e261b9},
+	roster.SnareGhost:         {9600, 0xc77e6668b4ca9bec},
+	roster.SnareLofi:          {14400, 0xc0f808b51f2be12d},
+	roster.SnarePunch:         {43200, 0x65fc2aa27e1afd3f},
+	roster.SteelDrum:          {48000, 0x426141a3119e5394},
+	roster.SubBass:            {48000, 0x5bc704ef07a047f7},
+	roster.SubBassDrive:       {36000, 0x86039ed873ebc410},
+	roster.Theremin:           {48000, 0xe5c4d5a10973bd09},
+	roster.Tom:                {24000, 0xbff346d1ae230201},
+	roster.TomHighAcoustic:    {67200, 0xfd1f1ea3d701896b},
+	roster.TomHighDrive:       {7200, 0x0af7e2331d434a81},
+	roster.TomLofi:            {16800, 0x5cf3da4e95d02d20},
+	roster.Trombone:           {48000, 0xd90da067d236f9f9},
+	roster.Trumpet:            {48000, 0xe1b14e0253806cc1},
+	roster.TrumpetMellow:      {48000, 0xeb58381edb27e123},
+	roster.Tuba:               {48000, 0x3557c87eccc80a9b},
+	roster.TubularBells:       {72000, 0xd2fb8a90a579779f},
+	roster.Ukulele:            {36000, 0x2b782b6456bb4c06},
+	roster.Vibraphone:         {60000, 0xb969c3fd6c5b27e6},
+	roster.Viola:              {48000, 0xde767767c5e314f0},
+	roster.ViolaPad:           {48000, 0x1cd2a30c50bd72c1},
+	roster.Violin:             {48000, 0xe16eb6d397a4c34c},
+	roster.ViolinEnsemble:     {48000, 0xb0992e5b6f3bc838},
+	roster.VoiceAhh:           {60000, 0xae8da2253d806c1b},
+	roster.VoiceAlien:         {60000, 0x6f4d7dc7721196ee},
+	roster.VoiceOpera:         {60000, 0x3bca036e1842bf0e},
+	roster.VoiceSoprano:       {48000, 0x4b21d62ef7f20c69},
+	roster.VoiceWhisper:       {48000, 0xf6ed5645bd195e72},
+	roster.Xylophone:          {24000, 0x367259232b4c81f4},
+	roster.ZgumpKick:          {16800, 0x950b42adba52e0c8},
 }
 
 // TestSynthGoldenByteIdentity asserts every built-in instrument still renders the
 // exact pinned bytes. The safety net gating the pipeline refactor (P0).
+// Re-pinned 2026-10-02 (98 uncapped instruments, gain only): sub-bass and
+// sub-bass-drive became config rows (their VOICE stayed byte-identical), which
+// put them into the loudness measurement — sub-bass now plays at the normalised
+// level (0.8 -> 0.5155) and the larger set moved the median target, rescaling
+// every uncapped amplitude by ~+0.3%. Verified a pure scalar: each changed render
+// equals old x (newAmp/oldAmp) to 1.1e-7 of peak; the 52 capped ones are unchanged.
+// Re-pinned 2026-09-01 (whole table): `make measure-loudness` was re-run after
+// the bowed-string and kalimba retunes. The loudness table is a RELATIVE
+// normalisation -- its target level L is derived from the whole instrument set
+// -- so retuning any instrument nudges every amplitude, and these goldens
+// incorporate ConfigForInstrument().Amplitude. With the OLD table only the 4
+// bowed strings differ; the rest of this churn is the re-normalisation.
+// The re-measure was not optional: the table had gone stale and pinned
+// tubular-bells at 0.4122 against a measured 0.8608, playing it 6.4 dB below
+// every other instrument in the game. Guarded now by TestLoudnessTableIsNotStale.
+//
+// Re-pinned 2026-09-01 (kalimba): genN_gain was never applied to the eight
+// TRANSPLANTED generator voices (src 3-10) -- declared, seeded on 24
+// instruments, read by nothing. kalimba is the only one that seeds a non-unity
+// value: gen1_gain 0.4, with a comment saying the Karplus-Strong pluck is
+// "pulled back" so the additive bar partials dominate. It had been running at
+// full level, which is why the listener heard "a plucked string" instead of
+// "the wooden marimba feel". Wiring it moved exactly this one checksum; the
+// other 23 seed gen_gain=1 and are byte-identical (the float multiply is
+// exact at unity). Found by TestSeedParamsAreLiveInTheirOwnInstrumentContext.
+//
+// Re-pinned 2026-09-01 (second pass, same four): the vibrato enabled above was
+// METRONOMIC, which the listener caught immediately -- double-bass moved from
+// "sounds like the real thing" to "the synth one has some vibrato or something
+// that goes up and down in time". VibratoFingerprint.Jitter measured 0.000
+// against the corpus double-bass reference's 0.411. modular_vibrato_phase now
+// integrates a jittered rate (two slow incommensurate sines) with a third
+// modulating depth, all deterministic so renders stay reproducible. Measured
+// jitter after: cello 0.66, viola 0.10, violin 0.10, double-bass 0.10.
+// Guarded by TestBowedStringVibratoIsNotMetronomic.
+//
+// Re-pinned 2026-09-01 (bowed strings only): cello / viola / violin /
+// double-bass adopt the waveguide VIBRATO fix. The oscillator dispatch in
+// modular.c is an if/else-if chain whose physical-model branch sits ahead of
+// the vibrato branch, so `lfo_target:1` was silently dead on every osc_type
+// 7-11 voice -- these four configured vibrato (3.6-4.4 Hz, 2.5-3.0 cents) and
+// rendered dead-straight tones. modular_apply_vibrato_delay now runs inside
+// that branch, gated on depth>0 && rate>0 so every other instrument stays
+// byte-identical (confirmed: exactly these four checksums moved). Measured
+// after the fix, the rendered vibrato matches the configured values to within
+// 0.1 cent on all four.
+// Re-pinned 2026-09-12 (six voices, two independent causes):
+//
+//	cello / viola / violin / double-bass — the bowed-string waveguide. Two
+//	changes land together in render_bowed_string: the delay lines became
+//	FRACTIONAL (they were rounded to integers, which left every note a roughly
+//	constant ~1.2 samples short, so the sharpening grew with frequency and
+//	reached +25 cents at the top of the violin's range), and the bow ramp-in
+//	became long enough to select the right MODE. The old ~25 ms ramp drove the
+//	nonlinear stick-slip oscillator into a higher limit cycle over wide bands —
+//	cello sounded a TWELFTH high across node pitch +1..+6, viola/violin/
+//	double-bass across -11..-7 — with the notated fundamental absent from the
+//	spectrum entirely. Score-derived circuits therefore leapt register
+//	mid-phrase, which is what made them sound dissonant rather than mistuned.
+//
+//	voice-ahh / voice-opera — unrelated: pitchenv_decay 0.7 -> 0.08, so the
+//	pitch scoop no longer holds the note ~65 cents flat through its body.
+//
+// Guards: TestSelfOscillatingVoicesHoldTheirFundamental (mode lock),
+// TestEveryPitchedInstrumentSoundsInTune (cents), and
+// TestTemplateNodesSoundAtTheirNotatedPitch (committed templates end to end).
+//
+// Re-pinned 2026-10-25 (seven voices, one cause): the amp release that the
+// ADSR caps at half the voice now RAMPS over that half. It kept the full
+// release time, so a release longer than half the note left the voice loud
+// at its end, where it hard-cut (modular-pad: −10 dB at the cut). Exactly the
+// seven shipped documents whose amp_release exceeds half their voice at
+// 120 BPM moved — ensemble-lead-dark, glass-armonica, glass-wash, modular-pad,
+// pwm-pad, tubular-bells, viola-pad; every other voice is byte-identical.
+// Guard: TestALongReleaseFadesOutInsideTheNote.
+//
+// Re-pinned 2026-10-27 (99 voices, one cause): a voice is render.seconds long
+// at every tempo (render.beats deleted; seconds := the old beats × 0.5, what
+// this capture's 120 BPM played — not one sample count moved). measure-loudness
+// had measured each level over the old render.seconds, the WEB length, so it
+// was re-run over the real one: exactly the 99 instruments whose
+// render.amplitude moved changed bits (median 0.06 dB, at most 3 dB).
+// Re-pinned 2026-10-27 (all 150, one cause): the engine runs at 48 kHz on
+// both platforms (chain_spec.go EngineSampleRate; the browser always rendered
+// at 48 kHz), so this one-shot renders at 48 kHz instead of 44.1 kHz — every
+// sample count is ×48000/44100 and every checksum moved. No document changed.
 func TestSynthGoldenByteIdentity(t *testing.T) {
 	Reset()
 	ResetInstruments()
-	ids := append([]string(nil), BuiltinInstrumentIDs...)
-	sort.Strings(ids)
+	ids := append([]instrument.ID(nil), roster.All...)
+	slices.Sort(ids)
 	seen := map[string]bool{}
 	for _, id := range ids {
-		seen[id] = true
+		seen[string(id)] = true
 		want, ok := synthGoldens[id]
 		if !ok {
 			t.Errorf("%q has no pinned golden — add it (an intentional new instrument?)", id)
 			continue
 		}
-		n, bits := synthRenderChecksum(id)
+		n, bits := synthRenderChecksum(string(id))
 		if n != want.n || bits != want.bits {
 			t.Errorf("%q render changed: got {%d, 0x%016x} want {%d, 0x%016x}", id, n, bits, want.n, want.bits)
 		}
 	}
 	for id := range synthGoldens {
-		if !seen[id] {
+		if !seen[string(id)] {
 			t.Errorf("pinned golden %q is no longer a built-in instrument (removed/renamed?)", id)
 		}
 	}

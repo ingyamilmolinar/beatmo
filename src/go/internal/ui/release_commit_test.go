@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
@@ -30,7 +31,7 @@ func TestReleaseCommit_EQBandFiresOnceOnRelease(t *testing.T) {
 	g := newTestGameForUndo(t)
 	// Simulate 5 per-frame OnGainChange stashes during a drag.
 	for i := 0; i < 5; i++ {
-		g.drum.eqPendingChannel, g.drum.eqPendingBand, g.drum.eqPendingGainDB, g.drum.eqPendingDirty = "main", 3, float64(i), true
+		g.drum.eqPendingChannel, g.drum.eqPendingBand, g.drum.eqPendingGainDB, g.drum.eqPendingDirty = channel.Master, 3, float64(i), true
 	}
 	g.drum.commitEQBand()
 	waitForRelease(t, func() bool { return atomic.LoadInt32(&count) == 1 })

@@ -15,6 +15,7 @@
 // in the Playwright shell.
 
 import { register } from "./registry.js";
+import { pressPlayWhenReady } from "./playback_ready.js";
 
 // ─── Scenario 2: queued channel ops applied after unlock ───────────────────
 // Verifies that setChannelVolume calls made before AudioContext creation are
@@ -117,9 +118,10 @@ export async function scenarioPlaybackAfterUnlock() {
   try { window.startOutputCapture?.(); } catch (e) {
     return { pass: false, reason: "startOutputCapture_threw", error: String(e && e.message || e) };
   }
-  try { window.startPlay?.(); } catch (e) {
-    return { pass: false, reason: "startPlay_threw", error: String(e && e.message || e) };
-  }
+  // Play is ignored while the circuit warm-up gate is closed (the button is
+  // disabled then) — press it the way a user can: once the gate opens.
+  const play = await pressPlayWhenReady();
+  if (!play.ok) return { pass: false, reason: play.reason, error: play.error };
 
   await new Promise((r) => setTimeout(r, 1500));
 

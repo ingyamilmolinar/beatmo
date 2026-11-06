@@ -1,0 +1,169 @@
+{
+  "schema_version": "0.0.1",
+  "id": "glass-wash",
+  "name": "Glass Wash",
+  "category": "modular",
+  "notes": "glassWashSeed: an ambient glass/waterphone wash — inharmonic partials in a slow\nswell-and-fade pad, a wide drifting detuned unison for shimmering beats, and a\nslow filter LFO that opens and closes the wash. Horror-film glass texture.",
+  "render": {
+    "seconds": 1.25,
+    "amplitude": 0.6051,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.6,
+        "amp_curve": 1,
+        "amp_decay": 0.5,
+        "amp_release": 1.2,
+        "amp_sustain": 0.85
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.6,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 6000,
+        "filter_resonance": 1,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0,
+        "lfo_depth": 0.4,
+        "lfo_rate": 0.3,
+        "lfo_target": 2
+      },
+      "notes": "lfo_delay: slow wash motion\nlfo_depth: slow wash motion\nlfo_enabled: slow wash motion\nlfo_rate: slow wash motion\nlfo_target: slow wash motion"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 14,
+        "unison_drift_depth": 8,
+        "unison_drift_rate": 0.4,
+        "unison_mix": 0.6,
+        "unison_voices": 3
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2.4,
+        "freq_mode": 0,
+        "gain": 0.3,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3.8,
+        "freq_mode": 0,
+        "gain": 0.2,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6.2,
+        "freq_mode": 0,
+        "gain": 0.12,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    }
+  ]
+}

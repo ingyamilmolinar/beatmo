@@ -10,9 +10,11 @@ import (
 )
 
 func TestNavigationPanelWiresControls(t *testing.T) {
-	var prev, next, pick, unit, gotoBeat, gotoTime int
+	var prev, next, pick, unit, gotoN int
+	gotoAt := -1
 	p := &NavigationPanel{}
 	p.SetCallbacks(NavPanelCallbacks{
+		Position:      func() PlayheadPos { return playheadPosAt(12, 0.5, 8) },
 		PlayheadStep:  func() int { return 96 },
 		BPM:           func() int { return 120 },
 		Div:           func() int { return 8 },
@@ -23,19 +25,19 @@ func TestNavigationPanelWiresControls(t *testing.T) {
 		OnNext:        func() { next++ },
 		OnPickAmount:  func() { pick++ },
 		OnToggleUnit:  func() { unit++ },
-		OnGotoBeat:    func() { gotoBeat++ },
-		OnGotoTime:    func() { gotoTime++ },
+		OnGoto:        func(s int) { gotoN++; gotoAt = s },
 	})
-	p.Layout(image.Rect(0, 0, 320, 5*touchMinTargetPx))
-	if p.PanelHeight() != 5*touchMinTargetPx {
-		t.Fatalf("PanelHeight=%d want %d", p.PanelHeight(), 5*touchMinTargetPx)
+	h := p.PanelHeight()
+	p.Layout(image.Rect(0, 0, 320, h))
+	if h != 5*touchMinTargetPx+gotoWheelHeight() {
+		t.Fatalf("PanelHeight=%d want %d", h, 5*touchMinTargetPx+gotoWheelHeight())
 	}
 	// Drawing must not panic and must render (pixel presence).
-	dst := ebiten.NewImage(320, 5*touchMinTargetPx)
+	dst := ebiten.NewImage(320, h)
 	p.Draw(dst)
-	// The *Button controls (prev/amount/next/goto-beat/goto-time) fire their
-	// callbacks via OnClick.
-	fired := map[string]*int{"prev": &prev, "next": &next, "pick": &pick, "gotoBeat": &gotoBeat, "gotoTime": &gotoTime}
+	// The *Button controls (prev/amount/next/Go) fire their callbacks via
+	// OnClick; Go seeks to the wheel's pending position (seated at the playhead).
+	fired := map[string]*int{"prev": &prev, "next": &next, "pick": &pick, "go": &gotoN}
 	for _, b := range p.Buttons() {
 		if b.OnClick != nil {
 			b.OnClick()
@@ -45,6 +47,9 @@ func TestNavigationPanelWiresControls(t *testing.T) {
 		if *c == 0 {
 			t.Fatalf("control %q OnClick never fired a callback", name)
 		}
+	}
+	if gotoAt != 96 {
+		t.Fatalf("Go seeked to %d, want the playhead step 96 (nothing scrolled)", gotoAt)
 	}
 	// The unit toggle is a SegmentedControl: with Beats (unit=true) active,
 	// tapping the Subdiv segment fires OnToggleUnit.

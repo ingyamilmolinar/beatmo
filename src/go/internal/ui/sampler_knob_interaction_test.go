@@ -40,29 +40,3 @@ func TestSamplerKnobScalesAndBadges(t *testing.T) {
 		}
 	}
 }
-
-// TestSamplerNumericCommitDoesNotAudition opens the numeric editor for the
-// sampler gain knob, commits "0" (0 dB), and asserts no audition fires. The
-// gainDB state update confirms the commit is non-vacuous.
-func TestSamplerNumericCommitDoesNotAudition(t *testing.T) {
-	g := newSamplerTabGame(t)
-	g.drum.sampler.captureFromSynth("kick")
-	layoutSamplerTab(t, g)
-
-	restore := SwapSamplerAuditionFnForTest(func(string) { t.Fatalf("sampler numeric commit must NOT audition") })
-	defer SwapSamplerAuditionFnForTest(restore)
-
-	idx := samplerKnobGain
-	g.drum.openSamplerParamEditor(idx)
-	if g.drum.paramEditor == nil || !g.drum.paramEditor.Active() {
-		t.Fatalf("openSamplerParamEditor did not open the editor (idx=%d)", idx)
-	}
-
-	g.drum.paramEditor.ti.SetText("0")
-	g.drum.paramEditor.commit()
-
-	// Confirm the commit wrote gainDB (non-vacuous assertion).
-	if g.drum.sampler.gainDB < -0.5 || g.drum.sampler.gainDB > 0.5 {
-		t.Fatalf("sampler numeric commit did not propagate: gainDB=%v want ~0", g.drum.sampler.gainDB)
-	}
-}

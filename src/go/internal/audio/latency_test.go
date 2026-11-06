@@ -5,6 +5,9 @@ package audio
 import (
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestVoiceStartsWithin50ms(t *testing.T) {
@@ -14,9 +17,9 @@ func TestVoiceStartsWithin50ms(t *testing.T) {
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
-	m.Schedule("snare", Snare{}.NewVoice(120, sr), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Snare), shippedSnareVoice(sr), 0, -1, -1)
 	buf := make([]byte, sr/10*2) // 0.1s of 16-bit mono
 	m.Read(buf)
 	first := -1

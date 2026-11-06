@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Verifies that pausing and resuming resumes from the exact position and does
@@ -88,7 +89,7 @@ func TestPauseResumeNoBurstAudio(t *testing.T) {
 
 	// Capture plays
 	plays := make(chan struct{}, 1024)
-	g.SetPlayFunc(func(string, float64, ...float64) { plays <- struct{}{} })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays <- struct{}{} })
 
 	// Start and advance to a deterministic point.
 	pressPlay(t, g.drum)

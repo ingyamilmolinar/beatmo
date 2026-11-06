@@ -31,18 +31,22 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const repoRoot = path.resolve(jsDir, "..", "..");
 const goDir = path.resolve(repoRoot, "src/go");
 const GO = resolveGoBinary();
 
-// Instruments shipped in src/go/internal/assets/startup_demo.json. Each is
+// A fixed set of shipped drum + melodic instruments (one per voice family). Each is
 // driven through the bridge with `decay = 0` then `attack = 0` then a
 // compound all-min snapshot to lock down the failure class end-to-end.
-const STARTUP_INSTRUMENTS = ["kick-1", "snare", "hihat", "clap", "cowbell", "fm-epiano-1"];
+// Every id must be a shipped instrument so __testCaptureSynthRender resolves
+// a real document.
+const STARTUP_INSTRUMENTS = ["kick-snap", "snare", "hihat", "clap", "cowbell", "fm-epiano-drive"];
 
 if (!shouldSkipWasmBuild("main.wasm")) {
   const build = spawnSync(
@@ -129,7 +133,7 @@ try {
     typeof stopOutputCapture === "function" &&
     typeof getOutputCapture === "function" &&
     typeof clearOutputCapture === "function" &&
-    typeof recipeForInstrument === "function"
+    typeof getInstrumentDoc === "function"
   );
 
   // Unlock audio context — Playwright's autoplay policy still wants a gesture.
@@ -142,20 +146,20 @@ try {
     {},
     { timeout: 10000 },
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
-  // Confirm the bridge sees every startup-demo instrument bound to a
-  // builtin recipe — guards against a renamed default circuit silently
-  // skipping the assertions.
+  // Confirm the bridge sees an instrument document for every startup-demo
+  // instrument — guards against a renamed default circuit silently skipping
+  // the assertions.
   const bindings = await page.evaluate((ids) => {
-    return ids.map((id) => ({ id, recipe: recipeForInstrument(id) }));
+    return ids.map((id) => ({ id, origin: (JSON.parse(getInstrumentDoc(id) || "{}").origin || "") }));
   }, STARTUP_INSTRUMENTS);
   for (const b of bindings) {
-    if (!b.recipe) {
-      throw new Error(`instrument '${b.id}' is not bound to any recipe — startup_demo.json may have drifted`);
+    if (!b.origin) {
+      throw new Error(`instrument '${b.id}' has no instrument document — startup_demo.json may have drifted`);
     }
   }
-  console.log("[TEST] startup-demo bindings:", JSON.stringify(bindings));
+  console.log("[TEST] startup-demo documents:", JSON.stringify(bindings));
 
   // Condition-based capture: under a parallel `make test-browser` the page is
   // starved for seconds at a time (4 SwiftShader Chromium instances share the
@@ -182,9 +186,8 @@ try {
   };
 
   // ─── Phase A: warm up the sequencer ───
-  await page.evaluate(() => {
-    startPlay();
-  });
+  // Play is ignored while the warm-up gate is closed; press it once it opens.
+  await startPlaybackWhenReady(page);
   await page.waitForTimeout(800);
 
   // ─── Phase B: baseline capture ───

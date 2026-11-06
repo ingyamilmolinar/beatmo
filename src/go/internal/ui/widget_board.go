@@ -54,6 +54,10 @@ type WidgetBoard struct {
 	pad        int
 	placements map[WidgetKind]WidgetPlacement
 	pixelRows  bool
+	// userColSized is set once the user drags a column divider; DrumView then
+	// stops content-sizing the rack column so the drag sticks. SetWeights
+	// (a profile change) clears it.
+	userColSized bool
 }
 
 // NewWidgetBoard creates a board with the provided column/row weights.
@@ -94,6 +98,7 @@ func (wb *WidgetBoard) SetBounds(b image.Rectangle) {
 func (wb *WidgetBoard) SetWeights(cols, rows []float64) {
 	if len(cols) > 0 {
 		wb.cols = append([]float64(nil), cols...)
+		wb.userColSized = false
 	}
 	if len(rows) > 0 {
 		wb.rows = append([]float64(nil), rows...)
@@ -302,6 +307,7 @@ func (wb *WidgetBoard) ResizeAxis(axis string, idx int, deltaPx int) {
 		}
 		wb.cols[idx] = px0
 		wb.cols[idx+1] = px1
+		wb.userColSized = true
 	case "row":
 		if idx < 0 || idx >= len(wb.rows)-1 {
 			return

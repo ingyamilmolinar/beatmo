@@ -5,6 +5,10 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // testVoice is a pre-rendered voice that returns samples from a buffer.
@@ -52,21 +56,21 @@ func TestMixerMultiVoiceSameInstrumentWithEQ(t *testing.T) {
 	t.Cleanup(func() { ResetInstruments() })
 
 	// Set kick channel with lowpass EQ.
-	SetChannelEQ("kick", sampleRate, EQBand{Kind: EQLowpass, Freq: 1000, Q: 0.707})
+	SetChannelEQ(channel.Of(roster.Kick), sampleRate, EQBand{Kind: EQLowpass, Freq: 1000, Q: 0.707})
 
 	m := &mixer{
 		workBuf:   make([]float64, blockSize),
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
 	const voiceSamples = 4096
 
 	// Schedule 3 overlapping kick voices all starting at sample 0.
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 
 	out := readMixerSamples(m, voiceSamples*2)
 
@@ -99,8 +103,8 @@ func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 	t.Cleanup(func() { ResetInstruments() })
 
 	// Different EQ per instrument.
-	SetChannelEQ("kick", sampleRate, EQBand{Kind: EQLowpass, Freq: 1000, Q: 0.707})
-	SetChannelEQ("snare", sampleRate, EQBand{Kind: EQLowpass, Freq: 5000, Q: 0.707})
+	SetChannelEQ(channel.Of(roster.Kick), sampleRate, EQBand{Kind: EQLowpass, Freq: 1000, Q: 0.707})
+	SetChannelEQ(channel.Of(roster.Snare), sampleRate, EQBand{Kind: EQLowpass, Freq: 5000, Q: 0.707})
 	// Master: no EQ (pass-through).
 
 	m := &mixer{
@@ -108,13 +112,13 @@ func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
 	const voiceSamples = 4096
 
-	m.Schedule("kick", newSineVoice(200, sampleRate, voiceSamples), 0, -1, -1)
-	m.Schedule("snare", newSineVoice(2000, sampleRate, voiceSamples), 0, -1, -1)
-	m.Schedule("hihat", newSineVoice(8000, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Kick), newSineVoice(200, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Snare), newSineVoice(2000, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Hihat), newSineVoice(8000, sampleRate, voiceSamples), 0, -1, -1)
 
 	out := readMixerSamples(m, voiceSamples*2)
 
@@ -137,23 +141,24 @@ func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 // TestMixerOutputCaptureMatchesWorkBuf verifies that the output capture API
 // correctly captures the mixed audio output.
 func TestMixerOutputCaptureMatchesWorkBuf(t *testing.T) {
+	game_log.TailOnFailure(t) // the capture lines, only if this test fails
 	ResetInstruments()
 	t.Cleanup(func() { ResetInstruments() })
 
 	// Set a lowpass EQ so we exercise the full pipeline.
-	SetChannelEQ("kick", sampleRate, EQBand{Kind: EQLowpass, Freq: 2000, Q: 0.707})
+	SetChannelEQ(channel.Of(roster.Kick), sampleRate, EQBand{Kind: EQLowpass, Freq: 2000, Q: 0.707})
 
 	m := &mixer{
 		workBuf:   make([]float64, blockSize),
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
 	const voiceSamples = 4096
 
 	StartOutputCapture()
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 
 	// Read enough to consume the voice.
 	readMixerSamples(m, voiceSamples*2)

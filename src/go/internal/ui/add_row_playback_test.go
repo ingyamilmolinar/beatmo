@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestAddRowDuringPlayback_SchedulingContinues verifies that adding a drum row
@@ -35,7 +36,7 @@ func TestAddRowDuringPlayback_SchedulingContinues(t *testing.T) {
 
 	// Track plays.
 	var plays int32
-	g.SetPlayFunc(func(string, float64, ...float64) { atomic.AddInt32(&plays, 1) })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { atomic.AddInt32(&plays, 1) })
 
 	// Start playback and advance scheduling to verify it works.
 	g.SetPlaying(true)
@@ -121,10 +122,10 @@ func TestAddRowDuringPlayback_NoStopExistingInstrument(t *testing.T) {
 	g.updateBeatInfos()
 
 	var plays int32
-	g.SetPlayFunc(func(string, float64, ...float64) { atomic.AddInt32(&plays, 1) })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { atomic.AddInt32(&plays, 1) })
 
 	var kick808Stops int32
-	audio.SetStopHook(func(id string) {
+	audio.SetStopHook(func(id instrument.ID) {
 		if id == "kick808" {
 			atomic.AddInt32(&kick808Stops, 1)
 		}

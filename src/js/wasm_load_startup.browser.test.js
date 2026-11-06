@@ -104,7 +104,7 @@ try {
   // Wait for TTI: the firstFrame milestone is set after the first painted
   // full-UI frame. 30s ceiling guards against a hung boot.
   await page.waitForFunction(
-    () => window.__beatmoBoot && window.__beatmoBoot.firstFrame != null,
+    () => window.__beatmoBoot && window.__beatmoBoot.firstFrame != null, null,
     { timeout: 30000 }
   );
 

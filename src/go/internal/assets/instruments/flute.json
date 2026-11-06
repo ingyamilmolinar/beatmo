@@ -1,0 +1,176 @@
+{
+  "schema_version": "0.0.1",
+  "id": "flute",
+  "name": "Flute",
+  "category": "modular",
+  "notes": "fluteSeed: additive partials matching real flute profile + breath noise + vibrato.\nReal flute D4: strong 2nd harmonic (p2=0.83, near-equal), scattered even/odd upper\npartials (p4=0.24, p6=0.17), breath noise, big centroid motion, cMean=1812Hz.\nfluteSeed — BLOWN WAVEGUIDE (Surge XT \"Constant\" / STK / RipplerX open-tube). A real flute is a\nresonant air column driven by continuous breath, NOT a sum of static sines (which read as an organ).\ngen_source:3 (Karplus-Strong delay line) + gen_ks_blow>0 runs the blown branch in modular_gen_slot_ks:\ncontinuous filtered breath noise into a tuned delay with a tanh-bounded feedback loop (self-limiting\nlimit cycle → pitched, breathy, never-exactly-repeating). Verified by TestBlownKS_* (bounded + sustains\n+ pitched). gen_ks_sustain → blown loop gain (×1.05 inside; ~0.96-0.99 sustains), gen_ks_blow = breath\ndrive, gen_ks_pluck = reflection/air-color lowpass alpha.\nFLUTE = ADDITIVE near-sine tone + CONTINUOUS BREATH AIR (osc_enabled:0). The\nold Karplus-Strong blown tube (gen1_source:3) read HARPY: at low blow the KS\nexcitation decays like a PLUCKED STRING (that's what KS is) rather than a\ncontinuously BLOWN pipe — and raising blow to sustain it made it 5x too airy\nand warbly (the KS delay pitch-mod is nonlinear). Additive is the right model\n(same as the oboe fix): a sustained sparse harmonic series (real flute E5 is\nnear a sine — P1 1.0, P2 .27, P3 .10) + a PROMINENT, SUSTAINED band-passed\nbreath hiss = the defining \"blowing\" air, present the whole note, not a\ndecaying pluck. Additive pitch vibrato is stable, so the flute can actually\nwaver (~8 cents) without the KS wander.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.6801,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.04,
+        "amp_curve": 1,
+        "amp_decay": 0.05,
+        "amp_release": 0.12,
+        "amp_sustain": 0.94
+      },
+      "notes": "amp_attack: soft breathy chiff onset"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2900,
+        "filter_resonance": 1,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: the flute centroid is only ~2 kHz — roll off the top for a rounder, less whistly tone"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.25,
+        "lfo_depth": 0.05,
+        "lfo_rate": 5.6,
+        "lfo_target": 1
+      },
+      "notes": "lfo_enabled: PITCH vibrato — the air-jet wavers (~8 cents, 5.6 Hz). Stable in additive."
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.4,
+        "env_fast_rate": 4,
+        "env_tail_mix": 0.9,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 2100,
+        "filt_q": 0.45,
+        "filt_type": 5,
+        "gain": 0.42,
+        "noise_offset": 0
+      },
+      "notes": "gen1_source: CONTINUOUS breath air — the flute's defining sound. Band-passed around the\nblowing frequencies, SUSTAINED for the whole note (tail_mix high, no decay),\nprominent (this is what makes it read as BLOWN, not plucked/organ)."
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.55,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: H1\ngen2_freq_mode: H1\ngen2_gain: H1\ngen2_source: sparse near-sine harmonic series (a real flute is close to a sine + air) H1\ngen2_wave: H1"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.15,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: H2 (ref .27)\ngen3_freq_mode: H2 (ref .27)\ngen3_gain: H2 (ref .27)\ngen3_source: H2 (ref .27)\ngen3_wave: H2 (ref .27)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.05,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_freq: H3 (ref .10)\ngen4_freq_mode: H3 (ref .10)\ngen4_gain: H3 (ref .10)\ngen4_source: H3 (ref .10)\ngen4_wave: H3 (ref .10)"
+    }
+  ]
+}

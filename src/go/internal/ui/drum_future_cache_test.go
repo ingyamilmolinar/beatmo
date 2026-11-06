@@ -36,7 +36,7 @@ func TestDrumView_FutureRemovalClearsFrozenHistory(t *testing.T) {
 
 	rowIdx := -1
 	for i, row := range g.drum.Rows {
-		if strings.EqualFold(row.Instrument, "sample-high-tom-9-wonder") {
+		if strings.EqualFold(string(row.Instrument), "sample-high-tom-9-wonder") {
 			rowIdx = i
 			break
 		}

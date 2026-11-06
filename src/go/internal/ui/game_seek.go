@@ -8,19 +8,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-const (
-	seekOriginRibbon    = "ribbon"
-	seekOriginTransport = "transport"
-	seekOriginCounter   = "counter"
-	seekOriginKeyboard  = "keyboard"
-	seekOriginJS        = "js"
-	seekOriginUndo      = "undo"
-)
-
 // SeekSteps repositions the playhead to absolute subdivision `steps`. It is
 // the single engine chokepoint for all user navigation (ribbon, FF/RW,
 // counter, keyboard, JS) and for undo restore. Must be called with seqMu held.
-func (g *Game) SeekSteps(steps int, origin string) {
+func (g *Game) SeekSteps(steps int, origin hooks.SeekOrigin) {
 	if steps < 0 {
 		steps = 0
 	}
@@ -32,7 +23,7 @@ func (g *Game) SeekSteps(steps int, origin string) {
 		steps = maxSteps
 	}
 	emitSeek(steps/div, steps, origin)
-	g.resetHighlights()
+	g.parityOnSeek()
 	g.activePulses = nil
 	g.activePulse = nil
 
@@ -145,7 +136,7 @@ func (g *Game) Seek(beats int) {
 	if beats < 0 {
 		beats = 0
 	}
-	g.SeekSteps(beats*g.grid.MaxDiv(), seekOriginUndo)
+	g.SeekSteps(beats*g.grid.MaxDiv(), hooks.SeekUndo)
 }
 
 func (g *Game) applySeekState(steps int) {
@@ -158,6 +149,9 @@ func (g *Game) setPrimaryStep(step int) {
 	if g.Playing() {
 		g.elapsedBeats = step
 		g.state.SetLastStep(step)
+		// The playhead just moved: freeze what the passed cells show now,
+		// before anything later in the frame can change live state.
+		g.freezePlayedThroughPlayhead()
 		return
 	}
 	g.applySeekState(step)
@@ -190,15 +184,17 @@ func (g *Game) updateDrumTracking() {
 // orange viewRect and the cursor visibly desync, exactly the bug the user
 // reported in screenshot.png.
 //
-// Derivation: round(displayBeat() * div). displayBeat() is monotonic and
-// already combines sequencer-tick progress with smooth wall/audio-clock
-// interpolation, so the conversion to subdivisions inherits all of those
-// invariants. The ±0.5-cell quantisation gap between the smooth cursor and
-// this integer is the irreducible cost of drum.Offset being an int, and
-// is well below TrackBeat's ±1-cell recenter dead-zone.
+// Derivation: PlayheadPosition().Steps == round(displayBeat() * div).
+// displayBeat() is monotonic and already combines sequencer-tick progress with
+// smooth wall/audio-clock interpolation, so the conversion to subdivisions
+// inherits all of those invariants. The ±0.5-cell quantisation gap between the
+// smooth cursor and this integer is the irreducible cost of drum.Offset being
+// an int, and is well below TrackBeat's ±1-cell recenter dead-zone.
+//
+// Routed through PlayheadPosition so the step the seek path consumes and the
+// beat/second the readouts print come from the same resolved clock sample.
 func (g *Game) playheadAbsSubdiv() int {
-	div := max1(g.grid.MaxDiv())
-	return int(math.Round(g.displayBeat() * float64(div)))
+	return g.PlayheadPosition().Steps
 }
 
 func (g *Game) handlePlaybackTransition(prevPlaying, prevPaused bool) {

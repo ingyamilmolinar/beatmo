@@ -31,7 +31,11 @@ func TestSynthTabSteadyStateDrawCallBudget(t *testing.T) {
 	// synth-specific per-column trace/watermark/card rasters are gone). 340 =
 	// measured + ~14% headroom, tight enough that reverting even one surface
 	// trips it (the focus-graph alone re-adds ~2 rects/px-column ⇒ ~600).
-	const budget = 340
+	// Measured 151 (2026-09-05) after the category-layer rewrite: the drilled
+	// view is a header row + sprite-cached ParamCards + one sprite-cached signal
+	// graph; the chip strip / detail pane / three-card right pane are gone.
+	// 180 = measured + ~19% headroom.
+	const budget = 180
 
 	g := driveScene(t, "crop_synth_tab_modular")
 	screen := ebiten.NewImage(1280, 720)

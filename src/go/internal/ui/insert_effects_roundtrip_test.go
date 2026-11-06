@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Render-level / source-of-truth guards for per-instrument insert effect
@@ -47,7 +49,6 @@ func TestExportInsertEffects_ParamEditReachesFile(t *testing.T) {
 
 	inst := g.drum.Rows[0].Instrument
 	slot := audio.AddInsertEffect(inst, "distortion", nil)
-	g.drum.syncFXToRow(0) // FX panel does this after Add
 
 	// Slider drag: audio layer only — propagateFXSliderValue does NOT re-sync
 	// the row (drumview_fx_panel.go).
@@ -57,7 +58,7 @@ func TestExportInsertEffects_ParamEditReachesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -133,8 +134,8 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 	for len(g.drum.Rows) < 3 {
 		g.drum.AddRow()
 	}
-	g.drum.Rows[1].Instrument = "hihat"
-	g.drum.Rows[2].Instrument = "clap"
+	g.drum.Rows[1].Instrument = roster.Hihat
+	g.drum.Rows[2].Instrument = roster.Clap
 	for i := 0; i < 3; i++ {
 		for j := i + 1; j < 3; j++ {
 			if g.drum.Rows[i].Instrument == g.drum.Rows[j].Instrument {
@@ -162,14 +163,14 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 		for _, d := range catalog[typ] {
 			params[d.Name] = valueFor(d)
 		}
-		want[inst] = append(want[inst], audio.EffectSlot{
+		want[string(inst)] = append(want[string(inst)], audio.EffectSlot{
 			Type:    typ,
 			Enabled: i%4 != 3,
 			Params:  params,
 		})
 	}
 	for inst, slots := range want {
-		audio.SetInsertEffects(inst, slots)
+		audio.SetInsertEffects(instrument.ID(inst), slots)
 	}
 
 	data, err := g.drum.exportBytes()
@@ -187,7 +188,7 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 	}
 
 	for inst, slots := range want {
-		got := audio.GetInsertEffects(inst)
+		got := audio.GetInsertEffects(instrument.ID(inst))
 		if len(got) != len(slots) {
 			t.Errorf("%s: chain length %d, want %d", inst, len(got), len(slots))
 			continue
@@ -225,7 +226,7 @@ func TestImportClearsChainsForInstrumentsAbsentFromProject(t *testing.T) {
 	}
 
 	// An id outside the default project's instrument set.
-	audio.AddInsertEffect("crash", "bitcrusher", map[string]float64{"bits": 2})
+	audio.AddInsertEffect(roster.Crash, "bitcrusher", map[string]float64{"bits": 2})
 
 	g2 := New(testLogger)
 	t.Cleanup(g2.CloseForTest)
@@ -234,7 +235,7 @@ func TestImportClearsChainsForInstrumentsAbsentFromProject(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 
-	if got := audio.GetInsertEffects("crash"); len(got) != 0 {
+	if got := audio.GetInsertEffects(roster.Crash); len(got) != 0 {
 		t.Errorf("insert chain on absent instrument survived import: %+v", got)
 	}
 }

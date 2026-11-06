@@ -70,6 +70,7 @@ type LogsComponent struct {
 	// header "Clear history" action button (empties the log ring + notifications,
 	// incl. persistence). Its rect mirrors the button bounds for hit-test tests.
 	clearBtn  *Button
+	card      *MenuCard // shared frame (panel, title band, Clear history action, close ×)
 	clearRect image.Rectangle
 
 	// name search + level chips (fixed DEBUG/INFO/WARN/ERROR radio pill Buttons).
@@ -404,6 +405,7 @@ func (c *LogsComponent) ensurePanelButtons() {
 	if c.prevBtn != nil {
 		return
 	}
+	c.card = NewMenuCard(c.Close)
 	c.prevBtn = NewSpecButton("", ComponentButtonSecondary, c.pagePrev)
 	c.prevBtn.Icon = string(IconChevronLeft)
 	c.nextBtn = NewSpecButton("", ComponentButtonSecondary, c.pageNext)
@@ -414,7 +416,10 @@ func (c *LogsComponent) ensurePanelButtons() {
 
 // HoverAt refreshes the panel buttons' hover state (desktop hover tint).
 func (c *LogsComponent) HoverAt(mx, my int) {
-	for _, b := range []*Button{c.prevBtn, c.nextBtn, c.clearBtn, c.atModeBtn, c.rangeModeBtn, c.atFieldBtn, c.fromFieldBtn, c.toFieldBtn} {
+	if c.card != nil {
+		c.card.HoverAt(mx, my)
+	}
+	for _, b := range []*Button{c.prevBtn, c.nextBtn, c.atModeBtn, c.rangeModeBtn, c.atFieldBtn, c.fromFieldBtn, c.toFieldBtn} {
 		if b != nil {
 			b.UpdateHover(mx, my)
 		}
@@ -440,6 +445,12 @@ func (c *LogsComponent) ensureLevelButtons() {
 // HandleInput handles clicks inside the modal panel: close button, page nav,
 // else consume (so a press never leaks to the background beneath the modal).
 func (c *LogsComponent) HandleInput(x, y int, pressed bool) InputResult {
+	// Frame controls first (close ×, "Clear history" header action).
+	if c.card != nil && c.IsOpen() {
+		if r := c.card.HandleInput(x, y, pressed); r != InputIgnored {
+			return InputConsumed
+		}
+	}
 	p := image.Pt(x, y)
 
 	// An in-flight scroll gesture (thumb drag / touch-scroll) owns every event
@@ -469,7 +480,7 @@ func (c *LogsComponent) HandleInput(x, y int, pressed bool) InputResult {
 			b.HandleInputResult(x, y, pressed)
 		}
 	}
-	for _, b := range []*Button{c.prevBtn, c.nextBtn, c.clearBtn} {
+	for _, b := range []*Button{c.prevBtn, c.nextBtn} {
 		if b != nil {
 			b.HandleInputResult(x, y, pressed)
 		}
@@ -490,14 +501,18 @@ func (c *LogsComponent) Draw(dst *ebiten.Image) {
 	r := c.panelRect()
 	// Shared panel chrome (shadow + surface-overlay fill + panel border +
 	// popupCornerRadius) — identical to File and Settings.
-	drawPanel(dst, r)
-
-	// --- Header layout (title row, search row, chip row) ---
+	// --- Header layout (card title band, search row, chip row) ---
 	c.ensurePanelButtons()
-	bsz := logsBtnSize()
+	// Shared MenuCard frame: panel, title band (IconLogs + "Logs"), the
+	// "Clear history" header action, close ×. Label set before Layout so the
+	// action button is sized for the active locale.
+	c.clearBtn.Text = i18n.T(i18n.KeyLogsClearHistory)
+	c.card.Layout(r, MenuCardSpec{Title: i18n.T(i18n.KeyLogs), IconID: IconLogs, Actions: []*Button{c.clearBtn}})
+	c.card.Draw(dst)
+	c.clearRect = c.clearBtn.Rect()
 
 	searchH := TextHeight() + 2*SpaceSM
-	searchY := r.Min.Y + SpaceSM + TextHeight() + SpaceSM
+	searchY := c.card.TitleRect().Max.Y + SpaceSM
 	c.searchRect = image.Rect(r.Min.X+SpaceMD, searchY, r.Min.X+r.Dx()/2, searchY+searchH)
 
 	chipH := TextHeight() + 2*SpaceXS
@@ -511,29 +526,14 @@ func (c *LogsComponent) Draw(dst *ebiten.Image) {
 	// page size is fixed (logsPageSize); a page taller than the body scrolls.
 	c.rebuild()
 
-	// Title — shared card-title role (panel-title), vertically centred in the
-	// same header band as the "Clear history" button so all three grid-button
-	// cards share one title font/size/placement.
-	titleRect := image.Rect(r.Min.X+cardContentPadX, r.Min.Y+SpaceSM, r.Min.X+r.Dx()/2, r.Min.Y+SpaceSM+bsz)
-	drawCardTitleIn(dst, titleRect, i18n.T(i18n.KeyLogs))
-
-	// "Clear history" text action button, at the header's top-right (where the ×
-	// used to be — there is no close button now). It empties every log source
-	// (event ring + notifications + persistence).
-	clearLabel := i18n.T(i18n.KeyLogsClearHistory)
-	clearW := TextWidth(clearLabel) + 2*SpaceSM
-	c.clearRect = image.Rect(r.Max.X-SpaceMD-clearW, r.Min.Y+SpaceSM, r.Max.X-SpaceMD, r.Min.Y+SpaceSM+bsz)
-	c.clearBtn.Text = clearLabel
-	c.clearBtn.SetRect(c.clearRect)
-	c.clearBtn.Draw(dst)
-
 	// Search box (self-focusing TextInput; Update reads the keyboard).
-	c.searchBox = ensureMenuSearchBox(c.searchBox, c.searchRect)
-	c.searchBox.MobileInputID = logsSearchMobileInputID
-	if c.searchBox.OnFocusGained == nil && !Profile().IsMobile() {
-		c.searchBox.OnFocusGained = func() { softKeyboardShow("text") }
-		c.searchBox.OnFocusLost = func() { softKeyboardHide() }
+	var reg *textFieldRegistry
+	if c.dv != nil {
+		reg = c.dv.textFields
 	}
+	c.searchBox = ensureMenuSearchBox(c.searchBox, c.searchRect, reg,
+		TextFieldSpec{ID: logsSearchMobileInputID, Owner: "logs"})
+	c.searchBox.MobileInputID = logsSearchMobileInputID
 	drawMenuSearchBox(dst, c.searchBox)
 
 	// Timestamp filter (At | Range toggle + time inputs) in the right half.

@@ -15,13 +15,13 @@ func buildProbChain(g *Game, p float64) (A, B *uiNode) {
 	g.addEdge(B, A)
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		pr := n.Params
-		pr.LogicKind = "probability"
+		pr.LogicKind = model.LogicProbability
 		pr.LogicP = p
 		g.graph.SetNodeParams(A.ID, pr)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		pr := n.Params
-		pr.LogicKind = "skip_every_n"
+		pr.LogicKind = model.LogicSkipEveryN
 		pr.LogicN = 1
 		g.graph.SetNodeParams(B.ID, pr)
 	}
@@ -174,19 +174,19 @@ func TestProbabilityWithEverySkip_WindowsMatchPrediction(t *testing.T) {
 	g.addEdge(C, A)
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.42
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(B.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(C.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(C.ID, p)
 	}

@@ -43,7 +43,7 @@ func TestRowSnapshotMode_KeepsOldWindowImmutable(t *testing.T) {
 		t.Fatalf("node B missing")
 	}
 	p := nodeB.Params
-	p.LogicKind = "skip_every_n"
+	p.LogicKind = model.LogicSkipEveryN
 	p.LogicN = 1                   // deterministic "never fire"
 	g.graph.SetNodeParams(b.ID, p) // triggers refreshDrumRow via node-change hook
 

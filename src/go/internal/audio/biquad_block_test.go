@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestBiquadProcessBlockBufParity verifies that ProcessBlockBuf produces
@@ -75,8 +78,8 @@ func TestEQProcessorBlockPath(t *testing.T) {
 		t.Fatal("failed to create biquad")
 	}
 	id := "eq-block-test"
-	SetChannelProcessors(id, bq1)
-	ch := InstrumentChannel(id)
+	SetChannelProcessors(channel.Of(instrument.ID(id)), bq1)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// Block path.
 	input := make([]float64, n)
@@ -90,8 +93,8 @@ func TestEQProcessorBlockPath(t *testing.T) {
 		t.Fatal("failed to create reference biquad")
 	}
 	refID := "eq-block-ref"
-	SetChannelProcessors(refID, bq2)
-	refCh := InstrumentChannel(refID)
+	SetChannelProcessors(channel.Of(instrument.ID(refID)), bq2)
+	refCh := InstrumentChannel(channel.Of(instrument.ID(refID)))
 
 	refOut := make([]float64, n)
 	for i := 0; i < n; i++ {
@@ -102,52 +105,6 @@ func TestEQProcessorBlockPath(t *testing.T) {
 	t.Logf("block vs per-sample correlation: %.6f", corr)
 	if corr < 0.999 {
 		t.Fatalf("expected block path to match per-sample (correlation > 0.999), got %.6f", corr)
-	}
-}
-
-// TestCompressorBlockParity verifies that Compressor.ProcessBlockBuf matches
-// per-sample ProcessSample to float32 precision.
-func TestCompressorBlockParity(t *testing.T) {
-	const (
-		sr = 44100
-		n  = 2048
-	)
-	sig := genSine(440, sr, n)
-
-	// Per-sample.
-	c1 := NewCompressor(sr)
-	outSample := make([]float64, n)
-	for i := 0; i < n; i++ {
-		outSample[i] = c1.ProcessSample(sig[i])
-	}
-
-	// Block.
-	c2 := NewCompressor(sr)
-	in32 := make([]float32, n)
-	out32 := make([]float32, n)
-	for i := 0; i < n; i++ {
-		in32[i] = float32(sig[i])
-	}
-	c2.ProcessBlockBuf(in32, out32, n)
-
-	// Compare at float32 precision.
-	maxDiff := float32(0)
-	for i := 0; i < n; i++ {
-		want := float32(outSample[i])
-		got := out32[i]
-		diff := want - got
-		if diff < 0 {
-			diff = -diff
-		}
-		if diff > maxDiff {
-			maxDiff = diff
-		}
-	}
-	t.Logf("compressor block vs sample max diff: %.8e", maxDiff)
-	// Allow small float32 rounding tolerance (compressor uses pow/log which
-	// accumulate different rounding through float64→float32→float64 conversions).
-	if maxDiff > 1e-5 {
-		t.Fatalf("compressor block/sample mismatch too large: %.8e", maxDiff)
 	}
 }
 
@@ -162,16 +119,16 @@ func TestFullChainBlockPath(t *testing.T) {
 	)
 	sig := genSine(440, sr, n)
 
-	// Create a channel with biquad + compressor (both implement BlockProcessor).
+	// Create a channel with two biquads (both implement BlockProcessor).
 	bq := makeBiquad(EQLowpass, sr, 2000, 0.707, 0)
 	if bq == nil {
 		t.Fatal("failed to create biquad")
 	}
-	comp := NewCompressor(sr)
+	comp := makeBiquad(EQHighpass, sr, 100, 0.707, 0)
 
 	id := "full-chain-block"
-	SetChannelProcessors(id, bq, comp)
-	ch := InstrumentChannel(id)
+	SetChannelProcessors(channel.Of(instrument.ID(id)), bq, comp)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	input := make([]float64, n)
 	copy(input, sig)
@@ -192,10 +149,10 @@ func TestFullChainBlockPath(t *testing.T) {
 
 	// Reference: per-sample through fresh channel with same processor types.
 	bq2 := makeBiquad(EQLowpass, sr, 2000, 0.707, 0)
-	comp2 := NewCompressor(sr)
+	comp2 := makeBiquad(EQHighpass, sr, 100, 0.707, 0)
 	refID := "full-chain-ref"
-	SetChannelProcessors(refID, bq2, comp2)
-	refCh := InstrumentChannel(refID)
+	SetChannelProcessors(channel.Of(instrument.ID(refID)), bq2, comp2)
+	refCh := InstrumentChannel(channel.Of(instrument.ID(refID)))
 
 	refOut := make([]float64, n)
 	for i := 0; i < n; i++ {

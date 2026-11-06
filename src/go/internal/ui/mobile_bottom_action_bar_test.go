@@ -178,11 +178,10 @@ func TestMobileTransport_AllShareSingleRow(t *testing.T) {
 		t.Fatalf("transport rects unexpectedly empty")
 	}
 	names := []string{"playBtn", "stopBtn", "recordBtn", "bpmBox", "subdivBtn"}
-	// Compare vertical midlines rather than Min.Y: recordBtn is intentionally
-	// shrunk symmetrically by recordDemoteInsetMobile (B12 critique — visual
-	// demotion of the record button), which shifts its Min.Y down and Max.Y up
-	// by the same amount. Midline alignment captures the single-row invariant
-	// without fighting that symmetric inset.
+	// Midline alignment is the single-row invariant this test owns. Exact
+	// top/bottom agreement across the strip is a stricter, separate invariant —
+	// see TestTransportClusterSharesBounds, which is what caught the record
+	// button's old symmetric demote.
 	mid := func(r image.Rectangle) int { return (r.Min.Y + r.Max.Y) / 2 }
 	baseMid := mid(rects[0])
 	for i, r := range rects {

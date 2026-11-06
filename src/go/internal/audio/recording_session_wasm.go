@@ -5,10 +5,10 @@ package audio
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // activeSession holds the running WASM recording session, if any.
@@ -59,7 +59,7 @@ func StartRecording(opts RecordingOptions) error {
 		BPM:         opts.BPM,
 		Instruments: len(opts.Instruments),
 	}, hooks.CaptureSource(0))
-	log.Printf("[RECORDING/wasm] Started: format=%s instruments=%d",
+	log.Debugf("[record] started (wasm): format=%s instruments=%d",
 		opts.Format, len(opts.Instruments))
 	return nil
 }
@@ -124,7 +124,7 @@ func StopRecording() (*RecordingResult, error) {
 		// recording. activeSession is already nil so the caller has
 		// already returned; this just makes Stop synchronous in the
 		// degenerate case.
-		log.Printf("[RECORDING/wasm] lifecycle pool busy, finalizing sync: %v", err)
+		log.Warnf("[record] lifecycle pool busy, finalizing sync: %v", err)
 		finalizeRecordingAsync(session, result, duration, timestamp)
 	}
 	return result, nil
@@ -146,7 +146,7 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 		"filenamePrefix": "beatmo-recording-",
 	})
 	if err != nil {
-		log.Printf("[RECORDING/wasm] finalize failed: %v", err)
+		log.Errorf("[record] finalize failed: %v", err)
 		hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 			Duration: duration,
 			Err:      err,
@@ -161,9 +161,9 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 	// Resolve channel display names from the original instrument list.
 	nameByID := make(map[string]string, len(session.opts.Instruments)+1)
 	for _, inst := range session.opts.Instruments {
-		nameByID[inst.ID] = inst.Name
+		nameByID[inst.ID.String()] = inst.Name
 	}
-	nameByID["master"] = "Master"
+	nameByID[RecordingMasterID] = "Master"
 
 	for _, ch := range finRes.Channels {
 		name := ch.Name
@@ -197,7 +197,7 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 	})
 
 	if finRes.AutoStopped {
-		log.Printf("[RECORDING/wasm] auto-stopped: reason=%s", finRes.AutoStopRsn)
+		log.Debugf("[record] auto-stopped: reason=%s", finRes.AutoStopRsn)
 	}
 	if finRes.Stats.DroppedSamples > 0 {
 		hooks.PublishWithSource(hooks.EventRecordDropped, finRes.Stats.DroppedSamples, hooks.CaptureSource(0))
@@ -205,7 +205,7 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 
 	zipName, saveErr := SaveRecording(result)
 	if saveErr != nil {
-		log.Printf("[RECORDING/wasm] auto-save failed: %v", saveErr)
+		log.Errorf("[record] auto-save failed: %v", saveErr)
 		hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 			Dir:      result.SessionDir,
 			Duration: duration,
@@ -216,7 +216,7 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 	}
 	result.SessionDir = zipName
 
-	log.Printf("[RECORDING/wasm] Stopped: duration=%.2fs channels=%d size=%d zip=%s",
+	log.Debugf("[record] stopped (wasm): duration=%.2fs channels=%d size=%d zip=%s",
 		duration, len(result.Channels), finRes.Size, result.SessionDir)
 	hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 		Dir:      result.SessionDir,

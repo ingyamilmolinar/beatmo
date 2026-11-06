@@ -56,7 +56,7 @@ func TestPreviewSyncMatchesPlayback_EveryN(t *testing.T) {
 	g.addEdge(b, a)
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -82,7 +82,7 @@ func TestPreviewSyncMatchesPlayback_PrevTriggered(t *testing.T) {
 	g.addEdge(c, a)
 	if n, ok := g.graph.GetNodeByID(c.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(c.ID, p)
 	}
 	g.start = a
@@ -112,27 +112,27 @@ func TestPreviewSyncMatchesPlayback_ComplexLogic(t *testing.T) {
 	// A: every 3rd trigger
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(a.ID, p)
 	}
 	// B: skip every 2nd trigger
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	// C: trigger if previous triggered
 	if n, ok := g.graph.GetNodeByID(c.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(c.ID, p)
 	}
 	// D: trigger if previous skipped
 	if n, ok := g.graph.GetNodeByID(d.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_skipped"
+		p.LogicKind = model.LogicIfPrevSkipped
 		g.graph.SetNodeParams(d.ID, p)
 	}
 	g.start = a

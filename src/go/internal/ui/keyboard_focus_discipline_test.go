@@ -39,8 +39,13 @@ func TestGlobalShortcutsHasNoInlineKeyHandling(t *testing.T) {
 	}
 	body := extractFuncBody(t, string(src), "handleGlobalShortcuts")
 
-	if !strings.Contains(body, "dispatchGated()") {
+	if !strings.Contains(body, "dispatchGated(") {
 		t.Fatal("handleGlobalShortcuts must dispatch gated shortcuts via g.keyboardRouter.dispatchGated()")
+	}
+	// The per-key claim seam is the ONLY way a popup control gets precedence;
+	// an inline "is a popup open?" check here is the denylist creeping back.
+	if !strings.Contains(body, "dispatchClaimedKeys()") {
+		t.Fatal("handleGlobalShortcuts must let partial claimants act via g.dispatchClaimedKeys() before the gated router")
 	}
 	// No inline shortcut-key constants — they belong in the nodes now. (KeyEscape
 	// is NOT checked: Esc routing via handleEscape is Phase 2's concern and the

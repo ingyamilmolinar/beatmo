@@ -5,6 +5,8 @@ import (
 	"math"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 const (
@@ -78,17 +80,11 @@ func (dv *DrumView) eqCurveEnsure() {
 	ch := dv.activeEQChannel()
 	var gains []float64
 	var muted []bool
-	if ch == "main" {
+	if ch == channel.Master {
 		gains = dv.eqBandGainsDB()
 		muted = dv.eqBandMuted()
-	} else {
-		for _, r := range dv.Rows {
-			if r.Instrument == ch {
-				gains = r.EQGainsDB
-				muted = r.EQBandMuted
-				break
-			}
-		}
+	} else if eq := dv.activeEQ(); eq != nil {
+		gains, muted = eq.GainsDB, eq.BandMuted
 	}
 	bands := dv.buildFullEQBands(gains, muted,
 		dv.activeHPFEnabled(), dv.activeHPFCutoffHz(),
@@ -132,14 +128,14 @@ func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 	}
 
 	// Handle active filter (HPF/LPF) drag.
-	if dv.eqCurveDragFilter != "" {
+	if dv.eqCurveDragFilter != hooks.FilterNone {
 		if !pressed {
 			dv.applyEQ()
-			dv.eqCurveDragFilter = ""
+			dv.eqCurveDragFilter = hooks.FilterNone
 			return true
 		}
 		freq := xToFreq(mx, r)
-		if dv.eqCurveDragFilter == "hpf" {
+		if dv.eqCurveDragFilter == hooks.FilterHPF {
 			if freq < 20 {
 				freq = 20
 			}
@@ -172,20 +168,12 @@ func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 		db := yToGainDB(my, r)
 		band := dv.eqCurveDragBand
 		ch := dv.activeEQChannel()
-		if ch == "main" {
+		if ch == channel.Master {
 			if band < len(dv.eqBandGainsDB()) {
 				dv.eqBandGainsDB()[band] = db
 			}
-		} else {
-			for _, row := range dv.Rows {
-				if row.Instrument == ch {
-					dv.ensureRowEQ(dv.rowIndex(row))
-					if band < len(row.EQGainsDB) {
-						row.EQGainsDB[band] = db
-					}
-					break
-				}
-			}
+		} else if eq := dv.activeEQ(); eq != nil && band < len(eq.GainsDB) {
+			eq.GainsDB[band] = db
 		}
 		dv.eqCurveDirty = true
 		return true
@@ -211,7 +199,7 @@ func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 		dx := mx - hx
 		dy := my - hy
 		if dx*dx+dy*dy <= hitRadius*hitRadius {
-			dv.eqCurveDragFilter = "hpf"
+			dv.eqCurveDragFilter = hooks.FilterHPF
 			return true
 		}
 	}
@@ -224,7 +212,7 @@ func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 		dx := mx - lx
 		dy := my - ly
 		if dx*dx+dy*dy <= hitRadius*hitRadius {
-			dv.eqCurveDragFilter = "lpf"
+			dv.eqCurveDragFilter = hooks.FilterLPF
 			return true
 		}
 	}
@@ -232,15 +220,10 @@ func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 	// Hit-test peaking band handles.
 	ch := dv.activeEQChannel()
 	var gains []float64
-	if ch == "main" {
+	if ch == channel.Master {
 		gains = dv.eqBandGainsDB()
-	} else {
-		for _, row := range dv.Rows {
-			if row.Instrument == ch {
-				gains = row.EQGainsDB
-				break
-			}
-		}
+	} else if eq := dv.activeEQ(); eq != nil {
+		gains = eq.GainsDB
 	}
 
 	for i, def := range eqBandDefs {

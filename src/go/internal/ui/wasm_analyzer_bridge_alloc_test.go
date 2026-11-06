@@ -12,20 +12,30 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // stubAnalyzerFetch returns a fixed-size populated AnalyzerSnapshot.
-// Mirrors the production WASM bridge shape (Spectrum + Waveform of
-// 512 float64 each, plus RMS/Peak scalars). The returned slices are
-// freshly allocated each call to mimic ChannelAnalyzerSnapshot's
-// per-call allocation pattern — this is the point of the measurement.
-func stubAnalyzerFetch(id string) audio.AnalyzerSnapshot {
-	const n = 512
-	spec := make([]float64, n)
-	wave := make([]float64, n)
-	for i := 0; i < n; i++ {
-		spec[i] = float64(i) / float64(n)
-		wave[i] = (float64(i) - float64(n/2)) / float64(n)
+//
+// Sized from audio.BridgeSpectrumBins / BridgeWaveformSamples rather than
+// from a literal, so the budget is measured against what the bridge
+// ACTUALLY ships. It used to hardcode 512 of each; when the spectrum grew
+// to the analyser's full bin count (analyzer.SpectrumFFTSize — the low
+// display bands were holding no bins) the fixture would otherwise have gone
+// on measuring a payload production no longer sends.
+//
+// The returned slices are freshly allocated each call to mimic
+// ChannelAnalyzerSnapshot's per-call allocation pattern — this is the point
+// of the measurement.
+func stubAnalyzerFetch(id channel.ID) audio.AnalyzerSnapshot {
+	spec := make([]float64, audio.BridgeSpectrumBins)
+	wave := make([]float64, audio.BridgeWaveformSamples)
+	for i := range spec {
+		spec[i] = float64(i) / float64(len(spec))
+	}
+	for i := range wave {
+		wave[i] = (float64(i) - float64(len(wave)/2)) / float64(len(wave))
 	}
 	return audio.AnalyzerSnapshot{
 		RMS:      0.1,
@@ -38,19 +48,20 @@ func stubAnalyzerFetch(id string) audio.AnalyzerSnapshot {
 // fixedFetch returns a single shared snapshot per call. Removes the
 // allocator noise from the fetch itself so the test measures the
 // builder's own allocation budget — not the JS bridge.
-func fixedFetch(id string) audio.AnalyzerSnapshot {
+func fixedFetch(id channel.ID) audio.AnalyzerSnapshot {
 	// Keep a package-level cache so repeated calls return the same
 	// slice headers without re-allocating.
 	return fixedSnap
 }
 
 var fixedSnap = func() audio.AnalyzerSnapshot {
-	const n = 512
-	spec := make([]float64, n)
-	wave := make([]float64, n)
-	for i := 0; i < n; i++ {
-		spec[i] = float64(i) / float64(n)
-		wave[i] = (float64(i) - float64(n/2)) / float64(n)
+	spec := make([]float64, audio.BridgeSpectrumBins)
+	wave := make([]float64, audio.BridgeWaveformSamples)
+	for i := range spec {
+		spec[i] = float64(i) / float64(len(spec))
+	}
+	for i := range wave {
+		wave[i] = (float64(i) - float64(len(wave)/2)) / float64(len(wave))
 	}
 	return audio.AnalyzerSnapshot{
 		RMS:      0.1,
@@ -65,7 +76,7 @@ func fakeRows(n int) []*DrumRow {
 	rows := make([]*DrumRow, n)
 	for i := 0; i < n; i++ {
 		rows[i] = &DrumRow{
-			Instrument: "inst" + itoaSmallTest(i),
+			Instrument: instrument.ID("inst" + itoaSmallTest(i)),
 			Name:       "Inst " + itoaSmallTest(i),
 		}
 	}
@@ -81,7 +92,7 @@ func TestBuildAnalyzerStateAllocsBudget(t *testing.T) {
 	rows := fakeRows(6)
 
 	allocs := testing.AllocsPerRun(200, func() {
-		_ = buildAnalyzerStateFromSnapshotsImpl("inst3", rows, 48000, fixedFetch)
+		_ = buildAnalyzerStateFromSnapshotsImpl(channel.Of("inst3"), rows, 48000, fixedFetch, nil)
 	})
 	t.Logf("BuildAnalyzerStateFromSnapshots allocs/op = %.1f (rows=%d)", allocs, len(rows))
 
@@ -118,13 +129,13 @@ func TestBuildAnalyzerStateBytesPerCall(t *testing.T) {
 
 	// Warm up + force a stable baseline.
 	for i := 0; i < 100; i++ {
-		_ = buildAnalyzerStateFromSnapshotsImpl("inst3", rows, 48000, fixedFetch)
+		_ = buildAnalyzerStateFromSnapshotsImpl(channel.Of("inst3"), rows, 48000, fixedFetch, nil)
 	}
 	runtime.GC()
 	var pre, post runtime.MemStats
 	runtime.ReadMemStats(&pre)
 	for i := 0; i < iters; i++ {
-		_ = buildAnalyzerStateFromSnapshotsImpl("inst3", rows, 48000, fixedFetch)
+		_ = buildAnalyzerStateFromSnapshotsImpl(channel.Of("inst3"), rows, 48000, fixedFetch, nil)
 	}
 	runtime.ReadMemStats(&post)
 	bytesPerCall := (post.TotalAlloc - pre.TotalAlloc) / iters

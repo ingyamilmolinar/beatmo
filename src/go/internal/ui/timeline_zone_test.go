@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // --- TimelineZone test helpers ---
@@ -36,7 +37,7 @@ func newTestTimelineZone() (*TimelineZone, *timelineTestCallbackLog) {
 		OnOffsetChange: func(newOffset int) {
 			log.offsetChanges = append(log.offsetChanges, newOffset)
 		},
-		OnSeekToStep: func(step int, origin string) {
+		OnSeekToStep: func(step int, origin hooks.SeekOrigin) {
 			log.scrubChanges = append(log.scrubChanges, step)
 		},
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func TestMuteSequencerMatchesPredictorLogicCallback(t *testing.T) {
@@ -50,7 +51,7 @@ func TestMuteSequencerMatchesPredictorLogicCallback(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Ensure audio path isn't blocked by missing instruments.
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 
 	g.engine.Predictor.Ensure(horizon)

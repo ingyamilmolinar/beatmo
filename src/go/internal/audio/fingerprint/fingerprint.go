@@ -18,13 +18,27 @@ type Fingerprint struct {
 	SampleRate int
 
 	// Spectral fields (filled by computeSpectral).
-	F0Hz             float64
+	F0Hz float64
+	// F0Confidence is how much of the signal DetectF0 found periodic, scaled
+	// by how tightly those frames agreed (0..1; see F0ReliableConfidence).
+	// F0Hz is ALWAYS populated -- the octave guard returns a number even for
+	// a hi-hat -- so every descriptor that assumes a harmonic series must
+	// consult this before trusting it.
+	F0Confidence     float64
 	Partials         [16]float64
 	SpectralCentroid float64
 	SpectralRolloff  float64
 	EvenOddRatio     float64
 	Inharmonicity    float64
 	NoiseRatio       float64
+	// PartialRatioProfile is the strongest-partials-to-f0 ratio structure
+	// (partial_ratios.go) -- the string-vs-bar/tube discriminator that
+	// Inharmonicity's narrow per-harmonic-order search cannot provide (a
+	// tuned bar's overtone at ~4·f0 reads as "in tune" to a nearest-integer
+	// mistuning check; SeriesDeviation instead catches that it isn't the
+	// 2nd harmonic a consecutive series would place there). Zero value
+	// (nil Ratios) when F0Hz<=0.
+	PartialRatioProfile PartialRatios
 	// SustainMag is the linear magnitude spectrum of the sustain window at
 	// fftSize=16384. Stored so Distance can compare equal-length spectra
 	// between ref and cand without recomputing the FFT.
@@ -97,7 +111,8 @@ func FromWave(w wave.Wave, label string) Fingerprint {
 	}
 	w = PeakNormalize(w)
 	fp := Fingerprint{Label: label, SampleRate: w.SampleRate}
-	fp.F0Hz = DetectF0(w)
+	f0 := DetectF0Detailed(w)
+	fp.F0Hz, fp.F0Confidence = f0.Hz, f0.Confidence
 	computeSpectral(w, &fp)
 	fp.Temporal = computeTemporal(w, fp.F0Hz)
 	fp.MFCC = computeMFCC(w, 13)

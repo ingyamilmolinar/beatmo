@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -21,17 +20,20 @@ func TestNodePopupMobileButtonSizes(t *testing.T) {
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	// Expand all sections to check all buttons
-	g.sidebar.sectionOpen["vol"] = true
-	g.sidebar.sectionOpen["pit"] = true
-	g.sidebar.sectionOpen["dur"] = true
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
-	g.sidebar.sectionOpen["aud"] = true
+	g.sidebar.sectionOpen[secVol] = true
+	g.sidebar.sectionOpen[secPit] = true
+	g.sidebar.sectionOpen[secDur] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
+	g.sidebar.sectionOpen[secAud] = true
 	g.sidebar.layout()
 
 	// Inc/dec buttons use sidebarIncBtnH (24px), other buttons use sidebarBtnH (28px)
-	incDecIDs := map[string]bool{"vol-": true, "vol+": true, "pit-": true, "pit+": true, "dur-": true, "dur+": true, "gp-": true, "gp+": true}
-	allIDs := []string{"vol-", "vol+", "pit-", "pit+", "dur-", "dur+", "gp-", "gp+", "logic", "grv", "aud"}
+	incDecIDs := map[sbID]bool{}
+	for _, f := range []sbField{fieldVol, fieldPit, fieldDur, fieldGroovePct} {
+		incDecIDs[sbMinus(f)], incDecIDs[sbPlus(f)] = true, true
+	}
+	allIDs := []sbID{sbMinus(fieldVol), sbPlus(fieldVol), sbMinus(fieldPit), sbPlus(fieldPit), sbMinus(fieldDur), sbPlus(fieldDur), sbMinus(fieldGroovePct), sbPlus(fieldGroovePct), sbLogicSelect, sbGrooveSelect, sbAudible}
 	for _, id := range allIDs {
 		r := g.sidebar.rects[id]
 		if r.Empty() {
@@ -59,14 +61,14 @@ func TestNodePopupMobileLogicDropdownInline(t *testing.T) {
 
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	found := 0
 	for id, r := range g.sidebar.rects {
-		if !strings.HasPrefix(id, "logic:") || r.Empty() {
+		if id.el != elLogicOption || r.Empty() {
 			continue
 		}
 		found++
@@ -92,14 +94,14 @@ func TestNodePopupMobileGrooveDropdownInline(t *testing.T) {
 
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
-	g.sidebar.sectionOpen["groove"] = true
+	g.sidebar.sectionOpen[secGroove] = true
 	g.sidebar.grooveDropdownOpen = true
 	g.sidebar.layout()
 
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	found := 0
 	for id, r := range g.sidebar.rects {
-		if !strings.HasPrefix(id, "groove:") || r.Empty() {
+		if id.el != elGrooveOption || r.Empty() {
 			continue
 		}
 		found++
@@ -128,7 +130,7 @@ func TestNodePopupMobileCollapsedHeight(t *testing.T) {
 	g.sidebar.layout()
 
 	// Logic and groove content rects should be empty when sections are collapsed.
-	for _, id := range []string{"logic", "grv", "gp-", "gp+", "ln-", "ln+", "lp-", "lp+"} {
+	for _, id := range []sbID{sbLogicSelect, sbGrooveSelect, sbMinus(fieldGroovePct), sbPlus(fieldGroovePct), sbMinus(fieldLogicN), sbPlus(fieldLogicN), sbMinus(fieldLogicP), sbPlus(fieldLogicP)} {
 		if r := g.sidebar.rects[id]; !r.Empty() {
 			t.Errorf("expected %q to be empty when sections collapsed, got %v", id, r)
 		}
@@ -150,18 +152,18 @@ func TestNodePopupMobileExpandToggle(t *testing.T) {
 
 	// Start collapsed (default).
 	g.sidebar.layout()
-	if !g.sidebar.rects["logic"].Empty() {
+	if !g.sidebar.rects[sbLogicSelect].Empty() {
 		t.Error("expected logic rect to be empty when section collapsed")
 	}
 
 	// Expand logic and groove sections.
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
 	g.sidebar.layout()
-	if g.sidebar.rects["logic"].Empty() {
+	if g.sidebar.rects[sbLogicSelect].Empty() {
 		t.Error("expected logic rect to be non-empty when section expanded")
 	}
-	if g.sidebar.rects["grv"].Empty() {
+	if g.sidebar.rects[sbGrooveSelect].Empty() {
 		t.Error("expected groove rect to be non-empty when section expanded")
 	}
 }
@@ -176,18 +178,18 @@ func TestNodePopupDesktopUnchanged(t *testing.T) {
 
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
-	g.sidebar.sectionOpen["vol"] = true
-	g.sidebar.sectionOpen["pit"] = true
-	g.sidebar.sectionOpen["dur"] = true
+	g.sidebar.sectionOpen[secVol] = true
+	g.sidebar.sectionOpen[secPit] = true
+	g.sidebar.sectionOpen[secDur] = true
 	g.sidebar.layout()
 
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if panel.Dx() != sidebarDefaultW {
 		t.Fatalf("expected desktop panel width %d, got %d", sidebarDefaultW, panel.Dx())
 	}
 
 	// All +/- buttons use sidebarIncBtnH (24px, vertically centered in 28px rows).
-	for _, id := range []string{"vol-", "vol+", "pit-", "pit+", "dur-", "dur+"} {
+	for _, id := range []sbID{sbMinus(fieldVol), sbPlus(fieldVol), sbMinus(fieldPit), sbPlus(fieldPit), sbMinus(fieldDur), sbPlus(fieldDur)} {
 		r := g.sidebar.rects[id]
 		if r.Empty() {
 			continue
@@ -210,14 +212,14 @@ func TestNodePopupMobileDropdownWithinPanel(t *testing.T) {
 
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	// Verify all logic dropdown items are within panel width.
 	for id, r := range g.sidebar.rects {
-		if !strings.HasPrefix(id, "logic:") || r.Empty() {
+		if id.el != elLogicOption || r.Empty() {
 			continue
 		}
 		if r.Min.X < panel.Min.X || r.Max.X > panel.Max.X {
@@ -226,7 +228,7 @@ func TestNodePopupMobileDropdownWithinPanel(t *testing.T) {
 	}
 
 	// Vol/Pitch/Dur sections should still have section headers visible.
-	for _, id := range []string{"sec-vol", "sec-pit", "sec-dur"} {
+	for _, id := range []sbID{sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secDur)} {
 		if r := g.sidebar.rects[id]; r.Empty() {
 			t.Errorf("expected %q section header to be visible during dropdown", id)
 		}
@@ -245,15 +247,15 @@ func TestNodePopupMobileAccordion(t *testing.T) {
 
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
 
 	// Step 1: Open logic dropdown. Logic toggle should be visible.
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.grooveDropdownOpen = false
 	g.sidebar.layout()
 
-	if r := g.sidebar.rects["logic"]; r.Empty() {
+	if r := g.sidebar.rects[sbLogicSelect]; r.Empty() {
 		t.Error("expected logic toggle to remain visible when logic dropdown is open")
 	}
 
@@ -261,10 +263,10 @@ func TestNodePopupMobileAccordion(t *testing.T) {
 	g.sidebar.logicDropdownOpen = false
 	g.sidebar.layout()
 
-	if r := g.sidebar.rects["logic"]; r.Empty() {
+	if r := g.sidebar.rects[sbLogicSelect]; r.Empty() {
 		t.Error("expected logic toggle to be visible after closing logic dropdown")
 	}
-	if r := g.sidebar.rects["grv"]; r.Empty() {
+	if r := g.sidebar.rects[sbGrooveSelect]; r.Empty() {
 		t.Error("expected groove toggle to be visible after closing logic dropdown")
 	}
 
@@ -272,7 +274,7 @@ func TestNodePopupMobileAccordion(t *testing.T) {
 	g.sidebar.grooveDropdownOpen = true
 	g.sidebar.layout()
 
-	if r := g.sidebar.rects["grv"]; r.Empty() {
+	if r := g.sidebar.rects[sbGrooveSelect]; r.Empty() {
 		t.Error("expected groove toggle to remain visible when groove dropdown is open")
 	}
 
@@ -280,10 +282,10 @@ func TestNodePopupMobileAccordion(t *testing.T) {
 	g.sidebar.grooveDropdownOpen = false
 	g.sidebar.layout()
 
-	if r := g.sidebar.rects["logic"]; r.Empty() {
+	if r := g.sidebar.rects[sbLogicSelect]; r.Empty() {
 		t.Error("expected logic toggle to be visible after closing groove dropdown")
 	}
-	if r := g.sidebar.rects["grv"]; r.Empty() {
+	if r := g.sidebar.rects[sbGrooveSelect]; r.Empty() {
 		t.Error("expected groove toggle to be visible after closing groove dropdown")
 	}
 
@@ -292,7 +294,7 @@ func TestNodePopupMobileAccordion(t *testing.T) {
 	g.sidebar.grooveDropdownOpen = false
 	g.sidebar.layout()
 	// Click logic toggle.
-	if b := g.sidebar.btns["logic"]; b == nil {
+	if b := g.sidebar.btns[sbLogicSelect]; b == nil {
 		t.Fatal("expected logic button to exist")
 	} else {
 		b.OnClick()
@@ -321,31 +323,31 @@ func TestNodePopupMobileSectionVisibility(t *testing.T) {
 
 	states := []struct {
 		name      string
-		sections  []string
-		logicKind string
+		sections  []sbSection
+		logicKind model.LogicKind
 		logicOpen bool
 	}{
-		{"all-collapsed", nil, "", false},
-		{"all-expanded", []string{"vol", "pit", "dur", "logic", "groove", "aud"}, "", false},
-		{"with-probability", []string{"logic"}, "probability", false},
-		{"with-every-n", []string{"logic"}, "every_n_triggers", false},
-		{"logic-dropdown-open", []string{"logic"}, "", true},
+		{"all-collapsed", nil, model.LogicNone, false},
+		{"all-expanded", []sbSection{secVol, secPit, secDur, secLogic, secGroove, secAud}, model.LogicNone, false},
+		{"with-probability", []sbSection{secLogic}, model.LogicProbability, false},
+		{"with-every-n", []sbSection{secLogic}, model.LogicEveryN, false},
+		{"logic-dropdown-open", []sbSection{secLogic}, model.LogicNone, true},
 	}
 
 	for _, st := range states {
 		t.Run(st.name, func(t *testing.T) {
 			// Reset sections
-			g.sidebar.sectionOpen = map[string]bool{}
+			g.sidebar.sectionOpen = map[sbSection]bool{}
 			for _, s := range st.sections {
 				g.sidebar.sectionOpen[s] = true
 			}
 			g.sidebar.logicDropdownOpen = st.logicOpen
 			g.sidebar.grooveDropdownOpen = false
-			if st.logicKind != "" {
+			if st.logicKind != model.LogicNone {
 				if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 					p := mn.Params
 					p.LogicKind = st.logicKind
-					if st.logicKind == "probability" {
+					if st.logicKind == model.LogicProbability {
 						p.LogicP = 0.5
 					} else {
 						p.LogicN = 2
@@ -356,7 +358,7 @@ func TestNodePopupMobileSectionVisibility(t *testing.T) {
 			g.sidebar.layout()
 
 			// Section headers should always be present
-			for _, sec := range []string{"sec-vol", "sec-pit", "sec-dur", "sec-logic", "sec-groove", "sec-aud"} {
+			for _, sec := range []sbID{sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secDur), sbSectionHeader(secLogic), sbSectionHeader(secGroove), sbSectionHeader(secAud)} {
 				if r := g.sidebar.rects[sec]; r.Empty() {
 					t.Errorf("section header %q should always be laid out, got empty in state %q", sec, st.name)
 				}
@@ -381,16 +383,16 @@ func TestNodePopupMobileConditionalParams(t *testing.T) {
 
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 
 	// Kind = "None" (no params): param rects should be empty.
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		p := mn.Params
-		p.LogicKind = ""
+		p.LogicKind = model.LogicNone
 		g.graph.SetNodeParams(n.ID, p)
 	}
 	g.sidebar.layout()
-	for _, id := range []string{"ln-", "ln+", "lp-", "lp+"} {
+	for _, id := range []sbID{sbMinus(fieldLogicN), sbPlus(fieldLogicN), sbMinus(fieldLogicP), sbPlus(fieldLogicP)} {
 		if r := g.sidebar.rects[id]; !r.Empty() {
 			t.Errorf("expected %q to be empty when kind=None, got %v", id, r)
 		}
@@ -399,35 +401,35 @@ func TestNodePopupMobileConditionalParams(t *testing.T) {
 	// Kind = "every_n_triggers" (has params): ln+/- should be non-empty.
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		p := mn.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(n.ID, p)
 	}
 	g.sidebar.layout()
-	if g.sidebar.rects["ln-"].Empty() || g.sidebar.rects["ln+"].Empty() {
+	if g.sidebar.rects[sbMinus(fieldLogicN)].Empty() || g.sidebar.rects[sbPlus(fieldLogicN)].Empty() {
 		t.Error("expected ln-/ln+ to be non-empty when kind=every_n_triggers")
 	}
 
 	// Kind = "probability" (has params): lp+/- should be non-empty.
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		p := mn.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.5
 		g.graph.SetNodeParams(n.ID, p)
 	}
 	g.sidebar.layout()
-	if g.sidebar.rects["lp-"].Empty() || g.sidebar.rects["lp+"].Empty() {
+	if g.sidebar.rects[sbMinus(fieldLogicP)].Empty() || g.sidebar.rects[sbPlus(fieldLogicP)].Empty() {
 		t.Error("expected lp-/lp+ to be non-empty when kind=probability")
 	}
 
 	// Kind = "trigger_if_prev_skipped" (no params): all param rects empty.
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		p := mn.Params
-		p.LogicKind = "trigger_if_prev_skipped"
+		p.LogicKind = model.LogicIfPrevSkipped
 		g.graph.SetNodeParams(n.ID, p)
 	}
 	g.sidebar.layout()
-	for _, id := range []string{"ln-", "ln+", "lp-", "lp+"} {
+	for _, id := range []sbID{sbMinus(fieldLogicN), sbPlus(fieldLogicN), sbMinus(fieldLogicP), sbPlus(fieldLogicP)} {
 		if r := g.sidebar.rects[id]; !r.Empty() {
 			t.Errorf("expected %q to be empty when kind=trigger_if_prev_skipped, got %v", id, r)
 		}
@@ -435,7 +437,7 @@ func TestNodePopupMobileConditionalParams(t *testing.T) {
 }
 
 // TestNodePopupDesktopLayoutOrder verifies desktop layout keeps Logic and Groove
-// before Aud and Move sections.
+// before the Aud section.
 func TestNodePopupDesktopLayoutOrder(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -446,20 +448,21 @@ func TestNodePopupDesktopLayoutOrder(t *testing.T) {
 	n := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	// Expand all sections
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
-	g.sidebar.sectionOpen["aud"] = true
-	g.sidebar.sectionOpen["move"] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
+	g.sidebar.sectionOpen[secAud] = true
+	g.sidebar.sectionOpen[secGrp] = true
 	g.sidebar.layout()
 
-	// On desktop: Logic and Groove should come before Aud.
-	logicRect := g.sidebar.rects["logic"]
-	grvRect := g.sidebar.rects["grv"]
-	audRect := g.sidebar.rects["aud"]
-	moveRect := g.sidebar.rects["move"]
+	// On desktop: Logic and Groove should come before Aud, and Aud before the
+	// Groups section (the last section now that Move is gone).
+	logicRect := g.sidebar.rects[sbLogicSelect]
+	grvRect := g.sidebar.rects[sbGrooveSelect]
+	audRect := g.sidebar.rects[sbAudible]
+	grpRect := g.sidebar.rects[sbSectionHeader(secGrp)]
 
-	if logicRect.Empty() || grvRect.Empty() || audRect.Empty() || moveRect.Empty() {
-		t.Fatal("expected logic, grv, aud, and move rects to be non-empty on desktop")
+	if logicRect.Empty() || grvRect.Empty() || audRect.Empty() || grpRect.Empty() {
+		t.Fatal("expected logic, grv, aud, and sec-grp rects to be non-empty on desktop")
 	}
 	if logicRect.Min.Y >= audRect.Min.Y {
 		t.Errorf("desktop: logic should be above aud: logic.Y=%d aud.Y=%d", logicRect.Min.Y, audRect.Min.Y)
@@ -467,8 +470,8 @@ func TestNodePopupDesktopLayoutOrder(t *testing.T) {
 	if grvRect.Min.Y >= audRect.Min.Y {
 		t.Errorf("desktop: grv should be above aud: grv.Y=%d aud.Y=%d", grvRect.Min.Y, audRect.Min.Y)
 	}
-	if audRect.Min.Y >= moveRect.Min.Y {
-		t.Errorf("desktop: aud should be above move: aud.Y=%d move.Y=%d", audRect.Min.Y, moveRect.Min.Y)
+	if audRect.Min.Y >= grpRect.Min.Y {
+		t.Errorf("desktop: aud should be above groups: aud.Y=%d grp.Y=%d", audRect.Min.Y, grpRect.Min.Y)
 	}
 }
 
@@ -486,12 +489,12 @@ func TestNodePopupMobileScrollEnabled(t *testing.T) {
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	// Expand all sections and open logic dropdown
-	g.sidebar.sectionOpen["vol"] = true
-	g.sidebar.sectionOpen["pit"] = true
-	g.sidebar.sectionOpen["dur"] = true
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
-	g.sidebar.sectionOpen["aud"] = true
+	g.sidebar.sectionOpen[secVol] = true
+	g.sidebar.sectionOpen[secPit] = true
+	g.sidebar.sectionOpen[secDur] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
+	g.sidebar.sectionOpen[secAud] = true
 	g.sidebar.logicDropdownOpen = true
 
 	// Use a smaller grid pane to force scrolling
@@ -505,7 +508,7 @@ func TestNodePopupMobileScrollEnabled(t *testing.T) {
 
 	// Close dropdown and collapse sections — scrolling should not be needed
 	g.sidebar.logicDropdownOpen = false
-	g.sidebar.sectionOpen = map[string]bool{}
+	g.sidebar.sectionOpen = map[sbSection]bool{}
 	g.sidebar.layout()
 	if g.sidebar.scroll.HasScroll() {
 		t.Errorf("expected no scroll after collapsing sections, got Total=%d Visible=%d", g.sidebar.scroll.VS.Total, g.sidebar.scroll.VS.Visible)

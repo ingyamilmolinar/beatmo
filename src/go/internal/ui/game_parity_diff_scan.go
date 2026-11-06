@@ -39,7 +39,7 @@ func (g *Game) diffPredictorTimeline(row, offset, length int, freezeLimit int) [
 			return false
 		}
 		switch bi.NodeType {
-		case model.NodeTypeRegular:
+		case model.NodeTypeRegular, model.NodeTypeChord:
 			return pred.VisibleAt(row, abs)
 		case model.NodeTypeMute:
 			return pred.TriggeredAt(row, abs)
@@ -157,13 +157,10 @@ func (g *Game) parityScan(reason string) {
 			g.parityScanReturnsForTest[3]++
 			return
 		}
-		// Allow scans in tests only when an explicit watcher is enabled.
-		if g.parityWatch == parityWatchOff && runningUnderGoTest() {
-			g.parityScanReturnsForTest[4]++
-			return
-		}
-		// In runtime, skip when stopped.
-		if !runningUnderGoTest() {
+		// Skip when stopped — under go test too, so an armed test checks
+		// exactly what production checks (a stopped-state scan ran only
+		// under go test before, and flagged state production never looks at).
+		if !g.parityScanStoppedForTest {
 			g.parityScanReturnsForTest[5]++
 			return
 		}
@@ -475,7 +472,7 @@ func (g *Game) parityScan(reason string) {
 				// (Enqueued=false). Production couples decision-record and
 				// enqueue in one seqMu critical section, so Audible⟹Enqueued
 				// and this check never false-positives on pipeline latency.
-				if dec.Audible && !dec.Missing && !dec.Enqueued && !hasAudio && typ == model.NodeTypeRegular {
+				if dec.Audible && !dec.Missing && !dec.Enqueued && !hasAudio && typ.Fires() {
 					// Avoid racey false-positives: if the sequencer just
 					// recorded the decision but hasn't yet logged the audio
 					// event into parityAudio, allow a small grace window.

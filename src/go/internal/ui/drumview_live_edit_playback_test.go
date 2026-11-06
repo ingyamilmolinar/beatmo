@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Regression: deleting + re-adding a node during playback must update the
@@ -187,7 +188,7 @@ func TestDrumView_LiveReaddNonPrimaryRowDuringPlaybackUpdatesFutureWindow(t *tes
 	// this, applySequencerHighlight may not fire for every past beat under
 	// `make test-real`, leaving the timeline with mutable Released commits
 	// instead of immutable Playback commits and breaking past-immutability.
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
 	// Row 0 circuit.

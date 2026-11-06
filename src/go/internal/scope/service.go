@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // ringBuf is a simple mutex-protected append buffer used by the scope
@@ -18,7 +20,7 @@ import (
 type ringBuf struct {
 	mu       sync.Mutex
 	buf      []float64
-	id       string // instrument ID of last push
+	id       channel.ID // channel of last push
 	lastPeak atomic.Uint64
 	lastRMS  atomic.Uint64
 	hasData  atomic.Bool
@@ -27,7 +29,7 @@ type ringBuf struct {
 // push appends samples and records the instrument ID. Also computes
 // the batch's peak/RMS and stores them atomically so consumers can
 // read per-stage stats without locking the buf mutex.
-func (r *ringBuf) push(id string, samples []float64) {
+func (r *ringBuf) push(id channel.ID, samples []float64) {
 	r.mu.Lock()
 	r.buf = append(r.buf, samples...)
 	r.id = id
@@ -67,7 +69,7 @@ func (r *ringBuf) stats() (peak, rms float64, has bool) {
 // atomic.Pointer[State]; external State() readers may keep their copy of
 // State past the next tick, so the slice cannot be pooled/recycled
 // without a lifetime hazard.
-func (r *ringBuf) drain(maxSamples int) ([]float64, string) {
+func (r *ringBuf) drain(maxSamples int) ([]float64, channel.ID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -99,7 +101,7 @@ func (r *ringBuf) drain(maxSamples int) ([]float64, string) {
 func (r *ringBuf) clear() {
 	r.mu.Lock()
 	r.buf = r.buf[:0]
-	r.id = ""
+	r.id = channel.ID{}
 	r.mu.Unlock()
 }
 
@@ -109,7 +111,7 @@ type Service struct {
 	cfg    Config
 	tapA   atomic.Int32
 	tapB   atomic.Int32
-	instID atomic.Pointer[string]
+	instID atomic.Pointer[channel.ID]
 	frozen atomic.Bool
 	rings  [stageCount]ringBuf
 	state  atomic.Pointer[State]
@@ -154,13 +156,13 @@ func (s *Service) ClearTapA() { s.tapA.Store(-1) }
 func (s *Service) ClearTapB() { s.tapB.Store(-1) }
 
 // SetInstrument sets the instrument ID to scope.
-func (s *Service) SetInstrument(id string) { s.instID.Store(&id) }
+func (s *Service) SetInstrument(id channel.ID) { s.instID.Store(&id) }
 
 // Instrument returns the current scoped instrument ID.
-func (s *Service) Instrument() string {
+func (s *Service) Instrument() channel.ID {
 	p := s.instID.Load()
 	if p == nil {
-		return ""
+		return channel.ID{}
 	}
 	return *p
 }
@@ -176,7 +178,7 @@ func (s *Service) IsFrozen() bool { return s.frozen.Load() }
 
 // PushSamples is called from the audio thread to push samples for a
 // given pipeline stage and instrument.
-func (s *Service) PushSamples(stage Stage, instID string, samples []float64) {
+func (s *Service) PushSamples(stage Stage, instID channel.ID, samples []float64) {
 	if stage < 0 || int(stage) >= int(stageCount) {
 		return
 	}
@@ -249,9 +251,9 @@ func (s *Service) maxSamples() int {
 }
 
 // isMasterStage returns true for stages that carry the composite mix
-// rather than per-instrument signals (Sends, Master).
+// rather than per-instrument signals.
 func isMasterStage(s Stage) bool {
-	return s == StageSends || s == StageMaster
+	return s == StageMaster
 }
 
 // tick runs one processing cycle.
@@ -283,7 +285,7 @@ func (s *Service) tick() {
 		samples, id := s.rings[tapAStage].drain(max)
 		// Master-path stages always pass the instrument filter because
 		// they contain the composite mix, not per-instrument signals.
-		if len(samples) > 0 && (isMasterStage(tapAStage) || instID == "" || id == instID) {
+		if len(samples) > 0 && (isMasterStage(tapAStage) || instID.IsZero() || id == instID) {
 			td := buildTapData(tapAStage, id, samples)
 			tapA = &td
 		}
@@ -292,7 +294,7 @@ func (s *Service) tick() {
 	// Process tap B.
 	if tapBStage >= 0 && int(tapBStage) < int(stageCount) {
 		samples, id := s.rings[tapBStage].drain(max)
-		if len(samples) > 0 && (isMasterStage(tapBStage) || instID == "" || id == instID) {
+		if len(samples) > 0 && (isMasterStage(tapBStage) || instID.IsZero() || id == instID) {
 			td := buildTapData(tapBStage, id, samples)
 			tapB = &td
 		}
@@ -331,7 +333,7 @@ func (s *Service) tick() {
 }
 
 // buildTapData computes peak, RMS, and dB values for a set of samples.
-func buildTapData(stage Stage, instID string, samples []float64) TapData {
+func buildTapData(stage Stage, instID channel.ID, samples []float64) TapData {
 	var peak float64
 	var sumSq float64
 	for _, s := range samples {

@@ -217,7 +217,7 @@ func TestSliderPopupDrawUsesRoundedThumb(t *testing.T) {
 	wantDia := Profile().DensityValues().SliderThumbH
 	foundThumb := false
 	for _, c := range calls {
-		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Rect.Dx() >= wantDia-2 && c.Radius == c.Rect.Dx()/2 {
+		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Rect.Dx() >= wantDia-2 && c.Radius == radiusCapsule {
 			foundThumb = true
 		}
 	}
@@ -366,11 +366,11 @@ func TestSliderPopupHorizontalDrawEmitsHorizontalRail(t *testing.T) {
 		t.Fatalf("expected a horizontal filled rail (Dx >= 2*Dy) but got: %+v", calls)
 	}
 
-	// Assert there is a near-square round thumb (|Dx-Dy|<=2, Radius==Dx/2, Dx>=8).
+	// Assert there is a near-square round thumb (|Dx-Dy|<=2, drawn as a capsule).
 	wantDia := Profile().DensityValues().SliderThumbH
 	foundThumb := false
 	for _, c := range calls {
-		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Rect.Dx() >= wantDia-2 && c.Radius == c.Rect.Dx()/2 {
+		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Rect.Dx() >= wantDia-2 && c.Radius == radiusCapsule {
 			foundThumb = true
 			break
 		}

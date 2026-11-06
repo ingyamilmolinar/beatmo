@@ -8,12 +8,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 type NoteEvent struct {
 	Row        int
-	InstID     string
+	InstID     instrument.ID
 	AbsStep    int
 	AtSample   int
 	PitchSemis float64
@@ -48,15 +49,24 @@ func beatInfoAt(path []model.BeatInfo, isLoop bool, loopStart, abs int) (model.B
 	return path[idx], true
 }
 
+// StepSeconds is the duration of one path step: a template's subdiv is grid
+// units per BEAT (the engine's MaxDiv), and the sequencer advances one unit per
+// step. This read "units per bar" until 2026-10-02 (60/BPM * 4/Subdiv), which
+// rendered every template at a quarter of its tempo.
+func StepSeconds(bpm, subdiv int) float64 {
+	return 60.0 / float64(bpm) / float64(subdiv)
+}
+
 // NOTE: the engine predictor caps its sliding window at ~4096 steps; renders where
-// bars*Subdiv exceeds that would silently drop the earliest notes. All current uses
-// (2-8 bars) are far under the cap.
+// bars*4*Subdiv exceeds that would silently drop the earliest notes. All current
+// uses (2-8 bars) are far under the cap.
 func BuildArrangement(pt ParsedTemplate, bars, sampleRate int) (Arrangement, error) {
 	rp, err := BuildGraph(pt)
 	if err != nil {
 		return Arrangement{}, err
 	}
-	totalSteps := bars * pt.Subdiv
+	// A bar is four beats of Subdiv units each.
+	totalSteps := bars * 4 * pt.Subdiv
 	if totalSteps <= 0 {
 		return Arrangement{}, fmt.Errorf("songrender: non-positive totalSteps")
 	}
@@ -65,8 +75,7 @@ func BuildArrangement(pt ParsedTemplate, bars, sampleRate int) (Arrangement, err
 	pred.SetPaths(rp.Paths, rp.IsLoop, rp.LoopStart, rp.Nodes)
 	pred.Ensure(totalSteps)
 
-	// seconds per step = 60/BPM * 4/Subdiv (a beat = Subdiv/4 steps in 4/4).
-	secPerStep := 60.0 / float64(pt.BPM) * 4.0 / float64(pt.Subdiv)
+	secPerStep := StepSeconds(pt.BPM, pt.Subdiv)
 	samplesPerStep := secPerStep * float64(sampleRate)
 
 	arr := Arrangement{
@@ -95,13 +104,25 @@ func BuildArrangement(pt ParsedTemplate, bars, sampleRate int) (Arrangement, err
 				vol = 1.0
 			}
 			vol *= inst.Volume
-			arr.Notes = append(arr.Notes, NoteEvent{
+			at := float64(abs)*samplesPerStep +
+				node.Params.GrooveKind.Seconds(node.Params.GroovePct, secPerStep)*float64(sampleRate)
+			ev := NoteEvent{
 				Row: row, InstID: inst.ID, AbsStep: abs,
-				AtSample:   int(math.Round(float64(abs) * samplesPerStep)),
+				AtSample:   int(math.Max(0, math.Round(at))),
 				PitchSemis: node.Params.Pitch,
 				Volume:     vol,
 				DurSec:     dur,
-			})
+			}
+			layers := model.NodeLayers(node.Type, node.Params)
+			if layers == nil {
+				arr.Notes = append(arr.Notes, ev)
+			}
+			for _, l := range layers { // a chord: one note per voice
+				v := ev
+				v.PitchSemis += l.Semis
+				v.Volume *= l.Gain
+				arr.Notes = append(arr.Notes, v)
+			}
 		}
 	}
 	return arr, nil

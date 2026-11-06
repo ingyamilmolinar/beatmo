@@ -1,0 +1,149 @@
+{
+  "schema_version": "0.0.1",
+  "id": "singing-bowl",
+  "name": "Singing Bowl",
+  "category": "modular",
+  "notes": "singingBowlSeed: a Tibetan singing bowl — inharmonic struck metal (bowl modes\nnear 2.34x and 4.1x) with a VERY long ring, a slow amplitude undulation (the\nbowl's breathing shimmer) and a slow beat from a detuned unison. Meditative.",
+  "render": {
+    "seconds": 1.5,
+    "amplitude": 0.5674,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.02,
+        "amp_curve": 1,
+        "amp_decay": 4,
+        "amp_release": 0.5,
+        "amp_sustain": 0
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.85,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 5000,
+        "filter_resonance": 0.8,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0,
+        "lfo_depth": 0.15,
+        "lfo_rate": 1.2,
+        "lfo_target": 0
+      },
+      "notes": "lfo_delay: slow shimmer\nlfo_depth: slow shimmer\nlfo_enabled: slow shimmer\nlfo_rate: slow shimmer\nlfo_target: slow shimmer"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 6,
+        "unison_drift_depth": 0,
+        "unison_drift_rate": 0,
+        "unison_mix": 0.5,
+        "unison_voices": 2
+      },
+      "notes": "unison_detune: the slow bowl beat\nunison_mix: the slow bowl beat\nunison_voices: the slow bowl beat"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.6,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2.34,
+        "freq_mode": 0,
+        "gain": 0.35,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 1,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4.1,
+        "freq_mode": 0,
+        "gain": 0.18,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    }
+  ]
+}

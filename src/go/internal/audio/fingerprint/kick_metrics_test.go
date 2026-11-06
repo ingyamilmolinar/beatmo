@@ -1,13 +1,10 @@
 package fingerprint
 
 import (
-	"encoding/binary"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
-	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
 // --- synthetic signal generators with known ground truth ----------------------
@@ -353,135 +350,4 @@ func TestKickDistance_BodyReverbIdentity(t *testing.T) {
 		t.Errorf("new terms not symmetric: LowMid %g/%g Reverb %g/%g",
 			d1.LowMid, d2.LowMid, d1.Reverb, d2.Reverb)
 	}
-}
-
-// --- optional real-WAV sanity ------------------------------------------------
-
-func TestKickAnalyze_ZgumpWAV(t *testing.T) {
-	path, ok := wavref.Path("83768__zgump__kick-pack-0708.wav")
-	if !ok {
-		t.Skip("zgump reference WAV unavailable; set BEATMO_WAV_REFS")
-	}
-	w, ok := decodeWAVMono(path)
-	if !ok {
-		t.Skip("zgump WAV decode failed")
-	}
-	fp := KickAnalyze(w)
-	t.Logf("zgump: PitchSettleHz=%.1f PitchStartHz=%.1f Crest=%.2f TailBloom=%v@%.3fs(r=%.2f) BandAvg=%v",
-		fp.PitchSettleHz, fp.PitchStartHz, fp.Crest, fp.TailBloomPresent, fp.TailBloomSec, fp.TailBloomRatio, fp.BandAvg)
-	dom := 0
-	for i, v := range fp.BandAvg {
-		if v > fp.BandAvg[dom] {
-			dom = i
-		}
-	}
-	t.Logf("zgump: dominant band = %d (%s)", dom, KickBands()[dom].Name)
-
-	if fp.PitchSettleHz < 65 || fp.PitchSettleHz > 95 {
-		t.Errorf("PitchSettleHz = %.1f, want [65,95]", fp.PitchSettleHz)
-	}
-	if dom != 1 {
-		t.Errorf("dominant band = %d, want 1 (60-120)", dom)
-	}
-	if !fp.TailBloomPresent {
-		t.Errorf("TailBloomPresent = false, want true")
-	}
-	if fp.Crest < 2.5 || fp.Crest > 4.5 {
-		t.Errorf("Crest = %.2f, want [2.5,4.5]", fp.Crest)
-	}
-}
-
-func TestKickAnalyze_SandyrbWAV(t *testing.T) {
-	path, ok := wavref.Path("36010__sandyrb__dnb-kick-003.wav")
-	if !ok {
-		t.Skip("sandyrb reference WAV unavailable; set BEATMO_WAV_REFS")
-	}
-	w, ok := decodeWAVMono(path)
-	if !ok {
-		t.Skip("sandyrb WAV decode failed")
-	}
-	fp := KickAnalyze(w)
-	t.Logf("sandyrb: AttackLowMidRatio=%.3f TailRatio=%.4f TailDurationSec=%.3f TailFlatness=%.4f",
-		fp.AttackLowMidRatio, fp.TailRatio, fp.TailDurationSec, fp.TailFlatness)
-
-	// Reference targets (measured on the sandyrb dnb kick).
-	if fp.AttackLowMidRatio < 1.2 || fp.AttackLowMidRatio > 2.5 {
-		t.Errorf("AttackLowMidRatio = %.3f, want ~1.5–2.0", fp.AttackLowMidRatio)
-	}
-	if fp.TailRatio < 0.01 || fp.TailRatio > 0.10 {
-		t.Errorf("TailRatio = %.4f, want ~0.03–0.05", fp.TailRatio)
-	}
-	if fp.TailDurationSec < 0.15 || fp.TailDurationSec > 0.45 {
-		t.Errorf("TailDurationSec = %.3f, want ~0.30", fp.TailDurationSec)
-	}
-}
-
-// decodeWAVMono is a minimal stdlib PCM WAV reader (16/24/32-bit int, any
-// channel count averaged to mono). Kept in the test to avoid importing the
-// audio package.
-func decodeWAVMono(path string) (wave.Wave, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return wave.Wave{}, false
-	}
-	if len(data) < 44 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return wave.Wave{}, false
-	}
-	var sr, ch, bits int
-	var mono []float64
-	pos := 12
-	for pos+8 <= len(data) {
-		id := string(data[pos : pos+4])
-		sz := int(binary.LittleEndian.Uint32(data[pos+4 : pos+8]))
-		body := data[pos+8:]
-		if id == "fmt " {
-			ch = int(binary.LittleEndian.Uint16(body[2:4]))
-			sr = int(binary.LittleEndian.Uint32(body[4:8]))
-			bits = int(binary.LittleEndian.Uint16(body[14:16]))
-		} else if id == "data" {
-			if sz > len(body) {
-				sz = len(body)
-			}
-			bps := bits / 8
-			frame := ch * bps
-			if frame == 0 {
-				return wave.Wave{}, false
-			}
-			n := sz / frame
-			mono = make([]float64, n)
-			for i := 0; i < n; i++ {
-				off := i * frame
-				acc := 0.0
-				for c := 0; c < ch; c++ {
-					so := off + c*bps
-					var v float64
-					switch bits {
-					case 16:
-						raw := int16(uint16(body[so]) | uint16(body[so+1])<<8)
-						v = float64(raw) / 32768.0
-					case 24:
-						r := int32(body[so]) | int32(body[so+1])<<8 | int32(body[so+2])<<16
-						if r&0x800000 != 0 {
-							r -= 0x1000000
-						}
-						v = float64(r) / 8388608.0
-					case 32:
-						r := int32(binary.LittleEndian.Uint32(body[so : so+4]))
-						v = float64(r) / 2147483648.0
-					}
-					acc += v
-				}
-				mono[i] = acc / float64(ch)
-			}
-			break
-		}
-		pos += 8 + sz
-		if sz%2 == 1 {
-			pos++
-		}
-	}
-	if sr == 0 || len(mono) == 0 {
-		return wave.Wave{}, false
-	}
-	return wave.Wave{Samples: mono, SampleRate: sr}, true
 }

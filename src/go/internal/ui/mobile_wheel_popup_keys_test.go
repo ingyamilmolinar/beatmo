@@ -291,8 +291,11 @@ func TestWheelPopup_DiscreteCancelReverts(t *testing.T) {
 	}
 }
 
-// All three control wheels accept user input the exact same way: a change then
-// Cancel reverts to the snapshot; a change then Accept keeps it and closes.
+// Both remaining control wheels accept user input the exact same way: a
+// change then Cancel reverts to the snapshot; a change then Accept keeps it
+// and closes. (The synth case was retired in Task 13 — the barrel/wheel
+// popup no longer exists on the synth path; see TestTapArmsThenWheelEditsValue
+// in synth_armed_input_test.go for the armed-editor equivalent.)
 func TestAllControlWheels_AcceptCancelParity(t *testing.T) {
 	type wheelCase struct {
 		name string
@@ -305,12 +308,6 @@ func TestAllControlWheels_AcceptCancelParity(t *testing.T) {
 			setupEQTabForTest(g, 1200, 800)
 			g.drum.openEQKnobWheelPopup(0)
 			return g.drum.eqWheelPopup
-		}},
-		{"synth", func(t *testing.T) *MobileWheelPopup {
-			g := New(testLogger)
-			t.Cleanup(g.CloseForTest)
-			mobileSynthWheelSceneSetup()(g)
-			return g.drum.synthWheelPopup
 		}},
 		{"sampler", func(t *testing.T) *MobileWheelPopup {
 			g, _ := newMobileSamplerWheelGame(t)

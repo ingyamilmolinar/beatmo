@@ -65,13 +65,15 @@ func (g *Game) handleTapInGrid(x, y int) {
 	if g.landscapeUnsupported() {
 		return
 	}
-	if image.Pt(x, y).In(g.gridHelpButtonRect()) {
-		// The gear is the inputDispatcher's job: gridHelpInputHandler toggles it
-		// on the press edge (mouse, and touch via the override). A normal tap
-		// always presents at least one pressed frame to the dispatcher, so by the
-		// time this release-time GestureTap fires the overlay is already
-		// open/closed. Just consume the tap here — toggling again would double-fire
-		// it back, and falling through would create a node under the gear.
+	if g.inTopRightButtonZone(x, y) {
+		// The top-right button cluster (gear + folder + logs) is the
+		// inputDispatcher's job: each handler toggles its menu on the press edge
+		// (mouse, and touch via the override). A normal tap always presents at
+		// least one pressed frame to the dispatcher, so by the time this
+		// release-time GestureTap fires the menu is already open/closed. Consume
+		// the tap for the WHOLE cluster (buttons + gaps + margin): toggling again
+		// would double-fire, and falling through would create a stray node between
+		// or under the buttons.
 		return
 	}
 
@@ -80,6 +82,18 @@ func (g *Game) handleTapInGrid(x, y int) {
 		return
 	}
 
+	// A gesture the sidebar owned at its press edge stays the sidebar's at the
+	// lift, even when the region it was pressed in has since gone: a picker cell
+	// that confirms (re-selecting the current note/chord) closes the picker
+	// during this very gesture, and its cells float OUTSIDE the card — so a
+	// release-time Hit would read the confirming tap as a tap outside the card
+	// and close the card with it.
+	if g.sidebar.IsOpen() && !g.sidebar.Hit(x, y) && g.inputDispatcher.PressOwner() == InputHandler(g.sidebar) {
+		if g.sidebar.scroll.TouchActive() || g.sidebar.scroll.Dragging() {
+			g.sidebar.HandleInput(x, y, false)
+		}
+		return
+	}
 	// Check for sidebar interaction first
 	if g.sidebar.IsOpen() && g.sidebar.Hit(x, y) {
 		// If the sidebar has active scroll/touch tracking (from the

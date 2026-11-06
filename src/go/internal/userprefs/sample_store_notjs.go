@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Desktop SampleStore backend. Each user sample is one file under
@@ -22,8 +24,8 @@ func (s *fileStore) samplesDir() string {
 	return filepath.Join(filepath.Dir(s.path), "samples")
 }
 
-func (s *fileStore) LoadSamples() (map[string]SampleBlob, error) {
-	out := map[string]SampleBlob{}
+func (s *fileStore) LoadSamples() (map[instrument.ID]SampleBlob, error) {
+	out := map[instrument.ID]SampleBlob{}
 	dir := s.samplesDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -41,17 +43,21 @@ func (s *fileStore) LoadSamples() (map[string]SampleBlob, error) {
 		if derr != nil {
 			continue
 		}
+		id, perr := instrument.ParseID(string(idBytes))
+		if perr != nil {
+			continue
+		}
 		data, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
 		if rerr != nil || len(data) < 4 {
 			continue
 		}
 		sr := int(binary.LittleEndian.Uint32(data[:4]))
-		out[string(idBytes)] = SampleBlob{SampleRate: sr, PCM: append([]byte(nil), data[4:]...)}
+		out[id] = SampleBlob{SampleRate: sr, PCM: append([]byte(nil), data[4:]...)}
 	}
 	return out, nil
 }
 
-func (s *fileStore) SaveSample(id string, blob SampleBlob) error {
+func (s *fileStore) SaveSample(id instrument.ID, blob SampleBlob) error {
 	if id == "" {
 		return nil
 	}
@@ -70,7 +76,7 @@ func (s *fileStore) SaveSample(id string, blob SampleBlob) error {
 	return os.Rename(tmp, path)
 }
 
-func (s *fileStore) DeleteSample(id string) error {
+func (s *fileStore) DeleteSample(id instrument.ID) error {
 	if id == "" {
 		return nil
 	}

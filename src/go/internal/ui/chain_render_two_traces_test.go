@@ -8,6 +8,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -66,11 +68,10 @@ func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 	// Build a ScopeStateOverride simulating what a fully-wired WASM bridge
 	// would produce for a per-instrument id: only the two selected stages
 	// carry data. All other slots are zero.
-	state := SynthesizeScopeState("kick", scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
+	state := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
 		Synth:  synthSnap,
 		PreEQ:  preEQSnap,
 		PostEQ: audio.AnalyzerSnapshot{},
-		Sends:  audio.AnalyzerSnapshot{},
 		Master: audio.AnalyzerSnapshot{},
 	})
 	if !state.TapA.Active {

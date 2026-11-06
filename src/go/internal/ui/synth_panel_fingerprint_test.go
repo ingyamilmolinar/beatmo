@@ -6,6 +6,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -73,6 +74,11 @@ func captureSynthFingerprint(g *Game) synthLayoutFingerprint {
 		out.knobRects = append(out.knobRects, k.Rect())
 	}
 	out.headerRect = g.drum.SynthTabHeader().rect
+	// Category layer geometry: the drilled detail rect + the strip/cards.
+	out.sectionRects = append(out.sectionRects, g.drum.instEditorMacroDetailR, g.drum.instEditorPipeRect)
+	for _, c := range g.drum.instEditorMacroCards {
+		out.sectionRects = append(out.sectionRects, c.r)
+	}
 	return out
 }
 
@@ -117,10 +123,9 @@ func newGameForFingerprint(t *testing.T, logger *game_log.Logger, mobile bool) *
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
+	layoutSynthTab(t, g)
 	return g
 }

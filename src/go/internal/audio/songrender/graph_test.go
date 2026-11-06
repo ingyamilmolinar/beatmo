@@ -3,7 +3,7 @@ package songrender
 import "testing"
 
 func TestBuildGraph_BachToccata(t *testing.T) {
-	pt, err := LoadTemplate("bach-toccata")
+	pt, err := LoadTemplate("bach-brandenburg-3")
 	if err != nil {
 		t.Fatal(err)
 	}

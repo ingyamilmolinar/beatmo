@@ -39,24 +39,24 @@ func TestDrumViewMatchesPredictionAcrossComplexCircuits(t *testing.T) {
 	// Logic: A probability .35, B every 2nd, C prev_triggered, D skip every 3rd
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.35
 		g.graph.SetNodeParams(a.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(c.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(c.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(d.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(d.ID, p)
 	}

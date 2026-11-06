@@ -2,6 +2,8 @@
 
 package audio
 
+import "github.com/ingyamilmolinar/beatmo/internal/channel"
+
 // analyzer_wiring.go — the single place that wires a channel-analyzer tap into
 // a channel's processor chain, plus observability for how many are wired.
 //
@@ -43,7 +45,7 @@ func effectiveAnalyzerWindow(window int) int {
 }
 
 // lookupChannel returns the channel for id without creating one.
-func lookupChannel(id string) *Channel {
+func lookupChannel(id channel.ID) *Channel {
 	chanMgr.mu.RLock()
 	defer chanMgr.mu.RUnlock()
 	if ch := chanMgr.channels[id]; ch != nil {
@@ -95,7 +97,7 @@ func (c *Channel) replaceEQAnalyzer(an *Analyzer) {
 // waveform/spectrum live after SetChannelEQ rebuilds the chain, and never call
 // SetAnalyzerEnabled themselves. Reusing a tap that setEQActiveChannel had
 // disabled would silently leave those panels dead.
-func wireChannelAnalyzer(id string, window int) *Analyzer {
+func wireChannelAnalyzer(id channel.ID, window int) *Analyzer {
 	ch := chanMgr.ensureChannel(id)
 	if cur := ch.eqAnalyzer(); cur != nil && len(cur.window) == effectiveAnalyzerWindow(window) {
 		// Already wired at this size — reuse it rather than stacking another
@@ -112,7 +114,7 @@ func wireChannelAnalyzer(id string, window int) *Analyzer {
 // processing chain. Each one costs a full FFT on the audio thread per window, so
 // this is a direct proxy for that channel's analyzer CPU load. Returns 0 for an
 // unknown channel and never creates one, so it is safe in assertions.
-func ChannelAnalyzerCount(id string) int {
+func ChannelAnalyzerCount(id channel.ID) int {
 	ch := lookupChannel(id)
 	if ch == nil {
 		return 0

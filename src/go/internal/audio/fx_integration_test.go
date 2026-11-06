@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // sineSamples generates n samples of a sine wave at the given frequency and sample rate.
@@ -40,11 +43,11 @@ func processThrough(ch *Channel, input []float64) []float64 {
 func TestChainMultiEffectModifiesAudio(t *testing.T) {
 	resetChains(t)
 	id := "integ-multi"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, map[string]float64{"drive": 10, "tone": 4000, "mix": 1})
-	AddInsertEffect(id, EffectDelay, map[string]float64{"time": 100, "feedback": 0.3, "mix": 0.5})
-	AddInsertEffect(id, EffectReverb, map[string]float64{"room": 0.5, "damping": 0.5, "mix": 0.5})
+	AddInsertEffect(instrument.ID(id), EffectDistortion, map[string]float64{"drive": 10, "tone": 4000, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectDelay, map[string]float64{"time": 100, "feedback": 0.3, "mix": 0.5})
+	AddInsertEffect(instrument.ID(id), EffectReverb, map[string]float64{"room": 0.5, "damping": 0.5, "mix": 0.5})
 
 	const sr = 44100
 	input := sineSamples(440, sr, sr/2) // 0.5 second
@@ -53,7 +56,7 @@ func TestChainMultiEffectModifiesAudio(t *testing.T) {
 
 	// Also process with a clean channel (no effects).
 	resetChains(t)
-	ch2 := InstrumentChannel("integ-dry")
+	ch2 := InstrumentChannel(channel.Of("integ-dry"))
 	dry := processThrough(ch2, input)
 
 	wetRMS := rmsEnergy(wet)
@@ -79,9 +82,9 @@ func TestChainMultiEffectModifiesAudio(t *testing.T) {
 func TestChainParameterChangesAffectOutput(t *testing.T) {
 	resetChains(t)
 	id := "integ-param"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, map[string]float64{"drive": 1, "tone": 8000, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectDistortion, map[string]float64{"drive": 1, "tone": 8000, "mix": 1})
 
 	const sr = 44100
 	// Use a quiet signal (amplitude 0.3) so drive increase has visible effect.
@@ -94,7 +97,7 @@ func TestChainParameterChangesAffectOutput(t *testing.T) {
 	lowRMS := rmsEnergy(lowDriveOut)
 
 	// Increase drive to 20.
-	SetInsertEffectParam(id, 0, "drive", 20)
+	SetInsertEffectParam(instrument.ID(id), 0, "drive", 20)
 
 	// Reset filter state so comparison is clean.
 	ResetAllInsertEffects()
@@ -113,11 +116,11 @@ func TestChainParameterChangesAffectOutput(t *testing.T) {
 func TestChainOrderAffectsOutput(t *testing.T) {
 	resetChains(t)
 	id := "integ-order"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// Distortion first, then LP filter at 500Hz.
-	AddInsertEffect(id, EffectDistortion, map[string]float64{"drive": 15, "tone": 8000, "mix": 1})
-	AddInsertEffect(id, EffectFilter, map[string]float64{"mode": 0, "cutoff": 500, "q": 0.707, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectDistortion, map[string]float64{"drive": 15, "tone": 8000, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectFilter, map[string]float64{"mode": 0, "cutoff": 500, "q": 0.707, "mix": 1})
 
 	const sr = 44100
 	// Broadband signal: 200Hz + 5kHz.
@@ -131,7 +134,7 @@ func TestChainOrderAffectsOutput(t *testing.T) {
 	order1RMS := rmsEnergy(order1Out)
 
 	// Move filter to slot 0 (filter→distortion).
-	MoveInsertEffect(id, 1, 0)
+	MoveInsertEffect(instrument.ID(id), 1, 0)
 	ResetAllInsertEffects()
 
 	order2Out := processThrough(ch, input)
@@ -148,10 +151,10 @@ func TestChainOrderAffectsOutput(t *testing.T) {
 func TestChainToggleBypassesEffect(t *testing.T) {
 	resetChains(t)
 	id := "integ-toggle"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// LP filter at 200Hz — should strongly attenuate 5kHz.
-	AddInsertEffect(id, EffectFilter, map[string]float64{"mode": 0, "cutoff": 200, "q": 0.707, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectFilter, map[string]float64{"mode": 0, "cutoff": 200, "q": 0.707, "mix": 1})
 
 	const sr = 44100
 	input := sineSamples(5000, sr, sr/4)
@@ -160,7 +163,7 @@ func TestChainToggleBypassesEffect(t *testing.T) {
 	enabledRMS := rmsEnergy(enabledOut)
 
 	// Disable the filter.
-	ToggleInsertEffect(id, 0, false)
+	ToggleInsertEffect(instrument.ID(id), 0, false)
 
 	disabledOut := processThrough(ch, input)
 	disabledRMS := rmsEnergy(disabledOut)
@@ -176,10 +179,10 @@ func TestChainToggleBypassesEffect(t *testing.T) {
 func TestChannelProcessorChainIncludesInserts(t *testing.T) {
 	resetChains(t)
 	id := "integ-echo"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// 100ms delay, no feedback, 100% wet.
-	AddInsertEffect(id, EffectDelay, map[string]float64{"time": 100, "feedback": 0, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectDelay, map[string]float64{"time": 100, "feedback": 0, "mix": 1})
 
 	const sr = 44100
 	expectSample := int(0.1 * float64(sr)) // ~4410
@@ -222,16 +225,16 @@ func TestChannelProcessorChainIncludesInserts(t *testing.T) {
 func TestChainAllSixEffectsProcess(t *testing.T) {
 	resetChains(t)
 	id := "integ-all6"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, nil)
-	AddInsertEffect(id, EffectDelay, nil)
-	AddInsertEffect(id, EffectReverb, nil)
-	AddInsertEffect(id, EffectChorus, nil)
-	AddInsertEffect(id, EffectBitcrusher, nil)
-	AddInsertEffect(id, EffectFilter, nil)
+	AddInsertEffect(instrument.ID(id), EffectDistortion, nil)
+	AddInsertEffect(instrument.ID(id), EffectDelay, nil)
+	AddInsertEffect(instrument.ID(id), EffectReverb, nil)
+	AddInsertEffect(instrument.ID(id), EffectChorus, nil)
+	AddInsertEffect(instrument.ID(id), EffectBitcrusher, nil)
+	AddInsertEffect(instrument.ID(id), EffectFilter, nil)
 
-	slots := GetInsertEffects(id)
+	slots := GetInsertEffects(instrument.ID(id))
 	if len(slots) != 6 {
 		t.Fatalf("expected 6 effects, got %d", len(slots))
 	}
@@ -271,14 +274,14 @@ func TestChainAllSixEffectsProcess(t *testing.T) {
 func TestChainAllEffectsProcess(t *testing.T) {
 	resetChains(t)
 	id := "integ-all14"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	allTypes := EffectTypeOrder()
 	for _, et := range allTypes {
-		AddInsertEffect(id, et, nil)
+		AddInsertEffect(instrument.ID(id), et, nil)
 	}
 
-	slots := GetInsertEffects(id)
+	slots := GetInsertEffects(instrument.ID(id))
 	if len(slots) != len(allTypes) {
 		t.Fatalf("expected %d effects, got %d", len(allTypes), len(slots))
 	}
@@ -355,10 +358,10 @@ func TestRegistryDisplayNames(t *testing.T) {
 func TestChainDelayTimingViaParam(t *testing.T) {
 	resetChains(t)
 	id := "integ-delay-timing"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// 50ms delay, no feedback, 100% wet.
-	AddInsertEffect(id, EffectDelay, map[string]float64{"time": 50, "feedback": 0, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectDelay, map[string]float64{"time": 50, "feedback": 0, "mix": 1})
 
 	const sr = 44100
 
@@ -384,7 +387,7 @@ func TestChainDelayTimingViaParam(t *testing.T) {
 	peak50 := findEchoPeak()
 
 	// Change to 200ms.
-	SetInsertEffectParam(id, 0, "time", 200)
+	SetInsertEffectParam(instrument.ID(id), 0, "time", 200)
 	ResetAllInsertEffects()
 
 	peak200 := findEchoPeak()
@@ -408,10 +411,10 @@ func TestChainDelayTimingViaParam(t *testing.T) {
 func TestChainFilterCutoffViaParam(t *testing.T) {
 	resetChains(t)
 	id := "integ-filter-cutoff"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// LP filter at 10kHz — should pass 1kHz easily.
-	AddInsertEffect(id, EffectFilter, map[string]float64{"mode": 0, "cutoff": 10000, "q": 0.707, "mix": 1})
+	AddInsertEffect(instrument.ID(id), EffectFilter, map[string]float64{"mode": 0, "cutoff": 10000, "q": 0.707, "mix": 1})
 
 	const sr = 44100
 	input := sineSamples(1000, sr, sr/4)
@@ -420,7 +423,7 @@ func TestChainFilterCutoffViaParam(t *testing.T) {
 	highRMS := rmsEnergy(highCutoffOut)
 
 	// Lower cutoff to 200Hz — should strongly attenuate 1kHz.
-	SetInsertEffectParam(id, 0, "cutoff", 200)
+	SetInsertEffectParam(instrument.ID(id), 0, "cutoff", 200)
 
 	// Reset filter state for a clean comparison.
 	ResetAllInsertEffects()

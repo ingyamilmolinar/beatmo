@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -24,7 +25,7 @@ func setupMobileSamplerTab(t *testing.T, w, h int) *Game {
 	UpdateProfile()
 	g.Layout(w, h)
 	g.drum.SetMobileEQMode(true)
-	g.drum.sampler.captureFromSynth("kick") // give the editor a buffer
+	g.drum.sampler.captureFromSynth(roster.Kick) // give the editor a buffer
 	g.drum.eqPanelZone.SetActiveTab(TabSampler)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	g.Update()
@@ -64,7 +65,7 @@ func TestSamplerMobileTogglesInPanelActionsOnStickyBar(t *testing.T) {
 			}
 
 			// Action buttons relocated off-panel: their in-panel rects are empty.
-			for _, tag := range []string{"sampler-preview", "sampler-save", "sampler-save-as", "sampler-reset"} {
+			for _, tag := range []string{"sampler-preview", "sampler-save-as"} {
 				if b := dv.samplerButtonByTag(tag); b != nil && !b.Rect().Empty() {
 					t.Errorf("%s: still laid out in-panel on mobile (should be on the sticky bar)", tag)
 				}
@@ -82,9 +83,11 @@ func TestSamplerMobileTogglesInPanelActionsOnStickyBar(t *testing.T) {
 	}
 }
 
-// TestSamplerMobileOverflowMenuHasSaveAsReset — the Sampler ⋯ overflow opens the
-// shared menu with Save As… and a destructive Reset.
-func TestSamplerMobileOverflowMenuHasSaveAsReset(t *testing.T) {
+// TestSamplerMobileOverflowMenuHasSaveAs — the Sampler ⋯ overflow opens the
+// shared instrument action menu: Save As…, portable Export/Import (the
+// *.beatmo-inst.json feature) — same item set as the Synth tab
+// (instrumentActionMenuItems).
+func TestSamplerMobileOverflowMenuHasSaveAs(t *testing.T) {
 	g := setupMobileSamplerTab(t, 360, 760)
 	actions := g.drum.samplerPanelMobileActions()
 	if len(actions) != 3 || actions[2].OnClick == nil {
@@ -97,13 +100,17 @@ func TestSamplerMobileOverflowMenuHasSaveAsReset(t *testing.T) {
 		t.Fatal("overflow tap did not open the action menu")
 	}
 	items := m.Buttons()
-	if len(items) != 2 {
-		t.Fatalf("want 2 menu items (Save As / Reset), got %d", len(items))
+	want := []string{
+		i18n.T(i18n.KeySaveAs),
+		i18n.T(i18n.KeyMenuExport),
+		i18n.T(i18n.KeyMenuImport),
 	}
-	if items[0].Text != i18n.T(i18n.KeySaveAs) || items[1].Text != i18n.T(i18n.KeyReset) {
-		t.Errorf("items = [%q,%q], want [Save As, Reset]", items[0].Text, items[1].Text)
+	if len(items) != len(want) {
+		t.Fatalf("want %d menu items (Save As / Export / Import), got %d", len(want), len(items))
 	}
-	if items[1].TextColor != colError {
-		t.Errorf("Reset item must use the destructive/error color")
+	for i, w := range want {
+		if items[i].Text != w {
+			t.Errorf("item[%d] = %q, want %q", i, items[i].Text, w)
+		}
 	}
 }

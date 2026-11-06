@@ -4,9 +4,11 @@ package ui
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -23,34 +25,22 @@ func newInstrumentTestGame(t *testing.T) *Game {
 // re-imports it: the tone (base+seed), normalized effects, and EQ survive; the
 // builtin is never clobbered (import re-namespaces).
 func TestInstrumentBundleRoundTripSynth(t *testing.T) {
-	g := newInstrumentTestGame(t)
-	const inst, base = "snare", "drum-snare"
-	reg := audio.RecipeRegistrations()[base]
-	if reg == nil || len(reg.Params) == 0 {
-		t.Skipf("%s unavailable", base)
-	}
-	g.drum.Rows[0].Instrument = inst
-	audio.BindInstrumentToRecipe(inst, base)
-	t.Cleanup(func() { audio.ResetInstrumentParams(inst); audio.SetInsertEffects(inst, nil) })
+	g := newDocsGame(t, roster.Snare)
+	const inst = roster.Snare
+	t.Cleanup(func() { audio.SetInsertEffects(inst, nil) })
 
-	p := reg.Params[0]
-	shipped := audio.RecipeShippedDefaults(base)
-	newVal := p.Min
-	if math.Abs(newVal-shipped[p.Name]) < 1e-9 {
-		newVal = p.Max
-	}
-	audio.SetInstrumentParam(inst, p.Name, newVal)
+	audio.SetInstrumentParam(inst, "gen1_snare_tune", 1.2)
 	audio.SetInsertEffects(inst, []audio.EffectSlot{{Type: "bitcrusher", Enabled: true, Params: map[string]float64{"bits": 6}}})
-	g.drum.Rows[0].EQGainsDB = make([]float64, 10)
-	g.drum.Rows[0].EQGainsDB[2] = 4.0
+	rowEQ(g.drum.Rows[0]).GainsDB = make([]float64, 10)
+	rowEQ(g.drum.Rows[0]).GainsDB[2] = 4.0
 
 	bundle, err := g.drum.BuildInstrumentBundle(0)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
 	d := bundle.Instruments[0]
-	if d.Recipe.BaseRecipe != base {
-		t.Errorf("base recipe = %q, want %q", d.Recipe.BaseRecipe, base)
+	if d.Synth == nil || d.Synth.ID != inst {
+		t.Fatalf("bundle must carry the instrument document: %+v", d.Synth)
 	}
 	if len(bundle.Effects) != 1 || len(d.EffectChain) != 1 {
 		t.Errorf("effects not normalized: defs=%d chain=%v", len(bundle.Effects), d.EffectChain)
@@ -67,20 +57,19 @@ func TestInstrumentBundleRoundTripSynth(t *testing.T) {
 		t.Fatalf("want 1 result, got %d", len(results))
 	}
 	newID := results[0].ID
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(newID) })
-
-	if newID == base || audio.RecipeIsBuiltin(newID) {
-		t.Fatalf("import clobbered/aliased the builtin: newID=%q", newID)
+	if newID == inst || !strings.HasPrefix(string(newID), "user.") {
+		t.Fatalf("import clobbered/aliased the shipped instrument: newID=%q", newID)
 	}
-	if !audio.RecipeIsBuiltin(base) {
-		t.Errorf("builtin %q no longer builtin after import", base)
+	if lib, ok := audio.LibraryDoc(inst); !ok || lib.Origin != "" {
+		t.Errorf("shipped %q lost from the library after import", inst)
+	}
+	if _, ok := audio.UserLibraryDoc(newID); !ok {
+		t.Errorf("imported instrument %q not saved to the user library", newID)
 	}
 
 	// Effective tone matches.
-	srcEff := audio.MergeRecipeDefaults(base, audio.GetInstrumentParams(inst))
-	impEff := audio.MergeRecipeDefaults(newID, audio.GetInstrumentParams(newID))
-	if math.Abs(impEff[p.Name]-srcEff[p.Name]) > 1e-9 {
-		t.Errorf("param %q: imported %v, source %v", p.Name, impEff[p.Name], srcEff[p.Name])
+	if got, want := audio.GetInstrumentParams(newID)["gen1_snare_tune"], audio.GetInstrumentParams(inst)["gen1_snare_tune"]; math.Abs(got-want) > 1e-9 || want != 1.2 {
+		t.Errorf("gen1_snare_tune: imported %v, source %v", got, want)
 	}
 	// Effects reconstructed.
 	fx := audio.GetInsertEffects(newID)
@@ -93,23 +82,18 @@ func TestInstrumentBundleRoundTripSynth(t *testing.T) {
 // reference, NO PCM in the file) and re-imports it, resolving the WAV via a fake
 // locator that verifies the content hash.
 func TestInstrumentBundleWavReferenceRoundTrip(t *testing.T) {
-	g := newInstrumentTestGame(t)
-	const inst, base = "wavinst", "drum-snare"
-	if audio.RecipeRegistrations()[base] == nil {
-		t.Skipf("%s unavailable", base)
-	}
-	g.drum.Rows[0].Instrument = inst
-	audio.BindInstrumentToRecipe(inst, base)
+	g := newDocsGame(t, roster.Snare)
+	const inst = roster.Snare
 	pcm := []float32{0.1, -0.2, 0.3, -0.4}
 	audio.PutUserSample(inst, pcm, 48000)
-	t.Cleanup(func() { audio.ResetInstrumentParams(inst) })
+	t.Cleanup(func() { audio.DropBuiltinSampleOverride(inst) })
 
 	bundle, err := g.drum.BuildInstrumentBundle(0)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
 	d := bundle.Instruments[0]
-	if d.Kind != "wav" {
+	if d.Kind != audio.BundleWAV {
 		t.Errorf("kind = %q, want wav", d.Kind)
 	}
 	if d.WavRef == nil || d.WavRef.Sha256 == "" || len(d.WavRef.Sources) == 0 {
@@ -127,7 +111,7 @@ func TestInstrumentBundleWavReferenceRoundTrip(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 	newID := results[0].ID
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(newID) })
+	t.Cleanup(func() { audio.UnregisterSamplePCM(newID) })
 
 	if results[0].WavState != audio.WavResolveMatched {
 		t.Errorf("wav state = %v, want Matched", results[0].WavState)
@@ -137,13 +121,13 @@ func TestInstrumentBundleWavReferenceRoundTrip(t *testing.T) {
 	}
 
 	// A mismatching locator (different bytes) reports a mismatch, not a bind.
-	badLoc := map[string]audio.WavLocator{
+	badLoc := map[audio.WavSourceKind]audio.WavLocator{
 		audio.WavSourceLocalStorage: func(string) ([]byte, bool) { return []byte("garbage-not-the-pinned-wav"), true },
 	}
 	res2, _ := g.drum.ApplyInstrumentBundle(&bundle, func(ImportCollision) CollisionChoice { return CollisionKeepBoth }, -1, badLoc)
 	t.Cleanup(func() {
 		if len(res2) > 0 {
-			audio.UnregisterRecipeForTest(res2[0].ID)
+			audio.UnregisterSamplePCM(res2[0].ID)
 		}
 	})
 	if len(res2) == 0 || res2[0].WavState != audio.WavResolveMismatch {

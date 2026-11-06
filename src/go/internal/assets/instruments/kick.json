@@ -1,0 +1,102 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick",
+  "name": "Kick",
+  "category": "modular",
+  "notes": "─────────────────────────────────────────────────────────────────────────────\nKICK family as CONFIG. Each seed is the C voice's former per-variant literals for its\nvariant, extracted from modular_stages.c rather than hand-transcribed — that\nincludes attack/fade/sat, which the legacy binding passed as NaN and which a\nseed MUST state explicitly (gen_kick_sat left at the schema identity 0\nsilences the voice outright).\n─────────────────────────────────────────────────────────────────────────────\ndrum-kick -> C gen_kick_base\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\npe_amt 0.1→0.25, click 0.35→0.15, attack 0.3→0, h2 0.4→0.16, sat\n0.55→0.85, noise 0.18→0.13, pe_rate 30→26",
+  "render": {
+    "seconds": 0.5,
+    "amplitude": 0.9414,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 55
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 6,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.base",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0,
+        "kick_click": 0.15,
+        "kick_env0": 5.5,
+        "kick_env1": 9,
+        "kick_fade": 4,
+        "kick_h2": 0.16,
+        "kick_h3": 0.2,
+        "kick_h4": 0.12,
+        "kick_noise": 0.13,
+        "kick_pe_amt": 0.25,
+        "kick_pe_rate": 26,
+        "kick_sat": 0.85,
+        "wave": 0
+      }
+    }
+  ]
+}

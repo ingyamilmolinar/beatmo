@@ -48,14 +48,27 @@ func TestImportNotificationNamesSource(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	got := g.drum.notifStore.Latest().display()
+	// Find the import's own line, not Latest(): an import invalidates the voice
+	// cache, so its warm-up renders off-thread and posts "Circuit ready" right
+	// after "Loaded …" — whether that lands before this read is a race.
+	var imported *notification
+	for _, n := range g.drum.notifStore.History() {
+		if n.key == i18n.KeyNotifImportedNamed {
+			n := n
+			imported = &n
+			break
+		}
+	}
 	want := fmt.Sprintf("Loaded Salsa (%d nodes, %d rows)", len(g.graph.Nodes), len(g.drum.Rows))
-	if got != want {
+	if imported == nil {
+		t.Fatalf("no import notification posted; want %q", want)
+	}
+	if got := imported.display(); got != want {
 		t.Fatalf("import notification = %q, want %q", got, want)
 	}
 	// Retranslates: source name + counts survive a locale switch.
 	i18n.SetLocale(i18n.LocaleES)
-	if got := g.drum.notifStore.Latest().display(); !strings.Contains(got, "Salsa") || !strings.HasPrefix(got, "Cargado") {
+	if got := imported.display(); !strings.Contains(got, "Salsa") || !strings.HasPrefix(got, "Cargado") {
 		t.Fatalf("ES import notification = %q, want it to start \"Cargado\" and contain \"Salsa\"", got)
 	}
 }

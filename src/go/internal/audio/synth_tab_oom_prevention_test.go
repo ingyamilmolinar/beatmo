@@ -5,6 +5,8 @@ package audio
 import (
 	"runtime"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSynthTabHotPathAllocBudget pins the per-trigger cumulative allocation
@@ -25,8 +27,8 @@ import (
 // per-call budget that spans multiple functions.
 func TestSynthTabHotPathAllocBudget(t *testing.T) {
 	t.Cleanup(func() {
-		ResetInstrumentParams("snare")
-		globalVoiceCache.ClearInstrument("snare")
+		ResetInstrumentParams(roster.Snare)
+		globalVoiceCache.ClearInstrument(roster.Snare)
 	})
 
 	// Seed the voice cache with a realistic snare buffer for the default
@@ -35,17 +37,15 @@ func TestSynthTabHotPathAllocBudget(t *testing.T) {
 	// invalidates the entry — the next trigger renders, then the next 50
 	// or so triggers hit. The hit rate dominates the cumulative budget.
 	const samples = 22050
-	const bpm = 140
 	const sampleRate = 44100
 	buf := make([]float32, samples)
 	for i := range buf {
 		buf[i] = float32(i) / float32(samples)
 	}
 	key := voiceCacheKey{
-		instrumentID: "snare",
-		bpm:          bpm,
+		instrumentID: roster.Snare,
 		sampleRate:   sampleRate,
-		paramsHash:   hashRecipeParams(nil),
+		paramsHash:   0,
 	}
 	globalVoiceCache.Put(key, buf)
 
@@ -109,21 +109,21 @@ func TestSynthTabHotPathAllocBudget(t *testing.T) {
 // re-emerge through the "default" code branch.
 func TestRecipeAwareVoiceDispatch_LegacyPathAllocBudget(t *testing.T) {
 	t.Cleanup(func() {
-		ResetInstrumentParams("snare")
+		ResetInstrumentParams(roster.Snare)
 		globalVoiceCache.Clear()
 	})
 
 	// Ensure no user params for snare so we take the legacy branch.
-	ResetInstrumentParams("snare")
+	ResetInstrumentParams(roster.Snare)
 
 	// Warm up so cVoice typed-table lookups, channel resolution, etc.
 	// don't show up as one-shot allocs in the measured window.
 	for i := 0; i < 16; i++ {
-		_ = newRecipeAwareVoice("snare", 120, 44100)
+		_ = newRecipeAwareVoice(roster.Snare, 44100)
 	}
 
 	allocs := testing.AllocsPerRun(200, func() {
-		_ = newRecipeAwareVoice("snare", 120, 44100)
+		_ = newRecipeAwareVoice(roster.Snare, 44100)
 	})
 
 	// Legacy path returns inst.NewVoice(...) which constructs a fresh

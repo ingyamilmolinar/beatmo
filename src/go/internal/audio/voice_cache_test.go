@@ -5,6 +5,9 @@ package audio
 import (
 	"sync"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func newTestCache() *voiceCache {
@@ -14,8 +17,8 @@ func newTestCache() *voiceCache {
 	}
 }
 
-func testKey(id string) voiceCacheKey {
-	return voiceCacheKey{instrumentID: id, bpm: 0, sampleRate: 44100}
+func testKey(id instrument.ID) voiceCacheKey {
+	return voiceCacheKey{instrumentID: id, sampleRate: 44100}
 }
 
 func TestVoiceCacheGetMiss(t *testing.T) {
@@ -28,7 +31,7 @@ func TestVoiceCacheGetMiss(t *testing.T) {
 
 func TestVoiceCachePutAndGet(t *testing.T) {
 	vc := newTestCache()
-	key := testKey("snare")
+	key := testKey(roster.Snare)
 	data := []float32{0.1, 0.2, 0.3}
 	vc.Put(key, data)
 
@@ -62,7 +65,7 @@ func TestVoiceCachePutAndGet(t *testing.T) {
 // would surface the corruption as audio glitches.
 func TestVoiceCacheGetSharesBackingArray(t *testing.T) {
 	vc := newTestCache()
-	key := testKey("kick")
+	key := testKey(roster.Kick)
 	vc.Put(key, []float32{1, 2, 3})
 
 	got, ok := vc.Get(key)
@@ -85,13 +88,13 @@ func TestVoiceCacheGetSharesBackingArray(t *testing.T) {
 
 // TestVoiceCachePutSharesBackingArray pins the post-OOM-fix contract:
 // Put stores the caller-provided slice directly (no clone). Callers
-// (tryRecipeVoice and the CVariantInstrument render paths) must not
+// (tryRecipeVoice and docInstrument → renderDocIntoCache) must not
 // mutate the buffer after calling Put; the cache and any concurrent Get
 // reader share the backing array. Removing the ~80 KB clone-on-put was
 // the second leg of the per-trigger cache allocation reduction.
 func TestVoiceCachePutSharesBackingArray(t *testing.T) {
 	vc := newTestCache()
-	key := testKey("hihat")
+	key := testKey(roster.Hihat)
 	buf := []float32{1, 2, 3}
 	vc.Put(key, buf)
 
@@ -139,7 +142,7 @@ func TestVoiceCacheGetPutAllocBudget(t *testing.T) {
 
 func TestVoiceCacheRoundRobin(t *testing.T) {
 	vc := newTestCache()
-	key := testKey("tom")
+	key := testKey(roster.Tom)
 
 	// Put 3 distinct variants.
 	for v := 0; v < RoundRobinVariants; v++ {
@@ -162,7 +165,7 @@ func TestVoiceCacheRoundRobin(t *testing.T) {
 
 func TestVoiceCacheRoundRobinWraps(t *testing.T) {
 	vc := newTestCache()
-	key := testKey("clap")
+	key := testKey(roster.Clap)
 
 	for v := 0; v < RoundRobinVariants; v++ {
 		vc.Put(key, []float32{float32(v * 10)})
@@ -243,7 +246,7 @@ func TestGlobalVoiceCacheByteBudgetSoak(t *testing.T) {
 
 	const bufLen = 44100 // ~176 KB/variant, organ-sized
 	for i := 0; i < 500; i++ {
-		key := voiceCacheKey{instrumentID: "soak", bpm: i, sampleRate: 44100}
+		key := voiceCacheKey{instrumentID: "soak", paramsHash: uint64(i), sampleRate: 44100}
 		globalVoiceCache.Put(key, make([]float32, bufLen))
 	}
 	entries, bytes := VoiceCacheStatsForTest()
@@ -272,7 +275,7 @@ func TestVoiceCacheMaxEntriesEvictsLRU(t *testing.T) {
 	// Fill to max: a, b, c, d (a is oldest).
 	keys := make([]voiceCacheKey, 4)
 	for i := 0; i < 4; i++ {
-		keys[i] = voiceCacheKey{instrumentID: string(rune('a' + i)), sampleRate: 44100}
+		keys[i] = voiceCacheKey{instrumentID: instrument.ID(string(rune('a' + i))), sampleRate: 44100}
 		vc.Put(keys[i], []float32{1})
 	}
 	// Touch 'a' so 'b' becomes the LRU victim.
@@ -312,7 +315,7 @@ func TestVoiceCacheByteBudgetEvictsLRU(t *testing.T) {
 	}
 
 	mk := func(i int) voiceCacheKey {
-		return voiceCacheKey{instrumentID: "x", bpm: i, sampleRate: 44100}
+		return voiceCacheKey{instrumentID: "x", paramsHash: uint64(i), sampleRate: 44100}
 	}
 	// Put entry 0 and keep touching it so it stays "hot".
 	vc.Put(mk(0), make([]float32, bufLen))
@@ -353,8 +356,8 @@ func TestVoiceCacheClear(t *testing.T) {
 
 func TestVoiceCacheDifferentSynthParamsKey(t *testing.T) {
 	vc := newTestCache()
-	key1 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, paramsHash: hashRecipeParams(SynthParams{}.ToRecipeParams())}
-	key2 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, paramsHash: hashRecipeParams(SynthParams{Pitch: 2.0}.ToRecipeParams())}
+	key1 := voiceCacheKey{instrumentID: roster.Snare, sampleRate: 44100, paramsHash: 1}
+	key2 := voiceCacheKey{instrumentID: roster.Snare, sampleRate: 44100, paramsHash: 2}
 
 	vc.Put(key1, []float32{1})
 	vc.Put(key2, []float32{2})
@@ -374,7 +377,7 @@ func TestVoiceCacheConcurrentGetPut(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			key := voiceCacheKey{instrumentID: "conc", bpm: id, sampleRate: 44100}
+			key := voiceCacheKey{instrumentID: "conc", paramsHash: uint64(id), sampleRate: 44100}
 			for i := 0; i < 100; i++ {
 				vc.Put(key, []float32{float32(i)})
 				vc.Get(key)

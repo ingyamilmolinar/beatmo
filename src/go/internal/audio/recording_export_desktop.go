@@ -4,9 +4,10 @@ package audio
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // SaveRecording finalizes a recording.
@@ -43,19 +44,19 @@ func SaveRecording(result *RecordingResult) (string, error) {
 		if err := os.WriteFile(path, ch.Data, 0o644); err != nil {
 			return "", fmt.Errorf("failed to write %s: %w", path, err)
 		}
-		log.Printf("[RECORDING] Saved %s (%d bytes)", path, len(ch.Data))
+		log.Debugf("[record] saved %s (%d bytes)", path, len(ch.Data))
 	}
 
 	metaJSON, err := result.MetadataJSON()
 	if err != nil {
-		log.Printf("[RECORDING] Warning: failed to marshal metadata: %v", err)
+		log.Warnf("[record] failed to marshal metadata: %v", err)
 	} else {
 		metaPath := filepath.Join(dir, "session.json")
 		if err := os.WriteFile(metaPath, metaJSON, 0o644); err != nil {
-			log.Printf("[RECORDING] Warning: failed to write session.json: %v", err)
+			log.Warnf("[record] failed to write session.json: %v", err)
 		}
 	}
 
-	log.Printf("[RECORDING] Saved %d channels to %s", len(result.Channels), dir)
+	log.Debugf("[record] saved %d channels to %s", len(result.Channels), dir)
 	return dir, nil
 }

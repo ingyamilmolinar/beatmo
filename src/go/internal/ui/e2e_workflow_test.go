@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestE2EFullLifecycle exercises the complete user workflow:
@@ -47,7 +48,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 
 	// Step 2: Start playback.
 	var plays int
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 	g.SetPlaying(true)
 	advanceFrames(g, 30)
 	if !g.Playing() {
@@ -88,7 +89,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 	if len(exported) < 10 {
 		t.Fatalf("export too short: %d bytes", len(exported))
 	}
-	var parsedExport exportFile
+	var parsedExport projectFile
 	if err := json.Unmarshal(exported, &parsedExport); err != nil {
 		t.Fatalf("parse export: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
-	var parsedReExport exportFile
+	var parsedReExport projectFile
 	if err := json.Unmarshal(reExported, &parsedReExport); err != nil {
 		t.Fatalf("parse re-export: %v", err)
 	}
@@ -169,7 +170,7 @@ func TestE2ERapidBPMStress(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Start playback.
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 	advanceFrames(g, 10)
 
@@ -252,7 +253,7 @@ func TestE2ERowAddDuringPlayback(t *testing.T) {
 	}
 
 	// Start playback.
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 	advanceFrames(g, 20)
 

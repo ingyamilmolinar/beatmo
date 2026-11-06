@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // navMenuCompForTest builds an opened NavigationMenuComponent backed by mutable
@@ -116,31 +118,28 @@ func TestNavMenuComponentSegmentTogglesBothWays(t *testing.T) {
 	}
 }
 
-// TestNavMenuComponentClaimsKeyboardWhenEditing verifies the owned go-to editor
-// links the text input to the parent tree/keyboard: ClaimsKeyboard is true only
-// while the editor is active, and the editor rect is inside InputBounds so a
-// click in it is not treated as an outside-click.
-func TestNavMenuComponentClaimsKeyboardWhenEditing(t *testing.T) {
+// TestNavMenuComponentClaimsOnlyTheWheelArrows replaces the go-to text
+// editor's TOTAL keyboard claim: the inline go-to wheel is a PARTIAL claimant —
+// it owns the arrows while the menu is open (so they step the wheel, not the
+// camera) and nothing else (Space still plays). A closed menu claims nothing.
+func TestNavMenuComponentClaimsOnlyTheWheelArrows(t *testing.T) {
 	unit := true
 	c := navMenuCompForTest(t, &unit)
-	if c.ClaimsKeyboard() {
-		t.Fatal("must not claim keyboard before editing")
+	if _, total := any(c).(KeyboardClaimant); total {
+		t.Fatal("the nav menu must not take the whole keyboard (no text entry left)")
 	}
-	c.Editor().OpenValue(ValueOpen{
-		Spec:   positionValueSpec(8, 128),
-		Anchor: c.Panel().GotoBeatRect(),
-		Clamp:  c.InputBounds(),
-		Get:    func() float64 { return 0 },
-		Set:    func(v float64) {},
-	})
-	if !c.Editor().Active() {
-		t.Fatal("editor did not activate")
+	keys := c.ClaimedKeys()
+	if len(keys) == 0 {
+		t.Fatal("an open nav menu must claim the go-to wheel's arrows")
 	}
-	if !c.ClaimsKeyboard() {
-		t.Fatal("must claim keyboard while the editor is active")
+	for _, k := range keys {
+		switch k {
+		case ebiten.KeySpace, ebiten.KeyEnter, ebiten.KeyEscape:
+			t.Fatalf("the wheel must not claim %v", k)
+		}
 	}
-	er := c.Editor().Rect()
-	if !er.Empty() && !er.In(c.InputBounds()) {
-		t.Fatalf("editor rect %v must lie inside InputBounds %v", er, c.InputBounds())
+	c.Close()
+	if len(c.ClaimedKeys()) != 0 {
+		t.Fatal("a closed nav menu must claim no keys")
 	}
 }

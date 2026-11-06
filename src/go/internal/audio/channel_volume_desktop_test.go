@@ -5,6 +5,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestDesktopChannelVolumeApplied guards that per-instrument channel volume
@@ -32,13 +35,13 @@ func TestDesktopChannelVolumeApplied(t *testing.T) {
 
 	render := func(chVol float64) float64 {
 		ResetInstruments()
-		SetChannelVolume("kick", chVol)
+		SetChannelVolume(channel.Of(roster.Kick), chVol)
 		m := newTestMixer()
-		v := newRecipeAwareVoice("kick", bpm, sampleRate)
+		v := newRecipeAwareVoice(roster.Kick, sampleRate)
 		if v == nil {
 			t.Fatal("nil kick voice")
 		}
-		m.Schedule("kick", v, 0, -1, -1)
+		m.Schedule(channel.Of(roster.Kick), v, 0, -1, -1)
 		return rms(renderMixer(m, sampleRate/2))
 	}
 

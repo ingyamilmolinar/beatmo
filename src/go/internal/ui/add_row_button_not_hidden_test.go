@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestRowRackNotHiddenBehindAudioPanel_SynthTab is the regression for the
@@ -70,7 +71,7 @@ func TestRowRackNotHiddenBehindAudioPanel_SynthTab(t *testing.T) {
 	// switch to the Synth tab through the production path.
 	if len(dv.Rows) > 0 && dv.Rows[0] != nil && dv.Rows[0].Instrument != "" {
 		id := dv.Rows[0].Instrument
-		audio.BindInstrumentToRecipe(id, "drum-snare")
+		_ = audio.InstallInstrumentDocForTest(id, roster.Snare)
 		t.Cleanup(func() { audio.ResetInstrumentParams(id) })
 	}
 	dv.eqPanelZone.SetActiveTab(TabSynth)

@@ -4,7 +4,12 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestImportClearsStaleAnalyzerData reproduces the reported bug: after loading a
@@ -26,12 +31,12 @@ func TestImportClearsStaleAnalyzerData(t *testing.T) {
 	g.Layout(400, 300)
 
 	// Load an initial circuit that uses "kick".
-	circuitA := exportFile{
-		Version: 1, Subdiv: 32, BPM: 120,
+	circuitA := projectFile{
+		Envelope: schema.Current(), Subdiv: 32, BPM: 120,
 		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Kick", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 	}
 	dataA, _ := json.Marshal(circuitA)
 	if err := g.Import(dataA); err != nil {
@@ -41,7 +46,7 @@ func TestImportClearsStaleAnalyzerData(t *testing.T) {
 	// Simulate audio having flowed through the kick channel analyzer: feed a full
 	// window of non-zero samples so the analyzer computes RMS/peak and retains
 	// the waveform (exactly the state a just-stopped circuit leaves behind).
-	an := audio.EnableChannelAnalyzer("kick", 512)
+	an := audio.EnableChannelAnalyzer(channel.Of(roster.Kick), 512)
 	if an == nil {
 		t.Fatal("expected a kick channel analyzer")
 	}
@@ -54,22 +59,22 @@ func TestImportClearsStaleAnalyzerData(t *testing.T) {
 	// Precondition: the analyzer now reports non-flat data. Assert both on the
 	// raw snapshot and on the pure state-builder the Wave/Spectrum tabs use on
 	// WASM (buildAnalyzerStateFromSnapshotsImpl reads the same snapshots).
-	pre := audio.ChannelAnalyzerSnapshot("kick")
+	pre := audio.ChannelAnalyzerSnapshot(channel.Of(roster.Kick))
 	if pre.RMS == 0 && pre.Peak == 0 {
 		t.Fatalf("precondition failed: expected non-flat analyzer data, got RMS=%v Peak=%v", pre.RMS, pre.Peak)
 	}
-	if st := buildAnalyzerStateFromSnapshotsImpl("kick", g.drum.Rows, audio.SampleRate(), audio.ChannelAnalyzerSnapshot); st == nil || st.Detail == nil || !st.Detail.Active {
+	if st := buildAnalyzerStateFromSnapshotsImpl(channel.Of(roster.Kick), g.drum.Rows, audio.SampleRate(), audio.ChannelAnalyzerSnapshot, nil); st == nil || st.Detail == nil || !st.Detail.Active {
 		t.Fatalf("precondition failed: expected active kick detail state before import")
 	}
 
 	// Load a different circuit that ALSO uses "kick" (no per-instrument EQ, so
 	// nothing rebuilds the kick channel). Playback is stopped throughout.
-	circuitB := exportFile{
-		Version: 1, Subdiv: 32, BPM: 140,
+	circuitB := projectFile{
+		Envelope: schema.Current(), Subdiv: 32, BPM: 140,
 		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Kick", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 	}
 	dataB, _ := json.Marshal(circuitB)
 	if err := g.Import(dataB); err != nil {
@@ -78,7 +83,7 @@ func TestImportClearsStaleAnalyzerData(t *testing.T) {
 
 	// The retained analyzer frame must be cleared: the channel should read flat
 	// until the new circuit is actually played.
-	post := audio.ChannelAnalyzerSnapshot("kick")
+	post := audio.ChannelAnalyzerSnapshot(channel.Of(roster.Kick))
 	if post.RMS != 0 || post.Peak != 0 {
 		t.Errorf("stale analyzer scalars after import: RMS=%v Peak=%v (want 0, 0)", post.RMS, post.Peak)
 	}
@@ -97,7 +102,7 @@ func TestImportClearsStaleAnalyzerData(t *testing.T) {
 
 	// The State the Wave/Spectrum tabs render on WASM (built from the same
 	// per-channel snapshots) must report an inactive channel.
-	if st := buildAnalyzerStateFromSnapshotsImpl("kick", g.drum.Rows, audio.SampleRate(), audio.ChannelAnalyzerSnapshot); st != nil && st.Detail != nil && st.Detail.Active {
+	if st := buildAnalyzerStateFromSnapshotsImpl(channel.Of(roster.Kick), g.drum.Rows, audio.SampleRate(), audio.ChannelAnalyzerSnapshot, nil); st != nil && st.Detail != nil && st.Detail.Active {
 		t.Errorf("kick detail state still active after import (expected flat until played)")
 	}
 }

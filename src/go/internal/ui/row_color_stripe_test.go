@@ -3,11 +3,7 @@
 package ui
 
 import (
-	"image"
-	"image/color"
 	"testing"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // TestRowAccentStripeWidthMatchesProfile asserts the profile exposes a
@@ -29,26 +25,5 @@ func TestRowAccentStripeWidthMatchesProfile(t *testing.T) {
 	if mobileWidth < desktopWidth {
 		t.Errorf("mobile AccentStripeWidth (%d) should not be smaller than desktop (%d) — touch UIs need the stronger anchor",
 			mobileWidth, desktopWidth)
-	}
-}
-
-// TestRowColorStripeAcceptsAnyColor exercises drawAccentStripe with varied
-// instrument colors to confirm the helper does not crash and respects the
-// caller's color choice. (Pixel-perfect verification of the rendered RGBA
-// lives in the regenerated visual baseline.)
-func TestRowColorStripeAcceptsAnyColor(t *testing.T) {
-	assertDefaultParityState(t)
-
-	colors := []color.Color{
-		color.RGBA{255, 80, 60, 255},
-		color.RGBA{60, 220, 140, 255},
-		color.RGBA{120, 130, 255, 255},
-	}
-	rect := image.Rect(0, 0, 3, TouchRowHeight())
-	canvas := ebiten.NewImage(8, TouchRowHeight()+4)
-	for _, c := range colors {
-		// Direct call — drawAccentStripe is the helper used at row draw time;
-		// the test confirms it does not panic for typical instrument colors.
-		drawAccentStripe(canvas, rect, c)
 	}
 }

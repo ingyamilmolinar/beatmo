@@ -3,9 +3,10 @@
 package songrender
 
 import (
-	"sort"
+	"slices"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/synthmatch"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Render (test build): deterministic. Each note is rendered by the synthmatch
@@ -20,7 +21,7 @@ func Render(stem string, bars, sampleRate int) (Rendered, error) {
 	if err != nil {
 		return Rendered{}, err
 	}
-	stems := make(map[string][]float64)
+	stems := make(map[instrument.ID][]float64)
 	for _, in := range arr.Instruments {
 		if _, ok := stems[in.ID]; !ok {
 			stems[in.ID] = make([]float64, arr.TotalSamples)
@@ -41,11 +42,11 @@ func Render(stem string, bars, sampleRate int) (Rendered, error) {
 		}
 	}
 	master := make([]float64, arr.TotalSamples)
-	keys := make([]string, 0, len(stems))
+	keys := make([]instrument.ID, 0, len(stems))
 	for k := range stems {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	for _, k := range keys {
 		for i, v := range stems[k] {
 			master[i] += v

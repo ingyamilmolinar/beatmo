@@ -150,10 +150,11 @@ func (s *SegmentedControl) Draw(dst *ebiten.Image) {
 	}
 	// Tray backdrop. The keycaps sit on top; the surface-2 tray peeks through the
 	// 1px seams between caps as the segment dividers.
-	drawRoundedRect(dst, s.rect, colSurface2, RadiusMD, true)
-	drawRoundedRect(dst, s.rect, colBorderMedium, RadiusMD, false)
+	// Recessed tray: surface-1 so the members (surface-2) read as sitting IN it
+	// via the tone step. No outline — flat-tonal doctrine.
+	drawRoundedRect(dst, s.rect, colSurface1, RadiusContainer, true)
 
-	pillRadius := RadiusMD / 2 // 4px corners — matches the desktop audio tabs
+	pillRadius := RadiusControl // every control shares one radius (DESIGN.md "Shapes")
 	for i, label := range s.labels {
 		cell := insetRect(s.SegmentRect(i), 1) // 1px seam → hairline divider
 		if cell.Empty() {
@@ -164,29 +165,24 @@ func (s *SegmentedControl) Draw(dst *ebiten.Image) {
 
 		// Shared pill palette (see audio_sticky_bar.go) so the mobile switcher is
 		// pixel-consistent with the desktop tabs.
-		capFill, borderCol, textCol, shellCol := pillCapFillInactive, pillCapBorderInact, pillTextInactive, pillShellInactive
+		capFill, textCol := pillCapFillInactive, pillTextInactive
 		switch {
 		case dis:
-			capFill, borderCol, textCol, shellCol = pillCapFillDisabled, pillCapBorderDisab, pillTextDisabled, pillShellDisabled
+			capFill, textCol = pillCapFillDisabled, pillTextDisabled
 		case active:
-			capFill, borderCol, textCol, shellCol = pillCapFillActive, pillCapBorderActive, pillTextActive, pillShellActive
+			// Bright legend on the accent tint (the solid-amber flood is gone).
+			capFill, textCol = pillCapFillInactive, colTextPrimary
 		}
 
-		// Static keycap (segments aren't Buttons, so no press-spring). The cap is
-		// travel-invariant: raised=false anchors it at the cell top, the wall shows
-		// at the bottom as the socket.
-		capR := keycapCapRect(cell, 0, false)
-		if genGeomKeycapWallDepth != 0 {
-			drawRoundedButton(dst, cell, shellCol, shellCol, pillRadius, false) // socket/side-wall
-		}
-		drawKeycapContactShadow(dst, capR, pillRadius)
-		drawRoundedButton(dst, capR, capFill, borderCol, pillRadius, false) // cap face
-		if !dis {
-			if active {
-				drawKeycapActiveInset(dst, capR, pillRadius) // lit-amber, pressed-IN
-			} else {
-				drawKeycapBevel(dst, capR, pillRadius) // matte raised
-			}
+		// Flat-tonal segment: body fill only, plus a 2px accent bar when active.
+		// No socket, no bevel, no per-segment border — the members sit in the
+		// group's shared tray and selection is one bar. See DESIGN.md
+		// "Elevation & Depth".
+		capR := cell
+		drawFlatButtonBody(dst, capR, capFill, pillRadius)
+		if active && !dis {
+			drawRoundedRect(dst, capR, WithAlpha(colAccent, AlphaSubtle), pillRadius, true)
+			drawFlatSelectionBar(dst, capR, colAccent, selectionEdgeBottom, 1)
 		}
 
 		// Center label on the cap face.

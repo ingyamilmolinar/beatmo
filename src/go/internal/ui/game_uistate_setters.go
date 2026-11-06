@@ -55,6 +55,10 @@ func (g *Game) SetSplitterFrac(frac float64) {
 	} else {
 		g.split.X = int(frac * 1280)
 	}
+	// UpdateResize re-derives Y/X from ratio while userSet holds, so the
+	// ratio IS the persisted value; setting only Y was undone on the next
+	// resize pass.
+	g.split.ratio = frac
 	g.split.userSet = true
 }
 

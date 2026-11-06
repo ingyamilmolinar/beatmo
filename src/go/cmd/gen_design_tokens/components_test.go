@@ -315,3 +315,20 @@ func TestEmitComponentsCategoryFallback(t *testing.T) {
 		t.Fatalf("emitComponents err=%v", err)
 	}
 }
+
+// TestComponentEmitReferencesTokenIdents guards the runtime-theme contract:
+// the emitted spec table must reference the genColor* token IDENTIFIERS (not
+// literal RGB) so ui.rebuildComponentSpecs() can re-derive it after a theme
+// overwrites the tokens.
+func TestComponentEmitReferencesTokenIdents(t *testing.T) {
+	r := newTokenResolver([]keyVal{{"primary", "#FF0000"}, {"border", "#FFFFFF"}}, nil, []keyVal{{"control", "4"}}, []keyVal{{"border-thin", "8"}})
+	raw := &componentRaw{Category: "button", BackgroundColor: "{colors.primary}", IconColor: "{colors.border}",
+		Border: &borderRaw{Color: "{colors.border}", Alpha: "border-thin"}, Rounded: "{rounded.control}"}
+	c, err := resolveComponent("button-x", raw, r, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.FillIdent != "genColorPrimary" || c.BorderIdent != "genColorBorder" || c.IconIdent != "genColorBorder" {
+		t.Fatalf("idents: fill=%q border=%q icon=%q", c.FillIdent, c.BorderIdent, c.IconIdent)
+	}
+}

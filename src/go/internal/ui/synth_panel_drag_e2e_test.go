@@ -8,6 +8,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -26,9 +28,9 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
 	// Switch to Synth tab + run layout. The panel claims its expanded synth
 	// height only during a DrumView Layout pass that sees TabSynth active, and
@@ -37,17 +39,17 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	// Otherwise the detail pane is one knob-row tall and decay scrolls out.
 	expandSynthPanelForTest(t, g)
 
-	// Find the decay knob — drum-snare wires {pitch, decay, tone, drive}
-	// plus the snare family knobs (native-deprecation migration).
+	// Find the ENVELOPE-stage decay knob — the modular snare's Synth tab binds one
+	// control per ParamDef of its document.
 	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
-	wantKnobs := len(audio.WiredParamsForRecipe("drum-snare"))
+	wantKnobs := len(audio.InstrumentParamDefs(roster.Snare))
 	if len(knobs) != wantKnobs {
-		t.Fatalf("expected %d knobs for drum-snare (wired), got %d", wantKnobs, len(knobs))
+		t.Fatalf("expected %d knobs for snare (one per ParamDef), got %d", wantKnobs, len(knobs))
 	}
 	var decayIdx = -1
 	for i, b := range bindings {
-		if b.def.Name == "decay" {
+		if b.def.Name == "amp_decay" {
 			decayIdx = i
 			break
 		}
@@ -55,9 +57,9 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	if decayIdx < 0 {
 		t.Fatal("no decay knob in bindings")
 	}
-	// decay lives in the ENVELOPE stage; open it so the knob gets a
+	// amp_decay lives in the ENVELOPE stage; open it so the knob gets a
 	// hit-testable rect under the chip-strip + detail-pane layout.
-	selectSectionForKnobIdx(t, g, "snare", decayIdx)
+	selectSectionForKnobIdx(t, g, roster.Snare, decayIdx)
 	knobs = g.drum.SynthTabControls()
 	knob := knobs[decayIdx]
 	rect := knob.Rect()
@@ -87,33 +89,52 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	cx := (rect.Min.X + rect.Max.X) / 2
 	cy := (rect.Min.Y + rect.Max.Y) / 2
 
-	// Capture initial value (decay default = 1.0; rescaled 0..1 = 0.25).
-	initialValue := knob.Value
+	// Armed model (2026-07): a not-armed wheel scrolls the row — value edits
+	// require arming the control first, then spinning the value lane. A stationary
+	// tap arms; the armed wheel then raises the value and propagates it to audio.
+	h := &synthControlHitAdapter{dv: g.drum, idx: decayIdx, instID: roster.Snare}
+	h.OnPress(cx, cy)
+	h.OnRelease(cx, cy)
+	if _, armed := g.drum.synthControlArmed(roster.Snare); !armed {
+		t.Fatal("stationary tap on the control should arm it")
+	}
+	e := g.drum.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	settleArmGrow(g.drum) // grow the card + relayout so the block rect is current
+	knob = g.drum.SynthTabControls()[decayIdx]
+	grown := knob.Rect()
+	if grown.Empty() {
+		t.Fatal("armed control has empty rect after settle")
+	}
+	e.SetCardRect(grown)
 
-	// Task-5: value edits are the desktop wheel nudge over the card. Several
-	// up-notches raise the value and propagate it to the audio engine.
 	knob.Value = 0.1 // seed low so the up-notches always increase
-	initialValue = knob.Value
+	initialValue := knob.Value
+	vx := e.ValueLaneRect().Min.X + 2
+	vy := grown.Min.Y + grown.Dy()/2
 	for s := 0; s < 8; s++ {
-		if pressHit.Handler.OnWheel(cx, cy, 1) == InputIgnored {
-			t.Fatalf("wheel over synth-control HitArea ignored at center (%d,%d) of rect %v", cx, cy, rect)
+		if h.OnWheel(vx, vy, 1) == InputIgnored {
+			t.Fatalf("armed wheel over the value lane ignored at (%d,%d)", vx, vy)
 		}
 	}
+	for i := 0; i < 400 && e.Tick(); i++ { // resolve the kinetic barrel
+	}
 	if knob.Value <= initialValue {
-		t.Errorf("after wheel up: knob.Value=%v did not increase from initial %v", knob.Value, initialValue)
+		t.Errorf("after armed wheel up: knob.Value=%v did not increase from initial %v", knob.Value, initialValue)
 	}
 	afterDrag := knob.Value
 
-	// Verify audio engine received the value change.
-	got := audio.GetInstrumentParams("snare")
-	val, ok := got["decay"]
+	// Verify audio engine received the value change (propagated live via onEdit).
+	got := audio.GetInstrumentParams(roster.Snare)
+	val, ok := got["amp_decay"]
 	if !ok {
-		t.Fatalf("decay param was not set after drag: %v", got)
+		t.Fatalf("amp_decay param was not set after armed wheel: %v", got)
 	}
-	// The real param should be above the initial default (1.0).
 	wantParamMin := knob.Scale.Min + afterDrag*(knob.Scale.Max-knob.Scale.Min) - 0.01
 	if val < wantParamMin {
-		t.Errorf("after drag: audio.GetInstrumentParams[\"decay\"]=%v, want > %v (scaled from knob.Value=%v)", val, wantParamMin, afterDrag)
+		t.Errorf("after armed wheel: audio.GetInstrumentParams[\"post_decay\"]=%v, want > %v (scaled from knob.Value=%v)", val, wantParamMin, afterDrag)
 	}
 }
 
@@ -129,9 +150,9 @@ func TestSynthTab_PressMissingControlIsNoOp(t *testing.T) {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -158,17 +179,17 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
 	expandSynthPanelForTest(t, g)
 
 	// Count SetInstrumentParam calls.
 	var fired int
-	oldCb := audio.SwapPlatformInstrumentParamsChangedForTest(nil)
-	t.Cleanup(func() { audio.SwapPlatformInstrumentParamsChangedForTest(oldCb) })
-	audio.SwapPlatformInstrumentParamsChangedForTest(func(id string, p audio.RecipeParams) {
+	oldCb := audio.SwapPlatformInstrumentDocChangedForTest(nil)
+	t.Cleanup(func() { audio.SwapPlatformInstrumentDocChangedForTest(oldCb) })
+	audio.SwapPlatformInstrumentDocChangedForTest(func(instrument.ID, instrument.Doc) {
 		fired++
 	})
 
@@ -209,21 +230,42 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 	}
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
+	_ = hit // hit-area existence asserted above; the armed path drives the adapter directly
 
 	def := bindings[idx].def
 	paramName := def.Name
+
+	// Armed model: arm via a stationary tap, then spin the value lane; the final
+	// resolved value propagates to audio via the platform callback.
+	h := &synthControlHitAdapter{dv: g.drum, idx: idx, instID: roster.Snare}
+	h.OnPress(cx, cy)
+	h.OnRelease(cx, cy)
+	if _, armed := g.drum.synthControlArmed(roster.Snare); !armed {
+		t.Fatal("stationary tap on the control should arm it")
+	}
+	e := g.drum.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	settleArmGrow(g.drum)
+	k = g.drum.SynthTabControls()[idx]
+	grown := k.Rect()
+	e.SetCardRect(grown)
+
 	k.Value = 0.1 // seed low so wheel up-notches always increase
 	before := def.Min + k.Value*(def.Max-def.Min)
-	// Task-5: value edits are the desktop wheel nudge; each notch propagates to
-	// audio via the platform callback.
+	vx := e.ValueLaneRect().Min.X + 2
+	vy := grown.Min.Y + grown.Dy()/2
 	for s := 0; s < 8; s++ {
-		hit.Handler.OnWheel(cx, cy, 1)
+		h.OnWheel(vx, vy, 1)
+	}
+	for i := 0; i < 400 && e.Tick(); i++ { // resolve the kinetic barrel + fire final commit
 	}
 
-	got := audio.GetInstrumentParams("snare")
+	got := audio.GetInstrumentParams(roster.Snare)
 	val, ok := got[paramName]
 	if !ok || val <= before {
-		t.Errorf("after wheel nudge: %s=%v ok=%v, want > %.3f", paramName, val, ok, before)
+		t.Errorf("after armed wheel: %s=%v ok=%v, want > %.3f", paramName, val, ok, before)
 	}
 	if fired < 1 {
 		t.Errorf("expected at least 1 SetInstrumentParam call, got %d", fired)

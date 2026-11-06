@@ -103,3 +103,10 @@ func FontGeneration() int64 { return atomic.LoadInt64(&fontGen) }
 
 // BumpFontGeneration increments the generation.
 func BumpFontGeneration() int64 { return atomic.AddInt64(&fontGen, 1) }
+
+// Has reports whether locale l's catalogue defines k (no English fallback) —
+// for tests that key strings by data rather than by Go constant.
+func Has(l Locale, k Key) bool {
+	_, ok := catalogFor(l)[k]
+	return ok
+}

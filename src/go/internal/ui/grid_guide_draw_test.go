@@ -122,7 +122,7 @@ func TestCursorLabelHiddenOverHigherZSurfaces(t *testing.T) {
 	// card's actual rect instead of a hardcoded corner.
 	g.selectNodeOpenSidebar(a)
 	g.sidebar.layout()
-	panel, ok := g.sidebar.rects["panel"]
+	panel, ok := g.sidebar.rects[sbPanel]
 	if !ok || panel.Empty() {
 		t.Fatalf("setup: sidebar panel rect missing")
 	}

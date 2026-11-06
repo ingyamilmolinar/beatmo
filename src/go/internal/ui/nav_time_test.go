@@ -4,23 +4,6 @@ package ui
 
 import "testing"
 
-func TestParseClock(t *testing.T) {
-	cases := []struct {
-		s   string
-		sec float64
-		ok  bool
-	}{
-		{"0:30", 30, true}, {"1:05", 65, true}, {"12", 12, true}, {"2:00", 120, true},
-		{"", 0, false}, {"a:b", 0, false}, {"1:99", 0, false},
-	}
-	for _, c := range cases {
-		sec, ok := parseClock(c.s)
-		if ok != c.ok || (ok && sec != c.sec) {
-			t.Fatalf("parseClock(%q)=(%v,%v) want (%v,%v)", c.s, sec, ok, c.sec, c.ok)
-		}
-	}
-}
-
 func TestTimeToStepsClosestBeatAtOrAfter(t *testing.T) {
 	div, bpm := 8, 120 // 2 beats/sec → 30s = beat 60
 	maxSteps := 1000 * div
@@ -57,8 +40,10 @@ func TestFormatClock(t *testing.T) {
 }
 
 func TestFormatBeatTime(t *testing.T) {
-	// beat 60 at 120bpm, div 8 → "Beat 60 · 0:30".
-	if got := formatBeatTime(60*8, 8, 120); got != "Beat 60 · 0:30" {
-		t.Fatalf("formatBeatTime=%q want %q", got, "Beat 60 · 0:30")
+	// Internal beat 60 at 120 BPM (0.5 s/beat) → 30 s elapsed, shown to the
+	// user as the 1-based "Beat 61".
+	p := playheadPosAt(60, 0.5, 8)
+	if got := formatBeatTime(p); got != "Beat 61 · 0:30" {
+		t.Fatalf("formatBeatTime=%q want %q", got, "Beat 61 · 0:30")
 	}
 }

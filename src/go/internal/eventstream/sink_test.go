@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
@@ -34,7 +35,7 @@ func TestSink_RoundTripCapturesAllEvents(t *testing.T) {
 
 	bus.PublishKind(hooks.EventPlayStart, nil)
 	bus.PublishKind(hooks.EventBPMChange, 144)
-	bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{ID: 1, I: 4, J: -3, Type: "regular"})
+	bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{ID: 1, I: 4, J: -3, Type: model.NodeTypeRegular})
 	bus.PublishKind(hooks.EventPlayStop, nil)
 
 	// Allow time for fan-out + flush.
@@ -185,7 +186,7 @@ func TestSink_RotatesAtMaxBytes(t *testing.T) {
 
 	for i := 0; i < 50; i++ {
 		bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{
-			ID: i, I: i, J: i, Type: "regular",
+			ID: i, I: i, J: i, Type: model.NodeTypeRegular,
 		})
 	}
 	time.Sleep(300 * time.Millisecond)

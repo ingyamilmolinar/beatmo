@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // These tests pin the audition flow: the instrument menu must stay open after
@@ -20,12 +22,12 @@ import (
 func auditionDV(t *testing.T) *DrumView {
 	t.Helper()
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -101,7 +103,7 @@ func TestInstrumentMenuStaysOpenAfterSelection(t *testing.T) {
 
 	clickInstButton(t, dv, "Snare")
 
-	if dv.Rows[0].Instrument != "snare" {
+	if dv.Rows[0].Instrument != roster.Snare {
 		t.Fatalf("row instrument: got %q, want %q", dv.Rows[0].Instrument, "snare")
 	}
 	if !dv.IsInstMenuOpen() {
@@ -141,13 +143,13 @@ func TestInstrumentMenuMultipleSelectionsInOneOpenSession(t *testing.T) {
 	openInstMenuViaLabel(t, dv, 0)
 
 	for _, pick := range []struct{ label, id string }{
-		{"Snare", "snare"},
-		{"Hihat", "hihat"},
-		{"Tom", "tom"},
-		{"Clap", "clap"},
+		{"Snare", string(roster.Snare)},
+		{"Hihat", string(roster.Hihat)},
+		{"Tom", string(roster.Tom)},
+		{"Clap", string(roster.Clap)},
 	} {
 		clickInstButton(t, dv, pick.label)
-		if dv.Rows[0].Instrument != pick.id {
+		if dv.Rows[0].Instrument != instrument.ID(pick.id) {
 			t.Fatalf("after picking %q: row instrument got %q, want %q", pick.label, dv.Rows[0].Instrument, pick.id)
 		}
 		if !dv.IsInstMenuOpen() {
@@ -155,14 +157,20 @@ func TestInstrumentMenuMultipleSelectionsInOneOpenSession(t *testing.T) {
 		}
 	}
 
-	if dv.Rows[0].Instrument != "clap" {
+	if dv.Rows[0].Instrument != roster.Clap {
 		t.Fatalf("final row instrument: got %q, want %q", dv.Rows[0].Instrument, "clap")
 	}
 }
 
-// TestInstrumentMenuRepeatedSameInstrumentClicks — clicking the same row
-// repeatedly is a no-op for the row state but must not close the menu.
-func TestInstrumentMenuRepeatedSameInstrumentClicks(t *testing.T) {
+// TestInstrumentMenuSameInstrumentSecondClickConfirms — re-selecting the row
+// already applied is the CONFIRM gesture and closes the menu.
+//
+// This test previously asserted the opposite (three clicks on the same row, menu
+// stays open every time). That predated the preview/confirm rule the colour
+// picker and note matrix already followed; the instrument menu now shares it, so
+// the pointer and the keyboard mean the same thing. What the test still guards
+// is that the row state is right and the FIRST click is a preview, not a commit.
+func TestInstrumentMenuSameInstrumentSecondClickConfirms(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -171,14 +179,21 @@ func TestInstrumentMenuRepeatedSameInstrumentClicks(t *testing.T) {
 	dv := auditionDV(t)
 	openInstMenuViaLabel(t, dv, 0)
 
-	for i := 0; i < 3; i++ {
-		clickInstButton(t, dv, "Snare")
-		if dv.Rows[0].Instrument != "snare" {
-			t.Fatalf("iteration %d: row instrument got %q, want %q", i, dv.Rows[0].Instrument, "snare")
-		}
-		if !dv.IsInstMenuOpen() {
-			t.Fatalf("menu closed after repeated click %d on Snare", i)
-		}
+	clickInstButton(t, dv, "Snare")
+	if dv.Rows[0].Instrument != roster.Snare {
+		t.Fatalf("first click: row instrument got %q, want %q", dv.Rows[0].Instrument, "snare")
+	}
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("the first click must PREVIEW and leave the menu open")
+	}
+
+	clickInstButton(t, dv, "Snare")
+	if dv.IsInstMenuOpen() {
+		t.Fatal("the second click on the already-applied row must confirm and close")
+	}
+	if dv.Rows[0].Instrument != roster.Snare {
+		t.Fatalf("confirming changed the row instrument to %q, want %q",
+			dv.Rows[0].Instrument, "snare")
 	}
 }
 
@@ -196,17 +211,17 @@ func TestInstrumentMenuSelectionDuringPlaybackKeepsPlayingAndOpen(t *testing.T) 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
-	g.SetPlayFunc(func(string, float64, ...float64) {}) // swallow audio side-effects
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {}) // swallow audio side-effects
 	dv := g.drum
 
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 	if len(dv.Rows) == 0 {
 		t.Fatal("expected default row")
 	}
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.bgDirty = true
 	dv.calcLayout()
 	dv.bgDirty = false
@@ -220,7 +235,7 @@ func TestInstrumentMenuSelectionDuringPlaybackKeepsPlayingAndOpen(t *testing.T) 
 	openInstMenuViaLabel(t, dv, 0)
 	clickInstButton(t, dv, "Snare")
 
-	if dv.Rows[0].Instrument != "snare" {
+	if dv.Rows[0].Instrument != roster.Snare {
 		t.Fatalf("row instrument during playback: got %q, want %q", dv.Rows[0].Instrument, "snare")
 	}
 	if !dv.IsInstMenuOpen() {
@@ -232,7 +247,7 @@ func TestInstrumentMenuSelectionDuringPlaybackKeepsPlayingAndOpen(t *testing.T) 
 
 	// Pick again to confirm second pick during playback also stays open.
 	clickInstButton(t, dv, "Hihat")
-	if dv.Rows[0].Instrument != "hihat" {
+	if dv.Rows[0].Instrument != roster.Hihat {
 		t.Fatalf("row instrument after second pick during playback: got %q, want %q", dv.Rows[0].Instrument, "hihat")
 	}
 	if !dv.IsInstMenuOpen() {
@@ -366,14 +381,13 @@ func TestInstrumentMenuFavoriteStarDoesNotSelectOrClose(t *testing.T) {
 	dv := auditionDV(t)
 	openInstMenuViaLabel(t, dv, 0)
 
-	if len(dv.instMenuComp.favRects) == 0 {
+	_, starRect, starID, ok := firstStarRow(dv.instMenuComp)
+	if !ok {
 		t.Fatal("expected at least one star hit rect with a Favorites store wired in")
 	}
-	starRect := dv.instMenuComp.favRects[0]
-	starID := dv.instMenuComp.favIDs[0]
 	originalInstrument := dv.Rows[0].Instrument
 
-	if store.Get(starID) {
+	if store.Get(instrument.ID(starID)) {
 		t.Fatalf("precondition: %q should not be favorited yet", starID)
 	}
 
@@ -382,7 +396,7 @@ func TestInstrumentMenuFavoriteStarDoesNotSelectOrClose(t *testing.T) {
 	suppressClicksUntilRelease = false
 	dv.instMenuComp.HandleInput(starRect.Min.X+starRect.Dx()/2, starRect.Min.Y+starRect.Dy()/2, false)
 
-	if !store.Get(starID) {
+	if !store.Get(instrument.ID(starID)) {
 		t.Fatalf("expected %q to be favorited after star tap", starID)
 	}
 	if dv.Rows[0].Instrument != originalInstrument {
@@ -402,12 +416,12 @@ func TestInstrumentMenuSwitchingRowsClosesPriorMenu(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
-		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: roster.Snare, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 	dv.bgDirty = true

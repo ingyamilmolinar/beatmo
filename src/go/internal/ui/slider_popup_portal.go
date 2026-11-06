@@ -95,3 +95,14 @@ func (h *sliderPopupAnchorCloseHandler) OnRelease(x, y int) {}
 func (h *sliderPopupAnchorCloseHandler) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
 }
+
+// ClaimedKeys / HandleClaimedKeys implement KeyboardKeyClaimant by forwarding to
+// the popup, so Up/Down nudge the slider instead of panning the grid while it is
+// open (keyboard_key_claim.go).
+func (o *sliderPopupPortalOverlay) ClaimedKeys() []ebiten.Key {
+	return o.popup.ClaimedKeys()
+}
+
+func (o *sliderPopupPortalOverlay) HandleClaimedKeys() bool {
+	return o.popup.HandleClaimedKeys()
+}

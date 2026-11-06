@@ -152,19 +152,28 @@ const (
 // without touching every call site.
 var IconStrokeWeight float32 = genIconStroke
 
-// Unified corner radii for all interactive elements
+// Corner radius — ROLE layer. Reach for these. Which step a surface takes is
+// decided by what it IS, not by how big it is: every interactive control is
+// RadiusControl regardless of size, so a toolbar reads as one system rather
+// than a pile of unrelated widgets. See DESIGN.md "Shapes".
 const (
-	RadiusXXS  = genRoundedXxs  // swatches, mini chevron buttons, meter chevron
-	RadiusXS   = genRoundedXs   // small cards/chips/pills (synth chips, sidebar value pill)
-	RadiusSM   = genRoundedSm   // compact buttons, context menu groups (desktop)
-	RadiusMD   = genRoundedMd   // standard buttons (transport, row controls, popup items)
-	RadiusLG   = genRoundedLg   // panels, bottom sheets, popups (mobile)
-	RadiusXL   = genRoundedXl   // emphasized panels (mobile bottom sheet)
-	RadiusFull = genRoundedFull // pill buttons (transport group bg, EQ/Scope tabs)
+	RadiusNone      = genRoundedNone      // tiling surfaces: grid cells, meter segments, track fills
+	RadiusControl   = genRoundedControl   // EVERY interactive control — buttons, chips, tabs, inputs, keycaps
+	RadiusContainer = genRoundedContainer // popups, menus, cards, tooltips, panel chrome
+	RadiusSheet     = genRoundedSheet     // mobile bottom sheet, full-width overlays
 )
 
-// PopupPanelW returns the popup panel width.
-func PopupPanelW() int { return Profile().PopupPanelW }
+// Corner radius — RAW scale. These fix the available values that the role
+// tokens above resolve to. Prefer a role token at call sites; a raw step is
+// how controls drifted into pill territory in the first place.
+const (
+	RadiusXXS = genRoundedXxs // 4
+	RadiusXS  = genRoundedXs  // 6
+	RadiusSM  = genRoundedSm  // 8
+	RadiusMD  = genRoundedMd  // 12
+	RadiusLG  = genRoundedLg  // 16
+	RadiusXL  = genRoundedXl  // 20
+)
 
 // PopupBtnW returns the popup button width.
 func PopupBtnW() int { return Profile().PopupBtnW }

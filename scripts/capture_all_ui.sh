@@ -128,7 +128,7 @@ if [[ -d "$ROOT/src/js/node_modules/playwright" ]]; then
     if [[ ! -f "$ROOT/src/js/main.wasm" ]]; then
         echo ""
         echo "[browser] building WASM..."
-        make -C "$ROOT" wasm >/dev/null
+        make -C "$ROOT" wasm-dev >/dev/null
     fi
     echo ""
     echo "[browser] capturing scenes via Playwright..."

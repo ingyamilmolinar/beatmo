@@ -1,22 +1,26 @@
 //go:build !test && !js
 
 // synth-match: tune a synthesized instrument toward a reference WAV by
-// minimizing the fingerprint distance, then (optionally) patch the seed file.
+// minimizing the fingerprint distance, then (optionally) patch the instrument's
+// shipped document (internal/assets/instruments/<id>.json; rebuild the pack
+// with `make asset-pack` afterwards).
 //
 // Usage:
 //
-//	synth-match -inst <id> -ref <wav> [-budget N] [-restarts N] [-dry-run] [-seedfile <path>]
+//	synth-match -inst <id> -ref <wav> [-budget N] [-restarts N] [-dry-run] [-docdir <dir>]
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/synthmatch"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -25,8 +29,8 @@ func main() {
 	ref := flag.String("ref", "", "path to reference WAV file (required)")
 	budget := flag.Int("budget", 400, "total evaluation budget")
 	restarts := flag.Int("restarts", 3, "number of random restarts")
-	dryRun := flag.Bool("dry-run", false, "print report but do not patch the seed file")
-	seedfile := flag.String("seedfile", "internal/audio/instrument_seeds.go", "seed file to patch")
+	dryRun := flag.Bool("dry-run", false, "print report but do not patch the instrument document")
+	docDir := flag.String("docdir", "internal/assets/instruments", "directory of the shipped instrument documents to patch")
 	flag.Parse()
 
 	if *inst == "" {
@@ -60,7 +64,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "synth-match: tuning %q against %q (%d samples @ %d Hz) budget=%d restarts=%d\n",
 		*inst, *ref, len(pcm), sr, *budget, *restarts)
 
-	res, err := synthmatch.Match(*inst, refWave, *budget, *restarts)
+	res, err := synthmatch.Match(instrument.ID(*inst), refWave, *budget, *restarts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "synth-match: match failed: %v\n", err)
 		os.Exit(1)
@@ -69,16 +73,16 @@ func main() {
 	// Step 4: print the report to STDOUT.
 	printReport(res)
 
-	// Step 5: patch or skip.
+	// Step 5: patch the instrument's document or skip.
 	if !*dryRun {
-		seedVar := seedVarName(*inst)
-		if err := synthmatch.PatchSeedFile(*seedfile, seedVar, res.Params); err != nil {
+		path := filepath.Join(*docDir, *inst+".json")
+		if err := synthmatch.PatchInstrumentDocFile(path, res.Params); err != nil {
 			fmt.Fprintf(os.Stderr, "synth-match: patch failed: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("patched %s in %s\n", seedVar, *seedfile)
+		fmt.Printf("patched %s — run `make asset-pack` to rebuild the embedded pack\n", path)
 	} else {
-		fmt.Println("(dry-run: seed not modified)")
+		fmt.Println("(dry-run: document not modified)")
 	}
 }
 

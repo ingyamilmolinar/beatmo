@@ -1,14 +1,5 @@
 package ui
 
-import "strconv"
-
+// maxBPM is the highest tempo the transport accepts (the BPM wheel's range is
+// 1..maxBPM).
 const maxBPM = 1000
-
-// parseBPM converts txt into a BPM value and reports validity.
-func parseBPM(txt string) (int, bool) {
-	v, err := strconv.Atoi(txt)
-	if err != nil || v < 1 || v > maxBPM {
-		return 0, false
-	}
-	return v, true
-}

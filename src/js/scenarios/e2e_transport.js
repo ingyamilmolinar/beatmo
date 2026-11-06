@@ -20,6 +20,7 @@
 // Ebiten input + Go-side click handler + audio dispatch.
 
 import { register } from "./registry.js";
+import { pressPlayWhenReady, waitForPlaybackReady } from "./playback_ready.js";
 
 function dispatchClickAtClientPoint(target, clientX, clientY) {
   // Fire the whole pointer + touch + mouse sequence; Ebiten's input layer
@@ -74,6 +75,9 @@ async function waitFor(predicate, timeoutMs, pollMs = 100) {
 // Catches "Play-button rect missing/zero" + "click never reaches Ebiten" +
 // "Ebiten saw the click but Go-side handler did nothing".
 export async function scenarioPlayButtonSyntheticClick() {
+  // The Play button is disabled while the circuit warm-up gate is closed; a
+  // user can only press it once it opens, so wait for that first.
+  if (!(await waitForPlaybackReady())) return { pass: false, reason: "warmup_never_ready" };
   const playRect = window.playBtnRect?.();
   if (!playRect || !(playRect.w > 0) || !(playRect.h > 0)) {
     return { pass: false, reason: "play_rect_invalid", playRect };
@@ -113,8 +117,7 @@ register({
 export async function scenarioStopButtonSyntheticClick() {
   // Make sure something IS playing to begin with.
   if (!window.isPlaying?.()) {
-    try { window.startPlay?.(); } catch (_) {}
-    await new Promise((r) => setTimeout(r, 200));
+    await pressPlayWhenReady();
   }
   if (!window.isPlaying?.()) {
     return { pass: false, reason: "could_not_start_playback_to_stop" };

@@ -1,10 +1,12 @@
 package audio
 
 import (
+	"github.com/ingyamilmolinar/beatmo/internal/env"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 )
 
@@ -53,39 +55,11 @@ Diff (want = on-disk, got = generator output):
 	}
 }
 
-// TestChainSpecLiveValues asserts the live desktop chain actually uses the
-// canonical spec — so the spec can't drift away from what the code does. The
-// browser counterpart (chain_spec_parity.browser.test.js) makes the same
-// assertions against the live WebAudio nodes; together they pin both platforms
-// to one configuration.
+// TestChainSpecLiveValues asserts the desktop audio path is wired to the
+// spec, so the spec can't drift away from what the code does.
 func TestChainSpecLiveValues(t *testing.T) {
 	spec := CanonicalChainSpec()
-
-	// The master compressor the desktop mixer installs must match the spec.
-	c := NewCompressor(spec.TargetSampleRate)
-	if c.ThresholdDB != spec.CompressorThresholdDB {
-		t.Errorf("compressor ThresholdDB = %v, spec = %v", c.ThresholdDB, spec.CompressorThresholdDB)
-	}
-	if c.Ratio != spec.CompressorRatio {
-		t.Errorf("compressor Ratio = %v, spec = %v", c.Ratio, spec.CompressorRatio)
-	}
-	if c.AttackMs != spec.CompressorAttackMs {
-		t.Errorf("compressor AttackMs = %v, spec = %v", c.AttackMs, spec.CompressorAttackMs)
-	}
-	if c.ReleaseMs != spec.CompressorReleaseMs {
-		t.Errorf("compressor ReleaseMs = %v, spec = %v", c.ReleaseMs, spec.CompressorReleaseMs)
-	}
-	if c.KneeDB != spec.CompressorKneeDB {
-		t.Errorf("compressor KneeDB = %v, spec = %v", c.KneeDB, spec.CompressorKneeDB)
-	}
-
-	// The per-voice headroom the mixer applies (engine_stop.go) is the spec
-	// value (compile-time wired via the VoiceHeadroom const).
-	if VoiceHeadroom != spec.VoiceHeadroom {
-		t.Errorf("VoiceHeadroom const = %v, spec = %v", VoiceHeadroom, spec.VoiceHeadroom)
-	}
-	// The soft-clip threshold engine_stop.go applies before int16 conversion.
-	if SoftClipThreshold != spec.SoftClipThreshold {
-		t.Errorf("SoftClipThreshold const = %v, spec = %v", SoftClipThreshold, spec.SoftClipThreshold)
+	if env.AudioSampleRate.DefaultString() != strconv.Itoa(spec.SampleRate) {
+		t.Errorf("desktop default sample rate %s != spec %d", env.AudioSampleRate.DefaultString(), spec.SampleRate)
 	}
 }

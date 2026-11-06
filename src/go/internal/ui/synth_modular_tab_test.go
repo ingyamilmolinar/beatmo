@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // setupModularSynthGame points row 0 at the unified modular instrument and
@@ -12,14 +14,17 @@ import (
 func setupModularSynthGame(t *testing.T) *Game {
 	t.Helper()
 	g := newSynthTabGame(t)
-	g.drum.Rows[0].Instrument = "modular"
-	audio.BindInstrumentToRecipe("modular", "synth-modular")
+	g.drum.Rows[0].Instrument = roster.Modular
+	_ = audio.InstallInstrumentDocForTest(roster.Modular, roster.Modular)
 	t.Cleanup(func() {
-		audio.BindInstrumentToRecipe("modular", "synth-modular")
-		audio.ResetInstrumentParams("modular")
+		_ = audio.InstallInstrumentDocForTest(roster.Modular, roster.Modular)
+		audio.ResetInstrumentParams(roster.Modular)
 	})
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	// The FM oscillator, so every pipeline section — FM included — is on
+	// screen: the FM operators belong to the osc.fm source module and are
+	// hidden on any other oscillator (spec 2026-10-04 §6, one visibility rule).
+	audio.SetInstrumentParam(roster.Modular, "osc_type", 4)
+	layoutSynthTab(t, g)
 	return g
 }
 
@@ -65,8 +70,10 @@ func TestSynthTab_ModularSectionsCoverPipeline(t *testing.T) {
 	for _, s := range g2.drum.SynthTabSections() {
 		drumIDs[s.id] = true
 	}
+	// (FM appears once the FM oscillator is chosen: its operators belong to
+	// that source module — spec 2026-10-04 §6.)
 	for _, want := range []synthSectionID{
-		synthSectionVoice, synthSectionOsc, synthSectionFM,
+		synthSectionVoice, synthSectionOsc,
 		synthSectionEnvelope, synthSectionFilter, synthSectionPost,
 	} {
 		if !drumIDs[want] {
@@ -79,22 +86,22 @@ func TestSynthTab_ModularSectionsCoverPipeline(t *testing.T) {
 // selector rendering: every <family>_wave ParamDef is a discrete enum whose
 // knob caption shows the waveform name, not a raw number.
 func TestSynthTab_WaveControlCaptionShowsLabel(t *testing.T) {
-	for _, recipe := range []string{"drum-kick", "drum-hihat", "fm-bass"} {
+	for _, id := range []instrument.ID{roster.Kick, roster.Hihat, roster.FmBass} {
 		var waveDef *audio.ParamDef
-		for _, d := range audio.WiredParamsForRecipe(recipe) {
-			if strings.HasSuffix(d.Name, "_wave") {
+		for _, d := range audio.InstrumentParamDefs(id) {
+			if d.Name == "gen1_wave" {
 				dd := d
 				waveDef = &dd
 				break
 			}
 		}
 		if waveDef == nil {
-			t.Fatalf("%s: no *_wave ParamDef", recipe)
+			t.Fatalf("%s: no gen1_wave ParamDef", id)
 		}
 		for idx, label := range waveDef.Enum {
 			got := synthControlCaption(*waveDef, float64(idx))
 			if !strings.Contains(got, label) {
-				t.Errorf("%s %s caption @%d = %q, want it to contain %q", recipe, waveDef.Name, idx, got, label)
+				t.Errorf("%s %s caption @%d = %q, want it to contain %q", id, waveDef.Name, idx, got, label)
 			}
 		}
 	}
@@ -142,14 +149,12 @@ func TestSynthTab_ModularEnumControlWritesSnappedIndex(t *testing.T) {
 	}
 
 	var gotPushed = -1.0
-	oldCb := audio.SwapPlatformInstrumentParamsChangedForTest(func(id string, p audio.RecipeParams) {
-		if id == "modular" {
-			if v, ok := p["osc_type"]; ok {
-				gotPushed = v
-			}
+	oldCb := audio.SwapPlatformInstrumentDocChangedForTest(func(id instrument.ID, d instrument.Doc) {
+		if id == roster.Modular {
+			gotPushed = audio.FlatFieldMap(d)["osc_type"]
 		}
 	})
-	t.Cleanup(func() { audio.SwapPlatformInstrumentParamsChangedForTest(oldCb) })
+	t.Cleanup(func() { audio.SwapPlatformInstrumentDocChangedForTest(oldCb) })
 
 	// osc_type is a discrete Enum knob spanning [Min,Max]; the slider value
 	// that targets index 1 (Saw) is 1/(Max-Min) regardless of how many
@@ -162,106 +167,13 @@ func TestSynthTab_ModularEnumControlWritesSnappedIndex(t *testing.T) {
 		t.Fatalf("osc_type binding has non-positive span: Min=%v Max=%v", def.Min, def.Max)
 	}
 	sliders[idx].Value = 1.0 / span
-	g.drum.propagateSynthSliderValue(idx, "modular")
+	g.drum.propagateSynthSliderValue(idx, roster.Modular)
 
-	got := audio.GetInstrumentParams("modular")["osc_type"]
+	got := audio.GetInstrumentParams(roster.Modular)["osc_type"]
 	if got != 1 {
 		t.Errorf("osc_type stored = %v, want exactly 1 (snapped Saw index)", got)
 	}
 	if gotPushed != 1 {
 		t.Errorf("platform bridge received osc_type = %v, want 1 (the browser renders through this seam)", gotPushed)
 	}
-}
-
-// TestSynthTab_OscPreviewTracksOscType — the OSC preview must be data-driven:
-// selecting Saw yields a different previewed waveform than Sine. We assert the
-// geometry-determining sample values differ, not pixels.
-func TestSynthTab_OscPreviewTracksOscType(t *testing.T) {
-	g := setupModularSynthGame(t)
-	_ = g
-
-	audio.SetInstrumentParam("modular", "osc_type", 0) // sine
-	otSine, _, _ := synthOscParamsFor("modular")
-	audio.SetInstrumentParam("modular", "osc_type", 1) // saw
-	otSaw, ratio, depth := synthOscParamsFor("modular")
-	if otSine != 0 || otSaw != 1 {
-		t.Fatalf("synthOscParamsFor did not track osc_type: sine=%d saw=%d", otSine, otSaw)
-	}
-	// At a quarter-cycle, sine and saw have clearly different amplitudes.
-	const phase = 0.25
-	sineV := synthOscSample(0, phase, ratio, depth)
-	sawV := synthOscSample(1, phase, ratio, depth)
-	if sineV == sawV {
-		t.Errorf("sine and saw previews identical at phase %.2f (%.3f); preview not shape-driven", phase, sineV)
-	}
-}
-
-// TestSynthADSRParamsFor — the ADSR preview reads the modular voice's real
-// amp_* params (so it tracks every stage), and reports ok=false for non-modular
-// recipes (which keep the decay-knob approximation).
-func TestSynthADSRParamsFor(t *testing.T) {
-	g := setupModularSynthGame(t)
-	_ = g
-
-	audio.SetInstrumentParam("modular", "amp_attack", 0.4)
-	audio.SetInstrumentParam("modular", "amp_sustain", 0.3)
-	audio.SetInstrumentParam("modular", "amp_release", 1.1)
-	a, _, s, r, ok := synthADSRParamsFor("modular")
-	if !ok {
-		t.Fatal("synthADSRParamsFor(modular) ok=false, want true")
-	}
-	if a != 0.4 || s != 0.3 || r != 1.1 {
-		t.Errorf("ADSR params not tracked: attack=%v sustain=%v release=%v", a, s, r)
-	}
-	// Phase 8B unification: a migrated drum recipe now ALSO exposes the
-	// standardized amp ADSR stage (osc/env/filter are user-enable-able on every
-	// synth), so the preview pane reads the drum's ADSR too. The stage ships OFF
-	// by default, but its params are visible/editable.
-	if _, _, _, _, ok := synthADSRParamsFor("snare"); !ok {
-		t.Errorf("synthADSRParamsFor(snare) ok=false; the unified ENVELOPE stage must expose ADSR for every synth")
-	}
-}
-
-// TestSynthFilterPreviewTracksCutoff — the filter preview reads the modular
-// voice's own filter params (not the channel EQ), and raising the cutoff lifts
-// the response at a fixed high-frequency probe. Geometry, not pixels.
-func TestSynthFilterPreviewTracksCutoff(t *testing.T) {
-	g := setupModularSynthGame(t)
-	_ = g
-
-	ft, _, _, ok := synthFilterParamsFor("modular")
-	if !ok {
-		t.Fatal("synthFilterParamsFor(modular) ok=false, want true")
-	}
-	// Phase 8B unification: a migrated drum recipe now exposes the standardized
-	// FILTER stage too (enable-able per instrument), so its filter preview reads
-	// the synth filter params (the stage ships OFF by default).
-	if _, _, _, ok := synthFilterParamsFor("snare"); !ok {
-		t.Errorf("synthFilterParamsFor(snare) ok=false; the unified FILTER stage must expose filter params for every synth")
-	}
-
-	const probe = 5000.0
-	audio.SetInstrumentParam("modular", "filter_cutoff", 800)
-	_, c1, q1, _ := synthFilterParamsFor("modular")
-	lowGain := filterGainAt(audio.ModularFilterResponse(ft, c1, q1, 48000, 256, 20, 20000), probe)
-	audio.SetInstrumentParam("modular", "filter_cutoff", 12000)
-	_, c2, q2, _ := synthFilterParamsFor("modular")
-	highGain := filterGainAt(audio.ModularFilterResponse(ft, c2, q2, 48000, 256, 20, 20000), probe)
-	if !(highGain > lowGain) {
-		t.Errorf("filter preview did not track cutoff at %.0fHz: cut=800→%.2f dB cut=12000→%.2f dB", probe, lowGain, highGain)
-	}
-}
-
-func filterGainAt(pts []audio.FreqResponsePoint, hz float64) float64 {
-	best, bestD := 0.0, 1e18
-	for _, p := range pts {
-		d := p.FreqHz - hz
-		if d < 0 {
-			d = -d
-		}
-		if d < bestD {
-			bestD, best = d, p.GainDB
-		}
-	}
-	return best
 }

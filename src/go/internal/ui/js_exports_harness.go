@@ -332,7 +332,7 @@ func (g *Game) initJSHarness() {
 		ids := audio.Instruments()
 		arr := js.Global().Get("Array").New(len(ids))
 		for i, id := range ids {
-			arr.SetIndex(i, id)
+			arr.SetIndex(i, string(id))
 		}
 		return arr
 	}))
@@ -350,6 +350,9 @@ func (g *Game) initJSHarness() {
 		obj.Set("rowsAreaHeight", dv.rowsAreaHeight())
 		obj.Set("visibleRows", dv.visibleRows())
 		obj.Set("timelineRect", rectToJS(dv.timelineRect))
+		// Cell-indexed callers must use cellGridRect: the ribbon bar is
+		// narrowed by header-only chrome, the grid fills the full width.
+		obj.Set("cellGridRect", rectToJS(dv.cellGridRect))
 		obj.Set("rowHeight", dv.rowHeight())
 		obj.Set("rowOffset", dv.rowOffset)
 		obj.Set("isSmallScreen", Profile().IsMobile())

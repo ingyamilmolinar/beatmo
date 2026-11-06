@@ -1,15 +1,15 @@
 // audio_pending_ops.browser.test.js
 //
 // Tests pending channel operations that queue before audio context unlock.
-// The audio.js module defers setChannelVolume, setChannelPan, setChannelEQ
+// The audio.js module defers setChannelVolume, setChannelEQ
 // calls when no AudioContext exists yet. These are applied once the context
 // first reaches 'running' state.
 //
 // Verifies:
 //   1. Volume set before context creation is applied after unlock
-//   2. Pan set before context creation is applied after unlock
-//   3. EQ set before context creation is applied after unlock
-//   4. Multiple pending ops are applied in order
+//   2. EQ set before context creation is applied after unlock
+//   3. Multiple pending ops are applied in order
+//   4. Pending insert effects are applied after unlock
 //
 // Usage: GO=/path/to/.tools/go/bin/go node src/js/audio_pending_ops.browser.test.js
 
@@ -64,8 +64,6 @@ try {
     typeof window.playSound === "function" &&
     typeof window.setChannelVolume === "function" &&
     typeof window.channelVolume === "function" &&
-    typeof window.setChannelPan === "function" &&
-    typeof window.channelPan === "function" &&
     typeof window.setChannelEQ === "function"
   );
 
@@ -120,70 +118,18 @@ try {
   console.log("  PASS");
 
   // ========================================================================
-  // Scenario 2: Pan set before context is applied after unlock
+  // Scenario 2: EQ set before context is applied after unlock
   // ========================================================================
-  console.log("--- Scenario 2: Pending pan ---");
+  console.log("--- Scenario 2: Pending EQ ---");
 
-  // Open a fresh page to test pending pan from scratch.
   const page2 = await browser.newPage();
   await page2.goto(`http://localhost:${port}/pending.html`);
   await page2.waitForFunction(() =>
-    typeof window.setChannelPan === "function" &&
-    typeof window.channelPan === "function"
-  );
-
-  const s2 = await page2.evaluate(async () => {
-    const hasCtxBefore = !!window.__audioCtx;
-
-    // Set pan before context exists.
-    window.setChannelPan("snare", -0.8);
-
-    // Pan query before context returns default (0).
-    const panBefore = window.channelPan("snare");
-
-    // Trigger unlock
-    document.dispatchEvent(new Event("pointerdown"));
-    if (typeof window.resumeAudio === "function") window.resumeAudio();
-
-    const deadline = Date.now() + 10000;
-    while (Date.now() < deadline) {
-      if (window.__audioCtx && window.__audioCtx.state === "running") break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    await new Promise((r) => setTimeout(r, 200));
-
-    const hasCtxAfter = !!window.__audioCtx;
-    const ctxState = window.__audioCtx ? window.__audioCtx.state : "none";
-    const panAfter = window.channelPan("snare");
-
-    // Clean up
-    window.setChannelPan("snare", 0);
-
-    return { hasCtxBefore, panBefore, hasCtxAfter, ctxState, panAfter };
-  });
-
-  console.log(`  Pan before: ${s2.panBefore}, Pan after: ${s2.panAfter} (ctx: ${s2.ctxState})`);
-  if (s2.panBefore !== 0) throw new Error(`Scenario 2 FAIL: pan before context should be 0, got ${s2.panBefore}`);
-  if (!s2.hasCtxAfter || s2.ctxState !== "running") {
-    throw new Error(`Scenario 2 FAIL: AudioContext did not reach running state after unlock (state=${s2.ctxState})`);
-  }
-  if (Math.abs(s2.panAfter - (-0.8)) > 0.01) throw new Error(`Scenario 2 FAIL: pan after unlock should be -0.8, got ${s2.panAfter}`);
-  console.log("  PASS");
-  await page2.close();
-
-  // ========================================================================
-  // Scenario 3: EQ set before context is applied after unlock
-  // ========================================================================
-  console.log("--- Scenario 3: Pending EQ ---");
-
-  const page3 = await browser.newPage();
-  await page3.goto(`http://localhost:${port}/pending.html`);
-  await page3.waitForFunction(() =>
     typeof window.setChannelEQ === "function" &&
     typeof window.enableChannelAnalyzer === "function"
   );
 
-  const s3 = await page3.evaluate(async () => {
+  const s2 = await page2.evaluate(async () => {
     const hasCtxBefore = !!window.__audioCtx;
 
     // Set EQ before context exists.
@@ -223,27 +169,27 @@ try {
     return { hasCtxBefore, hasCtxAfter, ctxState, analyzerOK };
   });
 
-  console.log(`  Context: ${s3.ctxState}, Analyzer after EQ: ${s3.analyzerOK}`);
-  if (!s3.hasCtxAfter || s3.ctxState !== "running") {
-    throw new Error(`Scenario 3 FAIL: AudioContext did not reach running state after unlock (state=${s3.ctxState})`);
+  console.log(`  Context: ${s2.ctxState}, Analyzer after EQ: ${s2.analyzerOK}`);
+  if (!s2.hasCtxAfter || s2.ctxState !== "running") {
+    throw new Error(`Scenario 2 FAIL: AudioContext did not reach running state after unlock (state=${s2.ctxState})`);
   }
-  if (!s3.analyzerOK) throw new Error(`Scenario 3 FAIL: analyzer should work after pending EQ was applied`);
+  if (!s2.analyzerOK) throw new Error(`Scenario 2 FAIL: analyzer should work after pending EQ was applied`);
   console.log("  PASS");
-  await page3.close();
+  await page2.close();
 
   // ========================================================================
-  // Scenario 4: Multiple pending ops are applied in order
+  // Scenario 3: Multiple pending ops are applied in order
   // ========================================================================
-  console.log("--- Scenario 4: Multiple pending ops order ---");
+  console.log("--- Scenario 3: Multiple pending ops order ---");
 
-  const page4 = await browser.newPage();
-  await page4.goto(`http://localhost:${port}/pending.html`);
-  await page4.waitForFunction(() =>
+  const page3 = await browser.newPage();
+  await page3.goto(`http://localhost:${port}/pending.html`);
+  await page3.waitForFunction(() =>
     typeof window.setChannelVolume === "function" &&
     typeof window.channelVolume === "function"
   );
 
-  const s4 = await page4.evaluate(async () => {
+  const s3 = await page3.evaluate(async () => {
     // Queue multiple volume changes before context exists.
     // The last value should win because they execute in order.
     window.setChannelVolume("kick", 0.2);
@@ -270,17 +216,17 @@ try {
     return { ctxState, finalVol };
   });
 
-  console.log(`  Final volume: ${s4.finalVol} (ctx: ${s4.ctxState})`);
-  if (s4.ctxState !== "running") {
-    throw new Error(`Scenario 4 FAIL: AudioContext did not reach running state after unlock (state=${s4.ctxState})`);
+  console.log(`  Final volume: ${s3.finalVol} (ctx: ${s3.ctxState})`);
+  if (s3.ctxState !== "running") {
+    throw new Error(`Scenario 3 FAIL: AudioContext did not reach running state after unlock (state=${s3.ctxState})`);
   }
   // The last setChannelVolume(0.77) should win
-  if (Math.abs(s4.finalVol - 0.77) > 0.01) throw new Error(`Scenario 4 FAIL: expected final volume 0.77, got ${s4.finalVol}`);
+  if (Math.abs(s3.finalVol - 0.77) > 0.01) throw new Error(`Scenario 3 FAIL: expected final volume 0.77, got ${s3.finalVol}`);
   console.log("  PASS");
-  await page4.close();
+  await page3.close();
 
   // ========================================================================
-  // Scenario 5: Pending insert effects are applied after context unlock.
+  // Scenario 4: Pending insert effects are applied after context unlock.
   //
   // Reproduces the bug where the WASM startup demo imports per-instrument
   // insert effects (e.g. distortion on Snare) before the AudioContext is
@@ -289,16 +235,16 @@ try {
   // effect after toggling it off/on (which fires updateInsertEffects again
   // with a live context).
   // ========================================================================
-  console.log("--- Scenario 5: Pending insert effects ---");
+  console.log("--- Scenario 4: Pending insert effects ---");
 
-  const page5 = await browser.newPage();
-  await page5.goto(`http://localhost:${port}/pending.html`);
-  await page5.waitForFunction(() =>
+  const page4 = await browser.newPage();
+  await page4.goto(`http://localhost:${port}/pending.html`);
+  await page4.waitForFunction(() =>
     typeof window.updateInsertEffects === "function" &&
     typeof window.__channelInsertFXCount === "function"
   );
 
-  const s5 = await page5.evaluate(async () => {
+  const s4 = await page4.evaluate(async () => {
     const hasCtxBefore = !!window.__audioCtx;
     const fxBefore = window.__channelInsertFXCount("snare");
 
@@ -332,17 +278,17 @@ try {
     return { hasCtxBefore, fxBefore, hasCtxAfter, ctxState, fxAfter };
   });
 
-  console.log(`  Ctx before: ${s5.hasCtxBefore}, FX before: ${s5.fxBefore}, Ctx after: ${s5.hasCtxAfter} (${s5.ctxState}), FX after: ${s5.fxAfter}`);
-  if (s5.hasCtxBefore) throw new Error(`Scenario 5 FAIL: AudioContext should not exist before unlock`);
-  if (s5.fxBefore !== 0) throw new Error(`Scenario 5 FAIL: insert FX count before context should be 0, got ${s5.fxBefore}`);
-  if (!s5.hasCtxAfter || s5.ctxState !== "running") {
-    throw new Error(`Scenario 5 FAIL: AudioContext did not reach running state after unlock (state=${s5.ctxState})`);
+  console.log(`  Ctx before: ${s4.hasCtxBefore}, FX before: ${s4.fxBefore}, Ctx after: ${s4.hasCtxAfter} (${s4.ctxState}), FX after: ${s4.fxAfter}`);
+  if (s4.hasCtxBefore) throw new Error(`Scenario 4 FAIL: AudioContext should not exist before unlock`);
+  if (s4.fxBefore !== 0) throw new Error(`Scenario 4 FAIL: insert FX count before context should be 0, got ${s4.fxBefore}`);
+  if (!s4.hasCtxAfter || s4.ctxState !== "running") {
+    throw new Error(`Scenario 4 FAIL: AudioContext did not reach running state after unlock (state=${s4.ctxState})`);
   }
-  if (s5.fxAfter !== 1) {
-    throw new Error(`Scenario 5 FAIL: pending insert effect was dropped — expected 1 FX subgraph after unlock, got ${s5.fxAfter}. This means updateInsertEffects() did not queue while the context was suspended.`);
+  if (s4.fxAfter !== 1) {
+    throw new Error(`Scenario 4 FAIL: pending insert effect was dropped — expected 1 FX subgraph after unlock, got ${s4.fxAfter}. This means updateInsertEffects() did not queue while the context was suspended.`);
   }
   console.log("  PASS");
-  await page5.close();
+  await page4.close();
 
   console.log("\nAll pending ops tests passed.");
   if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "audio_pending_ops");

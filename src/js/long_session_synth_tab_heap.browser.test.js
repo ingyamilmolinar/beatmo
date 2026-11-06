@@ -50,6 +50,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
@@ -182,7 +183,7 @@ await page.evaluate(() => {
   forceDraw?.();
 });
 
-await page.evaluate(() => { startPlay(); });
+await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 // Let playback settle before the first sample so we don't capture the
 // startup transient.
 await page.waitForTimeout(500);
@@ -244,7 +245,7 @@ for (it = 0; it < totalIterations; it++) {
   const stage = (it % 40) < 20 ? "VOICE" : "ENVELOPE";
   await page.evaluate(({ p, d, s }) => {
     setInstrumentParam("kick", "pitch", p);
-    setInstrumentParam("kick", "decay", d);
+    setInstrumentParam("kick", "amp_decay", d);
     if (typeof selectSynthSection === "function") selectSynthSection(s);
   }, { p: pitch, d: decay, s: stage });
   if (it > 0 && it % samplesEveryIter === 0) {

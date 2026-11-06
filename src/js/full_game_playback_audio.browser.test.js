@@ -20,7 +20,8 @@
  */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
-import { isCoverageEnabled, flushCoverage } from "./browser_test_helpers.js";
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
+import { isCoverageEnabled, flushCoverage, waitForAudioReady } from "./browser_test_helpers.js";
 
 if (!buildMainWasm({ logLevel: "INFO" })) {
   throw new Error("go build main.wasm failed");
@@ -68,15 +69,17 @@ await page.addInitScript(() => {
 });
 
 await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
-await page.waitForFunction(() => typeof startPlay === "function", { timeout: 30000 });
-await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
+await page.waitForFunction(() => typeof startPlay === "function", null, { timeout: 30000 });
+await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 30000 });
 
 // Unlock audio with a real user gesture (WebAudio requires one), let warmup
 // settle, then start sequencer playback through the production transport.
 await page.mouse.click(200, 200);
-await page.evaluate(async () => { try { await window.audioReady; } catch (_) {} });
+await waitForAudioReady(page, { allowReject: true });
 await page.evaluate(() => { try { document.dispatchEvent(new Event("mousedown")); } catch (_) {} });
-await page.evaluate(() => startPlay());
+// Play is ignored while the circuit warm-up gate is closed (the button is
+// disabled then); press it the way a user can — once the gate opens.
+await startPlaybackWhenReady(page);
 
 // Let the demo circuit play several beats.
 await page.waitForTimeout(2500);

@@ -36,115 +36,102 @@ func captureFooter(t *testing.T, g *Game) footerCapture {
 	return c
 }
 
-// TestAddRowButtonAnchoredAcrossRowCounts asserts the addRow button
-// stays put once the rack is saturated. The 5-row and 20-row layouts
-// must produce identical addRow / zoom-chip rects so users who keep
-// clicking "+" after the rack has filled don't see the target move.
-//
-// This is the load-bearing portion of the original "no moving target"
-// invariant. The 1-row pre-saturation case used to be tied here too;
-// the 2026-05-10 tight-layout fix relaxes it: when the rack has more
-// than one row of slack, addRow pins to the rack bottom; when slack
-// drops below one row (near-saturation), it snaps flush below the
-// last row to eliminate the orphan modulo gap flagged in the
-// screenshot review. See `mobile_default_unified_layout_test.go`'s
-// `TestMobileDefault_AddRowBtnFlushBelowLastRow` for the snap
-// invariant. The transition is a single discrete jump as the rack
-// crosses the modulo threshold.
-func TestAddRowButtonAnchoredAcrossRowCounts(t *testing.T) {
-	setupMobileTest(t, true)
-	logger := log.New(testLogOutput(), log.LevelInfo)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(390, 844)
-
-	one := captureFooter(t, g)
-	if one.addRow.Empty() {
-		t.Fatal("addRow rect empty after Layout — preconditions failed")
+// addRowFollowsRows asserts the add-row ghost row's contract for the
+// current layout: while the visible rows leave room it sits exactly one slot
+// UNDER the last visible row and spans the same content extent as the rows
+// (label left edge → kebab right edge), so it reads as "one more row". It
+// used to pin to the rack bottom regardless of row count, which opened an
+// empty strip between the last row and a floating "+" whenever the drum pane
+// was taller than the rows.
+func addRowFollowsRows(t *testing.T, g *Game, label string) image.Rectangle {
+	t.Helper()
+	dv := g.drum
+	z := dv.rowRackZone
+	add := z.AddRowBtnRect()
+	if add.Empty() {
+		t.Fatalf("%s: addRow rect empty", label)
 	}
-
-	// Add 4 more rows → 5 total. The rack saturates around here on a
-	// 390x844 viewport; addRow snaps from bottom-anchor to flush.
-	for i := 0; i < 4; i++ {
-		g.drum.AddRow()
+	labels, menus := z.RowLabels(), z.RowMenuBtns()
+	last := -1
+	for i, l := range labels {
+		if !l.Rect().Empty() {
+			last = i
+		}
 	}
-	g.drum.refreshWidgetLayout()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
-	five := captureFooter(t, g)
-
-	// Add 15 more rows → 20 total (forces scroll).
-	for i := 0; i < 15; i++ {
-		g.drum.AddRow()
+	if last < 0 {
+		t.Fatalf("%s: no visible row", label)
 	}
-	g.drum.refreshWidgetLayout()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
-	twenty := captureFooter(t, g)
-
-	// Saturated stability: 5-row == 20-row. Adding rows past saturation
-	// must not move the target.
-	if five.addRow != twenty.addRow {
-		t.Errorf("addRow moved after saturation (5 vs 20 rows): 5-row=%v 20-row=%v",
-			five.addRow, twenty.addRow)
+	lr, mr := labels[last].Rect(), menus[last].Rect()
+	rh := dv.rowHeight()
+	if add.Min.Y != lr.Min.Y+rh {
+		t.Errorf("%s: addRow %v is not one slot under the last visible row %v (want Min.Y %d)",
+			label, add, lr, lr.Min.Y+rh)
 	}
-	if five.zoomDec != twenty.zoomDec {
-		t.Errorf("zoomDec moved after saturation (5 vs 20 rows): 5=%v 20=%v",
-			five.zoomDec, twenty.zoomDec)
+	if add.Dy() != lr.Dy() {
+		t.Errorf("%s: addRow height %d != row control height %d", label, add.Dy(), lr.Dy())
 	}
-	if five.zoomInc != twenty.zoomInc {
-		t.Errorf("zoomInc moved after saturation (5 vs 20 rows): 5=%v 20=%v",
-			five.zoomInc, twenty.zoomInc)
+	if add.Min.X != lr.Min.X || add.Max.X != mr.Max.X {
+		t.Errorf("%s: addRow span [%d,%d) != row span [%d,%d)", label, add.Min.X, add.Max.X, lr.Min.X, mr.Max.X)
 	}
-
-	// 1-row → 5-row transition: addRow may move at most by one rh as it
-	// snaps from bottom-anchor to flush. Anything larger signals a bug
-	// (e.g., button drifting downward each click — the original concern).
-	rh := g.drum.rowHeight()
-	jump := absInt(one.addRow.Min.Y - five.addRow.Min.Y)
-	if jump > rh {
-		t.Errorf("addRow moved more than one rh between 1 and 5 rows: 1-row=%v 5-row=%v jump=%dpx (max=%d)",
-			one.addRow, five.addRow, jump, rh)
-	}
+	return add
 }
 
-// TestAddRowButtonAnchoredAcrossRowCountsDesktop covers the strict
-// "no movement across row counts" invariant on desktop. Desktop keeps
-// the original bottom-anchor everywhere (the snap-flush behavior is
-// gated to mobile in `positionAddRowBtn`), so 1, 5, and 20 row layouts
-// must produce identical addRow rects regardless of saturation.
-func TestAddRowButtonAnchoredAcrossRowCountsDesktop(t *testing.T) {
-	assertDefaultParityState(t)
-	withDefaultStart(t, false)
-	logger := log.New(testLogOutput(), log.LevelInfo)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(1280, 720)
-
-	one := captureFooter(t, g)
-	if one.addRow.Empty() {
-		t.Fatal("desktop addRow rect empty after Layout")
-	}
-
-	for i := 0; i < 4; i++ {
+func addRows(g *Game, n int) {
+	for i := 0; i < n; i++ {
 		g.drum.AddRow()
 	}
 	g.drum.refreshWidgetLayout()
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
-	five := captureFooter(t, g)
+}
 
-	for i := 0; i < 15; i++ {
-		g.drum.AddRow()
-	}
-	g.drum.refreshWidgetLayout()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
-	twenty := captureFooter(t, g)
+// TestAddRowButtonFollowsRowsThenPins (mobile + desktop): the ghost row
+// tracks the last visible row while there is room; once the rows overflow and
+// scroll it stays under the last VISIBLE row and stops moving as more rows
+// are added (a user clicking "+" repeatedly past saturation keeps the same
+// target).
+func TestAddRowButtonFollowsRowsThenPins(t *testing.T) {
+	for _, mobile := range []bool{false, true} {
+		name := "desktop"
+		if mobile {
+			name = "mobile"
+		}
+		t.Run(name, func(t *testing.T) {
+			if mobile {
+				setupMobileTest(t, true)
+			} else {
+				assertDefaultParityState(t)
+				withDefaultStart(t, false)
+			}
+			logger := log.New(testLogOutput(), log.LevelInfo)
+			g := New(logger)
+			t.Cleanup(g.CloseForTest)
+			if mobile {
+				g.Layout(390, 844)
+			} else {
+				g.Layout(1280, 720)
+			}
+			addRowFollowsRows(t, g, "initial rows")
 
-	if one.addRow != five.addRow || one.addRow != twenty.addRow {
-		t.Errorf("desktop addRow moved across row counts: 1=%v 5=%v 20=%v",
-			one.addRow, five.addRow, twenty.addRow)
+			// Saturate: far more rows than fit, then more still.
+			addRows(g, 25)
+			z := g.drum.rowRackZone
+			if len(g.drum.Rows) <= z.VisibleRows() {
+				t.Fatalf("precondition: %d rows should overflow %d visible", len(g.drum.Rows), z.VisibleRows())
+			}
+			sat := z.AddRowBtnRect()
+			addRows(g, 10)
+			if more := z.AddRowBtnRect(); more != sat {
+				t.Errorf("addRow moved after saturation: %v -> %v", sat, more)
+			}
+			// Still flush under the last VISIBLE row (the modulo slack of a
+			// rack that is not a whole number of rows tall falls BELOW the
+			// ghost row, never between it and the rows), and inside the rack.
+			addRowFollowsRows(t, g, "saturated")
+			if sat.Max.Y > z.rect.Max.Y {
+				t.Errorf("saturated addRow %v extends past the rack %v", sat, z.rect)
+			}
+		})
 	}
 }
 
@@ -199,35 +186,5 @@ func TestFooterButtonsAboveBottomActionBar(t *testing.T) {
 	if zoneRect.Max.Y > bar.Min.Y {
 		t.Errorf("rowRackZone.rect.Max.Y=%d extends past bar top Y=%d — rack zone rect is overlapping the bottom action bar",
 			zoneRect.Max.Y, bar.Min.Y)
-	}
-}
-
-// TestAddRowButtonPinnedToBottom asserts the addRowBtn sits flush against
-// the rack column's USABLE bottom edge — `dv.rowsBottom()`, which excludes
-// the mobile bottom action bar and EQ peek strip. The only stable
-// reference point that doesn't move with row count, scroll, or visible-
-// row math AND doesn't render on top of the segmented switcher.
-func TestAddRowButtonPinnedToBottom(t *testing.T) {
-	setupMobileTest(t, true)
-	logger := log.New(testLogOutput(), log.LevelInfo)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(390, 844)
-
-	dv := g.drum
-	addRect := dv.rowRackZone.AddRowBtnRect()
-	if addRect.Empty() {
-		t.Fatal("addRow rect empty")
-	}
-	rh := dv.rowHeight()
-	// rowsBottom() is the authoritative anchor — it subtracts the
-	// bottom action bar and EQ peek strip from dv.Bounds.Max.Y. The
-	// addRow's top edge (after SpaceXS inset) should be at
-	// (rowsBottom() - rh + SpaceXS).
-	expectedTop := dv.rowsBottom() - rh
-	const slack = 4 // pixels of SpaceXS inset tolerance
-	if addRect.Min.Y < expectedTop-slack || addRect.Min.Y > expectedTop+slack+SpaceXS*2 {
-		t.Errorf("addRow not pinned to rowsBottom: addRow.Min.Y=%d, expected ≈%d (rowsBottom=%d, rh=%d)",
-			addRect.Min.Y, expectedTop, dv.rowsBottom(), rh)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Regression: after a play → stop → play cycle, the second playback must
@@ -40,7 +41,7 @@ func TestStopReplayKeepsSlateAndHighlights(t *testing.T) {
 	g.drum.Rows[0].Node = nodes[0]
 
 	g.drum.SetBPM(120)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
@@ -171,7 +172,7 @@ func TestStopReplayAfterPathEditsKeepsSlate(t *testing.T) {
 	g.drum.Rows[0].Origin = nodes[0].ID
 	g.drum.Rows[0].Node = nodes[0]
 	g.drum.SetBPM(120)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
@@ -284,7 +285,7 @@ func TestPauseStopReplayKeepsSlateAndHighlights(t *testing.T) {
 	g.drum.Rows[0].Node = nodes[0]
 
 	g.drum.SetBPM(120)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 

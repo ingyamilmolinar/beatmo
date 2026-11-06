@@ -85,7 +85,7 @@ async function overlayState(page) {
 
 async function waitWasm(page) {
   await page.waitForFunction(
-    () => typeof window.forceDraw === "function",
+    () => typeof window.forceDraw === "function", null,
     { timeout: 20000 },
   ).catch(() => {});
   await page.waitForTimeout(1000);

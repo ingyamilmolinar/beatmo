@@ -101,13 +101,15 @@ func (g *Game) drawGridTiles(dst *ebiten.Image) {
 	}
 	// Ensure the base tile exists for this scale/subdiv. buildGridTile reuses a
 	// grow-only backing, so this does not allocate per frame during a zoom.
-	if g.gridTile == nil || g.gridTileStepPx != stepPx || g.gridTileSubSig != g.grid.subSig {
+	tg := ThemeGeneration()
+	if g.gridTile == nil || g.gridTileStepPx != stepPx || g.gridTileSubSig != g.grid.subSig || g.gridTileThemeGen != tg {
 		if g.logDrawNodes {
 			g.logger.Tracef("[draw/grid] rebuild tile: stepPx=%d maxDiv=%d unitPx=%.2f subSig=%d", stepPx, g.grid.MaxDiv(), g.grid.UnitPixels(g.cam.Scale), g.grid.subSig)
 		}
 		g.gridTile = g.buildGridTile(stepPx)
 		g.gridTileStepPx = stepPx
 		g.gridTileSubSig = g.grid.subSig
+		g.gridTileThemeGen = tg
 	}
 	if g.gridTile == nil || stepPx <= 0 {
 		return
@@ -146,7 +148,8 @@ func (g *Game) gridCacheMatches(stepPx int) bool {
 		g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad &&
 		g.gridCacheScale == g.cam.Scale &&
 		g.gridCacheStepPx == stepPx &&
-		g.gridCacheSubSig == g.grid.subSig
+		g.gridCacheSubSig == g.grid.subSig &&
+		g.gridCacheThemeGen == ThemeGeneration()
 }
 
 // tryBlitGridCacheReuse blits the existing grid cache shifted by the pan delta
@@ -201,6 +204,7 @@ func (g *Game) rebuildGridCache(dst *ebiten.Image, stepPx, tileW, tileH, phaseX,
 	g.gridCacheOffY = g.cam.OffsetY
 	g.gridCacheStepPx = stepPx
 	g.gridCacheSubSig = g.grid.subSig
+	g.gridCacheThemeGen = ThemeGeneration()
 	// Tile the step tile into the cache, aligning the phase plus pad. Use modulo
 	// so startX/Y ∈ [-tileW, -1], guaranteeing the first tile covers cache pixel
 	// (0,0) regardless of how small tileW is vs the pad.
@@ -1188,6 +1192,71 @@ func (g *Game) drawGridPulses(dst *ebiten.Image) {
 	}
 }
 
+// coordBadgeText formats a node's grid position for the coordinate badge. It
+// routes both axes through Grid.BeatAxisLabel — the SAME beat/subdivision
+// formatter the desktop cursor label uses (grid_pane_draw.go
+// drawGridCursorLabel) — so the badge and the cursor readout always speak the
+// one coordinate language the user learns: beats and subdivisions ("0:1/2"),
+// never raw whole subdivision indices. This matters most on mobile, where the
+// badge is the primary coordinate display (the cursor label is desktop-only).
+func (g *Game) coordBadgeText(n *uiNode) string {
+	if n == nil {
+		return ""
+	}
+	coords := fmt.Sprintf("(%s, %s)", g.grid.BeatAxisLabel(n.I), g.grid.BeatAxisLabel(n.J))
+	// Lead with the musical note the node sounds. On mobile this badge is the
+	// only node readout while the sidebar is closed, so a pitch shift was
+	// otherwise invisible without opening the sidebar.
+	//
+	// nodeNoteLabel returns "" for percussion and for a node with no resolvable
+	// row; in both cases a note would be misinformation, so the badge keeps its
+	// original plain-coordinate form. It caches nothing, so the label tracks
+	// pitch, group-pitch, synth and sampler edits with no invalidation here.
+	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
+		if mn.Type == model.NodeTypeChord {
+			return g.nodeChordLabel(n.ID) + " · " + coords
+		}
+		if note := g.nodeNoteLabel(n.ID, mn.Params.Pitch); note != "" {
+			return note + " · " + coords
+		}
+	}
+	return coords
+}
+
+// coordBadgePillPadX is the horizontal padding inside the coordinate badge
+// pill: 4px each side, matching the DrawTextAt inset used when drawing it.
+const coordBadgePillPadX = 8
+
+// coordBadgePillWidth sizes the badge pill to its text.
+//
+// This used to be len(text)*7 + 8 — a fixed per-character estimate against a
+// PROPORTIONAL font. It happened to be survivable for the old short "(i, j)"
+// string and drifts further the longer the text gets, which is exactly what
+// prepending a note name does. TextWidth is the metric DrawTextAt renders
+// with, so measuring with it is the only way the pill and its text agree.
+func coordBadgePillWidth(text string) int {
+	return TextWidth(text) + coordBadgePillPadX
+}
+
+// coordBadgePillRect positions the badge pill: centred over the node, then
+// clamped to stay on screen.
+//
+// The pill was only ever clamped vertically, so a node near the left or right
+// edge pushed half the readout off-screen. That is more likely now the text
+// carries a note name as well as coordinates. screenW <= 0 (an unlaid-out
+// Game) clamps the left edge only, since there is no known right edge.
+func coordBadgePillRect(cx, top, w, screenW int) image.Rectangle {
+	const margin = 2
+	x0 := cx - w/2
+	if screenW > 0 && x0+w > screenW-margin {
+		x0 = screenW - margin - w
+	}
+	if x0 < margin {
+		x0 = margin
+	}
+	return image.Rect(x0, top-1, x0+w, top+13)
+}
+
 // drawGridCoordBadge draws the (i,j) coordinate badge above the selected node.
 // Verbatim cut of the badge block (formerly ~1053–1080).
 func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
@@ -1214,9 +1283,8 @@ func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
 			if bcy < 2 {
 				bcy = 2
 			}
-			badgeText := fmt.Sprintf("(%d, %d)", g.coordBadgeNode.I, g.coordBadgeNode.J)
-			tw := len(badgeText)*7 + 8
-			pillRect := image.Rect(bcx-tw/2, bcy-1, bcx+tw/2, bcy+13)
+			badgeText := g.coordBadgeText(g.coordBadgeNode)
+			pillRect := coordBadgePillRect(bcx, bcy, coordBadgePillWidth(badgeText), g.winW)
 			drawRect(dst, pillRect, WithAlpha(genColorVizPillFill, genAlphaSidebarChip), true)
 			drawRect(dst, pillRect, genColorVizPillBorder, false)
 			DrawTextAt(dst, badgeText, pillRect.Min.X+4, pillRect.Min.Y+2)
@@ -1336,20 +1404,60 @@ func (g *Game) drawGridHelpButton(dst *ebiten.Image) {
 	if g.gridHelpBtn == nil {
 		return
 	}
-	g.gridHelpBtn.SetRect(g.gridHelpButtonRect())
-	g.gridHelpBtn.Draw(dst)
-	if g.gridFileBtn != nil {
-		g.gridFileBtn.SetRect(g.gridFileButtonRect())
-		g.gridFileBtn.Draw(dst)
+	for _, c := range g.gridCornerButtons() {
+		if c.btn == nil {
+			continue
+		}
+		c.btn.SetRect(c.rect(g))
+		c.btn.Draw(dst)
+		if c.btn == g.gridLogsBtn {
+			g.drawLogsBadge(dst)
+		}
 	}
-	if g.gridLogsBtn != nil {
-		g.gridLogsBtn.SetRect(g.gridLogsButtonRect())
-		g.gridLogsBtn.Draw(dst)
-		g.drawLogsBadge(dst)
+}
+
+// drawGridToast paints the transient status toast (error alert or sticky task
+// progress). Its own layer at GZToast — BELOW the top-right button cluster
+// (GZGridHelpButton), not above: the settings-gear protected zone is a
+// pre-existing, deliberate invariant (TestSettingsGearIsTopmostGridLayer)
+// that nothing may draw at or above the gear, so on the rare wide-toast
+// overlap the buttons win — the user must still be able to reach settings
+// mid-load. The toast is top-CENTRE and the button cluster is top-RIGHT, so
+// they only collide when the toast is unusually wide. Before this had its
+// own layer at all, the toast was painted from inside drawGridHelpButton, so
+// this z (below the buttons) is no worse than where it started.
+func (g *Game) drawGridToast(dst *ebiten.Image) {
+	if g.drum == nil {
+		return
 	}
-	if g.drum != nil {
-		g.drum.logsToast.draw(dst, g.split.GridRect(g.winW, g.winH))
+	if !g.drum.gridPaneVisibleForToast() {
+		// Mobile, non-Pads view mode: the grid pane isn't the surface the
+		// user is looking at. DrumToastLayer (layer_drum_toast.go) paints
+		// the toast into the drum pane instead — don't double-draw it here.
+		return
 	}
+	g.drum.logsToast.draw(dst, g.toastHostRect())
+}
+
+// toastHostRect picks the surface the status toast renders into.
+//
+// Desktop, and mobile while the grid pane is the active view (Pads):
+// the grid pane, top-centre — the historical position, zero new layout.
+//
+// Mobile in a non-grid view mode (EQ / Wave / Spectrum / Levels / Chain /
+// Synth / Sampler): the drum pane instead, so the toast stays visible on
+// the surface the bottom nav just switched the user to. One toast object,
+// one draw method (logsToast.draw), two host rects.
+func (g *Game) toastHostRect() image.Rectangle {
+	gridRect := g.split.GridRect(g.winW, g.winH)
+	if g.drum == nil || g.drum.gridPaneVisibleForToast() {
+		return gridRect
+	}
+	// Below the transport header, not the full drum pane: the raw Bounds'
+	// top edge IS the transport/BPM/lock row, and a top-centred toast there
+	// would sit directly over the Play/Stop/Record cluster it's reporting
+	// on (see BelowHeaderRect).
+	return g.drum.BelowHeaderRect()
 }
 
 // drawLogsBadge paints a small unread-count bubble straddling the top-right of
@@ -1379,6 +1487,6 @@ func (g *Game) drawLogsBadge(dst *ebiten.Image) {
 	if hasErr {
 		fill = colError
 	}
-	drawRoundedRect(dst, br, fill, RadiusSM, true)
+	drawRoundedRect(dst, br, fill, fitRadius(RadiusControl, br), true)
 	DrawTextColorAt(dst, label, br.Min.X+(br.Dx()-TextWidth(label))/2, br.Min.Y+(br.Dy()-TextHeight())/2, colTextPrimary)
 }

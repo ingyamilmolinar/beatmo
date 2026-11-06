@@ -51,40 +51,31 @@ func TestFunctional_MobileLayout_DesktopKeyboard_BPM(t *testing.T) {
 	}
 	orig := g.drum.BPM()
 
-	// 1. Click the BPM readout to open the shared editor.
+	// 1. Click the BPM readout: it opens the shared value wheel (typed numeric
+	// entry was replaced by the wheel on both platforms).
 	r := box.Rect
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-	ed := g.drum.transportZone.paramEditor
-	if ed == nil || !ed.Active() {
-		t.Fatalf("clicking the BPM readout did not open the editor")
+	w := g.drum.valueWheelPopup
+	if w == nil || !w.IsOpen() {
+		t.Fatalf("clicking the BPM readout did not open the value wheel")
 	}
 
-	// 2. Clear the prefilled tempo with Backspace, proving backspace registers.
-	for i := 0; i < 6 && ed.ti.Value() != ""; i++ {
-		fi.pressKey(t, g, ebiten.KeyBackspace)
+	// 2. Physical arrow keys step the tempo (proves key presses register on a
+	// mobile layout driven by a mouse + keyboard).
+	for i := 0; i < 3; i++ {
+		fi.pressKey(t, g, ebiten.KeyArrowUp)
 	}
-	if got := ed.ti.Value(); got != "" {
-		t.Fatalf("Backspace did not clear the BPM editor on mobile layout: text = %q "+
-			"(physical key presses are being dropped)", got)
-	}
-
-	// 3. Type a new tempo with a physical keyboard (Ebiten inputChars).
-	fi.chars = []rune{'9', '0'}
-	fi.frame(t, g)
-	if got := ed.ti.Value(); got != "90" {
-		t.Fatalf("physical key presses did not register in the BPM editor on mobile "+
-			"layout: editor text = %q, want %q", got, "90")
+	if got := g.drum.BPM(); got != orig+3 {
+		t.Fatalf("ArrowUp presses did not register on mobile layout: BPM %d, want %d "+
+			"(physical key presses are being dropped)", got, orig+3)
 	}
 
-	// 4. Enter commits the value through to the engine.
+	// 3. Enter commits and closes.
 	fi.pressKey(t, g, ebiten.KeyEnter)
-	if ed.Active() {
-		t.Fatalf("Enter did not close the BPM editor")
+	if w.IsOpen() {
+		t.Fatalf("Enter did not close the BPM wheel")
 	}
-	if g.drum.BPM() == orig {
-		t.Fatalf("Enter did not commit the edit: BPM still %d (orig)", g.drum.BPM())
-	}
-	if g.drum.BPM() != 90 {
-		t.Fatalf("committed BPM = %d, want 90", g.drum.BPM())
+	if g.drum.BPM() != orig+3 {
+		t.Fatalf("committed BPM = %d, want %d", g.drum.BPM(), orig+3)
 	}
 }

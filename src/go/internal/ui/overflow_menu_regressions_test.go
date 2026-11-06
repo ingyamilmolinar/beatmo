@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -17,7 +18,7 @@ func newDrumViewForOverflowTest(t *testing.T, bounds image.Rectangle) *DrumView 
 	dv := NewDrumView(bounds, nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -430,7 +431,7 @@ func TestMobileTransportColumnAtLeastAsWideAsTimeline(t *testing.T) {
 	dv := NewDrumView(bounds, nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}

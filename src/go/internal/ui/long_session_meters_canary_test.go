@@ -19,6 +19,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // metersCanaryFrames is the iteration budget. 60 FPS × 60 sec × 17 min
@@ -54,7 +56,7 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	if err := g.SetSubdivisions(16); err != nil {
 		t.Fatalf("set subdivisions: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	// place so a regression that routes TabMeters BACK through the
 	// heavy path immediately blows the heap-delta cap below.
 	g.drum.eqPanelZone.callbacks.AnalyzerState = func() *analyzer.State {
-		return buildAnalyzerStateFromSnapshotsImpl("", g.drum.Rows, 48000, allocFetch)
+		return buildAnalyzerStateFromSnapshotsImpl(channel.ID{}, g.drum.Rows, 48000, allocFetch, nil)
 	}
 	// AnalyzerMetricsOnly is the post-fix scalar path. EQPanelZone.Draw
 	// must route TabMeters here; if it doesn't, the heavy AnalyzerState
@@ -213,7 +215,7 @@ func ratio(num, den uint64) float64 {
 // slices so the builder cost is what production WASM pays. Keeping
 // the slices small (512) matches the JS-side AnalyserNode.fftSize
 // default.
-func allocFetch(id string) audio.AnalyzerSnapshot {
+func allocFetch(id channel.ID) audio.AnalyzerSnapshot {
 	const n = 512
 	spec := make([]float64, n)
 	wave := make([]float64, n)
@@ -233,6 +235,6 @@ func allocFetch(id string) audio.AnalyzerSnapshot {
 // scalarFetch is the metrics-only equivalent of allocFetch — returns
 // the same scalar values without allocating Spectrum/Waveform. Mirrors
 // what audio.ChannelAnalyzerMetrics returns in production WASM.
-func scalarFetch(id string) (peak, rms float64, clips int, active bool) {
+func scalarFetch(id channel.ID) (peak, rms float64, clips int, active bool) {
 	return 0.5, 0.1, 0, true
 }

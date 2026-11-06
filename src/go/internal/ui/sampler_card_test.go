@@ -4,6 +4,9 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // sampler_card_test.go — Task 6. The Sampler tab knob is now the SAME universal
@@ -22,7 +25,13 @@ import (
 func samplerCardGame(t *testing.T) *Game {
 	t.Helper()
 	g := samplerLayoutGame(t)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	// Sampler knob edits are LIVE (audio.ApplySampleEditLive), so any test that
+	// turns a knob here writes into the PROCESS-GLOBAL sample-edit store. Clear
+	// it on the way out or the descriptor rides into the next test — that is how
+	// a wheel nudge here made TestImportClearsStaleSampleEdit export a project
+	// that already carried the edit it was asserting had been cleared.
+	t.Cleanup(func() { audio.ClearSampleEdit(roster.Kick) })
 	layoutSamplerTab(t, g)
 	img := newTrackedImage("test.samplercard", 1280, 720)
 	defer releaseImage(img)

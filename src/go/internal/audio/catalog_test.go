@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestEnsureInstrumentLoadedRegistersOnDemand(t *testing.T) {
 	withDefaultAudio(t)
 	ResetCatalogForTest([]SoundMeta{
-		{ID: "cat-snare-01", Name: "Snare 01", Category: "Snare", Path: "/tmp/snare.wav"},
+		{ID: "cat-snare-01", Name: "Snare 01", Group: "Snare", Path: "/tmp/snare.wav"},
 	})
 	if err := EnsureInstrumentLoaded("missing-id"); err != nil {
 		if !strings.Contains(err.Error(), "not found") {
@@ -55,7 +58,7 @@ func TestInitCatalogFromDirRegistersWAVMetadata(t *testing.T) {
 	for _, m := range Catalog() {
 		if filepath.ToSlash(m.Path) == want {
 			found = true
-			if m.Source != "wav" {
+			if m.Source != SourceWAV {
 				t.Fatalf("expected wav source, got %q", m.Source)
 			}
 			break
@@ -66,15 +69,15 @@ func TestInitCatalogFromDirRegistersWAVMetadata(t *testing.T) {
 	}
 }
 
-func TestCatalogCategoriesSorted(t *testing.T) {
+func TestCatalogGroupsSorted(t *testing.T) {
 	withDefaultAudio(t)
 	ResetCatalogForTest([]SoundMeta{
-		{ID: "z-inst", Category: "Zebra"},
-		{ID: "a-inst", Category: "Alpha"},
-		{ID: "m-inst", Category: "Mid"},
-		{ID: "a-inst2", Category: "Alpha"}, // duplicate category
+		{ID: "z-inst", Group: "Zebra"},
+		{ID: "a-inst", Group: "Alpha"},
+		{ID: "m-inst", Group: "Mid"},
+		{ID: "a-inst2", Group: "Alpha"}, // duplicate category
 	})
-	cats := CatalogCategories()
+	cats := CatalogGroups()
 	if len(cats) != 3 {
 		t.Fatalf("expected 3 unique categories, got %d: %v", len(cats), cats)
 	}
@@ -107,42 +110,21 @@ func TestWavCategoryStub(t *testing.T) {
 	}
 }
 
-func TestSynthCategoryStub(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"snare", "Snares (Synth)"},
-		{"kick", "Kick Drums (Synth)"},
-		{"hihat", "Hi-Hats (Synth)"},
-		{"tom", "Toms (Synth)"},
-		{"clap", "Claps (Synth)"},
-		{"cowbell", "Cowbells (Synth)"},
-		{"ride", "Cymbals (Synth)"},
-		{"crash", "Cymbals (Synth)"},
-		{"shaker", "Percussion (Synth)"},
-		{"bass", "Bass (Synth)"},
-		{"rimshot", "Snares (Synth)"},
-		{"sidestick", "Snares (Synth)"},
-		{"unknown", "Synth (Other)"},
+func TestSynthCatalogCategory(t *testing.T) {
+	cases := []struct {
+		id   instrument.ID
+		want string
+	}{
+		{roster.Snare, "Snare (Synth)"},
+		{roster.Kick, "Kick (Synth)"},
+		{roster.Hihat, "Hi-Hat (Synth)"},
+		{roster.Crash, "Cymbal (Synth)"},
+		{roster.Oboe, "Woodwind (Synth)"},
+		{roster.Modular, "Other (Synth)"},
 	}
 	for _, tc := range cases {
-		got := synthCategoryStub(tc.in)
-		if got != tc.want {
-			t.Errorf("synthCategoryStub(%q) = %q, want %q", tc.in, got, tc.want)
-		}
-	}
-}
-
-func TestSlugPathStub(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"Snare/Hit 01", "snare-hit-01"},
-		{"kick_heavy", "kick-heavy"},
-		{"path/to/file", "path-to-file"},
-		{"--leading--", "leading"},
-		{"UPPER CASE", "upper-case"},
-	}
-	for _, tc := range cases {
-		got := slugPathStub(tc.in)
-		if got != tc.want {
-			t.Errorf("slugPathStub(%q) = %q, want %q", tc.in, got, tc.want)
+		if got := synthCatalogCategory(tc.id); got != tc.want {
+			t.Errorf("synthCatalogCategory(%s) = %q, want %q", tc.id, got, tc.want)
 		}
 	}
 }

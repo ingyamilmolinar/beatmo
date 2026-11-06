@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -26,7 +27,7 @@ func TestKebabTapDoesNotOpenInstMenu(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -131,7 +132,7 @@ func TestKebabTapWorksWithScrollableRows(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -231,7 +232,7 @@ func TestRowLabelTapWorksWithScrollableRows(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -328,7 +329,7 @@ func TestKebabTapOverlapScrollerActive(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -418,7 +419,7 @@ func TestRowLabelTapOverlapScrollerActive(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -514,7 +515,7 @@ func TestContextMenuCloseButtonDoesNotFireInstrument(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -576,7 +577,7 @@ func TestContextMenuMobileOmitsEffects(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -607,7 +608,7 @@ func TestOverflowMenuHasNoCloseButtonMobile(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -659,7 +660,7 @@ func TestColorPickerCloseUnblocksButtons(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -725,7 +726,7 @@ func TestCloseAllPopupsClearsColorMenu(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -772,7 +773,7 @@ func TestKebabTapViaHandleInputPipeline(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -885,7 +886,7 @@ func TestRowLabelTapViaHandleInputPipeline(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -979,7 +980,7 @@ func TestButtonTapAfterContextMenuClose(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -1088,7 +1089,7 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -1167,7 +1168,7 @@ func TestMouseClickWorksOnMobileLayout(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -1237,7 +1238,7 @@ func TestMouseClickOnLabelWorksOnMobileLayout(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -1306,7 +1307,7 @@ func TestContextMenuBlocksTransportButtons(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -1364,7 +1365,7 @@ func TestOverflowMenuBlocksWidgets(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -1419,7 +1420,7 @@ func TestContextMenuBlocksRowVolumeSlider(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     0.5,
 	}}
@@ -1474,7 +1475,7 @@ func TestContextMenuScrollWhenOverflow(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -1523,7 +1524,7 @@ func TestContextMenuScrollWhenOverflow(t *testing.T) {
 func TestContextMenuClosedReturnsEarly(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	// Context menu is closed by default.
@@ -1544,7 +1545,7 @@ func TestContextMenuClosedReturnsEarly(t *testing.T) {
 func TestContextMenuClickOutsideCloses(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	// Warm-up frame for layout init.
@@ -1579,7 +1580,7 @@ func TestContextMenuClickOutsideCloses(t *testing.T) {
 func TestOverflowMenuClosedReturnsEarly(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	// Overflow menu is closed by default.
@@ -1603,7 +1604,7 @@ func TestContextMenuDesktopButtonIteration(t *testing.T) {
 
 	const W, H = 1024, 768
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	// Warm-up frame for layout init.
@@ -1652,8 +1653,8 @@ func TestContextMenuItemsDesktopStructure(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
-		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: roster.Snare, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 
@@ -1680,8 +1681,8 @@ func TestContextMenuItemsMobileStructure(t *testing.T) {
 	withSmallScreen(t, true)
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
-		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: roster.Snare, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 
@@ -1699,7 +1700,7 @@ func TestContextMenuItemsDeleteDisabledWhenSingleRow(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 
@@ -1728,8 +1729,8 @@ func TestContextMenuItemsGroupOrdering(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
-		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: roster.Snare, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 
@@ -1781,7 +1782,7 @@ func TestContextMenuDesktopStaysOnScreen(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -1826,7 +1827,7 @@ func TestContextMenuDesktopHasHeaderAndClose(t *testing.T) {
 	const W, H = 1280, 720
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	for i := 0; i < 4; i++ {
-		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0})
+		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0})
 	}
 	dv.Length = 8
 
@@ -1867,7 +1868,7 @@ func TestContextMenuDesktopAnchorsNearKebab(t *testing.T) {
 	const W, H = 1280, 720
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	for i := 0; i < 4; i++ {
-		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0})
+		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0})
 	}
 	dv.Length = 8
 
@@ -1917,7 +1918,7 @@ func TestContextMenuItemLabelClearsIcon(t *testing.T) {
 	const W, H = 1280, 720
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	for i := 0; i < 4; i++ {
-		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0})
+		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0})
 	}
 	dv.Length = 8
 	warmUp := SetInputForTest(

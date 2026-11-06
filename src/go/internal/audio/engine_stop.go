@@ -13,9 +13,7 @@
 //	         For each active instrument: channel.ProcessBlockLocal(instBuf, masterBuf)
 //	         (applies volume + EQ; does NOT recurse to parent channel).
 //
-//	Phase 2.5: Send effects (delay + reverb) → masterBuf
-//
-//	Phase 3: Master channel EQ → workBuf → output capture → soft-clip + clamp [-1,1] → int16 (×32767)
+//	Phase 3: Master channel EQ → workBuf → soft clip → output capture → int16 (×32767)
 //
 // WHY 3 PHASES: each biquad filter is stateful (x1, x2, y1, y2) and expects a
 // continuous signal stream. The old code processed individual voices through
@@ -37,84 +35,50 @@
 package audio
 
 import (
-	"log"
 	"math"
-	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Audio clipping diagnostics - enable with AUDIO_CLIP_DEBUG=1
-var audioClipDebug = os.Getenv("AUDIO_CLIP_DEBUG") == "1"
-
-// bypassChannelProc skips all channel processing (volume, EQ) when set via BYPASS_CHANNEL_PROC=1.
-// Use this to isolate whether distortion comes from channel processing vs mixer/output.
-var bypassChannelProc = os.Getenv("BYPASS_CHANNEL_PROC") == "1"
-
-// debugMixer logs mixer workBuf values to help diagnose distortion.
-var debugMixer = os.Getenv("DEBUG_MIXER") == "1"
 var debugMixerCount int64
-
-// bypassHeadroom skips the 0.25 headroom attenuation when set via BYPASS_HEADROOM=1.
-var bypassHeadroom = os.Getenv("BYPASS_HEADROOM") == "1"
-
-// rawVoiceMode outputs only the first voice's raw samples, bypassing all processing.
-// Use TEST_RAW_VOICE=1 to test if voice buffers are clean before any mixer processing.
-var rawVoiceMode = os.Getenv("TEST_RAW_VOICE") == "1"
-
-// singleVoiceMode limits mixer to ONE voice at a time, using normal mixer path.
-// Use SINGLE_VOICE=1 to test if multi-voice accumulation is causing distortion.
-var singleVoiceMode = os.Getenv("SINGLE_VOICE") == "1"
-
-// rawVoiceFullAmp outputs first voice at full amplitude (no 0.2 scaling).
-// Use TEST_RAW_VOICE_FULL=1 to test if full amplitude causes issues.
-var rawVoiceFullAmp = os.Getenv("TEST_RAW_VOICE_FULL") == "1"
-
-// rawVoiceNoScale outputs first voice with NO multiplication at all (direct val to int16).
-// Use TEST_RAW_VOICE_NOSCALE=1 to test if multiplication is causing issues.
-var rawVoiceNoScale = os.Getenv("TEST_RAW_VOICE_NOSCALE") == "1"
-
-// testToneMode outputs a pure 440Hz sine wave instead of normal audio when set via TEST_TONE=1.
-// Use this to test if Oto/driver is working correctly.
-var testToneMode = os.Getenv("TEST_TONE") == "1"
 var testTonePhase float64 = 0
 
-// testVoiceMode replaces all synth voices with a simple sine wave via TEST_VOICE=1.
-// Use this to test if the voice/mixer path is working correctly.
-var testVoiceMode = os.Getenv("TEST_VOICE") == "1"
-
 func init() {
-	if testToneMode {
-		log.Println("[AUDIO DEBUG] TEST_TONE=1 - Outputting 440Hz test tone (bypassing all synth)")
+	if env.TestTone.Get() {
+		log.Warnf("[audio] debug mode BEATMO_TEST_TONE: outputting 440Hz test tone (bypassing all synth)")
 	}
-	if testVoiceMode {
-		log.Println("[AUDIO DEBUG] TEST_VOICE=1 - Replacing all synth with simple sine voices")
+	if env.TestVoice.Get() {
+		log.Warnf("[audio] debug mode BEATMO_TEST_VOICE: replacing all synth with simple sine voices")
 	}
-	if bypassChannelProc {
-		log.Println("[AUDIO DEBUG] BYPASS_CHANNEL_PROC=1 - Skipping all channel processing (volume, EQ)")
+	if env.BypassChannelProc.Get() {
+		log.Warnf("[audio] debug mode BYPASS_CHANNEL_PROC: skipping all channel processing (volume, EQ)")
 	}
-	if audioClipDebug {
-		log.Println("[AUDIO DEBUG] AUDIO_CLIP_DEBUG=1 - Logging clipping events")
+	if env.AudioClipDebug.Get() {
+		log.Warnf("[audio] debug mode AUDIO_CLIP_DEBUG: logging clipping events")
 	}
-	if debugMixer {
-		log.Println("[AUDIO DEBUG] DEBUG_MIXER=1 - Logging mixer workBuf values")
+	if env.DebugMixer.Get() {
+		log.Warnf("[audio] debug mode DEBUG_MIXER: logging mixer workBuf values")
 	}
-	if bypassHeadroom {
-		log.Println("[AUDIO DEBUG] BYPASS_HEADROOM=1 - Skipping 0.25 headroom attenuation")
+	if env.BypassHeadroom.Get() {
+		log.Warnf("[audio] debug mode BYPASS_HEADROOM: skipping 0.25 headroom attenuation")
 	}
-	if rawVoiceMode {
-		log.Println("[AUDIO DEBUG] TEST_RAW_VOICE=1 - Outputting first voice raw samples (no processing)")
+	if env.TestRawVoice.Get() {
+		log.Warnf("[audio] debug mode BEATMO_TEST_RAW_VOICE: outputting first voice raw samples (no processing)")
 	}
-	if rawVoiceFullAmp {
-		log.Println("[AUDIO DEBUG] TEST_RAW_VOICE_FULL=1 - Outputting first voice at FULL amplitude")
+	if env.TestRawVoiceFull.Get() {
+		log.Warnf("[audio] debug mode BEATMO_TEST_RAW_VOICE_FULL: outputting first voice at FULL amplitude")
 	}
-	if rawVoiceNoScale {
-		log.Println("[AUDIO DEBUG] TEST_RAW_VOICE_NOSCALE=1 - Outputting first voice with NO scaling")
+	if env.TestRawVoiceNoScale.Get() {
+		log.Warnf("[audio] debug mode BEATMO_TEST_RAW_VOICE_NOSCALE: outputting first voice with NO scaling")
 	}
-	if singleVoiceMode {
-		log.Println("[AUDIO DEBUG] SINGLE_VOICE=1 - Limiting mixer to ONE voice at a time")
+	if env.SingleVoice.Get() {
+		log.Warnf("[audio] debug mode BEATMO_SINGLE_VOICE: limiting mixer to ONE voice at a time")
 	}
 }
 
@@ -194,7 +158,7 @@ func StartOutputCapture() {
 	outputCaptureBuf = outputCaptureBuf[:0]
 	outputCaptureEnabled = true
 	outputCaptureMu.Unlock()
-	log.Println("[AUDIO CAPTURE] Started capturing output")
+	log.Debugf("[capture] started capturing output")
 }
 
 // StopOutputCapture stops capturing and returns the captured samples.
@@ -205,7 +169,7 @@ func StopOutputCapture() []float64 {
 	result := make([]float64, len(outputCaptureBuf))
 	copy(result, outputCaptureBuf)
 	outputCaptureMu.Unlock()
-	log.Printf("[AUDIO CAPTURE] Stopped. Captured %d samples (%.3f seconds)",
+	log.Debugf("[capture] stopped: captured %d samples (%.3f seconds)",
 		len(result), float64(len(result))/float64(sampleRate))
 	return result
 }
@@ -244,7 +208,7 @@ func SampleRate() int {
 	return sampleRate
 }
 
-func (m *mixer) Stop(id string) {
+func (m *mixer) Stop(id channel.ID) {
 	m.mu.Lock()
 	for i := 0; i < len(m.voices); i++ {
 		if m.voices[i].id == id {
@@ -365,20 +329,20 @@ func (m *mixer) processRawVoice(offset, blockLen int, p []byte) {
 			}
 			// Scale by 0.2 to match TEST_TONE amplitude (or full amp/no scale)
 			var sum float64
-			if rawVoiceNoScale {
+			if env.TestRawVoiceNoScale.Get() {
 				// Direct value, no multiplication at all
 				sum = val
 			} else {
 				scale := 0.2
-				if rawVoiceFullAmp {
+				if env.TestRawVoiceFull.Get() {
 					scale = 1.0
 				}
 				sum = val * scale
 			}
 
 			// Debug: log sample values periodically
-			if debugMixer && i == 0 && debugMixerCount%100 == 0 {
-				log.Printf("[RAW_VOICE] val=%.6f sum=%.6f noscale=%v", val, sum, rawVoiceNoScale)
+			if env.DebugMixer.Get() && i == 0 && debugMixerCount%100 == 0 {
+				log.Tracef("[raw-voice] val=%.6f sum=%.6f noscale=%v", val, sum, env.TestRawVoiceNoScale.Get())
 			}
 			if sum > 1 {
 				sum = 1
@@ -422,18 +386,18 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		m.postEQBuf = make([]float64, blockSize)
 	}
 	if m.instSlots == nil {
-		m.instSlots = make(map[string]int)
+		m.instSlots = make(map[channel.ID]int)
 	}
 
 	// TEST_TONE mode: output pure 440Hz sine wave, bypassing all synth.
-	if testToneMode {
+	if env.TestTone.Get() {
 		m.processTestTone(offset, blockLen, p)
 		return
 	}
 
 	// TEST_RAW_VOICE mode: output raw voice samples with no processing —
 	// isolates whether the voice buffer itself causes distortion.
-	if rawVoiceMode && len(m.voices) > 0 {
+	if env.TestRawVoice.Get() && len(m.voices) > 0 {
 		m.processRawVoice(offset, blockLen, p)
 		return
 	}
@@ -447,29 +411,38 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Reset active instrument tracking
 	m.activeSlots = m.activeSlots[:0]
 
+	// Audio-lane StopLaneAt events due within this block.
+	m.applyLaneStops(m.pos + offset + blockLen)
+
 	// === PHASE 1: Render voices + headroom → per-instrument buffers (NO EQ) ===
 	i := 0
 	voicesProcessed := 0
 	for i < len(m.voices) {
 		// SINGLE_VOICE mode: only process one voice per block
-		if singleVoiceMode && voicesProcessed >= 1 {
+		if env.SingleVoice.Get() && voicesProcessed >= 1 {
 			break
 		}
 
 		vs := m.voices[i]
-		startPos := m.pos + offset
+		blockStart := m.pos + offset
 
-		if startPos < vs.start {
+		// A voice starts on its own sample, inside the block if that is where
+		// it falls (it used to wait for the next block: up to 63 frames late).
+		if vs.start >= blockStart+blockLen {
 			i++
 			continue
 		}
+		startOff := max(0, vs.start-blockStart)
 
 		if !vs.emitted && vs.row >= 0 {
-			publishEmitReport(vs.row, vs.abs, int64(startPos))
+			publishEmitReport(vs.row, vs.abs, int64(blockStart+startOff))
 			vs.emitted = true
 		}
+		if vs.laneCV != nil {
+			m.laneStarted(vs)
+		}
 
-		done := m.renderVoiceIntoInstBuf(vs, blockLen)
+		done := m.renderVoiceIntoInstBuf(vs, startOff, blockLen)
 		voicesProcessed++
 		if done {
 			// Swap with last and truncate (no allocation)
@@ -507,37 +480,42 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// between insert FX and EQ (scope.StageInsertFX vs scope.StageEQ).
 	//   Phase 2a: instBuf → ProcessInsertsBlockLocal → postFXBuf (tap StageInsertFX)
 	//   Phase 2b: postFXBuf → ProcessEQBlockLocal → postEQBuf (tap StageEQ)
-	if !bypassChannelProc {
+	if !env.BypassChannelProc.Get() {
+		at := m.pos + offset
+		m.mixedChans = m.mixedChans[:0]
 		for _, slot := range m.activeSlots {
 			id := m.instSlotIDs[slot]
 			ch := channelForInstrument(id)
-			// Zero the post-inserts scratch buffer for this instrument.
-			for k := 0; k < blockLen; k++ {
-				m.postFXBuf[k] = 0
+			if m.residency {
+				m.residencyOf(ch).released = false // a voice wakes it
 			}
-			ch.ProcessInsertsBlockLocal(m.instBufs[slot][:blockLen], m.postFXBuf[:blockLen])
-			// Tap the post-inserts / pre-EQ per-instrument signal.
-			if scopeSvc != nil {
-				scopeSvc.PushSamples(scope.StageInsertFX, id, m.postFXBuf[:blockLen])
-			}
-			if exportSvc != nil {
-				exportSvc.PushSamples(scope.StageInsertFX, id, m.postFXBuf[:blockLen])
-			}
-			// Zero the post-EQ scratch buffer.
-			for k := 0; k < blockLen; k++ {
-				m.postEQBuf[k] = 0
-			}
-			ch.ProcessEQBlockLocal(m.postFXBuf[:blockLen], m.postEQBuf[:blockLen])
-			// Tap the post-EQ per-instrument signal.
-			if scopeSvc != nil {
-				scopeSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:blockLen])
-			}
-			if exportSvc != nil {
-				exportSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:blockLen])
-			}
-			// Accumulate into masterBuf.
-			for k := 0; k < blockLen; k++ {
-				m.masterBuf[k] += m.postEQBuf[k]
+			m.mixedChans = append(m.mixedChans, ch)
+			m.mixChannel(id, ch, m.instBufs[slot][:blockLen], at)
+		}
+		// A channel with an effect or an EQ runs every block, voice or not —
+		// silence in — so a delay's echoes, a reverb's tail and an EQ's ring
+		// play out, and an LFO's phase advances, exactly as in the browser,
+		// whose worklet processes every render quantum. (It used to run only
+		// while one of its voices played: tails stopped dead at the voice's
+		// end and resumed, stale, with the next note.)
+		if pcs := chanMgr.procChannels.Load(); pcs != nil {
+			for _, ch := range *pcs {
+				if slices.Contains(m.mixedChans, ch) {
+					continue
+				}
+				if m.residency && m.residencyOf(ch).released {
+					if !ChannelHeld(ch.id) {
+						continue
+					}
+					m.residencyOf(ch).released = false // held again
+				}
+				if len(m.zeroBuf) < blockLen {
+					m.zeroBuf = make([]float64, blockSize)
+				}
+				m.mixChannel(ch.id, ch, m.zeroBuf[:blockLen], at)
+				if m.residency {
+					m.releaseIfSilent(ch)
+				}
 			}
 		}
 	} else {
@@ -550,22 +528,9 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
-	// === PHASE 2.5: Send effects (delay + reverb) → masterBuf ===
-	if sendFX != nil && sendFX.initialized && !bypassChannelProc {
-		sendFX.processSlotSends(m.instBufs, m.instSlotIDs, m.activeSlots, blockLen, m.masterBuf[:blockLen])
-	}
-
-	// Scope tap: post-sends master buffer (before master EQ).
-	if scopeSvc != nil {
-		scopeSvc.PushSamples(scope.StageSends, "master", m.masterBuf[:blockLen])
-	}
-	if exportSvc != nil {
-		exportSvc.PushSamples(scope.StageSends, "master", m.masterBuf[:blockLen])
-	}
-
 	// === PHASE 3: Master channel processing → workBuf ===
-	mainCh := channelForInstrument("") // returns main channel
-	if !bypassChannelProc {
+	mainCh := chanMgr.main
+	if !env.BypassChannelProc.Get() {
 		mainCh.ProcessBlockLocal(m.masterBuf[:blockLen], m.workBuf[:blockLen])
 	} else {
 		for j := 0; j < blockLen; j++ {
@@ -583,14 +548,14 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 
 	// Scope tap: final master output (after master EQ/compressor).
 	if scopeSvc != nil {
-		scopeSvc.PushSamples(scope.StageMaster, "master", m.workBuf[:blockLen])
+		scopeSvc.PushSamples(scope.StageMaster, channel.Master, m.workBuf[:blockLen])
 	}
 	if exportSvc != nil {
-		exportSvc.PushSamples(scope.StageMaster, "master", m.workBuf[:blockLen])
+		exportSvc.PushSamples(scope.StageMaster, channel.Master, m.workBuf[:blockLen])
 	}
 
 	// Debug: log mixer workBuf stats
-	if debugMixer && debugMixerCount%1000 == 0 {
+	if env.DebugMixer.Get() && debugMixerCount%1000 == 0 {
 		var minVal, maxVal float64
 		var nonZero int
 		for i := 0; i < blockLen; i++ {
@@ -605,29 +570,15 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 			}
 		}
 		if nonZero > 0 {
-			log.Printf("[MIXER] voices=%d insts=%d nonZero=%d min=%.6f max=%.6f",
+			log.Tracef("[mixer] voices=%d insts=%d nonZero=%d min=%.6f max=%.6f",
 				len(m.voices), len(m.activeSlots), nonZero, minVal, maxVal)
 		}
 	}
 	debugMixerCount++
 
-	// Capture output for debugging (after all processing, before int16 conversion)
-	if outputCaptureEnabled {
-		outputCaptureMu.Lock()
-		outputCaptureBuf = append(outputCaptureBuf, m.workBuf[:blockLen]...)
-		outputCaptureMu.Unlock()
-	}
-
-	// Recording pipeline tap: stream per-instrument + master to disk on
-	// background workers. The atomic pointer check is zero-cost when not
-	// recording; Tap itself is non-blocking and allocation-free.
-	if pipe := pipelinePtr.Load(); pipe != nil {
-		pipe.Tap(m.instSlotIDs, m.activeSlots, m.instBufs, m.workBuf[:], blockLen)
-	}
-
 	// Diagnostic: count clipping events before hard clamp
 	var clippedInBlock int
-	if audioClipDebug {
+	if env.AudioClipDebug.Get() {
 		for i := 0; i < blockLen; i++ {
 			if m.workBuf[i] > 1 || m.workBuf[i] < -1 {
 				clippedInBlock++
@@ -640,24 +591,35 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		totalBlockCount.Add(1)
 		// Log periodically (every 1000 blocks with clipping, ~10 seconds of audio)
 		if clippedInBlock > 0 && clipBlockCount.Load()%1000 == 0 {
-			log.Printf("[AUDIO] Clipping stats: %d samples clipped in %d blocks (total blocks: %d)",
+			log.Warnf("[audio] clipping stats: %d samples clipped in %d blocks (total blocks: %d)",
 				clipSampleCount.Load(), clipBlockCount.Load(), totalBlockCount.Load())
 		}
 	}
 
-	// Convert to int16 output with soft-clip + safety clamp.
-	// Use math.Round instead of truncation to reduce quantization noise.
+	// Master soft clip (mix_dsp.c — the browser's master node runs the same
+	// C): identity below the knee, a smooth approach to full scale above.
+	softClipBlock(m.workBuf[:blockLen])
+
+	// Capture what the device receives (after the soft clip, before int16):
+	// the browser's output capture taps the same point.
+	if outputCaptureEnabled {
+		outputCaptureMu.Lock()
+		outputCaptureBuf = append(outputCaptureBuf, m.workBuf[:blockLen]...)
+		outputCaptureMu.Unlock()
+	}
+
+	// Recording pipeline tap: stream per-instrument + the master as the device
+	// receives it (post soft clip, like the browser's master tap) to disk on
+	// background workers. The atomic pointer check is zero-cost when not
+	// recording; Tap itself is non-blocking and allocation-free.
+	if pipe := pipelinePtr.Load(); pipe != nil {
+		pipe.Tap(m.instSlotIDs, m.activeSlots, m.instBufs, m.workBuf[:], blockLen)
+	}
+
+	// Convert to int16. Use math.Round instead of truncation to reduce
+	// quantization noise; the soft clip never leaves [-1, 1].
 	for i := 0; i < blockLen; i++ {
 		sum := m.workBuf[i]
-		// Soft-clip: gently saturate peaks above SoftClipThreshold instead of
-		// hard clipping. Threshold lives in chain_spec.go so the browser's
-		// WaveShaper limiter curve uses the identical knee.
-		if sum > SoftClipThreshold {
-			sum = SoftClipThreshold * math.Tanh(sum/SoftClipThreshold)
-		} else if sum < -SoftClipThreshold {
-			sum = -SoftClipThreshold * math.Tanh(sum/-SoftClipThreshold)
-		}
-		// Safety clamp (should rarely trigger after soft-clip)
 		if sum > 1 {
 			sum = 1
 		} else if sum < -1 {
@@ -671,6 +633,43 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 
 	m.pos += blockLen
 	updateDeviceClock(int64(m.pos))
+}
+
+// mixChannel runs one instrument channel's inserts and EQ over in (its voices,
+// or silence) and adds the result to the master bus, tapping each stage.
+func (m *mixer) mixChannel(id channel.ID, ch *Channel, in []float64, at int) {
+	n := len(in)
+	for k := 0; k < n; k++ {
+		m.postFXBuf[k] = 0
+	}
+	ch.ProcessInsertsBlockLocal(in, m.postFXBuf[:n])
+	// Tap the post-inserts / pre-EQ per-instrument signal.
+	if scopeSvc != nil {
+		scopeSvc.PushSamples(scope.StageInsertFX, id, m.postFXBuf[:n])
+	}
+	if exportSvc != nil {
+		exportSvc.PushSamples(scope.StageInsertFX, id, m.postFXBuf[:n])
+	}
+	for k := 0; k < n; k++ {
+		m.postEQBuf[k] = 0
+	}
+	ch.ProcessEQBlockLocal(m.postFXBuf[:n], m.postEQBuf[:n])
+	if m.residency {
+		m.residencyOf(ch).trackQuiet(in, m.postEQBuf[:n])
+	}
+	// Tap the post-EQ per-instrument signal.
+	if scopeSvc != nil {
+		scopeSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:n])
+	}
+	if exportSvc != nil {
+		exportSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:n])
+	}
+	if stageCaptureOn.Load() {
+		stageCaptureBlock(id, at, in, m.postFXBuf[:n], m.postEQBuf[:n])
+	}
+	for k := 0; k < n; k++ {
+		m.masterBuf[k] += m.postEQBuf[k]
+	}
 }
 
 // debugVoiceCount tracks voice sample logging frequency
@@ -708,24 +707,25 @@ func (m *mixer) ensureInstBuf(slot, blockLen int) []float64 {
 	return buf
 }
 
-// renderVoiceIntoInstBuf renders up to blockLen samples from a voice, applies
-// headroom, and accumulates into the per-instrument buffer. Does NOT apply any
-// channel/EQ processing — that happens in phase 2/3.
+// renderVoiceIntoInstBuf renders the voice into frames [off, blockLen) of
+// the block, applies headroom, and accumulates into the per-instrument buffer.
+// Does NOT apply any channel/EQ processing — that happens in phase 2/3.
 // Uses BlockVoice bulk path when available for reduced function-call overhead.
 // Returns true if the voice is done and should be removed.
 // Caller must hold m.mu.
-func (m *mixer) renderVoiceIntoInstBuf(vs *voiceState, blockLen int) bool {
-	instBuf := m.ensureInstBuf(vs.slot, blockLen)
+func (m *mixer) renderVoiceIntoInstBuf(vs *voiceState, off, blockLen int) bool {
+	instBuf := m.ensureInstBuf(vs.slot, blockLen)[off:blockLen]
+	want := blockLen - off
 
 	var rendered int
 	var done bool
 
 	// Try BlockVoice bulk path first.
 	if bv, ok := vs.v.(BlockVoice); ok {
-		rendered, done = bv.SampleBlock(m.voiceTemp[:blockLen])
+		rendered, done = bv.SampleBlock(m.voiceTemp[:want])
 	} else {
 		// Fallback: sample-by-sample rendering.
-		for i := 0; i < blockLen; i++ {
+		for i := 0; i < want; i++ {
 			val, d := vs.v.Sample()
 			if d {
 				rendered = i
@@ -735,13 +735,13 @@ func (m *mixer) renderVoiceIntoInstBuf(vs *voiceState, blockLen int) bool {
 			m.voiceTemp[i] = val
 		}
 		if !done {
-			rendered = blockLen
+			rendered = want
 		}
 	}
 
 	if rendered > 0 {
 		// Debug: log voice sample stats
-		if debugMixer && debugVoiceCount%500 == 0 {
+		if env.DebugMixer.Get() && debugVoiceCount%500 == 0 {
 			var minVal, maxVal float64
 			for i := 0; i < rendered; i++ {
 				if m.voiceTemp[i] < minVal {
@@ -751,14 +751,14 @@ func (m *mixer) renderVoiceIntoInstBuf(vs *voiceState, blockLen int) bool {
 					maxVal = m.voiceTemp[i]
 				}
 			}
-			log.Printf("[VOICE %s] min=%.6f max=%.6f bypass=%v block=%v",
-				vs.id, minVal, maxVal, bypassChannelProc,
+			log.Tracef("[voice] %s min=%.6f max=%.6f bypass=%v block=%v",
+				vs.id, minVal, maxVal, env.BypassChannelProc.Get(),
 				func() bool { _, ok := vs.v.(BlockVoice); return ok }())
 		}
 		debugVoiceCount++
 
 		// Apply per-voice headroom BEFORE accumulation to prevent clipping.
-		if !bypassHeadroom {
+		if !env.BypassHeadroom.Get() {
 			for i := 0; i < rendered; i++ {
 				m.voiceTemp[i] *= mixHeadroom
 			}

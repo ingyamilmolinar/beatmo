@@ -14,6 +14,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -68,16 +70,16 @@ func TestSoundQueueNonBlocking(t *testing.T) {
 			close(block)
 		}
 	})
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) {
 		<-block
-		plays <- id
+		plays <- string(id)
 	})
 
 	done := make(chan struct{})
 	go func() {
-		g.queueSoundParams("snare", 1, 0, 1)
-		g.queueSoundParams("kick", 1, 0, 1)
-		g.queueSoundParams("hat", 1, 0, 1)
+		g.queueSoundParams(roster.Snare, 1, 0, 1)
+		g.queueSoundParams(roster.Kick, 1, 0, 1)
+		g.queueSoundParams(roster.Hihat, 1, 0, 1)
 		close(done)
 	}()
 	waitForChan(t, done, 10000)
@@ -911,7 +913,7 @@ func TestPauseStopsPulseProgress(t *testing.T) {
 
 	// Spawn a pulse and start playback.
 	plays := make(chan struct{}, 16)
-	g.SetPlayFunc(func(string, float64, ...float64) { plays <- struct{}{} })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays <- struct{}{} })
 
 	g.SetPlaying(true)
 	g.spawnPulseFromRow(0, 0)
@@ -1211,19 +1213,19 @@ func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
 		t.Fatalf("expected row labels for selection")
 	}
 	g.drum.rowLabels()[1].OnClick()
-	g.drum.SetInstrument("kick")
+	g.drum.SetInstrument(roster.Kick)
 
 	g.updateBeatInfos()
 	g.audioLookaheadSec = 0 // synchronous dispatch for deterministic order
 
 	plays := make(chan string, 2)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- id })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { plays <- string(id) })
 
 	g.spawnPulseFromRow(0, 0)
 	g.spawnPulseFromRow(1, 0)
 
 	got := []string{waitForChan(t, plays, 10000), waitForChan(t, plays, 10000)}
-	if got[0] != g.drum.Rows[0].Instrument || got[1] != g.drum.Rows[1].Instrument {
+	if instrument.ID(got[0]) != g.drum.Rows[0].Instrument || instrument.ID(got[1]) != g.drum.Rows[1].Instrument {
 		t.Fatalf("got plays %v", got)
 	}
 }
@@ -1787,6 +1789,10 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
+	// This test pins scheduler advancement, not the playback readiness gate:
+	// g.warmup == nil is a fully supported, nil-safe state
+	// (playbackReady/Tick both guard on it) that simply disables the gate.
+	g.warmup = nil
 	// ensure first step active
 	nodeID := g.tryAddNode(0, 0, model.NodeTypeRegular).ID
 	g.graph.StartNodeID = nodeID
@@ -2079,7 +2085,7 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	}
 
 	plays := make(chan string, 2)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- id })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { plays <- string(id) })
 
 	schedule := func(abs int) {
 		setPlayStartForAbs(g, abs)
@@ -2087,7 +2093,7 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	}
 
 	schedule(0)
-	if got := waitForChan(t, plays, 10000); got != g.drum.Rows[0].Instrument {
+	if got := waitForChan(t, plays, 10000); instrument.ID(got) != g.drum.Rows[0].Instrument {
 		t.Fatalf("unexpected instrument")
 	}
 
@@ -2117,7 +2123,7 @@ func TestSoundPlaysAfterHighlight(t *testing.T) {
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 
 	done := make(chan struct{}, 1)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) {
 		done <- struct{}{}
 	})
 
@@ -2135,15 +2141,15 @@ func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
 	g.start = n
 	g.graph.StartNodeID = n.ID
 	g.updateBeatInfos()
-	g.drum.SetInstrument("kick")
+	g.drum.SetInstrument(roster.Kick)
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 
 	idCh := make(chan string, 1)
-	g.SetPlayFunc(func(inst string, vol float64, when ...float64) { idCh <- inst })
+	g.SetPlayFunc(func(inst instrument.ID, vol float64, when ...float64) { idCh <- string(inst) })
 
 	g.highlightBeat(0, 0, info, 0)
 	got := waitForChan(t, idCh, 10000)
-	if got != "kick" {
+	if instrument.ID(got) != roster.Kick {
 		t.Fatalf("expected instrument 'kick', got %s", got)
 	}
 }
@@ -2161,7 +2167,7 @@ func TestHighlightBeatUsesRowVolume(t *testing.T) {
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 	g.drum.Rows[0].Volume = 0.25
 	volCh := make(chan float64, 1)
-	g.SetPlayFunc(func(id string, v float64, when ...float64) { volCh <- v })
+	g.SetPlayFunc(func(id instrument.ID, v float64, when ...float64) { volCh <- v })
 	g.highlightBeat(0, 0, info, 0)
 	v := waitForChan(t, volCh, 10000)
 	if math.Abs(v-0.25) > 0.01 {
@@ -2184,7 +2190,7 @@ func TestVolumeSliderAffectsPlayback(t *testing.T) {
 	g.drum.Rows[0].Volume = 0.25
 
 	volCh := make(chan float64, 1)
-	g.SetPlayFunc(func(id string, v float64, when ...float64) { volCh <- v })
+	g.SetPlayFunc(func(id instrument.ID, v float64, when ...float64) { volCh <- v })
 	g.highlightBeat(0, 0, info, 0)
 	v := waitForChan(t, volCh, 10000)
 	if math.Abs(v-0.25) > 0.04 {
@@ -2270,7 +2276,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 	// With the unified time-based sequencer, audio truth comes from the engine predictor.
 	// Schedule a small window and ensure the play calls match predictor.AudibleAt.
 	plays := 0
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays++ })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { plays++ })
 
 	const maxAbs = 7 // 8 subdivisions; within seqScheduleTime burst limit
 	scheduleAbsForTest(g, maxAbs)
@@ -2720,8 +2726,8 @@ func TestHighlightEmptyCells(t *testing.T) {
 	g.start = n1
 	g.graph.StartNodeID = n1.ID
 	if len(g.drum.Rows) > 0 {
-		g.drum.SetInstrument("snare")
-		ensureInstrumentAvailable(t, g, "snare")
+		g.drum.SetInstrument(roster.Snare)
+		ensureInstrumentAvailable(t, g, roster.Snare)
 	}
 
 	g.drum.SetLength(4)
@@ -3355,7 +3361,7 @@ func TestMuteAndSoloPlayback(t *testing.T) {
 	g.drum.AddRow()
 
 	plays := make(chan string, 8)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- id })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { plays <- string(id) })
 
 	// Drain any plays emitted during initialization or lingering from previous tests.
 	advanceFrames(g, 2)

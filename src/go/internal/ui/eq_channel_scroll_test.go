@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestEQChannelMenuWheelScroll verifies that mouse wheel events scroll the
@@ -29,7 +30,7 @@ func TestEQChannelMenuWheelScroll(t *testing.T) {
 	for i := range dv.Rows {
 		dv.Rows[i] = &DrumRow{
 			Name:       "Inst" + string(rune('A'+i)),
-			Instrument: "inst_" + string(rune('a'+i)),
+			Instrument: instrument.ID("inst_" + string(rune('a'+i))),
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		}
@@ -103,7 +104,7 @@ func makeOverflowRows(n int) []*DrumRow {
 	for i := range rows {
 		rows[i] = &DrumRow{
 			Name:       "Inst" + string(rune('A'+i)),
-			Instrument: "inst_" + string(rune('a'+i)),
+			Instrument: instrument.ID("inst_" + string(rune('a'+i))),
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		}

@@ -2,144 +2,87 @@ package audio
 
 import (
 	"strings"
-	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/enum"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// CategoryID is the stable identifier for an instrument category. The
-// built-in taxonomy is hardcoded; custom categories may be added at runtime
-// via RegisterCategory (persistence is deferred).
-type CategoryID string
+// Category is an instrument-menu category: a closed enum (the menu's tabs, in
+// display order). CatNone is "no category" — the zero value, never a tab.
+type Category int
 
-// Category is a displayable taxonomy entry.
-type Category struct {
-	ID   CategoryID
-	Name string
-}
-
-// Built-in category taxonomy. Names are display labels.
+// The categories, in display order.
 const (
-	CatKick       CategoryID = "kick"
-	CatSnare      CategoryID = "snare"
-	CatHiHat      CategoryID = "hihat"
-	CatCymbal     CategoryID = "cymbal"
-	CatTom        CategoryID = "tom"
-	CatPercussion CategoryID = "percussion"
-	CatBass       CategoryID = "bass"
-	CatKeys       CategoryID = "keys"
-	CatGuitar     CategoryID = "guitar"
-	CatStrings    CategoryID = "strings"
-	CatWoodwind   CategoryID = "woodwind"
-	CatBrass      CategoryID = "brass"
-	CatVoice      CategoryID = "voice"
-	CatLead       CategoryID = "lead"
-	CatOther      CategoryID = "other"
+	CatNone Category = iota
+	CatKick
+	CatSnare
+	CatHiHat
+	CatCymbal
+	CatTom
+	CatPercussion
+	CatBass
+	CatKeys
+	CatGuitar
+	CatStrings
+	CatWoodwind
+	CatBrass
+	CatVoice
+	CatLead
+	CatOther
 )
 
-var (
-	categoryMu sync.RWMutex
-	// builtinCategoryOrder is the canonical display order.
-	builtinCategoryOrder = []Category{
-		{CatKick, "Kick"}, {CatSnare, "Snare"}, {CatHiHat, "Hi-Hat"},
-		{CatCymbal, "Cymbal"}, {CatTom, "Tom"}, {CatPercussion, "Percussion"},
-		{CatBass, "Bass"}, {CatKeys, "Keys"}, {CatGuitar, "Guitar"},
-		{CatStrings, "Strings"}, {CatWoodwind, "Woodwind"}, {CatBrass, "Brass"},
-		{CatVoice, "Voice"}, {CatLead, "Lead/Synth"}, {CatOther, "Other"},
-	}
-	// extraCategories holds custom categories registered at runtime.
-	extraCategories []Category
-	// categoryAssignments holds explicit per-instrument overrides (custom or
-	// corrective) that take precedence over the derived category.
-	categoryAssignments = map[string]CategoryID{}
-)
+var categoryNames = enum.Names[Category]{Kind: "instrument category", Names: []string{
+	"", "kick", "snare", "hihat", "cymbal", "tom", "percussion", "bass", "keys", "guitar",
+	"strings", "woodwind", "brass", "voice", "lead", "other",
+}}
 
-// Categories returns the taxonomy in display order (built-ins, then customs).
-func Categories() []Category {
-	categoryMu.RLock()
-	defer categoryMu.RUnlock()
-	out := make([]Category, 0, len(builtinCategoryOrder)+len(extraCategories))
-	out = append(out, builtinCategoryOrder...)
-	out = append(out, extraCategories...)
-	return out
+// categoryLabels are the menu's display labels, index = Category.
+var categoryLabels = [...]string{
+	"", "Kick", "Snare", "Hi-Hat", "Cymbal", "Tom", "Percussion", "Bass", "Keys", "Guitar",
+	"Strings", "Woodwind", "Brass", "Voice", "Lead/Synth", "Other",
 }
 
-// RegisterCategory adds a custom category to the taxonomy (idempotent by ID).
-// Persistence is deferred; this only mutates the in-memory registry.
-func RegisterCategory(c Category) {
-	if c.ID == "" {
-		return
+// String is the category's stable spelling ("hihat").
+func (c Category) String() string { return enum.String(categoryNames, c) }
+
+// Label is the category's display label ("Hi-Hat").
+func (c Category) Label() string {
+	if !enum.Valid(categoryNames, c) {
+		return c.String()
 	}
-	categoryMu.Lock()
-	defer categoryMu.Unlock()
-	for _, e := range builtinCategoryOrder {
-		if e.ID == c.ID {
-			return
-		}
-	}
-	for i, e := range extraCategories {
-		if e.ID == c.ID {
-			extraCategories[i] = c
-			return
-		}
-	}
-	extraCategories = append(extraCategories, c)
+	return categoryLabels[c]
 }
 
-// AssignCategory pins an instrument ID to a category, overriding derivation.
-func AssignCategory(instID string, cat CategoryID) {
-	if instID == "" {
-		return
-	}
-	categoryMu.Lock()
-	categoryAssignments[instID] = cat
-	categoryMu.Unlock()
-}
+// Categories returns every category in display order (CatNone excluded).
+func Categories() []Category { return enum.All(categoryNames)[1:] }
 
-// ResetCategoriesForTest clears the runtime taxonomy mutations (custom
-// categories registered via RegisterCategory and per-instrument overrides set
-// via AssignCategory), restoring the built-in taxonomy. The built-in order is
-// never mutated, so it needs no reset. Mirrors ResetCatalogForTest /
-// ResetInstruments so tests can inject a synthetic taxonomy and clean up.
-func ResetCategoriesForTest() {
-	categoryMu.Lock()
-	extraCategories = nil
-	categoryAssignments = map[string]CategoryID{}
-	categoryMu.Unlock()
-}
-
-// CategoryOf returns the category for an instrument ID. Order: explicit
-// assignment → voice-text pre-check (see below) → recipe-derived →
-// role-heuristic-derived → id-text fallback → CatOther.
-func CategoryOf(id string) CategoryID {
+// CategoryOf returns an instrument's category: a shipped instrument's own
+// (builtinProperties; an instance "x--N" has x's), else -- for an instrument
+// the user named, a WAV sample or a Save-As instrument -- the category its
+// display name suggests, else CatOther.
+func CategoryOf(id instrument.ID) Category {
 	if id == "" {
 		return CatOther
 	}
-	categoryMu.RLock()
-	assigned, ok := categoryAssignments[id]
-	categoryMu.RUnlock()
-	if ok {
-		return assigned
+	if p, ok := builtinPropertyOf(id); ok {
+		return p.Category
 	}
-	// Voice/choir text match wins over recipe/role dispatch: roleHeuristic
-	// (kit.go) has its own generic "bass" substring rule with no voice
-	// awareness, so a hypothetical "voice-bass"-shaped id would hit CatBass
-	// via categoryByRole before ever reaching categoryByText below (the
-	// real voice-bass was renamed to ghost-bass and moved to CatBass on
-	// purpose per the 2026-07-08 ear review — this pre-check no longer
-	// applies to it). This narrow pre-check only short-circuits when the id
-	// itself is voice-flavored; every other id falls through to the
-	// unchanged recipe → role → text precedence.
-	if c, ok := categoryByText(id); ok && c == CatVoice {
+	return categoryFromName(InstrumentDisplayName(id))
+}
+
+// categoryFromName classifies an instrument the user named. A voice/choir
+// word wins over the role rules: roleFromName has a generic "bass" rule
+// with no voice awareness, so a voice-flavored name that also says "bass"
+// would otherwise land in CatBass.
+func categoryFromName(name string) Category {
+	if c, ok := categoryByText(name); ok && c == CatVoice {
 		return c
 	}
-	if c, ok := categoryByRecipe(factoryRecipeForInstrument(id)); ok {
+	if c, ok := categoryByRole(roleFromName(name)); ok {
 		return c
 	}
-	if c, ok := categoryByRole(roleHeuristic(id)); ok {
-		return c
-	}
-	// Last resort: try the id text itself (covers WAV-only catalog ids with
-	// no recipe binding, e.g. "kick-acoustic").
-	if c, ok := categoryByText(id); ok {
+	if c, ok := categoryByText(name); ok {
 		return c
 	}
 	return CatOther
@@ -147,10 +90,10 @@ func CategoryOf(id string) CategoryID {
 
 // InstrumentsByCategory returns every known instrument ID in a category, in
 // registration/catalog order.
-func InstrumentsByCategory(cat CategoryID) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(id string) {
+func InstrumentsByCategory(cat Category) []instrument.ID {
+	seen := map[instrument.ID]bool{}
+	var out []instrument.ID
+	add := func(id instrument.ID) {
 		if id == "" || seen[id] {
 			return
 		}
@@ -168,17 +111,9 @@ func InstrumentsByCategory(cat CategoryID) []string {
 	return out
 }
 
-// categoryByRecipe maps a SynthRecipe id to a category via substring rules.
-func categoryByRecipe(recipe string) (CategoryID, bool) {
-	if recipe == "" {
-		return "", false
-	}
-	return categoryByText(recipe)
-}
-
-// categoryByText classifies an id/recipe string by substring. Ordered most-
+// categoryByText classifies an instrument name by substring. Ordered most-
 // specific first so "open-hihat" hits HiHat before any generic rule.
-func categoryByText(s string) (CategoryID, bool) {
+func categoryByText(s string) (Category, bool) {
 	lc := strings.ToLower(s)
 	switch {
 	// "hat" only as a suffix ("open-hat", "closed-hat") — a bare Contains would
@@ -217,26 +152,32 @@ func categoryByText(s string) (CategoryID, bool) {
 	case strings.Contains(lc, "lead"), strings.Contains(lc, "pluck"), strings.Contains(lc, "bell"):
 		return CatLead, true
 	}
-	return "", false
+	return CatNone, false
 }
 
-// categoryByRole maps a kit role (from roleHeuristic) to a category.
-func categoryByRole(role string) (CategoryID, bool) {
+// categoryByRole maps a kit role to a category.
+func categoryByRole(role instrument.Role) (Category, bool) {
 	switch role {
-	case "kick":
+	case instrument.RoleKick:
 		return CatKick, true
-	case "snare":
+	case instrument.RoleSnare:
 		return CatSnare, true
-	case "hat":
+	case instrument.RoleHat:
 		return CatHiHat, true
-	case "tom":
+	case instrument.RoleTom:
 		return CatTom, true
-	case "ride", "crash":
+	case instrument.RoleRide, instrument.RoleCrash:
 		return CatCymbal, true
-	case "clap", "cowbell", "shaker":
+	case instrument.RoleClap, instrument.RoleCowbell, instrument.RoleShaker:
 		return CatPercussion, true
-	case "bass":
+	case instrument.RoleBass:
 		return CatBass, true
 	}
-	return "", false
+	return CatNone, false
+}
+
+// synthCatalogCategory is the catalog group of a built-in synth: its menu
+// category, marked as synthesized (WAV assets group under "... (WAV)").
+func synthCatalogCategory(id instrument.ID) string {
+	return CategoryOf(id).Label() + " (Synth)"
 }

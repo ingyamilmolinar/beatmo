@@ -31,7 +31,7 @@ func TestNodeDropdownItemsUseDropdownStyle(t *testing.T) {
 
 	// Every node control (a dropdown item, a stepper, a selector, the close
 	// button) must be DropdownStyle.
-	for _, id := range []string{"logic:probability", "vol-", "vol+", "logic", "close"} {
+	for _, id := range []sbID{sbLogicOption(model.LogicProbability), sbMinus(fieldVol), sbPlus(fieldVol), sbLogicSelect, sbClose} {
 		b := g.sidebar.btns[id]
 		if b == nil {
 			t.Fatalf("node button %q missing after layout", id)
@@ -72,7 +72,7 @@ func TestNodeDropdownItemDrawsNodeAccentStripe(t *testing.T) {
 	g.sidebar.layout()
 
 	// A fresh regular node has empty LogicKind → the selected item is "logic:".
-	const selID = "logic:"
+	selID := sbLogicOption(model.LogicNone)
 	r, ok := g.sidebar.rects[selID]
 	if !ok || r.Empty() {
 		t.Fatalf("selected dropdown item %q has no rect", selID)

@@ -32,16 +32,15 @@ func TestTrackBtnDoesNotOverlapTimelineBar(t *testing.T) {
 		t.Fatalf("timelineRect is empty — fixture invalid")
 	}
 
-	// X-ranges must be disjoint.
-	if xRangesOverlap(trackR, tlR) {
-		t.Fatalf("track button X-range %d..%d overlaps timeline bar X-range %d..%d (button paints over the start of the timeline, hiding initial progress)",
-			trackR.Min.X, trackR.Max.X, tlR.Min.X, tlR.Max.X)
+	// The keycap sits in the counter band ABOVE the ruler; it must never paint
+	// over the bar (the ruler keeps its full width below it).
+	if trackR.Overlaps(tlR) {
+		t.Fatalf("track button %v overlaps timeline bar %v (button paints over the start of the timeline, hiding initial progress)",
+			trackR, tlR)
 	}
-
-	// Track button must be on the LEFT side of the timeline.
-	if trackR.Max.X > tlR.Min.X {
-		t.Fatalf("track button must sit entirely left of the timeline: trackBtn.Max.X=%d, timelineRect.Min.X=%d",
-			trackR.Max.X, tlR.Min.X)
+	if trackR.Max.Y > tlR.Min.Y {
+		t.Fatalf("track button must sit above the timeline bar: trackBtn.Max.Y=%d, timelineRect.Min.Y=%d",
+			trackR.Max.Y, tlR.Min.Y)
 	}
 }
 
@@ -76,18 +75,8 @@ func TestTimelineZoneButtonsDoNotOverlapBar(t *testing.T) {
 			t.Errorf("%s rect empty (desktop fixture should populate it)", c.name)
 			continue
 		}
-		if xRangesOverlap(c.rect, tlR) {
-			t.Errorf("%s X-range %d..%d overlaps timeline bar X-range %d..%d",
-				c.name, c.rect.Min.X, c.rect.Max.X, tlR.Min.X, tlR.Max.X)
+		if c.rect.Overlaps(tlR) {
+			t.Errorf("%s %v overlaps timeline bar %v", c.name, c.rect, tlR)
 		}
 	}
-}
-
-// xRangesOverlap reports whether two rectangles share any X coordinate
-// (regardless of Y). Empty rects never overlap.
-func xRangesOverlap(a, b image.Rectangle) bool {
-	if a.Empty() || b.Empty() {
-		return false
-	}
-	return a.Min.X < b.Max.X && b.Min.X < a.Max.X
 }

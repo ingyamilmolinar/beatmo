@@ -7,7 +7,7 @@
 // 1. Uses the new output capture mechanism (ScriptProcessorNode)
 // 2. Plays sounds through the full WebAudio pipeline (volume buses, channels, etc.)
 // 3. Captures the final mixed output
-// 4. Compares with reference samples from desktop_audio.json
+// 4. Compares with reference samples rendered fresh by cmd/export_audio
 //
 // Usage: GO=/path/to/.tools/go/bin/go node src/js/output_capture_compare.browser.test.js
 
@@ -17,6 +17,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+import { loadDesktopAudioReference } from "./browser_test_helpers.js";
+import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -32,14 +34,14 @@ if (!fs.existsSync(chromiumPath)) {
 // Load desktop audio samples for reference
 // ============================================================================
 
-const desktopAudioPath = path.join(jsDir, "desktop_audio.json");
+// The native reference is rendered NOW, from this tree, by cmd/export_audio —
+// never read from a committed snapshot (see loadDesktopAudioReference).
 let desktopData;
 try {
-  desktopData = JSON.parse(fs.readFileSync(desktopAudioPath, "utf-8"));
-  console.log(`Loaded desktop audio data (version ${desktopData.version})`);
+  desktopData = loadDesktopAudioReference();
+  console.log(`Rendered desktop audio reference (version ${desktopData.version})`);
 } catch (err) {
-  console.error(`Failed to load desktop_audio.json: ${err.message}`);
-  console.error("Generate it with: cd src/go && go run ./cmd/export_audio > ../js/desktop_audio.json");
+  console.error(`Failed to render the desktop audio reference: ${err.message}`);
   process.exit(1);
 }
 
@@ -148,33 +150,15 @@ function trimSilence(arr, threshold = 1e-4) {
 // Test setup
 // ============================================================================
 
-const server = http.createServer((req, res) => {
-  if (req.url === "/" || req.url === "/test.html") {
-    // Load full audio.js module which includes capture mechanism
-    const html = `<!DOCTYPE html><html><body>
-<script type="module">
-  import './audio.js';
-  // Wait for module to be ready
-  window.__ready = true;
-</script>
-</body></html>`;
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(html);
-    return;
-  }
-  const filePath = path.join(jsDir, req.url.replace(/^\//, ""));
-  fs.readFile(filePath, (err, data) => {
-    if (err) { res.writeHead(404); res.end(); return; }
-    let ct = "text/plain";
-    if (filePath.endsWith(".html")) ct = "text/html";
-    else if (filePath.endsWith(".js")) ct = "application/javascript";
-    else if (filePath.endsWith(".wasm")) ct = "application/wasm";
-    res.writeHead(200, { "Content-Type": ct });
-    res.end(data);
-  });
-});
-
-await new Promise((r) => server.listen(0, r));
+// The REAL app, not a bare audio.js shell. An instrument's voice is its
+// document's param block, which Go pushes to audio.js (setInstrumentBlock); a
+// page that imports audio.js alone has no instruments at all (it once rendered
+// every family instrument as the bare, SUSTAINED modular voice). Its tail then spilled
+// into the next capture window and this test "found" an inverted kick, a
+// decorrelated snare or hi-hat — different ones each run. No production page
+// runs audio.js without Go.
+if (!buildMainWasm({ logLevel: "ERROR" })) throw new Error("go build main.wasm failed");
+const server = await createServer();
 const port = server.address().port;
 console.log(`Test server running on port ${port}`);
 
@@ -184,12 +168,13 @@ page.on('console', (msg) => {
   if (process.env.TEST_LOG) console.log('[PAGE]', msg.type(), msg.text());
 });
 
-await page.goto(`http://localhost:${port}/test.html`);
-await page.waitForFunction(() => window.__ready === true, { timeout: 10000 });
-
-// Wait for audio.js to initialize (render cache to be populated)
-await page.waitForFunction(() => typeof window.playSound === 'function', { timeout: 5000 });
-console.log('Audio module loaded');
+await page.goto(`http://localhost:${port}/`);
+// Ready = the app's exports exist AND its readiness gate opened (every recipe's
+// defaults are seeded into audio.js before a voice is rendered).
+await page.waitForFunction(() => typeof window.playSound === 'function' &&
+  typeof window.warmupProgress === 'function' && window.warmupProgress().ready === true,
+  null, { timeout: 90000, polling: 200 });
+console.log('App loaded and warm');
 
 // ============================================================================
 // Test 1: Verify output capture mechanism works
@@ -217,6 +202,7 @@ const captureTest = await page.evaluate(async () => {
   await new Promise(r => setTimeout(r, 800));
 
   // Get captured samples
+  await window.flushOutputCapture?.(); // every block captured so far has arrived
   const captured = window.stopOutputCapture();
   const stats2 = window.getOutputCaptureStats();
 
@@ -265,7 +251,11 @@ console.log('  OK: Capture mechanism working');
 
 console.log('\n--- TEST 2: COMPARE CAPTURED OUTPUT WITH WASM REFERENCE ---');
 
-const instrumentsToTest = ['kick', 'snare', 'hihat'];
+// None of these is a row of the startup circuit, so each plays through a clean
+// channel (no per-row EQ / insert FX / sends reshaping it). rimshot stands in for
+// the snare family: the demo's snare row carries an EQ high-pass, a distortion
+// insert and a reverb send, which legitimately change its captured waveform.
+const instrumentsToTest = ['kick', 'rimshot', 'hihat'];
 const results = {};
 let anyFailed = false;
 const failures = [];
@@ -303,6 +293,7 @@ for (const instName of instrumentsToTest) {
     await new Promise(r => setTimeout(r, 1000));
 
     // Stop and get samples
+    await window.flushOutputCapture?.(); // every block captured so far has arrived
     const captured = Array.from(window.stopOutputCapture());
 
     return {
@@ -485,18 +476,19 @@ const polyResult = await page.evaluate(async () => {
 
   // Ensure all samples are rendered first
   await window.ensureSynthSample('kick');
-  await window.ensureSynthSample('snare');
+  await window.ensureSynthSample('rimshot');
   await window.ensureSynthSample('hihat');
 
   // Play all three simultaneously
   const now = window.audioNow();
   await window.playSound('kick', 1.0, now + 0.05);
-  await window.playSound('snare', 1.0, now + 0.05);
+  await window.playSound('rimshot', 1.0, now + 0.05);
   await window.playSound('hihat', 1.0, now + 0.05);
 
   // Wait for all to complete
   await new Promise(r => setTimeout(r, 1500));
 
+  await window.flushOutputCapture?.(); // every block captured so far has arrived
   const captured = Array.from(window.stopOutputCapture());
 
   // Analyze

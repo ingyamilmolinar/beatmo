@@ -371,12 +371,16 @@ func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 100, 24), BPMBoxStyle)
 	ti.focused = true
 	ti.anim = 1
+	// Flat-tonal (2026-07-25): an input's body paints via drawFlatButtonBody ->
+	// drawRoundedRect(filled); it no longer uses the drawButton primitive.
 	var got image.Rectangle
-	old := drawButton
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed, topEdgeHighlight bool) {
-		got = r
+	old := drawRoundedRect
+	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
+		if filled {
+			got = r
+		}
 	}
-	defer func() { drawButton = old }()
+	defer func() { drawRoundedRect = old }()
 	ti.Draw(ebiten.NewImage(100, 24))
 	if got.Dy() != 20 || got.Dx() != 96 {
 		t.Fatalf("animRect=%v", got)

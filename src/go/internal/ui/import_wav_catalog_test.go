@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestExportWAVInstrumentIncludesKindAndPath verifies that WAV-based instruments
@@ -20,11 +23,11 @@ func TestExportWAVInstrumentIncludesKindAndPath(t *testing.T) {
 	// AFTER New() to prevent InitDefaultCatalog from overwriting it
 	audio.ResetCatalogForTest([]audio.SoundMeta{
 		{
-			ID:       "kick-goldbaby-bd-test",
-			Name:     "Kick Goldbaby",
-			Category: "Kick Drums (WAV)",
-			Source:   "wav",
-			Path:     "/fake/path/to/kick.wav",
+			ID:     "kick-goldbaby-bd-test",
+			Name:   "Kick Goldbaby",
+			Group:  "Kick Drums (WAV)",
+			Source: audio.SourceWAV,
+			Path:   "/fake/path/to/kick.wav",
 		},
 	})
 	t.Cleanup(func() { audio.ResetCatalogForTest(nil) })
@@ -41,7 +44,7 @@ func TestExportWAVInstrumentIncludesKindAndPath(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -51,7 +54,7 @@ func TestExportWAVInstrumentIncludesKindAndPath(t *testing.T) {
 	}
 
 	inst := f.Instruments[0]
-	if inst.Kind != "sample" {
+	if inst.Kind != kindSample {
 		t.Errorf("expected kind=sample for WAV instrument, got %q", inst.Kind)
 	}
 	if inst.Path != "/fake/path/to/kick.wav" {
@@ -71,32 +74,32 @@ func TestImportWAVInstrumentFromCatalog(t *testing.T) {
 	// Set up catalog with WAV instrument AFTER New() to prevent overwrite
 	audio.ResetCatalogForTest([]audio.SoundMeta{
 		{
-			ID:       "kick-kick-goldbaby-bd-test",
-			Name:     "Kick Goldbaby",
-			Category: "Kick Drums (WAV)",
-			Source:   "wav",
-			Path:     "/fake/path/to/kick.wav",
+			ID:     "kick-kick-goldbaby-bd-test",
+			Name:   "Kick Goldbaby",
+			Group:  "Kick Drums (WAV)",
+			Source: audio.SourceWAV,
+			Path:   "/fake/path/to/kick.wav",
 		},
 	})
 	t.Cleanup(func() { audio.ResetCatalogForTest(nil) })
 
 	// Import with builtin kind (simulates old export format)
-	f := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	f := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Instruments: []exportInstrument{
 			{
 				Name:   "Kick",
 				ID:     "kick-kick-goldbaby-bd-test",
-				Kind:   "builtin", // Bug: old exports have "builtin"
+				Kind:   kindBuiltin, // Bug: old exports have "builtin"
 				Volume: 1,
 				Origin: 0,
 				Color:  "#FFFFFFFF",
 			},
 		},
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular"},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular},
 		},
 	}
 	data, _ := json.Marshal(f)
@@ -136,22 +139,22 @@ func TestImportMissingWAVShowsRedLabel(t *testing.T) {
 	audio.ResetCatalogForTest(nil)
 	t.Cleanup(func() { audio.ResetCatalogForTest(nil) })
 
-	f := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	f := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Instruments: []exportInstrument{
 			{
 				Name:   "Missing Kick",
 				ID:     "nonexistent-kick-wav",
-				Kind:   "sample",
+				Kind:   kindSample,
 				Volume: 1,
 				Origin: 0,
 				Color:  "#FFFFFFFF",
 			},
 		},
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular"},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular},
 		},
 	}
 	data, _ := json.Marshal(f)

@@ -1,0 +1,173 @@
+{
+  "schema_version": "0.0.1",
+  "id": "voice-opera",
+  "name": "Opera Voice",
+  "category": "modular",
+  "notes": "voiceOperaSeed: breathier \"old-man opera\" variant of voiceAhhSeed, ear-\napproved per the 2026-07-08 round-2 review (auditioned as\ntmp/voice_audition_v2/voice-ahh_alt_breathier.wav — a temp-edit alternate\nrendered during voice-ahh tuning, ruled genuinely human-sounding and\npromoted to its own instrument rather than folded into voice-ahh). Exact\nvoiceAhhSeed values with three deltas that add more air/huskiness and\nbrighter noise: formant_breath 0.07→0.18, gen1_gain 0.25→0.38, gen2_gain\n0.18→0.30. Every other key (osc, unison, ensemble, lfo, pitch env, bow\ndynamics, filter, amp envelope, formant shift/sing, gen filter\ntype/freq/Q, gain) is unchanged from voice-ahh.",
+  "render": {
+    "seconds": 1.25,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.55,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.6,
+        "amp_sustain": 0.9
+      }
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0,
+        "body_model": 0,
+        "bow_dynamics": 0.35
+      },
+      "notes": "bow_dynamics: body (measured), which reads as expressive solo but is plainly out of\ntune against any other instrument. 0.08 matches voiceSopranoSeed: the\nhuman onset slide survives, the sustain lands on pitch."
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.6,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 400,
+        "filter_resonance": 0.707,
+        "filter_type": 1
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "formant": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "formant_breath": 0.18,
+        "formant_dry": 1,
+        "formant_mix": 1,
+        "formant_morph_rate": 0,
+        "formant_morph_to": 0,
+        "formant_shift": 1.25,
+        "formant_sing": 0.28,
+        "formant_voice_type": 2,
+        "formant_vowel": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.4,
+        "lfo_depth": 0.8,
+        "lfo_rate": 7.5,
+        "lfo_target": 1
+      }
+    },
+    "pitch_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "pitchenv_amt": -2,
+        "pitchenv_decay": 0.08
+      },
+      "notes": "pitchenv_amt: decay was 0.7: the scoop then held the note ~65 cents FLAT through its\npitchenv_decay: decay was 0.7: the scoop then held the note ~65 cents FLAT through its\npitchenv_enabled: decay was 0.7: the scoop then held the note ~65 cents FLAT through its"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 1,
+        "ens_jitter": 0,
+        "ens_scatter": 6,
+        "ens_vib_depth": 30,
+        "ens_vib_rate": 6.5,
+        "unison_detune": 6,
+        "unison_drift_depth": 14,
+        "unison_drift_rate": 0.3,
+        "unison_mix": 0.6,
+        "unison_voices": 3
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 1
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.2,
+        "env_fast_rate": 8,
+        "env_tail_mix": 0.8,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1100,
+        "filt_q": 1.7,
+        "filt_type": 5,
+        "gain": 0.38,
+        "noise_offset": 0
+      }
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.1,
+        "env_fast_rate": 8,
+        "env_tail_mix": 0.9,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 600,
+        "filt_q": 1.2,
+        "filt_type": 5,
+        "gain": 0.3,
+        "noise_offset": 0
+      }
+    }
+  ]
+}

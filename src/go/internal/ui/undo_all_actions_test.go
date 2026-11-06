@@ -4,7 +4,12 @@ package ui
 
 import (
 	"image/color"
+	"sort"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -26,7 +31,7 @@ func pickOtherInstrumentFor(g *Game) (string, bool) {
 	cur := g.drum.Rows[0].Instrument
 	for _, id := range g.drum.instOptions {
 		if id != cur && id != "" {
-			return id, true
+			return string(id), true
 		}
 	}
 	return "", false
@@ -127,7 +132,7 @@ func undoActionCases() []undoCase {
 					t.Fatal("node missing")
 				}
 				ps := mn.Params
-				ps.LogicKind = "probability"
+				ps.LogicKind = model.LogicProbability
 				ps.LogicP = 0.5
 				g.graph.SetNodeParams(n.ID, ps)
 				emitNodeParamsChanged(n.ID, ps)
@@ -168,7 +173,7 @@ func undoActionCases() []undoCase {
 				g.drum.AddRow()
 				if other, ok := pickOtherInstrumentFor(g); ok {
 					g.drum.selRow = len(g.drum.Rows) - 1
-					g.drum.SetInstrument(other)
+					g.drum.SetInstrument(instrument.ID(other))
 				}
 				g.tryAddNode(11, 13, model.NodeTypeRegular)
 				g.updateBeatInfos()
@@ -202,7 +207,7 @@ func undoActionCases() []undoCase {
 				// to undo correctness and tracked separately.
 				if other, ok := pickOtherInstrumentFor(g); ok {
 					g.drum.selRow = len(g.drum.Rows) - 1
-					g.drum.SetInstrument(other)
+					g.drum.SetInstrument(instrument.ID(other))
 				}
 			},
 			mutate: func(t *testing.T, g *Game) { g.drum.DeleteRow(len(g.drum.Rows) - 1) },
@@ -216,7 +221,7 @@ func undoActionCases() []undoCase {
 					t.Skip("no alternate instrument available")
 				}
 				g.drum.selRow = 0
-				g.drum.SetInstrument(other)
+				g.drum.SetInstrument(instrument.ID(other))
 			},
 		},
 		{
@@ -249,6 +254,14 @@ func undoActionCases() []undoCase {
 			kind: hooks.EventRowColorChanged,
 			mutate: func(t *testing.T, g *Game) {
 				g.drum.SetRowColor(0, color.RGBA{R: 11, G: 99, B: 200, A: 255})
+			},
+		},
+		{
+			name: "circuit-theme",
+			kind: hooks.EventCircuitThemeChanged,
+			mutate: func(t *testing.T, g *Game) {
+				t.Cleanup(func() { ApplyTheme(theme.Doc{}) })
+				g.setCircuitThemeCategory("accent", "orchid-300")
 			},
 		},
 		{
@@ -285,7 +298,7 @@ func undoActionCases() []undoCase {
 			name: "eq-filter-toggle",
 			kind: hooks.EventEQFilterToggled,
 			setup: func(t *testing.T, g *Game) {
-				g.drum.eqPanelZone.SetActiveChannel("main")
+				g.drum.eqPanelZone.SetActiveChannel(channel.Master)
 			},
 			mutate: func(t *testing.T, g *Game) {
 				g.drum.toggleHPF()
@@ -299,9 +312,9 @@ func undoActionCases() []undoCase {
 				if len(z.bandGainsDB) <= 3 {
 					t.Skip("eq band gains not initialised")
 				}
-				z.SetActiveChannel("main")
+				z.SetActiveChannel(channel.Master)
 				z.bandGainsDB[3] = 6.0 // the exported value
-				g.drum.eqPendingChannel = "main"
+				g.drum.eqPendingChannel = channel.Master
 				g.drum.eqPendingBand = 3
 				g.drum.eqPendingGainDB = 6.0
 				g.drum.eqPendingDirty = true
@@ -321,7 +334,7 @@ func undoActionCases() []undoCase {
 			mutate: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
 				slot := audio.AddInsertEffect(id, audio.EffectDelay, nil)
-				emitInsertEffectAdded(id, slot, string(audio.EffectDelay))
+				emitInsertEffectAdded(channel.Of(id), slot, string(audio.EffectDelay))
 			},
 		},
 		{
@@ -336,7 +349,7 @@ func undoActionCases() []undoCase {
 			mutate: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
 				audio.RemoveInsertEffect(id, 0)
-				emitInsertEffectRemoved(id, 0)
+				emitInsertEffectRemoved(channel.Of(id), 0)
 			},
 		},
 		{
@@ -368,7 +381,7 @@ func undoActionCases() []undoCase {
 				}
 				newVal := pval + 0.137
 				audio.SetInsertEffectParam(id, 0, pname, newVal)
-				emitInsertEffectParam(id, 0, pname, newVal)
+				emitInsertEffectParam(channel.Of(id), 0, pname, newVal)
 				g.drum.recordUndoStep(hooks.EventInsertEffectParam)
 			},
 		},
@@ -385,7 +398,7 @@ func undoActionCases() []undoCase {
 			mutate: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
 				audio.ToggleInsertEffect(id, 0, false)
-				emitInsertEffectToggled(id, 0, false)
+				emitInsertEffectToggled(channel.Of(id), 0, false)
 				g.drum.recordUndoStep(hooks.EventInsertEffectToggled)
 			},
 		},
@@ -404,7 +417,7 @@ func undoActionCases() []undoCase {
 			mutate: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
 				audio.MoveInsertEffect(id, 0, 1)
-				emitInsertEffectMoved(id, 0, 1)
+				emitInsertEffectMoved(channel.Of(id), 0, 1)
 				g.drum.recordUndoStep(hooks.EventInsertEffectMoved)
 			},
 		},
@@ -420,19 +433,18 @@ func undoActionCases() []undoCase {
 			},
 			mutate: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
-				recipe := audio.RecipeForInstrument(id)
-				if recipe == "" {
-					t.Skip("row-0 instrument has no recipe binding")
+				if !audio.HasInstrumentDoc(id) {
+					t.Skip("row-0 instrument has no instrument document")
 				}
-				if _, ok := pickSynthParam(g, id, recipe); !ok {
+				if _, ok := pickSynthParam(g, string(id)); !ok {
 					t.Skip("no editable synth param produced a document change")
 				}
-				emitInstrumentParamsCommitted(id, recipe)
+				emitInstrumentParamsCommitted(id, instrument.ID(instrumentOriginForTest(string(id))))
 				g.drum.recordUndoStep(hooks.EventInstrumentParamsCommitted)
 			},
 		},
 		{
-			// Mirrors recipe_save_sink.go resetRecipeForInstrument (ResetRecipe +
+			// Mirrors recipe_save_sink.go resetRecipeForInstrument (library Reset +
 			// ResetInstrumentParams + emitInstrumentParamsReset + recordUndo). Setup
 			// commits a synth param change so the reset has something to revert.
 			name: "instrument-params-reset",
@@ -440,19 +452,17 @@ func undoActionCases() []undoCase {
 			setup: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
 				audio.ResetInstrumentParams(id)
-				recipe := audio.RecipeForInstrument(id)
-				if recipe == "" {
-					t.Skip("row-0 instrument has no recipe binding")
+				if !audio.HasInstrumentDoc(id) {
+					t.Skip("row-0 instrument has no instrument document")
 				}
-				if _, ok := pickSynthParam(g, id, recipe); !ok {
+				if _, ok := pickSynthParam(g, string(id)); !ok {
 					t.Skip("no editable synth param produced a document change")
 				}
 			},
 			mutate: func(t *testing.T, g *Game) {
 				id := g.drum.Rows[0].Instrument
-				recipe := audio.RecipeForInstrument(id)
 				audio.ResetInstrumentParams(id)
-				emitInstrumentParamsReset(id, recipe)
+				emitInstrumentParamsReset(id, instrument.ID(instrumentOriginForTest(string(id))))
 				g.drum.recordUndoStep(hooks.EventInstrumentParamsReset)
 			},
 		},
@@ -564,27 +574,41 @@ func undoActionCases() []undoCase {
 	}
 }
 
-// pickSynthParam finds a recipe param for instrument id that, when written via
+// instrumentOriginForTest is the library entry id's project copy came from.
+func instrumentOriginForTest(id string) string {
+	d, _ := audio.InstrumentDoc(instrument.ID(id))
+	return string(d.Origin)
+}
+
+// pickSynthParam finds a param of instrument id that, when written via
 // audio.SetInstrumentParam, actually changes the exported document (the value
-// differs from the shipped default after sanitize/clamp). It writes the change
+// differs from the library value after sanitize/clamp). It writes the change
 // as a side effect and returns the param name. ok=false means no param stuck.
-func pickSynthParam(g *Game, id, recipe string) (string, bool) {
-	shipped := audio.RecipeShippedDefaults(recipe)
-	for name, cur := range shipped {
+func pickSynthParam(g *Game, id string) (string, bool) {
+	audio.ResetInstrumentParams(instrument.ID(id))
+	shipped := map[string]float64{}
+	names := []string{}
+	for name, v := range audio.MergedInstrumentParamsRO(instrument.ID(id)) {
+		shipped[name] = v
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		cur := shipped[name]
 		// Try a few candidate values; SetInstrumentParam clamps to the param's
 		// range, so some candidates may collapse back to the current value.
 		for _, cand := range []float64{cur + 0.5, cur - 0.5, 0.75, 0.25, cur + 1, cur - 1} {
-			audio.ResetInstrumentParams(id)
+			audio.ResetInstrumentParams(instrument.ID(id))
 			// Re-apply any baseline already established by the caller would be
 			// lost here; callers reset first and rely on a single change.
-			audio.SetInstrumentParam(id, name, cand)
-			eff := audio.MergeRecipeDefaults(recipe, audio.GetInstrumentParams(id))
+			audio.SetInstrumentParam(instrument.ID(id), name, cand)
+			eff := audio.MergedInstrumentParamsRO(instrument.ID(id))
 			if s, ok := shipped[name]; !ok || (eff[name]-s > 1e-9 || s-eff[name] > 1e-9) {
 				return name, true
 			}
 		}
 	}
-	audio.ResetInstrumentParams(id)
+	audio.ResetInstrumentParams(instrument.ID(id))
 	return "", false
 }
 
@@ -635,13 +659,15 @@ func TestUndoAllActionsRoundTripAndAtomic(t *testing.T) {
 			// the raw node-id sequence that the import path (which restore rides)
 			// compacts. That renumbering is invisible to the user, so compare Redo
 			// against the import-normalised form of `after` rather than the raw
-			// in-memory bytes. Restoring is set so the normalisation neither
-			// records a step nor clears history.
+			// in-memory bytes. Both restore flags are set, exactly as undoRestore
+			// sets them, so the normalisation neither records a step nor clears
+			// history, and re-imports the documents verbatim (not as a circuit
+			// OPEN, where the user's Saves would trump the file's).
 			normalize := func(b []byte) string {
-				g.undoManager.restoring = true
+				g.undoManager.restoring, g.undoRestoring = true, true
 				_ = g.Import(b)
 				out := g.undoCapture()
-				g.undoManager.restoring = false
+				g.undoManager.restoring, g.undoRestoring = false, false
 				return string(out)
 			}
 			wantRedo := normalize(after)

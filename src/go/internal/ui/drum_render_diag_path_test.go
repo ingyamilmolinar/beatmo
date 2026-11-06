@@ -2,7 +2,11 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // Verifies the slim-bar diagnostic records which compositing path produced the
 // drum-row frame: "windowed" during locked scrolled playback, "legacy" once
@@ -25,7 +29,7 @@ func TestRowsRenderPathRecorded(t *testing.T) {
 		g.addEdge(nodes[k], nodes[(k+1)%len(nodes)])
 	}
 	g.updateBeatInfos()
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.drum.changeLength(58)
 	g.drum.SetFollow(true)
 	defer SetTrackBeatForceRefreshForTest(false)()

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // fEq compares two floats with a small tolerance.
@@ -134,13 +136,13 @@ func TestPlayheadTracker_SpawnsOneLinePerNewTrigger(t *testing.T) {
 	assertDefaultParityState(t)
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
-	tr.observe(base, map[string]int64{"a": base}, 1.0)
+	tr.observe(base, map[instrument.ID]int64{"a": base}, 1.0)
 	if len(tr.lines) != 1 {
 		t.Fatalf("got %d lines, want 1", len(tr.lines))
 	}
 	// Re-observing the SAME trigger (every frame the glue re-passes it) must not
 	// duplicate the line.
-	tr.observe(base+ms(100), map[string]int64{"a": base}, 1.0)
+	tr.observe(base+ms(100), map[instrument.ID]int64{"a": base}, 1.0)
 	if len(tr.lines) != 1 {
 		t.Errorf("re-observe of same trigger spawned a duplicate: %d", len(tr.lines))
 	}
@@ -152,9 +154,9 @@ func TestPlayheadTracker_OverlappingTriggersCoexistWithDistinctColors(t *testing
 	// finished, both lines must coexist with different colors.
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
-	tr.observe(base, map[string]int64{"kick": base}, 1.0) // line A at t=0
+	tr.observe(base, map[instrument.ID]int64{roster.Kick: base}, 1.0) // line A at t=0
 	mid := base + ms(500)
-	tr.observe(mid, map[string]int64{"kick": mid}, 1.0) // line B, A still playing
+	tr.observe(mid, map[instrument.ID]int64{roster.Kick: mid}, 1.0) // line B, A still playing
 	if len(tr.lines) != 2 {
 		t.Fatalf("want 2 concurrent lines, got %d", len(tr.lines))
 	}
@@ -172,8 +174,8 @@ func TestPlayheadTracker_SameIdRefireSpawnsNewLine(t *testing.T) {
 	// re-fires mid-sound and gets its own line.
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
-	tr.observe(base, map[string]int64{"kick": base}, 2.0)
-	tr.observe(base+ms(500), map[string]int64{"kick": base + ms(500)}, 2.0)
+	tr.observe(base, map[instrument.ID]int64{roster.Kick: base}, 2.0)
+	tr.observe(base+ms(500), map[instrument.ID]int64{roster.Kick: base + ms(500)}, 2.0)
 	if len(tr.lines) != 2 {
 		t.Fatalf("a re-fire within the sound's duration must add a 2nd line, got %d", len(tr.lines))
 	}
@@ -185,7 +187,7 @@ func TestPlayheadTracker_SingleLineAdvancesMonotonically(t *testing.T) {
 	// never jump backward.
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
-	tr.observe(base, map[string]int64{"a": base}, 2.0)
+	tr.observe(base, map[instrument.ID]int64{"a": base}, 2.0)
 	prev := -1.0
 	for t0 := 0; t0 <= 2000; t0 += 25 {
 		now := base + ms(t0)
@@ -207,9 +209,9 @@ func TestPlayheadTracker_RetriggerDoesNotResetInflightLine(t *testing.T) {
 	// the in-flight preview line keeps its position and the re-fire adds a 2nd.
 	var tr samplerPlayheadTracker
 	pv := int64(1e9)
-	tr.observe(pv, map[string]int64{"preview": pv, "kick": 0}, 2.0)
+	tr.observe(pv, map[instrument.ID]int64{"preview": pv, roster.Kick: 0}, 2.0)
 	mid := pv + ms(500)
-	tr.observe(mid, map[string]int64{"preview": pv, "kick": mid}, 2.0)
+	tr.observe(mid, map[instrument.ID]int64{"preview": pv, roster.Kick: mid}, 2.0)
 	views := tr.active(mid, 2.0, 0.0, 1.0)
 	if len(views) != 2 {
 		t.Fatalf("want preview + kick lines = 2, got %d", len(views))
@@ -229,8 +231,8 @@ func TestPlayheadTracker_PrunesFinishedLines(t *testing.T) {
 	assertDefaultParityState(t)
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
-	tr.observe(base, map[string]int64{"a": base}, 1.0)
-	tr.observe(base+ms(1100), map[string]int64{"a": base}, 1.0) // a finished (>1s)
+	tr.observe(base, map[instrument.ID]int64{"a": base}, 1.0)
+	tr.observe(base+ms(1100), map[instrument.ID]int64{"a": base}, 1.0) // a finished (>1s)
 	if len(tr.lines) != 0 {
 		t.Errorf("finished line not pruned: %d", len(tr.lines))
 	}
@@ -242,7 +244,7 @@ func TestPlayheadTracker_CapsConcurrentLines(t *testing.T) {
 	base := int64(1e9)
 	for i := 0; i < samplerMaxPlayheads+3; i++ {
 		tn := base + ms(i)
-		tr.observe(tn, map[string]int64{fmt.Sprintf("id%d", i): tn}, 10.0)
+		tr.observe(tn, map[instrument.ID]int64{instrument.ID(fmt.Sprintf("id%d", i)): tn}, 10.0)
 	}
 	if len(tr.lines) != samplerMaxPlayheads {
 		t.Errorf("got %d lines, want cap %d", len(tr.lines), samplerMaxPlayheads)
@@ -255,7 +257,7 @@ func TestPlayheadTracker_IgnoresStaleTriggerOnFirstObserve(t *testing.T) {
 	var tr samplerPlayheadTracker
 	old := int64(1e9)
 	now := old + int64(5*time.Second) // dur 1s → 5s ago is stale
-	tr.observe(now, map[string]int64{"a": old}, 1.0)
+	tr.observe(now, map[instrument.ID]int64{"a": old}, 1.0)
 	if len(tr.lines) != 0 {
 		t.Errorf("spawned a line for a stale trigger: %d", len(tr.lines))
 	}
@@ -264,7 +266,7 @@ func TestPlayheadTracker_IgnoresStaleTriggerOnFirstObserve(t *testing.T) {
 func TestPlayheadTracker_NeverSentinelIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	var tr samplerPlayheadTracker
-	tr.observe(int64(1e9), map[string]int64{"a": 0}, 1.0) // 0 == never triggered
+	tr.observe(int64(1e9), map[instrument.ID]int64{"a": 0}, 1.0) // 0 == never triggered
 	if len(tr.lines) != 0 {
 		t.Errorf("a never-triggered id (0) must not spawn a line, got %d", len(tr.lines))
 	}
@@ -287,7 +289,7 @@ func loadTestSampler(dv *DrumView) {
 	s := &dv.sampler
 	s.raw = make([]float32, 48000)
 	s.rawSampleRate = 48000
-	s.captureID = "kick"
+	s.captureID = roster.Kick
 	s.reset()
 }
 
@@ -491,10 +493,10 @@ func TestSamplerPreview_TriggersAudition(t *testing.T) {
 	dv := &DrumView{}
 	loadTestSampler(dv)
 	var played string
-	prev := SwapSamplerAuditionFnForTest(func(id string) { played = id })
+	prev := SwapSamplerAuditionFnForTest(func(id instrument.ID) { played = string(id) })
 	defer SwapSamplerAuditionFnForTest(prev)
 	dv.samplerPreview()
-	if played != samplerPreviewID {
+	if instrument.ID(played) != samplerPreviewID {
 		t.Errorf("preview auditioned %q, want %q", played, samplerPreviewID)
 	}
 }

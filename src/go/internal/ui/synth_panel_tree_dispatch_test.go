@@ -7,14 +7,16 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestSynthTab_ControlTapViaTreeDispatch_Mobile verifies that on mobile the synth
 // knob hit-area is correctly registered (non-empty rect, reachable via the
-// tree dispatcher) and that a tap opens the scroll-wheel popup (the mobile
-// knob-interaction path introduced by the mobile-wheel feature). The old drag
-// path is replaced by the wheel on mobile; desktop drag is tested separately.
+// tree dispatcher) and that a tap ARMS the control inline (Task 13: the
+// barrel/wheel popup was retired — Task 9 replaced tap→popup with tap→arm).
+// The old drag path is replaced by the armed editor on mobile; desktop drag
+// is tested separately.
 func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -29,9 +31,9 @@ func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
 	g.drum.SetMobileEQMode(true)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -40,13 +42,13 @@ func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 
 	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
-	wantKnobs := len(audio.WiredParamsForRecipe("drum-snare"))
+	wantKnobs := len(audio.InstrumentParamDefs(roster.Snare))
 	if len(knobs) != wantKnobs {
 		t.Fatalf("mobile: expected %d knobs (wired), got %d", wantKnobs, len(knobs))
 	}
 	var decayIdx = -1
 	for i, b := range bindings {
-		if b.def.Name == "decay" {
+		if b.def.Name == "amp_decay" {
 			decayIdx = i
 			break
 		}
@@ -56,7 +58,7 @@ func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	}
 	// Decay lives in ENVELOPE; open that stage so the knob gets a non-empty,
 	// hit-testable rect under the chip-strip + expand-one-detail-pane layout.
-	selectSectionForKnobIdx(t, g, "snare", decayIdx)
+	selectSectionForKnobIdx(t, g, roster.Snare, decayIdx)
 	g.Update()
 	k := g.drum.SynthTabControls()[decayIdx]
 	rect := k.Rect()
@@ -79,23 +81,23 @@ func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	)
 	defer restoreInput()
 
-	// On mobile, a tap on the control cell opens the scroll-wheel popup — but on
-	// RELEASE, not on the down frame. synthControlHitAdapter.OnPress captures the
-	// gesture (InputCaptured) so a vertical sweep can scroll instead of opening the
-	// popup; a stationary tap opens it when the finger lifts.
+	// On mobile, a tap on the control cell ARMS it — but on RELEASE, not on the
+	// down frame. synthControlHitAdapter.OnPress captures the gesture
+	// (InputCaptured) so a vertical sweep can scroll instead of arming; a
+	// stationary tap arms it when the finger lifts.
 	pressed = true
 	g.Update()
-	if g.drum.synthWheelPopup.IsOpen() {
-		t.Fatalf("mobile: wheel popup opened on the press frame; it must wait for release so a swipe can scroll; rect=%v", rect)
+	if _, armed := g.drum.synthControlArmed(roster.Snare); armed {
+		t.Fatalf("mobile: control armed on the press frame; it must wait for release so a swipe can scroll; rect=%v", rect)
 	}
-	// The control widget must NOT be in capturing mode (the wheel owns the value).
+	// The control widget must NOT be in capturing mode (the armed editor owns the value).
 	if k.Capturing() {
-		t.Fatalf("mobile: control must not be capturing when wheel popup handles the interaction; rect=%v", rect)
+		t.Fatalf("mobile: control must not be capturing when the armed editor handles the interaction; rect=%v", rect)
 	}
 
 	pressed = false
 	g.Update()
-	if !g.drum.synthWheelPopup.IsOpen() {
-		t.Fatalf("mobile: wheel popup not open after release (tap) at center (%d,%d); rect=%v", cx, cy, rect)
+	if _, armed := g.drum.synthControlArmed(roster.Snare); !armed {
+		t.Fatalf("mobile: control not armed after release (tap) at center (%d,%d); rect=%v", cx, cy, rect)
 	}
 }

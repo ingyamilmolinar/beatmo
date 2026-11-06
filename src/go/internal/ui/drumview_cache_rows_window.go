@@ -70,13 +70,13 @@ func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 		return false
 	}
 	w, h := dv.Bounds.Dx(), dv.Bounds.Dy()
-	rowWidth := dv.timelineRect.Dx()
+	rowWidth := dv.cellGridRect.Dx()
 	n := dv.Length
 	rh := dv.rowHeight()
 	if w <= 0 || h <= 0 || rowWidth <= 0 || n <= 0 || rh <= 0 || n > rowWidth {
 		return false // high-res (n>rowWidth) and degenerate cases use legacy.
 	}
-	baseX := dv.timelineRect.Min.X - dv.Bounds.Min.X
+	baseX := dv.cellGridRect.Min.X - dv.Bounds.Min.X
 	padCells := rowsWinPadCells(n)
 	bufCells := n + padCells
 	bufW := (bufCells*rowWidth)/n + 2
@@ -209,11 +209,10 @@ func (dv *DrumView) renderRowsWinRange(kStart, kEnd int) {
 				cellType = r.CellTypes[j]
 			}
 			fillCol := onCol
-			isMute := cellType == model.NodeTypeMute
-			if isMute {
+			if cellType == model.NodeTypeMute {
 				fillCol = colMuteCell
 			}
-			drawDrumCell(buf, image.Rect(x0, y, x1, y+rh), on, fillCol, isMute)
+			drawDrumCellTyped(buf, image.Rect(x0, y, x1, y+rh), on, fillCol, cellType)
 		}
 	}
 }

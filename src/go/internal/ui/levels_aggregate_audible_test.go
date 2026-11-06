@@ -6,22 +6,24 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func aggAudibleState() *analyzer.State {
 	return &analyzer.State{
 		Instruments: []analyzer.InstrumentMetrics{
-			{ID: "kick", Name: "kick", PeakDB: -6, ClipCount: 5, Active: true},
-			{ID: "snare", Name: "snare", PeakDB: -8, ClipCount: 1, Active: true},
+			{ID: channel.Of(roster.Kick), Name: "kick", PeakDB: -6, ClipCount: 5, Active: true},
+			{ID: channel.Of(roster.Snare), Name: "snare", PeakDB: -8, ClipCount: 1, Active: true},
 		},
-		Master: analyzer.ChannelMetrics{ID: "main", Name: "Master", PeakDB: -3, ClipCount: 0},
+		Master: analyzer.ChannelMetrics{ID: channel.Master, Name: "Master", PeakDB: -3, ClipCount: 0},
 	}
 }
 
 // With only snare audible, Loudest must be snare (not the louder-but-hidden
 // kick) and the clip total must exclude kick's clips.
 func TestLevelsAggregates_FilteredToAudible(t *testing.T) {
-	vis := map[string]bool{"snare": true}
+	vis := map[channel.ID]bool{channel.Of(roster.Snare): true}
 	agg := levelsAggregatesValues(aggAudibleState(), nil, vis)
 	if agg.LoudestName != "snare" {
 		t.Fatalf("loudest should be snare (kick hidden); got %q", agg.LoudestName)

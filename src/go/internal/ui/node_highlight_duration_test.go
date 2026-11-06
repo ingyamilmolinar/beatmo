@@ -7,6 +7,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -20,7 +22,7 @@ func stubGameForHighlightDuration(bpm int) *Game {
 		nodeHLUntil:      make(map[model.NodeID]highlightWindow),
 		logger:           logger,
 		graph:            model.NewGraph(logger),
-		playFn:           func(string, float64, ...float64) {},
+		playFn:           func(instrument.ID, float64, ...float64) {},
 	}
 	// playbackSlate methods dereference this back-reference; struct literals
 	// that bypass New() must set it explicitly (mirrors New()).
@@ -41,7 +43,7 @@ func TestHighlightDurationCapped(t *testing.T) {
 
 	// Simulate a long sample (e.g., sub-bass at 2.0 seconds)
 	// audio.SampleSeconds returns 0 in stub mode, so we test the fallback capping
-	sec := g.expectedHighlightSeconds("sub-bass", 0, 1)
+	sec := g.expectedHighlightSeconds(roster.SubBass, 0, 1)
 
 	// Should be capped to maxHighlightSeconds (200ms)
 	if sec > maxHighlightSeconds+0.001 {
@@ -58,7 +60,7 @@ func TestHighlightDurationMinimum(t *testing.T) {
 
 	// Test with very high BPM that would cause very short highlight
 	gFast := stubGameForHighlightDuration(600)
-	sec := gFast.expectedHighlightSeconds("hihat", 0, 1)
+	sec := gFast.expectedHighlightSeconds(roster.Hihat, 0, 1)
 
 	// Should be at least minHighlightSeconds (50ms)
 	if sec < minHighlightSeconds-0.001 {
@@ -142,12 +144,12 @@ func TestHighlightStartsWhenAudioPlays(t *testing.T) {
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
 	g.graph.AddNode(0, 0, model.NodeTypeRegular)
 	g.setLastTriggeredForTest(0, info.NodeID, true)
-	g.drum.SetInstrument("kick")
-	ensureInstrumentAvailable(t, g, "kick")
+	g.drum.SetInstrument(roster.Kick)
+	ensureInstrumentAvailable(t, g, roster.Kick)
 
 	// Schedule sound with explicit future time
 	futureTime := 2.0
-	g.scheduleSound(0, 0, info, "kick", 1.0, 0, 1, futureTime, true)
+	g.scheduleSound(0, 0, info, roster.Kick, 1.0, 0, 1, futureTime, true)
 
 	// Check that highlight window starts at the scheduled time, not before
 	start, end, ok := g.nodeHighlightUntil(info.NodeID)
@@ -186,7 +188,7 @@ func TestFastLoopHighlightsFlash(t *testing.T) {
 	}
 
 	// Verify the highlight duration is reasonable for visual feedback
-	highlightDur := g.expectedHighlightSeconds("kick", 0, 1)
+	highlightDur := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 	if highlightDur > maxHighlightSeconds+0.001 {
 		t.Errorf("highlight duration %.3fs exceeds max %.3fs", highlightDur, maxHighlightSeconds)
 	}
@@ -198,8 +200,8 @@ func TestHighlightDurationWithPitchShift(t *testing.T) {
 
 	// Higher pitch = faster playback = shorter duration
 	// But still should be capped
-	secNormal := g.expectedHighlightSeconds("kick", 0, 1)
-	secHighPitch := g.expectedHighlightSeconds("kick", 12, 1) // +1 octave = 2x speed
+	secNormal := g.expectedHighlightSeconds(roster.Kick, 0, 1)
+	secHighPitch := g.expectedHighlightSeconds(roster.Kick, 12, 1) // +1 octave = 2x speed
 
 	// Both should be capped
 	if secNormal > maxHighlightSeconds+0.001 {
@@ -223,8 +225,8 @@ func TestHighlightDurationWithDurationParam(t *testing.T) {
 
 	// Longer duration param = slower playback = longer duration
 	// But still should be capped
-	secNormal := g.expectedHighlightSeconds("kick", 0, 1)
-	secSlower := g.expectedHighlightSeconds("kick", 0, 0.5) // half speed
+	secNormal := g.expectedHighlightSeconds(roster.Kick, 0, 1)
+	secSlower := g.expectedHighlightSeconds(roster.Kick, 0, 0.5) // half speed
 
 	// Both should be capped to max
 	if secNormal > maxHighlightSeconds+0.001 {

@@ -7,7 +7,7 @@ import (
 	"syscall/js"
 )
 
-// batchScratch reuses the six []any slices across PlayBatch calls so
+// batchScratch reuses the []any argument slices across PlayBatch calls so
 // the WASM Go→JS bridge does not allocate fresh argument slices per
 // batch. Each js.ValueOf(slice) creates a JS-side Array + a Go-side
 // js.Value with a finalizer; pre-fix, we leaked these at the audio
@@ -26,6 +26,9 @@ type batchScratch struct {
 	hasWhen []any
 	rows    []any
 	abss    []any
+	ideals  []any
+	grids   []any
+	vids    []any
 }
 
 var batchScratchPool batchScratch
@@ -43,6 +46,9 @@ func (s *batchScratch) ensureLen(n int) {
 		s.hasWhen = make([]any, n)
 		s.rows = make([]any, n)
 		s.abss = make([]any, n)
+		s.ideals = make([]any, n)
+		s.grids = make([]any, n)
+		s.vids = make([]any, n)
 		return
 	}
 	s.ids = s.ids[:n]
@@ -53,6 +59,9 @@ func (s *batchScratch) ensureLen(n int) {
 	s.hasWhen = s.hasWhen[:n]
 	s.rows = s.rows[:n]
 	s.abss = s.abss[:n]
+	s.ideals = s.ideals[:n]
+	s.grids = s.grids[:n]
+	s.vids = s.vids[:n]
 }
 
 // PlayBatch dispatches multiple sound requests via a single JS bridge call
@@ -73,7 +82,11 @@ func PlayBatch(reqs []BatchParam) {
 	// Without this, trigger-driven UI (synth glow, sampler playhead) only lit up
 	// for the Preview button in the browser, never for the running sequencer.
 	for i := range reqs {
-		RecordVoiceTrigger(reqs[i].ID)
+		// Lane voices (VoiceID > 0) are committed up to the horizon early;
+		// the UI lane stamps their trigger when the beat comes due.
+		if reqs[i].VoiceID == 0 {
+			RecordVoiceTrigger(reqs[i].ID)
+		}
 	}
 	fnFlat := js.Global().Get("playSoundsBatchFlat")
 	if fnFlat.Truthy() {
@@ -82,7 +95,7 @@ func PlayBatch(reqs []BatchParam) {
 		s := &batchScratchPool
 		for i := range reqs {
 			r := reqs[i]
-			s.ids[i] = r.ID
+			s.ids[i] = string(r.ID) // syscall/js panics on a named string type
 			s.vols[i] = r.Vol
 			s.pitches[i] = r.Pitch
 			s.durs[i] = r.Dur
@@ -101,6 +114,14 @@ func PlayBatch(reqs []BatchParam) {
 			// Go->JS bridge.
 			s.rows[i] = r.Row
 			s.abss[i] = r.Abs
+			// Ideal/Grid: measurement-only timing identity for the playback
+			// probe (pre-clamp request, and predictor time without lookahead).
+			// 0 = unknown; JS treats non-positive as absent.
+			s.ideals[i] = r.Ideal
+			s.grids[i] = r.Grid
+			// VoiceID: audio-lane voice id (0 = preview / UI sound), so JS
+			// can cancel / replace it before it starts.
+			s.vids[i] = float64(r.VoiceID)
 		}
 		jsIDs := js.ValueOf(s.ids)
 		jsVols := js.ValueOf(s.vols)
@@ -110,8 +131,11 @@ func PlayBatch(reqs []BatchParam) {
 		jsHasWhen := js.ValueOf(s.hasWhen)
 		jsRows := js.ValueOf(s.rows)
 		jsAbss := js.ValueOf(s.abss)
+		jsIdeals := js.ValueOf(s.ideals)
+		jsGrids := js.ValueOf(s.grids)
+		jsVids := js.ValueOf(s.vids)
 		batchScratchPool.mu.Unlock()
-		fnFlat.Invoke(jsIDs, jsVols, jsPitches, jsDurs, jsWhens, jsHasWhen, jsRows, jsAbss)
+		fnFlat.Invoke(jsIDs, jsVols, jsPitches, jsDurs, jsWhens, jsHasWhen, jsRows, jsAbss, jsIdeals, jsGrids, jsVids)
 		return
 	}
 	fn := js.Global().Get("playSoundsBatch")
@@ -120,12 +144,15 @@ func PlayBatch(reqs []BatchParam) {
 		for i := range reqs {
 			r := reqs[i]
 			o := js.Global().Get("Object").New()
-			o.Set("id", r.ID)
+			o.Set("id", string(r.ID))
 			o.Set("vol", r.Vol)
 			o.Set("pitch", r.Pitch)
 			o.Set("dur", r.Dur)
 			o.Set("row", r.Row)
 			o.Set("abs", r.Abs)
+			o.Set("ideal", r.Ideal)
+			o.Set("grid", r.Grid)
+			o.Set("vid", float64(r.VoiceID))
 			if r.HasWhen {
 				o.Set("when", r.When)
 			}

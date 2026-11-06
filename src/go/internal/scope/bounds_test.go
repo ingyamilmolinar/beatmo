@@ -24,6 +24,9 @@ package scope
 import (
 	"runtime"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestRingBufBoundedUnderSustainedPushes verifies that draining inside
@@ -52,7 +55,7 @@ func TestRingBufBoundedUnderSustainedPushes(t *testing.T) {
 	// steady state.
 	for warm := 0; warm < 8; warm++ {
 		for s := Stage(0); int(s) < int(stageCount); s++ {
-			svc.PushSamples(s, "kick", buf)
+			svc.PushSamples(s, channel.Of(roster.Kick), buf)
 		}
 		svc.tick()
 	}
@@ -72,7 +75,7 @@ func TestRingBufBoundedUnderSustainedPushes(t *testing.T) {
 	const cycles = 1000
 	for c := 0; c < cycles; c++ {
 		for s := Stage(0); int(s) < int(stageCount); s++ {
-			svc.PushSamples(s, "kick", buf)
+			svc.PushSamples(s, channel.Of(roster.Kick), buf)
 		}
 		svc.tick()
 	}
@@ -118,7 +121,7 @@ func TestRingBufHighWaterTrackedByMaxSamples(t *testing.T) {
 
 	// Push exactly maxSamples once.
 	pushBuf := make([]float64, maxSamples)
-	svc.PushSamples(StageSynth, "kick", pushBuf)
+	svc.PushSamples(StageSynth, channel.Of(roster.Kick), pushBuf)
 	svc.tick()
 
 	svc.rings[StageSynth].mu.Lock()
@@ -153,7 +156,7 @@ func TestRingBufMemoryFootprintConstantUnderSteadyPlayback(t *testing.T) {
 	// Warm up so any one-shot allocations are accounted for.
 	for warm := 0; warm < 32; warm++ {
 		for s := Stage(0); int(s) < int(stageCount); s++ {
-			svc.PushSamples(s, "kick", pushBuf)
+			svc.PushSamples(s, channel.Of(roster.Kick), pushBuf)
 		}
 		svc.tick()
 	}
@@ -166,7 +169,7 @@ func TestRingBufMemoryFootprintConstantUnderSteadyPlayback(t *testing.T) {
 	const ticks = 60_000
 	for c := 0; c < ticks; c++ {
 		for s := Stage(0); int(s) < int(stageCount); s++ {
-			svc.PushSamples(s, "kick", pushBuf)
+			svc.PushSamples(s, channel.Of(roster.Kick), pushBuf)
 		}
 		svc.tick()
 	}

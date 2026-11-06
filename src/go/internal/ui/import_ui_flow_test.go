@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestImportViaUIFlowNoDeadlock tests the real import flow:
@@ -174,24 +178,24 @@ func buildSimpleImportJSON(t *testing.T) []byte {
 		Outputs []int  `json:"outputs"`
 	}
 	type inst struct {
-		Name   string  `json:"name"`
-		ID     string  `json:"id"`
-		Volume float64 `json:"volume"`
-		Origin int     `json:"origin"`
-		Color  string  `json:"color"`
+		Name   string        `json:"name"`
+		ID     instrument.ID `json:"id"`
+		Volume float64       `json:"volume"`
+		Origin int           `json:"origin"`
+		Color  string        `json:"color"`
 	}
 	type file struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Instruments []inst `json:"instruments"`
-		Nodes       []node `json:"nodes"`
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Instruments   []inst `json:"instruments"`
+		Nodes         []node `json:"nodes"`
 	}
 	f := file{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         120,
-		Instruments: []inst{{Name: "Kick", ID: "kick", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Instruments:   []inst{{Name: "Kick", ID: roster.Kick, Volume: 1, Origin: 1, Color: "#FF0000FF"}},
 		Nodes: []node{
 			{ID: 1, I: 0, J: 0, Type: "regular", Outputs: []int{2}},
 			{ID: 2, I: 32, J: 0, Type: "regular", Outputs: []int{1}},

@@ -27,6 +27,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -92,7 +93,7 @@ await page.waitForFunction(() => typeof setInstrumentParam === "function");
 await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function");
 await page.waitForFunction(() => typeof window.playSound === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 const assertFinite = (buf, label) => {
   for (const v of buf) {

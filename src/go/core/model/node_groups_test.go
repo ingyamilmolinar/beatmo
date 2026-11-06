@@ -64,7 +64,7 @@ func TestGroupsForNodeAndMultiMembership(t *testing.T) {
 func TestSetGroupRulesValidationAndDefaults(t *testing.T) {
 	g, a, _, _ := newGroupTestGraph(t)
 	id, _ := g.CreateGroup("", []NodeID{a})
-	if err := g.SetGroupRules(id, []GroupRule{{Param: "nope", Delta: 1, EveryN: 1}}); !errors.Is(err, ErrGroupBadRule) {
+	if err := g.SetGroupRules(id, []GroupRule{{Param: GroupParamNone, Delta: 1, EveryN: 1}}); !errors.Is(err, ErrGroupBadRule) {
 		t.Fatalf("bad param: want ErrGroupBadRule, got %v", err)
 	}
 	if err := g.SetGroupRules(id, []GroupRule{{Param: GroupParamPitch, Delta: 1, EveryN: 0}}); !errors.Is(err, ErrGroupBadRule) {

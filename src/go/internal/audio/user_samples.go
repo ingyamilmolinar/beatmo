@@ -1,8 +1,11 @@
 package audio
 
 import (
-	"log"
 	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // User-sample registry: the canonical Go-side store of PCM for samples created
@@ -21,15 +24,11 @@ type SampleRecord struct {
 
 var (
 	userSamplesMu sync.RWMutex
-	userSamples   = map[string]SampleRecord{}
+	userSamples   = map[instrument.ID]SampleRecord{}
 	// originalUserSamples keeps the pristine first-loaded PCM per id. Captured
 	// once (first-put-wins) so a later edit re-save never moves it; Reset reads
 	// it to restore a user WAV/Save-As sample to its original buffer.
-	originalUserSamples = map[string]SampleRecord{}
-	// sampleOriginRecipe remembers the recipe an instrument was bound to before
-	// the Sampler converted it into a sample (the binding is cleared at save
-	// time). A factory Reset uses it to re-bind the original synth recipe.
-	sampleOriginRecipe = map[string]string{}
+	originalUserSamples = map[instrument.ID]SampleRecord{}
 
 	sampleSink     SampleSink
 	useSampleStore bool
@@ -38,13 +37,13 @@ var (
 // SampleSink persists/forgets user samples across sessions. Implemented by the
 // UI layer over userprefs (desktop files / browser IndexedDB).
 type SampleSink interface {
-	SaveSample(id string, pcm []float32, sr int)
-	DeleteSample(id string)
+	SaveSample(id instrument.ID, pcm []float32, sr int)
+	DeleteSample(id instrument.ID)
 }
 
 // SampleSource loads previously-persisted user samples at startup.
 type SampleSource interface {
-	LoadSamples() map[string]SampleRecord
+	LoadSamples() map[instrument.ID]SampleRecord
 }
 
 // SetSampleSink installs the persistence sink and returns a restore func.
@@ -84,7 +83,7 @@ func UseSampleStore() bool {
 // PutUserSample stores the baked PCM as the canonical buffer for id and
 // registers it for playback. It does NOT persist — use SaveUserSample for that.
 // Used by project import and startup re-registration (already-persisted data).
-func PutUserSample(id string, pcm []float32, sr int) {
+func PutUserSample(id instrument.ID, pcm []float32, sr int) {
 	cp := append([]float32(nil), pcm...)
 	userSamplesMu.Lock()
 	userSamples[id] = SampleRecord{PCM: cp, SampleRate: sr}
@@ -98,40 +97,19 @@ func PutUserSample(id string, pcm []float32, sr int) {
 }
 
 // OriginalUserSamplePCM returns the pristine first-loaded record for id, if any.
-func OriginalUserSamplePCM(id string) (SampleRecord, bool) {
+func OriginalUserSamplePCM(id instrument.ID) (SampleRecord, bool) {
 	userSamplesMu.RLock()
 	defer userSamplesMu.RUnlock()
 	rec, ok := originalUserSamples[id]
 	return rec, ok
 }
 
-// RecordSampleOriginRecipe remembers the recipe an instrument was bound to
-// before it was converted into a sample. No-op on empty recipeID. Called by the
-// Sampler Save flow before it clears the binding so a factory Reset can re-bind.
-func RecordSampleOriginRecipe(instID, recipeID string) {
-	if instID == "" || recipeID == "" {
-		return
-	}
-	userSamplesMu.Lock()
-	sampleOriginRecipe[instID] = recipeID
-	userSamplesMu.Unlock()
-}
-
-// SampleOriginRecipe returns the recipe an instrument was bound to before sample
-// conversion, or "" if none was recorded.
-func SampleOriginRecipe(instID string) string {
-	userSamplesMu.RLock()
-	defer userSamplesMu.RUnlock()
-	return sampleOriginRecipe[instID]
-}
-
 // forgetUserSample drops all trace of a user sample: the live buffer, the
-// pristine original, the origin-recipe record, and the persisted copy.
-func forgetUserSample(id string) {
+// pristine original, and the persisted copy.
+func forgetUserSample(id instrument.ID) {
 	userSamplesMu.Lock()
 	delete(userSamples, id)
 	delete(originalUserSamples, id)
-	delete(sampleOriginRecipe, id)
 	sink := sampleSink
 	userSamplesMu.Unlock()
 	if sink != nil {
@@ -139,36 +117,53 @@ func forgetUserSample(id string) {
 	}
 }
 
+// DropBuiltinSampleOverride removes, for this SESSION, a sample registered over
+// a built-in synth instrument, so the instrument plays its synth again. Import
+// calls it for every built-in row whose file entry carries no PCM: import is
+// replace-not-merge, and a sample the PREVIOUS project put on "snare" must not
+// survive into a project whose snare is the synth. Unlike ResetSampleToFactory
+// it touches neither persistence nor the recipe (a Synth-tab Save on the
+// recipe is not the file's to undo). Non-built-in ids (user WAV / Save-As
+// samples) are left alone — a file refers to those by id. Reports whether an
+// override was dropped.
+func DropBuiltinSampleOverride(instID instrument.ID) bool {
+	if instID == "" || !isShippedInstrument(instID) {
+		return false
+	}
+	userSamplesMu.Lock()
+	_, ok := userSamples[instID]
+	if ok {
+		delete(userSamples, instID)
+		delete(originalUserSamples, instID)
+	}
+	userSamplesMu.Unlock()
+	if !ok {
+		return false
+	}
+	UnregisterSamplePCM(instID)
+	return true
+}
+
 // ResetSampleToFactory reverts an instrument that was turned into a sample back
-// to its factory state. A built-in instrument with a shipped origin recipe is
-// re-bound to that recipe (reset to shipped defaults) and its user sample is
-// discarded; a user WAV / Save-As sample is restored to its pristine first-
-// loaded buffer. Returns (priorRecipeID, factoryReverted): factoryReverted is
-// true only for the built-in→synth case. Unknown ids are a no-op.
-func ResetSampleToFactory(instID string) (string, bool) {
+// to its factory state. An instrument with a library document (a shipped one,
+// or a user library instrument) returns to its synth: the project copy goes
+// back to its library entry and the user sample is discarded. A user WAV
+// sample is restored to its pristine first-loaded buffer. Returns (the library
+// id the synth came back from, factoryReverted); factoryReverted is true only
+// for the synth case. Unknown ids are a no-op.
+func ResetSampleToFactory(instID instrument.ID) (instrument.ID, bool) {
 	if instID == "" {
 		return "", false
 	}
-	// Detect the factory synth from the authoritative shipped binding table
-	// first — it is restart-safe and independent of session state, so Reset
-	// works even after the app reloaded a persisted sample (which records no
-	// session origin and leaves the startup recipe binding in place). Fall back
-	// to the session origin record for user-recipe-derived samples.
-	origin := factoryRecipeForInstrument(instID)
-	if origin == "" {
-		origin = SampleOriginRecipe(instID)
-	}
-	// CASE A: built-in synth that was converted to a sample → full factory revert.
-	if origin != "" && len(RecipeShippedDefaults(origin)) > 0 {
-		BindInstrumentToRecipe(instID, origin)
-		ResetRecipeToShipped(origin)
+	// CASE A: a synth instrument that was converted to a sample → full revert.
+	if lib, ok := libraryCopyOf(instID); ok {
 		ResetInstrumentParams(instID)
 		// Restore the playback registration the sample save overwrote (desktop
-		// instrument table / WASM render cache) so the synth is actually heard,
-		// not just re-bound — then drop the user sample (memory + persistence).
+		// instrument table / WASM render cache) so the synth is actually heard
+		// — then drop the user sample (memory + persistence).
 		UnregisterSamplePCM(instID)
 		forgetUserSample(instID)
-		return origin, true
+		return lib.Origin, true
 	}
 	// CASE B: user WAV / Save-As sample → restore the pristine first-loaded buffer.
 	if orig, ok := OriginalUserSamplePCM(instID); ok && len(orig.PCM) > 0 {
@@ -184,10 +179,14 @@ func ResetSampleToFactory(instID string) (string, bool) {
 	return "", false
 }
 
+// isShippedInstrument reports whether id (or its instance base) is a shipped
+// synth instrument.
+func isShippedInstrument(id instrument.ID) bool { return roster.Has(id.Base()) }
+
 // SaveUserSample stores + registers (PutUserSample) and additionally persists
 // the sample via the sink so it survives across sessions. Used by the Sampler
 // tab's Save / Save As.
-func SaveUserSample(id string, pcm []float32, sr int) {
+func SaveUserSample(id instrument.ID, pcm []float32, sr int) {
 	PutUserSample(id, pcm, sr)
 	userSamplesMu.RLock()
 	sink := sampleSink
@@ -205,7 +204,7 @@ func SaveUserSample(id string, pcm []float32, sr int) {
 // as SaveUserSample/PutUserSample would — must NOT happen or it would clobber
 // the edited playback. No-op when id is not a stored user sample or no sink is
 // installed.
-func PersistUserSample(id string) {
+func PersistUserSample(id instrument.ID) {
 	userSamplesMu.RLock()
 	rec, ok := userSamples[id]
 	sink := sampleSink
@@ -217,7 +216,7 @@ func PersistUserSample(id string) {
 }
 
 // UserSamplePCM returns the canonical record for id, if it is a user sample.
-func UserSamplePCM(id string) (SampleRecord, bool) {
+func UserSamplePCM(id instrument.ID) (SampleRecord, bool) {
 	userSamplesMu.RLock()
 	defer userSamplesMu.RUnlock()
 	rec, ok := userSamples[id]
@@ -226,7 +225,7 @@ func UserSamplePCM(id string) (SampleRecord, bool) {
 
 // IsUserSample reports whether id was created by the Sampler tab (and therefore
 // carries embedded PCM the project exporter should serialize).
-func IsUserSample(id string) bool {
+func IsUserSample(id instrument.ID) bool {
 	userSamplesMu.RLock()
 	defer userSamplesMu.RUnlock()
 	_, ok := userSamples[id]
@@ -234,10 +233,10 @@ func IsUserSample(id string) bool {
 }
 
 // UserSampleIDs returns the ids of all registered user samples.
-func UserSampleIDs() []string {
+func UserSampleIDs() []instrument.ID {
 	userSamplesMu.RLock()
 	defer userSamplesMu.RUnlock()
-	out := make([]string, 0, len(userSamples))
+	out := make([]instrument.ID, 0, len(userSamples))
 	for id := range userSamples {
 		out = append(out, id)
 	}
@@ -264,8 +263,8 @@ func ApplySavedSamples(src SampleSource) {
 		if id == "" || len(rec.PCM) == 0 {
 			continue
 		}
-		if recipeID := factoryRecipeForInstrument(id); recipeID != "" {
-			log.Printf("[sample] Warning: skipping legacy persisted sample for factory synth %q (recipe %s) — synths remain synths", id, recipeID)
+		if isShippedInstrument(id) {
+			log.Warnf("[sample] skipping legacy persisted sample for shipped synth %q — synths remain synths", id)
 			continue
 		}
 		PutUserSample(id, rec.PCM, rec.SampleRate)

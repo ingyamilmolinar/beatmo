@@ -2,6 +2,8 @@ package ui
 
 import (
 	"image"
+	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
@@ -23,20 +25,40 @@ const (
 type shortcutRow struct {
 	keys      string
 	actionKey i18n.Key
+	text      string // a composed description (wins over actionKey when set)
+}
+
+// action is the row's description in the active locale.
+func (r shortcutRow) action() string {
+	if r.text != "" {
+		return r.text
+	}
+	return i18n.T(r.actionKey)
+}
+
+// tabShortcutRow describes the number keys from the tabs they actually reach
+// (AllPanelTabs: the production UI has no Chain tab, so it is "1 - 6").
+func tabShortcutRow() shortcutRow {
+	tabs := AllPanelTabs()
+	names := make([]string, len(tabs))
+	for i, t := range tabs {
+		names[i] = PanelTabLabel(t)
+	}
+	return shortcutRow{keys: "1 - " + strconv.Itoa(len(tabs)), actionKey: i18n.KeyShortcutTabs, text: strings.Join(names, " / ")}
 }
 
 // localizedShortcutRows returns the keyboard-shortcut rows with localized action
 // descriptions (the physical key glyphs stay literal).
 func localizedShortcutRows() []shortcutRow {
 	return []shortcutRow{
-		{"Space", i18n.KeyShortcutPlayPause},
-		{"Esc", i18n.KeyShortcutCancel},
-		{"Arrows", i18n.KeyShortcutPan},
-		{"[  ]", i18n.KeyShortcutZoom},
-		{"0", i18n.KeyShortcutResetZoom},
-		{"+  -", i18n.KeyShortcutBPM},
-		{"1 - 7", i18n.KeyShortcutTabs},
-		{"?", i18n.KeyShortcutHelp},
+		{keys: "Space", actionKey: i18n.KeyShortcutPlayPause},
+		{keys: "Esc", actionKey: i18n.KeyShortcutCancel},
+		{keys: "Arrows", actionKey: i18n.KeyShortcutPan},
+		{keys: "[  ]", actionKey: i18n.KeyShortcutZoom},
+		{keys: "0", actionKey: i18n.KeyShortcutResetZoom},
+		{keys: "+  -", actionKey: i18n.KeyShortcutBPM},
+		tabShortcutRow(),
+		{keys: "?", actionKey: i18n.KeyShortcutHelp},
 	}
 }
 
@@ -92,7 +114,7 @@ func (o *ShortcutsOverlay) Draw(screen *ebiten.Image) {
 	y += StyledTextHeight(RoleSectionHeader) + SpaceSM
 	for _, row := range rows {
 		DrawTextStyled(screen, row.keys, keyCol, y, RoleCaption, colTextPrimary)
-		DrawTextStyled(screen, i18n.T(row.actionKey), actCol, y, RoleCaption, colTextSecondary)
+		DrawTextStyled(screen, row.action(), actCol, y, RoleCaption, colTextSecondary)
 		y += shortcutsOverlayLine
 	}
 }

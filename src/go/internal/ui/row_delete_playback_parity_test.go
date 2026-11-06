@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func scheduleAbsNoHighlightForTest(g *Game, abs int) {
@@ -65,7 +66,7 @@ func TestDeleteRowDuringPlayback_DoesNotTripParity(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Force the test-only direct-play path so no parity audio events are recorded.
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 
 	// Schedule far enough ahead to populate seq decisions beyond the initial window.
@@ -148,7 +149,7 @@ func TestDeleteRowDuringPlayback_DoesNotTripSequencerParityWhileRowsShift(t *tes
 	}
 
 	// Use the direct-play path under tests so missing-instrument parity is not a factor.
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 	g.ClearParityMismatches()
 	scheduleAbsNoHighlightForTest(g, 0)

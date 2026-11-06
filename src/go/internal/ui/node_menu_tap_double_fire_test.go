@@ -36,7 +36,7 @@ func TestNodeMenuTapDoubleFire_LogicButton(t *testing.T) {
 	g.sidebar.layout()
 
 	// Locate the logic button.
-	logicRect, ok := g.sidebar.rects["logic"]
+	logicRect, ok := g.sidebar.rects[sbLogicSelect]
 	if !ok || logicRect.Empty() {
 		t.Fatal("logic rect missing or empty")
 	}
@@ -108,11 +108,11 @@ func TestNodeMenuTapFallback_NoSuppress(t *testing.T) {
 	g.sidebar.Open(n)
 	// Only expand the logic section (not all) so the button stays within the
 	// visible panel height on a 640x480 layout.
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 
 	// Locate the logic button.
-	logicRect, ok := g.sidebar.rects["logic"]
+	logicRect, ok := g.sidebar.rects[sbLogicSelect]
 	if !ok || logicRect.Empty() {
 		t.Fatal("logic rect missing or empty")
 	}

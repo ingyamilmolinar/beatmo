@@ -9,50 +9,13 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synth_component_sprite_test.go — Task 2 of the render-caching plan: the
-// Synth tab's three per-column trace draws (full-note "Your sound", "Up
-// close" steady wave, and the selected-knob focus graph) adopt TraceSprite.
-// Mirrors eq_curve_sprite_test.go's pixel-identity + render-count pattern,
-// but drives the wrapped methods DIRECTLY (not through a full g.Draw()) so
-// the render-count assertions aren't polluted by unrelated colWaveTrace /
-// colConceptStroke ink drawn elsewhere on screen (param-card knob
-// mini-visuals, stage thumbnails) that Task 3 hasn't cached yet.
-
-// newSynthTabForSprites builds a DrumView bound to the modular voice (whose
-// first knobbed section is OSC — see newModularSynthTabGame), lays out the
-// Synth tab, and fills the mirror's steady + full-note slots deterministically
-// (mirroring the crop_synth_* scene Setup functions, e.g. synthMirrorSceneSetup
-// in scene_catalog.go). Returns the desktop right-pane card rects.
-func newSynthTabForSprites(t *testing.T) (dv *DrumView, instID string, full, up, focus image.Rectangle) {
-	t.Helper()
-	g := newModularSynthTabGame(t)
-	// newSynthTabGame lays out at 640x480 with the test-mode default panel
-	// collapse — too short to give the full-note + mirror cards real room
-	// (they can collapse to empty rects per splitSynthRightPane3's shrink
-	// rules). expandEQPanelForTest (eq_curve_sprite_test.go) is the existing
-	// seam for a real panel height in tests.
-	expandEQPanelForTest(t, g)
-	layoutSynthTab(t, g)
-	dv = g.drum
-	instID = dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
-	if instID == "" {
-		t.Fatal("no active synth instrument")
-	}
-	dv.renderSynthMirrorNow(instID)
-	t.Cleanup(func() {
-		if dv.synthMirror != nil {
-			dv.synthMirror.closeForTest()
-		}
-	})
-	if dv.instEditorPreviewRect.Empty() {
-		t.Skip("no desktop preview pane in this profile")
-	}
-	full, up, focus = splitSynthRightPane3(dv.instEditorPreviewRect)
-	return dv, instID, full, up, focus
-}
+// synth_component_sprite_test.go — the render-caching plan's Synth-tab
+// TraceSprite adopters: the graph sprite's eviction (tab hide, locale change)
+// and the per-param cards' pixel identity + render count. Mirrors
+// eq_curve_sprite_test.go's pattern.
 
 // assertImagesEqual compares two equally-sized images pixel-for-pixel.
 func assertImagesEqual(t *testing.T, a, b *ebiten.Image, w, h int) {
@@ -67,276 +30,11 @@ func assertImagesEqual(t *testing.T, a, b *ebiten.Image, w, h int) {
 	}
 }
 
-// ── focus graph ─────────────────────────────────────────────────────────
-
-// TestSynthFocusGraphSprite_MatchesDirect pins pixel identity between the
-// cached sprite path and the RENDER_SAFE direct path. Both calls draw into a
-// rect anchored at the origin (rect.Min == (0,0)) so the cached blit (which
-// lands the sprite texture at rect.Min) and the direct RENDER_SAFE render
-// (which draws straight into dst at rect) are byte-comparable straight away.
-func TestSynthFocusGraphSprite_MatchesDirect(t *testing.T) {
-	dv, instID, _, _, focus := newSynthTabForSprites(t)
-	if focus.Dx() < 32 || focus.Dy() < 24 {
-		t.Fatalf("focus rect too small for the renderer: %v", focus)
-	}
-	r := image.Rect(0, 0, focus.Dx(), focus.Dy())
-
-	cached := ebiten.NewImage(r.Dx(), r.Dy())
-	dv.synp().drawSynthFocusGraph(cached, r, instID)
-
-	old := envRenderSafe
-	envRenderSafe = true
-	direct := ebiten.NewImage(r.Dx(), r.Dy())
-	dv.synp().drawSynthFocusGraph(direct, r, instID)
-	envRenderSafe = old
-
-	assertImagesEqual(t, cached, direct, r.Dx(), r.Dy())
-}
-
-// TestSynthFocusGraphSprite_RenderCount pins the caching win: a steady-state
-// redraw (same instrument, same params, same knob selection) must NOT
-// re-render the content (zero drawRect calls — a cache hit is one
-// dst.DrawImage blit, not a drawRect at all), a knob-SELECTION change must
-// force exactly one re-render (even though no param VALUE moved — the concept
-// curve is per-selected-param), and steady frames afterward go quiet again.
-func TestSynthFocusGraphSprite_RenderCount(t *testing.T) {
-	dv, instID, _, _, focus := newSynthTabForSprites(t)
-	if focus.Dx() < 32 || focus.Dy() < 24 {
-		t.Fatalf("focus rect too small for the renderer: %v", focus)
-	}
-	sec := dv.synthSelectedSection()
-	if sec == nil || len(sec.knobIdxs) < 2 {
-		t.Skip("selected section needs >=2 knobs to exercise a selection change")
-	}
-	kIdx0, kIdx1 := sec.knobIdxs[0], sec.knobIdxs[1]
-	dv.setSynthSelectedControl(instID, kIdx0)
-
-	p := dv.synp()
-	now := time.Unix(10_000, 0)
-	p.sprites.focus.now = func() time.Time { return now }
-	r := image.Rect(0, 0, focus.Dx(), focus.Dy())
-	img := ebiten.NewImage(r.Dx(), r.Dy())
-
-	warm := collectFilledRects(t, func() { p.drawSynthFocusGraph(img, r, instID) })
-	if len(warm) == 0 {
-		t.Fatal("warm frame drew nothing — sprite render never ran")
-	}
-
-	now = now.Add(time.Second)
-	steady := collectFilledRects(t, func() {
-		for i := 0; i < 5; i++ {
-			p.drawSynthFocusGraph(img, r, instID)
-		}
-	})
-	if n := len(steady); n != 0 {
-		t.Fatalf("steady-state frames re-rendered the focus graph %d times (want 0 — cached blit only)", n)
-	}
-
-	// Selection change: key changes even though no param VALUE moved.
-	dv.setSynthSelectedControl(instID, kIdx1)
-	now = now.Add(time.Second)
-	edited := collectFilledRects(t, func() { p.drawSynthFocusGraph(img, r, instID) })
-	if len(edited) == 0 {
-		t.Fatal("knob-selection change did not re-render the focus graph (stale cache)")
-	}
-
-	next := collectFilledRects(t, func() { p.drawSynthFocusGraph(img, r, instID) })
-	if n := len(next); n != 0 {
-		t.Fatalf("post-edit steady frame re-rendered the focus graph %d times (want 0)", n)
-	}
-}
-
-// ── "Up close" mirror ───────────────────────────────────────────────────
-
-func TestSynthMirrorSprite_MatchesDirect(t *testing.T) {
-	dv, instID, _, up, _ := newSynthTabForSprites(t)
-	if up.Dx() < 32 || up.Dy() < 24 {
-		t.Fatalf("mirror rect too small for the renderer: %v", up)
-	}
-	r := image.Rect(0, 0, up.Dx(), up.Dy())
-
-	cached := ebiten.NewImage(r.Dx(), r.Dy())
-	dv.synp().drawSynthMirror(cached, r, instID, dv.synthMirror)
-
-	old := envRenderSafe
-	envRenderSafe = true
-	direct := ebiten.NewImage(r.Dx(), r.Dy())
-	dv.synp().drawSynthMirror(direct, r, instID, dv.synthMirror)
-	envRenderSafe = old
-
-	assertImagesEqual(t, cached, direct, r.Dx(), r.Dy())
-}
-
-// TestSynthMirrorSprite_RenderCount mirrors TestEQCurveSpriteRenderCount: zero
-// re-renders across identical-param frames, exactly one after a param change
-// (updateSynthMirrorLive re-renders the steady-wave slot SYNCHRONOUSLY, so the
-// new PCM is already in mirror by the time the params-hash key changes).
-func TestSynthMirrorSprite_RenderCount(t *testing.T) {
-	dv, instID, _, up, _ := newSynthTabForSprites(t)
-	if up.Dx() < 32 || up.Dy() < 24 {
-		t.Fatalf("mirror rect too small for the renderer: %v", up)
-	}
-	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
-
-	p := dv.synp()
-	now := time.Unix(20_000, 0)
-	p.sprites.mirror.now = func() time.Time { return now }
-	r := image.Rect(0, 0, up.Dx(), up.Dy())
-	img := ebiten.NewImage(r.Dx(), r.Dy())
-
-	warm := collectFilledRects(t, func() { p.drawSynthMirror(img, r, instID, dv.synthMirror) })
-	if len(warm) == 0 {
-		t.Fatal("warm frame drew nothing — sprite render never ran")
-	}
-
-	now = now.Add(time.Second)
-	steady := collectFilledRects(t, func() {
-		for i := 0; i < 5; i++ {
-			p.drawSynthMirror(img, r, instID, dv.synthMirror)
-		}
-	})
-	if n := len(steady); n != 0 {
-		t.Fatalf("steady-state frames re-rendered the mirror %d times (want 0 — cached blit only)", n)
-	}
-
-	audio.SetInstrumentParam(instID, "osc_type", 1) // Saw — timbre knob, bumps the params hash
-	dv.updateSynthMirrorLive(instID)
-	now = now.Add(time.Second)
-	edited := collectFilledRects(t, func() { p.drawSynthMirror(img, r, instID, dv.synthMirror) })
-	if len(edited) == 0 {
-		t.Fatal("param change did not re-render the mirror (stale cache)")
-	}
-
-	next := collectFilledRects(t, func() { p.drawSynthMirror(img, r, instID, dv.synthMirror) })
-	if n := len(next); n != 0 {
-		t.Fatalf("post-edit steady frame re-rendered the mirror %d times (want 0)", n)
-	}
-}
-
-// ── full-note "Your sound" ──────────────────────────────────────────────
-
-func TestSynthFullNoteSprite_MatchesDirect(t *testing.T) {
-	dv, instID, full, _, _ := newSynthTabForSprites(t)
-	if full.Dx() < 32 || full.Dy() < 24 {
-		t.Fatalf("full-note rect too small for the renderer: %v", full)
-	}
-	r := image.Rect(0, 0, full.Dx(), full.Dy())
-
-	cached := ebiten.NewImage(r.Dx(), r.Dy())
-	dv.synp().drawSynthFullNote(cached, r, instID, dv.synthMirror)
-
-	old := envRenderSafe
-	envRenderSafe = true
-	direct := ebiten.NewImage(r.Dx(), r.Dy())
-	dv.synp().drawSynthFullNote(direct, r, instID, dv.synthMirror)
-	envRenderSafe = old
-
-	assertImagesEqual(t, cached, direct, r.Dx(), r.Dy())
-}
-
-// TestSynthFullNoteSprite_RenderCount exercises the full-note card's async
-// render path (updateSynthFullNoteLive submits to the shared preview pool;
-// drainFullForTest runs it synchronously for a deterministic test): a param
-// change must force exactly one re-render, driven by the ghost flag flipping
-// in the cache key (see drawSynthFullNote's doc comment in synth_full_note.go).
-func TestSynthFullNoteSprite_RenderCount(t *testing.T) {
-	dv, instID, full, _, _ := newSynthTabForSprites(t)
-	if full.Dx() < 32 || full.Dy() < 24 {
-		t.Fatalf("full-note rect too small for the renderer: %v", full)
-	}
-	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
-
-	p := dv.synp()
-	now := time.Unix(30_000, 0)
-	p.sprites.fullNote.now = func() time.Time { return now }
-	r := image.Rect(0, 0, full.Dx(), full.Dy())
-	img := ebiten.NewImage(r.Dx(), r.Dy())
-
-	warm := collectFilledRects(t, func() { p.drawSynthFullNote(img, r, instID, dv.synthMirror) })
-	if len(warm) == 0 {
-		t.Fatal("warm frame drew nothing — sprite render never ran")
-	}
-
-	now = now.Add(time.Second)
-	steady := collectFilledRects(t, func() {
-		for i := 0; i < 5; i++ {
-			p.drawSynthFullNote(img, r, instID, dv.synthMirror)
-		}
-	})
-	if n := len(steady); n != 0 {
-		t.Fatalf("steady-state frames re-rendered the full-note card %d times (want 0 — cached blit only)", n)
-	}
-
-	audio.SetInstrumentParam(instID, "amp_decay", 0.9)
-	dv.updateSynthFullNoteLive(instID)
-	dv.synthMirror.drainFullForTest()
-	now = now.Add(time.Second)
-	edited := collectFilledRects(t, func() { p.drawSynthFullNote(img, r, instID, dv.synthMirror) })
-	if len(edited) == 0 {
-		t.Fatal("param change did not re-render the full-note card (stale cache)")
-	}
-
-	next := collectFilledRects(t, func() { p.drawSynthFullNote(img, r, instID, dv.synthMirror) })
-	if n := len(next); n != 0 {
-		t.Fatalf("post-edit steady frame re-rendered the full-note card %d times (want 0)", n)
-	}
-}
-
-// TestSynthFullNoteSprite_InvalidatesOnAsyncMirrorReady closes the staleness
-// window unique to the full-note card: updateSynthFullNoteLive's render lands
-// on the shared preview pool ASYNCHRONOUSLY, and its completion (flagged by
-// synthMirror.consumeReady) does NOT itself bump the params hash — only the
-// ghost flag flips, and only once, at request time (not at completion). This
-// pins synthTabUpdate's belt-and-suspenders Invalidate() call: without it, a
-// render that completes on a later frame than the request would be blitted
-// stale from the cache forever (same key, no re-render).
-func TestSynthFullNoteSprite_InvalidatesOnAsyncMirrorReady(t *testing.T) {
-	dv, instID, full, _, _ := newSynthTabForSprites(t)
-	if full.Dx() < 32 || full.Dy() < 24 {
-		t.Fatalf("full-note rect too small for the renderer: %v", full)
-	}
-	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
-
-	p := dv.synp()
-	r := image.Rect(0, 0, full.Dx(), full.Dy())
-	img := ebiten.NewImage(r.Dx(), r.Dy())
-
-	warm := collectFilledRects(t, func() { p.drawSynthFullNote(img, r, instID, dv.synthMirror) })
-	if len(warm) == 0 {
-		t.Fatal("warm frame drew nothing — sprite render never ran")
-	}
-	steady := collectFilledRects(t, func() { p.drawSynthFullNote(img, r, instID, dv.synthMirror) })
-	if len(steady) != 0 {
-		t.Fatalf("expected a cache hit before the async event, got %d draws", len(steady))
-	}
-
-	// Simulate the async job landing WITHOUT any params-hash change (the
-	// scenario updateSynthFullNoteLive's stale-while-revalidate design
-	// produces): same hash, fresh pcmFull content, ready flips.
-	hash := dv.synthParamsHash(instID)
-	dv.synthMirror.renderNowFull(instID, hash, func(i string) []float64 {
-		return audio.RenderInstrumentPreview(i, synthFullNoteWindowMs(i))
-	})
-	if !dv.synthMirror.consumeReady() {
-		t.Fatal("renderNowFull did not flip ready — test setup invalid")
-	}
-	// This is the production wiring under test: synthTabUpdate observes
-	// consumeReady() and Invalidate()s the trace sprites. Call it directly
-	// since we already consumed ready above (consumeReady is one-shot).
-	p.sprites.fullNote.Invalidate()
-	p.sprites.mirror.Invalidate()
-
-	postAsync := collectFilledRects(t, func() { p.drawSynthFullNote(img, r, instID, dv.synthMirror) })
-	if len(postAsync) == 0 {
-		t.Fatal("async render landed but the full-note sprite blitted stale content (no re-render)")
-	}
-}
-
 // ── eviction ─────────────────────────────────────────────────────────────
 
 // TestSynthSpriteEvict_ReleasedOnTabHide mirrors
 // TestTabSwitchReleasesTraceSprites (trace_sprite_eviction_test.go): leaving
-// the Synth tab must release all three trace-sprite textures immediately via
+// the Synth tab must release its graph sprite texture immediately via
 // ReleaseSynthSprites (releaseHiddenTabSprites chokepoint), and returning
 // lazily re-allocates on the next Draw.
 func TestSynthSpriteEvict_ReleasedOnTabHide(t *testing.T) {
@@ -352,24 +50,26 @@ func TestSynthSpriteEvict_ReleasedOnTabHide(t *testing.T) {
 	// struct holds TraceSprite BY VALUE, so a snapshot copy taken before a
 	// Release() would go stale (Release mutates the original via pointer
 	// receiver on the struct field, not a local copy).
-	residentAll := func() (fullNote, mirror, focus bool) {
-		s := dv.synp().sprites
-		return s.fullNote.resident(), s.mirror.resident(), s.focus.resident()
-	}
-
-	if fn, m, fo := residentAll(); !fn || !m || !fo {
-		t.Fatalf("synth tab draw did not allocate its sprites (fullNote=%v mirror=%v focus=%v)", fn, m, fo)
+	// The right pane is the rendered-audio graph (synth_graph_pane.go), on
+	// the root and drilled alike.
+	resident := func() bool { return dv.synp().sprites.graph.resident() }
+	inst := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
+	dv.setSynthStageOpen(inst, dv.instEditorSections[0].id)
+	g.Update()
+	g.Draw(screen)
+	if !resident() {
+		t.Fatal("synth tab draw did not allocate its graph sprite")
 	}
 
 	g.drum.eqPanelZone.SetActiveTab(TabWave)
-	if fn, m, fo := residentAll(); fn || m || fo {
-		t.Fatalf("leaving TabSynth must release its sprites (fullNote=%v mirror=%v focus=%v)", fn, m, fo)
+	if resident() {
+		t.Fatal("leaving TabSynth must release its graph sprite")
 	}
 
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.Draw(screen)
-	if _, _, fo := residentAll(); !fo {
-		t.Fatal("returning to TabSynth must re-allocate the focus sprite on draw")
+	if !resident() {
+		t.Fatal("returning to TabSynth must re-allocate the graph sprite on draw")
 	}
 }
 
@@ -384,17 +84,19 @@ func TestSynthSprites_ReleasedOnLocaleChange(t *testing.T) {
 	screen := ebiten.NewImage(1280, 720)
 	g.Draw(screen) // warm sprites on the active Synth tab
 
+	inst := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
+	dv.setSynthStageOpen(inst, dv.instEditorSections[0].id)
+	g.Update()
+	g.Draw(screen)
 	sp := dv.synp()
-	if !sp.sprites.focus.resident() || !sp.sprites.chip.resident() {
-		t.Fatalf("synth tab draw did not allocate focus/chip sprites (focus=%v chip=%v) — cannot test locale eviction",
-			sp.sprites.focus.resident(), sp.sprites.chip.resident())
+	if !sp.sprites.graph.resident() {
+		t.Fatal("synth tab draw did not allocate the graph sprite — cannot test locale eviction")
 	}
 
 	dv.OnLocaleChanged()
 
-	if sp.sprites.focus.resident() || sp.sprites.chip.resident() {
-		t.Fatalf("OnLocaleChanged must release synth sprites so localized text re-renders in the new locale (focus=%v chip=%v)",
-			sp.sprites.focus.resident(), sp.sprites.chip.resident())
+	if sp.sprites.graph.resident() {
+		t.Fatal("OnLocaleChanged must release synth sprites so localized text re-renders in the new locale")
 	}
 }
 
@@ -417,7 +119,7 @@ func newSynthTabForCardSprites(t *testing.T) (dv *DrumView, instID string) {
 	expandEQPanelForTest(t, g)
 	layoutSynthTab(t, g)
 	dv = g.drum
-	instID = dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
+	instID = string(dv.resolveSynthInstrument(dv.synthTabActiveInstrument()))
 	if instID == "" {
 		t.Fatal("no active synth instrument")
 	}
@@ -431,7 +133,7 @@ func cardKeyFor(dv *DrumView, instID string, sel *synthSection, kIdx int) (param
 	k := dv.instEditorControls[kIdx]
 	b := dv.instEditorBindings[kIdx]
 	st = paramCardState{
-		Selected: dv.synthSelectedControlIdx(instID, sel) == kIdx,
+		Selected: dv.synthSelectedControlIdx(instrument.ID(instID), sel) == kIdx,
 		Dim:      false,
 	}
 	name = synthParamDisplayName(b.def.Name)
@@ -513,7 +215,7 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	// the wiring assertion: if the card loop is not routed through
 	// p.sprites.card(id), p.sprites.cards never gets an entry and the
 	// Fatalf below fires (RED before Step 3's wrap, GREEN after).
-	p.drawSynthDetailPane(dst, instID)
+	p.drawSynthDetailPane(dst, instrument.ID(instID))
 
 	sprites := make([]*TraceSprite, len(visible))
 	for i, id := range paramIDs {
@@ -549,11 +251,11 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	}
 
 	now = now.Add(time.Second)
-	p.drawSynthDetailPane(dst, instID) // re-primes lastRender under the injected clock
+	p.drawSynthDetailPane(dst, instrument.ID(instID)) // re-primes lastRender under the injected clock
 	before := snapshot()
 
 	now = now.Add(time.Second)
-	p.drawSynthDetailPane(dst, instID)
+	p.drawSynthDetailPane(dst, instrument.ID(instID))
 	steady := snapshot()
 	for i := range sprites {
 		if steady[i] != before[i] {
@@ -584,7 +286,7 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	}
 
 	now = now.Add(time.Second)
-	p.drawSynthDetailPane(dst, instID)
+	p.drawSynthDetailPane(dst, instrument.ID(instID))
 	edited := snapshot()
 	for i := range sprites {
 		if i == editIdx {
@@ -597,168 +299,11 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	}
 
 	now = now.Add(time.Second)
-	p.drawSynthDetailPane(dst, instID)
+	p.drawSynthDetailPane(dst, instrument.ID(instID))
 	next := snapshot()
 	for i := range sprites {
 		if next[i] != edited[i] {
 			t.Fatalf("post-edit steady frame re-rendered card %q (want cached blit only)", paramIDs[i])
 		}
-	}
-}
-
-// ── chip strip (Task 4) ─────────────────────────────────────────────────
-//
-// The pipeline chip strip (drawSynthChipStrip, synth_panel_zone.go) is the
-// riskiest TraceSprite adopter: unlike focus/mirror/full-note (whose content
-// functions only ever consult the rect they were CALLED with — Draw hands
-// the callback either the origin-anchored rect or, under RENDER_SAFE, the
-// original rect, and the content just uses whichever it got), the chip
-// strip's positions live in dv.instEditorChips[i].rect — absolute, fixed by
-// Layout, independent of any rect this draw is asked to fill. The wrapper
-// must explicitly translate every absolute coordinate by the strip's own
-// origin (strip.Min - r.Min, see drawSynthChipStrip's doc comment) so the
-// cached offscreen texture (anchored at (0,0)) matches the RENDER_SAFE
-// direct-to-screen path exactly — this is what these tests pin.
-
-// newSynthTabForChipStripSprite builds a DrumView with a laid-out Synth tab
-// and a non-empty chip strip, and synchronously renders the per-stage
-// waveform-watermark thumbnails (ensureStageThumbsNow — always synchronous,
-// unlike the pool-submitted ensureStageThumbs) so the watermark band has
-// real content before the strip is drawn — exercising the trickiest
-// per-column coordinate math, not just the chip pill geometry.
-func newSynthTabForChipStripSprite(t *testing.T) (dv *DrumView, instID string) {
-	t.Helper()
-	g := newModularSynthTabGame(t)
-	expandEQPanelForTest(t, g)
-	layoutSynthTab(t, g)
-	dv = g.drum
-	instID = dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
-	if instID == "" {
-		t.Fatal("no active synth instrument")
-	}
-	dv.ensureStageThumbsNow(instID)
-	if dv.synp().chipStripBounds().Empty() {
-		t.Skip("no chips laid out in this profile")
-	}
-	return dv, instID
-}
-
-// TestSynthChipStripSprite_MatchesDirect pins pixel identity between the
-// cached sprite path and the RENDER_SAFE direct path for the whole chip
-// strip. Unlike the other MatchesDirect tests, both calls draw into a
-// FULL-SIZE canvas at the chip strip's REAL absolute position rather than a
-// synthetic (0,0)-anchored rect — drawSynthChipStrip computes its rect
-// internally from dv.instEditorChips, so there is no rect parameter to hand
-// it a synthetic origin. The cached path's blit lands at the strip's true
-// absolute position (TraceSprite.Draw translates by rect.Min), so comparing
-// the two canvases directly at absolute coordinates is the only way to
-// prove drawSynthChipStripContent's coordinate translation has no
-// off-by-origin smear.
-func TestSynthChipStripSprite_MatchesDirect(t *testing.T) {
-	dv, _ := newSynthTabForChipStripSprite(t)
-	p := dv.synp()
-	strip := p.chipStripBounds()
-	w, h := strip.Max.X, strip.Max.Y
-	if w <= 0 || h <= 0 {
-		t.Fatalf("degenerate strip bounds: %v", strip)
-	}
-
-	cached := ebiten.NewImage(w, h)
-	p.drawSynthChipStrip(cached)
-
-	old := envRenderSafe
-	envRenderSafe = true
-	direct := ebiten.NewImage(w, h)
-	p.drawSynthChipStrip(direct)
-	envRenderSafe = old
-
-	assertImagesEqual(t, cached, direct, w, h)
-}
-
-// TestSynthChipStrip_ReRendersOnSelection pins the caching win: a
-// steady-state redraw (same selection, same enabled flags, same watermark
-// content) blits the cached texture — 0 draws captured by
-// collectFilledRects, since a cache hit never calls render(), only
-// dst.DrawImage. Changing the selected chip, a chip's enabled flag, or the
-// watermark content-version each force exactly one re-render; steady frames
-// after each change go quiet again. Chip fields are flipped directly
-// (mirrors TestSynthParamCards_OnlyEditedCardReRenders's direct k.Value
-// mutation) to unit-test the caching layer's key derivation in isolation
-// from the full enable-toggle-button production wiring.
-func TestSynthChipStrip_ReRendersOnSelection(t *testing.T) {
-	dv, instID := newSynthTabForChipStripSprite(t)
-	p := dv.synp()
-	if len(dv.instEditorChips) < 2 {
-		t.Skip("need >=2 chips to exercise a selection change")
-	}
-
-	strip := p.chipStripBounds()
-	img := ebiten.NewImage(strip.Max.X, strip.Max.Y)
-
-	warm := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if len(warm) == 0 {
-		t.Fatal("warm frame drew nothing — sprite render never ran")
-	}
-
-	steady := collectFilledRects(t, func() {
-		for i := 0; i < 5; i++ {
-			p.drawSynthChipStrip(img)
-		}
-	})
-	if n := len(steady); n != 0 {
-		t.Fatalf("steady-state frames re-rendered the chip strip %d times (want 0 — cached blit only)", n)
-	}
-
-	// Selection change.
-	curSel := -1
-	for i, c := range dv.instEditorChips {
-		if c.selected {
-			curSel = i
-		}
-	}
-	if curSel < 0 {
-		t.Skip("no chip is selected in this profile")
-	}
-	newSel := 0
-	if curSel == 0 {
-		newSel = 1
-	}
-	dv.instEditorChips[curSel].selected = false
-	dv.instEditorChips[newSel].selected = true
-
-	afterSel := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if len(afterSel) == 0 {
-		t.Fatal("selection change did not re-render the chip strip (stale cache)")
-	}
-	next := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if n := len(next); n != 0 {
-		t.Fatalf("post-selection steady frame re-rendered the chip strip %d times (want 0)", n)
-	}
-
-	// Enable-flag change.
-	dv.instEditorChips[0].enabled = !dv.instEditorChips[0].enabled
-
-	afterEnable := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if len(afterEnable) == 0 {
-		t.Fatal("enable-flag change did not re-render the chip strip (stale cache)")
-	}
-	next2 := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if n := len(next2); n != 0 {
-		t.Fatalf("post-enable steady frame re-rendered the chip strip %d times (want 0)", n)
-	}
-
-	// Thumb content-version change: ensureStageThumbsNow always REPLACES
-	// t.waves synchronously (bumping contentVersion()) even when the params
-	// hash is unchanged, so calling it again must force a re-render of the
-	// watermark band alone.
-	dv.ensureStageThumbsNow(instID)
-
-	afterThumb := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if len(afterThumb) == 0 {
-		t.Fatal("thumb content-version change did not re-render the chip strip (stale cache)")
-	}
-	next3 := collectFilledRects(t, func() { p.drawSynthChipStrip(img) })
-	if n := len(next3); n != 0 {
-		t.Fatalf("post-thumb steady frame re-rendered the chip strip %d times (want 0)", n)
 	}
 }

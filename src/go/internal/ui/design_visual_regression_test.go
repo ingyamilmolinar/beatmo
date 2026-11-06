@@ -176,8 +176,5 @@ func TestDesignVisualRegression(t *testing.T) {
 		if colTransportGroupBG.A != genAlphaRowRackZebra {
 			t.Errorf("colTransportGroupBG.A = %d but expected genAlphaRowRackZebra = %d", colTransportGroupBG.A, genAlphaRowRackZebra)
 		}
-		if colTransportGroupBorder.A != genAlphaBorderDefault {
-			t.Errorf("colTransportGroupBorder.A = %d but expected genAlphaBorderDefault = %d", colTransportGroupBorder.A, genAlphaBorderDefault)
-		}
 	})
 }

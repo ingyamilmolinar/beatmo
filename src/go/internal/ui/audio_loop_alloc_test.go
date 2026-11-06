@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestAudioLoopAllocStability validates the reuse contract on the
@@ -39,7 +40,7 @@ func TestAudioLoopAllocStability(t *testing.T) {
 
 	enqueue := func(n int) {
 		for i := 0; i < n; i++ {
-			g.audioCh <- soundReq{id: "kick", vol: 1, pitch: 0, dur: 1, row: -1, abs: -1}
+			g.audioCh <- soundReq{id: roster.Kick, vol: 1, pitch: 0, dur: 1, row: -1, abs: -1}
 		}
 	}
 

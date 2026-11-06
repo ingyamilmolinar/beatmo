@@ -9,6 +9,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -16,7 +18,7 @@ import (
 // the Synth tab active, ready for HitArea-driven press testing.
 type synthFooterClickTestEnv struct {
 	g      *Game
-	instID string
+	instID instrument.ID
 	hits   []indexedHitArea
 }
 
@@ -38,9 +40,9 @@ func setupSynthFooterEnv(t *testing.T, width, height int, mobile bool) *synthFoo
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
 	if mobile {
 		g.drum.SetMobileEQMode(true)
@@ -56,7 +58,7 @@ func setupSynthFooterEnv(t *testing.T, width, height int, mobile bool) *synthFoo
 	for _, h := range rawHits {
 		indexed = append(indexed, indexedHitArea{HitArea: h})
 	}
-	return &synthFooterClickTestEnv{g: g, instID: "snare", hits: indexed}
+	return &synthFooterClickTestEnv{g: g, instID: roster.Snare, hits: indexed}
 }
 
 // findFooterButton returns the *Button matching the sentinel tag.
@@ -84,8 +86,8 @@ func TestSynthFooter_ClickAtVisibleCenter_RoutesToCorrectHandler(t *testing.T) {
 		mobile      bool
 		expectFound []string
 	}{
-		{"desktop_typical", 1280, 800, false, []string{synthSaveButtonTag, synthSaveAsButtonTag, synthResetButtonTag}},
-		{"desktop_short", 1280, 480, false, []string{synthSaveButtonTag, synthSaveAsButtonTag, synthResetButtonTag}},
+		{"desktop_typical", 1280, 800, false, []string{synthSaveAsButtonTag}},
+		{"desktop_short", 1280, 480, false, []string{synthSaveAsButtonTag}},
 		// No mobile case: on mobile the synth actions live on the sticky bar
 		// (Approach B), not the in-panel footer this test drives. Sticky-bar
 		// routing is covered by TestSynthMobileActionsOnStickyBar.
@@ -145,25 +147,15 @@ func topHitAt(hits []indexedHitArea, x, y int) *indexedHitArea {
 }
 
 func footerTagForButtonText(tag string) string {
-	switch tag {
-	case synthSaveButtonTag:
-		return "synth-save"
-	case synthSaveAsButtonTag:
+	if tag == synthSaveAsButtonTag {
 		return "synth-save-as"
-	case synthResetButtonTag:
-		return "synth-btn-" // synth-btn-N for reset (legacy naming) OR "synth-reset"
 	}
 	return ""
 }
 
 func btnLabel(tag string) string {
-	switch tag {
-	case synthSaveButtonTag:
-		return "Save"
-	case synthSaveAsButtonTag:
+	if tag == synthSaveAsButtonTag {
 		return "Save As"
-	case synthResetButtonTag:
-		return "Reset"
 	}
 	return tag
 }

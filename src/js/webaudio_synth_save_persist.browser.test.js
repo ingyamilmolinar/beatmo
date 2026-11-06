@@ -1,24 +1,19 @@
 /**
- * Synth-tab Save / Reset persistence — WASM↔bridge boundary.
+ * Synth-tab Save / Reset — WASM↔bridge boundary.
  *
  * Charter (CLAUDE.md § JS Test Charter, tier 4 "WASM↔JS bridge plumbing"):
  * this verifies that the real Go Save / Reset logic, running in WASM, leaves
- * the per-instrument param state the WebAudio voice cache reads in the correct
- * shape. Logic correctness (the rendered sound is bit-identical before/after
- * Save, and returns to the original after Reset) is owned by the Go native
- * tests:
- *   - internal/audio/synth_recipe_save_render_test.go
- *       TestSynthSavePersists_RenderUnchangedAfterSave
- *       TestSynthReset_RenderReturnsToOriginal
- *   - internal/ui/synth_panel_save_persist_test.go
- *       TestSynthSave_KeepsLikedParamsForBridge
- *       TestSynthReset_RestoresOriginalAfterSave
+ * the param block audio.js renders from (window.setInstrumentBlock, spec
+ * 2026-10-04 §8) in the right state. Logic correctness is owned by Go:
+ *   - internal/ui/synth_panel_save_test.go, synth_panel_save_persist_test.go
+ *       (Save writes the library and leaves the project copy untouched;
+ *        Reset returns the copy to its library entry; Restore shipped + Reset
+ *        brings back the shipped sound)
  *
- * The bug this guards: clicking Save used to push an empty param map to JS
- * (updateInstrumentParams("kick","{}")), dropping the liked tone from the
- * browser's voice cache; and Reset could not undo a Save's overwrite of the
- * recipe defaults. Here we drive saveActiveRecipe / resetActiveRecipe (the
- * same Go core the buttons use) and assert the bridge-readable state.
+ * The bug this guards: clicking Save used to push an empty param map to JS,
+ * dropping the liked tone from the browser's voice cache. Save now copies the
+ * project document into the library and pushes nothing — the block audio.js
+ * holds must be bit-identical before and after Save.
  */
 
 import { chromium } from "playwright";
@@ -93,58 +88,56 @@ try {
   await page.waitForFunction(() => typeof saveActiveRecipe === "function");
 
   const INST = "kick";
+  const K = "post_decay";
   // Drive the whole scenario inside one page.evaluate so the actual numeric
   // values cross the bridge (callExport only returns a shape descriptor).
-  const r = await page.evaluate((inst) => {
-    const recipeID = recipeForInstrument(inst);
-    resetActiveRecipe(inst); // clean baseline (undo any prior customization)
-    const origDecay = recipeDefaultParams(recipeID).decay;
-    const likedDecay = origDecay === 2 ? 3 : 2; // ensure a real change
+  const r = await page.evaluate(({ inst, k }) => {
+    const blockOf = () => Array.from((__instrumentBlockForTest(inst) || {}).block || []);
+    resetActiveRecipe(inst); // clean baseline
+    const orig = getInstrumentParams(inst)[k];
+    const liked = orig > 0.5 ? 0.3 : 0.8; // a real change inside post_decay's [0,1]
 
-    setInstrumentParam(inst, "decay", likedDecay); // the knob drag
-    const overlayBeforeSave = getInstrumentParams(inst);
+    setInstrumentParam(inst, k, liked); // the knob drag
+    const beforeSave = getInstrumentParams(inst)[k];
+    const blockBeforeSave = blockOf();
 
-    const savedRecipe = saveActiveRecipe(inst); // the Save button
-    const overlayAfterSave = getInstrumentParams(inst);
-    const defaultDecayAfterSave = recipeDefaultParams(recipeID).decay;
+    const savedID = saveActiveRecipe(inst); // the Save button
+    const afterSave = getInstrumentParams(inst)[k];
+    const blockAfterSave = blockOf();
 
-    const resetRecipe = resetActiveRecipe(inst); // the Reset button
-    const defaultDecayAfterReset = recipeDefaultParams(recipeID).decay;
-    const overlayAfterReset = getInstrumentParams(inst);
+    setInstrumentParam(inst, k, orig); // move it again, unsaved
+    const resetID = resetActiveRecipe(inst); // the Reset button
+    const afterReset = getInstrumentParams(inst)[k];
+    const doc = JSON.parse(getInstrumentDoc(inst) || "{}");
 
     return {
-      recipeID, origDecay, likedDecay, savedRecipe, resetRecipe,
-      overlayBeforeDecay: overlayBeforeSave.decay,
-      overlayAfterSaveKeys: Object.keys(overlayAfterSave).length,
-      overlayAfterSaveDecay: overlayAfterSave.decay,
-      defaultDecayAfterSave,
-      defaultDecayAfterReset,
-      overlayAfterResetKeys: Object.keys(overlayAfterReset).length,
+      orig, liked, beforeSave, afterSave, afterReset, savedID, resetID,
+      origin: doc.origin || "",
+      blockLen: blockBeforeSave.length,
+      blockSame: blockBeforeSave.length > 0 && blockBeforeSave.every((v, i) => Object.is(v, blockAfterSave[i])),
     };
-  }, INST);
+  }, { inst: INST, k: K });
 
-  check(typeof r.recipeID === "string" && r.recipeID.length > 0, `recipeForInstrument(${INST}) empty`);
-  check(typeof r.origDecay === "number", `recipe ${r.recipeID} has no decay default`);
-  check(approx(r.overlayBeforeDecay, r.likedDecay), `pre-save overlay decay=${r.overlayBeforeDecay}, want ${r.likedDecay}`);
-  check(r.savedRecipe === r.recipeID, `saveActiveRecipe returned ${r.savedRecipe}, want ${r.recipeID}`);
+  check(typeof r.orig === "number", `${INST} has no ${K} value`);
+  check(approx(r.beforeSave, r.liked), `pre-save ${K}=${r.beforeSave}, want ${r.liked}`);
+  check(r.savedID === INST, `saveActiveRecipe returned ${r.savedID}, want ${INST}`);
 
-  // BUG GUARD #1 (Save must not change the sound): the params the WebAudio
-  // voice cache reads must still carry the liked tone — the overlay is NOT
-  // emptied, and the persisted recipe default now equals the liked value.
-  check(r.overlayAfterSaveKeys > 0, "after Save the per-instrument overlay was emptied — browser would drop the liked sound");
-  check(approx(r.overlayAfterSaveDecay, r.likedDecay), `post-save overlay decay=${r.overlayAfterSaveDecay}, want ${r.likedDecay}`);
-  check(approx(r.defaultDecayAfterSave, r.likedDecay), `post-save recipe default decay=${r.defaultDecayAfterSave}, want ${r.likedDecay}`);
+  // BUG GUARD (Save must not change the sound): the document and the block
+  // audio.js renders from are unchanged by Save.
+  check(approx(r.afterSave, r.liked), `post-save ${K}=${r.afterSave}, want ${r.liked}`);
+  check(r.blockLen > 0, "no pushed block for the instrument (setInstrumentBlock never ran?)");
+  check(r.blockSame, "Save changed the pushed param block — the browser voice would move");
 
-  // BUG GUARD #2 (Reset restores original even after Save).
-  check(r.resetRecipe === r.recipeID, `resetActiveRecipe returned ${r.resetRecipe}, want ${r.recipeID}`);
-  check(approx(r.defaultDecayAfterReset, r.origDecay), `after Reset, default decay=${r.defaultDecayAfterReset}, want original ${r.origDecay}`);
-  check(r.overlayAfterResetKeys === 0, `after Reset, overlay still has ${r.overlayAfterResetKeys} keys`);
+  // Reset returns to the library entry, which after Save is the liked value.
+  check(r.resetID === INST, `resetActiveRecipe returned ${r.resetID}, want ${INST}`);
+  check(approx(r.afterReset, r.liked), `after Reset ${K}=${r.afterReset}, want the saved ${r.liked}`);
+  check(r.origin === INST, `the project copy's origin is ${r.origin}, want ${INST}`);
 
   if (failures.length) {
     console.error("[synth-save-persist] FAILURES:\n  " + failures.join("\n  "));
     process.exitCode = 1;
   } else {
-    console.log("[synth-save-persist] OK — Save preserves the tone and Reset restores the original through the WASM bridge");
+    console.log("[synth-save-persist] OK — Save leaves the pushed block untouched and Reset returns to the saved entry through the WASM bridge");
   }
 } finally {
   await browser.close();

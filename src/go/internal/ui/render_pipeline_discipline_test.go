@@ -37,7 +37,6 @@ func TestRenderPipelineDiscipline(t *testing.T) {
 		"drawSparklineInRect":  true,
 		"drawBottomSheetPanel": true,
 		"drawPanel":            true,
-		"drawAccentStripe":     true,
 		"DrawSplitterHandle":   true,
 		"DrawTextAt":           true,
 		"DrawTextColorAtScale": true,

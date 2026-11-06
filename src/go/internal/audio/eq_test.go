@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func rms(samples []float64) float64 {
@@ -23,10 +26,10 @@ func TestPeakingEQBoostsBand(t *testing.T) {
 
 	eqID := "eq-test"
 	dryID := "dry-test"
-	SetChannelProcessors(eqID, NewPeakingEQ(sr, freq, 1.0, 6.0))
+	SetChannelProcessors(channel.Of(instrument.ID(eqID)), NewPeakingEQ(sr, freq, 1.0, 6.0))
 
-	eqCh := InstrumentChannel(eqID)
-	dryCh := InstrumentChannel(dryID)
+	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
+	dryCh := InstrumentChannel(channel.Of(instrument.ID(dryID)))
 
 	eqOut := make([]float64, samps)
 	dryOut := make([]float64, samps)
@@ -65,8 +68,8 @@ func TestAllBandsMutedProducesSilence(t *testing.T) {
 	}
 
 	eqID := "eq-mute-test"
-	SetChannelProcessors(eqID, NewEQProcessor(sr, bands...))
-	eqCh := InstrumentChannel(eqID)
+	SetChannelProcessors(channel.Of(instrument.ID(eqID)), NewEQProcessor(sr, bands...))
+	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
 
 	// Process audio with multiple frequency components
 	eqOut := make([]float64, samps)
@@ -100,10 +103,10 @@ func TestSingleBandMutedReducesFrequency(t *testing.T) {
 
 	eqID := "eq-single-mute-test"
 	dryID := "dry-single-test"
-	SetChannelProcessors(eqID, NewEQProcessor(sr, bands...))
+	SetChannelProcessors(channel.Of(instrument.ID(eqID)), NewEQProcessor(sr, bands...))
 
-	eqCh := InstrumentChannel(eqID)
-	dryCh := InstrumentChannel(dryID)
+	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
+	dryCh := InstrumentChannel(channel.Of(instrument.ID(dryID)))
 
 	eqOut := make([]float64, samps)
 	dryOut := make([]float64, samps)
@@ -164,11 +167,11 @@ func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 
 	mutedID := "eq-muted-test"
 	unmutedID := "eq-unmuted-test"
-	SetChannelProcessors(mutedID, NewEQProcessor(sr, bandsMuted...))
-	SetChannelProcessors(unmutedID, NewEQProcessor(sr, bandsUnmuted...))
+	SetChannelProcessors(channel.Of(instrument.ID(mutedID)), NewEQProcessor(sr, bandsMuted...))
+	SetChannelProcessors(channel.Of(instrument.ID(unmutedID)), NewEQProcessor(sr, bandsUnmuted...))
 
-	mutedCh := InstrumentChannel(mutedID)
-	unmutedCh := InstrumentChannel(unmutedID)
+	mutedCh := InstrumentChannel(channel.Of(instrument.ID(mutedID)))
+	unmutedCh := InstrumentChannel(channel.Of(instrument.ID(unmutedID)))
 
 	mutedOut := make([]float64, samps)
 	unmutedOut := make([]float64, samps)
@@ -202,10 +205,10 @@ func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 	// Reset processor state by creating new channels
 	mutedID2 := "eq-muted-test-2"
 	unmutedID2 := "eq-unmuted-test-2"
-	SetChannelProcessors(mutedID2, NewEQProcessor(sr, bandsMuted...))
-	SetChannelProcessors(unmutedID2, NewEQProcessor(sr, bandsUnmuted...))
-	mutedCh2 := InstrumentChannel(mutedID2)
-	unmutedCh2 := InstrumentChannel(unmutedID2)
+	SetChannelProcessors(channel.Of(instrument.ID(mutedID2)), NewEQProcessor(sr, bandsMuted...))
+	SetChannelProcessors(channel.Of(instrument.ID(unmutedID2)), NewEQProcessor(sr, bandsUnmuted...))
+	mutedCh2 := InstrumentChannel(channel.Of(instrument.ID(mutedID2)))
+	unmutedCh2 := InstrumentChannel(channel.Of(instrument.ID(unmutedID2)))
 
 	for i := 0; i < samps; i++ {
 		x := 0.5 * math.Sin(2*math.Pi*mutedFreq*float64(i)/float64(sr))
@@ -258,9 +261,9 @@ func TestHighFrequencyRejectionWithLowBandOnly(t *testing.T) {
 	}
 
 	eqID := "eq-hf-rejection-test"
-	SetChannelProcessors(eqID, NewEQProcessor(sr, bands...))
+	SetChannelProcessors(channel.Of(instrument.ID(eqID)), NewEQProcessor(sr, bands...))
 
-	eqCh := InstrumentChannel(eqID)
+	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
 
 	// Test 1: 5kHz signal should be heavily attenuated compared to 30Hz signal
 	// through the same processor.
@@ -279,8 +282,8 @@ func TestHighFrequencyRejectionWithLowBandOnly(t *testing.T) {
 
 	// Reset and process 30Hz
 	eqID2 := "eq-lf-pass-test"
-	SetChannelProcessors(eqID2, NewEQProcessor(sr, bands...))
-	eqCh2 := InstrumentChannel(eqID2)
+	SetChannelProcessors(channel.Of(instrument.ID(eqID2)), NewEQProcessor(sr, bands...))
+	eqCh2 := InstrumentChannel(channel.Of(instrument.ID(eqID2)))
 
 	eqOutLow := make([]float64, samps)
 	for i := 0; i < samps; i++ {
@@ -331,10 +334,10 @@ func TestMultibandOutputMatchesPassthrough(t *testing.T) {
 
 	eqID := "eq-multiband-passthrough"
 	dryID := "dry-multiband-passthrough"
-	SetChannelProcessors(eqID, NewEQProcessor(sr, bands...))
+	SetChannelProcessors(channel.Of(instrument.ID(eqID)), NewEQProcessor(sr, bands...))
 
-	eqCh := InstrumentChannel(eqID)
-	dryCh := InstrumentChannel(dryID)
+	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
+	dryCh := InstrumentChannel(channel.Of(instrument.ID(dryID)))
 
 	eqOut := make([]float64, samps)
 	dryOut := make([]float64, samps)
@@ -377,10 +380,10 @@ func TestMutingHighBandPreservesKickEnergy(t *testing.T) {
 
 	eqID := "eq-kick-energy"
 	dryID := "dry-kick-energy"
-	SetChannelProcessors(eqID, NewEQProcessor(sr, bands...))
+	SetChannelProcessors(channel.Of(instrument.ID(eqID)), NewEQProcessor(sr, bands...))
 
-	eqCh := InstrumentChannel(eqID)
-	dryCh := InstrumentChannel(dryID)
+	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
+	dryCh := InstrumentChannel(channel.Of(instrument.ID(dryID)))
 
 	eqOut := make([]float64, samps)
 	dryOut := make([]float64, samps)

@@ -120,6 +120,21 @@ var drawOverflowIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Colo
 	iconFillCircle(dst, c, 12, 18, 1.5, col)
 }
 
+// drawGripIcon paints the drag-handle affordance: a 2×3 dot matrix, the
+// conventional "grab me" texture. Mirrors drawOverflowIcon's dot geometry
+// (r=1.5 on the shared 24×24 icon canvas) so the two read as one family.
+var drawGripIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	for _, x := range []float32{9, 15} {
+		for _, y := range []float32{6, 12, 18} {
+			iconFillCircle(dst, c, x, y, 1.5, col)
+		}
+	}
+}
+
 // ── Numeric / list (4) ──────────────────────────────────────────────────
 
 var drawPlusIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
@@ -147,6 +162,18 @@ var drawRowsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	iconStrokeLine(dst, c, 5, 8, 19, 8, col)
 	iconStrokeLine(dst, c, 5, 12, 19, 12, col)
 	iconStrokeLine(dst, c, 5, 16, 19, 16, col)
+}
+
+// drawChordIcon: three stacked noteheads on one stem — a chord on a staff.
+var drawChordIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	for _, y := range [3]float32{5, 10, 15} {
+		iconFillRoundedRect(dst, c, 5, y, 8, 4.5, 2.25, col)
+	}
+	iconStrokeLine(dst, c, 13, 3.5, 13, 19.5, col)
 }
 
 var drawAudioIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
@@ -234,44 +261,33 @@ var drawStarFilledIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Co
 
 // ── Track / state (2) ──────────────────────────────────────────────────
 
-// Padlock, closed = "tracking" (timeline follows the playhead). A slim,
-// minimal Lucide-style lock: a narrow rounded body centred on the 24-grid, a
-// tall semicircular shackle seating into it, and a small keyhole. Kept thinner
-// than a squat 14×10 body so it reads as tasteful next to the kebab-menu icons.
+// Padlock, closed = "tracking" (timeline follows the playhead). Lucide "lock":
+// an outlined rounded body with the shackle seated into it and a keyhole dot
+// — the same 1.75-unit stroke language as every other chrome icon.
 var drawTrackIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
 	}
 	c := newIconCanvas(r)
-	// Slim lock body (x 7.5..16.5 = 9 wide, y 11..20 = 9 tall).
-	iconStrokeOpenRoundedRect(dst, c, 7.5, 11, 9, 9, 2.4, "", col)
-	// Closed shackle: a clean semicircular arch, narrower than the body, whose
-	// legs seat into the body top.
-	iconStrokeLine(dst, c, 9.5, 11, 9.5, 8, col)
-	iconStrokeArc(dst, c, 12, 8, 2.5, float32(math.Pi), 2*float32(math.Pi), col)
-	iconStrokeLine(dst, c, 14.5, 11, 14.5, 8, col)
-	// Minimal keyhole: a small dot with a short slot.
-	iconFillCircle(dst, c, 12, 14.7, 0.95, col)
-	iconStrokeLine(dst, c, 12, 15.4, 12, 16.7, col)
+	iconStrokeOpenRoundedRect(dst, c, 4.5, 11, 15, 10, float32(IconCornerRadius), "", col)
+	iconStrokeLine(dst, c, 8, 11, 8, 7.5, col)
+	iconStrokeArc(dst, c, 12, 7.5, 4, float32(math.Pi), 2*float32(math.Pi), col)
+	iconStrokeLine(dst, c, 16, 11, 16, 7.5, col)
+	iconFillCircle(dst, c, 12, 16, 1.25, col)
 }
 
 // Padlock, open = "free" (timeline scrolls independently of the playhead).
-// Same slim body + keyhole as the closed lock; the shackle's free leg lifts
-// away (Lucide-unlock silhouette) instead of seating into the body.
+// Same outlined body as the closed lock; the shackle's free leg lifts away
+// (Lucide "lock-open" silhouette) instead of seating into the body.
 var drawTrackOffIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
 	}
 	c := newIconCanvas(r)
-	// Lock body — identical to the closed state.
-	iconStrokeOpenRoundedRect(dst, c, 7.5, 11, 9, 9, 2.4, "", col)
-	// Open shackle: left leg seats in; the arch lifts and its free end floats
-	// above the body on the right (no descending right leg).
-	iconStrokeLine(dst, c, 9.5, 11, 9.5, 8, col)
-	iconStrokeArc(dst, c, 12, 8, 2.5, float32(math.Pi), 1.72*float32(math.Pi), col)
-	// Keyhole.
-	iconFillCircle(dst, c, 12, 14.7, 0.95, col)
-	iconStrokeLine(dst, c, 12, 15.4, 12, 16.7, col)
+	iconStrokeOpenRoundedRect(dst, c, 4.5, 11, 15, 10, float32(IconCornerRadius), "", col)
+	iconStrokeLine(dst, c, 8, 11, 8, 7.5, col)
+	iconStrokeArc(dst, c, 12, 7.5, 4, float32(math.Pi), 1.85*float32(math.Pi), col)
+	iconFillCircle(dst, c, 12, 16, 1.25, col)
 }
 
 // ── Upload / I/O (3) ──────────────────────────────────────────────────
@@ -478,18 +494,6 @@ var drawCircleIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	iconFillCircle(dst, c, 12, 12, 8, col)
 }
 
-// Chevron + stem — a downward chevron with a vertical stem dropping into the
-// trace area. Used on the Chain tab to mark the trigger sample at Spacious.
-var drawTriggerMarkerIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
-	if r.Empty() {
-		return
-	}
-	c := newIconCanvas(r)
-	iconStrokeLine(dst, c, 6, 6, 12, 12, col)
-	iconStrokeLine(dst, c, 18, 6, 12, 12, col)
-	iconStrokeLine(dst, c, 12, 12, 12, 20, col)
-}
-
 // Headroom — a horizontal ceiling bar with a downward arrow indicating the
 // space below the limit. Used in the Levels icon-row cascade.
 var drawHeadroomIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
@@ -596,6 +600,20 @@ var drawLogsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	iconStrokeLine(dst, c, 8, 8, 16, 8, col)
 	iconStrokeLine(dst, c, 8, 12, 16, 12, col)
 	iconStrokeLine(dst, c, 8, 16, 13, 16, col)
+}
+
+// Palette: a painter's palette — a rounded disc with a thumb notch and three
+// paint dots. The grid-pane Theme button glyph.
+var drawPaletteIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeCircle(dst, c, 12, 12, 8.5, col) // disc outline
+	iconFillCircle(dst, c, 15.5, 12, 2.2, col) // thumb notch (filled, reads as the hole)
+	iconFillCircle(dst, c, 8, 9, 1.6, col)     // paint dots
+	iconFillCircle(dst, c, 11.5, 6.5, 1.6, col)
+	iconFillCircle(dst, c, 8.5, 14.5, 1.6, col)
 }
 
 // Move: a four-way arrow cross centered in the icon box — the universal

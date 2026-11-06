@@ -2,6 +2,9 @@ package audio
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func resetChains(t *testing.T) {
@@ -14,37 +17,37 @@ func resetChains(t *testing.T) {
 func TestEffectChainAddRemove(t *testing.T) {
 	resetChains(t)
 	id := "test-inst"
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// Initially empty.
-	slots := GetInsertEffects(id)
+	slots := GetInsertEffects(instrument.ID(id))
 	if len(slots) != 0 {
 		t.Fatalf("expected 0 effects, got %d", len(slots))
 	}
 
 	// Add distortion.
-	idx := AddInsertEffect(id, EffectDistortion, nil)
+	idx := AddInsertEffect(instrument.ID(id), EffectDistortion, nil)
 	if idx != 0 {
 		t.Errorf("expected slot 0, got %d", idx)
 	}
-	slots = GetInsertEffects(id)
+	slots = GetInsertEffects(instrument.ID(id))
 	if len(slots) != 1 || slots[0].Type != EffectDistortion {
 		t.Fatalf("expected 1 distortion, got %v", slots)
 	}
 
 	// Add delay.
-	idx = AddInsertEffect(id, EffectDelay, nil)
+	idx = AddInsertEffect(instrument.ID(id), EffectDelay, nil)
 	if idx != 1 {
 		t.Errorf("expected slot 1, got %d", idx)
 	}
-	slots = GetInsertEffects(id)
+	slots = GetInsertEffects(instrument.ID(id))
 	if len(slots) != 2 {
 		t.Fatalf("expected 2 effects, got %d", len(slots))
 	}
 
 	// Remove first (distortion).
-	RemoveInsertEffect(id, 0)
-	slots = GetInsertEffects(id)
+	RemoveInsertEffect(instrument.ID(id), 0)
+	slots = GetInsertEffects(instrument.ID(id))
 	if len(slots) != 1 || slots[0].Type != EffectDelay {
 		t.Errorf("after remove: expected [delay], got %v", slots)
 	}
@@ -53,15 +56,15 @@ func TestEffectChainAddRemove(t *testing.T) {
 func TestEffectChainReorder(t *testing.T) {
 	resetChains(t)
 	id := "test-inst"
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, nil)
-	AddInsertEffect(id, EffectDelay, nil)
-	AddInsertEffect(id, EffectReverb, nil)
+	AddInsertEffect(instrument.ID(id), EffectDistortion, nil)
+	AddInsertEffect(instrument.ID(id), EffectDelay, nil)
+	AddInsertEffect(instrument.ID(id), EffectReverb, nil)
 
 	// Move reverb from slot 2 to slot 0.
-	MoveInsertEffect(id, 2, 0)
-	slots := GetInsertEffects(id)
+	MoveInsertEffect(instrument.ID(id), 2, 0)
+	slots := GetInsertEffects(instrument.ID(id))
 	if len(slots) != 3 {
 		t.Fatalf("expected 3 effects, got %d", len(slots))
 	}
@@ -73,24 +76,24 @@ func TestEffectChainReorder(t *testing.T) {
 func TestEffectChainToggle(t *testing.T) {
 	resetChains(t)
 	id := "test-inst"
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, nil)
-	slots := GetInsertEffects(id)
+	AddInsertEffect(instrument.ID(id), EffectDistortion, nil)
+	slots := GetInsertEffects(instrument.ID(id))
 	if !slots[0].Enabled {
 		t.Fatal("new effect should be enabled")
 	}
 
 	// Disable.
-	ToggleInsertEffect(id, 0, false)
-	slots = GetInsertEffects(id)
+	ToggleInsertEffect(instrument.ID(id), 0, false)
+	slots = GetInsertEffects(instrument.ID(id))
 	if slots[0].Enabled {
 		t.Error("effect should be disabled")
 	}
 
 	// Re-enable.
-	ToggleInsertEffect(id, 0, true)
-	slots = GetInsertEffects(id)
+	ToggleInsertEffect(instrument.ID(id), 0, true)
+	slots = GetInsertEffects(instrument.ID(id))
 	if !slots[0].Enabled {
 		t.Error("effect should be re-enabled")
 	}
@@ -99,11 +102,11 @@ func TestEffectChainToggle(t *testing.T) {
 func TestEffectChainSetParam(t *testing.T) {
 	resetChains(t)
 	id := "test-inst"
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDistortion, nil)
-	SetInsertEffectParam(id, 0, "drive", 15)
-	slots := GetInsertEffects(id)
+	AddInsertEffect(instrument.ID(id), EffectDistortion, nil)
+	SetInsertEffectParam(instrument.ID(id), 0, "drive", 15)
+	slots := GetInsertEffects(instrument.ID(id))
 	if slots[0].Params["drive"] != 15 {
 		t.Errorf("expected drive=15, got %.1f", slots[0].Params["drive"])
 	}
@@ -112,15 +115,15 @@ func TestEffectChainSetParam(t *testing.T) {
 func TestEffectChainSetInsertEffects(t *testing.T) {
 	resetChains(t)
 	id := "test-inst"
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	// Set a full chain at once (simulates import).
 	chain := []EffectSlot{
 		{Type: EffectChorus, Enabled: true, Params: DefaultParams(EffectChorus)},
 		{Type: EffectFilter, Enabled: false, Params: DefaultParams(EffectFilter)},
 	}
-	SetInsertEffects(id, chain)
-	slots := GetInsertEffects(id)
+	SetInsertEffects(instrument.ID(id), chain)
+	slots := GetInsertEffects(instrument.ID(id))
 	if len(slots) != 2 {
 		t.Fatalf("expected 2, got %d", len(slots))
 	}
@@ -134,8 +137,8 @@ func TestEffectChainSetInsertEffects(t *testing.T) {
 
 func TestEffectChainClearAll(t *testing.T) {
 	resetChains(t)
-	_ = InstrumentChannel("a")
-	_ = InstrumentChannel("b")
+	_ = InstrumentChannel(channel.Of("a"))
+	_ = InstrumentChannel(channel.Of("b"))
 	AddInsertEffect("a", EffectDistortion, nil)
 	AddInsertEffect("b", EffectDelay, nil)
 
@@ -151,16 +154,16 @@ func TestEffectChainClearAll(t *testing.T) {
 func TestEffectChainResetOnStop(t *testing.T) {
 	resetChains(t)
 	id := "test-inst"
-	_ = InstrumentChannel(id)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
 
-	AddInsertEffect(id, EffectDelay, map[string]float64{
+	AddInsertEffect(instrument.ID(id), EffectDelay, map[string]float64{
 		"time": 100, "feedback": 0.9, "mix": 1,
 	})
 
 	// Feed signal through the processor directly.
 	m := insertChainMgr
 	m.mu.RLock()
-	e := m.chains[id]
+	e := m.chains[channel.Of(instrument.ID(id))]
 	if e == nil || len(e.processors) == 0 {
 		m.mu.RUnlock()
 		t.Fatal("no processors")

@@ -14,11 +14,11 @@ func secHeaderCenter(t *testing.T, g *Game, id model.NodeID) (int, int) {
 	t.Helper()
 	g.sidebar.Open(g.nodesByID[id])
 	g.sidebar.layout()
-	r, ok := g.sidebar.rects["sec-grp"]
+	r, ok := g.sidebar.rects[sbSectionHeader(secGrp)]
 	if !ok || r.Empty() {
 		t.Fatalf("setup: sec-grp rect missing (rects=%v)", g.sidebar.rects)
 	}
-	if g.sidebar.sectionOpen["grp"] {
+	if g.sidebar.sectionOpen[secGrp] {
 		t.Fatalf("setup: grp must start collapsed")
 	}
 	return (r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2
@@ -84,7 +84,7 @@ func TestSidebarSectionHeaderPressWhileSuppressedDoesNotToggle(t *testing.T) {
 	g.sidebar.HandleInput(cx, cy, true)
 	g.sidebar.HandleInput(cx, cy, false)
 
-	if g.sidebar.sectionOpen["grp"] {
+	if g.sidebar.sectionOpen[secGrp] {
 		t.Fatalf("a press that began while clicks were suppressed must not toggle the section")
 	}
 }
@@ -111,16 +111,16 @@ func TestSidebarSectionHeaderHeldPressNeverRepeats(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
 	toggles := 0
-	prev := g.sidebar.sectionOpen["grp"]
+	prev := g.sidebar.sectionOpen[secGrp]
 	for i := 0; i < 6; i++ {
 		g.sidebar.HandleInput(cx, cy, true)
-		if g.sidebar.sectionOpen["grp"] != prev {
+		if g.sidebar.sectionOpen[secGrp] != prev {
 			toggles++
-			prev = g.sidebar.sectionOpen["grp"]
+			prev = g.sidebar.sectionOpen[secGrp]
 		}
 	}
 	g.sidebar.HandleInput(cx, cy, false)
-	if g.sidebar.sectionOpen["grp"] != prev {
+	if g.sidebar.sectionOpen[secGrp] != prev {
 		toggles++
 	}
 
@@ -147,19 +147,19 @@ func TestSidebarSectionHeaderClickTogglesExactlyOnce(t *testing.T) {
 		cx, cy := secHeaderCenter(t, g, aID)
 
 		holdClick(g, cx, cy, hold, false)
-		if !g.sidebar.sectionOpen["grp"] {
+		if !g.sidebar.sectionOpen[secGrp] {
 			t.Fatalf("hold=%d: one click must expand the section (got collapsed)", hold)
 		}
 
 		g.sidebar.layout()
-		r, ok := g.sidebar.rects["sec-grp"]
+		r, ok := g.sidebar.rects[sbSectionHeader(secGrp)]
 		if !ok || r.Empty() {
 			t.Fatalf("hold=%d: sec-grp rect missing after expand (rects=%v)", hold, g.sidebar.rects)
 		}
 		cx2, cy2 := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 
 		holdClick(g, cx2, cy2, hold, false)
-		if g.sidebar.sectionOpen["grp"] {
+		if g.sidebar.sectionOpen[secGrp] {
 			t.Fatalf("hold=%d: a second click must collapse it again (got expanded)", hold)
 		}
 	}

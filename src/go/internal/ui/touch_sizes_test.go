@@ -84,8 +84,8 @@ func TestExpandHitAreaMobile(t *testing.T) {
 }
 
 func TestPopupSizingDesktop(t *testing.T) {
-	if PopupPanelW() <= 0 {
-		t.Errorf("PopupPanelW() = %d, want > 0", PopupPanelW())
+	if menuWEditor() <= 0 {
+		t.Errorf("menuWEditor() = %d, want > 0", menuWEditor())
 	}
 	if PopupBtnW() <= 0 {
 		t.Errorf("PopupBtnW() = %d, want > 0", PopupBtnW())
@@ -122,8 +122,8 @@ func TestPopupSizingDesktop(t *testing.T) {
 func TestPopupSizingMobile(t *testing.T) {
 	withSmallScreen(t, true)
 
-	if PopupPanelW() <= 0 {
-		t.Errorf("PopupPanelW() = %d, want > 0", PopupPanelW())
+	if menuWEditor() <= 0 {
+		t.Errorf("menuWEditor() = %d, want > 0", menuWEditor())
 	}
 	if PopupBtnW() <= 0 {
 		t.Errorf("PopupBtnW() = %d, want > 0", PopupBtnW())
@@ -159,11 +159,11 @@ func TestPopupSizingMobile(t *testing.T) {
 
 // TestMobileTransportButtons_AtTouchMin is a 44 px touch-target ratchet
 // for every transport button placed by the mobile layout. After B3
-// (single-row toolbar + bottom action bar) every mobile button meets
-// the DESIGN.md floor *except* recordBtn, which is intentionally
-// demoted (see body comment + recordDemoteInsetMobile). New
-// exceptions go into `knownBelowMin` with a citation; the dual-direction
-// assertion below also fails if a fixed button is left listed.
+// (single-row toolbar + bottom action bar) — and after the record button's
+// geometric demote was removed — every mobile transport button meets the
+// DESIGN.md floor, so `knownBelowMin` is empty. New exceptions go in there
+// with a citation; the dual-direction assertion below also fails if a fixed
+// button is left listed.
 func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 	withSmallScreen(t, true)
 	logger := testLogger
@@ -200,14 +200,11 @@ func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 	// After B3 (single-row toolbar + bottom action bar), play/stop/subdiv
 	// and the BPM stepper now occupy the full mobile header row (≥ 56 px)
 	// and vol-icon / view-switch / overflow live in the 44 px bottom action
-	// bar — all hit the floor. recordBtn remains intentionally demoted on
-	// mobile (B12 critique: shrink-by-recordDemoteInsetMobile so the red
-	// dot doesn't sit at equal visual weight with play/stop and invite
-	// accidental record mid-jam). Hit-test still spans the full cell via
-	// ExpandHitArea.
-	knownBelowMin := map[string]bool{
-		"recordBtn": true,
-	}
+	// bar — all hit the floor. recordBtn joined them once its geometric
+	// demote was removed (it left a seam above the button; its lower visual
+	// weight is carried by tone instead — see
+	// TestTransportRecordMatchesPlayStopBounds).
+	knownBelowMin := map[string]bool{}
 	for _, b := range all {
 		r := b.rect()
 		if r.Empty() {

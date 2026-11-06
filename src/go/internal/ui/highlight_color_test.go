@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestNodeHighlightUsesRowColor(t *testing.T) {
@@ -16,8 +17,8 @@ func TestNodeHighlightUsesRowColor(t *testing.T) {
 	assertDefaultParityState(t)
 	g.Layout(640, 480)
 	g.pendingStartRow = -1
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 	rowColor := color.RGBA{10, 120, 200, 255}
 	g.drum.SetRowColor(0, rowColor)
 	start := g.start
@@ -66,8 +67,8 @@ func TestGridPaneSilentNodeUsesOwnColorHighlight(t *testing.T) {
 	assertDefaultParityState(t)
 	g.Layout(640, 480)
 	g.pendingStartRow = -1
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 	rowColor := color.RGBA{10, 120, 200, 255}
 	g.drum.SetRowColor(0, rowColor)
 	start := g.start
@@ -117,8 +118,8 @@ func TestTimelineHighlightUsesWhiteFlash(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(640, 480)
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 	rowColor := color.RGBA{80, 40, 180, 255}
 	g.drum.SetRowColor(0, rowColor)
 	g.drum.SetLength(1)

@@ -2,43 +2,49 @@
 
 package audio
 
-import "syscall/js"
+import (
+	"encoding/binary"
+	"math"
+	"syscall/js"
 
-func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+)
+
+// SetChannelEQ hands the channel's EQ program (BuildEQProgram — the same Go
+// code desktop runs) to the beatmo-dsp worklet, which runs it through the same
+// C (mix_dsp.c). An empty band list clears the EQ.
+func SetChannelEQ(id channel.ID, sampleRate int, bands ...EQBand) {
+	channelEQWrites.Add(1)
+	if id.IsZero() {
+		return // names no channel: never "" to JS, which reads it as the master bus
+	}
 	fn := js.Global().Get("setChannelEQ")
 	if !fn.Truthy() {
 		return
 	}
 	recordChannelEQ(id, eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)})
-	arr := js.Global().Get("Array").New()
-	for _, b := range bands {
-		obj := js.Global().Get("Object").New()
-		obj.Set("freq", b.Freq)
-		obj.Set("q", b.Q)
-		obj.Set("gainDB", b.GainDB)
-		obj.Set("muted", b.Muted)
-		switch b.Kind {
-		case EQLowShelf:
-			obj.Set("type", "lowshelf")
-		case EQHighShelf:
-			obj.Set("type", "highshelf")
-		case EQLowpass:
-			obj.Set("type", "lowpass")
-		case EQHighpass:
-			obj.Set("type", "highpass")
-		default:
-			obj.Set("type", "peaking")
-		}
-		arr.Call("push", obj)
+	if len(bands) == 0 {
+		fn.Invoke(id.String(), js.Null())
+		return
 	}
-	fn.Invoke(id, arr)
+	fn.Invoke(id.String(), float64sToJS(BuildEQProgram(sampleRate, bands)))
 }
 
-func ClearChannelProcessors(id string) {
+func ClearChannelProcessors(id channel.ID) {
 	SetChannelEQ(id, 0)
 }
 
-// NewEQProcessor is a no-op on WASM since EQ is handled by WebAudio.
 func NewEQProcessor(sampleRate int, bands ...EQBand) Processor {
 	return &passThrough{}
+}
+
+// float64sToJS copies xs into a new Float64Array.
+func float64sToJS(xs []float64) js.Value {
+	raw := make([]byte, 8*len(xs))
+	for i, x := range xs {
+		binary.LittleEndian.PutUint64(raw[8*i:], math.Float64bits(x))
+	}
+	f64 := js.Global().Get("Float64Array").New(len(xs))
+	js.CopyBytesToJS(js.Global().Get("Uint8Array").New(f64.Get("buffer")), raw)
+	return f64
 }

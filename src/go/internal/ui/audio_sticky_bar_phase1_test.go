@@ -31,38 +31,3 @@ func TestHzToNote(t *testing.T) {
 		}
 	}
 }
-
-// TestFormatSlopeLabel pins the chip-label format used by the slope
-// pill so screenshot baselines stay stable.
-func TestFormatSlopeLabel(t *testing.T) {
-	cases := []struct {
-		v    float64
-		want string
-	}{
-		{0, "0 dB/oct"},
-		{3, "3 dB/oct"},
-		{4.5, "4.5 dB/oct"},
-	}
-	for _, c := range cases {
-		if got := formatSlopeLabel(c.v); got != c.want {
-			t.Errorf("formatSlopeLabel(%g) = %q want %q", c.v, got, c.want)
-		}
-	}
-}
-
-// TestSlopePillFitsLabel asserts the slope pill is sized to fit its full
-// label (no truncation) for every slope option — the pill width must be at
-// least TextWidth(label) so the unit ("dB/oct") never reads as cut off.
-func TestSlopePillFitsLabel(t *testing.T) {
-	for _, v := range []float64{0, 3, 4.5} {
-		label := formatSlopeLabel(v)
-		// Layout sizes the pill as TextWidth(label)+10, clamped to >=44.
-		pillW := TextWidth(label) + 10
-		if pillW < 44 {
-			pillW = 44
-		}
-		if pillW < TextWidth(label) {
-			t.Errorf("slope pill width %d < label width %d for %q", pillW, TextWidth(label), label)
-		}
-	}
-}

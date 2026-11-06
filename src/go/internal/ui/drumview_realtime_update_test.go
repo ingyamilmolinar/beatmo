@@ -9,6 +9,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -18,8 +20,8 @@ import (
 func TestDrumView_InstrumentChangeDuringShiftRebuildsRowCache(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "kick", Name: "Kick", Category: "Drums"},
-		{ID: "snare", Name: "Snare", Category: "Drums"},
+		{ID: roster.Kick, Name: "Kick", Group: "Drums"},
+		{ID: roster.Snare, Name: "Snare", Group: "Drums"},
 	})
 
 	dv := NewDrumView(image.Rect(0, 0, 480, 240), nil, logger)
@@ -56,14 +58,14 @@ func TestDrumView_InstrumentChangeDuringShiftRebuildsRowCache(t *testing.T) {
 	nextID := ""
 	for _, id := range dv.instOptions {
 		if id != "" && id != dv.Rows[0].Instrument {
-			nextID = id
+			nextID = string(id)
 			break
 		}
 	}
 	if nextID == "" {
 		t.Fatalf("no alternate instrument available")
 	}
-	dv.SetInstrument(nextID)
+	dv.SetInstrument(instrument.ID(nextID))
 
 	dv.Draw(dst, nil, 0, nil, 0)
 	if dv.rowCacheGen[0] == gen0 {

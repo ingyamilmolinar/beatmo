@@ -77,12 +77,12 @@ func TestSliderThumb_DrawsCoreCircle(t *testing.T) {
 	}
 	foundCore := false
 	for _, c := range calls {
-		if c.Filled && c.Radius == 12 {
+		if c.Filled && c.Radius == radiusCapsule && c.Rect.Dx() == 24 && c.Rect.Dy() == 24 {
 			foundCore = true
 		}
 	}
 	if !foundCore {
-		t.Fatalf("expected a filled core with radius 12, got %+v", calls)
+		t.Fatalf("expected a filled 24x24 capsule core (a circle), got %+v", calls)
 	}
 }
 

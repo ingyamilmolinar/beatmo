@@ -4,7 +4,7 @@ import "sort"
 
 // BuildGraph runs both analysis passes and joins them into one ordered model.
 func BuildGraph(cfg Config) (*Graph, error) {
-	pkgMap, err := AnalyzeMetrics(cfg.Root, cfg.Module)
+	pkgMap, err := AnalyzeMetrics(cfg)
 	if err != nil {
 		return nil, err
 	}

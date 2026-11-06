@@ -7,12 +7,13 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
 // Result holds the outcome of a Match call.
 type Result struct {
-	InstID    string
+	InstID    instrument.ID
 	Params    map[string]float64 // best tuned params (the tuned keys only)
 	StartLoss float64
 	BestLoss  float64
@@ -26,7 +27,7 @@ type Result struct {
 // SpecForInstrument(instID) with `restarts` seeded random restarts, bounded by
 // `budget` total evaluations. Deterministic for a given (instID, ref, budget,
 // restarts). Returns an error if the instrument has no spec or fails to render.
-func Match(instID string, ref wave.Wave, budget, restarts int) (Result, error) {
+func Match(instID instrument.ID, ref wave.Wave, budget, restarts int) (Result, error) {
 	// Step 1: get spec and validate keys.
 	spec, ok := SpecForInstrument(instID)
 	if !ok {
@@ -68,9 +69,8 @@ func Match(instID string, ref wave.Wave, budget, restarts int) (Result, error) {
 		pitch = 12 * math.Log2(f0/baseF0)
 	}
 
-	// Build merged defaults for the start point.
-	recipeID := audio.RecipeForInstrument(instID)
-	mergedDefaults := audio.MergeRecipeDefaults(recipeID, audio.GetInstrumentParams(instID))
+	// The instrument document's values are the start point.
+	mergedDefaults := audio.MergedInstrumentParamsRO(instID)
 
 	params := spec.Params
 	n := len(params)

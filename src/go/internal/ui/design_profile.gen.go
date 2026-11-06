@@ -28,6 +28,11 @@ type profileValues struct {
 	GrabZone              int // profileOverrides.grabZone
 	HeaderMaxH            int // profileOverrides.headerMaxH
 	HeaderMinH            int // profileOverrides.headerMinH
+	MenuWActionMax        int // profileOverrides.menuWActionMax
+	MenuWActionMin        int // profileOverrides.menuWActionMin
+	MenuWEditor           int // profileOverrides.menuWEditor
+	MenuWList             int // profileOverrides.menuWList
+	MenuWWideMax          int // profileOverrides.menuWWideMax
 	MinCellWidth          int // profileOverrides.minCellWidth
 	MinTarget             int // profileOverrides.minTarget
 	NodeMaxPx             int // profileOverrides.nodeMaxPx
@@ -37,7 +42,6 @@ type profileValues struct {
 	PopupCornerRadius     int // profileOverrides.popupCornerRadius
 	PopupGap              int // profileOverrides.popupGap
 	PopupPad              int // profileOverrides.popupPad
-	PopupPanelW           int // profileOverrides.popupPanelW
 	PopupSectionGap       int // profileOverrides.popupSectionGap
 	RowControlBtnSize     int // profileOverrides.rowControlBtnSize
 	RowHeight             int // profileOverrides.rowHeight
@@ -72,6 +76,11 @@ var (
 		GrabZone:              5,
 		HeaderMaxH:            40,
 		HeaderMinH:            40,
+		MenuWActionMax:        240,
+		MenuWActionMin:        160,
+		MenuWEditor:           360,
+		MenuWList:             300,
+		MenuWWideMax:          960,
 		MinCellWidth:          2,
 		MinTarget:             0,
 		NodeMaxPx:             16,
@@ -81,7 +90,6 @@ var (
 		PopupCornerRadius:     12,
 		PopupGap:              4,
 		PopupPad:              6,
-		PopupPanelW:           220,
 		PopupSectionGap:       4,
 		RowControlBtnSize:     28,
 		RowHeight:             36,
@@ -114,6 +122,11 @@ var (
 		GrabZone:              16,
 		HeaderMaxH:            56,
 		HeaderMinH:            56,
+		MenuWActionMax:        240,
+		MenuWActionMin:        160,
+		MenuWEditor:           360,
+		MenuWList:             300,
+		MenuWWideMax:          960,
 		MinCellWidth:          2,
 		MinTarget:             44,
 		NodeMaxPx:             20,
@@ -123,7 +136,6 @@ var (
 		PopupCornerRadius:     16,
 		PopupGap:              6,
 		PopupPad:              10,
-		PopupPanelW:           300,
 		PopupSectionGap:       8,
 		RowControlBtnSize:     36,
 		RowHeight:             44,

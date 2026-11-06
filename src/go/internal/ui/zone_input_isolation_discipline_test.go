@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // zoneInputIsolationCases enumerates every Zone that renders an opaque
@@ -255,11 +257,11 @@ func TestTabIsolation_SwitchResetsTransientState(t *testing.T) {
 
 			dv.setViewMode(viewModeSampler)
 			advanceFrames(g, 2)
-			dv.sampler.loadFromInstrument("kick", []float32{0.1, -0.2, 0.3, -0.4}, 48000, samplerSourceSynth)
+			dv.sampler.loadFromInstrument(roster.Kick, []float32{0.1, -0.2, 0.3, -0.4}, 48000, samplerSourceSynth)
 			// Stack every transient overlay a real Sampler session can hold:
 			// the Save-As dialog, a full-screen modal portal, and the channel
 			// dropdown. All must be gone after the switch.
-			dv.openSamplerSaveAsDialog()
+			dv.samplerSaveAs()
 			dv.openNamingPortal()
 			openChannelDropdownForTest(dv)
 			if dv.saveAsDialog == nil {
@@ -296,8 +298,8 @@ func TestResetTransientTabState_TearsDownEveryOpener(t *testing.T) {
 		{"naming-modal", viewModeRows, func(dv *DrumView) { dv.openNamingPortal() }, func(dv *DrumView) bool { return dv.IsNamingOpen() }},
 		{"channel-dropdown", viewModeEQ, openChannelDropdownForTest, func(dv *DrumView) bool { return dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen() }},
 		{"save-as-dialog", viewModeSampler, func(dv *DrumView) {
-			dv.sampler.loadFromInstrument("kick", []float32{0.1, -0.2, 0.3}, 48000, samplerSourceSynth)
-			dv.openSamplerSaveAsDialog()
+			dv.sampler.loadFromInstrument(roster.Kick, []float32{0.1, -0.2, 0.3}, 48000, samplerSourceSynth)
+			dv.samplerSaveAs()
 		}, func(dv *DrumView) bool { return dv.saveAsDialog != nil }},
 	}
 

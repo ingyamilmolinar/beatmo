@@ -420,13 +420,13 @@ func TestMobileToDesktopLenButtonStylesResetToDesktop(t *testing.T) {
 		t.Fatalf("lenIncBtn.Style after transition: got=%+v want=LenIncStyle (%+v)",
 			dv.lenIncBtn.Style, LenIncStyle)
 	}
-	if !colorsEqualTest(dv.lenDecBtn.IconColor, colIncDecIcon) {
-		t.Fatalf("lenDecBtn.IconColor after transition: got=%v want=colIncDecIcon (%v)",
-			dv.lenDecBtn.IconColor, colIncDecIcon)
+	if !colorsEqualTest(dv.lenDecBtn.IconColor, colTextSecondary) {
+		t.Fatalf("lenDecBtn.IconColor after transition: got=%v want=colTextSecondary (%v)",
+			dv.lenDecBtn.IconColor, colTextSecondary)
 	}
-	if !colorsEqualTest(dv.lenIncBtn.IconColor, colIncDecIcon) {
-		t.Fatalf("lenIncBtn.IconColor after transition: got=%v want=colIncDecIcon (%v)",
-			dv.lenIncBtn.IconColor, colIncDecIcon)
+	if !colorsEqualTest(dv.lenIncBtn.IconColor, colTextSecondary) {
+		t.Fatalf("lenIncBtn.IconColor after transition: got=%v want=colTextSecondary (%v)",
+			dv.lenIncBtn.IconColor, colTextSecondary)
 	}
 }
 

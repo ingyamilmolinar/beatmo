@@ -1,4 +1,4 @@
-//go:build test || js
+//go:build test
 
 package audio
 

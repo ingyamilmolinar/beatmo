@@ -85,7 +85,7 @@ func TestDrumView_FutureLogicChangeResetsLiveCounts(t *testing.T) {
 	// Change logic so node b should now fire only every other trigger.
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(b.ID, p)
 	}

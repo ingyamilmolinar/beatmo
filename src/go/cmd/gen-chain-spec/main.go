@@ -1,11 +1,8 @@
 //go:build !test && !js
 
-// gen-chain-spec emits src/js/chain_spec.gen.js from the canonical
-// CanonicalChainSpec declared in internal/audio (chain_spec.go). It is the
-// single source of truth for the post-voice master/mix chain configuration
-// (compressor params, soft-clip threshold, per-voice headroom, target sample
-// rate) that desktop (Go/C) and browser (WebAudio) must share so the platforms
-// sound the same.
+// gen-chain-spec emits src/js/chain_spec.gen.js from CanonicalChainSpec
+// (internal/audio/chain_spec.go): every value the audio path between a voice
+// and the speaker uses on both platforms.
 //
 // Usage:
 //
@@ -18,7 +15,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
@@ -40,23 +39,25 @@ func generate() []byte {
 	buf.WriteString("// Source of truth: src/go/internal/audio/chain_spec.go\n")
 	buf.WriteString("// Regenerate: cd src/go && go run ./cmd/gen-chain-spec > ../js/chain_spec.gen.js\n")
 	buf.WriteString("//\n")
-	buf.WriteString("// The post-voice master/mix chain is implemented twice — Go/C on desktop,\n")
-	buf.WriteString("// WebAudio nodes in audio.js. These constants keep both configured identically\n")
-	buf.WriteString("// so the same instrument sounds the same on both platforms. audio.js reads\n")
-	buf.WriteString("// them in ensureCompressor + ensureLimiter; chain_spec_parity.browser.test.js\n")
-	buf.WriteString("// asserts the live WebAudio nodes match these values.\n")
-	buf.WriteString("\n")
-	buf.WriteString("// Master compressor. NOTE: audio.js DynamicsCompressorNode takes attack/\n")
-	buf.WriteString("// release in SECONDS — divide the *Ms values by 1000.\n")
+	buf.WriteString("// Every value the audio path between a voice and the speaker uses on both\n")
+	buf.WriteString("// platforms. The DSP is one implementation (the C engine, run by desktop and\n")
+	buf.WriteString("// by the beatmo-dsp worklet); these are the only numbers the two could\n")
+	buf.WriteString("// disagree on. Times are milliseconds.\n")
 	buf.WriteString("export const CHAIN_SPEC = Object.freeze({\n")
-	fmt.Fprintf(&buf, "  compressorThresholdDb: %s,\n", formatFloat(s.CompressorThresholdDB))
-	fmt.Fprintf(&buf, "  compressorRatio: %s,\n", formatFloat(s.CompressorRatio))
-	fmt.Fprintf(&buf, "  compressorAttackMs: %s,\n", formatFloat(s.CompressorAttackMs))
-	fmt.Fprintf(&buf, "  compressorReleaseMs: %s,\n", formatFloat(s.CompressorReleaseMs))
-	fmt.Fprintf(&buf, "  compressorKneeDb: %s,\n", formatFloat(s.CompressorKneeDB))
+	fmt.Fprintf(&buf, "  sampleRate: %d,\n", s.SampleRate)
 	fmt.Fprintf(&buf, "  softClipThreshold: %s,\n", formatFloat(s.SoftClipThreshold))
 	fmt.Fprintf(&buf, "  voiceHeadroom: %s,\n", formatFloat(s.VoiceHeadroom))
-	fmt.Fprintf(&buf, "  targetSampleRate: %d,\n", s.TargetSampleRate)
+	fmt.Fprintf(&buf, "  fadeInMs: %s,\n", formatFloat(s.FadeInMs))
+	fmt.Fprintf(&buf, "  stopFadeMs: %s,\n", formatFloat(s.StopFadeMs))
+	fmt.Fprintf(&buf, "  gateFadeMs: %s,\n", formatFloat(s.GateFadeMs))
+	fmt.Fprintf(&buf, "  maxMasterVolume: %s,\n", formatFloat(s.MaxMasterVolume))
+	fmt.Fprintf(&buf, "  releaseQuietDB: %s,\n", formatFloat(s.ReleaseQuietDB))
+	fmt.Fprintf(&buf, "  releaseHoldMs: %s,\n", formatFloat(s.ReleaseHoldMs))
+	buf.WriteString("  effectMemoryMs: Object.freeze({\n")
+	for _, k := range slices.Sorted(maps.Keys(s.EffectMemoryMs)) {
+		fmt.Fprintf(&buf, "    %s: %s,\n", k, formatFloat(s.EffectMemoryMs[k]))
+	}
+	buf.WriteString("  }),\n")
 	buf.WriteString("});\n")
 	return buf.Bytes()
 }

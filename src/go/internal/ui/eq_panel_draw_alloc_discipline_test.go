@@ -18,6 +18,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // perTabAllocBudget caps allocations per Draw call. Numbers calibrated
@@ -45,8 +46,17 @@ var perTabAllocBudget = map[PanelTab]float64{
 	// and reuses spectrumCurveColScratch; with the per-pixel solid dB
 	// gridlines fixed and drawRect alloc-free, the whole tab sits near the
 	// other heavy tabs instead of 4× above them.
-	TabSpectrum: 1320, // baseline 1012 (was 1763 → 7010 after Phase 1 curve → 1012 post-pass)
-	TabEQ:       180,  // baseline 136 (was 213 pre-pass)
+	//
+	// Re-baselined 1012 -> 176 by the static-chrome sprite cache
+	// (spectrumGridSprite / spectrumLabelsSprite, render_spectrum.go). The dB
+	// grid, Hz ticks, bracket strip and note anchors depend only on geometry,
+	// palette and locale — never on audio — but were repainted every frame,
+	// the dashed gridlines at one drawRect PER DASH (~832 of the tab's 1032
+	// per-frame blits). Spectrum was the one data tab whose cost did not fall
+	// between analyzer ticks, so it paid in full on every frame and starved
+	// the sequencer goroutine on the single WASM thread. Cap = baseline x 1.3.
+	TabSpectrum: 229, // baseline 176 (was 1012 pre-chrome-cache; 7010 after Phase 1 curve)
+	TabEQ:       180, // baseline 136 (was 213 pre-pass)
 	// TabScope (Chain): 6 stage cards + meters + A/B trace.
 	TabScope: 740, // baseline 566 (was 1087 pre-pass)
 	// TabSynth: header + pipeline chip strip (9 chips + connector wires) +
@@ -66,7 +76,12 @@ var perTabAllocBudget = map[PanelTab]float64{
 	// adds one alloc). The fill colors are fixed package vars served from
 	// pixelCache (no per-column COLOR alloc), but the extra rects themselves
 	// are the cost. Cap = baseline 921 x 1.3 ~= 1198.
-	TabSynth: 1198, // baseline 921 (was 536 pre-synthwave-fill; 239 pre-caption-pass)
+	//
+	// Re-baselined 921 -> 78 on 2026-10-25: the model-drawn previews and the
+	// per-knob mini-graphs are gone; the graph is ONE cached sprite of
+	// measured audio redrawn only when its renders change, and its glow a
+	// baked layer blitted with a ColorScale. Cap = baseline 78 x 1.3 ~= 102.
+	TabSynth: 102, // baseline 78 (921 with the model-drawn previews)
 	// TabSampler: honest NO-SAMPLE baseline 100 (header + banner). The
 	// loaded-sample waveform trace (per-column rects, like Wave) is not
 	// exercised by this stubbed harness; keep Wave-magnitude headroom for it
@@ -105,7 +120,7 @@ func TestEQPanelDrawAllocDiscipline(t *testing.T) {
 		}
 		return &analyzer.State{
 			Master: analyzer.ChannelMetrics{
-				ID: "main", Name: "Master", PeakDB: -6, RMSDB: -12, Active: true,
+				ID: channel.Master, Name: "Master", PeakDB: -6, RMSDB: -12, Active: true,
 				FFTBins: fft, FreqBins: freq, Waveform: wave,
 			},
 		}
@@ -113,7 +128,7 @@ func TestEQPanelDrawAllocDiscipline(t *testing.T) {
 	stubScalar := func() *analyzer.State {
 		return &analyzer.State{
 			Master: analyzer.ChannelMetrics{
-				ID: "main", Name: "Master", PeakDB: -6, RMSDB: -12, Active: true,
+				ID: channel.Master, Name: "Master", PeakDB: -6, RMSDB: -12, Active: true,
 			},
 		}
 	}

@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // mockBlockProcessor implements both Processor and BlockProcessor.
@@ -32,7 +35,7 @@ func (m *mockSampleOnlyProcessor) ProcessSample(x float64) float64 {
 
 func TestProcessBlockLocalAllBlockProcessors(t *testing.T) {
 	withDefaultAudio(t)
-	ch := newChannel("bp-all-block", nil)
+	ch := newChannel(channel.Of("bp-all-block"), nil)
 	ch.SetVolume(1.0)
 	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
@@ -57,7 +60,7 @@ func TestProcessBlockLocalAllBlockProcessors(t *testing.T) {
 
 func TestProcessBlockLocalMixedProcessors(t *testing.T) {
 	withDefaultAudio(t)
-	ch := newChannel("bp-mixed", nil)
+	ch := newChannel(channel.Of("bp-mixed"), nil)
 	ch.SetVolume(1.0)
 	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
@@ -82,7 +85,7 @@ func TestProcessBlockLocalMixedProcessors(t *testing.T) {
 
 func TestProcessBlockLocalNoProcessors(t *testing.T) {
 	withDefaultAudio(t)
-	ch := newChannel("bp-none", nil)
+	ch := newChannel(channel.Of("bp-none"), nil)
 	ch.SetVolume(0.75)
 	ch.replaceProcessors(nil, nil)
 
@@ -129,10 +132,10 @@ func TestBlockBufPoolMultipleBuffers(t *testing.T) {
 func TestProcessBlockLocalPreEQAnalyzerTap(t *testing.T) {
 	withDefaultAudio(t)
 	id := "bp-preeq"
-	_ = InstrumentChannel(id)
-	an := EnablePreEQAnalyzer(id, 64)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
+	an := EnablePreEQAnalyzer(channel.Of(instrument.ID(id)), 64)
 
-	ch := chanMgr.ensureChannel(id)
+	ch := chanMgr.ensureChannel(channel.Of(instrument.ID(id)))
 	ch.SetVolume(0.5)
 
 	input := make([]float64, 64)
@@ -160,7 +163,7 @@ func TestProcessBlockLocalPingPongCorrectness(t *testing.T) {
 	}
 
 	// Block path: all BlockProcessors
-	chBlock := newChannel("pp-block", nil)
+	chBlock := newChannel(channel.Of("pp-block"), nil)
 	chBlock.SetVolume(1.0)
 	chBlock.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.6},
@@ -170,7 +173,7 @@ func TestProcessBlockLocalPingPongCorrectness(t *testing.T) {
 	chBlock.ProcessBlockLocal(input, outBlock)
 
 	// Per-sample path: all sample-only processors with same gains
-	chSample := newChannel("pp-sample", nil)
+	chSample := newChannel(channel.Of("pp-sample"), nil)
 	chSample.SetVolume(1.0)
 	chSample.replaceProcessors(nil, []Processor{
 		&mockSampleOnlyProcessor{gain: 0.6},
@@ -189,7 +192,7 @@ func TestProcessBlockLocalPingPongCorrectness(t *testing.T) {
 
 func TestPassThroughImplementsBlockProcessor(t *testing.T) {
 	withDefaultAudio(t)
-	ch := newChannel("bp-passthrough", nil)
+	ch := newChannel(channel.Of("bp-passthrough"), nil)
 	ch.SetVolume(1.0)
 	pt := &passThrough{}
 	ch.replaceProcessors(nil, []Processor{
@@ -222,11 +225,11 @@ func TestPassThroughImplementsBlockProcessor(t *testing.T) {
 func TestAnalyzerImplementsBlockProcessor(t *testing.T) {
 	withDefaultAudio(t)
 	id := "bp-analyzer"
-	_ = InstrumentChannel(id)
-	an := EnableChannelAnalyzer(id, 64)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
+	an := EnableChannelAnalyzer(channel.Of(instrument.ID(id)), 64)
 
 	// Add a block-capable processor alongside the analyzer.
-	ch := chanMgr.ensureChannel(id)
+	ch := chanMgr.ensureChannel(channel.Of(instrument.ID(id)))
 	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
 		an,
@@ -265,8 +268,8 @@ func TestAnalyzerImplementsBlockProcessor(t *testing.T) {
 func TestAnalyzerDisabledSkipsCompute(t *testing.T) {
 	withDefaultAudio(t)
 	id := "bp-analyzer-disabled"
-	_ = InstrumentChannel(id)
-	an := EnableChannelAnalyzer(id, 64)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
+	an := EnableChannelAnalyzer(channel.Of(instrument.ID(id)), 64)
 
 	// Disable the analyzer.
 	an.SetEnabled(false)
@@ -274,7 +277,7 @@ func TestAnalyzerDisabledSkipsCompute(t *testing.T) {
 		t.Fatal("Enabled() should return false after SetEnabled(false)")
 	}
 
-	ch := chanMgr.ensureChannel(id)
+	ch := chanMgr.ensureChannel(channel.Of(instrument.ID(id)))
 	ch.SetVolume(1.0)
 	ch.replaceProcessors(nil, []Processor{an})
 
@@ -312,9 +315,9 @@ func TestAnalyzerDisabledSkipsCompute(t *testing.T) {
 func TestSetAnalyzerEnabledPackageLevel(t *testing.T) {
 	withDefaultAudio(t)
 	id := "bp-analyzer-pkg"
-	_ = InstrumentChannel(id)
-	an := EnableChannelAnalyzer(id, 64)
-	pre := EnablePreEQAnalyzer(id, 64)
+	_ = InstrumentChannel(channel.Of(instrument.ID(id)))
+	an := EnableChannelAnalyzer(channel.Of(instrument.ID(id)), 64)
+	pre := EnablePreEQAnalyzer(channel.Of(instrument.ID(id)), 64)
 
 	// Both should start enabled.
 	if !an.Enabled() || !pre.Enabled() {
@@ -322,13 +325,13 @@ func TestSetAnalyzerEnabledPackageLevel(t *testing.T) {
 	}
 
 	// Disable via package-level API.
-	SetAnalyzerEnabled(id, false)
+	SetAnalyzerEnabled(channel.Of(instrument.ID(id)), false)
 	if an.Enabled() || pre.Enabled() {
 		t.Error("SetAnalyzerEnabled(false) should disable both analyzers")
 	}
 
 	// Re-enable.
-	SetAnalyzerEnabled(id, true)
+	SetAnalyzerEnabled(channel.Of(instrument.ID(id)), true)
 	if !an.Enabled() || !pre.Enabled() {
 		t.Error("SetAnalyzerEnabled(true) should re-enable both analyzers")
 	}
@@ -336,7 +339,7 @@ func TestSetAnalyzerEnabledPackageLevel(t *testing.T) {
 
 func TestProcessBlockLocalOddBlockSize(t *testing.T) {
 	withDefaultAudio(t)
-	ch := newChannel("bp-odd", nil)
+	ch := newChannel(channel.Of("bp-odd"), nil)
 	ch.SetVolume(1.0)
 	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 2.0},

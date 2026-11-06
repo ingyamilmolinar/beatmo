@@ -145,6 +145,28 @@ type RuntimeProfile struct {
 	// can legitimately schedule before the grid boundary.
 	MinDispatchLeadSec float64
 
+	// Audio lane (docs/superpowers/specs/2026-10-02-audio-lane-scheduling-
+	// horizon-design.md): commit audio up to AudioHorizonSec ahead of the
+	// playhead and reconcile it on edits, so a main-thread stall shorter than
+	// the horizon is inaudible.
+	//   AudioLaneEnabled        lane on; false = legacy grid-time dispatch
+	//   AudioHorizonSec         commit window H
+	//   AudioOffsetSec          constant audio offset vs the grid (AV relation)
+	//   CancelGuardSec          a note this close to its start counts as started
+	//   LateToleranceSec        a never-committed note this late still plays
+	//   LaneFullReconcileSec    safety-net full reconcile period
+	//   LaneVoiceRecommitMinSec min spacing of voice-revision (knob-drag) recommits
+	//   LaneVoiceNearSec        a voice-only edit re-commits this window at once; the
+	//                           rest of the horizon as it comes near (0 = all of it)
+	AudioLaneEnabled        bool
+	AudioHorizonSec         float64
+	AudioOffsetSec          float64
+	CancelGuardSec          float64
+	LateToleranceSec        float64
+	LaneFullReconcileSec    float64
+	LaneVoiceRecommitMinSec float64
+	LaneVoiceNearSec        float64
+
 	// Loop tuning.
 	AudioBatchMax       int // max events per audio loop iteration
 	SequencerTickMS     int // sequencer goroutine cooperative tick
@@ -233,9 +255,11 @@ type RuntimeProfile struct {
 	// buys nothing.
 	ForceGCInterval time.Duration
 
-	// VoiceCacheBudgetBytes is the hard ceiling on retained rendered-voice
-	// buffers in audio's globalVoiceCache (LRU eviction beyond it). Bounds RAM
-	// so predictive neighborhood warming can mint many keys without OOM/hoarding.
+	// VoiceCacheBudgetBytes is the ceiling on retained rendered-voice buffers
+	// (LRU eviction beyond it): audio's globalVoiceCache on desktop, audio.js's
+	// renderCache in the browser, where the renders of instruments a row plays
+	// (and of voices scheduled or playing) are never evicted. Bounds RAM so
+	// predictive neighborhood warming and menu auditions cannot hoard.
 	// Wired to audio.SetVoiceCacheBudgetBytes at startup.
 	VoiceCacheBudgetBytes int64
 
@@ -244,6 +268,14 @@ type RuntimeProfile struct {
 	// one-tick edit lands on a warm cache. 1 = warm the immediate neighbors;
 	// 0 disables neighborhood warming (exact values only).
 	PredictiveWarmTicks int
+
+	// PrewarmWorkers is the audio.prewarm pool's worker count. It is the
+	// gated warm-up's wall-clock divisor: the measured desktop warm set is
+	// ~1.4 s of serial CGo for 96 pairs, so 4 workers put a cold import
+	// under the ~600 ms target. Browser keeps 1 — Go goroutines do not
+	// parallelise on js/wasm (NumCPU()==1); the browser parallelises in its
+	// own render-worker pool instead (see audio.js).
+	PrewarmWorkers int
 }
 
 var activeRuntimeProfile *RuntimeProfile
@@ -282,8 +314,16 @@ func browserRuntimeProfile() *RuntimeProfile {
 		TimelineInfoThrottleMS:             0,     // unified with desktop after Phase F sweep
 		AudioLookaheadSec:                  0.06,  // 60ms cushion; 2026-06 re-sweep showed overdue=0/smallLead=0 at 0.06 over 60s incl. forced-GC cycles, with adaptive +0.05 headroom and the dispatch floor absorbing Stage-B tails (bench-results/audio_lookahead_resweep_2026-06.md)
 		MinDispatchLeadSec:                 0.012, // 8ms Go-side clamp + ~4ms Go→JS PlayBatch crossing — keeps JS-observed minLead positive
-		AudioBatchMax:                      32,    // Phase F: 256 regressed drawAvg 25% — keep
-		SequencerTickMS:                    4,     // Phase F: 1ms tick regressed fps 19% — keep
+		AudioLaneEnabled:                   true,  // A/B 2026-10-02 (bench-results/audio_lane_ab_after_2026-10-02.md): arrivedLate 0 / late>20ms 0 in idle, stall-150/300, tab-synth, pan-storm, edits vs legacy 25-69 / 17-49; IOI p95 5-9.5 ms vs 76-287 ms
+		AudioHorizonSec:                    1.0,   // headless software-GL frames 0.4-0.6 s (1.1 s under load) + an injected 300 ms stall (bench-results/audio_lane_ab_before_2026-10-02.md); edit latency does not depend on H
+		AudioOffsetSec:                     0.06,  // = AudioLookaheadSec: keeps today's AV relationship in steady state
+		CancelGuardSec:                     0.008, // > one 128-frame render quantum (2.7 ms) + start() delivery: a source closer than this may already be rendering
+		LateToleranceSec:                   0.025,
+		LaneFullReconcileSec:               0.25,
+		LaneVoiceRecommitMinSec:            0.03,
+		LaneVoiceNearSec:                   0.25,  // = the desktop horizon. A whole-horizon (1 s) re-commit per knob-drag tick was ~3000 WebAudio voice starts/s in webaudio_all_knob_bpm_stress (2026-10-28 CPU profile), near-due replacements queuing 3-24 ms behind far ones
+		AudioBatchMax:                      32, // Phase F: 256 regressed drawAvg 25% — keep
+		SequencerTickMS:                    4,  // Phase F: 1ms tick regressed fps 19% — keep
 		ParityScanMinPeriod:                8,
 		AdaptivePanPad:                     true, // Phase F: disabling regressed drawAvg 23%
 		FastPanDetect:                      true, // Phase F: same — load-bearing
@@ -304,6 +344,7 @@ func browserRuntimeProfile() *RuntimeProfile {
 		ForceGCInterval:                    10 * time.Second, // working-set trim (33 vs 43 MB), sub-2ms pauses, overdue 0 — see field doc + bench-results/gc_tuning_2026-07.md
 		VoiceCacheBudgetBytes:              24 << 20,         // 24 MB: tighter on browser (single 2 GB WASM heap ceiling)
 		PredictiveWarmTicks:                1,
+		PrewarmWorkers:                     1, // js/wasm is single-threaded; parallelism lives in audio.js workers
 		// Timing-gate tolerances; see plan Task 1.2. Looser than desktop and
 		// log-only by default: JS event-loop scheduling + Go→JS bridge
 		// crossing add jitter native desktop doesn't have. Starting values
@@ -347,7 +388,14 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		// 20ms base could not absorb. 120 BPM was already clean at 0.02; 0.06
 		// absorbs the measured transient envelope at every benched tempo.
 		AudioLookaheadSec:          0.06,
-		MinDispatchLeadSec:         0,   // no Go→JS bridge on desktop; audio.Now() is the engine clock, so no dispatch-time floor is needed
+		MinDispatchLeadSec:         0,    // no Go→JS bridge on desktop; audio.Now() is the engine clock, so no dispatch-time floor is needed
+		AudioLaneEnabled:           true, // same code path as the browser (one lane, both platforms); browser A/B: bench-results/audio_lane_ab_after_2026-10-02.md
+		AudioHorizonSec:            0.25, // desktop draws on its own goroutine; 0.25 s covers the measured 34-55 ms full-core goroutine wake-up transients with margin
+		AudioOffsetSec:             0.06,
+		CancelGuardSec:             0.003, // one 64-sample mixer block (1.45 ms) + the 10 ms oto buffer is drained per Read, so 3 ms keeps a margin over a block
+		LateToleranceSec:           0.025,
+		LaneFullReconcileSec:       0.25,
+		LaneVoiceRecommitMinSec:    0.03,
 		AudioBatchMax:              256, // desktop default
 		SequencerTickMS:            1,   // dedicated 1ms goroutine
 		ParityScanMinPeriod:        1,
@@ -370,6 +418,7 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		ForceGCInterval:            0,        // off: desktop GC has its own scheduler thread
 		VoiceCacheBudgetBytes:      48 << 20, // 48 MB retained-voice ceiling (see field doc)
 		PredictiveWarmTicks:        1,
+		PrewarmWorkers:             4, // 96-pair warm set: 1.42s serial → ~0.4s (measured 2026-09-13)
 		// Timing-gate tolerances; see plan Task 1.2. Tight + enforced: no
 		// Go→JS bridge, dedicated 1ms sequencer tick. Starting values pending
 		// bench tuning (bench-results/).

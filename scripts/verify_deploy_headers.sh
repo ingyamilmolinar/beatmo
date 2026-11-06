@@ -40,14 +40,28 @@ ENTRY_FILES=(
   "synth_param_abi.gen.js"
 )
 ASSET_FILES=(
+  "landing.js"
+  "landing_crystal.js"
   "audio.js"
   "wasm_exec.js"
   "drums.single.js"
   "recording_capture_worklet.js"
   "recording_encoder_worker.js"
 )
+# The deploy renames main.wasm to its content hash and stamps that name into
+# index.html, so read it from there (falls back to main.wasm).
+WASM_NAME="$(curl --silent --compressed --location --max-time 20 "${URL}/" 2>/dev/null | grep -o 'main\.[0-9a-f]\{16\}\.wasm' | head -n1)"
 WASM_FILES=(
-  "main.wasm"
+  "${WASM_NAME:-main.wasm}"
+)
+# The landing's media: stored UNcompressed (gzip would break video Range requests).
+MEDIA_FILES=(
+  "landing/desktop.mp4"
+  "landing/desktop.webp"
+  "landing/desktop.vtt"
+  "landing/phone.mp4"
+  "landing/phone.webp"
+  "landing/phone.vtt"
 )
 
 ERRORS=()
@@ -57,6 +71,9 @@ expected_content_type() {
     *.html) echo "text/html" ;;
     *.wasm) echo "application/wasm" ;;
     *.js)   echo "application/javascript" ;;
+    *.mp4)  echo "video/mp4" ;;
+    *.webp) echo "image/webp" ;;
+    *.vtt)  echo "text/vtt" ;;
     *)      echo "" ;;
   esac
 }
@@ -114,9 +131,20 @@ check_one() {
   # gzip-encoded (Content-Encoding: gzip) and carry no-transform so GCS does
   # not decompressively transcode the gzipped object -- transcoding strips
   # Content-Length and breaks WebAssembly.instantiateStreaming on main.wasm.
-  if [[ "$ce" != *"gzip"* ]]; then
-    ERRORS+=("${rel}: Content-Encoding must be 'gzip', got '${ce:-<missing>}'")
-  fi
+  case "$rel" in
+    *.wasm)
+      if [[ "$ce" != *"gzip"* && "$ce" != *"br"* ]]; then
+        ERRORS+=("${rel}: Content-Encoding must be 'br' or 'gzip', got '${ce:-<missing>}'")
+      fi ;;
+    landing/*)
+      if [[ -n "$ce" ]]; then
+        ERRORS+=("${rel}: media must be stored uncompressed (Range requests), got Content-Encoding '${ce}'")
+      fi ;;
+    *)
+      if [[ "$ce" != *"gzip"* ]]; then
+        ERRORS+=("${rel}: Content-Encoding must be 'gzip', got '${ce:-<missing>}'")
+      fi ;;
+  esac
   if [[ "$cc" != *"no-transform"* ]]; then
     ERRORS+=("${rel}: Cache-Control must contain 'no-transform' to prevent GCS decompressive transcoding, got '${cc:-<missing>}'")
   fi
@@ -125,9 +153,9 @@ check_one() {
 }
 
 echo "[verify] Target: ${URL}"
-echo "[verify] Probing ${#ENTRY_FILES[@]} entry files, ${#ASSET_FILES[@]} asset files, ${#WASM_FILES[@]} wasm file(s)..."
+echo "[verify] Probing ${#ENTRY_FILES[@]} entry files, ${#ASSET_FILES[@]} asset files, ${#WASM_FILES[@]} wasm file(s), ${#MEDIA_FILES[@]} media files..."
 
-for f in "${ENTRY_FILES[@]}" "${ASSET_FILES[@]}" "${WASM_FILES[@]}"; do
+for f in "${ENTRY_FILES[@]}" "${ASSET_FILES[@]}" "${WASM_FILES[@]}" "${MEDIA_FILES[@]}"; do
   check_one "$f"
 done
 

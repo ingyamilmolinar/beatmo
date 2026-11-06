@@ -4,13 +4,16 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // pickVisibleInstrument selects the visible instrument row whose id == want by
 // driving a full press+release through dv.Update() (the production input loop),
 // mirroring a real desktop mouse click on a menu row. Returns false if the id
 // is not currently visible in the menu.
-func pickVisibleInstrument(t *testing.T, dv *DrumView, comp *InstrumentMenuComponent, want string, w, h int) bool {
+func pickVisibleInstrument(t *testing.T, dv *DrumView, comp *InstrumentMenuComponent, want instrument.ID, w, h int) bool {
 	t.Helper()
 	ids := comp.VisibleInstIDs()
 	btns := comp.InstBtns()
@@ -52,7 +55,7 @@ func TestInstMenuRepeatedSelectionRegistersEveryClick(t *testing.T) {
 	// Sequence revisits instruments so each row button is clicked more than
 	// once within a single open session. "kick", "snare", "tom" all share the
 	// first (Drums) category that openInstMenuInstrumentsMode lands on.
-	seq := []string{"snare", "tom", "kick", "snare", "tom", "kick", "snare"}
+	seq := []instrument.ID{roster.Snare, roster.Tom, roster.Kick, roster.Snare, roster.Tom, roster.Kick, roster.Snare}
 	for step, want := range seq {
 		if comp.Mode() != InstMenuModeInstruments {
 			t.Fatalf("step %d (%q): menu left instruments mode (%v)", step, want, comp.Mode())
@@ -81,7 +84,7 @@ func TestInstMenuRepeatedSelectionMobile(t *testing.T) {
 	dv, cx, cy := newCategoryDrumView(t, W, H)
 	comp := openInstMenuInstrumentsMode(t, dv, cx, cy, W, H)
 
-	seq := []string{"snare", "tom", "kick", "snare", "tom"}
+	seq := []instrument.ID{roster.Snare, roster.Tom, roster.Kick, roster.Snare, roster.Tom}
 	for step, want := range seq {
 		if comp.Mode() != InstMenuModeInstruments {
 			t.Fatalf("step %d (%q): menu left instruments mode (%v)", step, want, comp.Mode())

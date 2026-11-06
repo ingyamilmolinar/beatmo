@@ -2,7 +2,12 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // The channel pill must always agree with what the panel content is
 // actually editing. On the Synth/Sampler tabs a "main" (Master) channel
@@ -20,10 +25,10 @@ func TestChannelPillFollowsSynthTabResolution(t *testing.T) {
 		t.Fatal("expected a default row")
 	}
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 
 	z := dv.eqPanelZone
-	z.SetActiveChannel("main")
+	z.SetActiveChannel(channel.Master)
 	z.SetActiveTab(TabSynth)
 	z.refreshChannelPillLabel()
 
@@ -42,18 +47,18 @@ func TestChannelPillShowsRowNameNotRawID(t *testing.T) {
 	g.Layout(1280, 720)
 	dv := g.drum
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 
 	z := dv.eqPanelZone
 	z.SetActiveTab(TabEQ)
 
-	z.SetActiveChannel("main")
+	z.SetActiveChannel(channel.Master)
 	z.refreshChannelPillLabel()
 	if got := z.stickyBar.ChannelBtn().Text; got != "Master" {
 		t.Fatalf("EQ tab on Master: pill = %q, want %q", got, "Master")
 	}
 
-	z.SetActiveChannel("kick")
+	z.SetActiveChannel(channel.Of(roster.Kick))
 	z.refreshChannelPillLabel()
 	if got := z.stickyBar.ChannelBtn().Text; got != "Kick" {
 		t.Fatalf("EQ tab on kick: pill = %q, want row name %q", got, "Kick")

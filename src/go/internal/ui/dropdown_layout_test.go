@@ -12,9 +12,9 @@ import (
 func TestInstrumentDropdownNoEmptySpacer(t *testing.T) {
 	logger := testLogger
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "kick-long-name-1", Name: "Kick Long Name One", Category: "Kick Drums (WAV)", Source: "wav"},
-		{ID: "kick-long-name-2", Name: "Kick Long Name Two", Category: "Kick Drums (WAV)", Source: "wav"},
-		{ID: "kick-long-name-3", Name: "Kick Long Name Three", Category: "Kick Drums (WAV)", Source: "wav"},
+		{ID: "kick-long-name-1", Name: "Kick Long Name One", Group: "Kick Drums (WAV)", Source: audio.SourceWAV},
+		{ID: "kick-long-name-2", Name: "Kick Long Name Two", Group: "Kick Drums (WAV)", Source: audio.SourceWAV},
+		{ID: "kick-long-name-3", Name: "Kick Long Name Three", Group: "Kick Drums (WAV)", Source: audio.SourceWAV},
 	})
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 420, 260), graph, logger)

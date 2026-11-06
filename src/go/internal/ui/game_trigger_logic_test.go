@@ -177,7 +177,7 @@ func TestSeqShouldTriggerNode_EveryN(t *testing.T) {
 	// Set every_n_triggers with N=3.
 	if nd, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := nd.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -224,7 +224,7 @@ func TestSeqShouldTriggerNode_SkipEveryN(t *testing.T) {
 	// Set skip_every_n with N=2.
 	if nd, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := nd.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -276,7 +276,7 @@ func TestSeqShouldTriggerNode_Probability(t *testing.T) {
 	t.Run("p=0 never triggers", func(t *testing.T) {
 		if nd, ok := g.graph.GetNodeByID(a.ID); ok {
 			p := nd.Params
-			p.LogicKind = "probability"
+			p.LogicKind = model.LogicProbability
 			p.LogicP = 0
 			g.graph.SetNodeParams(a.ID, p)
 		}
@@ -291,7 +291,7 @@ func TestSeqShouldTriggerNode_Probability(t *testing.T) {
 	t.Run("p=1 always triggers", func(t *testing.T) {
 		if nd, ok := g.graph.GetNodeByID(a.ID); ok {
 			p := nd.Params
-			p.LogicKind = "probability"
+			p.LogicKind = model.LogicProbability
 			p.LogicP = 1
 			g.graph.SetNodeParams(a.ID, p)
 		}
@@ -306,7 +306,7 @@ func TestSeqShouldTriggerNode_Probability(t *testing.T) {
 	t.Run("p=0.5 deterministic based on hash", func(t *testing.T) {
 		if nd, ok := g.graph.GetNodeByID(a.ID); ok {
 			p := nd.Params
-			p.LogicKind = "probability"
+			p.LogicKind = model.LogicProbability
 			p.LogicP = 0.5
 			g.graph.SetNodeParams(a.ID, p)
 		}
@@ -529,7 +529,7 @@ func TestSeqShouldTriggerNode_EveryN_Mute(t *testing.T) {
 	// Set every_n_triggers with N=2 on a mute node.
 	if nd, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := nd.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(a.ID, p)
 	}

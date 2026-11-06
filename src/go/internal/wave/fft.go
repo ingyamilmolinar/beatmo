@@ -3,6 +3,7 @@ package wave
 import (
 	"math"
 	"math/cmplx"
+	"sync"
 )
 
 // nextPow2 returns the smallest power of 2 >= n.
@@ -26,31 +27,68 @@ func fft(buf []complex128) {
 	}
 
 	// Bit-reversal permutation.
-	bits := 0
-	for m := n; m > 1; m >>= 1 {
-		bits++
-	}
-	for i := 0; i < n; i++ {
-		j := bitReverse(i, bits)
-		if j > i {
-			buf[i], buf[j] = buf[j], buf[i]
-		}
+	for _, sw := range bitReversalSwaps(n) {
+		buf[sw[0]], buf[sw[1]] = buf[sw[1]], buf[sw[0]]
 	}
 
 	// Butterfly stages.
 	for size := 2; size <= n; size <<= 1 {
 		half := size / 2
-		wn := -2.0 * math.Pi / float64(size)
+		tw := stageTwiddles(size)
 		for start := 0; start < n; start += size {
 			for k := 0; k < half; k++ {
-				twiddle := cmplx.Rect(1, wn*float64(k))
 				even := buf[start+k]
-				odd := buf[start+k+half] * twiddle
+				odd := buf[start+k+half] * tw[k]
 				buf[start+k] = even + odd
 				buf[start+k+half] = even - odd
 			}
 		}
 	}
+}
+
+// twiddleCache holds each butterfly stage's twiddles (keyed by stage size),
+// computed once. Recomputing one cmplx.Rect per butterfly made Sincos ~45 %
+// of every spectral analysis. The values are produced by the SAME expression
+// the loop used, so the transform is bit-identical
+// (TestCachedFFTIsBitIdentical): the audio-tab digests compare raw bits.
+var twiddleCache sync.Map // int -> []complex128
+
+func stageTwiddles(size int) []complex128 {
+	if v, ok := twiddleCache.Load(size); ok {
+		return v.([]complex128)
+	}
+	half := size / 2
+	wn := -2.0 * math.Pi / float64(size)
+	tw := make([]complex128, half)
+	for k := 0; k < half; k++ {
+		tw[k] = cmplx.Rect(1, wn*float64(k))
+	}
+	v, _ := twiddleCache.LoadOrStore(size, tw)
+	return v.([]complex128)
+}
+
+// swapCache holds each size's bit-reversal permutation as the (i, j > i)
+// pairs it swaps, computed once: reversing every index's bits on every
+// transform was a fifth of the FFT's time. Same swaps, same order, so the
+// transform is unchanged bit for bit (TestCachedFFTIsBitIdentical).
+var swapCache sync.Map // int -> [][2]int32
+
+func bitReversalSwaps(n int) [][2]int32 {
+	if v, ok := swapCache.Load(n); ok {
+		return v.([][2]int32)
+	}
+	bits := 0
+	for m := n; m > 1; m >>= 1 {
+		bits++
+	}
+	var sw [][2]int32
+	for i := 0; i < n; i++ {
+		if j := bitReverse(i, bits); j > i {
+			sw = append(sw, [2]int32{int32(i), int32(j)})
+		}
+	}
+	v, _ := swapCache.LoadOrStore(n, sw)
+	return v.([][2]int32)
 }
 
 // bitReverse reverses the lowest `bits` bits of v.
@@ -78,12 +116,13 @@ func MagnitudeSpectrum(w Wave, fftSize int, window WindowType) (mag []float64, b
 	if sr == 0 {
 		sr = sr44100Default
 	}
-	seg := make([]float64, n)
-	copy(seg, w.Samples) // from the start; truncates if longer, zero-pads if shorter
-	applyWindowInPlace(seg, window)
+	// Window straight into the transform buffer, from the start: truncates
+	// if longer, zero-pads if shorter. Each product is the one
+	// applyWindowInPlace forms, so the spectrum is unchanged bit for bit.
 	buf := make([]complex128, n)
-	for i, s := range seg {
-		buf[i] = complex(s, 0)
+	coeffs := windowCoeffs(n, window)
+	for i, s := range w.Samples[:min(n, len(w.Samples))] {
+		buf[i] = complex(s*coeffs[i], 0)
 	}
 	fft(buf)
 	numBins := n/2 + 1
@@ -166,3 +205,12 @@ func (o *fftObserver) Observe(w Wave) Observation {
 
 // sr44100Default is the fallback sample rate when Wave.SampleRate is 0.
 const sr44100Default = 44100
+
+// FFT is the in-place radix-2 transform behind MagnitudeSpectrum, exported for
+// analysis that runs many frames and reuses one buffer (internal/soundview).
+// len(buf) must be a power of two.
+func FFT(buf []complex128) { fft(buf) }
+
+// HannWindow returns the cached n-point Hann window MagnitudeSpectrum applies
+// (shared and read-only: callers must not write to it).
+func HannWindow(n int) []float64 { return windowCoeffs(n, WindowHann) }

@@ -8,10 +8,14 @@ import (
 )
 
 // NavPanelCallbacks wires NavigationPanel's read-only state accessors and
-// control actions to the owning component (the overflow menu's NAVIGATION
-// section). All fields are optional; nil accessors/actions are treated as
-// no-ops so the panel can be exercised in isolation (tests).
+// control actions to the owning component (the navigation menu). All fields are
+// optional; nil accessors/actions are treated as no-ops so the panel can be
+// exercised in isolation (tests).
 type NavPanelCallbacks struct {
+	// Position is the transport's resolved playhead sample, the ONLY source
+	// for the panel's position title. PlayheadStep is the 0-based absolute
+	// subdivision step the go-to wheel opens at.
+	Position      func() PlayheadPos
 	PlayheadStep  func() int
 	BPM           func() int
 	Div           func() int
@@ -22,33 +26,58 @@ type NavPanelCallbacks struct {
 	OnNext        func()
 	OnPickAmount  func()
 	OnToggleUnit  func()
-	OnGotoBeat    func()
-	OnGotoTime    func()
+	// OnGotoPreview shows (on) or clears (!on) the timeline ghost marking the
+	// go-to wheel's pending position. Scrolling never seeks.
+	OnGotoPreview func(steps int, on bool)
+	// OnGoto seeks to an absolute subdivision step (Go / Enter / centre click).
+	OnGoto func(steps int)
 }
 
-// NavigationPanel is a self-contained component rendered as the reserved top
-// band of the sectioned overflow ("Options") menu. It reuses the app's design-
-// system controls so it matches every other menu/panel: a jog row of styled
-// DropdownStyle keycaps (prev · ×N amount · next), a SegmentedControl for the
-// Beats/Subdiv unit, and two drawMenuRow rows ("Go to beat" / "Go to time")
-// identical in chrome to the File-section rows below it. It owns no navigation
-// logic — every action is delegated via NavPanelCallbacks.
+// NavigationPanel is the body of the navigation menu (opened from the beat
+// counter). Top to bottom: a jog row of DropdownStyle keycaps (prev · ×N amount
+// · next), a Beats/Subdiv SegmentedControl for the jump unit, then the GO TO
+// section — a Beat|Time SegmentedControl, the shared ValueWheel scrolling the
+// pending position, and a footer with the secondary readout and the primary Go
+// button. It owns no seek logic: every action is delegated via
+// NavPanelCallbacks. The wheel PREVIEWS (OnGotoPreview) and only Go seeks.
 type NavigationPanel struct {
 	cb      NavPanelCallbacks
 	rect    image.Rectangle
 	readout image.Rectangle
+	// HideReadout skips painting row 1: the owning menu's MenuCard title band
+	// shows the readout instead (the row keeps its height for geometry).
+	HideReadout bool
+	// SharedJogRow puts the jog cluster and the Beats/Subdiv toggle on ONE row
+	// (the desktop card is wide enough), so the card fits under the timeline
+	// ribbon it drops onto and never covers the go-to ghost there.
+	SharedJogRow bool
 
 	prevBtn   *Button
 	amountBtn *Button
 	nextBtn   *Button
 	unitSeg   *SegmentedControl
-	gotoBeat  *Button
-	gotoTime  *Button
 
-	// segArmed latches the SegmentedControl press so a held pointer fires its
-	// tap exactly once (SegmentedControl.HitTest has no edge detection of its
-	// own, and the menu re-delivers pressed==true every frame while held).
-	segArmed bool
+	// GO TO section.
+	modeSeg     *SegmentedControl // 0 = Beat, 1 = Time
+	goBtn       *Button
+	wheel       ValueWheel
+	beatModel   *NumberModel // absolute subdivision steps
+	timeModel   *NumberModel // whole seconds
+	timeMode    bool
+	seated      bool
+	seatedDiv   int
+	seatedMax   int
+	previewing  bool
+	captionRect image.Rectangle
+	wheelRect   image.Rectangle
+	footerRect  image.Rectangle
+
+	// segArmed / modeArmed latch a SegmentedControl press so a held pointer
+	// fires its tap exactly once (SegmentedControl.HitTest has no edge
+	// detection of its own, and the menu re-delivers pressed==true every frame
+	// while held).
+	segArmed  bool
+	modeArmed bool
 }
 
 // SetCallbacks assigns (or reassigns) the panel's callbacks. Controls are
@@ -74,8 +103,10 @@ func (p *NavigationPanel) SetCallbacks(cb NavPanelCallbacks) {
 				p.call(p.cb.OnToggleUnit)
 			}
 		})
-		p.gotoBeat = NewButton("", nil, func() { p.call(p.cb.OnGotoBeat) })
-		p.gotoTime = NewButton("", nil, func() { p.call(p.cb.OnGotoTime) })
+		p.modeSeg = NewSegmentedControl([]string{"Beat", "Time"}, 0, func(i int) {
+			p.SetTimeMode(i == 1)
+		})
+		p.goBtn = NewSpecButton("Go", ComponentButtonPrimary, func() { p.Go() })
 	}
 }
 
@@ -85,12 +116,32 @@ func (p *NavigationPanel) call(f func()) {
 	}
 }
 
-// PanelHeight returns the band's fixed total height: readout + jog row + unit
-// row + go-to-beat row + go-to-time row, each touchMinTargetPx tall.
-func (p *NavigationPanel) PanelHeight() int { return 5 * touchMinTargetPx }
+// PanelHeight returns the panel's fixed total height: readout + jog row + unit
+// row (shared with the jog row when SharedJogRow) + GO TO header + the wheel +
+// the footer.
+func (p *NavigationPanel) PanelHeight() int {
+	rows := 5
+	if p.SharedJogRow {
+		rows = 4
+	}
+	return rows*touchMinTargetPx + gotoWheelHeight()
+}
 
-// Layout positions the five rows top-to-bottom inside rect and refreshes the
-// live amount label + unit selection from the source of truth.
+// gotoWheelRows is how many value rows the go-to wheel shows (DESIGN.md menu
+// sizing: wheels show five rows).
+const gotoWheelRows = 5
+
+// gotoWheelHeight is the wheel's height: five row pitches plus a vertical inset.
+func gotoWheelHeight() int {
+	gap := Profile().DensityValues().MobileWheelTickGap
+	if gap <= 0 {
+		gap = 34
+	}
+	return gotoWheelRows*gap + 2*SpaceSM
+}
+
+// Layout positions the rows top-to-bottom inside rect and refreshes the live
+// amount label + unit selection from the source of truth.
 func (p *NavigationPanel) Layout(rect image.Rectangle) {
 	p.rect = rect
 	rowH := touchMinTargetPx
@@ -102,9 +153,32 @@ func (p *NavigationPanel) Layout(rect image.Rectangle) {
 	p.readout = image.Rect(x0, y, x0+w, y+rowH)
 	y += rowH
 
+	if p.SharedJogRow && p.prevBtn != nil {
+		// Row 2 (shared) — jog cluster left, Beats/Subdiv toggle right.
+		sq := rowH - 2*SpaceSM
+		amtW := 2 * sq
+		gx, gy := x0+SpaceMD, y+SpaceSM
+		p.prevBtn.SetRect(image.Rect(gx, gy, gx+sq, gy+sq))
+		ax := gx + sq + SpaceSM
+		p.amountBtn.SetRect(image.Rect(ax, gy, ax+amtW, gy+sq))
+		nx := ax + amtW + SpaceSM
+		p.nextBtn.SetRect(image.Rect(nx, gy, nx+sq, gy+sq))
+		if p.unitSeg != nil {
+			p.unitSeg.SetRect(image.Rect(nx+sq+SpaceMD, gy, x0+w-SpaceMD, gy+sq))
+		}
+		y += rowH
+	} else {
+		y = p.layoutJogRows(x0, y, w, rowH)
+	}
+	p.layoutGoto(x0, y, w, rowH)
+}
+
+// layoutJogRows lays the jog cluster and the unit toggle on two rows (the
+// mobile sheet). Returns the y below them.
+func (p *NavigationPanel) layoutJogRows(x0, y, w, rowH int) int {
 	// Row 2 — jog: [◀◀] [ ×N ] [▶▶] as a CENTERED cluster (bounded, not edge-to-
-	// edge) so it reads as a unit on both the narrow desktop popup and the wide
-	// mobile sheet, and never collides with the close-× (which is row 1 only).
+	// edge) so it reads as a unit on the wide mobile sheet, and never collides
+	// with the close-× (which is row 1 only).
 	if p.prevBtn != nil {
 		sq := rowH - 2*SpaceSM // square keycap, vertically inset
 		amtW := 3 * sq         // amount pill width; clamped to fit narrow popups
@@ -126,15 +200,31 @@ func (p *NavigationPanel) Layout(rect image.Rectangle) {
 	if p.unitSeg != nil {
 		p.unitSeg.SetRect(image.Rect(x0+SpaceMD, y+SpaceSM, x0+w-SpaceMD, y+rowH-SpaceSM))
 	}
-	y += rowH
+	return y + rowH
+}
 
-	// Rows 4 & 5 — full-width menu rows (drawn via drawMenuRow in Draw).
-	if p.gotoBeat != nil {
-		p.gotoBeat.SetRect(image.Rect(x0, y, x0+w, y+rowH))
+// layoutGoto lays the GO TO section from y down and refreshes the live labels.
+func (p *NavigationPanel) layoutGoto(x0, y, w, rowH int) {
+	// GO TO header: section caption left, Beat|Time tabs right.
+	p.captionRect = image.Rect(x0+SpaceMD, y, x0+w/2, y+rowH)
+	if p.modeSeg != nil {
+		segW := w / 2
+		if segW > 180 {
+			segW = 180
+		}
+		p.modeSeg.SetRect(image.Rect(x0+w-SpaceMD-segW, y+SpaceSM, x0+w-SpaceMD, y+rowH-SpaceSM))
 	}
 	y += rowH
-	if p.gotoTime != nil {
-		p.gotoTime.SetRect(image.Rect(x0, y, x0+w, y+rowH))
+
+	// The wheel (barrel + step ladder).
+	p.wheelRect = image.Rect(x0+SpaceMD, y, x0+w-SpaceMD, y+gotoWheelHeight())
+	y += gotoWheelHeight()
+
+	// Footer: secondary readout left, primary Go right.
+	p.footerRect = image.Rect(x0+SpaceMD, y, x0+w-SpaceMD, y+rowH)
+	if p.goBtn != nil {
+		goW := 2 * rowH
+		p.goBtn.SetRect(image.Rect(p.footerRect.Max.X-goW, y+SpaceSM, p.footerRect.Max.X, y+rowH-SpaceSM))
 	}
 
 	// Live labels reflecting the current jump amount + unit.
@@ -148,25 +238,204 @@ func (p *NavigationPanel) Layout(rect image.Rectangle) {
 			p.unitSeg.SetActive(1)
 		}
 	}
+	if p.modeSeg != nil {
+		if p.timeMode {
+			p.modeSeg.SetActive(1)
+		} else {
+			p.modeSeg.SetActive(0)
+		}
+	}
+	p.syncGotoModels()
+	p.wheel.Layout(p.wheelRect)
 }
 
-// GotoBeatRect / GotoTimeRect / AmountRect expose control bounds so the owning
-// DrumView can anchor the shared position editor / jump-size picker over the
-// control that triggered it (replaces index-based Buttons() lookups).
-func (p *NavigationPanel) GotoBeatRect() image.Rectangle {
-	if p.gotoBeat == nil {
+// ── GO TO ────────────────────────────────────────────────────────────────
+
+func (p *NavigationPanel) div() int {
+	if p.cb.Div != nil {
+		if d := p.cb.Div(); d > 0 {
+			return d
+		}
+	}
+	return 1
+}
+
+func (p *NavigationPanel) bpm() int {
+	if p.cb.BPM != nil {
+		if b := p.cb.BPM(); b > 0 {
+			return b
+		}
+	}
+	return 120
+}
+
+func (p *NavigationPanel) maxSteps() int {
+	beats := 0
+	if p.cb.TimelineBeats != nil {
+		beats = p.cb.TimelineBeats()
+	}
+	if beats < 0 {
+		beats = 0
+	}
+	return beats * p.div()
+}
+
+// ResetGoto seats the go-to wheel on the current playhead (called when the
+// menu opens). The chosen mode and step rungs are kept for the session.
+func (p *NavigationPanel) ResetGoto() {
+	p.seated = false
+	p.syncGotoModels()
+}
+
+// syncGotoModels (re)builds the models when the panel is unseated or the
+// subdivision changed, and follows timeline-length changes by clamping.
+func (p *NavigationPanel) syncGotoModels() {
+	div, maxSteps := p.div(), p.maxSteps()
+	if !p.seated || div != p.seatedDiv {
+		start := 0
+		if p.cb.PlayheadStep != nil {
+			start = p.cb.PlayheadStep()
+		}
+		p.seatAt(start, div, maxSteps)
+		return
+	}
+	if maxSteps != p.seatedMax {
+		before := p.PendingSteps()
+		p.seatedMax = maxSteps
+		p.beatModel.Max = float64(maxSteps)
+		p.beatModel.Value = p.beatModel.clamp(p.beatModel.Value)
+		p.timeModel.Max = float64(gotoStepsToSeconds(maxSteps, div, p.bpm()))
+		p.timeModel.Value = p.timeModel.clamp(p.timeModel.Value)
+		if p.previewing && p.PendingSteps() != before {
+			p.preview()
+		}
+	}
+}
+
+// seatAt rebuilds both models around steps, keeping each model's chosen rung.
+func (p *NavigationPanel) seatAt(steps, div, maxSteps int) {
+	beatRung, timeRung := -1, -1
+	if p.beatModel != nil && p.seatedDiv == div {
+		beatRung = p.beatModel.Rung
+	}
+	if p.timeModel != nil {
+		timeRung = p.timeModel.Rung
+	}
+	bpm := p.bpm()
+	p.beatModel = newGotoBeatModel(div, maxSteps, steps)
+	p.timeModel = newGotoTimeModel(gotoStepsToSeconds(maxSteps, div, bpm), gotoStepsToSeconds(steps, div, bpm))
+	if beatRung >= 0 && beatRung < len(p.beatModel.Ladder) {
+		p.beatModel.Rung = beatRung
+	}
+	if timeRung >= 0 && timeRung < len(p.timeModel.Ladder) {
+		p.timeModel.Rung = timeRung
+	}
+	p.seated, p.seatedDiv, p.seatedMax = true, div, maxSteps
+	p.bindWheel()
+}
+
+func (p *NavigationPanel) activeModel() *NumberModel {
+	if p.timeMode {
+		return p.timeModel
+	}
+	return p.beatModel
+}
+
+func (p *NavigationPanel) bindWheel() {
+	p.wheel.Bind(WheelBinding{
+		Model:    p.activeModel(),
+		OnChange: p.preview,
+	})
+	p.wheel.SetConfirm(p.Go)
+	if !p.wheelRect.Empty() {
+		p.wheel.Layout(p.wheelRect)
+	}
+}
+
+// PendingSteps is the absolute subdivision step Go would seek to.
+func (p *NavigationPanel) PendingSteps() int {
+	if p.beatModel == nil {
+		return 0
+	}
+	if p.timeMode {
+		return timeToSteps(p.timeModel.Value, p.bpm(), p.div(), p.maxSteps())
+	}
+	return int(p.beatModel.Value)
+}
+
+func (p *NavigationPanel) preview() {
+	p.previewing = true
+	if p.cb.OnGotoPreview != nil {
+		p.cb.OnGotoPreview(p.PendingSteps(), true)
+	}
+}
+
+// CancelGoto drops the pending position's preview (Esc, tap-away, close).
+func (p *NavigationPanel) CancelGoto() {
+	if p.previewing && p.cb.OnGotoPreview != nil {
+		p.cb.OnGotoPreview(0, false)
+	}
+	p.previewing = false
+}
+
+// Go seeks to the pending position, clears the preview and re-seats the wheel
+// on the new position (the menu stays open, like the jog buttons).
+func (p *NavigationPanel) Go() {
+	if p.beatModel == nil {
+		return
+	}
+	steps := p.PendingSteps()
+	p.CancelGoto()
+	if p.cb.OnGoto != nil {
+		p.cb.OnGoto(steps)
+	}
+	p.seatAt(steps, p.div(), p.maxSteps())
+}
+
+// TimeMode reports whether the wheel scrolls time (M:SS) instead of beats.
+func (p *NavigationPanel) TimeMode() bool { return p.timeMode }
+
+// SetTimeMode switches the wheel between beats and time, CONVERTING the pending
+// position (never resetting it).
+func (p *NavigationPanel) SetTimeMode(on bool) {
+	if on == p.timeMode || p.beatModel == nil {
+		return
+	}
+	steps := p.PendingSteps()
+	p.timeMode = on
+	if on {
+		p.timeModel.Value = p.timeModel.clamp(float64(gotoStepsToSeconds(steps, p.div(), p.bpm())))
+	} else {
+		p.beatModel.Value = p.beatModel.clamp(float64(steps))
+	}
+	p.bindWheel()
+	if p.previewing {
+		p.preview()
+	}
+}
+
+// GotoWheel exposes the go-to ValueWheel (keys, tests).
+func (p *NavigationPanel) GotoWheel() *ValueWheel { return &p.wheel }
+
+// GotoWheelRect / GotoModeRect / GoRect expose the GO TO controls' bounds.
+func (p *NavigationPanel) GotoWheelRect() image.Rectangle { return p.wheelRect }
+
+func (p *NavigationPanel) GotoModeRect() image.Rectangle {
+	if p.modeSeg == nil {
 		return image.Rectangle{}
 	}
-	return p.gotoBeat.Rect()
+	return p.modeSeg.Rect()
 }
 
-func (p *NavigationPanel) GotoTimeRect() image.Rectangle {
-	if p.gotoTime == nil {
+func (p *NavigationPanel) GoRect() image.Rectangle {
+	if p.goBtn == nil {
 		return image.Rectangle{}
 	}
-	return p.gotoTime.Rect()
+	return p.goBtn.Rect()
 }
 
+// AmountRect exposes the jump-amount keycap so the owning DrumView can anchor
+// the jump-size picker over it.
 func (p *NavigationPanel) AmountRect() image.Rectangle {
 	if p.amountBtn == nil {
 		return image.Rectangle{}
@@ -174,33 +443,41 @@ func (p *NavigationPanel) AmountRect() image.Rectangle {
 	return p.amountBtn.Rect()
 }
 
-// Buttons returns the panel's *Button controls (NOT the SegmentedControl) so
-// the overflow menu's hoverFn can drive their hover-glow every frame.
+// Buttons returns the panel's *Button controls (NOT the SegmentedControls) so
+// the owning menu can drive their hover-glow every frame.
 func (p *NavigationPanel) Buttons() []*Button {
-	return []*Button{p.prevBtn, p.amountBtn, p.nextBtn, p.gotoBeat, p.gotoTime}
+	return []*Button{p.prevBtn, p.amountBtn, p.nextBtn, p.goBtn}
 }
 
-// beatOfPlayhead returns the current whole-beat index (playhead step / div).
-func (p *NavigationPanel) beatOfPlayhead() int {
-	if p.cb.PlayheadStep == nil || p.cb.Div == nil {
-		return 0
+// ReadoutText returns the panel's position title exactly as it is drawn
+// ("Beat N · M:SS"), rendered from the transport's resolved PlayheadPos — the
+// same sample the beat counter prints. The panel derives no beat/second values
+// of its own; see PlayheadPos (playhead_position.go).
+func (p *NavigationPanel) ReadoutText() string {
+	if p.cb.Position == nil {
+		return ""
 	}
-	div := p.cb.Div()
-	if div <= 0 {
-		div = 1
+	return formatBeatTime(p.cb.Position())
+}
+
+// gotoSecondaryReadout is the footer text: the OTHER unit of the pending
+// position (time in beat mode, the resolved beat in time mode).
+func (p *NavigationPanel) gotoSecondaryReadout() string {
+	steps := p.PendingSteps()
+	if p.timeMode {
+		return formatGotoBeat(steps, p.div())
 	}
-	return p.cb.PlayheadStep() / div
+	return formatClock(gotoStepsToSeconds(steps, p.div(), p.bpm()))
 }
 
 // Draw renders the position readout, the jog keycaps, the unit segmented
-// control, and the two go-to menu rows (current beat/time as trailing caption).
+// control and the GO TO section.
 func (p *NavigationPanel) Draw(dst *ebiten.Image) {
 	// Row 1 — position readout: leading target icon + "Beat N · M:SS".
-	if p.cb.PlayheadStep != nil && p.cb.Div != nil && p.cb.BPM != nil {
+	if txt := p.ReadoutText(); txt != "" && !p.HideReadout {
 		icSz := IconSizeSM
 		iy := p.readout.Min.Y + (p.readout.Dy()-icSz)/2
 		DrawIcon(dst, IconTarget, image.Rect(p.readout.Min.X+SpaceMD, iy, p.readout.Min.X+SpaceMD+icSz, iy+icSz), colMenuIcon)
-		txt := formatBeatTime(p.cb.PlayheadStep(), p.cb.Div(), p.cb.BPM())
 		th := StyledTextHeight(RolePanelTitle)
 		ty := p.readout.Min.Y + (p.readout.Dy()-th)/2
 		DrawTextStyled(dst, txt, p.readout.Min.X+SpaceMD+icSz+SpaceSM, ty, RolePanelTitle, colTextPrimary)
@@ -213,60 +490,55 @@ func (p *NavigationPanel) Draw(dst *ebiten.Image) {
 	if p.unitSeg != nil {
 		p.unitSeg.Draw(dst)
 	}
-	// Go-to rows: current position shown as the trailing caption, a chevron
-	// signals the row opens an editor — same chrome as the File-section rows.
-	beatTrail := strconv.Itoa(p.beatOfPlayhead())
-	timeTrail := ""
-	if p.cb.PlayheadStep != nil && p.cb.Div != nil && p.cb.BPM != nil {
-		div := p.cb.Div()
-		if div <= 0 {
-			div = 1
-		}
-		bpm := p.cb.BPM()
-		if bpm <= 0 {
-			bpm = 120
-		}
-		timeTrail = formatClock((p.beatOfPlayhead() * 60) / bpm)
+	// GO TO header: hairline divider + uppercase caption + mode tabs.
+	if !p.captionRect.Empty() {
+		drawRect(dst, image.Rect(p.rect.Min.X+SpaceMD, p.captionRect.Min.Y, p.rect.Max.X-SpaceMD, p.captionRect.Min.Y+1),
+			WithAlphaFromColor(TokenBorderSubtle(), AlphaSubtle), true)
+		th := StyledTextHeight(RoleCaption)
+		DrawTextStyled(dst, "GO TO", p.captionRect.Min.X, p.captionRect.Min.Y+(p.captionRect.Dy()-th)/2, RoleCaption, colTextSecondary)
 	}
-	p.drawGotoRow(dst, p.gotoBeat, "Go to beat", beatTrail)
-	p.drawGotoRow(dst, p.gotoTime, "Go to time", timeTrail)
+	if p.modeSeg != nil {
+		p.modeSeg.Draw(dst)
+	}
+	if !p.wheelRect.Empty() && p.beatModel != nil {
+		p.wheel.DrawBody(dst)
+	}
+	if !p.footerRect.Empty() && p.beatModel != nil {
+		th := StyledTextHeight(RoleBody)
+		DrawTextStyled(dst, p.gotoSecondaryReadout(), p.footerRect.Min.X, p.footerRect.Min.Y+(p.footerRect.Dy()-th)/2, RoleBody, colTextSecondary)
+	}
+	if p.goBtn != nil {
+		p.goBtn.Draw(dst)
+	}
 }
 
-func (p *NavigationPanel) drawGotoRow(dst *ebiten.Image, btn *Button, label, trail string) {
-	if btn == nil {
-		return
-	}
-	state := menuItemRest
-	if btn.hovered || btn.pressed {
-		state = menuItemHover
-	}
-	drawMenuRow(dst, btn, MenuRowSpec{
-		Accent:      colAccent,
-		State:       state,
-		Label:       label,
-		TrailLabel:  trail,
-		TrailIconID: IconChevronRight,
-	})
-}
-
-// HandleInput dispatches a pointer event to the unit segmented control (press-
-// edge latched) then to each *Button via Button.HandleInputResult (which owns
-// edge-firing, telemetry, press animation). Returns the first non-Ignored
-// result; InputIgnored when nothing in the band claims the point.
+// HandleInput dispatches a pointer event: a gesture the wheel owns stays with
+// the wheel; otherwise the segmented controls (press-edge latched), the wheel
+// (a press inside it), then each *Button via Button.HandleInputResult. Returns
+// the first non-Ignored result; InputIgnored when nothing claims the point.
 func (p *NavigationPanel) HandleInput(x, y int, pressed bool) InputResult {
-	if p.unitSeg != nil && image.Pt(x, y).In(p.unitSeg.Rect()) {
+	pt := image.Pt(x, y)
+	if p.wheel.IsDraggingAny() {
+		p.wheel.HandleInput(x, y, pressed)
+		return InputConsumed
+	}
+	if seg, armed := p.segAt(pt); seg != nil {
 		if pressed {
-			if !p.segArmed {
-				p.segArmed = true
-				p.unitSeg.HitTest(x, y) // fire the segment tap once, on the press edge
+			if !*armed {
+				*armed = true
+				seg.HitTest(x, y) // fire the segment tap once, on the press edge
 			}
 		} else {
-			p.segArmed = false
+			*armed = false
 		}
 		return InputConsumed
 	}
 	if !pressed {
-		p.segArmed = false
+		p.segArmed, p.modeArmed = false, false
+	}
+	if pressed && p.beatModel != nil && (pt.In(p.wheel.valRect) || pt.In(p.wheel.resRect)) {
+		p.wheel.HandleInput(x, y, true)
+		return InputConsumed
 	}
 	for _, b := range p.Buttons() {
 		if b == nil {
@@ -277,4 +549,24 @@ func (p *NavigationPanel) HandleInput(x, y int, pressed bool) InputResult {
 		}
 	}
 	return InputIgnored
+}
+
+// segAt returns the segmented control under pt and its press latch.
+func (p *NavigationPanel) segAt(pt image.Point) (*SegmentedControl, *bool) {
+	if p.unitSeg != nil && pt.In(p.unitSeg.Rect()) {
+		return p.unitSeg, &p.segArmed
+	}
+	if p.modeSeg != nil && pt.In(p.modeSeg.Rect()) {
+		return p.modeSeg, &p.modeArmed
+	}
+	return nil, nil
+}
+
+// HandleWheel scrolls the go-to wheel when the pointer is over it.
+func (p *NavigationPanel) HandleWheel(x, y, steps int) bool {
+	pt := image.Pt(x, y)
+	if p.beatModel == nil || !(pt.In(p.wheel.valRect) || pt.In(p.wheel.resRect)) {
+		return false
+	}
+	return p.wheel.HandleWheel(x, y, steps)
 }

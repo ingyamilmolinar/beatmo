@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
@@ -45,7 +46,7 @@ func main() {
 		if *inst == "" {
 			fatalf("synth mode requires -inst <instrument id>")
 		}
-		pcm, sr = audio.RenderInstrumentOneShot(*inst)
+		pcm, sr = audio.RenderInstrumentOneShot(instrument.ID(*inst))
 		if len(pcm) == 0 {
 			fatalf("instrument %q rendered no audio (unknown id?)", *inst)
 		}

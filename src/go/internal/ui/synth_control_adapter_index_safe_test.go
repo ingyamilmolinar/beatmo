@@ -2,6 +2,8 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // expandSynthPanelForTest activates the Synth tab and forces the audio panel
@@ -17,13 +19,14 @@ func expandSynthPanelForTest(t *testing.T, g *Game) {
 	g.Layout(640, 480)
 	g.Layout(1280, 720)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	layoutSynthTab(t, g)
 }
 
 // selectSectionForKnobIdx opens the synth detail stage that owns the given
 // knob index (so the knob gets a non-empty, hit-testable rect under the new
 // chip-strip + expand-one-detail-pane layout), then re-lays-out the panel.
 // instID is the row's resolved instrument id (e.g. "snare", "modular").
-func selectSectionForKnobIdx(t *testing.T, g *Game, instID string, knobIdx int) {
+func selectSectionForKnobIdx(t *testing.T, g *Game, instID instrument.ID, knobIdx int) {
 	t.Helper()
 	dv := g.drum
 	owner := synthSectionID(-1)
@@ -42,6 +45,9 @@ func selectSectionForKnobIdx(t *testing.T, g *Game, instID string, knobIdx int) 
 		t.Fatalf("no section owns knob index %d (sections=%v)", knobIdx, dv.instEditorSections)
 	}
 	dv.setSelectedSynthSection(instID, owner)
+	// Fine-tuning knobs sit behind the More expander: open it so every knob of
+	// the stage can acquire a rect.
+	dv.setSynthMoreOpen(dv.resolveSynthInstrument(instID), true)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	// Card-cell layout (Task 3): a stage's later knobs can land on a scrolled-off
 	// row. Compute the target knob's GRID index — which is NOT its position in

@@ -2,7 +2,9 @@ package ui
 
 import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // All helpers in this file capture their caller's source via
@@ -28,7 +30,7 @@ func emitNodeAdded(n *uiNode, t model.NodeType) {
 		ID:   int(n.ID),
 		I:    n.I,
 		J:    n.J,
-		Type: nodeTypeName(t),
+		Type: t,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventNodeAdded)
 }
@@ -36,17 +38,17 @@ func emitNodeAdded(n *uiNode, t model.NodeType) {
 // emitNodeDeleted publishes EventNodeDeleted with the deleted node's
 // last-known coordinates. Called from deleteNodeInternal after the
 // graph mutation completes.
-func emitNodeDeleted(id model.NodeID, i, j int) {
+func emitNodeDeleted(id model.NodeID, i, j int, t model.NodeType) {
 	hooks.PublishWithSource(hooks.EventNodeDeleted, hooks.NodeEdit{
-		ID: int(id), I: i, J: j,
+		ID: int(id), I: i, J: j, Type: t,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventNodeDeleted)
 }
 
 // emitNodeMoved publishes EventNodeMoved on drag-end.
-func emitNodeMoved(id model.NodeID, i, j int) {
+func emitNodeMoved(id model.NodeID, i, j int, t model.NodeType) {
 	hooks.PublishWithSource(hooks.EventNodeMoved, hooks.NodeEdit{
-		ID: int(id), I: i, J: j,
+		ID: int(id), I: i, J: j, Type: t,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventNodeMoved)
 }
@@ -56,8 +58,8 @@ func emitNodeMoved(id model.NodeID, i, j int) {
 func emitNodeTypeChanged(id model.NodeID, oldT, newT model.NodeType) {
 	hooks.PublishWithSource(hooks.EventNodeTypeChanged, hooks.NodeTypePayload{
 		ID:      int(id),
-		OldType: nodeTypeName(oldT),
-		NewType: nodeTypeName(newT),
+		OldType: oldT,
+		NewType: newT,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventNodeTypeChanged)
 }
@@ -66,7 +68,7 @@ func emitNodeTypeChanged(id model.NodeID, oldT, newT model.NodeType) {
 // copy does not mutate the document, so it records no undo step.
 func emitNodeCopied(id model.NodeID, i, j int, t model.NodeType) {
 	hooks.PublishWithSource(hooks.EventNodeCopied, hooks.NodeEdit{
-		ID: int(id), I: i, J: j, Type: nodeTypeName(t),
+		ID: int(id), I: i, J: j, Type: t,
 	}, hooks.CaptureSource(1))
 }
 
@@ -75,7 +77,7 @@ func emitNodeCopied(id model.NodeID, i, j int, t model.NodeType) {
 // none here.
 func emitNodeCut(id model.NodeID, i, j int, t model.NodeType) {
 	hooks.PublishWithSource(hooks.EventNodeCut, hooks.NodeEdit{
-		ID: int(id), I: i, J: j, Type: nodeTypeName(t),
+		ID: int(id), I: i, J: j, Type: t,
 	}, hooks.CaptureSource(1))
 }
 
@@ -83,7 +85,7 @@ func emitNodeCut(id model.NodeID, i, j int, t model.NodeType) {
 // document mutation).
 func emitNodePasted(id model.NodeID, i, j int, t model.NodeType) {
 	hooks.PublishWithSource(hooks.EventNodePasted, hooks.NodeEdit{
-		ID: int(id), I: i, J: j, Type: nodeTypeName(t),
+		ID: int(id), I: i, J: j, Type: t,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventNodePasted)
 }
@@ -92,6 +94,16 @@ func emitNodePasted(id model.NodeID, i, j int, t model.NodeType) {
 // new parameter snapshot. Subscribers can diff against their own copy
 // to identify which field changed.
 func emitNodeParamsChanged(id model.NodeID, p model.NodeParams) {
+	emitNodeParams(id, p, "")
+}
+
+// emitNodeChordChanged is emitNodeParamsChanged for a chord-builder edit:
+// the log line names the chord ("node id=3 chord C#m7/E").
+func emitNodeChordChanged(id model.NodeID, p model.NodeParams, chord string) {
+	emitNodeParams(id, p, chord)
+}
+
+func emitNodeParams(id model.NodeID, p model.NodeParams, chord string) {
 	hooks.PublishWithSource(hooks.EventNodeParamsChanged, hooks.NodeParamsPayload{
 		ID:         int(id),
 		Volume:     p.Volume,
@@ -102,7 +114,8 @@ func emitNodeParamsChanged(id model.NodeID, p model.NodeParams) {
 		LogicP:     p.LogicP,
 		GrooveKind: p.GrooveKind,
 		GroovePct:  p.GroovePct,
-	}, hooks.CaptureSource(1))
+		Chord:      chord,
+	}, hooks.CaptureSource(2))
 	recordUndo(hooks.EventNodeParamsChanged)
 }
 
@@ -158,7 +171,7 @@ func emitEdgeDeleted(fromID, toID model.NodeID, fromI, fromJ, toI, toJ int) {
 }
 
 // emitSeek publishes EventSeek with the destination position and its origin.
-func emitSeek(beats, steps int, origin string) {
+func emitSeek(beats, steps int, origin hooks.SeekOrigin) {
 	hooks.PublishWithSource(hooks.EventSeek, hooks.SeekPayload{Beats: beats, Steps: steps, Origin: origin}, hooks.CaptureSource(1))
 }
 
@@ -176,9 +189,9 @@ func emitLengthChange(length int) {
 }
 
 // emitRowAdded publishes EventRowAdded.
-func emitRowAdded(row int, instrument, name string) {
+func emitRowAdded(row int, inst instrument.ID, name string) {
 	hooks.PublishWithSource(hooks.EventRowAdded, hooks.RowChangePayload{
-		Row: row, Instrument: instrument, Name: name,
+		Row: row, Instrument: inst, Name: name,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventRowAdded)
 }
@@ -191,11 +204,11 @@ func emitRowDeleted(row int) {
 
 // emitRowInstrumentChange publishes EventRowInstrumentChange. oldInstrument
 // is the instrument id the row was set to before the change.
-func emitRowInstrumentChange(row int, oldInstrument, instrument, name string) {
+func emitRowInstrumentChange(row int, oldInst, inst instrument.ID, name string) {
 	hooks.PublishWithSource(hooks.EventRowInstrumentChange, hooks.RowChangePayload{
 		Row:           row,
-		OldInstrument: oldInstrument,
-		Instrument:    instrument,
+		OldInstrument: oldInst,
+		Instrument:    inst,
 		Name:          name,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventRowInstrumentChange)
@@ -246,7 +259,7 @@ func emitRowColorChanged(row int, color uint32) {
 // emitCustomWAVLoaded publishes EventCustomWAVLoaded when a user-supplied
 // WAV becomes available as an instrument. isUpdate is true when the same
 // instrument id was already present (re-upload replaces existing bytes).
-func emitCustomWAVLoaded(instrumentID string, isUpdate bool) {
+func emitCustomWAVLoaded(instrumentID instrument.ID, isUpdate bool) {
 	hooks.PublishWithSource(hooks.EventCustomWAVLoaded, hooks.CustomWAVPayload{
 		InstrumentID: instrumentID, IsUpdate: isUpdate,
 	}, hooks.CaptureSource(1))
@@ -254,7 +267,7 @@ func emitCustomWAVLoaded(instrumentID string, isUpdate bool) {
 
 // emitInstrumentRenamed publishes EventInstrumentRenamed when an instrument
 // id is rewritten by the user (rename closure in DrumView).
-func emitInstrumentRenamed(oldID, newID string) {
+func emitInstrumentRenamed(oldID, newID instrument.ID) {
 	hooks.PublishWithSource(hooks.EventInstrumentRenamed, hooks.InstrumentRenamePayload{
 		OldID: oldID, NewID: newID,
 	}, hooks.CaptureSource(1))
@@ -275,7 +288,7 @@ func emitUIStateApplied(path string) {
 
 // emitFavoriteToggled publishes EventFavoriteToggled when the user adds or
 // removes an instrument from their favorites set.
-func emitFavoriteToggled(instrumentID string, isFavorite bool) {
+func emitFavoriteToggled(instrumentID instrument.ID, isFavorite bool) {
 	hooks.PublishWithSource(hooks.EventFavoriteToggled, hooks.FavoritePayload{
 		InstrumentID: instrumentID, IsFavorite: isFavorite,
 	}, hooks.CaptureSource(1))
@@ -292,46 +305,46 @@ func emitLanguageChanged(oldLoc, newLoc string) {
 // emitEQBandChange publishes EventEQBandChange when a per-channel EQ band
 // gain changes. channel is the row instrument id ("kick", "snare", "main"…),
 // band is the 0-indexed band number, gainDB is the new gain in decibels.
-func emitEQBandChange(channel string, band int, gainDB float64) {
+func emitEQBandChange(ch channel.ID, band int, gainDB float64) {
 	hooks.PublishWithSource(hooks.EventEQBandChange, hooks.EQBandPayload{
-		Channel: channel, Band: band, GainDB: gainDB,
+		Channel: ch, Band: band, GainDB: gainDB,
 	}, hooks.CaptureSource(1))
 }
 
 // emitEQFilterToggled publishes EventEQFilterToggled when a channel's HPF or
-// LPF enable toggles. channel is the row instrument id ("main", "kick"…),
+// LPF enable toggles on channel ch;
 // filter is "hpf" or "lpf". Paired with recordUndoStep at the commit site
 // (the toggle handler), mirroring emitEQBandChange / commitEQBand.
-func emitEQFilterToggled(channel, filter string, enabled bool, cutoffHz float64) {
+func emitEQFilterToggled(ch channel.ID, filter hooks.EQFilter, enabled bool, cutoffHz float64) {
 	hooks.PublishWithSource(hooks.EventEQFilterToggled, hooks.EQFilterPayload{
-		Channel: channel, Filter: filter, Enabled: enabled, CutoffHz: cutoffHz,
+		Channel: ch, Filter: filter, Enabled: enabled, CutoffHz: cutoffHz,
 	}, hooks.CaptureSource(1))
 }
 
 // emitInsertEffectAdded publishes EventInsertEffectAdded when an insert
 // effect is added to a channel. effectType is the kind of effect
 // (e.g. "delay", "reverb", "chorus").
-func emitInsertEffectAdded(channel string, slot int, effectType string) {
+func emitInsertEffectAdded(ch channel.ID, slot int, effectType string) {
 	hooks.PublishWithSource(hooks.EventInsertEffectAdded, hooks.InsertEffectPayload{
-		Channel: channel, Slot: slot, Type: effectType,
+		Channel: ch, Slot: slot, Type: effectType,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventInsertEffectAdded)
 }
 
 // emitInsertEffectRemoved publishes EventInsertEffectRemoved when an insert
 // effect is removed from a channel.
-func emitInsertEffectRemoved(channel string, slot int) {
+func emitInsertEffectRemoved(ch channel.ID, slot int) {
 	hooks.PublishWithSource(hooks.EventInsertEffectRemoved, hooks.InsertEffectPayload{
-		Channel: channel, Slot: slot,
+		Channel: ch, Slot: slot,
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventInsertEffectRemoved)
 }
 
 // emitInsertEffectParam publishes EventInsertEffectParam when an insert
 // effect parameter changes (e.g. delay time, reverb mix).
-func emitInsertEffectParam(channel string, slot int, param string, value float64) {
+func emitInsertEffectParam(ch channel.ID, slot int, param string, value float64) {
 	hooks.PublishWithSource(hooks.EventInsertEffectParam, hooks.InsertEffectPayload{
-		Channel: channel, Slot: slot, Param: param, Value: value,
+		Channel: ch, Slot: slot, Param: param, Value: value,
 	}, hooks.CaptureSource(1))
 }
 
@@ -340,36 +353,25 @@ func emitRowVolume(row int, vol float64) {
 	hooks.PublishWithSource(hooks.EventRowVolume, hooks.RowChangePayload{Row: row, Volume: vol}, hooks.CaptureSource(1))
 }
 
-// emitRowPan publishes EventRowPan once at slider release.
-func emitRowPan(row int, pan float64) {
-	hooks.PublishWithSource(hooks.EventRowPan, hooks.RowChangePayload{Row: row, Pan: pan}, hooks.CaptureSource(1))
-}
-
 // emitInsertEffectMoved publishes EventInsertEffectMoved on reorder.
-func emitInsertEffectMoved(channel string, from, to int) {
-	hooks.PublishWithSource(hooks.EventInsertEffectMoved, hooks.InsertEffectPayload{Channel: channel, FromSlot: from, ToSlot: to}, hooks.CaptureSource(1))
+func emitInsertEffectMoved(ch channel.ID, from, to int) {
+	hooks.PublishWithSource(hooks.EventInsertEffectMoved, hooks.InsertEffectPayload{Channel: ch, FromSlot: from, ToSlot: to}, hooks.CaptureSource(1))
 }
 
 // emitInsertEffectToggled publishes EventInsertEffectToggled on enable/disable.
-func emitInsertEffectToggled(channel string, slot int, enabled bool) {
-	hooks.PublishWithSource(hooks.EventInsertEffectToggled, hooks.InsertEffectPayload{Channel: channel, Slot: slot, Enabled: enabled}, hooks.CaptureSource(1))
-}
-
-// emitSendChanged publishes EventSendChanged once at slider release. kind is
-// "delay" or "reverb".
-func emitSendChanged(channel, kind string, value float64) {
-	hooks.PublishWithSource(hooks.EventSendChanged, hooks.SendPayload{Channel: channel, Kind: kind, Value: value}, hooks.CaptureSource(1))
+func emitInsertEffectToggled(ch channel.ID, slot int, enabled bool) {
+	hooks.PublishWithSource(hooks.EventInsertEffectToggled, hooks.InsertEffectPayload{Channel: ch, Slot: slot, Enabled: enabled}, hooks.CaptureSource(1))
 }
 
 // emitInstrumentParamsCommitted publishes EventInstrumentParamsCommitted once
 // at knob release (the per-frame edit stays EventInstrumentParamChanged).
-func emitInstrumentParamsCommitted(channel, recipe string) {
-	hooks.PublishWithSource(hooks.EventInstrumentParamsCommitted, hooks.InstrumentParamPayload{Channel: channel, Recipe: recipe}, hooks.CaptureSource(1))
+func emitInstrumentParamsCommitted(inst, origin instrument.ID) {
+	hooks.PublishWithSource(hooks.EventInstrumentParamsCommitted, hooks.InstrumentParamPayload{Instrument: inst, Origin: origin}, hooks.CaptureSource(1))
 }
 
 // emitInstrumentParamsReset publishes EventInstrumentParamsReset.
-func emitInstrumentParamsReset(channel, recipe string) {
-	hooks.PublishWithSource(hooks.EventInstrumentParamsReset, hooks.InstrumentParamPayload{Channel: channel, Recipe: recipe}, hooks.CaptureSource(1))
+func emitInstrumentParamsReset(inst, origin instrument.ID) {
+	hooks.PublishWithSource(hooks.EventInstrumentParamsReset, hooks.InstrumentParamPayload{Instrument: inst, Origin: origin}, hooks.CaptureSource(1))
 }
 
 // emitAudioPanelStateChanged publishes EventAudioPanelStateChanged (userpref
@@ -415,18 +417,54 @@ func emitGridModeCanceled(mode string, id model.NodeID, i, j int, reason string)
 	}, hooks.CaptureSource(2))
 }
 
-// nodeTypeName converts a model.NodeType to its lowercase string label
-// matching the JSON schema in CLAUDE.md.
-func nodeTypeName(t model.NodeType) string {
-	switch t {
-	case model.NodeTypeRegular:
-		return "regular"
-	case model.NodeTypeInvisible:
-		return "invisible"
-	case model.NodeTypeSilent:
-		return "silent"
-	case model.NodeTypeMute:
-		return "mute"
-	}
-	return "unknown"
+// emitWarmupStarted publishes EventWarmupStarted when the playback readiness
+// gate begins warming a circuit's working set.
+//
+// Unlike every other emit* helper here, src is passed in rather than captured
+// via hooks.CaptureSource: finish()/onBegin can run on the warmup feeder
+// goroutine or a frame tick, arbitrarily far from the action that actually
+// triggered the warm-up (import, BPM change, ...). warmupController captures
+// that source ONCE, in Begin(), and carries it through — see warmup_controller.go's
+// src field doc comment. A fixed CaptureSource skip here would be wrong for
+// at least three of the four call paths.
+func emitWarmupStarted(src hooks.Source, total, cached int) {
+	hooks.PublishWithSource(hooks.EventWarmupStarted, hooks.WarmupPayload{
+		Total:  total,
+		Cached: cached,
+	}, src)
+}
+
+// emitWarmupComplete publishes EventWarmupComplete when the gate opens —
+// either because the set finished warming or because the deadline elapsed.
+// Not undoable: warm-up is a cache side-effect, not a document mutation.
+// See emitWarmupStarted's comment for why src is passed in, not captured.
+func emitWarmupComplete(src hooks.Source, p hooks.WarmupPayload) {
+	hooks.PublishWithSource(hooks.EventWarmupComplete, p, src)
+}
+
+// emitThemeChanged publishes a profile-scope theme edit. scope is always
+// "user" here; category/swatch may be empty (see hooks.ThemePayload).
+func emitThemeChanged(scope hooks.ThemeScope, category, swatch string) {
+	hooks.PublishWithSource(hooks.EventThemeChanged, hooks.ThemePayload{Scope: scope, Category: category, Swatch: swatch}, hooks.CaptureSource(1))
+}
+
+// emitThemeOverrideChanged publishes the "always use my theme" toggle.
+func emitThemeOverrideChanged(on bool) {
+	hooks.PublishWithSource(hooks.EventThemeChanged, hooks.ThemePayload{Scope: hooks.ThemeScopeUser, Override: &on}, hooks.CaptureSource(1))
+}
+
+// emitCircuitThemeChanged publishes a circuit-scope edit AND records the undo
+// step (document scope: the snapshot journal captures the export bytes,
+// which carry the theme block).
+func emitCircuitThemeChanged(category, swatch string) {
+	hooks.PublishWithSource(hooks.EventCircuitThemeChanged, hooks.ThemePayload{Scope: hooks.ThemeScopeCircuit, Category: category, Swatch: swatch}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventCircuitThemeChanged)
+}
+
+// emitSampleEditChanged publishes EventSampleEditChanged once per completed
+// Sampler edit gesture. The descriptor itself is pushed to audio LIVE, per value
+// change (audio.ApplySampleEditLive); this is the gesture-level announcement, so
+// a spin of the Pitch wheel yields one narrative line rather than one per detent.
+func emitSampleEditChanged(sampleID instrument.ID) {
+	hooks.PublishWithSource(hooks.EventSampleEditChanged, hooks.SamplePayload{SampleID: sampleID}, hooks.CaptureSource(1))
 }

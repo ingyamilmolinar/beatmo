@@ -5,6 +5,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Joint insert-FX × synth-recipe coverage: synth_recipe_* tests prove the
@@ -12,7 +15,7 @@ import (
 // but nothing verified the production composition — a recipe-rendered voice
 // flowing through its instrument's insert chain at the channel layer.
 func TestRecipeVoiceThroughInsertChain(t *testing.T) {
-	const inst = "snare"
+	const inst = roster.Snare
 	const bpm, sr = 120, 44100
 
 	ClearAllInsertEffects()
@@ -26,16 +29,16 @@ func TestRecipeVoiceThroughInsertChain(t *testing.T) {
 	// Engage the recipe path with a live user param.
 	ResetInstrumentParams(inst)
 	SetInstrumentParam(inst, "drive", 0.4)
-	v := newRecipeAwareVoice(inst, bpm, sr)
+	v := newRecipeAwareVoice(inst, sr)
 	if v == nil {
 		t.Fatal("recipe voice is nil")
 	}
-	voice := variantSamples(v, sr)
+	voice := drainVoiceToBuffer(v, sr)
 	if len(voice) == 0 {
 		t.Fatal("recipe voice rendered no samples")
 	}
 
-	ch := InstrumentChannel(inst)
+	ch := InstrumentChannel(channel.Of(inst))
 	process := func() []float64 {
 		in := make([]float64, len(voice))
 		for i, s := range voice {

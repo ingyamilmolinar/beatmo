@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestAnalyzerBlockSampleParity verifies that ProcessBlock produces the same
@@ -62,9 +65,9 @@ func TestPreEQTapInBlockPath(t *testing.T) {
 	if bq == nil {
 		t.Fatal("failed to create biquad")
 	}
-	SetChannelProcessors(id, bq)
-	an := EnablePreEQAnalyzer(id, n)
-	ch := InstrumentChannel(id)
+	SetChannelProcessors(channel.Of(instrument.ID(id)), bq)
+	an := EnablePreEQAnalyzer(channel.Of(instrument.ID(id)), n)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	input := make([]float64, n)
 	copy(input, sig)

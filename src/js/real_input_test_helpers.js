@@ -372,7 +372,7 @@ export async function setupFullWasm(options = {}) {
 
   // Navigate and wait for WASM to be ready
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof ensureDefaultPath === "function", {
+  await page.waitForFunction(() => typeof ensureDefaultPath === "function", null, {
     timeout: 30000,
   });
 
@@ -444,6 +444,32 @@ export async function setupFullWasm(options = {}) {
   };
 
   return { page, browser, server, cleanup, port, platform: launch.platform };
+}
+
+/**
+ * Read the param blocks the real app pushes for `ids`. Every voice renders from
+ * the block Go pushes for its instrument document (window.setInstrumentBlock),
+ * so a bare audio.js page has no instruments: boot the app once, copy the
+ * blocks out, then install them on the bare page with
+ * `setInstrumentBlock(id, Float64Array.from(b.block), b.seconds, b.amp, b.melodic, b.gateTail, b.fx)`.
+ *
+ * @param {string[]} ids
+ * @returns {Promise<Object<string, {block: number[], seconds: number, amp: number, melodic: boolean, gateTail: number, fx: Array}>>}
+ */
+export async function readAppInstrumentBlocks(ids) {
+  const app = await setupFullWasm({ logLevel: "ERROR" });
+  let blocks;
+  try {
+    blocks = await app.page.evaluate((ids) => Object.fromEntries(ids.map((id) => {
+      const s = window.__instrumentBlockForTest(id);
+      return [id, s && { block: Array.from(s.block), seconds: s.seconds, amp: s.amp, melodic: s.melodic, gateTail: s.gateTail, fx: s.fx }];
+    })), ids);
+  } finally {
+    await app.cleanup();
+  }
+  const missing = ids.filter((id) => !blocks[id]);
+  if (missing.length) throw new Error(`the app pushed no block for ${missing.join(", ")}`);
+  return blocks;
 }
 
 /**

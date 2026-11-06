@@ -7,11 +7,16 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // template_audio_quality_test.go — renders every genre template (and each
@@ -260,8 +265,6 @@ func fftPow(x []complex128) []float64 {
 type templateInst struct {
 	ID          string             `json:"id"`
 	Volume      float64            `json:"volume"`
-	DelaySend   float64            `json:"delay_send"`
-	ReverbSend  float64            `json:"reverb_send"`
 	SynthParams map[string]float64 `json:"synth_params"`
 	Effects     []EffectSlot       `json:"effects"`
 }
@@ -287,7 +290,7 @@ func parseTemplateDoc(t *testing.T, genre string, b []byte) templateDoc {
 }
 
 // applyTemplateInstrument configures the engine for one instrument exactly as
-// the importer does: synth-param overlay, insert effects, and sends. The JSON
+// the importer does: synth-param overlay and insert effects. The JSON
 // `effects` array deserializes straight into []EffectSlot (the same contract
 // TestTemplateInsertEffectsAreImportable locks).
 //
@@ -297,13 +300,11 @@ func parseTemplateDoc(t *testing.T, genre string, b []byte) templateDoc {
 // (techno's hihat), inflating its measured flatness. ResetInstruments() clears
 // channels/voices but not the per-instrument param overlay.
 func applyTemplateInstrument(in templateInst) {
-	ResetInstrumentParams(in.ID)
+	ResetInstrumentParams(instrument.ID(in.ID))
 	if len(in.SynthParams) > 0 {
-		SetInstrumentParams(in.ID, RecipeParams(in.SynthParams))
+		SetInstrumentParams(instrument.ID(in.ID), RecipeParams(in.SynthParams))
 	}
-	SetDelaySend(in.ID, in.DelaySend)
-	SetReverbSend(in.ID, in.ReverbSend)
-	SetInsertEffects(in.ID, in.Effects) // empty slice clears any prior chain
+	SetInsertEffects(instrument.ID(in.ID), in.Effects) // empty slice clears any prior chain
 }
 
 func newTemplateMixer() *mixer {
@@ -312,7 +313,7 @@ func newTemplateMixer() *mixer {
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
 }
 
@@ -328,17 +329,17 @@ func instVol(in templateInst) float64 {
 // pre-limiter master peak. Mirrors the startup-circuit allHitsPeak strategy.
 func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 	t.Helper()
+	game_log.TailOnFailure(t) // the capture lines, only if this test fails
 	ResetInstruments()
-	resetSendEffectsState() // clear any reverb/delay tail a prior test left (render isolation)
 	sr := sampleRate
 	m := newTemplateMixer()
 	for _, in := range d.Instruments {
 		applyTemplateInstrument(in)
-		v := newRecipeAwareVoice(in.ID, d.BPM, sr)
+		v := newRecipeAwareVoice(instrument.ID(in.ID), sr)
 		if v == nil {
 			continue
 		}
-		m.Schedule(in.ID, &scaledVoice{v: v, gain: instVol(in)}, 0, -1, -1)
+		m.Schedule(channel.Of(instrument.ID(in.ID)), &scaledVoice{v: v, gain: instVol(in)}, 0, -1, -1)
 	}
 	StartOutputCapture()
 	readMixerSamples(m, sr) // 1s captures the full transient
@@ -350,8 +351,8 @@ func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 // configured exactly as import would.
 func renderTemplateInstrumentSolo(t *testing.T, d templateDoc, in templateInst, seconds float64) []float64 {
 	t.Helper()
+	game_log.TailOnFailure(t) // the capture lines, only if this test fails
 	ResetInstruments()
-	resetSendEffectsState() // clear any reverb/delay tail a prior test left (render isolation)
 	applyTemplateInstrument(in)
 	sr := sampleRate
 	totalSamples := int(seconds * float64(sr))
@@ -361,11 +362,11 @@ func renderTemplateInstrumentSolo(t *testing.T, d templateDoc, in templateInst, 
 	}
 	m := newTemplateMixer()
 	for delay := 0; delay < totalSamples; delay += beatSamples {
-		v := newRecipeAwareVoice(in.ID, d.BPM, sr)
+		v := newRecipeAwareVoice(instrument.ID(in.ID), sr)
 		if v == nil {
 			break
 		}
-		m.Schedule(in.ID, &scaledVoice{v: v, gain: instVol(in)}, delay, -1, -1)
+		m.Schedule(channel.Of(instrument.ID(in.ID)), &scaledVoice{v: v, gain: instVol(in)}, delay, -1, -1)
 	}
 	StartOutputCapture()
 	readMixerSamples(m, totalSamples)
@@ -401,8 +402,8 @@ func TestTemplateAudioReport(t *testing.T) {
 
 // ---- GUARD: audio quality --------------------------------------------------
 
-func isBassInstrument(id string) bool {
-	return id == "fm-bass" || id == "sub-bass" || strings.HasPrefix(id, "sub-")
+func isBassInstrument(id instrument.ID) bool {
+	return id == roster.FmBass || id == roster.SubBass || strings.HasPrefix(string(id), "sub-")
 }
 func isKickInstrument(id string) bool { return strings.HasPrefix(id, "kick") }
 
@@ -412,7 +413,7 @@ func TestTemplateAudioQuality(t *testing.T) {
 			d := parseTemplateDoc(t, tp.Genre, tp.Bytes)
 
 			// EVERY instrument in the template, rendered solo through the real
-			// chain (synth params + insert effects + sends, exactly as import),
+			// chain (synth params + insert effects, exactly as import),
 			// must be clean: no clipping, not white-noise hissy, no sustained
 			// crackle. (Worst-case master headroom is guarded separately in
 			// TestTemplateMasterMix.)
@@ -461,7 +462,7 @@ func TestTemplateAudioQuality(t *testing.T) {
 
 			// Bass quality + balance vs kick.
 			for _, in := range d.Instruments {
-				if !isBassInstrument(in.ID) {
+				if !isBassInstrument(instrument.ID(in.ID)) {
 					continue
 				}
 				b := solos[in.ID]
@@ -479,12 +480,51 @@ func TestTemplateAudioQuality(t *testing.T) {
 	}
 }
 
-// TestTemplateInsertEffectsAreImportable proves each template's per-instrument
-// `effects` JSON deserializes into the exact []audio.EffectSlot the importer
-// feeds to SetInsertEffects — so the filters actually reach the engine on import
-// (the UI round-trip test TestTemplates_ImportRoundTrip exercises the full path;
-// this locks the audio-side contract independently).
+// TestTemplateInsertEffectsAreImportable locks the audio-side half of the
+// insert-effect import contract: the per-instrument `effects` JSON that
+// cmd/gen-showcase emits must deserialize into exactly the []audio.EffectSlot
+// the importer hands to SetInsertEffects, so the filters actually reach the
+// engine on import. (The UI round-trip test TestTemplates_ImportRoundTrip
+// exercises the full path; this locks the audio-side shape independently.)
+//
+// Two halves, because the shipped catalogue no longer exercises the emitter:
+// the per-instrument lowpass tuning lived only on the hand-authored genre
+// specs (dre-g-thang's 9 kHz open-hat/shaker roll-off and friends), and the
+// public-domain curation replaced all of those with score-derived chamber
+// pieces whose spec table (cmd/gen-showcase/template_specs.go PartMap) carries
+// no effects field at all. So:
+//
+//   - the fixture half pins the wire shape against a literal copy of what
+//     cmd/gen-showcase's effectJSON marshals, which keeps the contract honest
+//     while zero templates ship effects;
+//   - the catalogue half validates any effects a template DOES carry, so the
+//     day a spec row starts emitting them again they are checked for real.
 func TestTemplateInsertEffectsAreImportable(t *testing.T) {
+	// Byte-for-byte the shape cmd/gen-showcase/main.go's effectJSON emits for
+	// an EffectSpec (see the `fx` loop in build()). If EffectSlot's JSON tags
+	// ever drift from it, a template carrying effects would import silently
+	// filterless — that is exactly what this half catches.
+	const emittedByGenShowcase = `{
+	  "type": "filter",
+	  "enabled": true,
+	  "params": {"cutoff": 9000, "mix": 1, "mode": 0, "q": 0.707}
+	}`
+	var slot EffectSlot
+	if err := json.Unmarshal([]byte(emittedByGenShowcase), &slot); err != nil {
+		t.Fatalf("gen-showcase effect JSON does not deserialize into EffectSlot: %v", err)
+	}
+	want := EffectSlot{
+		Type:    EffectFilter,
+		Enabled: true,
+		Params:  map[string]float64{"cutoff": 9000, "mix": 1, "mode": 0, "q": 0.707},
+	}
+	if slot.Type != want.Type || slot.Enabled != want.Enabled {
+		t.Errorf("type/enabled: got {%q %v}, want {%q %v}", slot.Type, slot.Enabled, want.Type, want.Enabled)
+	}
+	if !reflect.DeepEqual(slot.Params, want.Params) {
+		t.Errorf("params: got %v, want %v", slot.Params, want.Params)
+	}
+
 	found := 0
 	for _, tp := range assets.Templates() {
 		// Fresh doc per iteration: a reused struct lets json slice-reuse retain
@@ -513,8 +553,5 @@ func TestTemplateInsertEffectsAreImportable(t *testing.T) {
 			}
 		}
 	}
-	if found == 0 {
-		t.Fatal("no template insert effects found — the lowpass tuning is not being emitted")
-	}
-	t.Logf("verified %d importable insert-effect slots across templates", found)
+	t.Logf("verified the emitted wire shape + %d importable insert-effect slots across templates", found)
 }

@@ -21,6 +21,10 @@ func (g *Game) audioLoop() {
 		select {
 		case <-g.audioQuit:
 			return
+		case <-g.laneWake:
+			// Audio-lane ops (schedule / cancel / stop) recorded by the lane.
+			g.flushLaneOps()
+			continue
 		case req, ok := <-g.audioCh:
 			if !ok {
 				return
@@ -142,6 +146,11 @@ func (g *Game) audioLoop() {
 			// when=audio.Now() ("play now") and must dispatch immediately, not
 			// be bumped into the future.
 			minDispatchLead := RuntimeProf().MinDispatchLeadSec
+			// requested is the scheduler's start time BEFORE the floor clamp.
+			// Stage C observes it, not the clamped value: observing after the
+			// clamp made a late note read as lead=+12ms, so on WASM `overdue`
+			// could never fire and every lateness gate built on it was blind.
+			requested := req.when
 			if req.hasWhen && audioNow > 0 {
 				if minDispatchLead > 0 && req.row >= 0 {
 					if floor := audioNow + minDispatchLead; req.when < floor {
@@ -155,7 +164,7 @@ func (g *Game) audioLoop() {
 				// AudioQLat below must still run unconditionally — only the
 				// schedMetrics.Observe call is guarded.
 				if !g.parityInGrace() {
-					g.schedMetrics.Observe(audioNow, req.when)
+					g.schedMetrics.Observe(audioNow, requested)
 				}
 				if lead := req.when - audioNow; lead > 0 {
 					leadDur := time.Duration(lead * float64(time.Second))
@@ -175,10 +184,11 @@ func (g *Game) audioLoop() {
 				g.recordParityAudio(req.row, req.abs, audio.Now(), req.id, req.vol, req.pitch, req.dur, req.gen, req.parityGen)
 			}
 
-			b := audio.BatchParam{ID: req.id, Vol: req.vol, Pitch: req.pitch, Dur: req.dur, Row: req.row, Abs: req.abs}
+			b := audio.BatchParam{ID: req.id, Vol: req.vol, Pitch: req.pitch, Dur: req.dur, Row: req.row, Abs: req.abs, Grid: req.grid}
 			if req.hasWhen {
 				b.HasWhen = true
 				b.When = req.when
+				b.Ideal = requested
 			}
 			batch = append(batch, b)
 		}
@@ -201,6 +211,7 @@ func (g *Game) audioLoop() {
 		// Default path: batch-dispatch to audio engine (WASM uses JS batch).
 		avgQLat := time.Duration(int64(qlatSum) / int64(len(batch)))
 		t0 := time.Now()
+		g.flushLaneOps() // keep lane ops ordered ahead of this batch
 		audio.PlayBatch(batch)
 		g.drainEmissionReports()
 		callDur := time.Since(t0)

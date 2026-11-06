@@ -5,24 +5,25 @@ package synthmatch
 import (
 	"math"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
 // RenderInstrument renders instID at the given pitch (semitones from A3=220Hz)
 // for durSec (0 = instrument default) at sr, returning a mono wave.Wave (float64).
 // Test build: uses a pure-Go param-responsive synth (no CGo).
-func RenderInstrument(instID string, pitch float64, sr int, durSec float64) (wave.Wave, error) {
+func RenderInstrument(instID instrument.ID, pitch float64, sr int, durSec float64) (wave.Wave, error) {
 	return RenderWithParams(instID, pitch, sr, durSec, nil)
 }
 
-// RenderWithParams is RenderInstrument with extra param overrides applied on top
-// of the merged recipe defaults (and "pitch") before rendering.
+// RenderWithParams is RenderInstrument with extra param overrides set through
+// the instrument's document (and "pitch") before rendering.
 //
 // Test build: a small deterministic pure-Go synth that responds to the tunable
 // params so the optimizer can descend under -tags test. It does not need to
 // sound real — it provides smooth, monotonic-ish sensitivity to the params the
 // TunableSpecs expose. No RNG — fully deterministic given the same inputs.
-func RenderWithParams(instID string, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
+func RenderWithParams(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
 	_, merged, samples, err := resolveRender(instID, pitch, sr, durSec, overrides)
 	if err != nil {
 		return wave.Wave{}, err
@@ -79,7 +80,7 @@ func RenderWithParams(instID string, pitch float64, sr int, durSec float64, over
 		}
 		out[i] = 0.5 * env * s
 	}
-	return wave.Wave{Samples: out, SampleRate: sr, Label: instID}, nil
+	return wave.Wave{Samples: out, SampleRate: sr, Label: string(instID)}, nil
 }
 
 // genGainKey returns the param key for the k-th generator gain: "gen1_gain".."gen8_gain".
@@ -112,3 +113,88 @@ func adsrEnv(t, dur, a, d, s, r float64) float64 {
 	}
 }
 
+// RenderShipped is the test-build stand-in: the pure-Go synth of
+// RenderWithParams (there is no C engine, FX or normalisation here).
+func RenderShipped(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
+	return RenderWithParams(instID, pitch, sr, durSec, overrides)
+}
+
+// RenderHeld is the test-build stand-in: the pure-Go synth's voice is
+// durSec long (0 = the instrument default) whatever it is held for.
+func RenderHeld(instID instrument.ID, pitch float64, sr int, durSec, voiceSec float64, overrides map[string]float64) (wave.Wave, error) {
+	return RenderWithParams(instID, pitch, sr, durSec, overrides)
+}
+
+// HeldSeconds: the stub synth ignores how long a voice is held (0 = the
+// shipped length).
+func HeldSeconds(instID instrument.ID, pitch, minSec float64) float64 { return 0 }
+
+// RenderShippedDoc is the test-build stand-in for a document candidate: a
+// decaying sine at the pitch, its decay from the document's render length —
+// the session plumbing runs, no C engine.
+func RenderShippedDoc(d instrument.Doc, pitch float64, sr int, durSec float64) (wave.Wave, error) {
+	if durSec <= 0 {
+		durSec = d.Render.Seconds
+	}
+	n := max(1, int(float64(sr)*durSec))
+	f := 220 * math.Pow(2, pitch/12)
+	out := make([]float64, n)
+	for i := range out {
+		t := float64(i) / float64(sr)
+		out[i] = math.Exp(-3*t/math.Max(d.Render.Seconds, 0.1)) * math.Sin(2*math.Pi*f*t)
+	}
+	return wave.Wave{Samples: out, SampleRate: sr, Label: string(d.ID)}, nil
+}
+
+// HeldSecondsDoc mirrors HeldSeconds for an unregistered document.
+func HeldSecondsDoc(d instrument.Doc, pitch, minSec float64) float64 {
+	return math.Max(d.Render.Seconds, minSec)
+}
+
+// RenderHeldDoc is the test-build stand-in for an unregistered document held
+// voiceSec long: a small deterministic synth that RESPONDS to the
+// document -- each ON gen.wavetable layer is a partial at its ratio and gain,
+// each ON gen.noise layer adds that much noise, an ON filter stage low-passes
+// at filter_cutoff -- so code that searches a document's values (refs tune)
+// has a landscape to descend under -tags test. It does not sound real.
+func RenderHeldDoc(d instrument.Doc, pitch float64, sr int, durSec, voiceSec float64) (wave.Wave, error) {
+	if durSec <= 0 {
+		durSec = math.Max(d.Render.Seconds, 0.25)
+	}
+	n := max(1, int(float64(sr)*durSec))
+	f0 := 220 * math.Pow(2, pitch/12)
+	out := make([]float64, n)
+	seed := uint32(12345)
+	for _, l := range d.Layers {
+		if l == nil || !l.On {
+			continue
+		}
+		g := l.Values["gain"]
+		switch l.Type {
+		case "gen.wavetable":
+			f := f0 * l.Values["freq"]
+			for i := range out {
+				out[i] += g * math.Sin(2*math.Pi*f*float64(i)/float64(sr))
+			}
+		case "gen.noise":
+			for i := range out {
+				seed = seed*1664525 + 1013904223
+				out[i] += g * (float64(seed)/float64(1<<32)*2 - 1)
+			}
+		}
+	}
+	if st, ok := d.Stages["filter"]; ok && st.On {
+		if fc := st.Values["filter_cutoff"]; fc > 0 {
+			a := 1 - math.Exp(-2*math.Pi*fc/float64(sr))
+			y := 0.0
+			for i, x := range out {
+				y += a * (x - y)
+				out[i] = y
+			}
+		}
+	}
+	for i := range out {
+		out[i] *= math.Exp(-2 * float64(i) / float64(n))
+	}
+	return wave.Wave{Samples: out, SampleRate: sr, Label: string(d.ID)}, nil
+}

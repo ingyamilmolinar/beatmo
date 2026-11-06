@@ -1,0 +1,120 @@
+{
+  "schema_version": "0.0.1",
+  "id": "tom-lofi",
+  "name": "Tom Low",
+  "category": "modular",
+  "render": {
+    "seconds": 0.35,
+    "amplitude": 0.4502,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 90
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "tom",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "tom_o1": 0.45,
+        "tom_o2": 0.22,
+        "tom_ring": 2.2,
+        "tom_room": 0.1,
+        "tom_stick": 0.32,
+        "tom_sweep": 14,
+        "tom_variant": 2,
+        "wave": 0
+      }
+    }
+  ],
+  "fx": [
+    {
+      "type": "fx.bitcrusher",
+      "v": 1,
+      "on": true,
+      "values": {
+        "bits": 5,
+        "mix": 1,
+        "rate": 1
+      }
+    },
+    {
+      "type": "fx.filter",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cutoff": 2000,
+        "mix": 1,
+        "mode": 0,
+        "q": 0.707
+      }
+    }
+  ]
+}

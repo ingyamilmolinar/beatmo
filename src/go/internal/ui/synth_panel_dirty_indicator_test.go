@@ -21,7 +21,7 @@ func TestSynthSaveDirty_FollowsOverlay(t *testing.T) {
 		t.Errorf("synthSaveDirty should be false on fresh recipe with no overrides")
 	}
 	// Edit one param → dirty.
-	audio.SetInstrumentParam(inst, "decay", 1.7)
+	audio.SetInstrumentParam(inst, "amp_decay", 1.7)
 	if !dv.synthSaveDirty(inst) {
 		t.Errorf("synthSaveDirty should be true after SetInstrumentParam(decay,1.7)")
 	}
@@ -33,27 +33,27 @@ func TestSynthSaveDirty_FollowsOverlay(t *testing.T) {
 }
 
 // TestSynthSaveButton_SpecTogglesByDirtyState — when synth params are clean,
-// the Save button's spec must NOT be ComponentButtonPrimary (it's a no-op
-// affordance). When dirty, the spec must be ComponentButtonPrimary so the
-// user gets a visual signal that Save will do something.
+// the Save As button's spec must NOT be ComponentButtonPrimary. When dirty, it
+// must be ComponentButtonPrimary so the user gets a visual signal that there
+// is something to save.
 func TestSynthSaveButton_SpecTogglesByDirtyState(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
 	inst := env.instID
 
-	saveBtn := findFooterButton(t, dv, synthSaveButtonTag)
+	saveBtn := findFooterButton(t, dv, synthSaveAsButtonTag)
 	if saveBtn.SpecID == ComponentButtonPrimary {
 		t.Errorf("clean state: Save SpecID = ComponentButtonPrimary, want Secondary (no unsaved changes)")
 	}
 
-	audio.SetInstrumentParam(inst, "decay", 1.7)
+	audio.SetInstrumentParam(inst, "amp_decay", 1.7)
 	t.Cleanup(func() { audio.ResetInstrumentParams(inst) })
 
 	// Re-layout so dirty-driven spec is recomputed.
 	dv.eqPanelZone.Invalidate()
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 
-	saveBtn = findFooterButton(t, dv, synthSaveButtonTag)
+	saveBtn = findFooterButton(t, dv, synthSaveAsButtonTag)
 	if saveBtn.SpecID != ComponentButtonPrimary {
 		t.Errorf("dirty state: Save SpecID = %v, want ComponentButtonPrimary", saveBtn.SpecID)
 	}

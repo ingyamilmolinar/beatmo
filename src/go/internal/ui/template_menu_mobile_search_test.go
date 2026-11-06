@@ -35,11 +35,11 @@ func TestTemplateMenu_MobileNativeInputFilters(t *testing.T) {
 	dv.OpenOverflowMenu()
 	wantAll := len(assets.Templates())
 
-	feedTemplateNativeSearch(t, g, "hotel")
-	if dv.templateSearchQuery != "hotel" {
+	feedTemplateNativeSearch(t, g, "brandenburg")
+	if dv.templateSearchQuery != "brandenburg" {
 		t.Fatalf("native-input value never reached the query; got %q", dv.templateSearchQuery)
 	}
-	if !containsStr(templateRowLabels(dv), "Eagles — Hotel California") {
+	if !containsStr(templateRowLabels(dv), "Bach — Brandenburg Concerto No. 3") {
 		t.Fatalf("mobile query 'hotel' dropped its own template: %v", templateRowLabels(dv))
 	}
 

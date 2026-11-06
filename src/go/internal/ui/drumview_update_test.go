@@ -250,71 +250,6 @@ func TestDrumViewUpdateImportTimeout(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateBPMBoxEnterCommit verifies that typing a valid BPM
-// in the shared editor and pressing Enter commits the new BPM value.
-func TestDrumViewUpdateBPMBoxEnterCommit(t *testing.T) {
-	dv := newUpdateTestDV(t)
-	dv.SetBPM(120)
-
-	// Open the shared editor and set its text.
-	dv.transportZone.openBPMEditor()
-	dv.transportZone.paramEditor.ti.SetText("150")
-
-	// Simulate Enter key press — the editor commits on Enter inside Update().
-	enterPressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return k == ebiten.KeyEnter && enterPressed },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 300 },
-	)
-	dv.Update()
-	restore()
-	enterPressed = false
-
-	if dv.bpm != 150 {
-		t.Errorf("expected BPM=150 after Enter commit, got %d", dv.bpm)
-	}
-	if dv.transportZone.paramEditor.Active() {
-		t.Error("expected editor to be inactive after Enter commit")
-	}
-}
-
-// TestDrumViewUpdateBPMBoxInvalidInput verifies that committing an invalid
-// BPM string flashes the editor error and leaves BPM unchanged.
-func TestDrumViewUpdateBPMBoxInvalidInput(t *testing.T) {
-	dv := newUpdateTestDV(t)
-	dv.SetBPM(120)
-
-	dv.transportZone.openBPMEditor()
-	dv.transportZone.paramEditor.ti.SetText("abc")
-	dv.transportZone.paramEditor.commit()
-
-	if dv.transportZone.paramEditor.errorAnim <= 0 {
-		t.Error("expected editor errorAnim > 0 after invalid BPM input")
-	}
-	if dv.transportZone.BPM() != 120 {
-		t.Errorf("expected BPM unchanged at 120 after invalid input, got %d", dv.transportZone.BPM())
-	}
-}
-
-// TestDrumViewUpdateBPMBoxEmptyInput verifies that an empty editor commit is
-// invalid and leaves BPM unchanged (no write).
-func TestDrumViewUpdateBPMBoxEmptyInput(t *testing.T) {
-	dv := newUpdateTestDV(t)
-	dv.SetBPM(90)
-
-	dv.transportZone.openBPMEditor()
-	dv.transportZone.paramEditor.ti.SetText("")
-	dv.transportZone.paramEditor.commit()
-
-	if dv.transportZone.BPM() != 90 {
-		t.Errorf("expected BPM unchanged at 90 on empty input, got %d", dv.transportZone.BPM())
-	}
-}
-
 // TestDrumViewUpdateSliderIsolationRelease verifies that the tree's capture
 // mechanism releases slider groups on mouse release. Slider dispatch now goes
 // through the zone tree's hit areas (TransportZone for main volume).
@@ -416,36 +351,5 @@ func TestDrumViewUpdatePopupBlocksAll(t *testing.T) {
 				t.Errorf("expected dragging=false when %s=true", tc.name)
 			}
 		})
-	}
-}
-
-// TestDrumViewUpdateBPMBoxBlurCommit verifies that opening the shared editor,
-// entering a value, then clicking outside commits the BPM on focus loss.
-func TestDrumViewUpdateBPMBoxBlurCommit(t *testing.T) {
-	dv := newUpdateTestDV(t)
-	dv.SetBPM(120)
-
-	// Open the editor and type a value.
-	dv.transportZone.openBPMEditor()
-	dv.transportZone.paramEditor.ti.SetText("90")
-
-	// Now simulate blur by clicking outside the editor's box rect.
-	editRect := dv.transportZone.paramEditor.ti.Rect
-	outsideX := editRect.Max.X + 50
-	outsideY := editRect.Max.Y + 50
-
-	restore := SetInputForTest(
-		func() (int, int) { return outsideX, outsideY },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 300 },
-	)
-	dv.Update()
-	restore()
-
-	if dv.bpm != 90 {
-		t.Errorf("expected BPM=90 after blur commit, got %d", dv.bpm)
 	}
 }

@@ -127,12 +127,11 @@ func TestMenuSpecHeights(t *testing.T) {
 	}
 }
 
-// TestRowRackButtonsUseIcons verifies that mute/solo/fx/origin/delete buttons
-// in the row rack use the unified IconID glyphs (post-Lucide-style migration).
-// Previously these were text labels (M/S/FX/O/X) because the old renderer
-// looked jagged at small sizes; the new vector renderer makes 16-px icons
-// legible, so DESIGN.md's decision matrix flipped to icon-first.
-func TestRowRackButtonsUseIcons(t *testing.T) {
+// TestRowRackButtonsUseLettersAndIcons verifies the row rack's M / S / FX
+// toggles are TEXT letters (a slashed-speaker mute glyph read as "muted" at
+// rest, and the FX sparkle read as "+" at chip size — DESIGN.md "Row
+// control"), while the menu-hosted Delete keeps its IconID glyph.
+func TestRowRackButtonsUseLettersAndIcons(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -145,19 +144,20 @@ func TestRowRackButtonsUseIcons(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		btn  *Button
+		text string
 		icon IconID
 	}{
-		{"Mute", g.Mute, IconMute},
-		{"Solo", g.Solo, IconSolo},
-		{"FX", g.FX, IconFx},
-		{"Delete", g.Delete, IconClose},
+		{"Mute", g.Mute, rowMuteLabel, ""},
+		{"Solo", g.Solo, rowSoloLabel, ""},
+		{"FX", g.FX, rowFXLabel, ""},
+		{"Delete", g.Delete, "", IconClose},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.btn == nil {
 				t.Skip("button nil")
 			}
-			if tc.btn.Text != "" {
-				t.Errorf("%s button must have no text, got %q", tc.name, tc.btn.Text)
+			if tc.btn.Text != tc.text {
+				t.Errorf("%s button text %q, want %q", tc.name, tc.btn.Text, tc.text)
 			}
 			if tc.btn.Icon != string(tc.icon) {
 				t.Errorf("%s button must use Icon=%q, got %q", tc.name, tc.icon, tc.btn.Icon)

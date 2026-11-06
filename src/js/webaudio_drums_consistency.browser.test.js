@@ -5,9 +5,29 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+import { waitForAudioReady } from "./browser_test_helpers.js";
+import { setupFullWasm } from "./real_input_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
+
+// Every voice renders from the param block Go pushes for its instrument
+// document (window.setInstrumentBlock); a page without Go has none. Read the
+// `modular` instrument's block once from the real app, install it on the bare
+// page below, and render the direct-C reference from the SAME block.
+let MODULAR;
+{
+  const app = await setupFullWasm({ logLevel: "ERROR" });
+  try {
+    MODULAR = await app.page.evaluate(() => {
+      const s = window.__instrumentBlockForTest("modular");
+      return s && { block: Array.from(s.block), seconds: s.seconds, amp: s.amp, melodic: s.melodic };
+    });
+  } finally {
+    await app.cleanup();
+  }
+  if (!MODULAR) throw new Error("the app pushed no block for modular");
+}
 
 // Ensure Playwright's Chromium is installed only if missing.
 const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
@@ -68,7 +88,8 @@ await page.goto(`http://localhost:${port}/`);
 
 // Wait for audio.js to load and initialize synth samples.
 await page.waitForFunction(() => typeof window.playSound === 'function', {}, { timeout: 15000 });
-await page.evaluate(() => window.audioReady);
+await waitForAudioReady(page);
+await page.evaluate((s) => window.setInstrumentBlock("modular", Float64Array.from(s.block), s.seconds, s.amp, s.melodic), MODULAR);
 
 // Trigger user gesture to create the AudioContext (audio.js defers creation until a gesture).
 await page.evaluate(() => document.dispatchEvent(new Event('pointerdown')));
@@ -92,12 +113,16 @@ const { out, meta } = await page.evaluate(() => ({
   meta: window.__renderMeta?.['modular'] ?? null
 }));
 if (!meta) throw new Error('missing render meta for modular');
-const ref = await page.evaluate(async ({ frames, sr }) => {
+const ref = await page.evaluate(async ({ frames, sr, block }) => {
   const factory = window.__drumsFactory;
   if (!factory) throw new Error('no drumsFactory');
   const m = await factory();
   const ptr = m._malloc(frames * 4);
-  m.ccall('render_modular', null, ['number','number','number'], [ptr, sr, frames]);
+  // The instrument's own block — exactly what audio.js renders for it.
+  const pp = m._malloc(block.length * 8);
+  m.HEAPF64.set(block, pp >> 3);
+  m.ccall('render_modular_p', null, ['number','number','number','number'], [ptr, sr, frames, pp]);
+  m._free(pp);
   const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
   m._free(ptr);
   let peak = 0;
@@ -110,7 +135,7 @@ const ref = await page.evaluate(async ({ frames, sr }) => {
     for (let i = 0; i < data.length; i++) data[i] *= inv;
   }
   return Array.from(data);
-}, { frames: meta.frames, sr: meta.sr });
+}, { frames: meta.frames, sr: meta.sr, block: MODULAR.block });
 // Compare by correlation; require near-identical shape.
 const corr = (x, y) => { const n = Math.min(x.length, y.length);
   let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
@@ -154,12 +179,16 @@ await (async () => {
     meta: window.__renderMeta?.['modular'] ?? null
   }));
   if (!cowMeta) throw new Error('missing render meta for modular (second check)');
-  const cowRef = await page.evaluate(async ({ frames, sr }) => {
+  const cowRef = await page.evaluate(async ({ frames, sr, block }) => {
     const factory = window.__drumsFactory;
     if (typeof factory !== 'function') throw new Error('no drumsFactory');
     const m = await factory();
     const ptr = m._malloc(frames * 4);
-    m.ccall('render_modular', null, ['number','number','number'], [ptr, sr, frames]);
+    // The instrument's own block — exactly what audio.js renders for it.
+    const pp = m._malloc(block.length * 8);
+    m.HEAPF64.set(block, pp >> 3);
+    m.ccall('render_modular_p', null, ['number','number','number','number'], [ptr, sr, frames, pp]);
+    m._free(pp);
     const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
     m._free(ptr);
     let peak = 0;
@@ -172,7 +201,7 @@ await (async () => {
       for (let i = 0; i < data.length; i++) data[i] *= inv;
     }
     return Array.from(data);
-  }, { frames: cowMeta.frames, sr: cowMeta.sr });
+  }, { frames: cowMeta.frames, sr: cowMeta.sr, block: MODULAR.block });
   const cowAligned = alignOutput(cowRef, cowOut, 'modular#2');
   const cc = corr(cowRef, cowAligned);
   if (cc < 0.98) throw new Error(`miniaudio JS render mismatch (modular#2): corr=${cc.toFixed(4)}`);

@@ -82,12 +82,12 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	}
 
 	// Track button now lives inline as a chip on the timeline ruler
-	// header on mobile (Theme 2). Verify it's non-empty and meets the
-	// touch-target floor.
+	// header on mobile (Theme 2). Verify it's non-empty and its finger target
+	// (the Touch-expanded hit area) meets the touch-target floor.
 	trackR := dv.trackBtn().Rect()
 	if trackR.Empty() {
 		t.Errorf("track chip should be visible on mobile (inline on timeline)")
-	} else if trackR.Dx() < TouchMinTarget() || trackR.Dy() < TouchMinTarget() {
-		t.Errorf("track chip %v below touch target %d", trackR, TouchMinTarget())
+	} else if tr := trackTouchRect(t, dv); tr.Dx() < TouchMinTarget() || tr.Dy() < TouchMinTarget() {
+		t.Errorf("track chip touch target %v below touch target %d", tr, TouchMinTarget())
 	}
 }

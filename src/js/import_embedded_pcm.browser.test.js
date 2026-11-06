@@ -32,7 +32,8 @@ const FIXTURE = path.resolve(
 // Longer than the buggy 3s openJSONFile fallback, to prove a normal-speed file
 // pick is not pre-empted.
 const SLOW_PICK_MS = 3500;
-const EXPECT_IDS = ["kick-1", "snare", "hihat", "clap", "cowbell", "fm-epiano-1"];
+// exportJSON() reflects post-import state: every embedded-PCM row must keep its id.
+const EXPECT_IDS = ["kick-snap", "snare", "hihat", "clap", "cowbell", "fm-epiano-drive"];
 const EXPECT_NODES = 53;
 
 async function main() {

@@ -4,12 +4,13 @@ package audio
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // activeSession holds the running recording session, if any.
@@ -72,7 +73,7 @@ func StartRecording(opts RecordingOptions) error {
 	pipelinePtr.Store(pipe)
 	platformRecordingStart(opts.Instruments)
 
-	log.Printf("[RECORDING] Started: format=%s instruments=%d dir=%s maxDuration=%v",
+	log.Debugf("[record] started: format=%s instruments=%d dir=%s maxDuration=%v",
 		opts.Format, len(opts.Instruments), dir, opts.MaxDuration)
 	hooks.PublishWithSource(hooks.EventRecordStart, RecordStartPayload{
 		Dir:         dir,
@@ -113,14 +114,14 @@ func StopRecording() (*RecordingResult, error) {
 	// execution when this returns.
 	pipelinePtr.Store(nil)
 	if err := session.pipe.Detach(); err != nil {
-		log.Printf("[RECORDING] Detach pipeline: %v", err)
+		log.Errorf("[record] detach pipeline: %v", err)
 	}
 	// DrainWorkers is fast (close channels + wait for workers to flush
 	// the in-flight queue into bufio buffers). Doing this synchronously
 	// here means callers see accurate sample counts in the returned
 	// Result, while the slow file Close runs async via queueFinalize.
 	if err := session.pipe.DrainWorkers(); err != nil {
-		log.Printf("[RECORDING] DrainWorkers: %v", err)
+		log.Errorf("[record] DrainWorkers: %v", err)
 	}
 
 	// Allow platform (e.g., test stub) to publish anything it has
@@ -154,7 +155,7 @@ func StopRecording() (*RecordingResult, error) {
 		// In-memory path has no async tail; close synchronously to keep
 		// the pipeline goroutines from leaking, then return.
 		_, _ = session.pipe.CloseWriters()
-		log.Printf("[RECORDING] Stopped (in-memory fallback): duration=%.2fs channels=%d",
+		log.Warnf("[record] stopped (in-memory fallback): duration=%.2fs channels=%d",
 			duration, len(result.Channels))
 		hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 			Dir: session.dir, Duration: duration, Channels: len(result.Channels),
@@ -165,7 +166,7 @@ func StopRecording() (*RecordingResult, error) {
 	if drops := session.pipe.Drops(); drops > 0 {
 		hooks.PublishWithSource(hooks.EventRecordDropped, drops, hooks.CaptureSource(0))
 	}
-	log.Printf("[RECORDING] Detached: duration=%.2fs channels=%d drops=%d dir=%s — finalizing async",
+	log.Debugf("[record] detached: duration=%.2fs channels=%d drops=%d dir=%s — finalizing async",
 		duration, len(result.Channels), session.pipe.Drops(), session.dir)
 
 	// Queue the slow drain+close+save tail onto the lifecycle pool. The
@@ -204,7 +205,7 @@ func RecordingAutoStopped() bool {
 // the streaming pipeline produced no output.
 func encodeInMemoryFallback(
 	opts RecordingOptions,
-	platChannels map[string][]float64,
+	platChannels map[channel.ID][]float64,
 	platMaster []float64,
 	sr int,
 	meta *SessionMetadata,
@@ -218,9 +219,9 @@ func encodeInMemoryFallback(
 	if len(platMaster) > 0 {
 		buf, err := encodeBytes(encoder, platMaster, sr)
 		if err == nil {
-			filename := "master" + ext
-			out = append(out, EncodedChannel{ID: "master", Name: "Master", Filename: filename, Data: buf})
-			meta.Channels = append(meta.Channels, ChannelMeta{ID: "master", Name: "Master", Filename: filename, Samples: len(platMaster)})
+			filename := RecordingMasterID + ext
+			out = append(out, EncodedChannel{ID: RecordingMasterID, Name: "Master", Filename: filename, Data: buf})
+			meta.Channels = append(meta.Channels, ChannelMeta{ID: RecordingMasterID, Name: "Master", Filename: filename, Samples: len(platMaster)})
 		}
 	}
 	for _, inst := range opts.Instruments {
@@ -230,12 +231,12 @@ func encodeInMemoryFallback(
 		}
 		buf, err := encodeBytes(encoder, samples, sr)
 		if err != nil {
-			log.Printf("[RECORDING] encode %s: %v", inst.ID, err)
+			log.Errorf("[record] encode %s: %v", inst.ID, err)
 			continue
 		}
-		filename := inst.ID + ext
-		out = append(out, EncodedChannel{ID: inst.ID, Name: inst.Name, Filename: filename, Data: buf})
-		meta.Channels = append(meta.Channels, ChannelMeta{ID: inst.ID, Name: inst.Name, Filename: filename, Samples: len(samples)})
+		filename := inst.ID.String() + ext
+		out = append(out, EncodedChannel{ID: inst.ID.String(), Name: inst.Name, Filename: filename, Data: buf})
+		meta.Channels = append(meta.Channels, ChannelMeta{ID: inst.ID.String(), Name: inst.Name, Filename: filename, Samples: len(samples)})
 	}
 	return out
 }

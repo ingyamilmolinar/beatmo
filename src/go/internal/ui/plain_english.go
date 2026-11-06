@@ -25,6 +25,16 @@ func PlainEnglish(label string) string {
 	if k, ok := plainEnglishMap[key]; ok {
 		return i18n.T(k)
 	}
+	// Chain-tab pill codes (OVR / SPL / DIF / FRZ). Kept in their
+	// own table next to the Chain renderer that owns them, but resolved here
+	// so Chain answers to the same app-wide lookup as every other tab — it was
+	// previously the ONLY audio-panel tab whose labels PlainEnglish did not
+	// cover, which is why its codes sat on screen unexplained.
+	for code, k := range chainPillGlosses() {
+		if plainEnglishKey(code) == key {
+			return i18n.T(k)
+		}
+	}
 	return ""
 }
 
@@ -102,6 +112,7 @@ var plainEnglishMap = map[string]i18n.Key{
 	"voice drift":        i18n.KeyGlossVoiceDrift,
 	"drift depth":        i18n.KeyGlossDriftDepth,
 	"kick":               i18n.KeyGlossKick,
+	"snare":              i18n.KeyGlossSnare,
 	"variant":            i18n.KeyGlossVariant,
 	"harmonic decay":     i18n.KeyGlossHarmonicDecay,
 	"drop speed":         i18n.KeyGlossDropSpeed,
@@ -109,11 +120,28 @@ var plainEnglishMap = map[string]i18n.Key{
 	"mode split":         i18n.KeyGlossModeSplit,
 	"mode body":          i18n.KeyGlossModeBody,
 	"mode ring":          i18n.KeyGlossModeRing,
+	"body hold":          i18n.KeyGlossBodyHold,
+	"air":                i18n.KeyGlossAir,
+	"harmonics":          i18n.KeyGlossHarmonics,
+	"punch speed":        i18n.KeyGlossPunchSpeed,
+	"level":              i18n.KeyGlossLevel,
 	"tail":               i18n.KeyGlossTail,
 	"fm":                 i18n.KeyGlossFm,
 	"env":                i18n.KeyGlossEnv,
 	// Phase-15 voice/choir knobs (Task 8): FORMANT + ENSEMBLE + RESONATOR.
 	"formant":       i18n.KeyGlossFormant,
+	"modes":         i18n.KeyGlossModal,
+	"strike":        i18n.KeyGlossStrike,
+	"noise":         i18n.KeyGlossNoiseband,
+	"stretch":       i18n.KeyGlossStretch,
+	"damping":       i18n.KeyGlossDamping,
+	"brightness":    i18n.KeyGlossModalBright,
+	"partials":      i18n.KeyGlossPartials,
+	"decay rate":    i18n.KeyGlossDecayRate,
+	"decay tilt":    i18n.KeyGlossDecayTilt,
+	"top damping":   i18n.KeyGlossTopDamping,
+	"contact":       i18n.KeyGlossContact,
+	"hardness":      i18n.KeyGlossHardness,
 	"vowel":         i18n.KeyGlossVowel,
 	"voice type":    i18n.KeyGlossVoiceType,
 	"breath":        i18n.KeyGlossBreath,
@@ -158,6 +186,15 @@ var plainEnglishMap = map[string]i18n.Key{
 	"reso":      i18n.KeyGlossReso,
 	"resonance": i18n.KeyGlossResonance,
 	"body":      i18n.KeyGlossBody,
+
+	// FINISH stage (the post ops + output limit).
+	"resample":   i18n.KeyGlossResample,
+	"fade speed": i18n.KeyGlossFadeSpeed,
+	"low boost":  i18n.KeyGlossLowBoost,
+	"darken":     i18n.KeyGlossDarken,
+	"crunch":     i18n.KeyGlossCrunch,
+	"limit":      i18n.KeyGlossLimit,
+	"crisp":      i18n.KeyGlossCrisp,
 
 	// FM family knobs (native-deprecation migration). Op-numbered labels
 	// normalise through plainEnglishKey verbatim (no unit suffix), so the
@@ -213,11 +250,33 @@ var plainEnglishMap = map[string]i18n.Key{
 	"metal level":  i18n.KeyGlossMetalLevel,
 	"sizzle level": i18n.KeyGlossSizzleLevel,
 	"sizzle decay": i18n.KeyGlossSizzleDecay,
+	// Cymbal modal-plate knobs (Phase-18).
+	"plate modes":   i18n.KeyGlossPlateModes,
+	"lowest mode":   i18n.KeyGlossLowestMode,
+	"highest mode":  i18n.KeyGlossHighestMode,
+	"highs fade":    i18n.KeyGlossHighsFade,
+	"tick corner":   i18n.KeyGlossTickCorner,
+	"shimmer":       i18n.KeyGlossShimmer,
+	"strike tone":   i18n.KeyGlossStrikeTone,
+	"strike width":  i18n.KeyGlossStrikeWidth,
+	"body tone":     i18n.KeyGlossBodyTone,
+	"body width":    i18n.KeyGlossBodyWidth,
+	"sparkle":       i18n.KeyGlossSparkle,
+	"sparkle tone":  i18n.KeyGlossSparkleTone,
+	"sparkle width": i18n.KeyGlossSparkleWidth,
+	"wash":          i18n.KeyGlossWash,
+	"softness":      i18n.KeyGlossSoftness,
+	"rattle":        i18n.KeyGlossRattle,
+	"rattle speed":  i18n.KeyGlossRattleSpeed,
+	"rattle length": i18n.KeyGlossRattleLength,
+	"wire delay":    i18n.KeyGlossWireDelay,
+	"buzz hold":     i18n.KeyGlossBuzzHold,
 
 	// Bass family knobs.
 	"pluck":       i18n.KeyGlossPluck,
 	"pick":        i18n.KeyGlossPick,
 	"fade":        i18n.KeyGlossFade,
+	"length":      i18n.KeyGlossLength,
 	"overtone":    i18n.KeyGlossOvertone,
 	"pitch punch": i18n.KeyGlossPitchPunch,
 	"punch":       i18n.KeyGlossPunch,

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -25,7 +27,7 @@ func TestCachedAnalyzerState_TTLHonored(t *testing.T) {
 	build := func() *analyzer.State { builds++; return probe }
 
 	// Cold cache: first call must build.
-	if got := cachedAnalyzerState("main", 1, 48000, build); got != probe {
+	if got := cachedAnalyzerState(channel.Master, 1, 48000, build); got != probe {
 		t.Fatalf("first call returned %p, want %p", got, probe)
 	}
 	if builds != 1 {
@@ -34,7 +36,7 @@ func TestCachedAnalyzerState_TTLHonored(t *testing.T) {
 
 	// Many calls within TTL: must hit cache.
 	for i := 0; i < 200; i++ {
-		_ = cachedAnalyzerState("main", 1, 48000, build)
+		_ = cachedAnalyzerState(channel.Master, 1, 48000, build)
 	}
 	if builds != 1 {
 		t.Fatalf("expected build count to stay at 1 within TTL, got %d "+
@@ -42,13 +44,13 @@ func TestCachedAnalyzerState_TTLHonored(t *testing.T) {
 	}
 
 	// Different rowsFP: must rebuild even within TTL.
-	_ = cachedAnalyzerState("main", 2, 48000, build)
+	_ = cachedAnalyzerState(channel.Master, 2, 48000, build)
 	if builds != 2 {
 		t.Fatalf("expected rebuild on rowsFP change, got builds=%d", builds)
 	}
 
 	// Different activeID: must rebuild.
-	_ = cachedAnalyzerState("kick", 2, 48000, build)
+	_ = cachedAnalyzerState(channel.Of(roster.Kick), 2, 48000, build)
 	if builds != 3 {
 		t.Fatalf("expected rebuild on activeID change, got builds=%d", builds)
 	}
@@ -64,11 +66,11 @@ func TestCachedAnalyzerState_HitAllocBudget(t *testing.T) {
 	probe := &analyzer.State{}
 	build := func() *analyzer.State { return probe }
 	// Prime the cache.
-	_ = cachedAnalyzerState("main", 7, 48000, build)
+	_ = cachedAnalyzerState(channel.Master, 7, 48000, build)
 
 	const budget = 0.0
 	allocs := testing.AllocsPerRun(1000, func() {
-		_ = cachedAnalyzerState("main", 7, 48000, build)
+		_ = cachedAnalyzerState(channel.Master, 7, 48000, build)
 	})
 	if allocs > budget {
 		t.Fatalf("cache-hit allocs/call = %.1f exceeds budget %.0f — "+
@@ -87,9 +89,9 @@ func TestCachedAnalyzerState_HitAllocBudget(t *testing.T) {
 // recompute `dv.Rows` every Draw still hit the cache.
 func TestRowsFingerprint_StableForSameRows(t *testing.T) {
 	rows := []*DrumRow{
-		{Instrument: "kick", Name: "Kick"},
-		{Instrument: "snare", Name: "Snare"},
-		{Instrument: "hihat", Name: "Hat"},
+		{Instrument: roster.Kick, Name: "Kick"},
+		{Instrument: roster.Snare, Name: "Snare"},
+		{Instrument: roster.Hihat, Name: "Hat"},
 	}
 	rowsCopy := make([]*DrumRow, len(rows))
 	for i, r := range rows {
@@ -106,14 +108,14 @@ func TestRowsFingerprint_StableForSameRows(t *testing.T) {
 // when any row's instrument or name changes. Critical so the cache
 // doesn't serve stale state after an instrument swap mid-session.
 func TestRowsFingerprint_ChangesOnRename(t *testing.T) {
-	rows := []*DrumRow{{Instrument: "kick", Name: "Kick"}}
+	rows := []*DrumRow{{Instrument: roster.Kick, Name: "Kick"}}
 	base := rowsFingerprint(rows)
 	rows[0].Name = "Bass Drum"
 	if got := rowsFingerprint(rows); got == base {
 		t.Errorf("fingerprint unchanged after rename: base=%x got=%x", base, got)
 	}
 	rows[0].Name = "Kick"
-	rows[0].Instrument = "kick-1"
+	rows[0].Instrument = roster.KickSnap
 	if got := rowsFingerprint(rows); got == base {
 		t.Errorf("fingerprint unchanged after instrument swap: base=%x got=%x", base, got)
 	}
@@ -128,15 +130,15 @@ func TestCachedScopeState_TTLHonored(t *testing.T) {
 	var builds int
 	build := func() *scope.State { builds++; return probe }
 
-	_ = cachedScopeState("kick", scope.StageSynth, scope.StageMaster, build)
+	_ = cachedScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageMaster, build)
 	for i := 0; i < 100; i++ {
-		_ = cachedScopeState("kick", scope.StageSynth, scope.StageMaster, build)
+		_ = cachedScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageMaster, build)
 	}
 	if builds != 1 {
 		t.Fatalf("expected 1 build, got %d", builds)
 	}
 	// Different tap selection invalidates.
-	_ = cachedScopeState("kick", scope.StageSends, scope.StageMaster, build)
+	_ = cachedScopeState(channel.Of(roster.Kick), scope.StageEQ, scope.StageMaster, build)
 	if builds != 2 {
 		t.Fatalf("expected rebuild on tap change, got %d", builds)
 	}
@@ -152,12 +154,12 @@ func TestCachedAnalyzerState_TTLExpiry(t *testing.T) {
 	probe := &analyzer.State{}
 	var builds int
 	build := func() *analyzer.State { builds++; return probe }
-	_ = cachedAnalyzerState("main", 9, 48000, build)
+	_ = cachedAnalyzerState(channel.Master, 9, 48000, build)
 	if builds != 1 {
 		t.Fatalf("setup: expected 1 build, got %d", builds)
 	}
 	time.Sleep(stateCacheTTL + 10*time.Millisecond)
-	_ = cachedAnalyzerState("main", 9, 48000, build)
+	_ = cachedAnalyzerState(channel.Master, 9, 48000, build)
 	if builds != 2 {
 		t.Fatalf("expected rebuild after TTL elapsed, got %d", builds)
 	}

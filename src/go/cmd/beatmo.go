@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,6 +15,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/eventlogger"
 	"github.com/ingyamilmolinar/beatmo/internal/eventstream"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/ui"
 	"github.com/ingyamilmolinar/beatmo/internal/ui/uistate"
@@ -40,7 +41,7 @@ func main() {
 	benchSecs := flag.Float64("bench-secs", 10, "benchmark mode: duration in seconds")
 	benchProf := flag.String("bench-prof", "", "benchmark mode: write CPU profile to this path")
 	benchStorm := flag.String("bench-synth-storm", "", "synth param-mutation storm during bench: off|toggle|ctrl|combined")
-	benchStormInst := flag.String("bench-synth-storm-inst", "cello", "instrument id the synth storm mutates")
+	benchStormInst := flag.String("bench-synth-storm-inst", string(roster.Cello), "instrument id the synth storm mutates")
 	recordBench := flag.Float64("record-bench", 0, "play demo + record audio for this many seconds, write profiles to bench-results/, then exit (0 = disabled)")
 	recordBenchBPM := flag.Int("record-bench-bpm", 120, "BPM to use during -record-bench")
 	hooksConfig := flag.String("hooks-config", "", "path to a JSON hooks config to load at startup")
@@ -59,7 +60,11 @@ func main() {
 	listSceneSubjects := flag.Bool("list-scene-subjects", false, "print 'name<TAB>subject' per line and exit (subject is empty for full-screen scenes)")
 	uiStatePath := flag.String("ui-state", "", "path to UI state JSON (camera, splitter, profile, view)")
 	importPath := flag.String("import", "", "path to a tunkul.json project to import at startup")
+	devTools := flag.Bool("devtools", true, "show the developer-only surfaces (Chain tab, low-level synth controls); false previews the production UI beatmo.io ships")
 	flag.Parse()
+	if !*devTools {
+		ui.SetDevToolsForcedOff(true)
+	}
 
 	if *listScenes {
 		for _, name := range ui.SceneNames(true) {
@@ -81,6 +86,9 @@ func main() {
 	}
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
+	// One pipeline: packages with no injected logger (internal/audio) log
+	// through the default, so their lines honour -log too.
+	game_log.SetDefault(logger)
 
 	// Apply runtime config (GC tuning, profile rates) before any
 	// goroutine spawns so settings take effect for the whole process.
@@ -106,7 +114,7 @@ func main() {
 	if *benchBPM > 0 && *benchProf != "" {
 		stop, err := startBenchCPUProfile(*benchProf)
 		if err != nil {
-			log.Printf("bench-prof: %v", err)
+			logger.Errorf("[bench-prof] %v", err)
 			return
 		}
 		defer stop()
@@ -118,7 +126,7 @@ func main() {
 	if *recordBench > 0 {
 		dir, stop, err := startRecordBench(logger)
 		if err != nil {
-			log.Printf("record-bench: %v", err)
+			logger.Errorf("[record-bench] %v", err)
 			return
 		}
 		recordBenchDir = dir
@@ -129,7 +137,7 @@ func main() {
 	if *hooksConfig != "" {
 		hookCleanup, err := loadHooksConfig(*hooksConfig, logger)
 		if err != nil {
-			log.Printf("hooks-config: %v", err)
+			logger.Errorf("[hooks-config] %v", err)
 			return
 		}
 		defer hookCleanup()
@@ -151,7 +159,7 @@ func main() {
 			Verbose: verbose,
 		})
 		if err != nil {
-			log.Printf("event-log: %v", err)
+			logger.Errorf("[event-log] %v", err)
 		} else {
 			logger.Infof("[eventlog] writing to %s (verbose=%v)", eventLogPath, verbose)
 			defer sink.Close()
@@ -173,7 +181,7 @@ func main() {
 			Verbose: verbose,
 		})
 		if err != nil {
-			log.Printf("info-log: %v", err)
+			logger.Errorf("[info-log] %v", err)
 		} else {
 			defer infoLog.Close()
 		}
@@ -197,17 +205,22 @@ func main() {
 		ui.SetNotificationHistoryStore(ui.NewPersistedNotificationHistory(ns))
 	}
 
-	// Instrument data (user recipes + per-recipe overrides) lives in its OWN
-	// decoupled store — separate file from prefs.json — so instruments can be
-	// shared/imported without touching favorites/language/UI state. The parity
-	// gate is flipped on here (production bootstrap only) so test binaries /
-	// parity goldens keep shipped defaults exactly. InstrumentStore satisfies
-	// both audio.UserRecipeSource (load) and ui.RecipeSaveSink (save).
+	// The user's instrument LIBRARY (saved instrument documents, spec
+	// 2026-10-04 §6) lives in its OWN store — separate file from prefs.json —
+	// so instruments can be shared/imported without touching favorites /
+	// language / UI state. Loaded before the first ResetInstruments a project
+	// sees, so saved instruments are playable and listed from frame 1; Save /
+	// Save As / Restore shipped persist through the same store.
 	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
 	defer instStore.Close()
-	audio.SetUseUserRecipeOverrides(true)
-	_ = audio.ApplyUserRecipeOverrides(instStore)
-	ui.SetRecipeSink(instStore)
+	audio.SetInstrumentLibrarySink(instStore)
+	// Sampler edits saved before versioning join their instrument's first
+	// version (read once, never written again).
+	oldEdits, _ := prefsStore.(audio.SampleEditSource)
+	if err := audio.LoadUserInstrumentLibrary(instStore, oldEdits); err != nil {
+		logger.Warnf("[instruments] %v", err)
+	}
+	audio.ResetInstruments()
 
 	// Sampler tab: cross-session user-sample persistence (per-file under the
 	// prefs dir on desktop). Mirrors the recipe wiring above; ApplySavedSamples
@@ -219,17 +232,11 @@ func main() {
 		audio.ApplySavedSamples(adapter)
 	}
 
-	// Non-destructive sample-edit descriptors (Sampler Save on a synth
-	// source): tiny float maps in prefs.json, rehydrated through
-	// audio.SetSampleEdit so the next trigger renders through the saved edit.
-	// Save / Reset write back through the same store.
-	if se, ok := prefsStore.(userprefs.SampleEditStore); ok {
-		ui.SetSampleEditSink(se)
-		audio.ApplySavedSampleEdits(se)
-	}
-
 	// Knob step-rung persistence: remember each param's chosen step badge
 	// rung across restarts. Keyed by param name (global, not per-instrument).
+	if ap, ok := prefsStore.(userprefs.AudioPanelStore); ok {
+		ui.SetAudioPanelStateSink(ap)
+	}
 	if ks, ok := prefsStore.(userprefs.KnobStepStore); ok {
 		ui.SetKnobStepSink(ks)
 	}
@@ -244,6 +251,14 @@ func main() {
 	// Create an instance of our game
 	g := ui.New(logger)
 
+	// User theme: seed the profile theme from prefs and apply it before the
+	// first Layout so frame 1 already renders in the user's colors. Shared by
+	// desktop (prefs.json) and WASM (localStorage) — this file builds for both.
+	if ts, ok := prefsStore.(userprefs.ThemeStore); ok {
+		ui.SetThemeSink(ts)
+		ui.ApplyStoredTheme(g)
+	}
+
 	if *forceMobile {
 		g.SetForceMobileProfile(true)
 	}
@@ -254,17 +269,17 @@ func main() {
 	if *importPath != "" {
 		data, err := os.ReadFile(*importPath)
 		if err != nil {
-			log.Printf("import: %v", err)
+			logger.Errorf("[import] %v", err)
 			return
 		}
 		if err := g.Import(data); err != nil {
-			log.Printf("import: %v", err)
+			logger.Errorf("[import] %v", err)
 			return
 		}
 	}
 	if *uiStatePath != "" {
 		if err := uistate.ApplyFile(g, *uiStatePath); err != nil {
-			log.Printf("ui-state: %v", err)
+			logger.Errorf("[ui-state] %v", err)
 			return
 		}
 		hooks.PublishWithSource(hooks.EventUIStateApplied,
@@ -278,7 +293,7 @@ func main() {
 			err = ui.RunScene(g, *sceneName)
 		}
 		if err != nil {
-			log.Printf("scene: %v", err)
+			logger.Errorf("[scene] %v", err)
 			return
 		}
 	}
@@ -289,12 +304,25 @@ func main() {
 	case *recordBench > 0:
 		g.RunRecordBenchmark(*recordBenchBPM, time.Duration(*recordBench*float64(time.Second)), recordBenchDir)
 	case *benchBPM > 0:
-		g.RunBenchmark(*benchBPM, time.Duration(*benchSecs*float64(time.Second)), ui.ParseBenchStormScenario(*benchStorm), *benchStormInst)
+		var stormInst instrument.ID
+		if *benchStormInst != "" {
+			id, err := instrument.ParseID(*benchStormInst)
+			if err != nil {
+				logger.Errorf("[bench-synth-storm-inst] %v", err)
+				os.Exit(1)
+			}
+			stormInst = id
+		}
+		g.RunBenchmark(*benchBPM, time.Duration(*benchSecs*float64(time.Second)), ui.ParseBenchStormScenario(*benchStorm), stormInst)
 	case *demo:
 		g.RunDemo()
 	}
 	if *scopeOpen {
 		g.SetChainVisible(true)
+	}
+	if err := startTour(g); err != nil {
+		logger.Errorf("[tour] %v", err)
+		return
 	}
 
 	// Trap OS signals for graceful audio shutdown.
@@ -316,7 +344,8 @@ func main() {
 
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {
-		log.Fatal(err) //nolint:gocritic // exitAfterDefer: acceptable for main()
+		logger.Errorf("[run] %v", err)
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: acceptable for main()
 	}
 	// Clean up audio on normal window close.
 	g.Close()

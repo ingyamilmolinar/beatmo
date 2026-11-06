@@ -1,15 +1,26 @@
 package ui
 
-import (
-	"fmt"
-	"math"
-)
+import "fmt"
 
+// timelineInfo renders the beat-counter readout for a clock sample. The
+// beat/second pair is resolved by playheadPosAt — the same derivation the
+// navigation menu's position title uses — so the two readouts can never drift.
 func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
-	curMS := int(math.Round(elapsedBeats * dv.secPerBeat * 1000.0))
-	curS := curMS / 1000
+	p := playheadPosAt(elapsedBeats, dv.secPerBeat, dv.timelineUnitsPerBeat)
+	m := readoutMemo{beat: p.DisplayBeat, seconds: p.Seconds, mobile: Profile().IsMobile()}
+	if m.beat != dv.readout.beat || m.seconds != dv.readout.seconds || m.mobile != dv.readout.mobile || dv.readout.text == "" {
+		m.text = formatBeatReadout(m.beat, m.seconds)
+		dv.readout = m
+	}
+	return dv.readout.text
+}
 
-	return formatBeatReadout(int(elapsedBeats)+1, curS)
+// readoutMemo is the last readout timelineInfo formatted, keyed by every input
+// of formatBeatReadout.
+type readoutMemo struct {
+	beat, seconds int
+	mobile        bool
+	text          string
 }
 
 // formatBeatReadout renders the beat-counter readout, position + elapsed time

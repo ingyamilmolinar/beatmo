@@ -5,20 +5,19 @@
  * parameter manager. Specifically:
  *
  *   1. setInstrumentParam(id, name, value) — Go-side mutation flows
- *      through platformInstrumentParamsChanged → window.updateInstrumentParams,
+ *      through the instrument document push → window.setInstrumentBlock,
  *      which mirrors the JS-side params map and invalidates renderCache.
  *
  *   2. getInstrumentParams(id) — returns the merged param map as a
  *      plain JS object (no JSON.parse needed).
  *
- *   3. recipeForInstrument(id) — every shipped instrument is bound to
- *      its drum-* or fm-* recipe id (Phase 2.4 binding table).
+ *   3. getInstrumentDoc(id) — every instrument crosses as its document JSON
+ *      (id + origin), see Test 1.
  *
- *   4. synthRecipeCatalog() — surfaces all 25 recipes with their
- *      ParamDef schemas, so the UI (or a plugin browser) can render
- *      knob layouts without crossing the Go↔JS boundary at every read.
+ *   4. instrumentParamDefs(id) — the knob schema of the instrument's
+ *      document (the Synth tab's controls), see Test 2.
  *
- *   5. resetInstrumentParams(id) — clears the per-instrument map.
+ *   5. resetInstrumentParams(id) — returns the document to its library entry.
  *
  * What this test does NOT do (intentionally):
  *   - Capture WebAudio output and assert audible param change. That
@@ -42,6 +41,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
+let snareDefs = [];
 
 // Ensure Chromium is installed.
 const chromiumPath = path.join(
@@ -108,125 +108,80 @@ page.on("console", (msg) => {
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof setInstrumentParam === "function");
 await page.waitForFunction(() => typeof getInstrumentParams === "function");
-await page.waitForFunction(() => typeof recipeForInstrument === "function");
-await page.waitForFunction(() => typeof synthRecipeCatalog === "function");
-await page.waitForFunction(() => typeof window.updateInstrumentParams === "function");
+await page.waitForFunction(() => typeof getInstrumentDoc === "function");
+await page.waitForFunction(() => typeof instrumentParamDefs === "function");
+await page.waitForFunction(() => typeof window.setInstrumentBlock === "function");
 
 console.log("[TEST] All synth-recipe exports present.");
 
-// Test 1: recipeForInstrument returns the canonical id for shipped instruments.
+// Test 1: getInstrumentDoc crosses each instrument's document as JSON — its
+// id, the library entry it came from, and its modules. Which values a document
+// holds is Go-owned (internal/audio instrument_docs tests); the BRIDGE owes a
+// parseable document for every instrument the app plays.
 {
-  const got = await page.evaluate(() => ({
-    snare: recipeForInstrument("snare"),
-    kick: recipeForInstrument("kick"),
-    fmBass: recipeForInstrument("fm-bass"),
-    fmPluckVariant: recipeForInstrument("fm-pluck-1"),
-  }));
-  const want = {
-    snare: "drum-snare",
-    kick: "drum-kick",
-    fmBass: "fm-bass",
-    fmPluckVariant: "fm-pluck",
-  };
-  for (const k of Object.keys(want)) {
-    if (got[k] !== want[k]) {
-      throw new Error(
-        `recipeForInstrument mismatch for ${k}: got ${got[k]}, want ${want[k]}`,
-      );
+  const got = await page.evaluate(() => Object.fromEntries(
+    ["snare", "kick", "fm-bass", "fm-pluck-tight"].map((id) => [id, getInstrumentDoc(id)]),
+  ));
+  for (const [id, raw] of Object.entries(got)) {
+    if (typeof raw !== "string" || raw === "") {
+      throw new Error(`getInstrumentDoc(${id}) returned ${JSON.stringify(raw)}; want document JSON`);
+    }
+    const d = JSON.parse(raw);
+    if (d.id !== id || !d.origin || !d.stages || !d.stages.core || !d.stages.finish) {
+      throw new Error(`getInstrumentDoc(${id}): id=${d.id} origin=${d.origin} stages=${Object.keys(d.stages || {})}`);
     }
   }
-  console.log("[TEST] recipeForInstrument bindings OK.");
+  const none = await page.evaluate(() => getInstrumentDoc("no-such-instrument"));
+  if (none !== "") throw new Error(`getInstrumentDoc(unknown) = ${JSON.stringify(none)}, want ""`);
+  console.log("[TEST] getInstrumentDoc OK.");
 }
 
-// Test 2: synthRecipeCatalog returns at least 25 entries with the expected shape.
+// Test 2: instrumentParamDefs returns the snare's knob schema with the expected
+// shape. The exact set is Go-owned (COVERED-BY-GO: instrument_param_defs_test.go).
 {
-  const cat = await page.evaluate(() => synthRecipeCatalog());
-  const recipeIDs = Object.keys(cat);
-  if (recipeIDs.length < 25) {
-    throw new Error(
-      `synthRecipeCatalog returned ${recipeIDs.length} entries; want >= 25`,
-    );
+  snareDefs = await page.evaluate(() => instrumentParamDefs("snare"));
+  if (!Array.isArray(snareDefs) || snareDefs.length < 10) {
+    throw new Error(`instrumentParamDefs(snare) returned ${snareDefs && snareDefs.length} defs`);
   }
-  const ds = cat["drum-snare"];
-  if (!ds) throw new Error("synthRecipeCatalog missing drum-snare");
-  if (ds.category !== "drum") {
-    throw new Error(`drum-snare category=${ds.category}, want drum`);
+  const names = new Set(snareDefs.map((p) => p.name));
+  for (const name of ["gen1_snare_tune", "post_decay", "gain"]) {
+    if (!names.has(name)) throw new Error(`instrumentParamDefs(snare) missing ${name}`);
   }
-  // ParamSchema is filtered to the recipe's wired params (the knobs whose
-  // values the C renderer actually reads). drum-snare's wired set is
-  // {pitch, decay, tone, drive} — see src/go/internal/audio/synth_recipe_wired.go.
-  // The generic 8-knob set is no longer surfaced verbatim because rendering a
-  // slider that has no audible effect was the most-cited Synth-tab UX bug
-  // (see project_synth_pipeline_architecture memory).
-  // The native-deprecation migration adds the snare family knobs (the
-  // engine's own DSP constants exposed as knobs — body freqs, noise bands,
-  // envelope rates, mixes; see snareFamilyParamDefs in
-  // src/go/internal/audio/synth_recipe_wired.go). The gen_type Generator
-  // selector is gone — re-voicing is the Modular recipe's job.
-  //
-  // The modular unification (Phase-8A/8C) additionally appends the shared
-  // pipeline stage params (osc/env/filter/drive + PITCH/LFO/BURST enables and
-  // knobs) to EVERY family recipe, so the exact entry count is Go-owned and
-  // intentionally NOT pinned here. COVERED-BY-GO:
-  // TestStageParams_SchemaDisciplineNoCollisions (stage_params_test.go),
-  // TestBuiltinDrumRecipes_DeclareOnlyWiredGenericKnobs
-  // (synth_registry_entries_test.go). This test asserts the bridge shape:
-  // every snare-family knob must be surfaced through the catalog.
-  const wantSnareParams = [
-    "pitch", "decay", "tone", "drive",
-    "snare_wave", "fundamental", "snare_tone2_freq", "snare_noise_tune",
-    "snare_tone_decay", "snare_noise_decay", "snare_tail_decay",
-    "snare_tone_mix", "snare_noise_mix", "snare_wire_mix", "snare_attack",
-  ];
-  if (!Array.isArray(ds.params) || ds.params.length < wantSnareParams.length) {
-    throw new Error(
-      `drum-snare ParamSchema has ${ds.params?.length} entries; want >= ${wantSnareParams.length}`,
-    );
+  // Spot-check a ParamDef shape. post_decay is the FINISH fade, range [0,1]
+  // (1 = no fade).
+  const decayDef = snareDefs.find((p) => p.name === "post_decay");
+  if (decayDef.min !== 0 || decayDef.max !== 1) {
+    throw new Error(`post_decay range=[${decayDef.min},${decayDef.max}], want [0,1]`);
   }
-  const gotSnareParamNames = new Set(ds.params.map((p) => p.name));
-  for (const name of wantSnareParams) {
-    if (!gotSnareParamNames.has(name)) {
-      throw new Error(
-        `drum-snare ParamSchema missing ${name}; got [${[...gotSnareParamNames].join(",")}]`,
-      );
-    }
-  }
-  // Spot-check a generic ParamDef shape.
-  const decayDef = ds.params.find((p) => p.name === "decay");
-  if (!decayDef) throw new Error("drum-snare missing 'decay' ParamDef");
-  if (decayDef.default !== 1) {
-    throw new Error(`decay default=${decayDef.default}, want 1`);
-  }
-  if (decayDef.min !== 0 || decayDef.max !== 4) {
-    throw new Error(
-      `decay range=[${decayDef.min},${decayDef.max}], want [0,4]`,
-    );
-  }
-  console.log(`[TEST] synthRecipeCatalog OK (${recipeIDs.length} recipes).`);
+  const none = await page.evaluate(() => instrumentParamDefs("no-such-instrument"));
+  if (!Array.isArray(none) || none.length !== 0) throw new Error("instrumentParamDefs(unknown) must be []");
+  console.log(`[TEST] instrumentParamDefs OK (${snareDefs.length} defs).`);
 }
 
-// Test 3: setInstrumentParam → getInstrumentParams round-trip + the
-// window.updateInstrumentParams hook fires with the JS-side mirror.
+// Test 3: setInstrumentParam → getInstrumentParams round-trip + every edit
+// pushes the instrument document's block through window.setInstrumentBlock.
+let snareLibrary;
 {
   await page.evaluate(() => resetInstrumentParams("snare"));
+  snareLibrary = await page.evaluate(() => getInstrumentParams("snare"));
 
-  // Install a probe on window.updateInstrumentParams so we can see the
-  // platform callback fire. The original handler still runs (we wrap, not replace).
+  // Install a probe on window.setInstrumentBlock so we can see the platform
+  // push fire. The original handler still runs (we wrap, not replace).
   await page.evaluate(() => {
     window.__synthParamUpdates = [];
-    const orig = window.updateInstrumentParams;
-    window.updateInstrumentParams = (id, paramsJSON) => {
-      window.__synthParamUpdates.push({ id, paramsJSON });
-      return orig(id, paramsJSON);
+    const orig = window.setInstrumentBlock;
+    window.setInstrumentBlock = (id, ...rest) => {
+      window.__synthParamUpdates.push({ id });
+      return orig(id, ...rest);
     };
   });
 
-  await page.evaluate(() => setInstrumentParam("snare", "decay", 0.5));
+  await page.evaluate(() => setInstrumentParam("snare", "amp_decay", 0.5));
   await page.evaluate(() => setInstrumentParam("snare", "drive", 0.7));
 
   const got = await page.evaluate(() => getInstrumentParams("snare"));
-  if (got.decay !== 0.5) {
-    throw new Error(`getInstrumentParams.decay=${got.decay}, want 0.5`);
+  if (got.amp_decay !== 0.5) {
+    throw new Error(`getInstrumentParams.amp_decay=${got.amp_decay}, want 0.5`);
   }
   if (got.drive !== 0.7) {
     throw new Error(`getInstrumentParams.drive=${got.drive}, want 0.7`);
@@ -235,7 +190,7 @@ console.log("[TEST] All synth-recipe exports present.");
   const updates = await page.evaluate(() => window.__synthParamUpdates);
   if (updates.length !== 2) {
     throw new Error(
-      `expected 2 updateInstrumentParams calls; got ${updates.length}`,
+      `expected 2 setInstrumentBlock pushes; got ${updates.length}`,
     );
   }
   console.log(
@@ -243,46 +198,35 @@ console.log("[TEST] All synth-recipe exports present.");
   );
 }
 
-// Test 4: resetInstrumentParams clears the manager state + fires the callback.
+// Test 4: resetInstrumentParams returns the document to its library entry +
+// pushes it once.
 {
   await page.evaluate(() => (window.__synthParamUpdates = []));
   await page.evaluate(() => resetInstrumentParams("snare"));
   const got = await page.evaluate(() => getInstrumentParams("snare"));
-  if (Object.keys(got).length !== 0) {
-    throw new Error(`after reset, got params: ${JSON.stringify(got)}`);
+  if (got.amp_decay !== snareLibrary.amp_decay || got.drive !== snareLibrary.drive) {
+    throw new Error(`after reset, got amp_decay=${got.amp_decay} drive=${got.drive}, want the library ${snareLibrary.amp_decay} / ${snareLibrary.drive}`);
   }
   const updates = await page.evaluate(() => window.__synthParamUpdates);
   if (updates.length !== 1) {
     throw new Error(
-      `expected 1 updateInstrumentParams call on reset; got ${updates.length}`,
+      `expected 1 setInstrumentBlock push on reset; got ${updates.length}`,
     );
   }
   console.log("[TEST] resetInstrumentParams OK.");
 }
 
-// Test 5: recipeDefaultParams returns the recipe's declared defaults. drum-snare's
-// wired params are {pitch, decay, tone, drive} — `attack` is filtered out
-// because render_snare_p() never reads it.
+// Test 5: instrumentParamDefs and getInstrumentParams read ONE document: each
+// def's default is the document's value (the Synth tab shows the instrument's
+// own values as its knobs' defaults).
 {
-  const got = await page.evaluate(() => recipeDefaultParams("drum-snare"));
-  if (got.decay !== 1) {
-    throw new Error(`drum-snare default.decay=${got.decay}, want 1`);
+  const vals = await page.evaluate(() => getInstrumentParams("snare"));
+  for (const d of snareDefs) {
+    if (d.name in vals && vals[d.name] !== d.default) {
+      throw new Error(`snare ${d.name}: def default ${d.default}, document value ${vals[d.name]}`);
+    }
   }
-  if (got.pitch !== 0) {
-    throw new Error(`drum-snare default.pitch=${got.pitch}, want 0`);
-  }
-  if (got.tone !== 0) {
-    throw new Error(`drum-snare default.tone=${got.tone}, want 0`);
-  }
-  if (got.drive !== 0) {
-    throw new Error(`drum-snare default.drive=${got.drive}, want 0`);
-  }
-  if ("attack" in got) {
-    throw new Error(
-      `drum-snare defaults must not include 'attack' (wired params are {pitch,decay,tone,drive}); got ${JSON.stringify(got)}`,
-    );
-  }
-  console.log("[TEST] recipeDefaultParams OK.");
+  console.log("[TEST] instrumentParamDefs defaults == document values OK.");
 }
 
 console.log("[TEST] All instrument-params bridge checks passed.");

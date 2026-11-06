@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -13,8 +14,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
@@ -23,22 +27,38 @@ import (
 
 func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *DrumView {
 	opts := audio.Instruments()
-	inst := "snare"
-	if len(opts) > 0 {
-		inst = opts[0]
+	// The shipped default first row is the snare. This used to fall out of
+	// opts[0] by accident — snare happened to be the first entry in the
+	// hand-written instrument map — so when snare became a config-first
+	// modular instrument it moved down the roster and the default row silently
+	// became the KICK. The default is named explicitly now; the positional
+	// pick is only a fallback for a roster that somehow lacks it.
+	inst := roster.Snare
+	if !slices.Contains(opts, inst) {
+		if len(opts) == 0 {
+			inst = ""
+		} else {
+			inst = opts[0]
+		}
 	}
-	name := audio.PrettyName(inst)
+	name := audio.PrettyName(string(inst))
 	dv := &DrumView{
-		Bounds:               b,
-		labelW:               100,
-		bpm:                  120,
-		secPerBeat:           0.5,
-		headerH:              timelineHeight,
-		eqH:                  eqPanelHeight,
-		bgDirty:              true,
-		Graph:                g,
-		logger:               logger,
-		notifStore:           newNotificationStore(notifHistoryCap),
+		textFields: newTextFieldRegistry(),
+		Bounds:     b,
+		labelW:     100,
+		bpm:        120,
+		secPerBeat: 0.5,
+		headerH:    timelineHeight,
+		eqH:        eqPanelHeight,
+		bgDirty:    true,
+		Graph:      g,
+		logger:     logger,
+		notifStore: newNotificationStore(notifHistoryCap),
+		// Beginner MACRO drill-down layer: ON in the real app, OFF under `go test`
+		// so the ~25 existing stage-UI synth tests keep exercising the stage path
+		// (which still ships for percussion + as the flag-off fallback). Scenes/
+		// tests that want the macro layer set the flag explicitly.
+		armGrowIdx:           -1,
 		Length:               8, // Default length
 		Offset:               0,
 		instOptions:          opts,
@@ -53,7 +73,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		selRow:               0,
 		deleteConfirmRow:     -1,
 		renameRow:            -1,
-		samplePath:           make(map[string]string),
+		samplePath:           make(map[instrument.ID]string),
 		// instMenuShowFavoritesCategory wires the production builder's
 		// ShowFavoritesCategory prop. Defaults true so a brand-new DrumView
 		// surfaces the virtual "Favorites" category at the top of the menu.
@@ -84,7 +104,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Pure sequential by row index: the first row is index 0, so it takes the
 	// first color of the canonical instrument series (DESIGN.md instrumentSequence:).
 	firstColor := seriesColorAt(0)
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: firstColor, Origin: model.InvalidNodeID, Volume: 0.5, EQGainsDB: make([]float64, len(eqBandDefs))}}
+	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: firstColor, Origin: model.InvalidNodeID, Volume: 0.5}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	// Initialize instrument availability/options immediately so early
 	// highlight/audio paths (e.g., tests spawning pulses before the first
@@ -196,9 +216,9 @@ func (dv *DrumView) initVolumeAndWheelPopups() {
 		// Emit + undo record once at drag release.
 		OnRelease: func() { dv.commitMainVolume() },
 	})
-	dv.synthWheelPopup = NewMobileWheelPopup()
 	dv.samplerWheelPopup = NewMobileWheelPopup()
 	dv.eqWheelPopup = NewMobileWheelPopup()
+	dv.valueWheelPopup = NewMobileWheelPopup()
 	// Shared step-resolution ladder for every EQ dB band. Constructed once here
 	// (mirrors the synth/sampler badges built lazily per stage) so the EQ
 	// precision wheel's StepMul is always well-defined; the persisted rung is
@@ -223,6 +243,12 @@ func (dv *DrumView) initOverlayComponents() {
 	dv.jumpUnitBeats = true
 	dv.navPanel = &NavigationPanel{}
 	dv.navPanel.SetCallbacks(NavPanelCallbacks{
+		Position: func() PlayheadPos {
+			if dv.game != nil {
+				return dv.game.PlayheadPosition()
+			}
+			return PlayheadPos{}
+		},
 		PlayheadStep: func() int {
 			if dv.game != nil {
 				return dv.game.playheadAbsSubdiv()
@@ -236,22 +262,26 @@ func (dv *DrumView) initOverlayComponents() {
 		JumpUnitBeats: func() bool { return dv.jumpUnitBeats },
 		OnPrev: func() {
 			if dv.jumpUnitBeats {
-				dv.RequestSeekDeltaBeats(-dv.jumpBeats, seekOriginCounter)
+				dv.RequestSeekDeltaBeats(-dv.jumpBeats, hooks.SeekCounter)
 			} else {
-				dv.RequestSeekDeltaSteps(-dv.jumpBeats, seekOriginCounter)
+				dv.RequestSeekDeltaSteps(-dv.jumpBeats, hooks.SeekCounter)
 			}
 		},
 		OnNext: func() {
 			if dv.jumpUnitBeats {
-				dv.RequestSeekDeltaBeats(dv.jumpBeats, seekOriginCounter)
+				dv.RequestSeekDeltaBeats(dv.jumpBeats, hooks.SeekCounter)
 			} else {
-				dv.RequestSeekDeltaSteps(dv.jumpBeats, seekOriginCounter)
+				dv.RequestSeekDeltaSteps(dv.jumpBeats, hooks.SeekCounter)
 			}
 		},
 		OnPickAmount: func() { dv.OpenJumpMenu() },
 		OnToggleUnit: func() { dv.jumpUnitBeats = !dv.jumpUnitBeats },
-		OnGotoBeat:   func() { dv.openGotoBeatEditor() },
-		OnGotoTime:   func() { dv.openGotoTimeEditor() },
+		OnGotoPreview: func(steps int, on bool) {
+			if dv.timelineZone != nil {
+				dv.timelineZone.SetGotoGhost(steps, on)
+			}
+		},
+		OnGoto: func(steps int) { dv.RequestSeekSteps(steps, hooks.SeekCounter) },
 	})
 	// The navigation menu is a first-class portal component (compOverlayable),
 	// opened by tapping the beat counter — see openNavMenuPortal / OpenNavigation.
@@ -260,21 +290,19 @@ func (dv *DrumView) initOverlayComponents() {
 
 func (dv *DrumView) initEQChannelState() {
 	dv.eqChannelScroll = NewScrollBehavior(dropdownScrollbarStyle(), TouchRowHeight())
-	dv.eqActiveChannel = "main"
+	dv.eqActiveChannel = channel.Master
 	dv.eqCurveDragBand = -1
 	dv.eqCurveDirty = true
 	dv.hpfEnabled = false
 	dv.hpfCutoffHz = 20
 	dv.lpfEnabled = false
 	dv.lpfCutoffHz = 20000
-	_ = audio.EnableChannelAnalyzer("main", 512)
-	// Chain panel taps: enable the per-stage analysers that feed scope.StageSynth /
-	// scope.StageAntiPop (pre-FX channel ingress) and scope.StageSends (summed
-	// delay+reverb returns). Pre-EQ and post-EQ analysers are enabled per-channel
-	// below in applyMainEQ/applyRowEQ. No-op on desktop where audio.ScopeService
-	// produces real per-stage data instead.
-	_ = audio.EnableSynthAnalyzer("main", 512)
-	_ = audio.EnableSendBusAnalyzer(512)
+	_ = audio.EnableChannelAnalyzer(channel.Master, 512)
+	// Chain panel taps: enable the per-stage analyser that feeds scope.StageSynth /
+	// scope.StageAntiPop (pre-FX channel ingress). Pre-EQ and post-EQ analysers
+	// are enabled per-channel below in applyMainEQ/applyRowEQ. No-op on desktop
+	// where audio.ScopeService produces real per-stage data instead.
+	_ = audio.EnableSynthAnalyzer(channel.Master, 512)
 }
 
 func (dv *DrumView) initLengthAndSaveButtons() {
@@ -367,14 +395,13 @@ func (dv *DrumView) initEQPanelZone() {
 	dv.eqPanelZone = NewEQPanelZone(EQCallbacks{
 		OnGainChange: func(band int, db float64) {
 			ch := dv.eqPanelZone.ActiveChannel()
-			if ch == "main" {
+			if ch == channel.Master {
 				dv.applyMasterEQ()
 			} else {
 				for j, r := range dv.Rows {
-					if r.Instrument == ch {
-						dv.ensureRowEQ(j)
-						if band < len(r.EQGainsDB) {
-							r.EQGainsDB[band] = db
+					if channel.Of(r.Instrument) == ch {
+						if eq := rowEQ(r); band < len(eq.GainsDB) {
+							eq.GainsDB[band] = db
 						}
 						dv.applyRowEQ(j)
 						break
@@ -393,7 +420,7 @@ func (dv *DrumView) initEQPanelZone() {
 		OnMuteToggle: func(band int) {
 			dv.toggleEQBandMute(band)
 		},
-		OnChannelChange: func(id string) {
+		OnChannelChange: func(id channel.ID) {
 			// Single chokepoint: updates the EQ/zone channel, analyzer detail
 			// channel (Wave/Spectrum), scope instrument and chain zone (Chain).
 			dv.selectAudioChannel(id)
@@ -407,7 +434,7 @@ func (dv *DrumView) initEQPanelZone() {
 		OnApplyEQ: func() {
 			dv.applyEQ()
 		},
-		AnalyzerSnapshot: func(ch string) audio.AnalyzerSnapshot {
+		AnalyzerSnapshot: func(ch channel.ID) audio.AnalyzerSnapshot {
 			return dv.analyzerSnapshot()
 		},
 		ActiveRows: func() []*DrumRow {
@@ -431,6 +458,9 @@ func (dv *DrumView) initEQPanelZone() {
 		DrawWaveform: func(dst *ebiten.Image) {
 			snap := dv.analyzerSnapshot()
 			dv.drawWaveform(dst, snap)
+		},
+		SpectrumRowFacts: func(st *analyzer.State) []rowFacts {
+			return dv.spectrumRowFacts(st)
 		},
 		AnalyzerState: func() *analyzer.State {
 			if svc := audio.AnalyzerService(); svc != nil {
@@ -515,7 +545,7 @@ func (dv *DrumView) initEQPanelZone() {
 			chID := dv.eqPanelZone.ActiveChannel()
 			rowIdx := -1
 			for i, r := range dv.Rows {
-				if r != nil && r.Instrument == chID {
+				if r != nil && channel.Of(r.Instrument) == chID {
 					rowIdx = i
 					break
 				}
@@ -547,7 +577,7 @@ func (dv *DrumView) initEQPanelZone() {
 		DrawSynthTab: func(dst *ebiten.Image, r image.Rectangle) {
 			dv.drawSynthTab(dst, r, dv.synthTabActiveInstrument())
 		},
-		ReleaseSynthSprites: func() { dv.synp().sprites.releaseAll() },
+		ReleaseSynthSprites: func() { dv.synp().sprites.releaseAll(); dv.synp().glow.release() },
 		SynthTabHitAreas: func() []HitArea {
 			return dv.synthTabHitAreas()
 		},
@@ -719,13 +749,18 @@ func (dv *DrumView) initTransportZone() {
 		OnPlayToggle: func() {
 			dv.logger.Debugf("[drumview] play button pressed")
 		},
+		PlaybackReady: func() bool { return dv.game == nil || dv.game.playbackReady() },
 		OnStop: func() {
 			dv.logger.Debugf("[drumview] stop button pressed")
 		},
+		OnOpenBPMWheel: func(anchor image.Rectangle) { dv.openBPMWheel(anchor) },
+		OnBPMLive:      func(bpm int) { dv.applyBPMState(bpm) },
 		OnBPMChange: func(bpm int) {
-			dv.bpm = bpm
-			dv.secPerBeat = 60.0 / float64(bpm)
-			dv.logger.Debugf("[drumview] BPM set: -> %d", bpm)
+			// The ONLY chokepoint the two real interactive BPM controls (the
+			// +/- keycaps and the numeric BPM editor, both via
+			// TransportZone.SetBPM) reach — DrumView.SetBPM is never called
+			// by either.
+			dv.applyBPMState(bpm)
 			emitBPMChange(bpm)
 		},
 		OnNotifyErrorKey: func(key i18n.Key, args ...string) {
@@ -963,6 +998,7 @@ func (dv *DrumView) initRowRackZone() {
 					InitialText:   dv.Rows[row].Name,
 					MaxLen:        32,
 					MobileInputID: mobileID,
+					TextFields:    dv.textFields,
 					OnCommit: func(newName string) {
 						name := strings.TrimSpace(newName)
 						if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
@@ -992,9 +1028,9 @@ func (dv *DrumView) initRowRackZone() {
 				}
 			}
 			if dv.renameBox == nil {
-				dv.renameBox = NewTextInput(r, BPMBoxStyle)
+				dv.renameBox = NewTextField(dv.textFields, renameTextFieldSpec, 32)
+				dv.renameBox.Rect = r
 				dv.renameBox.Accept = AcceptTextRune
-				dv.renameBox.MaxLen = 32
 				dv.renameBox.SetText(dv.Rows[row].Name)
 				dv.renameBox.focused = true
 				dv.renameBox.anim = 1
@@ -1012,7 +1048,7 @@ func (dv *DrumView) initRowRackZone() {
 			dv.rowScrollFromZone = true
 		},
 		Rows:              func() []*DrumRow { return dv.Rows },
-		IsInstrumentAvail: func(id string) bool { return dv.IsInstrumentAvailable(id) },
+		IsInstrumentAvail: func(id instrument.ID) bool { return dv.IsInstrumentAvailable(id) },
 		RowHeight:         func() int { return dv.rowHeight() },
 		DeleteConfirm:     func() (int, int64) { return dv.deleteConfirmRow, dv.deleteConfirmFrame },
 		RenameRow:         func() int { return dv.renameRow },
@@ -1048,7 +1084,7 @@ func (dv *DrumView) initTimelineZone() {
 				dv.logger.Tracef("[drumview/drag] offset=%d", dv.Offset)
 			}
 		},
-		OnSeekToStep: func(step int, origin string) {
+		OnSeekToStep: func(step int, origin hooks.SeekOrigin) {
 			dv.RequestSeekSteps(step, origin)
 		},
 		PlayheadStep: func() int {
@@ -1146,6 +1182,11 @@ func (dv *DrumView) initLayoutResizeAndDrawLayers() {
 	// Row↔EQ divider (ZRowEQDivider=186) marks the panel boundary — audioTree.
 	dv.rowEQDivider = newRowEQDividerLayer(dv)
 	dv.audioTree.RegisterLayer(dv.rowEQDivider)
+	// Mobile fallback status toast (ZDrumToast=210) — topmost in audioTree so
+	// it composites over the EQ panel/view-switch/divider above. Passive
+	// (Layer, not Zone): registers no HitArea, so it can never swallow a tap.
+	// See layer_drum_toast.go and toastHostRect (grid_pane_draw.go).
+	dv.audioTree.RegisterLayer(newDrumToastLayer(dv))
 }
 
 func (dv *DrumView) initMobileViewControls() {
@@ -1201,9 +1242,30 @@ var bottomNavModeList = []viewMode{
 	viewModeSampler,
 }
 
+// bottomNavModeListProduction is bottomNavModeList without the developer-only
+// Chain view (devToolsOn, devtools.go).
+var bottomNavModeListProduction = []viewMode{
+	viewModeRows,
+	viewModeEQ,
+	viewModeWave,
+	viewModeSpectrum,
+	viewModeMeters,
+	viewModeSynth,
+	viewModeSampler,
+}
+
 // bottomNavModes returns the shared segment → viewMode mapping. Shared by the
 // segmented-control click handler and bottomNavSynthIndex so they can't drift.
-func bottomNavModes() []viewMode { return bottomNavModeList }
+func bottomNavModes() []viewMode {
+	if devToolsOn() {
+		return bottomNavModeList
+	}
+	return bottomNavModeListProduction
+}
+
+// viewModeAvailable reports whether the build offers view mode m: all of them
+// in a developer build, all but Chain in the production UI.
+func viewModeAvailable(m viewMode) bool { return m != viewModeChain || devToolsOn() }
 
 // segmentIndexForViewMode returns the bottom-nav segment index that displays
 // viewMode m, or -1 if m has no segment. It is the single inverse of
@@ -1212,7 +1274,7 @@ func bottomNavModes() []viewMode { return bottomNavModeList }
 // reverse mappings can never drift apart. Prefer this over a hand-maintained
 // SetActive(0..7) switch.
 func segmentIndexForViewMode(m viewMode) int {
-	for i, mode := range bottomNavModeList {
+	for i, mode := range bottomNavModes() {
 		if mode == m {
 			return i
 		}
@@ -1228,14 +1290,33 @@ func bottomNavSynthIndex() int { return segmentIndexForViewMode(viewModeSynth) }
 // active locale (Pads + the 7 short tab labels). Used at construction and again
 // on a locale switch (OnLocaleChanged) so the cached SegmentedControl relabels.
 func (dv *DrumView) bottomNavLabels() []string {
-	return []string{
-		i18n.T(i18n.KeyNavPads),
-		i18n.T(i18n.KeyTabEQShort),
-		i18n.T(i18n.KeyTabWaveShort),
-		i18n.T(i18n.KeyTabSpectrumShort),
-		i18n.T(i18n.KeyTabLevelsShort),
-		i18n.T(i18n.KeyTabChainShort),
-		i18n.T(i18n.KeyTabSynthShort),
-		i18n.T(i18n.KeyTabSamplerShort),
+	modes := bottomNavModes()
+	out := make([]string, len(modes))
+	for i, m := range modes {
+		out[i] = bottomNavLabel(m)
 	}
+	return out
+}
+
+// bottomNavLabel is a bottom-nav segment's label in the active locale.
+func bottomNavLabel(m viewMode) string {
+	switch m {
+	case viewModeRows:
+		return i18n.T(i18n.KeyNavPads)
+	case viewModeEQ:
+		return i18n.T(i18n.KeyTabEQShort)
+	case viewModeWave:
+		return i18n.T(i18n.KeyTabWaveShort)
+	case viewModeSpectrum:
+		return i18n.T(i18n.KeyTabSpectrumShort)
+	case viewModeMeters:
+		return i18n.T(i18n.KeyTabLevelsShort)
+	case viewModeChain:
+		return i18n.T(i18n.KeyTabChainShort)
+	case viewModeSynth:
+		return i18n.T(i18n.KeyTabSynthShort)
+	case viewModeSampler:
+		return i18n.T(i18n.KeyTabSamplerShort)
+	}
+	return ""
 }

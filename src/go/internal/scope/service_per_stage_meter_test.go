@@ -5,6 +5,9 @@ package scope
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestService_LatestPeakReflectsLastPush — Phase 3 chain per-stage
@@ -19,7 +22,7 @@ func TestService_LatestPeakReflectsLastPush(t *testing.T) {
 	for i := range buf {
 		buf[i] = 0.5 * math.Sin(2*math.Pi*float64(i)/64)
 	}
-	svc.PushSamples(StageInsertFX, "kick", buf)
+	svc.PushSamples(StageInsertFX, channel.Of(roster.Kick), buf)
 
 	peakDB, rmsDB := svc.LatestPeak(StageInsertFX)
 	wantPeakDB := 20 * math.Log10(0.5) // -6.02 dB
@@ -56,7 +59,7 @@ func TestService_LatestPeakIndependentAcrossStages(t *testing.T) {
 	for i := range loud {
 		loud[i] = 0.9
 	}
-	svc.PushSamples(StageEQ, "kick", loud)
+	svc.PushSamples(StageEQ, channel.Of(roster.Kick), loud)
 
 	if peakDB, _ := svc.LatestPeak(StageEQ); peakDB < -2 {
 		t.Errorf("StageEQ peakDB after loud push: got %v, want close to 0", peakDB)

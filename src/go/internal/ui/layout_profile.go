@@ -40,8 +40,14 @@ type LayoutProfile struct {
 	SplitterHandleLen int
 	SplitterHandleThk int
 
+	// Menu width classes (DESIGN.md "Menu sizing & layout"; menu_sizing.go)
+	MenuWActionMin int
+	MenuWActionMax int
+	MenuWList      int
+	MenuWEditor    int
+	MenuWWideMax   int
+
 	// Popup sizing
-	PopupPanelW     int
 	PopupBtnW       int
 	PopupBtnH       int
 	PopupGap        int
@@ -224,8 +230,14 @@ func desktopProfile() *LayoutProfile {
 		SplitterHandleLen: dv.SplitterHandleLen,
 		SplitterHandleThk: dv.SplitterHandleThk,
 
-		// Popup — layout-tied for panel width + corner, density-tied for buttons
-		PopupPanelW:     g.PopupPanelW, // layout-tied
+		// Menu width classes — layout-tied
+		MenuWActionMin: g.MenuWActionMin,
+		MenuWActionMax: g.MenuWActionMax,
+		MenuWList:      g.MenuWList,
+		MenuWEditor:    g.MenuWEditor,
+		MenuWWideMax:   g.MenuWWideMax,
+
+		// Popup — layout-tied corner, density-tied buttons
 		PopupBtnW:       dv.PopupBtnW,
 		PopupBtnH:       dv.PopupBtnH,
 		PopupGap:        dv.PopupGap,
@@ -264,20 +276,25 @@ func desktopProfile() *LayoutProfile {
 		// used to be stoplight green/red; they're now Surface2 with subtle
 		// borders like every other button, with the icon carrying the
 		// semantics (red for record, neutral for play/stop).
-		PlayBtnStyle:   TransportPlayStyle,
-		PlayIconColor:  colTextPrimary,
+		PlayBtnStyle: TransportPlayStyle,
+		// Home-row idle icons read as the calmer on-surface-muted grey (matching
+		// the instrument-row labels' feel) rather than glaring near-white
+		// on-surface. Record keeps its semantic red; the playing state still
+		// swaps to colAccent (see SetPlaying).
+		PlayIconColor:  colTextSecondary,
 		StopBtnStyle:   TransportStopStyle,
-		StopIconColor:  colTextPrimary,
+		StopIconColor:  colTextSecondary,
 		BPMDecBtnStyle: TransportDecStyle,
 		BPMIncBtnStyle: TransportIncStyle,
 		BPMIconColor:   colTextSecondary,
 		SubdivBtnStyle: InstButtonStyle,
-		// TrackBtnStyle uses TransportMiscStyle on both profiles so the
-		// track button shares the play/stop chrome (ComponentButtonSecondary).
+		// TrackBtnStyle uses TimelineKeycapStyle on both profiles: the play/stop
+		// chrome (ComponentButtonSecondary) with the control radius, like the
+		// beat counter keycap beside it.
 		// State is expressed via icon glyph + IconColor (see syncTrackBtnVisual),
 		// not a fill-style swap — mirroring how SetPlaying flips the play
 		// button's icon and tint while keeping its frame fixed.
-		TrackBtnStyle:   TransportMiscStyle,
+		TrackBtnStyle:   TimelineKeycapStyle,
 		ViewSwitchStyle: InstButtonStyle,
 		OverflowStyle:   DropdownStyle,
 		TransportMisc:   TransportMiscStyle,
@@ -362,8 +379,14 @@ func mobileProfile() *LayoutProfile {
 		SplitterHandleLen: dv.SplitterHandleLen,
 		SplitterHandleThk: dv.SplitterHandleThk,
 
-		// Popup — layout-tied panel width, density-tied buttons
-		PopupPanelW:     g.PopupPanelW, // layout-tied
+		// Menu width classes — layout-tied
+		MenuWActionMin: g.MenuWActionMin,
+		MenuWActionMax: g.MenuWActionMax,
+		MenuWList:      g.MenuWList,
+		MenuWEditor:    g.MenuWEditor,
+		MenuWWideMax:   g.MenuWWideMax,
+
+		// Popup — density-tied buttons
 		PopupBtnW:       dv.PopupBtnW,
 		PopupBtnH:       dv.PopupBtnH,
 		PopupGap:        dv.PopupGap,
@@ -400,7 +423,7 @@ func mobileProfile() *LayoutProfile {
 		BPMIncBtnStyle:  TransportIncStyle,
 		BPMIconColor:    colIncDecIcon,
 		SubdivBtnStyle:  TransportMiscStyle,
-		TrackBtnStyle:   TransportMiscStyle,
+		TrackBtnStyle:   TimelineKeycapStyle,
 		ViewSwitchStyle: TransportMiscStyle,
 		OverflowStyle:   TransportMiscStyle,
 		TransportMisc:   TransportMiscStyle,

@@ -5,6 +5,10 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 func TestExportJSONContentAndSaveCalled(t *testing.T) {
@@ -23,7 +27,7 @@ func TestExportJSONContentAndSaveCalled(t *testing.T) {
 
 	// Tweak drum rows
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.SetInstrument("snare")
+	g.drum.SetInstrument(roster.Snare)
 	g.drum.Rows[0].Volume = 0.7
 	g.drum.Rows[0].Origin = a.ID
 	g.drum.SetBPM(123)
@@ -46,10 +50,10 @@ func TestExportJSONContentAndSaveCalled(t *testing.T) {
 
 	// Parse JSON and validate required fields
 	var f struct {
-		Version     int `json:"version"`
-		BPM         int `json:"bpm"`
-		Instruments []struct {
-			Name, ID, Kind, Color string
+		SchemaVersion string `json:"schema_version"`
+		BPM           int    `json:"bpm"`
+		Instruments   []struct {
+			Name, ID, Kind, Color instrument.ID
 			Volume                float64
 			Origin                int
 		} `json:"instruments"`
@@ -62,8 +66,8 @@ func TestExportJSONContentAndSaveCalled(t *testing.T) {
 	if err := json.Unmarshal(gotData, &f); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if f.Version != 1 {
-		t.Fatalf("version=%d", f.Version)
+	if f.SchemaVersion != schema.Version {
+		t.Fatalf("schema_version=%q want %q", f.SchemaVersion, schema.Version)
 	}
 	if f.BPM != 123 {
 		t.Fatalf("bpm=%d", f.BPM)
@@ -72,7 +76,7 @@ func TestExportJSONContentAndSaveCalled(t *testing.T) {
 		t.Fatalf("instruments=%d", len(f.Instruments))
 	}
 	inst := f.Instruments[0]
-	if inst.ID != "snare" || inst.Kind != "builtin" || inst.Origin != int(a.ID) {
+	if inst.ID != roster.Snare || inst.Kind != "builtin" || inst.Origin != int(a.ID) {
 		t.Fatalf("instrument mismatch: %+v", inst)
 	}
 	if inst.Volume < 0.69 || inst.Volume > 0.71 {

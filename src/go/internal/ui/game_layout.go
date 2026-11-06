@@ -158,15 +158,7 @@ func (g *Game) Layout(w, h int) (int, int) {
 	// Layout from the splitter geometry so its rect is current for both input
 	// (mouse HandleInputResult / blocksAt / menuHit) and Draw without waiting
 	// on the draw pass. Empty rect on mobile (gridHelpButtonRect guards it).
-	if g.gridHelpBtn != nil {
-		g.gridHelpBtn.SetRect(g.gridHelpButtonRect())
-	}
-	if g.gridFileBtn != nil {
-		g.gridFileBtn.SetRect(g.gridFileButtonRect())
-	}
-	if g.gridLogsBtn != nil {
-		g.gridLogsBtn.SetRect(g.gridLogsButtonRect())
-	}
+	g.syncGridCornerButtonRects()
 	g.logger.Debugf("[game] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }

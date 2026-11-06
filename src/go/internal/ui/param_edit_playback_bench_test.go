@@ -5,10 +5,12 @@ package ui
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
-	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // param_edit_playback_bench_test.go — measures what a live synth-control / sampler
@@ -40,32 +42,32 @@ type paramEditScenario struct {
 	churn churnFn // nil = baseline (no edits)
 }
 
-// churnParamName picks a deterministic, real param of the instrument's recipe
-// to drag. Derived from the recipe defaults rather than hardcoded, so this
+// churnParamName picks a deterministic, real knob of the instrument's document
+// to drag. Derived from the document's declared fields rather than hardcoded, so this
 // keeps working when the instrument's param schema changes. "pitch" is excluded
 // because it is special-cased into the cache key.
 func churnParamName(t *testing.T, id string) string {
 	t.Helper()
-	merged := audio.MergeRecipeDefaults(audio.RecipeForInstrument(id), nil)
+	merged := audio.MergedInstrumentParamsRO(instrument.ID(id))
 	keys := make([]string, 0, len(merged))
 	for k := range merged {
-		if k == "pitch" {
+		if k == "pitch" || !audio.InstrumentDeclaresField(instrument.ID(id), k) {
 			continue
 		}
 		keys = append(keys, k)
 	}
 	if len(keys) == 0 {
-		t.Fatalf("instrument %q has no draggable recipe params", id)
+		t.Fatalf("instrument %q has no draggable params", id)
 	}
 	sort.Strings(keys)
 	return keys[0]
 }
 
 func TestParamEditPlaybackCostTable(t *testing.T) {
-	const instID = "organ-church" // the priciest render in the demo → worst case
-	const steps = 240             // playback steps per scenario
+	const instID = roster.OrganChurch // a pricey melodic render → worst case
+	const steps = 240                 // playback steps per scenario
 
-	knobParam := churnParamName(t, instID)
+	knobParam := churnParamName(t, string(instID))
 	t.Logf("dragging synth param %q on %s", knobParam, instID)
 
 	scenarios := []paramEditScenario{
@@ -75,7 +77,7 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 			churn: func(t *testing.T, g *Game, id string, step int) {
 				// Sweep a real param, new value every step → rotates the key.
 				v := float64(step%100) / 100.0
-				audio.SetInstrumentParam(id, knobParam, v)
+				audio.SetInstrumentParam(instrument.ID(id), knobParam, v)
 			},
 		},
 		{
@@ -86,7 +88,7 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 				// Also note SetSampleEdit treats an identity edit as a Clear, so
 				// the (step%20==0 && step%6==0) case exercises ClearSampleEdit
 				// too. That is intentional coverage, not a bug.
-				audio.SetSampleEdit(id, audio.SampleEdit{
+				audio.SetSampleEdit(instrument.ID(id), audio.SampleEdit{
 					StartFrac: 0,
 					EndFrac:   1.0 - float64(step%20)*0.01,
 					GainDB:    -float32(step % 6),
@@ -109,16 +111,19 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 			name: "fx-param-storm",
 			churn: func(t *testing.T, g *Game, id string, step int) {
 				if step == 1 {
-					audio.AddInsertEffect(id, audio.EffectDistortion,
+					audio.AddInsertEffect(instrument.ID(id), audio.EffectDistortion,
 						map[string]float64{"drive": 1.4, "tone": 8000, "mix": 1})
 				}
-				audio.SetInsertEffectParam(id, 0, "mix", float64(step%100)/100.0)
+				audio.SetInsertEffectParam(instrument.ID(id), 0, "mix", float64(step%100)/100.0)
 			},
 		},
 	}
 
-	fmt.Printf("\n=== param-edit during playback: audio-dispatch cost (%s, %d steps) ===\n", instID, steps)
-	fmt.Printf("%-20s %-10s %-10s %-10s %-12s %-12s %-12s\n",
+	// The table is evidence, not output: t.Log shows it with -v or on failure.
+	var table strings.Builder
+	t.Cleanup(func() { t.Log(table.String()) })
+	fmt.Fprintf(&table, "\n=== param-edit during playback: audio-dispatch cost (%s, %d steps) ===\n", instID, steps)
+	fmt.Fprintf(&table, "%-20s %-10s %-10s %-10s %-12s %-12s %-12s\n",
 		"scenario", "triggers", "dispatchR", "prewarmR", "missRatio", "renderAvgMS", "renderMaxMS")
 
 	for _, sc := range scenarios {
@@ -135,11 +140,7 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 		// prior scenario/run.
 		audio.ClearVoiceCacheForTest()
 
-		g := buildTestGame(t)
-		if err := g.Import(assets_pkg.StartupDemoJSON); err != nil {
-			t.Fatalf("%s: import startup demo: %v", sc.name, err)
-		}
-		g.updateBeatInfos()
+		g := newPitchedRowCircuitGame(t, string(instID), 0, 5, -2, 7, -5, 12, 3, -7)
 		g.SetPlaying(true)
 		advanceFrames(g, 5) // let playback settle before measuring
 
@@ -171,7 +172,7 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 			setPlayStartForAbs(g, start+i)
 			_ = g.Update()
 			if sc.churn != nil {
-				sc.churn(t, g, instID, i)
+				sc.churn(t, g, string(instID), i)
 			}
 		}
 
@@ -182,7 +183,7 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 			missRatio = float64(m.CacheMisses) / float64(triggers)
 		}
 
-		fmt.Printf("%-20s %-10d %-10d %-10d %-12.3f %-12.3f %-12.3f\n",
+		fmt.Fprintf(&table, "%-20s %-10d %-10d %-10d %-12.3f %-12.3f %-12.3f\n",
 			sc.name, triggers, m.DispatchRenders, m.PrewarmRenders, missRatio,
 			float64(m.RenderAvgNS)/1e6, float64(m.RenderMaxNS)/1e6)
 

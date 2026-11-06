@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -117,16 +118,17 @@ func chainInsertFXCountForActiveRow(state *scope.State) int {
 	if state == nil {
 		return 0
 	}
-	var instID string
-	if state.TapA.Active && state.TapA.InstID != "" {
-		instID = state.TapA.InstID
-	} else if state.TapB.Active && state.TapB.InstID != "" {
-		instID = state.TapB.InstID
+	var ch channel.ID
+	if state.TapA.Active && !state.TapA.InstID.IsZero() {
+		ch = state.TapA.InstID
+	} else if state.TapB.Active && !state.TapB.InstID.IsZero() {
+		ch = state.TapB.InstID
 	}
-	if instID == "" {
+	inst, ok := ch.Instrument()
+	if !ok {
 		return 0
 	}
-	slots := audio.GetInsertEffects(instID)
+	slots := audio.GetInsertEffects(inst)
 	n := 0
 	for _, s := range slots {
 		if s.Enabled {
@@ -176,41 +178,4 @@ func (z *ChainPanelZone) drawChainStageCardDecorations(dst *ebiten.Image, btn *B
 	if stageIdx < len(stages) && stages[stageIdx] == scope.StageInsertFX {
 		drawChainFXBadgeCount(dst, btn.Rect(), chainInsertFXCountForActiveRow(state))
 	}
-}
-
-// drawChainTriggerMarker paints a vertical reference line at 10 % of
-// the trace area's width so kids can see "this is where the beat
-// fires" against the waveform. Phase 3 of the audio-panel redesign.
-//
-// `traceRect` should be the area drawChainTraces renders into. The
-// marker uses TokenVizScopeTrigger at AlphaStrong so it reads as a
-// distinct chrome layer beneath the per-trace overlays.
-func drawChainTriggerMarker(dst *ebiten.Image, traceRect image.Rectangle) {
-	if traceRect.Dx() < 10 || traceRect.Dy() < 6 {
-		return
-	}
-	// Phase 3 audio-panel redesign: density-driven stroke. Compact 2 /
-	// Comfortable 3 / Spacious 4 (pre-Phase-3 was 1 — sub-perceptible).
-	w := Profile().DensityValues().ChainTriggerMarkerW
-	if w < 1 {
-		w = 1
-	}
-	x := traceRect.Min.X + traceRect.Dx()/10
-	col := WithAlpha(genColorVizScopeTrigger, AlphaStrong)
-	drawRect(dst, image.Rect(x, traceRect.Min.Y, x+w, traceRect.Max.Y), col, true)
-	if Profile().Density() == DensitySpacious {
-		// Spacious: chevron + stem head glyph for clearly visible chrome on
-		// touch viewports. The vertical stem rect above still draws the
-		// full-trace line.
-		side := w*4 + 4
-		if side < 12 {
-			side = 12
-		}
-		head := image.Rect(x+w/2-side/2, traceRect.Min.Y-side/2, x+w/2+side/2, traceRect.Min.Y+side/2)
-		DrawIcon(dst, IconTriggerMarker, head, col)
-		return
-	}
-	// Compact / Comfortable: keep the simple top tick.
-	tickHalf := w + 2
-	drawRect(dst, image.Rect(x-tickHalf, traceRect.Min.Y, x+w+tickHalf, traceRect.Min.Y+w+1), col, true)
 }

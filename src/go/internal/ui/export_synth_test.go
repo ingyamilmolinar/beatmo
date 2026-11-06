@@ -7,12 +7,16 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Phase 3 schema tests: the v1 -> v1+synth JSON migration. The "version"
-// field stays at 1 because every new field is additive (`omitempty`) so
-// old loaders see the file unchanged.
+// Phase 3 schema tests: the per-instrument / per-node synth fields. Every
+// field is additive (`omitempty`); the fixtures carry the current
+// schema_version.
 
 // newPhase3Game returns a Game with one row + one node ready for
 // export/import round-trip testing. Mirrors the setup pattern from
@@ -28,226 +32,106 @@ func newPhase3Game(t *testing.T) (*Game, *uiNode) {
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
+	g.drum.Rows[0].Instrument = roster.Snare
 	return g, ui
 }
 
-func TestExportInstrument_EmitsRecipeWhenBound(t *testing.T) {
-	g, _ := newPhase3Game(t)
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-
+// exportedDoc exports g and returns the instrument document the file carries
+// for id, read through its flat field view.
+func exportedDocFields(t *testing.T, g *Game, id instrument.ID) (map[string]float64, instrument.Doc) {
+	t.Helper()
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("exportBytes: %v", err)
 	}
-	var parsed exportFile
+	var parsed projectFile
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(parsed.Instruments) == 0 {
-		t.Fatal("no instruments in export")
+	d, ok := parsed.InstrumentDocs[id]
+	if !ok {
+		t.Fatalf("export carries no instrument document for %q", id)
 	}
-	if parsed.Instruments[0].Recipe != "drum-snare" {
-		t.Errorf("got Recipe=%q, want drum-snare", parsed.Instruments[0].Recipe)
-	}
+	return instrument.FieldValues(d.Doc, audio.BuiltinModuleRegistry()), d.Doc
 }
 
-func TestExportInstrument_EmitsSynthParamsWhenSet(t *testing.T) {
+func TestExportInstrument_EmitsDocumentWithOrigin(t *testing.T) {
 	g, _ := newPhase3Game(t)
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
-
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	audio.SetInstrumentParam("snare", "decay", 0.4)
-	audio.SetInstrumentParam("snare", "drive", 0.6)
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("exportBytes: %v", err)
-	}
-	var parsed exportFile
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(parsed.Instruments) == 0 {
-		t.Fatal("no instruments in export")
-	}
-	got := parsed.Instruments[0].SynthParams
-	if got["decay"] != 0.4 {
-		t.Errorf("got SynthParams[decay]=%v, want 0.4 (full=%v)", got["decay"], got)
-	}
-	if got["drive"] != 0.6 {
-		t.Errorf("got SynthParams[drive]=%v, want 0.6 (full=%v)", got["drive"], got)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
+	audio.ResetInstrumentParams(roster.Snare)
+	_, d := exportedDocFields(t, g, roster.Snare)
+	if d.Origin != roster.Snare || d.ID != roster.Snare {
+		t.Errorf("exported document id=%q origin=%q, want snare/snare", d.ID, d.Origin)
 	}
 }
 
-func TestExportInstrument_OmitsSynthParamsWhenEmpty(t *testing.T) {
+func TestExportInstrument_DocumentCarriesEdits(t *testing.T) {
 	g, _ := newPhase3Game(t)
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
-
-	audio.ResetInstrumentParams("snare")
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("exportBytes: %v", err)
-	}
-	if strings.Contains(string(data), `"synth_params"`) {
-		t.Errorf("export emitted synth_params for an instrument with no user params:\n%s", string(data))
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
+	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.4)
+	audio.SetInstrumentParam(roster.Snare, "gen1_snare_tune", 1.3)
+	got, _ := exportedDocFields(t, g, roster.Snare)
+	if got["post_decay"] != 0.4 || got["gen1_snare_tune"] != 1.3 {
+		t.Errorf("exported document post_decay=%v gen1_snare_tune=%v, want 0.4 / 1.3", got["post_decay"], got["gen1_snare_tune"])
 	}
 }
 
-func TestExportNode_EmitsSynthOverridesMapNotIndividualFields(t *testing.T) {
-	g, ui := newPhase3Game(t)
-	if n, ok := g.graph.GetNodeByID(ui.ID); ok {
-		p := n.Params
-		p.SynthDecay = 0.5
-		p.SynthDrive = 0.7
-		g.graph.SetNodeParams(ui.ID, p)
-	}
-
+func TestExportNeverWritesRecipeEraFields(t *testing.T) {
+	g, _ := newPhase3Game(t)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
+	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.4)
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("exportBytes: %v", err)
 	}
-	s := string(data)
-	if !strings.Contains(s, `"synth_overrides"`) {
-		t.Errorf("expected exported JSON to contain synth_overrides map, got:\n%s", s)
-	}
-	// Old individual fields must NOT be emitted alongside the new map.
-	for _, banned := range []string{`"synth_decay"`, `"synth_tone"`, `"synth_attack"`, `"synth_drive"`, `"synth_body"`, `"synth_color"`, `"synth_brightness"`} {
-		if strings.Contains(s, banned) {
-			t.Errorf("export emitted legacy field %s; should use synth_overrides map only", banned)
+	for _, k := range []string{`"synth_params"`, `"recipe"`, `"recipes"`} {
+		if strings.Contains(string(data), k) {
+			t.Errorf("export wrote the recipe-era key %s", k)
 		}
 	}
 }
 
-func TestExportSchemaVersionStaysOne(t *testing.T) {
+// TestExportStampsSchemaVersion pins the write side: every exported project
+// carries the current schema_version, and never the retired integer marker.
+func TestExportStampsSchemaVersion(t *testing.T) {
 	g, _ := newPhase3Game(t)
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("exportBytes: %v", err)
 	}
-	var parsed exportFile
+	var parsed projectFile
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if parsed.Version != 1 {
-		t.Errorf("Version=%d; want 1 (schema is additive)", parsed.Version)
+	if parsed.SchemaVersion != schema.Version {
+		t.Errorf("schema_version=%q; want %q", parsed.SchemaVersion, schema.Version)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	if _, present := raw["version"]; present {
+		t.Errorf("exported document still carries a \"version\" key: %s", data)
 	}
 }
 
-func TestImportLegacyNodeSynthBecomesOverrides(t *testing.T) {
-	// Hand-crafted v1 legacy fixture with the 7 individual synth_* node
-	// fields. Import must populate the same NodeParams.Synth* slots.
-	legacy := []byte(`{
-		"version": 1,
-		"subdiv": 32,
-		"bpm": 120,
-		"instruments": [{"name":"Snare","id":"snare","kind":"builtin","volume":1,"origin":0,"color":"#FFFFFFFF"}],
-		"nodes": [{"id":0,"i":0,"j":0,"type":"regular","synth_decay":0.5,"synth_drive":0.7}]
-	}`)
+func TestImport_RoundTripPreservesTheDocument(t *testing.T) {
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
+
 	g, _ := newPhase3Game(t)
-	if err := g.Import(legacy); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	// Find any imported node and check its params.
-	for _, node := range g.graph.Nodes {
-		p := node.Params
-		if p.SynthDecay == 0.5 && p.SynthDrive == 0.7 {
-			return // found the imported node
-		}
-	}
-	t.Error("imported legacy synth_decay/synth_drive did not reach any NodeParams")
-}
-
-func TestImportV2PerInstrumentSynthParams_PopulatesAudio(t *testing.T) {
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
-	audio.ResetInstrumentParams("snare")
-
-	v2 := []byte(`{
-		"version": 1,
-		"subdiv": 32,
-		"bpm": 120,
-		"instruments": [{
-			"name":"Snare","id":"snare","kind":"builtin","volume":1,
-			"origin":0,"color":"#FFFFFFFF",
-			"recipe":"drum-snare",
-			"synth_params":{"decay":0.4,"drive":0.8}
-		}],
-		"nodes": [{"id":0,"i":0,"j":0,"type":"regular"}]
-	}`)
-	g, _ := newPhase3Game(t)
-	if err := g.Import(v2); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	got := audio.GetInstrumentParams("snare")
-	if got["decay"] != 0.4 {
-		t.Errorf("audio params decay=%v, want 0.4", got["decay"])
-	}
-	if got["drive"] != 0.8 {
-		t.Errorf("audio params drive=%v, want 0.8", got["drive"])
-	}
-}
-
-func TestImportV2SynthOverrides_PopulatesNodeParams(t *testing.T) {
-	v2 := []byte(`{
-		"version": 1,
-		"subdiv": 32,
-		"bpm": 120,
-		"instruments": [{"name":"Snare","id":"snare","kind":"builtin","volume":1,"origin":0,"color":"#FFFFFFFF"}],
-		"nodes": [{"id":0,"i":0,"j":0,"type":"regular","synth_overrides":{"decay":0.6,"drive":0.9}}]
-	}`)
-	g, _ := newPhase3Game(t)
-	if err := g.Import(v2); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	for _, node := range g.graph.Nodes {
-		p := node.Params
-		if p.SynthDecay == 0.6 && p.SynthDrive == 0.9 {
-			return
-		}
-	}
-	t.Error("synth_overrides map did not reach any NodeParams")
-}
-
-func TestImportV2_RoundTripPreservesEverything(t *testing.T) {
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
-
-	// Build a project with both per-instrument SynthParams and per-node
-	// SynthOverrides, export it, re-import it, check both sides.
-	g, ui := newPhase3Game(t)
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	audio.SetInstrumentParam("snare", "decay", 0.4)
-
-	if n, ok := g.graph.GetNodeByID(ui.ID); ok {
-		p := n.Params
-		p.SynthDecay = 0.5
-		g.graph.SetNodeParams(ui.ID, p)
-	}
-
+	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.4)
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("exportBytes: %v", err)
 	}
 
 	// Reset and re-import into a fresh Game.
-	audio.ResetInstrumentParams("snare")
-
+	audio.ResetInstrumentParams(roster.Snare)
 	g2, _ := newPhase3Game(t)
 	if err := g2.Import(data); err != nil {
 		t.Fatalf("re-Import: %v", err)
 	}
-	if got := audio.GetInstrumentParams("snare")["decay"]; got != 0.4 {
-		t.Errorf("round-trip: SynthParams[decay]=%v want 0.4", got)
-	}
-	foundDecay := false
-	for _, node := range g2.graph.Nodes {
-		if node.Params.SynthDecay == 0.5 {
-			foundDecay = true
-			break
-		}
-	}
-	if !foundDecay {
-		t.Error("round-trip: SynthDecay=0.5 not preserved on any imported node")
+	if got := audio.GetInstrumentParams(roster.Snare)["post_decay"]; got != 0.4 {
+		t.Errorf("round-trip: post_decay=%v want 0.4", got)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // clavFunkCircuitJSON mirrors internal/assets/templates/clav-funk.json: a single
@@ -11,11 +13,11 @@ import (
 // itself (node 15 -> node 0), with two silent nodes in the cycle. This is the
 // exact template the user loaded before the crash.
 const clavFunkCircuitJSON = `{
-  "version": 1,
+  "schema_version": "0.0.1",
   "subdiv": 16,
   "bpm": 104,
   "instruments": [
-    {"name": "Guitar", "id": "guitar-electric", "kind": "builtin", "volume": 0.85, "origin": 0, "color": "#EE00DDFF", "reverb_send": 0.12, "synth_params": {"pitch": 0}}
+    {"name": "Guitar", "id": "guitar-electric", "kind": "builtin", "volume": 0.85, "origin": 0, "color": "#EE00DDFF"}
   ],
   "nodes": [
     {"id": 0, "i": 0, "j": 0, "type": "regular", "outputs": [1], "duration": 0.18},
@@ -49,7 +51,7 @@ func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.parityWatch = parityWatchPanic
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
 	if err := g.Import([]byte(clavFunkCircuitJSON)); err != nil {
@@ -93,9 +95,9 @@ func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 	// Switch row 0's instrument while stopped (guitar-electric -> flute), exactly as
 	// the user did. flute is a builtin synth instrument.
 	g.drum.selRow = 0
-	g.drum.SetInstrument("flute")
-	if !g.drum.IsInstrumentAvailable("flute") {
-		if err := audio.RegisterWAV("flute", "test://flute.wav"); err != nil {
+	g.drum.SetInstrument(roster.Flute)
+	if !g.drum.IsInstrumentAvailable(roster.Flute) {
+		if err := audio.RegisterWAV(roster.Flute, "test://flute.wav"); err != nil {
 			t.Fatalf("register flute: %v", err)
 		}
 		g.drum.refreshInstruments()

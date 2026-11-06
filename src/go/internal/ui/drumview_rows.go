@@ -4,6 +4,8 @@ import (
 	"image"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // anySoloActive reports whether any row is soloed. Soloing changes the
@@ -27,15 +29,15 @@ func rowAudible(r *DrumRow, anySolo bool) bool {
 // audibleInstrumentIDs returns the set of instrument IDs that are currently
 // audible given the rows' solo/mute state. Rows with an empty Instrument ID
 // are skipped (no channel to key on).
-func audibleInstrumentIDs(rows []*DrumRow) map[string]bool {
+func audibleInstrumentIDs(rows []*DrumRow) map[channel.ID]bool {
 	anySolo := anySoloActive(rows)
-	out := make(map[string]bool, len(rows))
+	out := make(map[channel.ID]bool, len(rows))
 	for _, r := range rows {
 		if r == nil || r.Instrument == "" {
 			continue
 		}
 		if rowAudible(r, anySolo) {
-			out[r.Instrument] = true
+			out[channel.Of(r.Instrument)] = true
 		}
 	}
 	return out
@@ -107,7 +109,7 @@ func (dv *DrumView) AddRow() {
 	if dv.onStructuralMutation != nil {
 		dv.onStructuralMutation("row-add")
 	}
-	inst := "snare"
+	inst := roster.Snare
 	if len(dv.instOptions) > 0 {
 		inst = dv.instOptions[0]
 	}
@@ -116,7 +118,7 @@ func (dv *DrumView) AddRow() {
 	// Pure sequential by row index: row N takes the Nth color of the canonical
 	// instrument series (wrapping). Independent of the instrument id.
 	rowColor := seriesColorAt(idx)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: rowColor, Origin: model.InvalidNodeID, Node: nil, Volume: 0.5, EQGainsDB: make([]float64, len(eqBandDefs))})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: rowColor, Origin: model.InvalidNodeID, Node: nil, Volume: 0.5})
 	dv.logger.Debugf("[drumview] row added index=%d instrument=%s name=%s", idx, inst, name)
 	emitRowAdded(idx, inst, name)
 	dv.added = append(dv.added, idx)
@@ -174,11 +176,14 @@ func (dv *DrumView) DeleteRow(i int) {
 	dv.logger.Debugf("[drumview] row deleted index=%d name=%s instrument=%s", i, dv.Rows[i].Name, dv.Rows[i].Instrument)
 	emitRowDeleted(i)
 	// If the deleted row's instrument is the active EQ channel, reset to master
-	if dv.eqActiveChannel == dv.Rows[i].Instrument {
-		dv.setEQActiveChannel("main")
+	if dv.eqActiveChannel == channel.Of(dv.Rows[i].Instrument) {
+		dv.setEQActiveChannel(channel.Master)
 	}
 	origin := dv.Rows[i].Origin
 	dv.Rows = append(dv.Rows[:i], dv.Rows[i+1:]...)
+	if dv.onRowRemoved != nil {
+		dv.onRowRemoved(i, origin)
+	}
 	dv.deleted = append(dv.deleted, deletedRow{index: i, origin: origin})
 	dv.bgDirty = true
 	dv.markRowControlsDirty()
@@ -233,6 +238,7 @@ func (dv *DrumView) toggleMute(idx int) {
 	}
 	dv.markRowControlsDirty()
 	emitRowMute(idx, r.Muted)
+	dv.onAudibleSetChanged()
 	dv.reconcileChannelWithAudibleSet()
 }
 
@@ -270,6 +276,7 @@ func (dv *DrumView) toggleSolo(idx int) {
 	}
 	dv.markRowControlsDirty()
 	emitRowSolo(idx, r.Solo)
+	dv.onAudibleSetChanged()
 	dv.reconcileChannelWithAudibleSet()
 }
 
@@ -295,8 +302,8 @@ func (dv *DrumView) reconcileChannelWithAudibleSet() {
 	}
 	// Revert to Master when more than one distinct instrument is audible.
 	if len(audibleInstrumentIDs(dv.Rows)) > 1 {
-		if ch := dv.activeEQChannel(); ch != "" && ch != "main" {
-			dv.selectAudioChannel("main")
+		if ch := dv.activeEQChannel(); !ch.IsMaster() {
+			dv.selectAudioChannel(channel.Master)
 		}
 		return
 	}
@@ -311,7 +318,7 @@ func (dv *DrumView) reconcileChannelWithAudibleSet() {
 		}
 	}
 	if count == 1 && sole != nil && sole.Instrument != "" {
-		dv.selectAudioChannel(sole.Instrument)
+		dv.selectAudioChannel(channel.Of(sole.Instrument))
 	}
 }
 

@@ -6,6 +6,9 @@ import (
 	"image"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -27,14 +30,12 @@ func TestInstMenuCompTouchScrollCategories(t *testing.T) {
 
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
-		Categories: []string{"Cat A", "Cat B", "Cat C", "Cat D", "Cat E",
-			"Cat F", "Cat G", "Cat H", "Cat I", "Cat J"},
+		Categories: audio.Categories()[:10],
 		Instruments: func() []InstrumentOption {
 			var opts []InstrumentOption
-			for _, cat := range []string{"Cat A", "Cat B", "Cat C", "Cat D", "Cat E",
-				"Cat F", "Cat G", "Cat H", "Cat I", "Cat J"} {
+			for _, cat := range audio.Categories()[:10] {
 				opts = append(opts, InstrumentOption{
-					ID: cat + "_inst", Label: cat + " Inst", Category: cat,
+					ID: instrument.ID(cat.String() + "_inst"), Label: cat.Label() + " Inst", Category: cat,
 				})
 			}
 			return opts
@@ -99,14 +100,14 @@ func TestInstMenuCompTouchScrollInstruments(t *testing.T) {
 	insts := make([]InstrumentOption, 20)
 	for i := range insts {
 		id := "inst_" + string(rune('a'+i))
-		insts[i] = InstrumentOption{ID: id, Label: "Inst " + id, Category: "All"}
+		insts[i] = InstrumentOption{ID: instrument.ID(id), Label: "Inst " + id, Category: audio.CatOther}
 	}
 	comp.SetProps(InstrumentMenuProps{
 		Instruments: insts,
 		AnchorRect:  image.Rect(0, 50, 200, 70),
 		VertBounds:  image.Rect(0, 0, 400, 600),
 		RowHeight:   24,
-		OnSelect:    func(id string) { selected = id },
+		OnSelect:    func(id instrument.ID) { selected = string(id) },
 	})
 	comp.Open()
 	suppressClicksUntilRelease = false
@@ -141,10 +142,10 @@ func TestInstMenuCompQuickTapSelectsCategory(t *testing.T) {
 
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
-		Categories: []string{"Kicks", "Snares"},
+		Categories: []audio.Category{audio.CatKick, audio.CatSnare},
 		Instruments: []InstrumentOption{
-			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
-			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
+			{ID: roster.Kick, Label: "Kick 1", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare 1", Category: audio.CatSnare},
 		},
 		AnchorRect:      image.Rect(0, 50, 200, 70),
 		VertBounds:      image.Rect(0, 0, 400, 600),
@@ -161,7 +162,7 @@ func TestInstMenuCompQuickTapSelectsCategory(t *testing.T) {
 	// Find "Snares" button.
 	var target *Button
 	for _, b := range catBtns {
-		if b.Text == "Snares" {
+		if b.Text == "Snare" {
 			target = b
 			break
 		}
@@ -193,13 +194,13 @@ func TestInstMenuCompQuickTapSelectsInstrument(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
-			{ID: "snare", Label: "Snare", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatNone},
 		},
 		AnchorRect: image.Rect(0, 50, 200, 70),
 		VertBounds: image.Rect(0, 0, 400, 600),
 		RowHeight:  24,
-		OnSelect:   func(id string) { selected = id },
+		OnSelect:   func(id instrument.ID) { selected = string(id) },
 	})
 	comp.Open()
 	suppressClicksUntilRelease = false
@@ -230,7 +231,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, logger)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: "kick"})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: roster.Kick})
 	dv.calcLayout()
 	dv.openContextMenu(0)
 
@@ -281,7 +282,7 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, logger)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: "kick"})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: roster.Kick})
 	dv.calcLayout()
 
 	// File menu (default mode): anchored via fileMenuAnchorRect (folder button
@@ -330,8 +331,8 @@ func TestInstMenuOpenForRowUsesComponent(t *testing.T) {
 
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, logger)
-	dv.instOptions = []string{"kick", "snare"}
-	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: "kick"})
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare}
+	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: roster.Kick})
 	dv.calcLayout()
 
 	comp := NewInstrumentMenuComponent()
@@ -364,13 +365,13 @@ func TestInstMenuDesktopImmediateFire(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
-			{ID: "snare", Label: "Snare", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatNone},
 		},
 		AnchorRect: image.Rect(0, 50, 200, 70),
 		VertBounds: image.Rect(0, 0, 400, 600),
 		RowHeight:  24,
-		OnSelect:   func(id string) { selected = id },
+		OnSelect:   func(id instrument.ID) { selected = string(id) },
 	})
 	comp.Open()
 	suppressClicksUntilRelease = false

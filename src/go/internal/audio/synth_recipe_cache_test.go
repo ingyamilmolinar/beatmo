@@ -2,7 +2,11 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // These tests live on the native-build path because they exercise the real
 // globalVoiceCache and the voiceCacheInvalidate hook wired up in
@@ -11,15 +15,15 @@ import "testing"
 
 func TestVoiceCache_ClearInstrumentRemovesAllItsEntries(t *testing.T) {
 	vc := newTestCache()
-	a := voiceCacheKey{instrumentID: "snare", sampleRate: 44100}
-	b := voiceCacheKey{instrumentID: "snare", bpm: 120, sampleRate: 44100, paramsHash: 42}
-	c := voiceCacheKey{instrumentID: "kick", sampleRate: 44100}
+	a := voiceCacheKey{instrumentID: roster.Snare, sampleRate: 44100}
+	b := voiceCacheKey{instrumentID: roster.Snare, sampleRate: 44100, paramsHash: 42}
+	c := voiceCacheKey{instrumentID: roster.Kick, sampleRate: 44100}
 
 	vc.Put(a, []float32{1})
 	vc.Put(b, []float32{2})
 	vc.Put(c, []float32{3})
 
-	vc.ClearInstrument("snare")
+	vc.ClearInstrument(roster.Snare)
 
 	if _, ok := vc.Get(a); ok {
 		t.Errorf("entry for snare/a still present after ClearInstrument")
@@ -34,7 +38,7 @@ func TestVoiceCache_ClearInstrumentRemovesAllItsEntries(t *testing.T) {
 
 func TestVoiceCache_ClearInstrumentUnknownIsNoop(t *testing.T) {
 	vc := newTestCache()
-	k := voiceCacheKey{instrumentID: "snare", sampleRate: 44100}
+	k := voiceCacheKey{instrumentID: roster.Snare, sampleRate: 44100}
 	vc.Put(k, []float32{1})
 
 	vc.ClearInstrument("nobody-here")
@@ -72,10 +76,13 @@ func TestSetInstrumentParam_DoesNotBlanketInvalidate(t *testing.T) {
 }
 
 func TestResetInstrumentParams_InvalidatesGlobalVoiceCache(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("test-cache-kick") })
+	if err := InstallInstrumentDocForTest("test-cache-kick", roster.Kick); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { RemoveInstrumentDocForTest("test-cache-kick") })
 
 	// Set a param, then Reset; both should invalidate the cache.
-	SetInstrumentParam("test-cache-kick", "decay", 0.5)
+	SetInstrumentParam("test-cache-kick", "amp_decay", 0.5)
 
 	k := voiceCacheKey{instrumentID: "test-cache-kick", sampleRate: 44100}
 	globalVoiceCache.Put(k, []float32{0.7})

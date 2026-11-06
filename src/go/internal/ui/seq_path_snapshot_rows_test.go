@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func TestSequencerSnapshotSkipsDuringRowCountMismatchThenResumes(t *testing.T) {
@@ -26,7 +27,7 @@ func TestSequencerSnapshotSkipsDuringRowCountMismatchThenResumes(t *testing.T) {
 	g.updateBeatInfos()
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 	g.SetPlaying(true)
 
 	scheduleAbsForTest(g, 0)

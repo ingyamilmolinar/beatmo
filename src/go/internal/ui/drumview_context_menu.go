@@ -458,35 +458,25 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 		return
 	}
 	// Backdrop scrim is painted by the OverlayPortal (PortalEntry.Scrim) so the
-	// whole stack dims once; this overlay only draws its own surface.
-	if Profile().UseBottomSheet {
-		drawBottomSheetPanel(dst, dv.contextMenuRect)
-	} else {
-		drawPanel(dst, dv.contextMenuRect)
+	// whole stack dims once. The frame — panel (bottom sheet + drag handle on
+	// mobile), title band with the row's swatch + name and the instrument
+	// accent hairline, close × (the menu's own tracked button) — is the shared
+	// MenuCard, so it matches every other menu.
+	if dv.contextMenuCard == nil {
+		dv.contextMenuCard = NewMenuCard(nil)
 	}
-
-	// Mobile: pill-shaped drag handle indicator at top of bottom sheet.
-	if Profile().IsMobile() {
-		drawSheetDragHandle(dst, dv.contextMenuRect)
-	}
-
-	// Draw header text (both platforms) with row color dot.
-	if !dv.contextMenuHeaderRect.Empty() &&
-		dv.contextMenuRow >= 0 && dv.contextMenuRow < len(dv.Rows) {
+	spec := MenuCardSpec{Accent: dv.contextMenuAccent(), BottomSheet: Profile().UseBottomSheet}
+	if dv.contextMenuRow >= 0 && dv.contextMenuRow < len(dv.Rows) {
 		row := dv.Rows[dv.contextMenuRow]
-		// "Neon Horizon" header band across the full header height.
-		headerBandRect := image.Rect(
-			dv.contextMenuRect.Min.X, dv.contextMenuRect.Min.Y,
-			dv.contextMenuRect.Max.X, dv.contextMenuRect.Min.Y+touchMinTargetPx,
-		)
-		drawMenuHeaderBandAccent(dst, headerBandRect, dv.contextMenuAccent())
-		// Unified menu title: instrument swatch + name (shared drawMenuTitle).
 		rowCol := row.Color
 		if rowCol == nil {
 			rowCol = instColor(row.Instrument)
 		}
-		drawMenuTitle(dst, dv.contextMenuHeaderRect, row.Name, rowCol)
+		spec.Title, spec.Swatch = row.Name, rowCol
 	}
+	dv.contextMenuCard.SetCloseButton(dv.contextMenuCloseButton)
+	dv.contextMenuCard.Layout(dv.contextMenuRect, spec)
+	dv.contextMenuCard.Draw(dst)
 
 	// Hairline separators between groups (replaces the old group-container
 	// boxes for the flat look). Walk items mirroring the layout pitch in
@@ -525,7 +515,8 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 			return
 		}
 		state := menuItemRest
-		if btn.hovered || btn.pressed {
+		if btn.hovered || btn.pressed || i == dv.contextKeyNav().Selected() {
+			// One highlight shared by mouse and keyboard (see menu_keynav.go).
 			state = menuItemHover
 		}
 		// Resolve the context menu's string icon name to an IconID, mirroring
@@ -539,8 +530,8 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 		}
 		// Preserve per-item label color (e.g. red Delete).
 		var labelCol color.Color // nil → colTextPrimary in drawMenuRow
-		if btn.TextColor != nil {
-			labelCol = btn.TextColor
+		if tc := btn.effectiveTextColor(); tc != nil {
+			labelCol = tc
 		}
 		drawMenuRow(dst, btn, MenuRowSpec{
 			Accent:     dv.contextMenuAccent(),
@@ -598,6 +589,10 @@ func (dv *DrumView) handleOverflowMenuInput(mx, my int, left bool) bool {
 	dv.configureOverflowScroll()
 	popupRect := dv.overflowPopupRect()
 
+	// Frame controls (close ×) win first.
+	if dv.overflowCard != nil && dv.overflowCard.HandleInput(mx, my, left) != InputIgnored {
+		return true
+	}
 	btns := dv.overflowPopupBtns(popupRect)
 
 	// Pinned search box: a press on the clear-× wipes the query; any other
@@ -718,17 +713,7 @@ func (dv *DrumView) overflowPopupWidth(items []overflowItem) int {
 	labelLeft := SpaceXS + (SpaceMD + menuRowIconSize() + SpaceSM)
 	rightPad := SpaceMD + SpaceXS + dropdownScrollbarWidth()
 
-	maxLabelW := 0
-	for _, it := range items {
-		if it.header {
-			continue
-		}
-		if lw := StyledTextWidth(it.label, RoleBody); lw > maxLabelW {
-			maxLabelW = lw
-		}
-	}
-
-	w := labelLeft + maxLabelW + rightPad
+	w := labelLeft + dv.overflowMaxLabelWidth(items) + rightPad
 	if w < overflowPopupDefaultWidth {
 		w = overflowPopupDefaultWidth
 	}
@@ -738,6 +723,35 @@ func (dv *DrumView) overflowPopupWidth(items []overflowItem) int {
 		w = maxW
 	}
 	return w
+}
+
+// overflowMaxLabelWidth returns the widest non-header row label, memoized.
+//
+// overflowPopupWidth runs ~6x per frame while the menu is open, and the
+// template page carries ~40 long "Artist — Song" labels — ~240 StyledTextWidth
+// measurements per frame before this cache. The measurement depends only on the
+// item set (overflowItemsKey) and the active font, so it is recomputed only
+// when one of those changes.
+func (dv *DrumView) overflowMaxLabelWidth(items []overflowItem) int {
+	key := dv.overflowItemsCacheKeyNow()
+	fontGen := i18n.FontGeneration()
+	if dv.overflowLabelWidthValid && dv.overflowLabelWidthKey == key && dv.overflowLabelWidthFont == fontGen {
+		return dv.overflowLabelWidth
+	}
+	maxLabelW := 0
+	for _, it := range items {
+		if it.header {
+			continue
+		}
+		if lw := StyledTextWidth(it.label, RoleBody); lw > maxLabelW {
+			maxLabelW = lw
+		}
+	}
+	dv.overflowLabelWidth = maxLabelW
+	dv.overflowLabelWidthKey = key
+	dv.overflowLabelWidthFont = fontGen
+	dv.overflowLabelWidthValid = true
+	return maxLabelW
 }
 
 // overflowPopupRect returns the rectangle for the overflow (file) popup. On
@@ -906,7 +920,6 @@ func overflowPinnedCount(items []overflowItem) int {
 	return n
 }
 
-
 // overflowItem defines a menu entry for the overflow popup.
 //
 // iconID, when non-empty, is rendered as a small leading icon by
@@ -925,11 +938,59 @@ type overflowItem struct {
 	onClick    func()
 }
 
+// overflowItemsKey is the complete state the overflow item model depends on.
+// Everything else the model reads is immutable (assets.Templates is parsed
+// once) or resolved lazily inside an onClick closure (dv.uploadBtn() and
+// friends), so two calls with an equal key MUST produce an equal item list.
+//
+// locale is folded in because the File-page labels and the Templates header /
+// Back row go through i18n.T; page/query/loaded select which rows exist and
+// which renders as the active selection.
+type overflowItemsKey struct {
+	page   int
+	query  string
+	loaded string
+	locale i18n.Locale
+}
+
+// overflowItemsCacheKeyNow snapshots the current model state.
+func (dv *DrumView) overflowItemsCacheKeyNow() overflowItemsKey {
+	return overflowItemsKey{
+		page:   dv.overflowPage,
+		query:  dv.templateSearchQuery,
+		loaded: dv.templateLoadedStem,
+		locale: i18n.ActiveLocale(),
+	}
+}
+
 // overflowItems returns the full list of overflow menu entries.
 // Header items (header==true) are non-clickable subgroup labels; they are
 // rendered as dimmed section dividers and must NOT appear in the popup's
 // button hit list (see overflowPopupBtns).
+//
+// MEMOIZED. This is called ~12x per frame while the menu is open — from the
+// draw pass, the input pass, configureOverflowScroll, overflowPopupRect,
+// overflowPopupBtns, updateTemplateSearch and the native-gesture rect scan.
+// Rebuilding the template page each time (a 32-entry genre map, ~40 items, 32
+// onClick closures, 32 strconv.Itoa BPM captions) churned 237 KB/frame and
+// visibly dropped the frame rate while the template list was open. The result
+// is a pure function of overflowItemsKey, so it is rebuilt only on a state
+// change. THE RETURNED SLICE IS SHARED — callers must treat it as read-only.
 func (dv *DrumView) overflowItems() []overflowItem {
+	key := dv.overflowItemsCacheKeyNow()
+	if dv.overflowItemsCacheValid && dv.overflowItemsCacheKey == key {
+		return dv.overflowItemsCache
+	}
+	items := dv.buildOverflowItems()
+	dv.overflowItemsCache = items
+	dv.overflowItemsCacheKey = key
+	dv.overflowItemsCacheValid = true
+	return items
+}
+
+// buildOverflowItems constructs the item model from scratch. Call
+// overflowItems() instead; this is the uncached body behind its memo.
+func (dv *DrumView) buildOverflowItems() []overflowItem {
 	if dv.overflowPage == 1 {
 		items := []overflowItem{
 			{label: i18n.T(i18n.KeyMenuTemplates), header: true},
@@ -1086,7 +1147,8 @@ func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 			if item.search {
 				dv.templateSearchRect = r
 				freshBox := dv.templateSearchBox == nil
-				dv.templateSearchBox = ensureMenuSearchBox(dv.templateSearchBox, r)
+				dv.templateSearchBox = ensureMenuSearchBox(dv.templateSearchBox, r, dv.textFields,
+					TextFieldSpec{ID: templateSearchMobileInputID, Owner: "overflow-menu"})
 				// Only seed a freshly-created box from the query. On every other
 				// call this resync would stomp a same-frame typed/injected edit
 				// before updateTemplateSearch's poll gets to read it (the box is
@@ -1131,8 +1193,21 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	// pane like the node pop-up, so it is NOT a bottom sheet and carries NO drag
 	// handle. It shares the exact chrome (drawPanel) of the Settings and Logs
 	// cards.
-	drawPanel(dst, popupRect)
 	items := dv.overflowItems()
+	// Shared MenuCard frame: the pinned header item supplies the title (File /
+	// Load template page); the band + close × sit over the header row's slot.
+	if dv.overflowCard == nil {
+		dv.overflowCard = NewMenuCard(dv.closeOverflowMenu)
+	}
+	title := ""
+	for _, it := range items {
+		if it.header {
+			title = it.label
+			break
+		}
+	}
+	dv.overflowCard.Layout(popupRect, MenuCardSpec{Title: title, IconID: IconFolder})
+	dv.overflowCard.Draw(dst)
 	rowH := touchMinTargetPx
 	pinned := overflowPinnedCount(items)
 	bandH := pinned * rowH
@@ -1154,9 +1229,7 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 		rowR := image.Rect(popupRect.Min.X, pinnedY, popupRect.Max.X, pinnedY+rowH)
 		pinnedY += rowH
 		if item.header {
-			titleRect := image.Rect(rowR.Min.X+cardContentPadX, rowR.Min.Y, rowR.Max.X-cardContentPadX, rowR.Max.Y)
-			drawCardTitleIn(dst, titleRect, item.label)
-			continue
+			continue // drawn by the MenuCard title band above
 		}
 		if item.search {
 			// Global menu → the neutral chrome accent, never another
@@ -1169,6 +1242,13 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	// 2. Scrolling rows (Back + group headers + templates). Row Y advances
 	// per item exactly like overflowPopupBtns so headers (which own no
 	// button) stay aligned with the buttons around them.
+	//
+	// ROW CULLING: only rows intersecting scrollRegion are drawn. The template
+	// page is ~40 rows in a viewport showing ~6; without this every frame blit
+	// a background, an icon and a label sprite for ~34 rows the GPU then threw
+	// away at the clip, and those wasted DrawImage calls dominated the menu's
+	// frame time. btnIdx bookkeeping still advances for skipped rows so the
+	// item↔button mapping stays aligned; only the draw is elided.
 	scrollY := popupRect.Min.Y + bandH - dv.overflowMenuScroll.OffsetPx()
 	btnIdx := 0
 	// Every button is an action row rendered via drawMenuRow. There is no
@@ -1179,8 +1259,16 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 		item := items[i]
 		rowR := image.Rect(popupRect.Min.X, scrollY, popupRect.Max.X, scrollY+rowH)
 		scrollY += rowH
+		// Every later row sits further down, so once one starts below the
+		// viewport nothing after it can be visible.
+		if rowR.Min.Y >= scrollRegion.Max.Y {
+			break
+		}
+		visible := rowR.Max.Y > scrollRegion.Min.Y
 		if item.header {
-			drawMenuGroupHeader(clip, rowR, item.label)
+			if visible {
+				drawMenuGroupHeader(clip, rowR, item.label)
+			}
 			continue
 		}
 		if btnIdx >= nActionBtns {
@@ -1188,11 +1276,15 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 		}
 		btn := btns[btnIdx]
 		btnIdx++
+		if !visible {
+			continue // scrolled above the viewport
+		}
 		state := menuItemRest
 		if item.active {
 			// The currently-loaded template reads as the list's selection.
 			state = menuItemActive
-		} else if btn.hovered || btn.pressed {
+		} else if btn.hovered || btn.pressed || i == dv.overflowKeyNav().Selected() {
+			// One highlight shared by mouse and keyboard (see menu_keynav.go).
 			state = menuItemHover
 		}
 		var iconTint color.Color = colMenuIcon
@@ -1273,7 +1365,7 @@ func (dv *DrumView) closeOverflowMenu() {
 // reset, layout invalidation) so any caller — toolbar button, segmented
 // control, EQ peek tap — sees identical state afterward.
 func (dv *DrumView) setViewMode(target viewMode) {
-	if dv.currentViewMode == target {
+	if dv.currentViewMode == target || !viewModeAvailable(target) {
 		return
 	}
 	dv.currentViewMode = target
@@ -1393,6 +1485,18 @@ func (dv *DrumView) SetMobileEQCollapsed(v bool) { dv.mobileEQCollapsed = v }
 // one source of truth for the mobile tab swap.
 func (dv *DrumView) MobileEQMode() bool {
 	return Profile().IsMobile() && dv.currentViewMode != viewModeRows
+}
+
+// gridPaneVisibleForToast reports whether the grid pane is the surface the
+// user is currently looking at, so the status toast (logs_toast.go) should
+// render there. On desktop the grid pane is always visible. On mobile it is
+// the exact negation of MobileEQMode — the same predicate that already gates
+// the EQ panel zone — so this deliberately reuses it rather than adding a
+// second per-view-mode switch. When false, toastHostRect (grid_pane_draw.go)
+// falls back to dv.Bounds and DrumToastLayer (layer_drum_toast.go) paints the
+// toast there instead.
+func (dv *DrumView) gridPaneVisibleForToast() bool {
+	return !dv.MobileEQMode()
 }
 
 // SetMobileEQMode is the legacy entry point used by tests, screenshot
@@ -1518,6 +1622,11 @@ func (dv *DrumView) TrackBtnForTest() *Button { return dv.trackBtn() }
 
 // TimelineRectForTest returns the timeline rect for testing.
 func (dv *DrumView) TimelineRectForTest() image.Rectangle { return dv.timelineRect }
+
+// CellGridRect returns the rectangle the drum row step cells are drawn into.
+// Its X span is the full width the timeline widget dedicates to the grid —
+// unlike timelineRect, which is narrowed by header-only chrome.
+func (dv *DrumView) CellGridRect() image.Rectangle { return dv.cellGridRect }
 
 // ContextMenuScrollForTest returns the context menu scroll behavior for testing.
 func (dv *DrumView) ContextMenuScrollForTest() *ScrollBehavior { return dv.contextMenuScroll }

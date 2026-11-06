@@ -4,12 +4,13 @@ package ui
 
 import (
 	"image/color"
-	"log"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text" //nolint:staticcheck // text.Draw has no drop-in v2 replacement yet
 	"github.com/ingyamilmolinar/beatmo/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
@@ -30,13 +31,13 @@ func initFontSources() {
 		if err == nil {
 			fontRegular = r
 		} else {
-			log.Printf("fontcache: failed to parse Go Regular font: %v", err)
+			game_log.Errorf("[font] failed to parse Go Regular font: %v", err)
 		}
 		b, err := opentype.Parse(assets.GoBoldTTF)
 		if err == nil {
 			fontBold = b
 		} else {
-			log.Printf("fontcache: failed to parse Go Bold font: %v", err)
+			game_log.Errorf("[font] failed to parse Go Bold font: %v", err)
 		}
 	})
 }
@@ -97,10 +98,44 @@ func fontFaceBold(size float64) font.Face {
 	return face
 }
 
-// measureTextWidth returns the pixel width of s rendered at the given size.
-// Uses bold face to match the bold rendering in textSpriteRenderer.
-func measureTextWidth(s string, size float64) int {
-	face := fontFaceBold(size)
+// measureKey identifies one measurement: the string, the face (size + weight)
+// and the font generation — keyed like the sprite caches, so a locale switch
+// to another font never serves a stale width.
+type measureKey struct {
+	s    string
+	size int // size*100
+	bold bool
+	gen  int64
+}
+
+// measureCacheMax bounds the width cache: the beat readout adds a string per
+// second of playback; a full cache is simply dropped and refilled.
+const measureCacheMax = 4096
+
+// measuredWidths memoizes text advance widths. font.MeasureString walks every
+// glyph's advance and kerning through the opentype face, and layout asks for
+// the same strings every frame (tab pills, the beat readout, band labels) —
+// on WASM that re-measuring was a third of the audio panel's per-frame layout.
+var (
+	measureMu      sync.RWMutex
+	measuredWidths = map[measureKey]int{}
+)
+
+// textAdvance returns the advance width of s on the face for (size, bold).
+func textAdvance(s string, size float64, bold bool) int {
+	key := measureKey{s: s, size: int(size * 100), bold: bold, gen: i18n.FontGeneration()}
+	measureMu.RLock()
+	w, ok := measuredWidths[key]
+	measureMu.RUnlock()
+	if ok {
+		return w
+	}
+	var face font.Face
+	if bold {
+		face = fontFaceBold(size)
+	} else {
+		face = fontFaceRegular(size)
+	}
 	if face == nil {
 		return len([]rune(s)) * debugCharW
 	}
@@ -110,7 +145,20 @@ func measureTextWidth(s string, size float64) int {
 	// at x+TextWidth(prefix)) never moved past it and the text never shifted, so
 	// typing a space at the start looked like "nothing happened". MeasureString
 	// sums per-glyph advances (the real layout width) and counts spaces.
-	return font.MeasureString(face, s).Ceil()
+	w = font.MeasureString(face, s).Ceil()
+	measureMu.Lock()
+	if len(measuredWidths) >= measureCacheMax {
+		clear(measuredWidths)
+	}
+	measuredWidths[key] = w
+	measureMu.Unlock()
+	return w
+}
+
+// measureTextWidth returns the pixel width of s rendered at the given size.
+// Uses bold face to match the bold rendering in textSpriteRenderer.
+func measureTextWidth(s string, size float64) int {
+	return textAdvance(s, size, true)
 }
 
 // measureTextHeight returns the line height for the given size.
@@ -135,9 +183,8 @@ func measureStyled(s string, size float64, bold bool) (int, int) {
 	if face == nil {
 		return len([]rune(s)) * debugCharW, styledLineHeightFallback(size)
 	}
-	w := font.MeasureString(face, s).Ceil() // advance, not ink bounds (counts spaces)
 	m := face.Metrics()
-	return w, (m.Ascent + m.Descent).Ceil()
+	return textAdvance(s, size, bold), (m.Ascent + m.Descent).Ceil()
 }
 
 // textSpriteLayout computes the SHARED text-sprite geometry: pixel width/height,

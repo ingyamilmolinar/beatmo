@@ -14,10 +14,8 @@ func (dv *DrumView) CancelAllDeferredTaps() {
 	}
 	dv.instEditorDeferredTap.Cancel()
 	dv.instEditorScrollTS.Reset()
-	for _, g := range dv.instEditorSectionGrids {
-		if g != nil {
-			g.EndDrag()
-		}
+	if g := dv.instEditorMacroGrid; g != nil {
+		g.EndDrag()
 	}
 	if dv.contextMenuScroll != nil {
 		dv.contextMenuScroll.ResetTouch()
@@ -64,7 +62,6 @@ func (dv *DrumView) CloseAllPopups() {
 	dv.closeNavMenuPortal()
 	dv.CancelAllDeferredTaps()
 }
-
 
 // resetTransientTabState tears down EVERY piece of transient, tab-local
 // interaction state that must not survive a view-mode switch. It runs

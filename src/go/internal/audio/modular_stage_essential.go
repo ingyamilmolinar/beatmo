@@ -1,6 +1,10 @@
 package audio
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // modular_stage_essential.go — "which pipeline stage is the sound's sole
 // source?" No build tag: it reads only the merged param map (cross-platform,
@@ -30,7 +34,7 @@ import "fmt"
 // when it is the LAST remaining source: OSC layered over a gen-slot (e.g.
 // cello) stays disableable, and an already-disabled OSC is disableable so it
 // can be turned back on.
-func StageDisableSilences(instID, enableParam string) bool {
+func StageDisableSilences(instID instrument.ID, enableParam string) bool {
 	if instID == "" || enableParam == "" {
 		return false
 	}

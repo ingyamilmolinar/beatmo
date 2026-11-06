@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func ensureNode(g *Game, i, j int, nodeType model.NodeType) *uiNode {
@@ -62,7 +65,7 @@ func TestSilentVisibleNode_NoSound(t *testing.T) {
 
 	// Capture instrument triggers.
 	plays := make(chan struct{}, 4)
-	g.SetPlayFunc(func(string, float64, ...float64) { plays <- struct{}{} })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays <- struct{}{} })
 
 	scheduleAbsForTest(g, 0) // start node (regular)
 	waitForChan(t, plays, 10000)
@@ -103,7 +106,7 @@ func TestNodeVolumeMultiplier(t *testing.T) {
 	g.graph.SetNodeParams(n1.ID, model.NodeParams{Volume: 0.5})
 
 	vols := make(chan float64, 2)
-	g.SetPlayFunc(func(id string, v float64, when ...float64) { vols <- v })
+	g.SetPlayFunc(func(id instrument.ID, v float64, when ...float64) { vols <- v })
 
 	scheduleAbsForTest(g, 0)
 	v0 := waitForChan(t, vols, 10000)
@@ -146,13 +149,13 @@ func TestNodeLogic_DisableEveryOtherTrigger(t *testing.T) {
 	// Logic: skip every 2nd trigger of r1 (plays on 1,3,5,...).
 	if n, ok := g.graph.GetNodeByID(r1.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(r1.ID, p)
 	}
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	// Find the absolute index of the 5th occurrence of r1 in the beat path (loop-safe).
 	wantTriggers := 5
@@ -216,7 +219,7 @@ func TestRegularNodeLogicCallbackEveryOther(t *testing.T) {
 	})
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	for abs := 0; abs < 6; abs++ {
 		scheduleAbsForTest(g, abs)
@@ -248,7 +251,7 @@ func TestRegularNodeLogicCallbackAlwaysDisabled(t *testing.T) {
 	})
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	for abs := 0; abs < 4; abs++ {
 		scheduleAbsForTest(g, abs)
@@ -283,7 +286,7 @@ func TestNodeLogicParamAdjustmentsApplied(t *testing.T) {
 	})
 
 	vols := make(chan float64, 2)
-	g.SetPlayFunc(func(_ string, v float64, _ ...float64) { vols <- v })
+	g.SetPlayFunc(func(_ instrument.ID, v float64, _ ...float64) { vols <- v })
 
 	g.SetPlaying(true)
 	scheduleAbsForMuteTest(g, 0)
@@ -291,7 +294,10 @@ func TestNodeLogicParamAdjustmentsApplied(t *testing.T) {
 
 	info := g.beatInfoAtRow(0, 0)
 	baseVol, basePitch, baseDur := g.evalNodeParamsOnly(0, 0, info)
-	wantVol := baseVol * 0.5
+	// The test play wrapper (SetPlayFunc) applies the channel × master gain on
+	// top of the node volume; the expectation must too, or it depends on what
+	// an earlier test left the process-global master volume at.
+	wantVol := baseVol * 0.5 * playGainForTest(g, 0)
 	wantPitch := basePitch + 3
 	wantDur := baseDur * 2
 
@@ -348,7 +354,7 @@ func TestNodeLogicParamCountsSkipDisabled(t *testing.T) {
 	})
 
 	vols := make(chan float64, 4)
-	g.SetPlayFunc(func(_ string, v float64, _ ...float64) { vols <- v })
+	g.SetPlayFunc(func(_ instrument.ID, v float64, _ ...float64) { vols <- v })
 
 	g.SetPlaying(true)
 	scheduleAbsForMuteTest(g, 0)
@@ -366,8 +372,9 @@ func TestNodeLogicParamCountsSkipDisabled(t *testing.T) {
 
 	info := g.beatInfoAtRow(0, 0)
 	baseVol, _, _ := g.evalNodeParamsOnly(0, 0, info)
-	want1 := baseVol * 1
-	want3 := baseVol * 3
+	gain := playGainForTest(g, 0) // SetPlayFunc's channel × master gain
+	want1 := baseVol * 1 * gain
+	want3 := baseVol * 3 * gain
 	if (v1-want1) > 1e-6 || (want1-v1) > 1e-6 {
 		t.Fatalf("first trigger volume mismatch: want %.3f got %.3f", want1, v1)
 	}
@@ -380,4 +387,10 @@ func TestNodeLogicParamCountsSkipDisabled(t *testing.T) {
 	if seenCounts[0] != 1 || seenCounts[1] != 2 || seenCounts[2] != 3 {
 		t.Fatalf("unexpected trigger counts: %v", seenCounts)
 	}
+}
+
+// playGainForTest is the gain SetPlayFunc's wrapper multiplies every play by:
+// the row instrument's channel volume times the master volume.
+func playGainForTest(g *Game, row int) float64 {
+	return audio.ChannelVolume(channel.Of(g.drum.Rows[row].Instrument)) * audio.MainVolume()
 }

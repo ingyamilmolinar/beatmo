@@ -18,7 +18,7 @@ import (
 // call, Tracef logging, and the gridTree dispatch (SetBounds/EnsureLayouts/Draw).
 //
 // Adding a draw primitive (drawRect, drawRoundedRect, drawButton,
-// drawSparklineInRect, drawBottomSheetPanel, drawPanel, drawAccentStripe,
+// drawSparklineInRect, drawBottomSheetPanel, drawPanel,
 // DrawSplitterHandle, DrawTextAt, DrawTextColorAtScale, DrawIcon, DrawImage,
 // fillVerticalGradient, DrawTextStyled, DrawTextAtScale, drawScrim, …) directly
 // to (*Game).drawGridPane will fail this test. Method calls like
@@ -38,7 +38,6 @@ func TestGridRenderPipelineDiscipline(t *testing.T) {
 		"drawSparklineInRect":  true,
 		"drawBottomSheetPanel": true,
 		"drawPanel":            true,
-		"drawAccentStripe":     true,
 		"DrawSplitterHandle":   true,
 		"DrawTextAt":           true,
 		"DrawTextColorAtScale": true,

@@ -3,22 +3,24 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Phase 9 contract: every SetInstrumentParam call bumps the dispatch
 // counter, rejected non-finite calls bump the rejected counter, and the
 // dispatch average + max reflect actual wall-clock cost. Tests use the
-// snare instrument because it has a stable recipe binding under -tags
-// test (see synth_recipe.go bindBuiltinInstrumentRecipes init).
+// snare instrument because it has a shipped instrument document under -tags
+// test.
 func TestParamLatencyMetrics_CountsDispatchedCalls(t *testing.T) {
 	ResetParamLatencyMetrics()
 	t.Cleanup(ResetParamLatencyMetrics)
-	ResetInstrumentParams("snare")
-	t.Cleanup(func() { ResetInstrumentParams("snare") })
+	ResetInstrumentParams(roster.Snare)
+	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
 	const n = 50
 	for i := 0; i < n; i++ {
-		SetInstrumentParam("snare", "decay", 0.5+float64(i)/100)
+		SetInstrumentParam(roster.Snare, "post_decay", 0.5+float64(i)/100)
 	}
 
 	m := GetParamLatencyMetrics()
@@ -39,14 +41,14 @@ func TestParamLatencyMetrics_CountsDispatchedCalls(t *testing.T) {
 func TestParamLatencyMetrics_CountsRejectedNonFinite(t *testing.T) {
 	ResetParamLatencyMetrics()
 	t.Cleanup(ResetParamLatencyMetrics)
-	ResetInstrumentParams("kick")
-	t.Cleanup(func() { ResetInstrumentParams("kick") })
+	ResetInstrumentParams(roster.Kick)
+	t.Cleanup(func() { ResetInstrumentParams(roster.Kick) })
 
-	SetInstrumentParam("kick", "pitch", math.NaN())
-	SetInstrumentParam("kick", "decay", math.Inf(+1))
-	SetInstrumentParam("kick", "drive", math.Inf(-1))
+	SetInstrumentParam(roster.Kick, "pitch", math.NaN())
+	SetInstrumentParam(roster.Kick, "post_decay", math.Inf(+1))
+	SetInstrumentParam(roster.Kick, "drive", math.Inf(-1))
 	// One valid call — should bump Updates, not Rejected.
-	SetInstrumentParam("kick", "pitch", 3)
+	SetInstrumentParam(roster.Kick, "pitch", 3)
 
 	m := GetParamLatencyMetrics()
 	if m.Rejected != 3 {
@@ -65,20 +67,20 @@ func TestParamLatencyMetrics_CoalescesNoOpWrites(t *testing.T) {
 	// the param".
 	ResetParamLatencyMetrics()
 	t.Cleanup(ResetParamLatencyMetrics)
-	ResetInstrumentParams("snare")
-	t.Cleanup(func() { ResetInstrumentParams("snare") })
+	ResetInstrumentParams(roster.Snare)
+	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
 	// First write establishes the value — counts as Updates=1.
-	SetInstrumentParam("snare", "decay", 0.42)
+	SetInstrumentParam(roster.Snare, "post_decay", 0.42)
 	// Subsequent identical writes are no-ops — count as Coalesced.
 	const repeats = 30
 	for i := 0; i < repeats; i++ {
-		SetInstrumentParam("snare", "decay", 0.42)
+		SetInstrumentParam(roster.Snare, "post_decay", 0.42)
 	}
 	// A different value resumes mutation.
-	SetInstrumentParam("snare", "decay", 0.43)
+	SetInstrumentParam(roster.Snare, "post_decay", 0.43)
 	for i := 0; i < repeats; i++ {
-		SetInstrumentParam("snare", "decay", 0.43)
+		SetInstrumentParam(roster.Snare, "post_decay", 0.43)
 	}
 
 	m := GetParamLatencyMetrics()
@@ -92,11 +94,11 @@ func TestParamLatencyMetrics_CoalescesNoOpWrites(t *testing.T) {
 
 func TestParamLatencyMetrics_ResetClearsCounters(t *testing.T) {
 	ResetParamLatencyMetrics()
-	ResetInstrumentParams("snare")
-	t.Cleanup(func() { ResetInstrumentParams("snare") })
+	ResetInstrumentParams(roster.Snare)
+	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
-	SetInstrumentParam("snare", "decay", 0.5)
-	SetInstrumentParam("snare", "pitch", math.NaN())
+	SetInstrumentParam(roster.Snare, "post_decay", 0.5)
+	SetInstrumentParam(roster.Snare, "pitch", math.NaN())
 
 	pre := GetParamLatencyMetrics()
 	if pre.Updates == 0 || pre.Rejected == 0 {

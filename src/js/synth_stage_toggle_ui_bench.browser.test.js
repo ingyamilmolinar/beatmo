@@ -24,9 +24,10 @@ import { chromium } from "playwright";
 import fs from "fs";
 import path from "path";
 import {
-  buildMainWasm, createServer, dragMouse, waitForGameLoopRelease,
+  buildMainWasm, createServer, waitForGameLoopRelease,
 } from "./real_input_test_helpers.js";
 import { fileURLToPath } from "url";
+import { waitForAudioReady } from "./browser_test_helpers.js";
 
 const jsDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -85,16 +86,16 @@ try {
     && typeof synthEnablePillRect === "function"
     && typeof synthControlRects === "function"
     && typeof setRowInstrument === "function"
-    && typeof setEQChannel === "function", { timeout: 30000 });
-  await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
+    && typeof setEQChannel === "function", null, { timeout: 30000 });
+  await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 30000 });
   await page.evaluate(() => { forceDraw?.(); });
-  await page.waitForFunction(() => typeof totalRows === "function" && totalRows() >= 1, { timeout: 15000 });
+  await page.waitForFunction(() => typeof totalRows === "function" && totalRows() >= 1, null, { timeout: 15000 });
   await page.waitForTimeout(300);
   await waitForGameLoopRelease(page);
 
   // Unlock audio with a real gesture (creates the AudioContext).
   await page.mouse.click(200, 200);
-  await page.evaluate(async () => { try { await window.audioReady; } catch (_) {} });
+  await waitForAudioReady(page, { allowReject: true });
 
   // Put a heavy melodic (modular, per-pitch-rendered) voice on row 0 so the
   // Synth tab edits a heavy voice — cello (see AGENTS.md instrument catalog /
@@ -110,7 +111,7 @@ try {
   await waitForGameLoopRelease(page);
 
   await page.evaluate(() => startPlay());
-  await page.waitForFunction(() => typeof isPlaying === "function" && isPlaying() === true, { timeout: 10000 });
+  await page.waitForFunction(() => typeof isPlaying === "function" && isPlaying() === true, null, { timeout: 10000 });
 
   const ctxState = await page.evaluate(() => window.__audioCtx && window.__audioCtx.state);
   console.log("[TEST] AudioContext state =", ctxState);
@@ -123,10 +124,9 @@ try {
   //
   //   "synth" — the FAITHFUL reproduction. Opens the FILTER stage, then uses
   //     REAL pointer input on the drawn Synth tab: click the centre of
-  //     synthEnablePillRect() to toggle, and for the cutoff knob use the
-  //     ParamCard wheel-popup flow (click the card → locate the popup via
-  //     subjectRectJS("synth_wheel") → vertical dragMouse → Escape to close so
-  //     it never lingers into the next tick). This is what we gate.
+  //     synthEnablePillRect() to toggle, and for the cutoff knob the
+  //     armed-control flow (click the card → arrow keys step the value →
+  //     Enter). This is what we gate.
   //
   //   "eq" — the DRAW-COST CONTROL. Applies the identical churn via the BRIDGE
   //     (setInstrumentParam) while the cheap EQ tab draws, with NO mouse input.
@@ -210,33 +210,28 @@ try {
           toggles++;
         }
       } else {
-        // ParamCard conversion (see synthKnobHitAdapter in synth_panel_zone.go):
-        // knobs no longer support in-place rotary/horizontal drag —
-        // OnDrag/OnRelease are literal no-ops. A press instead OPENS a modal
-        // vertical "barrel" wheel popup (SubjectSynthWheel) that owns the
-        // drag. Real interaction: click the card to open the popup, locate
-        // its actual on-screen rect via subjectRectJS("synth_wheel") (the
-        // same rect the screenshot harness crops to), drag VERTICALLY inside
-        // it to spin the value, then Escape to cancel+close — so the popup
-        // never lingers open into the next tick and swallows later clicks
-        // (that caused a hang/instability in an earlier iteration of this
-        // bench).
+        // ARMED-CONTROL model: a click ARMS the Synth control in place and the
+        // arrow keys step its value (Up/Down; armedControlKeys claims them),
+        // Enter accepts. The earlier flows — in-place rotary drag, then a modal
+        // "barrel" wheel popup (SubjectSynthWheel) dragged vertically — are both
+        // gone, so the popup this bench waited for never appeared and it
+        // counted zero edits. An edit is counted only when the param actually
+        // moved, so the gate below cannot pass on input that did nothing.
         const knobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
         const knob = (knobs || []).find((k) => k && k.w > 0 && k.h > 0 && /cutoff/i.test(k.name || ""));
         if (knob) {
           const kcx = Math.round(knob.x + knob.w / 2), kcy = Math.round(knob.y + knob.h / 2);
+          const before = await page.evaluate((n) => (getInstrumentParams("cello") || {})[n], knob.name);
           await page.mouse.click(kcx, kcy);
-          await page.waitForTimeout(150);
-          const wheel = await page.evaluate(() => (typeof subjectRectJS === "function" ? subjectRectJS("synth_wheel") : { visible: false }));
-          if (wheel && wheel.visible && wheel.w > 0 && wheel.h > 0) {
-            const wcx = Math.round(wheel.x + wheel.w / 2), wcy = Math.round(wheel.y + wheel.h / 2);
-            const dir = (i % 8 < 4) ? -1 : 1; // alternate to avoid clamping at an extreme
-            await dragMouse(page, wcx, wcy, wcx, wcy + dir * 40, { steps: 6 });
-            knobDrags++;
-          }
-          await page.keyboard.press("Escape");
-          await page.waitForTimeout(100);
+          await page.waitForTimeout(80);
+          const key = (i % 8 < 4) ? "ArrowUp" : "ArrowDown"; // alternate to avoid clamping at an extreme
+          await page.keyboard.press(key);
+          await page.keyboard.press(key);
+          await page.keyboard.press("Enter");
+          await page.waitForTimeout(60);
           await waitForGameLoopRelease(page);
+          const after = await page.evaluate((n) => (getInstrumentParams("cello") || {})[n], knob.name);
+          if (after !== before) knobDrags++;
         }
       }
       await page.waitForTimeout(SPAM_INTERVAL_MS);

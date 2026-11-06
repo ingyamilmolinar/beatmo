@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -19,8 +20,8 @@ func setupChainScopeGame(t *testing.T) (*Game, *scope.State) {
 	t.Helper()
 	g := driveScene(t, "crop_chain_default")
 	snap := snapshotWithSine()
-	st := SynthesizeScopeState("main", scope.StageSynth, scope.StageEQ,
-		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Sends: snap, Master: snap})
+	st := SynthesizeScopeState(channel.Master, scope.StageSynth, scope.StageEQ,
+		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Master: snap})
 	st.Timestamp = 1
 	testScopeStateOverride = st
 	t.Cleanup(func() { testScopeStateOverride = nil })
@@ -55,8 +56,8 @@ func TestChainTraceCacheHitsAndInvalidates(t *testing.T) {
 	// every ~30 Hz tick on desktop / stateCacheTTL on WASM) must rebuild the
 	// trace. Identity, not Timestamp: the WASM path leaves Timestamp 0.
 	snap := snapshotWithSine()
-	testScopeStateOverride = SynthesizeScopeState("main", scope.StageSynth, scope.StageEQ,
-		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Sends: snap, Master: snap})
+	testScopeStateOverride = SynthesizeScopeState(channel.Master, scope.StageSynth, scope.StageEQ,
+		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Master: snap})
 	miss := draw()
 	if miss*4 < cold {
 		t.Fatalf("expected a new scope state pointer to rebuild the trace (~cold cost): cold=%d miss=%d", cold, miss)

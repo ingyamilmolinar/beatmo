@@ -1,6 +1,10 @@
 package audio
 
-import "math"
+import (
+	"math"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // sanitizeParamValue is the single boundary that decides what to do with a
 // param value the caller wants to write. Two failure modes are recognized:
@@ -44,105 +48,6 @@ func sanitizeParamValue(def ParamDef, v float64) (float64, bool) {
 // declare that name. Cheap enough to inline at every SetInstrumentParam
 // call — both lookups (binding map, params slice) are O(1)/O(N) where N
 // is small (≤ 8 params per recipe today).
-func lookupParamDef(instrumentID, paramName string) ParamDef {
-	recipeID := RecipeForInstrument(instrumentID)
-	if recipeID == "" {
-		return ParamDef{}
-	}
-	recipeRegMu.RLock()
-	reg, ok := recipeRegMap[recipeID]
-	recipeRegMu.RUnlock()
-	if !ok {
-		return ParamDef{}
-	}
-	for _, d := range reg.Params {
-		if d.Name == paramName {
-			return d
-		}
-	}
-	return ParamDef{}
-}
-
-// sendFXParamDefs is the schema for the global send-FX configuration knobs.
-// Pinned in code (not in the recipe registry) because send FX are not per-
-// instrument recipes — they are global processors with a fixed shape. The
-// ranges match the C clamps in effects.c and the practical bounds the UI
-// slider widget shows (and the maxSendDelayMs cap defined in send_effects.go).
-var sendFXParamDefs = map[string]ParamDef{
-	"delay.time_ms":    {Name: "delay.time_ms", Min: 1, Max: 2000, Default: 300, Unit: "ms"},
-	"delay.feedback":   {Name: "delay.feedback", Min: 0, Max: 1, Default: 0.3},
-	"delay.damping_hz": {Name: "delay.damping_hz", Min: 100, Max: 20000, Default: 3000, Unit: "Hz"},
-	"reverb.room":      {Name: "reverb.room", Min: 0, Max: 1, Default: 0.7},
-	"reverb.damping":   {Name: "reverb.damping", Min: 0, Max: 1, Default: 0.4},
-	"reverb.wet":       {Name: "reverb.wet", Min: 0, Max: 1, Default: 0.3},
-}
-
-// SendFXParamDef returns the ParamDef for a global send-FX knob, or the zero
-// value for unknown names. Used by the UI to render sliders without
-// hard-coding ranges in two places.
-func SendFXParamDef(name string) ParamDef {
-	return sendFXParamDefs[name]
-}
-
-// SendFXParamNames returns the canonical ordered name list for the send-FX
-// schema. Stable across calls so the UI can render a consistent layout.
-func SendFXParamNames() []string {
-	return []string{
-		"delay.time_ms",
-		"delay.feedback",
-		"delay.damping_hz",
-		"reverb.room",
-		"reverb.damping",
-		"reverb.wet",
-	}
-}
-
-// SetSendDelayParam updates one knob of the global send delay. value is
-// sanitized through the same clamp+finite path as SetInstrumentParam, then
-// dispatched to ConfigureSendDelay. Returns the stored value so callers can
-// reflect the clamped result back to the UI without re-reading state.
-// Unknown names are a no-op so future plan phases can add knobs without
-// breaking older callers.
-func SetSendDelayParam(name string, value float64) (float64, bool) {
-	def := sendFXParamDefs[name]
-	stored, ok := sanitizeParamValue(def, value)
-	if !ok {
-		return 0, false
-	}
-	t, f, d := SendDelayParams()
-	switch name {
-	case "delay.time_ms":
-		t = stored
-	case "delay.feedback":
-		f = stored
-	case "delay.damping_hz":
-		d = stored
-	default:
-		return 0, false
-	}
-	ConfigureSendDelay(t, f, d)
-	return stored, true
-}
-
-// SetSendReverbParam updates one knob of the global send reverb. Same
-// sanitize-then-dispatch contract as SetSendDelayParam.
-func SetSendReverbParam(name string, value float64) (float64, bool) {
-	def := sendFXParamDefs[name]
-	stored, ok := sanitizeParamValue(def, value)
-	if !ok {
-		return 0, false
-	}
-	r, d, w := SendReverbParams()
-	switch name {
-	case "reverb.room":
-		r = stored
-	case "reverb.damping":
-		d = stored
-	case "reverb.wet":
-		w = stored
-	default:
-		return 0, false
-	}
-	ConfigureSendReverb(r, d, w)
-	return stored, true
+func lookupParamDef(instrumentID instrument.ID, paramName string) ParamDef {
+	return instrumentParamDef(instrumentID, paramName)
 }

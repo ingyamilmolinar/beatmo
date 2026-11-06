@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
@@ -93,43 +94,6 @@ const zoomKeyStep = 8.0
 // Order matters: handleEscape runs first (so Esc still cancels even with a text
 // field focused), then a focused text input swallows all remaining action keys
 // (otherwise Space could not be typed into the BPM box / name fields).
-// valueEditorActive reports whether the shared inline numeric editor is open on
-// any surface — synth/sampler (dv.paramEditor) or EQ dB (the eq-panel zone's
-// editor). Global keyboard shortcuts must yield to it so the editor's caret
-// keys (Left/Right), commit (Enter), and revert (Esc) are not stolen by the
-// grid-pan / transport shortcuts.
-func (dv *DrumView) valueEditorActive() bool {
-	if dv.paramEditor != nil && dv.paramEditor.Active() {
-		return true
-	}
-	if dv.eqPanelZone != nil && dv.eqPanelZone.paramEditor != nil && dv.eqPanelZone.paramEditor.Active() {
-		return true
-	}
-	if dv.transportZone != nil && dv.transportZone.paramEditor != nil && dv.transportZone.paramEditor.Active() {
-		return true
-	}
-	return false
-}
-
-// cancelActiveValueEditor cancels whichever shared numeric editor is currently
-// open (revert, no write) and reports whether one was active. Used by the Esc
-// ladder so the soft-keyboard proxy's forwarded Escape reaches the editor even
-// though the canvas never sees the keydown.
-func (dv *DrumView) cancelActiveValueEditor() bool {
-	if dv.paramEditor != nil && dv.paramEditor.Active() {
-		dv.paramEditor.cancel()
-		return true
-	}
-	if dv.eqPanelZone != nil && dv.eqPanelZone.paramEditor != nil && dv.eqPanelZone.paramEditor.Active() {
-		dv.eqPanelZone.paramEditor.cancel()
-		return true
-	}
-	if dv.transportZone != nil && dv.transportZone.paramEditor != nil && dv.transportZone.paramEditor.Active() {
-		dv.transportZone.paramEditor.cancel()
-		return true
-	}
-	return false
-}
 
 // undoShortcut handles Ctrl/Cmd+Z (undo), Shift+Ctrl/Cmd+Z, Ctrl/Cmd+Y and
 // Ctrl/Cmd+R (redo). Ungated node: works even while a text field is focused.
@@ -241,15 +205,15 @@ func (g *Game) seekShortcut() bool {
 	}
 	acted := false
 	if isKeyJustPressed(ebiten.KeyPeriod) {
-		g.drum.RequestSeekDeltaBeats(step, seekOriginKeyboard)
+		g.drum.RequestSeekDeltaBeats(step, hooks.SeekKeyboard)
 		acted = true
 	}
 	if isKeyJustPressed(ebiten.KeyComma) {
-		g.drum.RequestSeekDeltaBeats(-step, seekOriginKeyboard)
+		g.drum.RequestSeekDeltaBeats(-step, hooks.SeekKeyboard)
 		acted = true
 	}
 	if isKeyJustPressed(ebiten.KeyHome) {
-		g.drum.RequestSeekSteps(0, seekOriginKeyboard)
+		g.drum.RequestSeekSteps(0, hooks.SeekKeyboard)
 		acted = true
 	}
 	return acted
@@ -290,7 +254,8 @@ func (g *Game) handleGlobalShortcuts() {
 
 	// Enter accepts (persists) the topmost portal overlay that opts in — the
 	// precision wheel popups — mirroring Esc→cancel. Runs before the keyboard-
-	// ownership gate so a wheel popup (which claims no keyboard) still gets Enter.
+	// ownership gate: a wheel popup claims only the ARROWS (it is a partial
+	// claimant, not a total one), so Enter would otherwise never reach it.
 	if g.handleEnter() {
 		return
 	}
@@ -300,14 +265,22 @@ func (g *Game) handleGlobalShortcuts() {
 	// the single keyboard-ownership predicate — every text-input surface declares
 	// itself via KeyboardClaimant (keyboard_focus.go). Do NOT reintroduce an
 	// inline denylist here; add new surfaces to KeyboardClaimed instead.
-	if g.drum.KeyboardClaimed() {
+	if g.KeyboardClaimed() {
 		return
 	}
+
+	// A control that pops up over a tab (precision wheel, volume slider, armed
+	// synth control) owns only the keys it actually handles — the arrows — and
+	// lets every other key through. It acts FIRST and reports what it consumed;
+	// those keys are then masked for the gated nodes below, so one arrow press
+	// can never both move the control and pan the camera. This is the single
+	// per-key ownership seam — see keyboard_key_claim.go.
+	blocked := g.dispatchClaimedKeys()
 
 	// Gated shortcut keys are owned by per-component nodes (keyboard_shortcuts.go):
 	// grid (pan/zoom/reset), transport (Space, BPM±), audio panel (tabs, "?").
 	// Do NOT add inline isKeyPressed checks here — add keys to a node instead.
-	g.keyboardRouter.dispatchGated()
+	g.keyboardRouter.dispatchGated(blocked)
 }
 
 // gridHelpButtonRect is the screen-space rect of the settings gear button in
@@ -349,12 +322,8 @@ func (g *Game) gridFileButtonRect() image.Rectangle {
 // overflowMenuID identifies the File (overflow) menu portal entry.
 const overflowMenuID = "overflow-menu"
 
-// gridButtonMenuIDs are the three top-right grid-button menus (Settings, Logs,
-// File). They are mutually exclusive: opening one closes any other that is open.
-var gridButtonMenuIDs = []string{settingsOverlayID, logsPanelID, overflowMenuID}
-
 // closeOtherGridButtonMenus closes every top-right button menu except keep, so at
-// most one is ever open at a time.
+// most one is ever open at a time (the menus are mutually exclusive).
 func (g *Game) closeOtherGridButtonMenus(keep string) {
 	if g.drum == nil {
 		return
@@ -363,9 +332,9 @@ func (g *Game) closeOtherGridButtonMenus(keep string) {
 	if p == nil {
 		return
 	}
-	for _, id := range gridButtonMenuIDs {
-		if id != keep && p.Has(id) {
-			p.Close(id)
+	for _, c := range g.gridCornerButtons() {
+		if c.menuID != keep && p.Has(c.menuID) {
+			p.Close(c.menuID)
 		}
 	}
 }
@@ -376,22 +345,6 @@ func (g *Game) openFileMenu() {
 	}
 	g.closeOtherGridButtonMenus(overflowMenuID)
 	g.drum.OpenFileMenu()
-}
-
-// gridButtonMenuFor pairs each top-right grid button with the portal menu it
-// toggles, so reconciliation and any future per-button logic share one table.
-func (g *Game) gridButtonMenuFor() []struct {
-	btn    *Button
-	menuID string
-} {
-	return []struct {
-		btn    *Button
-		menuID string
-	}{
-		{g.gridHelpBtn, settingsOverlayID},
-		{g.gridFileBtn, overflowMenuID},
-		{g.gridLogsBtn, logsPanelID},
-	}
 }
 
 // reconcileGridButtonToggles keeps each top-right grid button's visual in sync
@@ -417,13 +370,13 @@ func (g *Game) reconcileGridButtonToggles(pointerDown bool) {
 		return
 	}
 	p := g.drum.portal()
-	for _, e := range g.gridButtonMenuFor() {
-		if e.btn == nil {
+	for _, c := range g.gridCornerButtons() {
+		if c.btn == nil {
 			continue
 		}
-		e.btn.SetToggled(p != nil && p.Has(e.menuID))
+		c.btn.SetToggled(p != nil && p.Has(c.menuID))
 		if !pointerDown {
-			e.btn.ReleaseStuckPress()
+			c.btn.ReleaseStuckPress()
 		}
 	}
 }
@@ -460,6 +413,42 @@ func (g *Game) gridLogsButtonRect() image.Rectangle {
 	w := file.Dx()
 	x1 := file.Min.X - SpaceSM
 	return image.Rect(x1-w, file.Min.Y, x1, file.Max.Y)
+}
+
+// gridThemeButtonRect is the screen-space rect of the theme button, one SpaceSM
+// gap to the LEFT of the logs button. Same size. Both platforms. Empty before
+// the button (or the logs button) exists.
+func (g *Game) gridThemeButtonRect() image.Rectangle {
+	if g.gridThemeBtn == nil {
+		return image.Rectangle{}
+	}
+	logs := g.gridLogsButtonRect()
+	if logs.Empty() {
+		return image.Rectangle{}
+	}
+	w := logs.Dx()
+	x1 := logs.Min.X - SpaceSM
+	return image.Rect(x1-w, logs.Min.Y, x1, logs.Max.Y)
+}
+
+// themeOverlayID identifies the theme editor portal entry.
+const themeOverlayID = "theme"
+
+// toggleThemeOverlay opens the Theme editor, or closes it if already open.
+func (g *Game) toggleThemeOverlay() {
+	if g.drum == nil || g.drum.tree == nil {
+		return
+	}
+	p := g.drum.portal()
+	if p == nil {
+		return
+	}
+	if p.Has(themeOverlayID) {
+		p.Close(themeOverlayID)
+		return
+	}
+	g.closeOtherGridButtonMenus(themeOverlayID)
+	g.drum.openThemeOverlay()
 }
 
 // toggleLogsPanel opens the Logs Navigation Panel, or closes it if already open.
@@ -528,18 +517,9 @@ func (dv *DrumView) openSettingsOverlay() {
 			return g.gridAnchoredPopupRect(g.gridHelpButtonRect(), w, h, GridAnchorOpts{})
 		})
 	}
-	p.Open(PortalEntry{
-		ID:      settingsOverlayID,
-		Overlay: ov,
-		// Modal: the settings panel owns all input while open — presses outside
-		// it are filtered out by the HitIndex modal filter (so grid taps / camera
-		// pans never fire behind the panel) and PortalHasBlocking() suppresses the
-		// out-of-tree gesture handlers. The user closes it via the X button or Esc.
-		// The overlay paints its own full-screen scrim + centers itself, so the
-		// portal scrim is left off (avoids double-dimming).
-		Modal: true,
-		Scrim: false,
-	})
+	// Shared menu behavior (menuCardEntry): non-modal + scrim, so Esc, the
+	// card's close ×, a tap outside and the gear button itself all close it.
+	p.Open(menuCardEntry(settingsOverlayID, ov, image.Rectangle{}, false, nil))
 }
 
 // portalEscapeHandler lets a portal-hosted component intercept Esc before the
@@ -580,16 +560,6 @@ func (g *Game) handleEscape() bool {
 			return true // consumed; leave the portal open
 		}
 		g.drum.portal().CloseTop()
-		return true
-	}
-
-	// 2a2. Shared inline numeric editor (transport BPM, EQ dB, synth/sampler
-	// knob readout). The editor self-handles a *canvas* Escape in its own
-	// Update, but the soft-keyboard proxy forwards Esc via consumeSoftKeyboardEsc
-	// (the canvas never sees the keydown), so it would never reach the editor.
-	// Cancel it here (revert, no write) and consume the Esc. Edge-triggered, so
-	// this rung also covers the canvas Esc before the editor's own Update sees it.
-	if g.drum != nil && g.drum.cancelActiveValueEditor() {
 		return true
 	}
 
@@ -686,6 +656,21 @@ func (g *Game) handleEscape() bool {
 		g.pendingClick = false
 		g.camDragged = false
 		g.pendingStartRow = -1
+		return true
+	}
+
+	// 9a. Armed synth control (Task 10). Arming a control opens no portal/
+	// focus/mode, so without this rung Esc would fall through to the Stop
+	// fallback below and reset playback as an unrequested side effect of
+	// locking the armed control. Lock it and consume the Esc here instead.
+	if g.drum != nil && g.drum.armedControlActive() {
+		g.drum.lockSynthControl(g.drum.synthTabActiveInstrument())
+		return true
+	}
+
+	// 9b. A focused Synth-tab dial (synth_focus.go): Esc returns the graph to
+	// the overview instead of stopping playback.
+	if g.drum != nil && g.drum.clearSynthFocusIfShown() {
 		return true
 	}
 

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // awaitEmit subscribes to k on a private bus, runs fn, and returns the first
@@ -65,7 +67,7 @@ func TestEmitSourceIsUserCallerNotHelper(t *testing.T) {
 	}
 	// Sanity: payload also reached the subscriber.
 	p, _ := e.Payload.(hooks.NodeEdit)
-	if p.ID != 42 || p.I != 3 || p.J != 4 || p.Type != "regular" {
+	if p.ID != 42 || p.I != 3 || p.J != 4 || p.Type != model.NodeTypeRegular {
 		t.Errorf("payload = %+v; want id=42 i=3 j=4 type=regular", p)
 	}
 }
@@ -73,7 +75,7 @@ func TestEmitSourceIsUserCallerNotHelper(t *testing.T) {
 // ── Per-helper publish + payload tests ──────────────────────────────────
 
 func TestEmitNodeDeletedPayload(t *testing.T) {
-	e := awaitEmit(t, hooks.EventNodeDeleted, func() { emitNodeDeleted(7, 1, 2) })
+	e := awaitEmit(t, hooks.EventNodeDeleted, func() { emitNodeDeleted(7, 1, 2, model.NodeTypeSilent) })
 	p, _ := e.Payload.(hooks.NodeEdit)
 	if p.ID != 7 || p.I != 1 || p.J != 2 {
 		t.Errorf("payload = %+v", p)
@@ -81,7 +83,7 @@ func TestEmitNodeDeletedPayload(t *testing.T) {
 }
 
 func TestEmitNodeMovedPayload(t *testing.T) {
-	e := awaitEmit(t, hooks.EventNodeMoved, func() { emitNodeMoved(9, 5, 6) })
+	e := awaitEmit(t, hooks.EventNodeMoved, func() { emitNodeMoved(9, 5, 6, model.NodeTypeRegular) })
 	p, _ := e.Payload.(hooks.NodeEdit)
 	if p.ID != 9 || p.I != 5 || p.J != 6 {
 		t.Errorf("payload = %+v", p)
@@ -93,18 +95,18 @@ func TestEmitNodeTypeChangedPayload(t *testing.T) {
 		emitNodeTypeChanged(11, model.NodeTypeRegular, model.NodeTypeMute)
 	})
 	p, _ := e.Payload.(hooks.NodeTypePayload)
-	if p.ID != 11 || p.OldType != "regular" || p.NewType != "mute" {
+	if p.ID != 11 || p.OldType != model.NodeTypeRegular || p.NewType != model.NodeTypeMute {
 		t.Errorf("payload = %+v", p)
 	}
 }
 
 func TestEmitNodeParamsChangedPayload(t *testing.T) {
-	params := model.NodeParams{Volume: 0.7, Pitch: 1.2, LogicKind: "probability", LogicP: 0.5}
+	params := model.NodeParams{Volume: 0.7, Pitch: 1.2, LogicKind: model.LogicProbability, LogicP: 0.5}
 	e := awaitEmit(t, hooks.EventNodeParamsChanged, func() {
 		emitNodeParamsChanged(13, params)
 	})
 	p, _ := e.Payload.(hooks.NodeParamsPayload)
-	if p.ID != 13 || p.Volume != 0.7 || p.LogicKind != "probability" {
+	if p.ID != 13 || p.Volume != 0.7 || p.LogicKind != model.LogicProbability {
 		t.Errorf("payload = %+v", p)
 	}
 }
@@ -118,9 +120,9 @@ func TestEmitStartNodeChangedPayload(t *testing.T) {
 }
 
 func TestEmitRowAddedPayload(t *testing.T) {
-	e := awaitEmit(t, hooks.EventRowAdded, func() { emitRowAdded(0, "kick", "Kick") })
+	e := awaitEmit(t, hooks.EventRowAdded, func() { emitRowAdded(0, roster.Kick, "Kick") })
 	p, _ := e.Payload.(hooks.RowChangePayload)
-	if p.Row != 0 || p.Instrument != "kick" || p.Name != "Kick" {
+	if p.Row != 0 || p.Instrument != roster.Kick || p.Name != "Kick" {
 		t.Errorf("payload = %+v", p)
 	}
 }
@@ -150,39 +152,39 @@ func TestEmitRowSoloPayload(t *testing.T) {
 }
 
 func TestEmitEQBandChange(t *testing.T) {
-	e := awaitEmit(t, hooks.EventEQBandChange, func() { emitEQBandChange("snare", 4, -2.5) })
+	e := awaitEmit(t, hooks.EventEQBandChange, func() { emitEQBandChange(channel.Of(roster.Snare), 4, -2.5) })
 	p, _ := e.Payload.(hooks.EQBandPayload)
-	if p.Channel != "snare" || p.Band != 4 || p.GainDB != -2.5 {
+	if p.Channel != channel.Of(roster.Snare) || p.Band != 4 || p.GainDB != -2.5 {
 		t.Errorf("payload = %+v", p)
 	}
 }
 
 func TestEmitInsertEffectAdded(t *testing.T) {
 	e := awaitEmit(t, hooks.EventInsertEffectAdded, func() {
-		emitInsertEffectAdded("kick", 1, "delay")
+		emitInsertEffectAdded(channel.Of(roster.Kick), 1, "delay")
 	})
 	p, _ := e.Payload.(hooks.InsertEffectPayload)
-	if p.Channel != "kick" || p.Slot != 1 || p.Type != "delay" {
+	if p.Channel != channel.Of(roster.Kick) || p.Slot != 1 || p.Type != "delay" {
 		t.Errorf("payload = %+v", p)
 	}
 }
 
 func TestEmitInsertEffectRemoved(t *testing.T) {
 	e := awaitEmit(t, hooks.EventInsertEffectRemoved, func() {
-		emitInsertEffectRemoved("kick", 0)
+		emitInsertEffectRemoved(channel.Of(roster.Kick), 0)
 	})
 	p, _ := e.Payload.(hooks.InsertEffectPayload)
-	if p.Channel != "kick" || p.Slot != 0 {
+	if p.Channel != channel.Of(roster.Kick) || p.Slot != 0 {
 		t.Errorf("payload = %+v", p)
 	}
 }
 
 func TestEmitInsertEffectParam(t *testing.T) {
 	e := awaitEmit(t, hooks.EventInsertEffectParam, func() {
-		emitInsertEffectParam("snare", 0, "mix", 0.42)
+		emitInsertEffectParam(channel.Of(roster.Snare), 0, "mix", 0.42)
 	})
 	p, _ := e.Payload.(hooks.InsertEffectPayload)
-	if p.Channel != "snare" || p.Param != "mix" || p.Value != 0.42 {
+	if p.Channel != channel.Of(roster.Snare) || p.Param != "mix" || p.Value != 0.42 {
 		t.Errorf("payload = %+v", p)
 	}
 }
@@ -221,10 +223,10 @@ func TestEmitCustomWAVLoaded(t *testing.T) {
 
 func TestEmitInstrumentRenamed(t *testing.T) {
 	e := awaitEmit(t, hooks.EventInstrumentRenamed, func() {
-		emitInstrumentRenamed("kick", "kick_v2")
+		emitInstrumentRenamed(roster.Kick, "kick_v2")
 	})
 	p, _ := e.Payload.(hooks.InstrumentRenamePayload)
-	if p.OldID != "kick" || p.NewID != "kick_v2" {
+	if p.OldID != roster.Kick || p.NewID != "kick_v2" {
 		t.Errorf("payload = %+v", p)
 	}
 }
@@ -246,9 +248,9 @@ func TestEmitUIStateApplied(t *testing.T) {
 }
 
 func TestEmitFavoriteToggled(t *testing.T) {
-	e := awaitEmit(t, hooks.EventFavoriteToggled, func() { emitFavoriteToggled("kick", true) })
+	e := awaitEmit(t, hooks.EventFavoriteToggled, func() { emitFavoriteToggled(roster.Kick, true) })
 	p, _ := e.Payload.(hooks.FavoritePayload)
-	if p.InstrumentID != "kick" || !p.IsFavorite {
+	if p.InstrumentID != roster.Kick || !p.IsFavorite {
 		t.Errorf("payload = %+v", p)
 	}
 }
@@ -267,13 +269,13 @@ func TestAllEmitsCarrySource(t *testing.T) {
 		{"NodeAdded", hooks.EventNodeAdded, func() {
 			emitNodeAdded(&uiNode{ID: 1, I: 0, J: 0}, model.NodeTypeRegular)
 		}},
-		{"RowAdded", hooks.EventRowAdded, func() { emitRowAdded(0, "kick", "Kick") }},
+		{"RowAdded", hooks.EventRowAdded, func() { emitRowAdded(0, roster.Kick, "Kick") }},
 		{"RowMute", hooks.EventRowMute, func() { emitRowMute(0, true) }},
 		{"BPMChange", hooks.EventBPMChange, func() { emitBPMChange(120) }},
-		{"EQBandChange", hooks.EventEQBandChange, func() { emitEQBandChange("kick", 0, 0) }},
-		{"InsertEffectAdded", hooks.EventInsertEffectAdded, func() { emitInsertEffectAdded("kick", 0, "reverb") }},
+		{"EQBandChange", hooks.EventEQBandChange, func() { emitEQBandChange(channel.Of(roster.Kick), 0, 0) }},
+		{"InsertEffectAdded", hooks.EventInsertEffectAdded, func() { emitInsertEffectAdded(channel.Of(roster.Kick), 0, "reverb") }},
 		{"RowColorChanged", hooks.EventRowColorChanged, func() { emitRowColorChanged(0, 0) }},
-		{"FavoriteToggled", hooks.EventFavoriteToggled, func() { emitFavoriteToggled("kick", false) }},
+		{"FavoriteToggled", hooks.EventFavoriteToggled, func() { emitFavoriteToggled(roster.Kick, false) }},
 	}
 	for _, tc := range cases {
 		e := awaitEmit(t, tc.kind, tc.fn)

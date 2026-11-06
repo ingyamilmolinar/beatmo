@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -217,7 +218,7 @@ func TestMoveNodeDuringPlayback(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 	advanceFrames(g, 10)
 
@@ -322,8 +323,9 @@ func TestMoveButtonClickDoesNotImmediatelyPlace(t *testing.T) {
 }
 
 // TestMoveButtonRemovedFromMobilePopup verifies that on a small screen the
-// node popup menu does NOT contain a "Move Node" button rect (since it's
-// provided via the long-press popup instead).
+// node popup menu does NOT contain a "Move Node" button rect (moving is
+// provided via copy/paste and the long-press popup instead). The desktop
+// counterpart is TestNodePopupHasNoMoveButton.
 func TestMoveButtonRemovedFromMobilePopup(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -338,9 +340,8 @@ func TestMoveButtonRemovedFromMobilePopup(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.layout()
 
-	moveRect := g.sidebar.rects["move"]
-	if !moveRect.Empty() {
-		t.Fatalf("move rect should be empty on mobile, got %v", moveRect)
+	if _, ok := g.sidebar.laidOutID("move"); ok {
+		t.Fatal("the sidebar must have no Move control")
 	}
 }
 

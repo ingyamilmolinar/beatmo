@@ -69,6 +69,11 @@ func TestParityScanUsesCachedViewState(t *testing.T) {
 	g.seqNextIdxs = []int{0}
 
 	g.ClearParityMismatches()
+	// This test inspects a cell the stopped view treats as live; on a paused
+	// or playing transport it is already past (frozen, never checked). It
+	// only exercises the stopped-state scan production never runs — rewrite
+	// it against a live cell.
+	g.parityScanStoppedForTest = true
 	g.parityScan("test-cache-view")
 
 	found := false
@@ -169,6 +174,11 @@ func TestParityScanDetectsSeqVsViewMismatch(t *testing.T) {
 	g.drum.Rows[0].Steps[0] = false
 
 	g.ClearParityMismatches()
+	// This test inspects a cell the stopped view treats as live; on a paused
+	// or playing transport it is already past (frozen, never checked). It
+	// only exercises the stopped-state scan production never runs — rewrite
+	// it against a live cell.
+	g.parityScanStoppedForTest = true
 	g.parityScan("test-seq-vs-view")
 
 	// The parity scan has multiple checks that compare view truth against the

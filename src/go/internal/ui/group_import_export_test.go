@@ -57,9 +57,9 @@ func TestGroupImportValidation(t *testing.T) {
 			"rules": []any{map[string]any{"param": "pitch", "delta": 2, "every_n": 0}}}, // every_n floored to 1
 		// all-unknown members → group dropped entirely
 		map[string]any{"id": 2, "name": "gone", "node_ids": []any{float64(777)}},
-		// bad rule param → rule dropped, group kept
+		// a rule naming no param → rule dropped, group kept
 		map[string]any{"id": 3, "name": "norule", "node_ids": []any{float64(aID)},
-			"rules": []any{map[string]any{"param": "sparkle", "delta": 1, "every_n": 1}}},
+			"rules": []any{map[string]any{"param": "", "delta": 1, "every_n": 1}}},
 	}
 	mutated, _ := json.Marshal(doc)
 	if err := g.Import(mutated); err != nil {
@@ -168,60 +168,6 @@ func TestEnabledFlagRoundTripsExportImport(t *testing.T) {
 	}
 }
 
-// TestLegacyGroupWithRulesImportsEnabled is task-enabled-status brief test C5
-// (part 2, backward compat): a legacy file with rules but NO rules_enabled
-// key at all must import as RulesEnabled=true — such a file's rules were
-// active by their mere existence under the pre-Part-C design, so importing
-// it must keep behaving exactly as it did before this task.
-func TestLegacyGroupWithRulesImportsEnabled(t *testing.T) {
-	g, aID, bID := buildGroupLoopCircuit(t)
-	gid, _ := g.graph.CreateGroup("legacy", []model.NodeID{aID, bID})
-	if err := g.graph.SetGroupRules(gid, []model.GroupRule{
-		{Param: model.GroupParamPitch, Delta: 3, EveryN: 1},
-	}); err != nil {
-		t.Fatalf("SetGroupRules: %v", err)
-	}
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	var doc map[string]any
-	if err := json.Unmarshal(data, &doc); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	groupsAny, ok := doc["groups"].([]any)
-	if !ok || len(groupsAny) != 1 {
-		t.Fatalf("setup: want 1 group in doc, got %+v", doc["groups"])
-	}
-	groupObj, ok := groupsAny[0].(map[string]any)
-	if !ok {
-		t.Fatalf("setup: group entry not an object: %+v", groupsAny[0])
-	}
-	delete(groupObj, "rules_enabled") // simulate a pre-Part-C file
-	if _, present := groupObj["rules"]; !present {
-		t.Fatalf("setup: legacy doc must still carry rules: %+v", groupObj)
-	}
-	legacy, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatalf("marshal legacy doc: %v", err)
-	}
-
-	g2 := New(testLogger)
-	t.Cleanup(g2.CloseForTest)
-	g2.Layout(800, 600)
-	if err := g2.Import(legacy); err != nil {
-		t.Fatalf("Import legacy: %v", err)
-	}
-	groups := g2.graph.AllGroups()
-	if len(groups) != 1 {
-		t.Fatalf("want 1 imported group, got %d: %+v", len(groups), groups)
-	}
-	if !groups[0].RulesEnabled {
-		t.Fatalf("legacy file with rules but no rules_enabled key must import as RulesEnabled=true, got %+v", groups[0])
-	}
-}
-
 // TestImportCancelsActiveMarquee is the final-review follow-up: Import must
 // cancel a stranded marquee drag (mirroring dismissLongPressPopup /
 // g.modes.Cancel / groupMenu.Close(), all of which already clear transient
@@ -236,5 +182,23 @@ func TestImportCancelsActiveMarquee(t *testing.T) {
 	}
 	if g.marquee.active {
 		t.Fatalf("Import must cancel an active marquee, got %+v", g.marquee)
+	}
+}
+
+// TestGroupImportRejectsUnknownRuleParam: a rule param has one spelling per
+// param; an unknown one rejects the file before anything resets (it used to
+// be dropped silently, rule by rule).
+func TestGroupImportRejectsUnknownRuleParam(t *testing.T) {
+	g, aID, _ := buildGroupLoopCircuit(t)
+	data, _ := g.drum.exportBytes()
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	doc["groups"] = []any{map[string]any{"id": 1, "name": "g", "node_ids": []any{float64(aID)},
+		"rules": []any{map[string]any{"param": "sparkle", "delta": 1, "every_n": 1}}}}
+	mutated, _ := json.Marshal(doc)
+	if err := g.Import(mutated); err == nil {
+		t.Fatal(`import accepted rule param "sparkle"`)
 	}
 }

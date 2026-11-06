@@ -266,7 +266,7 @@ func TestHandleTapInGrid_SidebarClose(t *testing.T) {
 
 	// Tap provably outside the sidebar's actual (node-anchored) panel rect,
 	// but still within the window.
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if panel.Empty() {
 		t.Fatal("precondition: sidebar panel rect should be non-empty")
 	}

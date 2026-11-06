@@ -88,7 +88,6 @@ func TestChainDisplayModeButtonsLocalized(t *testing.T) {
 		"SUP": z.OverlayBtn(),
 		"DIV": z.SplitBtn(),
 		"DIF": z.DiffBtn(),
-		"GA":  z.AGBtn(),
 	}
 	for want, b := range cases {
 		if got := b.displayText(); got != want {
@@ -111,7 +110,6 @@ func TestChainStageLabelsKeepEnglish(t *testing.T) {
 		scope.StageAntiPop:  "AntiPop",
 		scope.StageInsertFX: "FX",
 		scope.StageEQ:       "EQ",
-		scope.StageSends:    "Bus",
 		scope.StageMaster:   "Master",
 	}
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {

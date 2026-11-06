@@ -41,8 +41,10 @@ func TestNewDefaultsSilentInTests(t *testing.T) {
 	if buf.Len() != 0 {
 		t.Fatalf("expected no logs when test logging disabled, got %q", buf.String())
 	}
-	if logger.Level() != LevelNone {
-		t.Fatalf("expected level forced to NONE, got %v", logger.Level())
+	// Silenced, not discarded: the lines go to the failure tail at the
+	// logger's own level (TRACE stays filtered).
+	if logger.Level() != LevelDebug {
+		t.Fatalf("expected level to stay DEBUG (lines go to the failure tail), got %v", logger.Level())
 	}
 }
 

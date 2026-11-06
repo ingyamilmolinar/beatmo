@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // The Chn (Channel) tab renders A/B overlay traces from six DSP-stage taps:
@@ -33,13 +35,13 @@ func TestChnTab_MasterAppliesAllThreeAnalysers(t *testing.T) {
 
 	g.drum.applyMasterEQ()
 
-	if got := audio.ChannelAnalyzerEnableCount("main"); got < 1 {
+	if got := audio.ChannelAnalyzerEnableCount(channel.Master); got < 1 {
 		t.Errorf("ChannelAnalyzer for \"main\" enabled %d times; want >= 1", got)
 	}
-	if got := audio.PreEQAnalyzerEnableCount("main"); got < 1 {
+	if got := audio.PreEQAnalyzerEnableCount(channel.Master); got < 1 {
 		t.Errorf("PreEQAnalyzer for \"main\" enabled %d times; want >= 1", got)
 	}
-	if got := audio.SynthAnalyzerEnableCount("main"); got < 1 {
+	if got := audio.SynthAnalyzerEnableCount(channel.Master); got < 1 {
 		t.Errorf("SynthAnalyzer for \"main\" enabled %d times; want >= 1", got)
 	}
 }
@@ -50,23 +52,22 @@ func TestChnTab_ApplyRowEQAppliesAllThreeAnalysers(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	g.drum.Rows[0].Instrument = "kick"
-	g.drum.ensureRowEQ(0)
+	g.drum.Rows[0].Instrument = roster.Kick
 
 	audio.ResetAnalyserEnableCounts()
 
 	g.drum.applyRowEQ(0)
 
-	if got := audio.ChannelAnalyzerEnableCount("kick"); got < 1 {
+	if got := audio.ChannelAnalyzerEnableCount(channel.Of(roster.Kick)); got < 1 {
 		t.Errorf("ChannelAnalyzer for \"kick\" enabled %d times; want >= 1", got)
 	}
-	if got := audio.PreEQAnalyzerEnableCount("kick"); got < 1 {
+	if got := audio.PreEQAnalyzerEnableCount(channel.Of(roster.Kick)); got < 1 {
 		t.Errorf("PreEQAnalyzer for \"kick\" enabled %d times; want >= 1", got)
 	}
 	// This is the failing assertion in the original bug: per-instrument
 	// SynthAnalyzer was never enabled, so on WASM the Synth/AntiPop taps
 	// returned empty snapshots and the second trace silently dropped.
-	if got := audio.SynthAnalyzerEnableCount("kick"); got < 1 {
+	if got := audio.SynthAnalyzerEnableCount(channel.Of(roster.Kick)); got < 1 {
 		t.Errorf("SynthAnalyzer for \"kick\" enabled %d times; want >= 1 — "+
 			"the Chn tab's Synth/AntiPop traces depend on this", got)
 	}
@@ -78,20 +79,19 @@ func TestChnTab_SetActiveChannelAppliesAllThreeAnalysers(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	g.drum.Rows[0].Instrument = "snare"
-	g.drum.ensureRowEQ(0)
+	g.drum.Rows[0].Instrument = roster.Snare
 
 	audio.ResetAnalyserEnableCounts()
 
-	g.drum.setEQActiveChannel("snare")
+	g.drum.setEQActiveChannel(channel.Of(roster.Snare))
 
-	if got := audio.ChannelAnalyzerEnableCount("snare"); got < 1 {
+	if got := audio.ChannelAnalyzerEnableCount(channel.Of(roster.Snare)); got < 1 {
 		t.Errorf("ChannelAnalyzer for \"snare\" enabled %d times; want >= 1", got)
 	}
-	if got := audio.PreEQAnalyzerEnableCount("snare"); got < 1 {
+	if got := audio.PreEQAnalyzerEnableCount(channel.Of(roster.Snare)); got < 1 {
 		t.Errorf("PreEQAnalyzer for \"snare\" enabled %d times; want >= 1", got)
 	}
-	if got := audio.SynthAnalyzerEnableCount("snare"); got < 1 {
+	if got := audio.SynthAnalyzerEnableCount(channel.Of(roster.Snare)); got < 1 {
 		t.Errorf("SynthAnalyzer for \"snare\" enabled %d times; want >= 1 — "+
 			"the Chn tab's Synth/AntiPop traces depend on this", got)
 	}

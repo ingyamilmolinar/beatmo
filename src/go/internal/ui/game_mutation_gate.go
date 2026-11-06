@@ -89,6 +89,9 @@ func (g *Game) bumpParityGen(reason string, opts structuralMutationOptions) {
 	if opts.Grace == 0 {
 		opts.Grace = parityMutationGraceDefault
 	}
+	// Every structural mutation (solo/mute, row delete, instrument, graph,
+	// BPM, …) routes through here: freeze the played past before it can change.
+	g.freezePlayedThroughPlayhead()
 	g.parityGen.Add(1)
 	// C1 fix (part b): clear any session-monotonic timing-gate peak
 	// (seqFireMax/maxLag/bridgeMax/emitAbsMax) latched by an edit-induced

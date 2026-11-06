@@ -70,6 +70,19 @@ type Pool struct {
 
 	closeOnce sync.Once
 	closed    atomic.Bool
+	// closeMu serializes Close()'s channel-close against any Submit/
+	// SubmitBlocking call currently attempting to send on queue. Without
+	// this, a send that reads closed==false just before Close() runs can
+	// still be mid-select when Close() closes queue — a send on a closed
+	// channel panics unconditionally even if ctx.Done()/p.ctx.Done() is
+	// ALSO ready in the same select, so the race is real, not theoretical
+	// (see TestPoolSubmitBlockingDuringCloseNeverPanics). Submitters hold
+	// the read lock only for the duration of their own select (which
+	// resolves promptly once Close cancels p.ctx), so concurrent
+	// submitters are never serialized against each other — only against
+	// Close, which takes the write lock after cancelling but before
+	// closing the channel.
+	closeMu sync.RWMutex
 }
 
 // NewPool creates and starts a Pool. The pool runs until Close is called or
@@ -127,9 +140,17 @@ func (p *Pool) run() {
 }
 
 // Submit enqueues j without blocking. Returns ErrBackpressure if the queue
-// is full or ErrClosed if the pool has been closed. Safe to call from any
-// goroutine, including real-time threads.
+// is full or ErrClosed if the pool has been closed. Callable from any
+// goroutine, including real-time threads — but note it now takes closeMu's
+// read lock for the duration of the call (see the closeMu field doc), so it
+// is no longer a hard guarantee of zero contention: a call can briefly block
+// behind Close()'s write lock if Close is running concurrently. No current
+// caller in this codebase submits from an actual real-time audio callback
+// (the audio-thread paths use their own lock-free buffers), so this is a
+// theoretical caveat today, not a regression against any real usage.
 func (p *Pool) Submit(j Job) error {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
 	if p.closed.Load() {
 		return ErrClosed
 	}
@@ -149,6 +170,8 @@ func (p *Pool) Submit(j Job) error {
 // SubmitBlocking enqueues j, waiting until a slot is free or ctx is done.
 // Returns ctx.Err() on cancellation or ErrClosed if the pool is closed.
 func (p *Pool) SubmitBlocking(ctx context.Context, j Job) error {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
 	if p.closed.Load() {
 		return ErrClosed
 	}
@@ -184,8 +207,16 @@ func (p *Pool) Stats() Stats {
 func (p *Pool) Close() error {
 	p.closeOnce.Do(func() {
 		p.closed.Store(true)
+		// Cancel first so any Submit/SubmitBlocking call currently blocked
+		// in its select (holding closeMu's read lock) has its p.ctx.Done()
+		// case become ready and can return promptly, releasing the read
+		// lock. Only THEN take the write lock — which waits for exactly
+		// that — before closing the channel, so no send can ever land on
+		// an already-closed queue.
 		p.cancel()
+		p.closeMu.Lock()
 		close(p.queue)
+		p.closeMu.Unlock()
 	})
 	p.wg.Wait()
 	return nil

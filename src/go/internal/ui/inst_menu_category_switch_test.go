@@ -5,6 +5,9 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstrumentMenuCategorySwitchDoesNotClose verifies that clicking a
@@ -19,13 +22,13 @@ func TestInstrumentMenuCategorySwitchDoesNotClose(t *testing.T) {
 	closeCalled := false
 
 	comp.SetProps(InstrumentMenuProps{
-		Categories: []string{"Kicks", "Snares", "Cymbals"},
+		Categories: []audio.Category{audio.CatKick, audio.CatSnare, audio.CatCymbal},
 		Instruments: []InstrumentOption{
-			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
-			{ID: "kick2", Label: "Kick 2", Category: "Kicks"},
-			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
-			{ID: "snare2", Label: "Snare 2", Category: "Snares"},
-			{ID: "cymbal1", Label: "Cymbal 1", Category: "Cymbals"},
+			{ID: roster.Kick, Label: "Kick 1", Category: audio.CatKick},
+			{ID: roster.KickDeep, Label: "Kick 2", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare 1", Category: audio.CatSnare},
+			{ID: roster.SnareLofi, Label: "Snare 2", Category: audio.CatSnare},
+			{ID: roster.Crash, Label: "Cymbal 1", Category: audio.CatCymbal},
 		},
 		AnchorRect:      image.Rect(100, 50, 200, 70),
 		VertBounds:      image.Rect(0, 0, 400, 600),
@@ -45,7 +48,7 @@ func TestInstrumentMenuCategorySwitchDoesNotClose(t *testing.T) {
 	// Find a non-active category button (Snares)
 	var targetBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Snares" {
+		if btn.Text == "Snare" {
 			targetBtn = btn
 			break
 		}
@@ -97,10 +100,10 @@ func TestInstrumentMenuBackButtonDoesNotClose(t *testing.T) {
 	closeCalled := false
 
 	comp.SetProps(InstrumentMenuProps{
-		Categories: []string{"Kicks", "Snares"},
+		Categories: []audio.Category{audio.CatKick, audio.CatSnare},
 		Instruments: []InstrumentOption{
-			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
-			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
+			{ID: roster.Kick, Label: "Kick 1", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare 1", Category: audio.CatSnare},
 		},
 		AnchorRect:      image.Rect(100, 50, 200, 70),
 		VertBounds:      image.Rect(0, 0, 400, 600),
@@ -163,11 +166,11 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	closeCalled := false
 
 	comp.SetProps(InstrumentMenuProps{
-		Categories: []string{"Kicks", "Snares", "Cymbals"},
+		Categories: []audio.Category{audio.CatKick, audio.CatSnare, audio.CatCymbal},
 		Instruments: []InstrumentOption{
-			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
-			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
-			{ID: "cymbal1", Label: "Cymbal 1", Category: "Cymbals"},
+			{ID: roster.Kick, Label: "Kick 1", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare 1", Category: audio.CatSnare},
+			{ID: roster.Crash, Label: "Cymbal 1", Category: audio.CatCymbal},
 		},
 		AnchorRect:      image.Rect(100, 50, 200, 70),
 		VertBounds:      image.Rect(0, 0, 400, 600),
@@ -181,7 +184,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	// Click "Kicks" category
 	var kicksBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Kicks" {
+		if btn.Text == "Kick" {
 			kicksBtn = btn
 			break
 		}
@@ -198,7 +201,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	if !comp.IsOpen() {
 		t.Fatal("menu closed after first category switch")
 	}
-	if comp.ActiveCategory() != "Kicks" {
+	if comp.ActiveCategory() != audio.CatKick {
 		t.Fatalf("expected Kicks category, got %s", comp.ActiveCategory())
 	}
 
@@ -224,7 +227,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	// Click "Snares" category
 	var snaresBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Snares" {
+		if btn.Text == "Snare" {
 			snaresBtn = btn
 			break
 		}
@@ -241,7 +244,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	if !comp.IsOpen() {
 		t.Fatal("menu closed after second category switch")
 	}
-	if comp.ActiveCategory() != "Snares" {
+	if comp.ActiveCategory() != audio.CatSnare {
 		t.Fatalf("expected Snares category, got %s", comp.ActiveCategory())
 	}
 
@@ -260,7 +263,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 
 	var cymbalsBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Cymbals" {
+		if btn.Text == "Cymbal" {
 			cymbalsBtn = btn
 			break
 		}
@@ -277,7 +280,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	if !comp.IsOpen() {
 		t.Fatal("menu closed after third category switch")
 	}
-	if comp.ActiveCategory() != "Cymbals" {
+	if comp.ActiveCategory() != audio.CatCymbal {
 		t.Fatalf("expected Cymbals category, got %s", comp.ActiveCategory())
 	}
 	if closeCalled {

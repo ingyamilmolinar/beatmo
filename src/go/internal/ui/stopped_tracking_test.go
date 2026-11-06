@@ -2,7 +2,12 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // TestStoppedSeekTracksPlayheadWhenLockOn pins the requested behavior: when the
 // drum-view tracking lock (FollowPlayback) is ON, seeking while the circuit is
@@ -14,7 +19,7 @@ func TestStoppedSeekTracksPlayheadWhenLockOn(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 	g.drum.SetLength(16)
 	g.drum.SetBPM(120)
@@ -24,7 +29,7 @@ func TestStoppedSeekTracksPlayheadWhenLockOn(t *testing.T) {
 	div := g.grid.MaxDiv()
 	// Circuit is STOPPED (play never pressed). Seek far ahead so the playhead
 	// leaves the initial window and tracking must scroll to keep it visible.
-	g.SeekSteps(40*div, seekOriginRibbon)
+	g.SeekSteps(40*div, hooks.SeekRibbon)
 	g.updateDrumTracking()
 
 	head := g.playheadAbsSubdiv()
@@ -46,7 +51,7 @@ func TestStoppedSeekDoesNotTrackWhenLockOff(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 	g.drum.SetLength(16)
 	g.drum.SetBPM(120)
@@ -54,7 +59,7 @@ func TestStoppedSeekDoesNotTrackWhenLockOff(t *testing.T) {
 	g.drum.Offset = 0
 
 	div := g.grid.MaxDiv()
-	g.SeekSteps(40*div, seekOriginRibbon)
+	g.SeekSteps(40*div, hooks.SeekRibbon)
 	g.updateDrumTracking()
 
 	if g.drum.Offset != 0 {

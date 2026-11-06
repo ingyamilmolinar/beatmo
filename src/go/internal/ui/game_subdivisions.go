@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
@@ -24,29 +23,23 @@ func (g *Game) SetSubdivisions(n int) error {
 	base := []int{1, 2, 4, 8, 16, 32}
 	for _, v := range base {
 		if v <= n {
-			subs = append(subs, Subdivision{Div: v, MinPx: 8, Style: LineStyle{Color: colGridLine, Width: 1}})
+			subs = append(subs, Subdivision{Div: v, MinPx: 8, Style: LineStyle{Color: gridLineColorForDiv(v), Width: 1}})
 		}
 	}
-	// Customize styles similar to NewGrid
+	// Customize spacing similar to NewGrid (colors come from gridLineColorForDiv).
 	for i := range subs {
 		switch subs[i].Div {
 		case 1:
-			subs[i].Style.Color = colGridLine
 			subs[i].MinPx = 0
 		case 2:
-			subs[i].Style.Color = colGridHalf
 			subs[i].MinPx = 32
 		case 4:
-			subs[i].Style.Color = colGridQuarter
 			subs[i].MinPx = 14
 		case 8:
-			subs[i].Style.Color = colGridEighth
 			subs[i].MinPx = 10
 		case 16:
-			subs[i].Style.Color = colGridSixteenth
 			subs[i].MinPx = 10
 		case 32:
-			subs[i].Style.Color = colGridThirtySecond
 			subs[i].MinPx = 8
 		default:
 			subs[i].MinPx = 8
@@ -119,6 +112,7 @@ func (g *Game) SetSubdivisions(n int) error {
 	// previous resolution. Clear timeline/parity state so playback/history
 	// can rebuild under the new grid without mismatched absolute indices.
 	g.timeline = timeline.NewService()
+	g.playedGraveyard = nil
 	if len(g.frozenUpToByRow) != len(g.drum.Rows) {
 		g.frozenUpToByRow = make([]int, len(g.drum.Rows))
 	}
@@ -189,46 +183,34 @@ func (g *Game) nodeNudgeSecondsAt(row, idx int, info model.BeatInfo) float64 {
 		return 0
 	}
 	secPerSub := secPerBeat / float64(sub)
-	compute := func(kind string, pct float64) float64 {
-		if pct < 0 {
-			pct = 0
-		}
-		if pct > 1 {
-			pct = 1
-		}
-		d := pct * secPerSub
-		switch strings.ToLower(kind) {
-		case "delay":
-			return d
-		case "rush":
-			return -d
-		default:
+	// A beat that carries a node plays that node's OWN groove — and nothing
+	// else. Groove is a per-node parameter: a node with none is on the grid.
+	//
+	// This used to fall through to the back-search below whenever the node had
+	// no groove, so the nearest grooved node within two beats lent it its
+	// offset. One swung offbeat therefore dragged the following downbeat (and
+	// every ungrooved note after it) by the same amount, which turns swing into
+	// a plain shift of the whole phrase. Guard: TestGrooveAppliesOnlyToItsOwnNode.
+	if info.NodeID != model.InvalidNodeID {
+		if n, ok := g.nodeSnapshot(info.NodeID); ok {
+			if n.Params.GrooveKind != model.GrooveNone && n.Params.GroovePct != 0 {
+				return n.Params.GrooveKind.Seconds(n.Params.GroovePct, secPerSub)
+			}
 			return 0
 		}
 	}
-	// First, try the current node.
-	if info.NodeID != model.InvalidNodeID {
-		if n, ok := g.nodeSnapshot(info.NodeID); ok {
-			if n.Params.GrooveKind != "" && n.Params.GroovePct != 0 {
-				return compute(n.Params.GrooveKind, n.Params.GroovePct)
-			}
-		}
-		// For regular nodes with no groove, we still consider the most
-		// recent regular node’s groove as a micro‑timing offset to apply to
-		// the immediately following trigger. This preserves the intended
-		// semantics where a node’s groove affects the next audible event.
-	}
-	// Otherwise, search backwards for the most recent regular node and apply its groove.
+	// A beat with no resolvable node: search backwards for the most recent
+	// regular node and apply its groove.
 	// Limit search to two beats worth of subdivisions to bound cost.
 	maxBack := sub * 2
 	for j := idx - 1; j >= 0 && j >= idx-maxBack; j-- {
 		bi := g.beatInfoAtRow(row, j)
-		if bi.NodeType != model.NodeTypeRegular || bi.NodeID == model.InvalidNodeID {
+		if !bi.NodeType.Fires() || bi.NodeID == model.InvalidNodeID {
 			continue
 		}
 		if n, ok := g.nodeSnapshot(bi.NodeID); ok {
-			if n.Params.GrooveKind != "" && n.Params.GroovePct != 0 {
-				return compute(n.Params.GrooveKind, n.Params.GroovePct)
+			if n.Params.GrooveKind != model.GrooveNone && n.Params.GroovePct != 0 {
+				return n.Params.GrooveKind.Seconds(n.Params.GroovePct, secPerSub)
 			}
 		}
 	}

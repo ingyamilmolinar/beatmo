@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // The Levels tab must render its full strip chrome even before the analyzer
@@ -21,7 +23,7 @@ func TestLevelsIdleStateSynthesizedFromRows(t *testing.T) {
 	g.Layout(1280, 720)
 	dv := g.drum
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 
 	st := dv.eqPanelZone.idleLevelsState()
 	if st == nil {
@@ -30,7 +32,7 @@ func TestLevelsIdleStateSynthesizedFromRows(t *testing.T) {
 	if len(st.Instruments) == 0 {
 		t.Fatal("idle state has no instrument channels — strips would not render")
 	}
-	if st.Instruments[0].ID != "kick" || st.Instruments[0].Name != "Kick" {
+	if st.Instruments[0].ID != channel.Of(roster.Kick) || st.Instruments[0].Name != "Kick" {
 		t.Fatalf("idle channel = %+v, want the live row's id/name", st.Instruments[0])
 	}
 	// Silence must read as -inf (matching the real analyzer's 20*log10(0)),

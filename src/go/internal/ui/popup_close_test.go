@@ -8,6 +8,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -24,12 +26,12 @@ func TestNodeMenuCloseButton(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.layout()
 
-	r, ok := g.sidebar.rects["close"]
+	r, ok := g.sidebar.rects[sbClose]
 	if !ok || r.Empty() {
 		t.Fatalf("close rect missing or empty")
 	}
 
-	btn := g.sidebar.btns["close"]
+	btn := g.sidebar.btns[sbClose]
 	if btn == nil {
 		t.Fatalf("close button not wired")
 	}
@@ -89,8 +91,8 @@ func TestInstMenuCloseButton(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 	comp.SetProps(InstrumentMenuProps{
-		Categories:  []string{"Kicks"},
-		Instruments: []InstrumentOption{{ID: "kick", Label: "Kick", Category: "Kicks"}},
+		Categories:  []audio.Category{audio.CatKick},
+		Instruments: []InstrumentOption{{ID: roster.Kick, Label: "Kick", Category: audio.CatKick}},
 		AnchorRect:  image.Rect(100, 50, 200, 70),
 		VertBounds:  image.Rect(0, 0, 400, 600),
 		RowHeight:   24,
@@ -131,8 +133,8 @@ func TestInstMenuEscClose(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 	comp.SetProps(InstrumentMenuProps{
-		Categories:  []string{"Kicks"},
-		Instruments: []InstrumentOption{{ID: "kick", Label: "Kick", Category: "Kicks"}},
+		Categories:  []audio.Category{audio.CatKick},
+		Instruments: []InstrumentOption{{ID: roster.Kick, Label: "Kick", Category: audio.CatKick}},
 		AnchorRect:  image.Rect(100, 50, 200, 70),
 		VertBounds:  image.Rect(0, 0, 400, 600),
 		RowHeight:   24,

@@ -3,6 +3,8 @@ package audio
 import (
 	"sync"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // trigger_timestamps.go — per-instrument "last trigger" timestamp
@@ -13,14 +15,14 @@ import (
 
 var (
 	triggerMu   sync.RWMutex
-	triggerByID = map[string]time.Time{}
+	triggerByID = map[instrument.ID]time.Time{}
 )
 
 // RecordVoiceTrigger marks the current time as the last-trigger
 // timestamp for the supplied instrument ID. Called by the engine's
 // Play* family. Safe to call from any goroutine; locking is brief
 // (a single map insert under a write lock).
-func RecordVoiceTrigger(id string) {
+func RecordVoiceTrigger(id instrument.ID) {
 	if id == "" {
 		return
 	}
@@ -33,7 +35,7 @@ func RecordVoiceTrigger(id string) {
 // LastTriggerAt returns the most recent voice-trigger timestamp for
 // the supplied instrument ID, or the zero time when the instrument
 // has never been triggered. Safe to call from any goroutine.
-func LastTriggerAt(id string) time.Time {
+func LastTriggerAt(id instrument.ID) time.Time {
 	triggerMu.RLock()
 	defer triggerMu.RUnlock()
 	return triggerByID[id]
@@ -43,7 +45,7 @@ func LastTriggerAt(id string) time.Time {
 // triggered, or a very large duration when the instrument has never
 // been triggered. Convenience for UI "did this row fire recently"
 // checks without explicit zero-time handling.
-func SinceLastTrigger(id string) time.Duration {
+func SinceLastTrigger(id instrument.ID) time.Duration {
 	t := LastTriggerAt(id)
 	if t.IsZero() {
 		return 10 * time.Hour
@@ -56,5 +58,5 @@ func SinceLastTrigger(id string) time.Duration {
 func ResetTriggerTimestamps() {
 	triggerMu.Lock()
 	defer triggerMu.Unlock()
-	triggerByID = map[string]time.Time{}
+	triggerByID = map[instrument.ID]time.Time{}
 }

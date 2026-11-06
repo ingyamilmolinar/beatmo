@@ -21,7 +21,7 @@ func TestPredictorMuteEveryNTriggers(t *testing.T) {
 
 	if node, ok := graph.GetNodeByID(mute); ok {
 		params := node.Params
-		params.LogicKind = "every_n_triggers"
+		params.LogicKind = model.LogicEveryN
 		params.LogicN = 2
 		graph.SetNodeParams(mute, params)
 	} else {
@@ -41,7 +41,7 @@ func TestPredictorMuteEveryNTriggers(t *testing.T) {
 	if node, ok := pred.nodes[mute]; !ok {
 		t.Fatalf("predictor missing mute node")
 	} else {
-		if got := node.Params.LogicKind; got != "every_n_triggers" {
+		if got := node.Params.LogicKind; got != model.LogicEveryN {
 			t.Fatalf("unexpected logic kind: %s", got)
 		}
 		if node.Params.LogicN != 2 {
@@ -126,7 +126,7 @@ func TestPredictorProbabilityLogicDeterministic(t *testing.T) {
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{true}, []int{0}, nodes)
 
 	node := nodes[start]
-	node.Params.LogicKind = "probability"
+	node.Params.LogicKind = model.LogicProbability
 	node.Params.LogicP = 0.25
 	graph.SetNodeParams(start, node.Params)
 	pred.UpdateNode(start, node)
@@ -181,13 +181,13 @@ func TestPredictorPrevTriggerLogic(t *testing.T) {
 
 	// A skips every 2nd trigger; B fires if prev triggered.
 	nodeA := nodes[a]
-	nodeA.Params.LogicKind = "skip_every_n"
+	nodeA.Params.LogicKind = model.LogicSkipEveryN
 	nodeA.Params.LogicN = 2
 	graph.SetNodeParams(a, nodeA.Params)
 	nodes[a] = nodeA
 
 	nodeB := nodes[b]
-	nodeB.Params.LogicKind = "trigger_if_prev_triggered"
+	nodeB.Params.LogicKind = model.LogicIfPrevTriggered
 	graph.SetNodeParams(b, nodeB.Params)
 	nodes[b] = nodeB
 
@@ -207,7 +207,7 @@ func TestPredictorPrevTriggerLogic(t *testing.T) {
 	}
 
 	// Switch B to trigger_if_prev_skipped.
-	nodeB.Params.LogicKind = "trigger_if_prev_skipped"
+	nodeB.Params.LogicKind = model.LogicIfPrevSkipped
 	graph.SetNodeParams(b, nodeB.Params)
 	pred.UpdateNode(b, nodeB)
 	pred.Ensure(8)
@@ -310,17 +310,14 @@ func TestShouldGateMuteTable(t *testing.T) {
 	cases := []struct {
 		name string
 		typ  model.NodeType
-		kind string
+		kind model.LogicKind
 		want bool
 	}{
-		{"regular_node_never_gates", model.NodeTypeRegular, "probability", false},
-		{"silent_node_never_gates", model.NodeTypeSilent, "probability", false},
-		{"invisible_node_never_gates", model.NodeTypeInvisible, "every_n_triggers", false},
-		{"mute_empty_kind_no_gate", model.NodeTypeMute, "", false},
-		{"mute_none_no_gate", model.NodeTypeMute, "none", false},
-		{"mute_none_case_and_whitespace", model.NodeTypeMute, "  None  ", false},
-		{"mute_with_kind_gates", model.NodeTypeMute, "probability", true},
-		{"mute_uppercase_kind_gates", model.NodeTypeMute, "PROBABILITY", true},
+		{"regular_node_never_gates", model.NodeTypeRegular, model.LogicProbability, false},
+		{"silent_node_never_gates", model.NodeTypeSilent, model.LogicProbability, false},
+		{"invisible_node_never_gates", model.NodeTypeInvisible, model.LogicEveryN, false},
+		{"mute_empty_kind_no_gate", model.NodeTypeMute, model.LogicNone, false},
+		{"mute_with_kind_gates", model.NodeTypeMute, model.LogicProbability, true},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -389,32 +386,32 @@ func TestPredictorShouldTriggerNodeEdgeCases(t *testing.T) {
 
 	// every_n_triggers with N=0 should pass through.
 	n := graph.Nodes[id]
-	n.Params.LogicKind = "every_n_triggers"
+	n.Params.LogicKind = model.LogicEveryN
 	n.Params.LogicN = 0
 	if !pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
 		t.Fatalf("every_n_triggers with N=0 should trigger")
 	}
 
 	// skip_every_n with N=0 should pass through.
-	n.Params.LogicKind = "skip_every_n"
+	n.Params.LogicKind = model.LogicSkipEveryN
 	n.Params.LogicN = 0
 	if !pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
 		t.Fatalf("skip_every_n with N=0 should trigger")
 	}
 
 	// probability with p<=0 always false.
-	n.Params.LogicKind = "probability"
+	n.Params.LogicKind = model.LogicProbability
 	n.Params.LogicP = 0
 	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
 		t.Fatalf("probability=0 must not trigger")
 	}
 
 	// trigger_if_prev_* with no prior Regular returns false.
-	n.Params.LogicKind = "trigger_if_prev_triggered"
+	n.Params.LogicKind = model.LogicIfPrevTriggered
 	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
 		t.Fatalf("trigger_if_prev_triggered with no prior should be false")
 	}
-	n.Params.LogicKind = "trigger_if_prev_skipped"
+	n.Params.LogicKind = model.LogicIfPrevSkipped
 	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
 		t.Fatalf("trigger_if_prev_skipped with no prior should be false")
 	}

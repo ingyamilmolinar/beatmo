@@ -2,7 +2,11 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+)
 
 // openEQWheel sets up the EQ tab with the wheel popup open and returns a grid
 // point outside the popup (a "tap on the scrim over the grid"). Mirrors
@@ -70,7 +74,7 @@ func TestEQWheelPopup_AppliesToMasterChannel(t *testing.T) {
 	setupEQTabForTest(g, 1280, 720)
 	dv := g.drum
 
-	if ch := dv.activeEQChannel(); ch != "main" {
+	if ch := dv.activeEQChannel(); ch != channel.Master {
 		t.Fatalf("precondition: activeEQChannel = %q, want main", ch)
 	}
 
@@ -113,12 +117,12 @@ func TestEQWheelPopup_AppliesToRowChannel(t *testing.T) {
 		t.Fatal("precondition: expected at least one row")
 	}
 	rowInst := dv.Rows[0].Instrument
-	dv.setEQActiveChannel(rowInst)
-	if ch := dv.activeEQChannel(); ch != rowInst {
+	dv.setEQActiveChannel(channel.Of(rowInst))
+	if ch := dv.activeEQChannel(); ch != channel.Of(rowInst) {
 		t.Fatalf("precondition: activeEQChannel = %q, want %q", ch, rowInst)
 	}
-	if len(dv.Rows[0].EQGainsDB) != len(eqBandDefs) {
-		dv.Rows[0].EQGainsDB = make([]float64, len(eqBandDefs))
+	if len(rowEQ(dv.Rows[0]).GainsDB) != len(eqBandDefs) {
+		rowEQ(dv.Rows[0]).GainsDB = make([]float64, len(eqBandDefs))
 	}
 	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
 		t.Fatalf("dv.eqBandGainsDB() len = %d, want %d — row-channel gains not backing the zone", len(dv.eqBandGainsDB()), len(eqBandDefs))
@@ -131,7 +135,7 @@ func TestEQWheelPopup_AppliesToRowChannel(t *testing.T) {
 	b.Knob.Value = (wantDB - eqDBMin) / eqDBSpan
 	b.OnChange()
 
-	if got := dv.Rows[0].EQGainsDB[0]; got != wantDB {
+	if got := rowEQ(dv.Rows[0]).GainsDB[0]; got != wantDB {
 		t.Fatalf("wheel OnChange did not reach row EQGainsDB[0]: got %v, want %v", got, wantDB)
 	}
 }

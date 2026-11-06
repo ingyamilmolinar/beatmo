@@ -1,7 +1,7 @@
 // gen-sample-edit-golden regenerates the full-pipeline sample-edit golden
 // embedded in src/js/sample_edit_descriptor.browser.test.js (PIPE_GOLD). Run:
 //
-//	cd src/go && AUDIO_SAMPLE_RATE=48000 ../../.tools/go/bin/go run ./cmd/gen-sample-edit-golden
+//	cd src/go && BEATMO_AUDIO_SAMPLE_RATE=48000 ../../.tools/go/bin/go run ./cmd/gen-sample-edit-golden
 //
 // Emits the native dispatcher's full pipeline output fingerprint for "kick"
 // with a trim+gain+reverse descriptor: recipe render → normalizeAndScale →
@@ -20,12 +20,13 @@ import (
 	"os"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func main() {
 	edit := audio.SampleEdit{StartFrac: 0.25, EndFrac: 0.875, GainDB: -6, Reverse: true}
-	audio.SetSampleEdit("kick", edit)
-	buf, sr := audio.RenderInstrumentOneShot("kick")
+	audio.SetSampleEdit(roster.Kick, edit)
+	buf, sr := audio.RenderInstrumentOneShot(roster.Kick)
 	if len(buf) == 0 {
 		fmt.Fprintln(os.Stderr, "empty render")
 		os.Exit(1)

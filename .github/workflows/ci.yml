@@ -29,6 +29,15 @@ jobs:
         run: cd src/go && CGO_ENABLED=1 go build ./...
       - name: Build Go (WASM)
         run: cd src/go && GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/...
+      # The gograph architecture/refactor-ranking tool (scripts/gograph) is its own
+      # module; CI runs `go test` in src/go only, so without this step an x/tools
+      # or Go upgrade breaks the tool silently (it went unbuildable for months once).
+      - name: gograph tool tests
+        run: cd scripts/gograph && go test ./...
+      # A typed id or enum handed to syscall/js panics in the browser only;
+      # nothing native can see it (scripts/jsaudit/main.go).
+      - name: JS bridge audit
+        run: cd scripts/jsaudit && go test ./... && go run . "$GITHUB_WORKSPACE/src/go" ./...
 
   lint:
     name: Lint
@@ -61,13 +70,12 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # Reference instrument WAVs are NEVER committed (copyright); they are
-      # fetched fresh from public-domain sources below. Tests that need them
-      # read this directory via internal/wavref and skip cleanly when it is
-      # empty (e.g. the fetch was skipped because upstream was unreachable), so
-      # CI stays green either way. Same dir + env var used locally.
-      BEATMO_WAV_REFS: ${{ github.workspace }}/src/go/internal/audio/testdata/refs
+    # Reference instrument audio is NEVER committed and NO test reads it. It is
+    # fetched OUTSIDE the checkout (runner.temp) only so the explicit
+    # `make refs-check` step can re-derive the corpus calibrations.
+    # BEATMO_WAV_REFS is set on just the steps that use the corpus (fetch /
+    # verify / check) -- never on a `go test` step -- and per step because the
+    # `runner` context is not available in job-level env.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -84,11 +92,33 @@ jobs:
       - name: Build C library
         run: make build/libdrums.a
       - name: Fetch public-domain reference WAVs
-        # Non-fatal: University of Iowa MIS samples are public-domain-equivalent
-        # and fetched fresh (never committed). If upstream is unreachable the
-        # ref-dependent tests (e.g. synthmatch refs_smoke) skip and CI stays
-        # green. Reuses the exact target/script used locally.
-        run: make fetch-synth-refs || echo "::warning::reference WAV fetch failed; ref-dependent tests will skip"
+        # Non-fatal: if upstream is unreachable, `make refs-check` below SKIPS
+        # (loudly) and CI stays green. Reuses the exact target used locally.
+        env:
+          BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
+        run: make fetch-refs TIER=instrument ONLY_MISSING=1 || echo "::warning::reference WAV fetch failed; refs-check will skip"
+      - name: Verify the reference corpus hashes
+        # Fails on a PCM hash mismatch or a decode error -- i.e. reference audio
+        # that changed under us. "Missing" is not an error here: song-tier refs
+        # are never committed.
+        #
+        # The step above is deliberately non-fatal, and that `||` is how a
+        # renamed target went unnoticed for a whole rewrite. The structural
+        # guard against a recurrence is
+        # internal/deploy/ci_make_target_drift_test.go, which asserts every
+        # `make <target>` in this file exists in the Makefile; this step covers
+        # the different question of whether the audio itself is intact.
+        env:
+          BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
+        run: cd src/go && go run ./cmd/refs verify
+      - name: Re-derive the corpus calibrations
+        # thresholds.json, organic_range.json, F0ReliableConfidence and the
+        # shipped audition candidates are all derived from the corpus; only a
+        # re-run against it shows one has gone stale. These used to be tests --
+        # tests never read reference audio, so they are a command now.
+        env:
+          BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
+        run: make refs-check
       - name: Run Go tests with coverage
         run: |
           mkdir -p coverage

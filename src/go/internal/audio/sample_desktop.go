@@ -4,21 +4,23 @@ package audio
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Sample represents a preloaded PCM buffer.
 type Sample struct{ data []float32 }
 
 // NewVoice returns a voice that plays the sample once.
-func (s Sample) NewVoice(bpm, sampleRate int) Voice {
+func (s Sample) NewVoice(sampleRate int) Voice {
 	return &cVoice{buf: s.data}
 }
 
 // RegisterAudio decodes a WAV/MP3 (or any miniaudio-supported file) and registers it as an instrument.
-func RegisterAudio(id, path string) error {
+func RegisterAudio(id instrument.ID, path string) error {
 	if path == "" {
 		Register(id, Sample{data: make([]float32, sampleRate/10)})
 		return nil
@@ -28,22 +30,18 @@ func RegisterAudio(id, path string) error {
 		// In headless/test-real environments a real file path might not be
 		// available. Fall back to a short silent sample so the instrument ID
 		// becomes available for UI flows.
-		log.Printf("[AUDIO] RegisterAudio decode failed for %q: %v (installing silent placeholder)", path, err)
+		log.Warnf("[audio] RegisterAudio decode failed for %q: %v (installing silent placeholder)", path, err)
 		Register(id, Sample{data: make([]float32, sampleRate/20)})
 		return nil
 	}
-	if sr != sampleRate {
-		// Resampling not implemented; still register a silent placeholder to
-		// satisfy UI availability expectations.
-		Register(id, Sample{data: make([]float32, sampleRate/20)})
-		return nil
-	}
-	Register(id, Sample{data: buf})
+	// A recording at another rate is converted, never replaced by silence
+	// (the browser registers the same converted PCM).
+	Register(id, Sample{data: pcmAtEngineRate(buf, sr, sampleRate)})
 	return nil
 }
 
 // RegisterWAV remains for compatibility; it forwards to RegisterAudio.
-func RegisterWAV(id, path string) error { return RegisterAudio(id, path) }
+func RegisterWAV(id instrument.ID, path string) error { return RegisterAudio(id, path) }
 
 // SelectWAV opens a file picker and returns the chosen path.
 func SelectWAV() (string, error) {

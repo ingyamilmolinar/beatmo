@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // Regression: after stop, stale parity audio/highlights must be cleared so
 // replaying does not trigger highlight_vs_audio panics.
@@ -9,7 +13,7 @@ func TestImportStopReplayClearsParity(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.parityWatch = parityWatchPanic
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
 	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {

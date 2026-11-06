@@ -312,7 +312,6 @@ func TestFXPanelRemoveEffect(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open FX panel.
 	dv.toggleFXPanel(0)
@@ -348,7 +347,6 @@ func TestFXPanelToggleEffect(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	effects := audio.GetInsertEffects(instID)
 	if !effects[0].Enabled {
@@ -459,7 +457,6 @@ func TestFXPanelSliderDrag(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -535,7 +532,6 @@ func TestFXPanelSliderDragMobile(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -602,7 +598,6 @@ func TestFXPanelSliderDragOutsidePanel(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -675,7 +670,6 @@ func TestFXPanelCollapsedByDefaultMobile(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -708,7 +702,6 @@ func TestFXPanelExpandCollapseMobile(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -746,7 +739,6 @@ func TestFXPanelDesktopAlwaysExpanded(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -778,7 +770,6 @@ func TestFXPanelScrollNeededMobile(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -806,7 +797,6 @@ func TestFXPanelScrollOffsetClamps(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	dv.fxExpandedSlots[0] = true
@@ -848,7 +838,6 @@ func TestFXPanelSliderClickWithSuppressActive(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -916,7 +905,6 @@ func TestFXPanelContentFitsInBoundsMobile(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -962,7 +950,6 @@ func TestFXPanelSliderClickBlocksRowCallback(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open FX panel.
 	dv.toggleFXPanel(0)
@@ -1198,7 +1185,6 @@ func TestFXPanelSliderDragSurvivesSuppressOnDrag(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -1407,7 +1393,6 @@ func TestFXPanelEmptySpaceDoesNotLeakToRowRack(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open FX panel.
 	dv.toggleFXPanel(0)
@@ -1579,7 +1564,6 @@ func TestFXPanelHeaderClickAfterAddEffect(t *testing.T) {
 
 	// Add an effect via audio API + rebuild (simulates button click).
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.buildFXPanel()
 	dv.refreshFXPortalHitAreas()
 

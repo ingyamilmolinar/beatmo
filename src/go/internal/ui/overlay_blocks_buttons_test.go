@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -15,12 +17,12 @@ func setupOverlayTestDV(t *testing.T, w, h int) *DrumView {
 	t.Helper()
 	bounds := image.Rect(0, 0, w, h)
 	dv := NewDrumView(bounds, nil, game_log.New(nil, game_log.LevelError))
-	dv.instOptions = []string{"kick", "snare", "hihat"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}

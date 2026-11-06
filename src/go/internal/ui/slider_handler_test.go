@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -209,7 +210,7 @@ func TestMobileTransportNotBlockedByTouchDeadZone(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -286,7 +287,7 @@ func TestMobileRowTouchStillBlockedByDeadZone(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     1.0,
 		})
@@ -356,7 +357,7 @@ func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			Volume:     0.5,
 		})

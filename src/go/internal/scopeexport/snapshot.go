@@ -1,5 +1,7 @@
 package scopeexport
 
+import "github.com/ingyamilmolinar/beatmo/internal/channel"
+
 // Snapshot is a single JSONL line capturing all pipeline stages for all
 // instruments and master at a point in time.
 type Snapshot struct {
@@ -14,11 +16,10 @@ type Snapshot struct {
 
 // ChannelSnap captures per-instrument pipeline data.
 type ChannelSnap struct {
-	ID     string                   `json:"id"`
+	ID     channel.ID               `json:"id"`
 	Name   string                   `json:"name,omitempty"`
 	Kind   string                   `json:"kind,omitempty"`
 	Volume float64                  `json:"volume"`
-	Pan    float64                  `json:"pan"`
 	Stages map[string]*StageMetrics `json:"stages"`
 }
 

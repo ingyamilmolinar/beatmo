@@ -5,6 +5,9 @@ package userprefs
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestLanguageRoundTrip verifies that SaveLanguage persists to disk and is
@@ -94,7 +97,7 @@ func TestLanguageOtherSectionsUnaffected(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = s.Close() })
 
-	if err := s.SaveFavorites(map[string]bool{"kick": true, "snare": true}); err != nil {
+	if err := s.SaveFavorites(map[instrument.ID]bool{roster.Kick: true, roster.Snare: true}); err != nil {
 		t.Fatalf("SaveFavorites: %v", err)
 	}
 	if err := s.(LanguageStore).SaveLanguage("fr"); err != nil {
@@ -115,7 +118,7 @@ func TestLanguageOtherSectionsUnaffected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFavorites: %v", err)
 	}
-	if !favs["kick"] || !favs["snare"] {
+	if !favs[roster.Kick] || !favs[roster.Snare] {
 		t.Errorf("favorites lost after SaveLanguage: %v", favs)
 	}
 	got, err := s2.(LanguageStore).LoadLanguage()

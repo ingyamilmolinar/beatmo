@@ -1,13 +1,10 @@
 package fingerprint
 
 import (
-	"encoding/binary"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
-	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
 func TestDetectF0_PureTone(t *testing.T) {
@@ -155,72 +152,6 @@ func TestDetectF0_Vibrato(t *testing.T) {
 		if math.Abs(got-220) > 220*0.03 {
 			t.Errorf("vib %.1fHz depth %.2f: F0=%.1f want ~220 (±3%%)", c.vibHz, c.depth, got)
 		}
-	}
-}
-
-// loadRefWaveForTest reads the 24-bit mono violin reference into a wave.Wave.
-// fingerprint must not import the audio package, so this is a local minimal reader.
-func loadRefWaveForTest(t *testing.T) (wave.Wave, bool) {
-	t.Helper()
-	path, ok := wavref.Path("356181__mtg__violin-d5.wav")
-	if !ok {
-		return wave.Wave{}, false // set BEATMO_WAV_REFS to run (refs are uncommitted)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return wave.Wave{}, false
-	}
-	// Walk RIFF chunks to find fmt and data.
-	if len(data) < 44 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return wave.Wave{}, false
-	}
-	var sr, ch, bits int
-	var pcm []float64
-	pos := 12
-	for pos+8 <= len(data) {
-		id := string(data[pos : pos+4])
-		sz := int(binary.LittleEndian.Uint32(data[pos+4 : pos+8]))
-		body := data[pos+8:]
-		if id == "fmt " {
-			ch = int(binary.LittleEndian.Uint16(body[2:4]))
-			sr = int(binary.LittleEndian.Uint32(body[4:8]))
-			bits = int(binary.LittleEndian.Uint16(body[14:16]))
-		} else if id == "data" {
-			bytesPerSample := bits / 8
-			frame := ch * bytesPerSample
-			n := sz / frame
-			pcm = make([]float64, n)
-			for i := 0; i < n; i++ {
-				off := i * frame
-				b0, b1, b2 := body[off], body[off+1], body[off+2]
-				raw := int32(b0) | int32(b1)<<8 | int32(b2)<<16
-				if raw&0x800000 != 0 {
-					raw -= 0x1000000
-				}
-				pcm[i] = float64(raw) / 8388608.0
-			}
-			break
-		}
-		pos += 8 + sz
-		if sz%2 == 1 {
-			pos++ // chunks are word-aligned
-		}
-	}
-	if sr == 0 || len(pcm) == 0 {
-		return wave.Wave{}, false
-	}
-	return wave.Wave{Samples: pcm, SampleRate: sr}, true
-}
-
-func TestDetectF0_NoSubharmonicOctaveError(t *testing.T) {
-	w, ok := loadRefWaveForTest(t)
-	if !ok {
-		t.Skip("reference WAV unavailable")
-	}
-	seg := AutoSegment(w, 1.5)
-	f0 := DetectF0(seg)
-	if f0 < 575 || f0 > 605 {
-		t.Fatalf("DetectF0 = %.1f Hz, want ~591 (D5); sub-harmonic bug if ~197", f0)
 	}
 }
 

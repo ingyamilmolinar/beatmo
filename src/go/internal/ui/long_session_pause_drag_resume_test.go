@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
@@ -33,10 +34,12 @@ import (
 //     Offset back to follow the playhead, and refreshDrumRow must paint a
 //     complete row window covering [Offset, Offset+Length).
 //
-// Invariant: for every abs i in [drum.Offset, drum.Offset+Length), Steps[i]
-// must equal predictor.VisibleAt(rowIdx, i) UNLESS the timeline holds an
-// immutable Playback/Import commit at i. Anything else is the screenshot
-// symptom — preview.BuildRowWindow silently dropping cells.
+// Invariant: for every abs i in [drum.Offset, drum.Offset+Length), a played
+// cell (i behind the playhead, frozen in the played snapshot) must render
+// exactly its snapshot; any other Steps[i] must equal
+// predictor.VisibleAt(rowIdx, i) UNLESS the timeline holds an immutable
+// Playback/Import commit at i. Anything else is the screenshot symptom —
+// preview.BuildRowWindow silently dropping cells.
 //
 // Coverage matrix:
 //   - FollowPlayback=true with small backward / small forward / large
@@ -87,7 +90,7 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	if err := g.SetSubdivisions(8); err != nil {
 		t.Fatalf("set subdivisions: %v", err)
 	}
@@ -262,8 +265,18 @@ func assertCellsMatchPredictor(t *testing.T, g *Game, frame int) {
 			if r.CellTypes[i] != model.NodeTypeInvisible {
 				fail.typeNon++
 			}
-			// Only an immutable past commit is allowed to diverge from
-			// the predictor (Playback/Import). For every other abs in
+			// A played cell renders its played snapshot (what it showed as
+			// the playhead passed it) — exactly, and never the live
+			// predictor, which after a pause/rebase no longer holds the
+			// played past (it reported 5 of 16 played hits here).
+			if pv, pt, ok := g.timelineService().Played(rowIdx, abs); ok && abs < g.globalPastExclusive() {
+				if r.Steps[i] != pv || r.CellTypes[i] != pt {
+					fail.mismatch++
+				}
+				continue
+			}
+			// Otherwise only an immutable past commit is allowed to diverge
+			// from the predictor (Playback/Import). For every other abs in
 			// the visible window, Steps must equal predictor.VisibleAt
 			// — a divergence means the preview pipeline silently
 			// dropped the row.

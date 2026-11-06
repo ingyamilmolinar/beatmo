@@ -234,6 +234,13 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 type ButtonStyle struct {
 	Fill   color.Color
 	Border color.Color
+	// live, when set, is consulted at draw time instead of Fill so a style
+	// COPIED at construction (`b.Style = InstButtonStyle`, profile fields)
+	// still follows a runtime theme applied later. ButtonStyleFromSpec and
+	// the hand-composed theme.go styles set it; Fill stays populated for
+	// callers that read the value directly. A small comparable struct (not
+	// a func) so styles stay `==`-comparable (menus test Style identity).
+	live liveFill
 	// Radius, when > 0, draws the button as a rounded rectangle using
 	// drawRoundedButton instead of the square drawButton path. Use a
 	// RadiusSM / RadiusMD token from touch_sizes.go. Zero preserves the
@@ -255,7 +262,43 @@ type ButtonStyle struct {
 // receive the same type they did before.
 func ButtonStyleFromSpec(id ComponentID) ButtonStyle {
 	spec := Spec(id)
-	return ButtonStyle{Fill: spec.Fill, Border: spec.Border.Resolve()}
+	return ButtonStyle{Fill: spec.Fill, Border: spec.Border.Resolve(), live: liveFill{kind: liveFillSpec, spec: id}}
+}
+
+// liveFillKind names how a copied style re-resolves its fill at draw time.
+type liveFillKind uint8
+
+const (
+	liveFillNone   liveFillKind = iota // use the captured Fill
+	liveFillSpec                       // Spec(spec).Fill
+	liveFillAccent                     // colAccent (mobile primary action)
+)
+
+// liveFill is the comparable "how to re-read my fill" tag carried by
+// ButtonStyle / TextInputStyle copies.
+type liveFill struct {
+	kind liveFillKind
+	spec ComponentID
+}
+
+func (l liveFill) resolve(captured color.Color) color.Color {
+	switch l.kind {
+	case liveFillSpec:
+		return Spec(l.spec).Fill
+	case liveFillAccent:
+		return colAccent
+	}
+	return captured
+}
+
+// fill returns the live fill or the captured Fill.
+func (s ButtonStyle) fill() color.Color { return s.live.resolve(s.Fill) }
+
+// withLive returns a copy of s tagged to re-resolve its fill at draw time.
+func (s ButtonStyle) withLive(kind liveFillKind) ButtonStyle {
+	s.live = liveFill{kind: kind, spec: s.live.spec}
+	s.Fill = s.fill()
+	return s
 }
 
 // Draw renders the button rectangle. When Radius > 0 the button is drawn as a
@@ -265,14 +308,13 @@ func ButtonStyleFromSpec(id ComponentID) ButtonStyle {
 // that Phase 2 captured byte-equivalent in DESIGN.md `button-secondary`
 // (verified by TestComponentSpecsDrift).
 func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	if s.Radius > 0 {
-		drawRoundedButton(dst, r, s.Fill, s.Border, s.Radius, pressed)
-		return
-	}
-	renderLegacy(dst, r, s.Fill, s.Border,
-		InteractionDelta{FillDelta: 12, BorderDelta: 20}, // hover
-		InteractionDelta{}, // focus (unused by buttons)
-		ComponentState{Pressed: pressed, Hovered: hovered})
+	// Flat-tonal (2026-07-25): one filled body, no border. s.Border is kept on
+	// the struct (call sites and specs still set it) but is no longer painted —
+	// a control's silhouette is the tone step against its container. Hover and
+	// press remain the historical +12 / -20 brightness deltas so the
+	// interaction FEEL is unchanged; only the geometry is.
+	// See DESIGN.md "Elevation & Depth".
+	drawFlatButtonBody(dst, r, flatStateFill(s.fill(), ComponentState{Pressed: pressed, Hovered: hovered}), fitRadius(s.Radius, r))
 }
 
 // DrawAnimated draws the button with a shrink animation controlled by anim
@@ -283,7 +325,7 @@ func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed 
 	}
 	inset := int(anim * float64(r.Dx()) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	drawButton(dst, animRect, s.Fill, s.Border, pressed, Profile().DrawTopEdgeHighlight)
+	drawButton(dst, animRect, s.fill(), s.Border, pressed, Profile().DrawTopEdgeHighlight)
 }
 
 // ColorSwatchStyle draws a solid color swatch button whose fill is provided
@@ -314,7 +356,12 @@ type TextInputStyle struct {
 	Fill   color.Color
 	Border color.Color
 	Cursor color.Color
+	// live: re-resolve the fill at draw time for styles copied at
+	// construction (see ButtonStyle.live).
+	live liveFill
 }
+
+func (s TextInputStyle) fill() color.Color { return s.live.resolve(s.Fill) }
 
 // TextInputStyleFromSpec builds a TextInputStyle from a generated
 // ComponentSpec. Cursor color is hand-passed because cursor-color isn't
@@ -326,6 +373,7 @@ func TextInputStyleFromSpec(id ComponentID, cursor color.Color) TextInputStyle {
 		Fill:   spec.Fill,
 		Border: spec.Border.Resolve(),
 		Cursor: cursor,
+		live:   liveFill{kind: liveFillSpec, spec: id},
 	}
 }
 
@@ -334,9 +382,13 @@ func TextInputStyleFromSpec(id ComponentID, cursor color.Color) TextInputStyle {
 // renderLegacy primitive (same drawButton effect). No hover/focus deltas
 // are applied in the static path — only DrawAnimated handles those.
 func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	renderLegacy(dst, r, s.Fill, s.Border,
-		InteractionDelta{}, InteractionDelta{},
-		ComponentState{Pressed: pressed, Hovered: hovered})
+	// Flat-tonal: an input shares the CONTROL body (the input-field spec
+	// fill, the same surface-2 tone as every keycap) so a label box and the
+	// stepper buttons beside it read as one component family. The focus ring
+	// (drawn by DrawAnimated) is what marks it as a slot you type into.
+	// See DESIGN.md "Elevation & Depth". Guard:
+	// TestVolumeButtonsAndInputsShareKeycapBody.
+	drawFlatButtonBody(dst, r, s.fill(), fitRadius(RadiusControl, r))
 }
 
 // DrawAnimated draws the text box with a subtle focus animation. The
@@ -353,10 +405,17 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	}
 	inset := int(anim * float64(minDim) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	renderLegacy(dst, animRect, s.Fill, s.Border,
-		InteractionDelta{}, // hover (unused by inputs)
-		InteractionDelta{FillDelta: 30, BorderDelta: 80}, // focus
-		ComponentState{Focused: focused})
+	// Flat-tonal: the shared control body (spec fill), brightened while
+	// focused. The hot-pink focus ring is the one outline the system still
+	// draws.
+	fill := s.fill()
+	if focused {
+		fill = adjustColor(fill, 30)
+	}
+	drawFlatButtonBody(dst, animRect, fill, fitRadius(RadiusControl, animRect))
+	if focused {
+		drawRect(dst, animRect.Inset(1), WithAlpha(genColorFocusRing, genAlphaStrong), false)
+	}
 }
 
 // DrumCellStyle styles individual drum machine cells.
@@ -390,11 +449,8 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 	drawRect(dst, r, fill, true)
 
 	if !narrow {
-		// Normal path: top strip + full border
-		if (on || highlighted) && r.Dy() > 4 {
-			topStrip := image.Rect(r.Min.X+1, r.Min.Y, r.Max.X-1, r.Min.Y+1)
-			drawRect(dst, topStrip, adjustColor(fill, 30), true)
-		}
+		// Normal path: flat fill + full border (no lit top strip — DESIGN.md
+		// Rule 2, nothing is 3D).
 		drawRect(dst, r, s.Border, false)
 	} else if on || highlighted {
 		// Narrow active cell: right-edge separator only (1px vs 2px)
@@ -405,50 +461,3 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 
 // DrumRowStyle is reserved for future customisation of entire rows.
 type DrumRowStyle struct{}
-
-// syncToggleVisual updates a toggle button's chrome, icon, and icon-tint to
-// match an external boolean state, in one place, the same way for every
-// toggle. It supports both common patterns:
-//
-//   - play/stop pattern: pass the same style for on and off; only the icon
-//     glyph and icon color flip with state. Mirrors SetPlaying's behavior on
-//     the play button.
-//
-//   - row-control pattern: pass different styles for on and off (e.g.
-//     MuteActiveStyle vs InstButtonStyle); the fill/border flip while the
-//     icon stays the same. Pass IconID("") for both icon args to leave the
-//     icon untouched, and nil for both icon-color args to leave the tint
-//     untouched.
-//
-// nil button is a no-op.
-func syncToggleVisual(
-	btn *Button,
-	on bool,
-	onStyle, offStyle ButtonVisual,
-	onIcon, offIcon IconID,
-	onIconColor, offIconColor color.Color,
-) {
-	if btn == nil {
-		return
-	}
-	if on {
-		btn.Style = onStyle
-	} else {
-		btn.Style = offStyle
-	}
-	if onIcon != "" && offIcon != "" {
-		if on {
-			btn.Icon = string(onIcon)
-		} else {
-			btn.Icon = string(offIcon)
-		}
-	}
-	if onIconColor != nil && offIconColor != nil {
-		if on {
-			btn.IconColor = onIconColor
-		} else {
-			btn.IconColor = offIconColor
-		}
-	}
-	btn.pressed = on
-}

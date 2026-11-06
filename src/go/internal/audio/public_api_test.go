@@ -3,6 +3,10 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // public_api_test.go covers the public audio APIs that have no current
@@ -24,19 +28,19 @@ func TestMIDINoteForInstrumentMappedAndFallback(t *testing.T) {
 	// Spot-check the well-known mappings; the contract is that any change
 	// to MIDIMapping is a wire-format change that affects MIDI export.
 	cases := []struct {
-		id   string
+		id   instrument.ID
 		want int
 	}{
-		{"kick", 36},
-		{"snare", 38},
-		{"hihat", 42},
-		{"clap", 39},
-		{"tom", 45},
-		{"cowbell", 56},
-		{"fm-bell", 80},
-		{"fm-lead", 81},
-		{"sidestick", 37},
-		{"rimshot", 37}, // alias of sidestick — same note
+		{roster.Kick, 36},
+		{roster.Snare, 38},
+		{roster.Hihat, 42},
+		{roster.Clap, 39},
+		{roster.Tom, 45},
+		{roster.Cowbell, 56},
+		{roster.FmBell, 80},
+		{roster.FmLead, 81},
+		{roster.Sidestick, 37},
+		{roster.Rimshot, 37}, // alias of sidestick — same note
 	}
 	for _, c := range cases {
 		if got := MIDINoteForInstrument(c.id); got != c.want {
@@ -47,7 +51,7 @@ func TestMIDINoteForInstrumentMappedAndFallback(t *testing.T) {
 	// Unmapped IDs default to 38 (Acoustic Snare). Spec'd in the function
 	// comment; documented as a fallback contract, not a coincidence.
 	for _, unknown := range []string{"", "no-such-instrument", "fm-extra"} {
-		if got := MIDINoteForInstrument(unknown); got != 38 {
+		if got := MIDINoteForInstrument(instrument.ID(unknown)); got != 38 {
 			t.Errorf("MIDINoteForInstrument(%q)=%d want fallback 38", unknown, got)
 		}
 	}
@@ -325,8 +329,8 @@ func withSavedMainVolume(t *testing.T) {
 
 func TestChannelIDRoundTrip(t *testing.T) {
 	// New (non-instrument) channels keep the id passed at construction.
-	ch := newChannel("TestChannelIDRoundTrip", nil)
-	if got := ch.ID(); got != "TestChannelIDRoundTrip" {
+	ch := newChannel(channel.Of("TestChannelIDRoundTrip"), nil)
+	if got := ch.ID(); got != channel.Of("TestChannelIDRoundTrip") {
 		t.Errorf("Channel.ID()=%q want %q", got, "TestChannelIDRoundTrip")
 	}
 }
@@ -366,11 +370,11 @@ func TestSetMainVolumeFiresPlatformCallback(t *testing.T) {
 	withSavedMainVolume(t)
 
 	type call struct {
-		id  string
+		id  channel.ID
 		vol float64
 	}
 	var calls []call
-	platformChannelVolumeChanged = func(id string, vol float64) {
+	platformChannelVolumeChanged = func(id channel.ID, vol float64) {
 		calls = append(calls, call{id, vol})
 	}
 
@@ -379,40 +383,10 @@ func TestSetMainVolumeFiresPlatformCallback(t *testing.T) {
 		t.Fatalf("SetMainVolume did not invoke platformChannelVolumeChanged")
 	}
 	last := calls[len(calls)-1]
-	if last.id != mainChannelID {
-		t.Errorf("callback id=%q want %q", last.id, mainChannelID)
+	if last.id != channel.Master {
+		t.Errorf("callback id=%q want %q", last.id, channel.Master)
 	}
 	if last.vol != 0.42 {
 		t.Errorf("callback vol=%v want 0.42", last.vol)
-	}
-}
-
-// ─── SetupMasterCompressor ───────────────────────────────────────────────
-
-func TestSetupMasterCompressorAttachesToMaster(t *testing.T) {
-	prev := masterCompressor
-	t.Cleanup(func() { masterCompressor = prev })
-	masterCompressor = nil
-
-	SetupMasterCompressor(44100)
-
-	if masterCompressor == nil {
-		t.Fatalf("SetupMasterCompressor left masterCompressor nil")
-	}
-
-	master := chanMgr.ensureChannel(mainChannelID)
-	master.mu.RLock()
-	procs := append([]Processor(nil), master.processors...)
-	master.mu.RUnlock()
-
-	found := false
-	for _, p := range procs {
-		if p == masterCompressor {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("master channel processors do not contain masterCompressor (got %d procs)", len(procs))
 	}
 }

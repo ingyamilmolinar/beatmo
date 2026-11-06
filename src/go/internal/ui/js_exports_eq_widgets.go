@@ -9,6 +9,7 @@ import (
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -118,7 +119,7 @@ func (g *Game) initJSEqWidgets() {
 		if g.drum == nil || args.Len() == 0 {
 			return false
 		}
-		if m, ok := viewModeFromSlug(strings.ToLower(args.Str(0))); ok {
+		if m, ok := viewModeFromSlug(args.Str(0)); ok {
 			g.drum.setViewMode(m)
 			return true
 		}
@@ -127,30 +128,58 @@ func (g *Game) initJSEqWidgets() {
 
 	// synthControlRects() – returns an array of {name, x, y, w, h} for each
 	// knob widget currently rendered in the Synth tab. Coordinates are
-	// canvas-relative. Chip-strip redesign: only the SELECTED stage's knobs
-	// have non-empty rects — call selectSynthSection(label) first to open
-	// the stage that owns the knob you want to drive.
+	// canvas-relative. Only the DRILLED target's knobs have non-empty rects —
+	// call selectSynthSection(label) first to drill into the stage that owns
+	// the knob you want to drive.
 	js.Global().Set("synthControlRects", jsFn(func(args jsArgs) any {
 		return synthWidgetRectsJS(g)
 	}))
 
-	// synthChipRects() – the pipeline chip strip model: one {name, x, y, w,
-	// h, enabled, selected} per stage chip, in audio-pipeline order.
+	// synthDialRects() – the Synth root's macro dials as laid out now:
+	// [{card, dial, x, y, w, h}]. Browser benches press and drag them with real
+	// pointer input (a press focuses the dial and its graph; a drag turns it).
+	js.Global().Set("synthDialRects", jsFn(func(args jsArgs) any {
+		out := js.Global().Get("Array").New()
+		if g.drum == nil {
+			return out
+		}
+		for _, c := range g.drum.instEditorMacroCards {
+			for j := 0; j < c.nDials; j++ {
+				r := c.dialRects[j]
+				if r.Empty() {
+					continue
+				}
+				obj := js.Global().Get("Object").New()
+				obj.Set("card", c.id)
+				obj.Set("dial", c.dials[j].id)
+				obj.Set("x", r.Min.X)
+				obj.Set("y", r.Min.Y)
+				obj.Set("w", r.Dx())
+				obj.Set("h", r.Dy())
+				out.Call("push", obj)
+			}
+		}
+		return out
+	}))
+
+	// synthChipRects() – the pipeline STRIP model at the Synth tab root: one
+	// {name, x, y, w, h, enabled, selected} per ON stage pill in audio-pipeline
+	// order (enabled is always true — off stages live under the "+" pill).
 	js.Global().Set("synthChipRects", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.Global().Get("Array").New()
 		}
-		chips := g.drum.SynthTabChips()
-		out := js.Global().Get("Array").New(len(chips))
-		for i, c := range chips {
+		pills := g.drum.instEditorPipePills
+		out := js.Global().Get("Array").New(len(pills))
+		for i, c := range pills {
 			obj := js.Global().Get("Object").New()
 			obj.Set("name", sectionLabel(c.id))
 			obj.Set("x", c.rect.Min.X)
 			obj.Set("y", c.rect.Min.Y)
 			obj.Set("w", c.rect.Dx())
 			obj.Set("h", c.rect.Dy())
-			obj.Set("enabled", c.enabled)
-			obj.Set("selected", c.selected)
+			obj.Set("enabled", true)
+			obj.Set("selected", c.btn != nil && c.btn.Toggled())
 			out.SetIndex(i, obj)
 		}
 		return out
@@ -174,10 +203,10 @@ func (g *Game) initJSEqWidgets() {
 		return obj
 	}))
 
-	// selectSynthSection(label) – open a stage in the Synth tab's detail
-	// pane by chip label ("OSC", "ENVELOPE", …). Returns true when the
-	// stage exists for the active instrument. Browser tests use this before
-	// locating a knob via synthControlRects.
+	// selectSynthSection(label) – drill into a pipeline stage of the Synth
+	// tab by label ("OSC", "ENVELOPE", …). Returns true when the stage exists
+	// for the active instrument. Browser tests use this before locating a
+	// knob via synthControlRects.
 	js.Global().Set("selectSynthSection", jsFn(func(args jsArgs) any {
 		if g.drum == nil || args.Len() == 0 {
 			return false
@@ -200,12 +229,8 @@ func (g *Game) initJSEqWidgets() {
 			}
 			key := ""
 			switch b.Text {
-			case synthSaveButtonTag:
-				key = "save"
 			case synthSaveAsButtonTag:
 				key = "saveAs"
-			case synthResetButtonTag:
-				key = "reset"
 			}
 			if key == "" {
 				continue
@@ -365,8 +390,6 @@ func (g *Game) initJSEqWidgets() {
 				return scope.StageInsertFX
 			case "eq":
 				return scope.StageEQ
-			case "sends":
-				return scope.StageSends
 			case "master":
 				return scope.StageMaster
 			default:
@@ -385,8 +408,8 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// setEQChannel(id) – switch the EQ panel's active channel by id for
-	// browser-test automation. Passing "main" or "" routes to the master
-	// channel; any other string routes to the matching instrument id.
+	// browser-test automation: "main" is the master channel, any other name
+	// an instrument's channel; "" or an invalid name is refused (false).
 	// Drives the same code path the in-UI channel-cycle button takes,
 	// including the chain-zone instrumentID update and analyser service
 	// switch so probeScopeState reflects the new channel.
@@ -394,9 +417,9 @@ func (g *Game) initJSEqWidgets() {
 		if g.drum == nil {
 			return false
 		}
-		id := ""
-		if args.Len() > 0 {
-			id = args.Str(0)
+		id := args.Channel(0)
+		if id.IsZero() {
+			return false
 		}
 		// Route through the single channel-select chokepoint so every tab
 		// follows the dropdown: EQ/zone channel, analyzer detail channel
@@ -454,6 +477,25 @@ func (g *Game) initJSEqWidgets() {
 		return obj
 	}))
 
+	// eqBandHandlePoints() -> [{band, x, y}] the EQ tab's band-handle centres
+	// (where a pointer presses to drag a band), [] when the EQ plot is not
+	// shown. Real-input benches drag through these.
+	js.Global().Set("eqBandHandlePoints", jsFn(func(args jsArgs) any {
+		out := make([]any, 0, len(eqBandDefs))
+		if g.drum == nil || g.drum.eqPanelZone == nil {
+			return out
+		}
+		z := g.drum.eqPanelZone
+		if z.ActiveTab() != TabEQ || z.eqPlotRect().Empty() {
+			return out
+		}
+		for i := range eqBandDefs {
+			x, y := z.eqBandHandlePos(i)
+			out = append(out, map[string]any{"band": i, "x": x, "y": y})
+		}
+		return out
+	}))
+
 	// eqControlsSnapshot() -> { gainsDB: [] } for current slider gains.
 	js.Global().Set("eqControlsSnapshot", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
@@ -503,15 +545,9 @@ func (g *Game) initJSEqWidgets() {
 
 	// Audio-panel chrome read-back getters — let agent tests checkpoint that a
 	// real click on a tab-chrome pill actually changed the underlying state
-	// (slope/Pre/K-20/log-lin on the sticky bar; display-mode/AG/freeze on Chain).
+	// (detail/K-20 on the sticky bar; display-mode/freeze on Chain).
 	// These wrap existing zone accessors; the pill rects live in the snapshot's
 	// `chrome` object so the click itself stays a real, resilient interaction.
-	spectrumControlsOf := func() *spectrumControls {
-		if g.drum == nil || g.drum.eqPanelZone == nil {
-			return nil
-		}
-		return g.drum.eqPanelZone.spectrumControls
-	}
 	levelsControlsOf := func() *levelsControls {
 		if g.drum == nil || g.drum.eqPanelZone == nil {
 			return nil
@@ -524,27 +560,9 @@ func (g *Game) initJSEqWidgets() {
 		}
 		return g.drum.eqPanelZone.chainZone
 	}
-	js.Global().Set("spectrumSlope", jsFn(func(args jsArgs) any {
-		if sc := spectrumControlsOf(); sc != nil {
-			return js.ValueOf(sc.SlopeDBPerOct())
-		}
-		return js.ValueOf(nil)
-	}))
-	js.Global().Set("preOverlay", jsFn(func(args jsArgs) any {
-		if sc := spectrumControlsOf(); sc != nil {
-			return js.ValueOf(sc.PreOverlay())
-		}
-		return js.ValueOf(nil)
-	}))
 	js.Global().Set("k20View", jsFn(func(args jsArgs) any {
 		if lc := levelsControlsOf(); lc != nil {
 			return js.ValueOf(lc.K20View())
-		}
-		return js.ValueOf(nil)
-	}))
-	js.Global().Set("freqScaleLog", jsFn(func(args jsArgs) any {
-		if sc := spectrumControlsOf(); sc != nil {
-			return js.ValueOf(sc.FreqScaleLog())
 		}
 		return js.ValueOf(nil)
 	}))
@@ -603,6 +621,10 @@ func (g *Game) initJSEqWidgets() {
 		drumLayout.Set("numRows", len(dv.Rows))
 		drumLayout.Set("isSmallScreen", Profile().IsMobile())
 		drumLayout.Set("timelineRect", rectToJS(dv.timelineRect))
+		// cellGridRect is the step-cell grid's rect. It is WIDER than
+		// timelineRect: the ribbon bar reserves room for header-only chrome.
+		// Use this — not timelineRect — for anything cell-indexed.
+		drumLayout.Set("cellGridRect", rectToJS(dv.cellGridRect))
 		obj.Set("drumLayout", drumLayout)
 
 		// Buttons. Only emit a control when it has a real on-canvas rect:
@@ -805,16 +827,17 @@ func (g *Game) initJSEqWidgets() {
 		// non-empty only on mobile; "active" is the selected segment index.
 		nav := js.Global().Get("Object").New()
 		if dv.viewSwitchSegmented != nil {
-			navSlugs := []string{"pads", "eq", "wave", "spectrum", "levels", "chain", "synth", "sampler"}
-			for i, slug := range navSlugs {
-				nav.Set(slug, rectToJS(dv.viewSwitchSegmented.SegmentRect(i)))
+			// Slugs from the live segment list: the production UI has no Chain
+			// segment, so a fixed slug table would shift every later segment.
+			for i, m := range bottomNavModes() {
+				nav.Set(viewModeSlug(m), rectToJS(dv.viewSwitchSegmented.SegmentRect(i)))
 			}
 			nav.Set("active", dv.viewSwitchSegmented.Active())
 		}
 		obj.Set("bottomNav", nav)
 
-		// Audio-panel chrome pill rects for the ACTIVE tab (slope/pre/k20/clearClips/
-		// logFreq/resetHold on the sticky bar; overlay/split/diff/ag/freeze on Chain).
+		// Audio-panel chrome pill rects for the ACTIVE tab (detail/k20/clearClips
+		// on the sticky bar; overlay/split/diff/freeze on Chain).
 		// Non-empty only when the owning tab is visible. The agent clicks these by
 		// name ("chrome:slope") and verifies via the chrome getters above.
 		chrome := js.Global().Get("Object").New()
@@ -822,13 +845,6 @@ func (g *Game) initJSEqWidgets() {
 			if b != nil {
 				chrome.Set(name, rectToJS(b.Rect()))
 			}
-		}
-		if dv.eqPanelZone != nil && dv.eqPanelZone.spectrumControls != nil {
-			sc := dv.eqPanelZone.spectrumControls
-			setChrome("slope", sc.slopeBtn)
-			setChrome("pre", sc.preBtn)
-			setChrome("logFreq", sc.freqScaleBtn)
-			setChrome("resetHold", sc.resetHoldBtn)
 		}
 		if dv.eqPanelZone != nil && dv.eqPanelZone.levelsControls != nil {
 			lc := dv.eqPanelZone.levelsControls
@@ -840,7 +856,6 @@ func (g *Game) initJSEqWidgets() {
 			setChrome("overlay", cz.OverlayBtn())
 			setChrome("split", cz.SplitBtn())
 			setChrome("diff", cz.DiffBtn())
-			setChrome("ag", cz.AGBtn())
 			setChrome("freeze", cz.FreezeBtn())
 		}
 		obj.Set("chrome", chrome)
@@ -863,7 +878,7 @@ func (g *Game) initJSEqWidgets() {
 		state.Set("viewMode", viewModeSlug(dv.currentViewMode))
 		// channel: the EQ/analysis channel id the panel is following.
 		if dv.eqPanelZone != nil {
-			state.Set("channel", dv.eqPanelZone.ActiveChannel())
+			state.Set("channel", dv.eqPanelZone.ActiveChannel().String())
 		}
 		// totalNodes: graph node count — objective checkpoint for build/edit/delete tests.
 		if g.graph != nil {
@@ -957,17 +972,11 @@ func (g *Game) initJSEqWidgets() {
 		ch := g.drum.activeEQChannel()
 		var gains []float64
 		var muted []bool
-		if ch == "main" {
+		if ch == channel.Master {
 			gains = g.drum.eqBandGainsDB()
 			muted = g.drum.eqBandMuted()
-		} else {
-			for _, r := range g.drum.Rows {
-				if r.Instrument == ch {
-					gains = r.EQGainsDB
-					muted = r.EQBandMuted
-					break
-				}
-			}
+		} else if eq := g.drum.activeEQ(); eq != nil {
+			gains, muted = eq.GainsDB, eq.BandMuted
 		}
 		bands := g.drum.buildFullEQBands(gains, muted,
 			g.drum.activeHPFEnabled(), g.drum.activeHPFCutoffHz(),

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
@@ -67,13 +68,13 @@ func TestTestFixtureDemoIncludesLogicNodes(t *testing.T) {
 	if len(data) == 0 {
 		t.Fatalf("embedded demo JSON missing")
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	hasLogic := false
 	for _, n := range f.Nodes {
-		if n.LogicKind != "" || n.Pitch != 0 || n.Duration != 0 {
+		if n.LogicKind != model.LogicNone || n.Pitch != 0 || n.Duration != 0 {
 			hasLogic = true
 			break
 		}

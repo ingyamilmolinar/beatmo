@@ -3,9 +3,11 @@
 package audio
 
 // antiPopVoice wraps any Voice, applying a linear fade-in over the first
-// fadeInSamples and a quadratic fade-out over fadeOutSamples when
-// RequestStop() is called. This prevents audible clicks/pops from abrupt
-// signal transitions (non-zero → zero).
+// fadeInSamples and a linear fade-out over fadeOutSamples once stopped
+// (RequestStop now, or RequestStopAt a sample of the voice). This prevents
+// audible clicks/pops from abrupt signal transitions (non-zero → zero). The
+// browser bakes the same fade-in into the buffer it plays and ramps its gain
+// to zero over the same frames (audio.js), so a stop sounds the same on both.
 //
 // The wrapper is transparent: it delegates Sample() to the inner voice and
 // multiplies by an envelope. The voice reports done=true only after the
@@ -17,16 +19,14 @@ type antiPopVoice struct {
 	fadeOutSamples int
 	stopping       bool
 	fadeOutPos     int
+	stopAt         int // voice sample the fade-out starts at; -1 = none pending
 	done           bool
 }
 
-// Default fade durations at 44100 Hz:
-//
-//	fadeIn:  5ms  ≈ 220 samples
-//	fadeOut: 20ms ≈ 882 samples
+// Fade durations (chain_spec.go); at 48 kHz 240 and 960 samples.
 const (
-	antiPopFadeInMs  = 5
-	antiPopFadeOutMs = 20
+	antiPopFadeInMs  = FadeInMs   // chain_spec.go: the browser bakes the same fade
+	antiPopFadeOutMs = StopFadeMs // chain_spec.go
 )
 
 func newAntiPopVoice(inner Voice, sr int) *antiPopVoice {
@@ -42,6 +42,7 @@ func newAntiPopVoice(inner Voice, sr int) *antiPopVoice {
 		inner:          inner,
 		fadeInSamples:  fadeIn,
 		fadeOutSamples: fadeOut,
+		stopAt:         -1,
 	}
 }
 
@@ -51,6 +52,22 @@ func (a *antiPopVoice) RequestStop() {
 	if !a.stopping {
 		a.stopping = true
 		a.fadeOutPos = 0
+	}
+}
+
+// RequestStopAt begins the fade-out when the voice reaches its own sample pos
+// (counted from its first sample) — a lane stop lands on its exact sample, not
+// on the mixer block that contains it. A pos already reached stops now.
+func (a *antiPopVoice) RequestStopAt(pos int) {
+	if a.stopping {
+		return
+	}
+	if pos <= a.pos {
+		a.RequestStop()
+		return
+	}
+	if a.stopAt < 0 || pos < a.stopAt {
+		a.stopAt = pos
 	}
 }
 
@@ -71,6 +88,10 @@ func (a *antiPopVoice) SampleBlock(dst []float64) (int, bool) {
 		n, innerDone := bv.SampleBlock(dst)
 		// Apply envelope in-place.
 		for i := 0; i < n; i++ {
+			if a.stopAt >= 0 && a.pos >= a.stopAt {
+				a.stopAt = -1
+				a.RequestStop()
+			}
 			// Fade-in.
 			if a.pos < a.fadeInSamples {
 				dst[i] *= float64(a.pos) / float64(a.fadeInSamples)
@@ -81,8 +102,7 @@ func (a *antiPopVoice) SampleBlock(dst []float64) (int, bool) {
 					a.done = true
 					return i, true
 				}
-				t := 1.0 - float64(a.fadeOutPos)/float64(a.fadeOutSamples)
-				dst[i] *= t * t
+				dst[i] *= 1.0 - float64(a.fadeOutPos)/float64(a.fadeOutSamples)
 				a.fadeOutPos++
 			}
 			a.pos++
@@ -93,18 +113,14 @@ func (a *antiPopVoice) SampleBlock(dst []float64) (int, bool) {
 		return n, a.done
 	}
 
-	// Fallback: sample-by-sample.
+	// Fallback: sample-by-sample. Never "probe" for the end with an extra
+	// Sample: that consumes (drops) a sample; the next block reports done.
 	for i := range dst {
 		val, done := a.Sample()
 		if done {
 			return i, true
 		}
 		dst[i] = val
-	}
-	// Probe: voice may be exactly exhausted at block boundary.
-	if _, done := a.Sample(); done {
-		a.done = true
-		return len(dst), true
 	}
 	return len(dst), false
 }
@@ -124,6 +140,10 @@ func (a *antiPopVoice) Sample() (float64, bool) {
 		return 0, true
 	}
 
+	if a.stopAt >= 0 && a.pos >= a.stopAt {
+		a.stopAt = -1
+		a.RequestStop()
+	}
 	// Fade-in envelope: linear ramp 0→1 over fadeInSamples.
 	if a.pos < a.fadeInSamples {
 		env := float64(a.pos) / float64(a.fadeInSamples)
@@ -131,14 +151,14 @@ func (a *antiPopVoice) Sample() (float64, bool) {
 	}
 	a.pos++
 
-	// Fade-out envelope: quadratic curve 1→0 for a smoother tail.
+	// Fade-out envelope: linear 1→0 over fadeOutSamples (the browser's gain
+	// ramp is the same line).
 	if a.stopping {
 		if a.fadeOutPos >= a.fadeOutSamples {
 			a.done = true
 			return 0, true
 		}
-		t := 1.0 - float64(a.fadeOutPos)/float64(a.fadeOutSamples)
-		val *= t * t // quadratic fade
+		val *= 1.0 - float64(a.fadeOutPos)/float64(a.fadeOutSamples)
 		a.fadeOutPos++
 	}
 

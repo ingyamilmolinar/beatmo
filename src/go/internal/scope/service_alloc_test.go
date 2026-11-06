@@ -2,6 +2,9 @@ package scope
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestTickNoTapsZeroDrainAllocs pins the per-tick allocation count for
@@ -42,7 +45,7 @@ func TestTickNoTapsZeroDrainAllocs(t *testing.T) {
 	}
 	pushAll := func() {
 		for stage := Stage(0); stage < stageCount; stage++ {
-			svc.PushSamples(stage, "kick", samples)
+			svc.PushSamples(stage, channel.Of(roster.Kick), samples)
 		}
 	}
 	pushAll()
@@ -94,7 +97,7 @@ func TestTickWithOneTapBoundedAllocs(t *testing.T) {
 	}
 	pushAll := func() {
 		for stage := Stage(0); stage < stageCount; stage++ {
-			svc.PushSamples(stage, "kick", samples)
+			svc.PushSamples(stage, channel.Of(roster.Kick), samples)
 		}
 	}
 	pushAll()

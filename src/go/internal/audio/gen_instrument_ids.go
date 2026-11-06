@@ -1,13 +1,17 @@
 //go:build ignore
 
-// gen_instrument_ids.go reads the instruments map from engine_instruments.go
-// (the actual synth implementations — the real source of truth) and generates
-// instrument_ids_gen.go with a BuiltinInstrumentIDs slice that every platform
-// file can reference.
+// gen_instrument_ids.go reads the shipped instrument order from the instrument
+// documents' index (internal/assets/instruments/index.json — every shipped
+// instrument is a document) and generates instrument_ids_gen.go with
+// roster.All (= roster.All) that every platform file can reference.
+//
+// It also writes ../instrument/roster/roster_gen.go: one typed constant per
+// built-in (kick-808 -> roster.Kick808) and roster.All in index order, so a
+// renamed or removed instrument breaks the build of every place that names
+// it. Generation fails when two ids map to the same Go identifier.
 //
 // It also reads startup_demo.json and fails if the demo references any
-// instrument ID that doesn't exist in the synth map — catching the class of
-// bug where the demo JSON is updated but the synth registry is not.
+// instrument ID that is not shipped.
 //
 // Usage:
 //
@@ -19,38 +23,26 @@ import (
 	"fmt"
 	"go/format"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-// mapKeyRe matches `"instrument-id":` entries inside the instruments map literal.
-var mapKeyRe = regexp.MustCompile(`^\s+"([a-z][a-z0-9-]*)"\s*:`)
-
-// idRe validates that an instrument ID is well-formed.
 var idRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 func main() {
-	ids, err := extractMapKeys("engine_instruments.go")
+	// The shipped instrument order is the instrument documents' index
+	// (internal/assets/instruments/index.json, spec 2026-10-04): every shipped
+	// instrument is a document, so there is no Go literal or table to scrape.
+	ids, err := readIndexIDs("../assets/instruments/index.json")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error extracting map keys: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error reading the instrument index: %v\n", err)
 		os.Exit(1)
 	}
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "error: no instrument IDs found in engine_instruments.go")
+		fmt.Fprintln(os.Stderr, "error: no instrument IDs found in the instrument index")
 		os.Exit(1)
 	}
-
-	// The config-first modular instruments (kick family, …) are not literals in
-	// engine_instruments.go — they're rows in modular_instruments.go's table,
-	// added to the engine map via modularTableVoices. Extract their IDs too so
-	// BuiltinInstrumentIDs stays complete. Appended after the literals, matching
-	// the modularTableVoices(instruments) call order in ResetInstruments.
-	tableIDs, err := extractTableIDs("modular_instruments.go")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error extracting modular-instrument table IDs: %v\n", err)
-		os.Exit(1)
-	}
-	ids = append(ids, tableIDs...)
 
 	// Validate: no duplicates.
 	seen := make(map[string]bool, len(ids))
@@ -70,105 +62,25 @@ func main() {
 	}
 	for _, id := range demoIDs {
 		if !seen[id] {
-			fmt.Fprintf(os.Stderr, "error: startup_demo.json references instrument %q which is not in engine_instruments.go\n", id)
+			fmt.Fprintf(os.Stderr, "error: startup_demo.json references instrument %q which is not a shipped instrument\n", id)
 			os.Exit(1)
 		}
 	}
 
-	// Generate output.
-	if err := writeGenFile("instrument_ids_gen.go", ids); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing generated file: %v\n", err)
+	// Validate: every id is a lowercase slug with a unique Go identifier.
+	consts, err := rosterConstNames(ids)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("generated instrument_ids_gen.go with %d instruments (validated against %d startup demo IDs)\n", len(ids), len(demoIDs))
-}
-
-// tableIDRe matches a `{ID: "instrument-id",` row inside modularInstrumentDefs.
-var tableIDRe = regexp.MustCompile(`^\s*\{ID:\s*"([a-z][a-z0-9-]*)"`)
-
-// extractTableIDs reads modular_instruments.go and returns the instrument IDs
-// from the `modularInstrumentDefs = []ModularInstrumentDef{...}` table, in
-// declaration order. This is the config-first source for those instruments.
-func extractTableIDs(filename string) ([]string, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(string(data), "\n")
-	var ids []string
-	inTable := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !inTable {
-			if strings.Contains(trimmed, "modularInstrumentDefs = []ModularInstrumentDef{") {
-				inTable = true
-			}
-			continue
-		}
-		if trimmed == "}" {
-			break
-		}
-		if m := tableIDRe.FindStringSubmatch(line); m != nil {
-			id := m[1]
-			if !idRe.MatchString(id) {
-				return nil, fmt.Errorf("invalid instrument ID %q", id)
-			}
-			ids = append(ids, id)
-		}
-	}
-	if !inTable {
-		return nil, fmt.Errorf("could not find `modularInstrumentDefs = []ModularInstrumentDef{` in %s", filename)
-	}
-	return ids, nil
-}
-
-// extractMapKeys reads engine_instruments.go and returns the instrument IDs
-// from the `instruments = map[string]Instrument{...}` block, in declaration order.
-func extractMapKeys(filename string) ([]string, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
+	// Generate output.
+	if err := writeRosterFile("../instrument/roster/roster_gen.go", ids, consts); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing the roster package: %v\n", err)
+		os.Exit(1)
 	}
 
-	lines := strings.Split(string(data), "\n")
-	var ids []string
-	inMap := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Detect start of the instruments map.
-		if !inMap && strings.Contains(trimmed, "instruments = map[string]Instrument{") {
-			inMap = true
-			continue
-		}
-
-		if !inMap {
-			continue
-		}
-
-		// Detect end of map: a line that is just "}" (possibly with whitespace).
-		// The map close is indented with a single tab, matching the opening brace level.
-		if trimmed == "}" {
-			break
-		}
-
-		// Extract map key.
-		if m := mapKeyRe.FindStringSubmatch(line); m != nil {
-			id := m[1]
-			if !idRe.MatchString(id) {
-				return nil, fmt.Errorf("invalid instrument ID %q", id)
-			}
-			ids = append(ids, id)
-		}
-	}
-
-	if !inMap {
-		return nil, fmt.Errorf("could not find `instruments = map[string]Instrument{` in %s", filename)
-	}
-
-	return ids, nil
+	fmt.Printf("generated ../instrument/roster/roster_gen.go with %d instruments (validated against %d startup demo IDs)\n", len(ids), len(demoIDs))
 }
 
 // demoJSON is the minimal structure needed to extract instrument IDs.
@@ -200,23 +112,88 @@ func extractDemoInstrumentIDs(filename string) ([]string, error) {
 	return ids, nil
 }
 
-func writeGenFile(filename string, ids []string) error {
-	var buf strings.Builder
-	buf.WriteString("// Code generated by gen_instrument_ids.go from engine_instruments.go; DO NOT EDIT.\n\n")
-	buf.WriteString("package audio\n\n")
-	buf.WriteString("// BuiltinInstrumentIDs is the canonical ordered list of all built-in\n")
-	buf.WriteString("// instrument IDs derived from the synth implementations in\n")
-	buf.WriteString("// engine_instruments.go (the single source of truth).\n")
-	buf.WriteString("var BuiltinInstrumentIDs = []string{\n")
-	for _, id := range ids {
-		fmt.Fprintf(&buf, "\t%q,\n", id)
+// rosterConstNames maps each id to its constant name: every "-"-separated
+// part capitalised and joined (kick-808 -> Kick808, fm-epiano -> FmEpiano).
+func rosterConstNames(ids []string) ([]string, error) {
+	reserved := map[string]bool{"All": true}
+	owner := make(map[string]string, len(ids))
+	names := make([]string, len(ids))
+	for i, id := range ids {
+		if !idRe.MatchString(id) {
+			return nil, fmt.Errorf("instrument id %q is not a lowercase slug (%s)", id, idRe)
+		}
+		if id == "main" {
+			return nil, fmt.Errorf("instrument id %q is the master bus's name", id)
+		}
+		var b strings.Builder
+		for _, part := range strings.Split(id, "-") {
+			if part == "" {
+				return nil, fmt.Errorf("instrument id %q has an empty part between dashes", id)
+			}
+			b.WriteString(strings.ToUpper(part[:1]) + part[1:])
+		}
+		name := b.String()
+		if reserved[name] {
+			return nil, fmt.Errorf("instrument id %q would generate roster.%s, which the package already declares", id, name)
+		}
+		if prev, ok := owner[name]; ok {
+			return nil, fmt.Errorf("instrument ids %q and %q both generate roster.%s", prev, id, name)
+		}
+		owner[name] = id
+		names[i] = name
 	}
-	buf.WriteString("}\n")
+	return names, nil
+}
+
+func writeRosterFile(filename string, ids, consts []string) error {
+	var buf strings.Builder
+	buf.WriteString("// Code generated by internal/audio/gen_instrument_ids.go from internal/assets/instruments/index.json; DO NOT EDIT.\n\n")
+	buf.WriteString("// Package roster names every built-in instrument: one typed constant per\n")
+	buf.WriteString("// shipped document, so code that names a built-in stops compiling when it\n")
+	buf.WriteString("// is renamed or removed. Instruments outside the roster (user, instance and\n")
+	buf.WriteString("// sample ids) are instrument.ID values too; they just have no constant.\n")
+	buf.WriteString("package roster\n\n")
+	buf.WriteString("import \"github.com/ingyamilmolinar/beatmo/internal/instrument\"\n\n")
+	buf.WriteString("// The built-in instruments, in index order.\n")
+	buf.WriteString("const (\n")
+	for i, id := range ids {
+		fmt.Fprintf(&buf, "\t%s instrument.ID = %q\n", consts[i], id)
+	}
+	buf.WriteString(")\n\n")
+	buf.WriteString("// All is every built-in instrument in index order: the order the instrument\n")
+	buf.WriteString("// menu lists them within a category.\n")
+	buf.WriteString("var All = []instrument.ID{\n")
+	for _, c := range consts {
+		fmt.Fprintf(&buf, "\t%s,\n", c)
+	}
+	buf.WriteString("}\n\n")
+	buf.WriteString("var all = func() map[instrument.ID]bool {\n")
+	buf.WriteString("\tm := make(map[instrument.ID]bool, len(All))\n")
+	buf.WriteString("\tfor _, id := range All {\n\t\tm[id] = true\n\t}\n\treturn m\n}()\n\n")
+	buf.WriteString("// Has reports whether id is a built-in instrument.\n")
+	buf.WriteString("func Has(id instrument.ID) bool { return all[id] }\n")
 
 	formatted, err := format.Source([]byte(buf.String()))
 	if err != nil {
 		return fmt.Errorf("gofmt: %w", err)
 	}
-
+	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+		return err
+	}
 	return os.WriteFile(filename, formatted, 0644)
+}
+
+// readIndexIDs reads the ordered id list of the instrument documents' index.
+func readIndexIDs(path string) ([]string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var idx struct {
+		Instruments []string `json:"instruments"`
+	}
+	if err := json.Unmarshal(b, &idx); err != nil {
+		return nil, err
+	}
+	return idx.Instruments, nil
 }

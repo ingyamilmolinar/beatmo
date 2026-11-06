@@ -1,0 +1,352 @@
+{
+  "band.t60": {
+    "drift": 1.9491078520520235,
+    "mismatch": 7.79289734614624,
+    "n": 8,
+    "source": "corpus"
+  },
+  "bright.centroid": {
+    "drift": 38.304804599859594,
+    "mismatch": 89.9385403932627,
+    "n": 8,
+    "source": "corpus"
+  },
+  "bright.rolloff": {
+    "drift": 162.58734344100196,
+    "mismatch": 809.6002710027099,
+    "n": 8,
+    "source": "corpus"
+  },
+  "cepstral.mfcc": {
+    "drift": 22.342442274791047,
+    "mismatch": 46.553632792067276,
+    "n": 8,
+    "source": "corpus"
+  },
+  "decay.per_mode": {
+    "drift": 24.43956645813036,
+    "mismatch": 54.75465920031944,
+    "n": 5,
+    "source": "corpus"
+  },
+  "decay.slope_vs_freq": {
+    "drift": 22.79396572932483,
+    "mismatch": 54.65095220747732,
+    "n": 5,
+    "source": "corpus"
+  },
+  "env.attack": {
+    "drift": 2.041666666666667,
+    "mismatch": 10.416666666666668,
+    "n": 6,
+    "source": "corpus"
+  },
+  "env.decay": {
+    "drift": 9.85,
+    "mismatch": 17.43333333333333,
+    "n": 5,
+    "source": "corpus"
+  },
+  "env.decay_rate": {
+    "drift": 15.81901612329495,
+    "mismatch": 39.39460745450813,
+    "n": 5,
+    "source": "corpus"
+  },
+  "env.decay_t10": {
+    "drift": 1.490566037735849,
+    "mismatch": 5.572727272727274,
+    "n": 7,
+    "source": "corpus"
+  },
+  "env.energy_sections": {
+    "drift": 0.1214815966203791,
+    "mismatch": 0.23737328219392584,
+    "n": 8,
+    "source": "corpus"
+  },
+  "env.peak_time": {
+    "drift": 1.8019662921348316,
+    "mismatch": 31.725,
+    "n": 6,
+    "source": "corpus"
+  },
+  "env.release": {
+    "drift": 1.3,
+    "mismatch": 2,
+    "n": 0,
+    "source": "hand",
+    "note": "pinned to the KindSeconds hand default. The 2026-09-13 recalibration gave this axis its first corpus entry (n=5, 4.222/5.301) because the good group finally cleared goodGroupCalibrationMinN -- a ~3x loosening that silenced the listener on two graded families: bassoon went MISMATCH-\u003edrift and oboe MISMATCH-\u003eok, and the listener graded bassoon 'does not sound right'. A calibrated value that stops reproducing the ear is exactly what source=hand exists to override."
+  },
+  "env.total_audible": {
+    "drift": 1.0075630678645753,
+    "mismatch": 1.1166861852092822,
+    "n": 8,
+    "source": "corpus"
+  },
+  "formant.f1_hz": {
+    "drift": 84.90136570561457,
+    "mismatch": 297.4654076290202,
+    "n": 7,
+    "source": "corpus"
+  },
+  "mod.am.bands": {
+    "drift": 0.07112449417034176,
+    "mismatch": 0.41909663858551505,
+    "n": 8,
+    "source": "corpus"
+  },
+  "mod.am.depth": {
+    "drift": 0.1635995751999164,
+    "mismatch": 0.3399333732644432,
+    "n": 8,
+    "source": "corpus"
+  },
+  "mod.am.flatness": {
+    "drift": 0.01998356373557383,
+    "mismatch": 0.24794105895991947,
+    "n": 8,
+    "source": "corpus"
+  },
+  "mod.centroid.depth": {
+    "drift": 0.10411105752109878,
+    "mismatch": 0.6150473794316527,
+    "n": 8,
+    "source": "corpus"
+  },
+  "mod.sustain_variation": {
+    "drift": 0.11688950079960236,
+    "mismatch": 0.1722274770222323,
+    "n": 8,
+    "source": "corpus"
+  },
+  "mode.anchor_hz": {
+    "drift": 0.09264205940906421,
+    "mismatch": 48.20338803569172,
+    "n": 5,
+    "source": "corpus"
+  },
+  "mode.count_per_octave": {
+    "drift": 2.4,
+    "mismatch": 5.425,
+    "n": 5,
+    "source": "corpus"
+  },
+  "mode.harmonicity": {
+    "drift": 0.34902370538515554,
+    "mismatch": 0.5235355580777333,
+    "n": 5,
+    "source": "corpus",
+    "note": "p50 == 0 over n=5; drift synthesised as mismatch/1.5"
+  },
+  "noise.air_band": {
+    "drift": 0.1868739967454358,
+    "mismatch": 0.5746440640073889,
+    "n": 8,
+    "source": "corpus"
+  },
+  "noise.decay_vs_tone": {
+    "drift": 1.6606171929410136,
+    "mismatch": 6.652048319327731,
+    "n": 6,
+    "source": "corpus"
+  },
+  "noise.flatness": {
+    "drift": 0.037512692972390585,
+    "mismatch": 0.07614578085401728,
+    "n": 8,
+    "source": "corpus"
+  },
+  "noise.fraction": {
+    "drift": 0.016388959538388148,
+    "mismatch": 0.48911397547248436,
+    "n": 7,
+    "source": "corpus"
+  },
+  "noise.persistence": {
+    "drift": 2.146769353410893,
+    "mismatch": 5.066702844092162,
+    "n": 8,
+    "source": "corpus"
+  },
+  "noise.residual_centroid_hz": {
+    "drift": 56.2201005696903,
+    "mismatch": 86.52230105995268,
+    "n": 8,
+    "source": "corpus"
+  },
+  "onset.bite_ratio": {
+    "drift": 22.17372445859853,
+    "mismatch": 152.66091625150557,
+    "n": 8,
+    "source": "corpus"
+  },
+  "onset.flatness": {
+    "drift": 0.10138774964143432,
+    "mismatch": 0.15840432808526242,
+    "n": 8,
+    "source": "corpus"
+  },
+  "onset.pitch_glide_cents": {
+    "drift": 78.41256506322479,
+    "mismatch": 190.6980976605563,
+    "n": 6,
+    "source": "corpus"
+  },
+  "partial.independence": {
+    "drift": 0.20404386859317492,
+    "mismatch": 0.8466672050808205,
+    "n": 5,
+    "source": "corpus"
+  },
+  "partial.inharmonicity": {
+    "drift": 0.00020334749629327123,
+    "mismatch": 0.000973440378391897,
+    "n": 7,
+    "source": "corpus"
+  },
+  "partial.series_deviation": {
+    "drift": 0.20555643005609753,
+    "mismatch": 1.2058761946325518,
+    "n": 7,
+    "source": "corpus"
+  },
+  "partial.spectral_irregularity": {
+    "drift": 8.144478018785271,
+    "mismatch": 25.57408629028548,
+    "n": 7,
+    "source": "corpus"
+  },
+  "piano.decay_fast_db_s": {
+    "drift": 22.20782328670379,
+    "mismatch": 37.03046918369671,
+    "n": 7,
+    "source": "corpus"
+  },
+  "piano.decay_slow_db_s": {
+    "drift": 10.633471331969632,
+    "mismatch": 61.47157786847586,
+    "n": 7,
+    "source": "corpus"
+  },
+  "piano.inharmonicity_b": {
+    "drift": 0.000023246548069421902,
+    "mismatch": 0.00021870812007617743,
+    "n": 7,
+    "source": "corpus"
+  },
+  "piano.stretch_cents": {
+    "drift": 112.870252659728,
+    "mismatch": 148.75325072405258,
+    "n": 7,
+    "source": "corpus"
+  },
+  "timbre.brightness_ratio": {
+    "drift": 1.8479027914231005,
+    "mismatch": 2.775631172430816,
+    "n": 7,
+    "source": "corpus"
+  },
+  "timbre.harmonic_slope": {
+    "drift": 8.062108606830575,
+    "mismatch": 11.916539683656294,
+    "n": 7,
+    "source": "corpus"
+  },
+  "timbre.tristimulus": {
+    "drift": 0.3504343664161467,
+    "mismatch": 0.5325280437742997,
+    "n": 7,
+    "source": "corpus"
+  },
+  "track.centroid.curvature": {
+    "drift": 656.9668813630976,
+    "mismatch": 2905.508570633351,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.centroid.iqr": {
+    "drift": 93.1861895461737,
+    "mismatch": 144.77253963042466,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.centroid.slope": {
+    "drift": 438.160347148809,
+    "mismatch": 1219.7122656930526,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.crest.median": {
+    "drift": 1.1080814429232293,
+    "mismatch": 1.4680170994625226,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.flatness.median": {
+    "drift": 0.03689468334466177,
+    "mismatch": 0.05078996708796724,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.flatness.slope": {
+    "drift": 0.0177678447918216,
+    "mismatch": 0.12733903815819944,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.h2_minus_h1.slope": {
+    "drift": 2.1063888809282583,
+    "mismatch": 10.033636049328225,
+    "n": 7,
+    "source": "corpus"
+  },
+  "track.noise.p90": {
+    "drift": 0.02626453802096637,
+    "mismatch": 0.3991384309758579,
+    "n": 7,
+    "source": "corpus"
+  },
+  "track.noise.slope": {
+    "drift": 0.04514474289157858,
+    "mismatch": 0.11457305585519344,
+    "n": 7,
+    "source": "corpus"
+  },
+  "track.rms.curvature": {
+    "drift": 0.0657237410100398,
+    "mismatch": 0.15922413081724934,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.rms.iqr": {
+    "drift": 0.02291797477732699,
+    "mismatch": 0.29181894244248824,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.rms.monotonic": {
+    "drift": 0.12240324416619242,
+    "mismatch": 0.42976190476190473,
+    "n": 8,
+    "source": "corpus"
+  },
+  "track.rms.slope": {
+    "drift": 0.039037003017593414,
+    "mismatch": 0.07726957116642544,
+    "n": 8,
+    "source": "corpus"
+  },
+  "wind.attack_centroid_traj": {
+    "drift": 564.768984263349,
+    "mismatch": 1760.4157694631986,
+    "n": 8,
+    "source": "corpus"
+  },
+  "wind.temporal_centroid": {
+    "drift": 1.2386791357905786,
+    "mismatch": 1.7871478264170952,
+    "n": 8,
+    "source": "corpus"
+  }
+}

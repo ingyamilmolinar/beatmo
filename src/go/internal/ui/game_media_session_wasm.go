@@ -31,6 +31,7 @@ func (g *Game) initMediaSessionExports() {
 
 		// Bump audio generation so the sequencer drops stale events.
 		g.audioGen.Add(1)
+		g.resetAudioLane() // cancel every lane voice not started yet
 
 		// Drain pending audio events.
 		for {
@@ -59,6 +60,15 @@ func (g *Game) initMediaSessionExports() {
 
 	js.Global().Set("mediaSessionPlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.Playing() || g.start == nil {
+			return nil
+		}
+		// The readiness gate applies to EVERY user-initiated play, including
+		// the ones that never touch the on-screen transport: lock-screen play,
+		// hardware media keys, Bluetooth transport buttons. This handler
+		// deliberately bypasses the playPressed chokepoint (see the
+		// re-anchor comment below), so the gate has to be re-asserted here or
+		// a headset button starts playback on a cold voice cache.
+		if !g.playbackReady() {
 			return nil
 		}
 		g.logger.Debugf("[game] mediaSessionPlay")

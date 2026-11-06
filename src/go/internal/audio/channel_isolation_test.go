@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestProcessBlockLocalDoesNotChainToParent verifies that ProcessBlockLocal
@@ -20,11 +23,11 @@ func TestProcessBlockLocalDoesNotChainToParent(t *testing.T) {
 	if bqMain == nil {
 		t.Fatal("failed to create master biquad")
 	}
-	SetChannelProcessors("main", bqMain)
+	SetChannelProcessors(channel.Master, bqMain)
 
 	// Instrument channel with no EQ (just passes signal through).
 	instID := "chain-test"
-	_ = InstrumentChannel(instID)
+	_ = InstrumentChannel(channel.Of(instrument.ID(instID)))
 
 	// 8kHz sine — well above the master's 500Hz lowpass cutoff.
 	sig := genSine(8000, sr, n)
@@ -32,15 +35,15 @@ func TestProcessBlockLocalDoesNotChainToParent(t *testing.T) {
 
 	// ProcessBlockLocal: should NOT apply master EQ → signal should pass.
 	localOut := make([]float64, n)
-	instCh := InstrumentChannel(instID)
+	instCh := InstrumentChannel(channel.Of(instrument.ID(instID)))
 	instCh.ProcessBlockLocal(sig, localOut)
 	localRMS := rms(localOut)
 
 	// ProcessBlock: SHOULD apply master EQ → signal should be attenuated.
 	instID2 := "chain-test-2"
-	_ = InstrumentChannel(instID2)
+	_ = InstrumentChannel(channel.Of(instrument.ID(instID2)))
 	chainedOut := make([]float64, n)
-	instCh2 := InstrumentChannel(instID2)
+	instCh2 := InstrumentChannel(channel.Of(instrument.ID(instID2)))
 	instCh2.ProcessBlock(sig, chainedOut)
 	chainedRMS := rms(chainedOut)
 
@@ -75,16 +78,16 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 	kickID := "coherence-kick"
 	snareID := "coherence-snare"
 	hihatID := "coherence-hihat"
-	_ = InstrumentChannel(kickID)
-	_ = InstrumentChannel(snareID)
-	_ = InstrumentChannel(hihatID)
+	_ = InstrumentChannel(channel.Of(instrument.ID(kickID)))
+	_ = InstrumentChannel(channel.Of(instrument.ID(snareID)))
+	_ = InstrumentChannel(channel.Of(instrument.ID(hihatID)))
 
 	// Master channel with lowpass biquad at 2kHz.
 	bqMain := makeBiquad(EQLowpass, sr, 2000, 0.707, 0)
 	if bqMain == nil {
 		t.Fatal("failed to create master biquad")
 	}
-	SetChannelProcessors("main", bqMain)
+	SetChannelProcessors(channel.Master, bqMain)
 
 	sigKick := genSine(200, sr, n)   // well below cutoff
 	sigSnare := genSine(800, sr, n)  // below cutoff
@@ -103,13 +106,13 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 
 	// Phase 2: ProcessBlockLocal per instrument → masterBuf
 	masterBuf := make([]float64, n)
-	InstrumentChannel(kickID).ProcessBlockLocal(kickBuf, masterBuf)
-	InstrumentChannel(snareID).ProcessBlockLocal(snareBuf, masterBuf)
-	InstrumentChannel(hihatID).ProcessBlockLocal(hihatBuf, masterBuf)
+	InstrumentChannel(channel.Of(instrument.ID(kickID))).ProcessBlockLocal(kickBuf, masterBuf)
+	InstrumentChannel(channel.Of(instrument.ID(snareID))).ProcessBlockLocal(snareBuf, masterBuf)
+	InstrumentChannel(channel.Of(instrument.ID(hihatID))).ProcessBlockLocal(hihatBuf, masterBuf)
 
 	// Phase 3: master ProcessBlockLocal → workBuf
 	workBuf := make([]float64, n)
-	mainCh := channelForInstrument("")
+	mainCh := channelForInstrument(channel.ID{})
 	mainCh.ProcessBlockLocal(masterBuf, workBuf)
 
 	// Reference: sum all 3 signals, process through a fresh lowpass biquad.
@@ -118,8 +121,8 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 		t.Fatal("failed to create reference biquad")
 	}
 	refID := "coherence-ref"
-	SetChannelProcessors(refID, bqRef)
-	refCh := InstrumentChannel(refID)
+	SetChannelProcessors(channel.Of(instrument.ID(refID)), bqRef)
+	refCh := InstrumentChannel(channel.Of(instrument.ID(refID)))
 	refBuf := make([]float64, n)
 	for i := 0; i < n; i++ {
 		mixed := (sigKick[i] + sigSnare[i] + sigHihat[i]) * 0.25
@@ -138,19 +141,19 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 	if bqMain2 == nil {
 		t.Fatal("failed to create second master biquad")
 	}
-	SetChannelProcessors("main", bqMain2)
+	SetChannelProcessors(channel.Master, bqMain2)
 
 	hihatOnlyMaster := make([]float64, n)
 	hihatOnlyID := "coherence-hihat-only"
-	_ = InstrumentChannel(hihatOnlyID)
+	_ = InstrumentChannel(channel.Of(instrument.ID(hihatOnlyID)))
 	hihatOnlyInst := make([]float64, n)
 	for i := 0; i < n; i++ {
 		hihatOnlyInst[i] = sigHihat[i] * 0.25
 	}
-	InstrumentChannel(hihatOnlyID).ProcessBlockLocal(hihatOnlyInst, hihatOnlyMaster)
+	InstrumentChannel(channel.Of(instrument.ID(hihatOnlyID))).ProcessBlockLocal(hihatOnlyInst, hihatOnlyMaster)
 
 	hihatWork := make([]float64, n)
-	mainCh2 := channelForInstrument("")
+	mainCh2 := channelForInstrument(channel.ID{})
 	mainCh2.ProcessBlockLocal(hihatOnlyMaster, hihatWork)
 
 	hihatDryRMS := rms(hihatOnlyInst)
@@ -174,7 +177,7 @@ func TestProcessBlockLocalAccumulates(t *testing.T) {
 	)
 
 	instID := "accum-test"
-	_ = InstrumentChannel(instID)
+	_ = InstrumentChannel(channel.Of(instrument.ID(instID)))
 	// Volume = 1, no EQ — pass-through.
 
 	sig := genSine(1000, sr, n)
@@ -185,7 +188,7 @@ func TestProcessBlockLocalAccumulates(t *testing.T) {
 		out[i] = 0.5
 	}
 
-	instCh := InstrumentChannel(instID)
+	instCh := InstrumentChannel(channel.Of(instrument.ID(instID)))
 	instCh.ProcessBlockLocal(sig, out)
 
 	// Each output sample should be 0.5 + sig[i].

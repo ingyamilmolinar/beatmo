@@ -2,7 +2,6 @@ package fingerprint
 
 import (
 	"math"
-	"os"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
@@ -112,28 +111,5 @@ func TestKickAnalyze_RoughnessPipeline(t *testing.T) {
 	}
 	if dr := KickDistance(smooth, rough); math.Abs(dr.Roughness-d.Roughness) > 1e-12 {
 		t.Errorf("Roughness term not symmetric: %g vs %g", d.Roughness, dr.Roughness)
-	}
-}
-
-// --- optional real-WAV reference ---------------------------------------------
-
-func TestKickAnalyze_SandyrbRoughnessDecay(t *testing.T) {
-	const path = "../../../../../36010__sandyrb__dnb-kick-003.wav"
-	if _, err := os.Stat(path); err != nil {
-		t.Skip("sandyrb reference WAV unavailable")
-	}
-	w, ok := decodeWAVMono(path)
-	if !ok {
-		t.Skip("sandyrb WAV decode failed")
-	}
-	fp := KickAnalyze(w)
-	t.Logf("sandyrb: Roughness=%.5f", fp.Roughness)
-	t.Logf("sandyrb: BandT60=%v", fp.BandT60)
-	t.Logf("sandyrb: BandT60Floored=%v DecayHopSec=%.4f", fp.BandT60Floored, fp.DecayHopSec)
-	if fp.Roughness < 0 {
-		t.Errorf("Roughness = %.5f, want >= 0", fp.Roughness)
-	}
-	if len(fp.BandT60) != KickBandCount {
-		t.Errorf("BandT60 len = %d, want %d", len(fp.BandT60), KickBandCount)
 	}
 }

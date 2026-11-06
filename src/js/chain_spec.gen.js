@@ -3,21 +3,26 @@
 // Source of truth: src/go/internal/audio/chain_spec.go
 // Regenerate: cd src/go && go run ./cmd/gen-chain-spec > ../js/chain_spec.gen.js
 //
-// The post-voice master/mix chain is implemented twice — Go/C on desktop,
-// WebAudio nodes in audio.js. These constants keep both configured identically
-// so the same instrument sounds the same on both platforms. audio.js reads
-// them in ensureCompressor + ensureLimiter; chain_spec_parity.browser.test.js
-// asserts the live WebAudio nodes match these values.
-
-// Master compressor. NOTE: audio.js DynamicsCompressorNode takes attack/
-// release in SECONDS — divide the *Ms values by 1000.
+// Every value the audio path between a voice and the speaker uses on both
+// platforms. The DSP is one implementation (the C engine, run by desktop and
+// by the beatmo-dsp worklet); these are the only numbers the two could
+// disagree on. Times are milliseconds.
 export const CHAIN_SPEC = Object.freeze({
-  compressorThresholdDb: -3,
-  compressorRatio: 2.5,
-  compressorAttackMs: 5,
-  compressorReleaseMs: 80,
-  compressorKneeDb: 3,
+  sampleRate: 48000,
   softClipThreshold: 0.9,
   voiceHeadroom: 0.18,
-  targetSampleRate: 48000,
+  fadeInMs: 5,
+  stopFadeMs: 20,
+  gateFadeMs: 10,
+  maxMasterVolume: 1,
+  releaseQuietDB: -90,
+  releaseHoldMs: 250,
+  effectMemoryMs: Object.freeze({
+    chorus: 40,
+    delay: 1000,
+    flanger: 20,
+    pitchshift: 150,
+    reverb: 100,
+    tape: 10,
+  }),
 });

@@ -1,9 +1,13 @@
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 func TestInstrumentDisplayNameResolution(t *testing.T) {
-	ClearInstrumentDisplayName("snare")
+	ClearInstrumentDisplayName(roster.Snare)
 	// Falls back to PrettyName(id) when no override and no catalog name.
 	if got := InstrumentDisplayName("hi-hat-x"); got != "Hi Hat X" {
 		t.Fatalf("pretty fallback: got %q want %q", got, "Hi Hat X")

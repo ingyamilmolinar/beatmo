@@ -3,29 +3,32 @@
 package audio
 
 import (
-	"log"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ebitengine/oto/v3"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
 
 // sampleRate is the audio output sample rate.
-// Default is 44100 Hz for maximum compatibility.
-// Override with AUDIO_SAMPLE_RATE environment variable.
+// Default is EngineSampleRate (48 kHz), the rate the browser runs at too, so
+// a circuit is the same samples on both platforms. BEATMO_AUDIO_SAMPLE_RATE
+// (env.AudioSampleRate) overrides it for diagnostics only.
 var sampleRate = func() int {
-	if s := os.Getenv("AUDIO_SAMPLE_RATE"); s != "" {
-		if rate, err := strconv.Atoi(s); err == nil && rate > 0 {
-			log.Printf("[AUDIO] Using custom sample rate: %d Hz", rate)
-			return rate
-		}
+	rate := env.AudioSampleRate.Get()
+	if env.AudioSampleRate.IsSet() {
+		log.Infof("[audio] using custom sample rate: %d Hz", rate)
 	}
-	return 44100 // Default to 44100 for maximum compatibility
+	// Effects built before the device opens (an offline render) run at the
+	// engine rate too.
+	InitInsertChains(rate)
+	return rate
 }()
 
 // bufferSizeBytes10ms is 10ms of 16-bit mono audio
@@ -38,12 +41,12 @@ var (
 	start = time.Now()
 	bpm   = 120
 
-	instruments = map[string]Instrument{}
-	instOrder   []string
+	instruments = map[instrument.ID]Instrument{}
+	instOrder   []instrument.ID
 	instMu      sync.RWMutex
 
 	stopHookMu sync.RWMutex
-	stopHook   func(string)
+	stopHook   func(instrument.ID)
 
 	analyzerSvc *analyzer.Service
 	scopeSvc    *scope.Service
@@ -71,11 +74,11 @@ type BlockVoice interface {
 
 // Instrument constructs a new Voice instance when triggered.
 type Instrument interface {
-	NewVoice(bpm, sampleRate int) Voice
+	NewVoice(sampleRate int) Voice
 }
 
 // Register makes an instrument available for playback by ID.
-func Register(id string, inst Instrument) {
+func Register(id instrument.ID, inst Instrument) {
 	created := false
 	instMu.Lock()
 	if _, exists := instruments[id]; !exists {
@@ -87,13 +90,12 @@ func Register(id string, inst Instrument) {
 	if created {
 		bumpInstrumentsVersion()
 	}
-	InstrumentChannel(id)
 }
 
 // Unregister removes a runtime-registered instrument from the playable set. It
 // is the inverse of Register, used by DeleteInstrument to drop a cloned/user
 // instrument. Removing an id that isn't registered is a no-op.
-func Unregister(id string) {
+func Unregister(id instrument.ID) {
 	instMu.Lock()
 	_, existed := instruments[id]
 	if existed {
@@ -138,12 +140,8 @@ func initContext() {
 	}
 	ctx = c
 	mix = newMixer(c)
-	// Initialize send effects (delay + reverb).
-	initSendEffects(sampleRate)
 	// Initialize insert effect chains with the correct sample rate.
 	InitInsertChains(sampleRate)
-	// Install master compressor for automatic gain management.
-	SetupMasterCompressor(sampleRate)
 	// Phase 2 audio-panel redesign: stand up the master LUFS integrator
 	// before the analyzer service so MasterLUFSGetter has something to
 	// read on the first tick. The integrator is fed from the mixer
@@ -151,7 +149,7 @@ func initContext() {
 	EnsureMasterLUFS(float64(sampleRate))
 	// Start the analyzer service for real-time metering and FFT.
 	analyzerSvc = analyzer.NewService(analyzer.Config{
-		FFTSize:               1024,
+		FFTSize:               analyzer.SpectrumFFTSize,
 		WindowSize:            2048,
 		MaxInstruments:        32,
 		SampleRate:            sampleRate,
@@ -167,36 +165,38 @@ func initContext() {
 	go scopeSvc.Run()
 
 	// Optionally start the scope export flight recorder.
-	if scopeExportFlag || os.Getenv("SCOPE_EXPORT") == "1" {
+	if scopeExportFlag || env.ScopeExport.Get() {
 		interval := 2 * time.Second
-		if v := os.Getenv("SCOPE_EXPORT_INTERVAL"); v != "" {
-			if secs, err := strconv.ParseFloat(v, 64); err == nil && secs > 0 {
-				interval = time.Duration(secs * float64(time.Second))
-			}
+		if secs := env.ScopeExportInterval.Get(); secs > 0 {
+			interval = time.Duration(secs * float64(time.Second))
 		}
-		path := "scope_export.jsonl"
-		if v := os.Getenv("SCOPE_EXPORT_PATH"); v != "" {
-			path = v
-		}
+		path := env.ScopeExportPath.Get()
 		exportSvc = scopeexport.NewService(scopeexport.Config{
 			SampleRate: sampleRate,
 			Interval:   interval,
 			OutputPath: path,
 			BPMFunc:    func() int { return bpm },
-			InstrumentsFunc: func() []string {
+			InstrumentsFunc: func() []channel.ID {
 				instMu.RLock()
 				defer instMu.RUnlock()
-				return append([]string{}, instOrder...)
+				out := make([]channel.ID, len(instOrder))
+				for i, id := range instOrder {
+					out[i] = channel.Of(id)
+				}
+				return out
 			},
-			LookupMeta: func(id string) (string, string, bool) {
+			LookupMeta: func(ch channel.ID) (string, string, bool) {
+				id, ok := ch.Instrument()
+				if !ok {
+					return "", "", false
+				}
 				m, ok := CatalogLookup(id)
 				if !ok {
 					return "", "", false
 				}
-				return m.Name, m.Source, ok
+				return m.Name, m.Source.String(), ok
 			},
 			ChannelVolume: ChannelVolume,
-			ChannelPan:    ChannelPan,
 			MainVolume:    MainVolume,
 		})
 		exportSvc.Start()

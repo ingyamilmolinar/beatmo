@@ -1,0 +1,103 @@
+{
+  "schema_version": "0.0.1",
+  "id": "zgump-kick",
+  "name": "Organic Kick",
+  "category": "modular",
+  "notes": "zgumpKickSeed is the Organic Kick as shipped: zgumpKickBaseSeed (the\nreference-fitted tuning, which raw-kick still builds on) with the 2026-10-02\nFULLNESS RETUNE (user A/B at equal peak, approved): louder under the fixed\npeak, more punch and body, same variant, pitch and >250 Hz timbre.",
+  "render": {
+    "seconds": 0.35,
+    "amplitude": 0.7623,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 78
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.modal",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0.5,
+        "kick_click": 0.2,
+        "kick_env0": 5,
+        "kick_env1": 20,
+        "kick_fade": 3.25,
+        "kick_h2": 0,
+        "kick_h3": 0.04,
+        "kick_mode_decay": 3,
+        "kick_mode_detune": 0.12,
+        "kick_mode_gain": 1.3,
+        "kick_noise": 0.115,
+        "kick_pe_amt": 2.3,
+        "kick_pe_rate": 53,
+        "kick_sat": 0.5,
+        "wave": 0
+      }
+    }
+  ]
+}

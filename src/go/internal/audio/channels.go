@@ -1,31 +1,17 @@
 package audio
 
 import (
-	"log"
 	"math"
-	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-const mainChannelID = "main"
-
-// bypassEQ skips all EQ/processor processing when set via BYPASS_EQ=1.
-// Use this to isolate whether distortion comes from EQ processing.
-var bypassEQ = os.Getenv("BYPASS_EQ") == "1"
-
-// debugChannelProc logs channel processing values when set via DEBUG_CHANNEL=1.
-var debugChannelProc = os.Getenv("DEBUG_CHANNEL") == "1"
 var debugChannelCount int64
-
-func init() {
-	if bypassEQ {
-		log.Println("[AUDIO DEBUG] BYPASS_EQ=1 - Skipping all EQ/processor processing")
-	}
-	if debugChannelProc {
-		log.Println("[AUDIO DEBUG] DEBUG_CHANNEL=1 - Logging channel processing values")
-	}
-}
 
 // Processor represents a placeholder audio processor in the channel chain.
 // Future implementations can provide EQ, effects, etc.
@@ -44,10 +30,14 @@ type BlockProcessor interface {
 }
 
 type Channel struct {
-	id     string
+	id     channel.ID
 	parent *Channel
 	vol    uint64 // atomic float64 bits
-	panVal uint64 // atomic float64 bits: -1 (left) to +1 (right), 0 = center
+
+	// memory is the insert chain's ChainMemorySec (atomic float64 bits, set
+	// where the chain is built): how long the channel holds a sound with a
+	// silent output (residency.go).
+	memory atomic.Uint64
 
 	mu sync.RWMutex
 	// Processor chain is split into two halves so the mixer can tap the
@@ -80,13 +70,13 @@ type Channel struct {
 	samplesThruOld uint32 // atomic: >0 if audio was processed with current chain
 }
 
-func newChannel(id string, parent *Channel) *Channel {
+func newChannel(id channel.ID, parent *Channel) *Channel {
 	ch := &Channel{id: id, parent: parent}
 	ch.SetVolume(1)
 	return ch
 }
 
-func (c *Channel) ID() string { return c.id }
+func (c *Channel) ID() channel.ID { return c.id }
 
 func (c *Channel) Volume() float64 {
 	return math.Float64frombits(atomic.LoadUint64(&c.vol))
@@ -102,38 +92,12 @@ func (c *Channel) SetVolume(v float64) {
 	atomic.StoreUint64(&c.vol, math.Float64bits(v))
 }
 
-// Pan returns the stereo pan position: -1 (left) to +1 (right), 0 = center.
-func (c *Channel) Pan() float64 {
-	return math.Float64frombits(atomic.LoadUint64(&c.panVal))
-}
-
-// SetPan sets the stereo pan position: -1 (left) to +1 (right), 0 = center.
-func (c *Channel) SetPan(v float64) {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		v = 0
-	}
-	if v < -1 {
-		v = -1
-	}
-	if v > 1 {
-		v = 1
-	}
-	atomic.StoreUint64(&c.panVal, math.Float64bits(v))
-}
-
-// PanGains returns the left and right gain factors for equal-power panning.
-func (c *Channel) PanGains() (gainL, gainR float64) {
-	pan := c.Pan()
-	angle := (pan + 1) * math.Pi * 0.25
-	return math.Cos(angle), math.Sin(angle)
-}
-
 func (c *Channel) ProcessSample(input float64) float64 {
 	gain := c.Volume()
 	out := input * gain
 
 	// Skip processors (EQ) if bypassing for debugging
-	if !bypassEQ {
+	if !env.BypassEQ.Get() {
 		c.mu.RLock()
 		procs := c.processors
 		c.mu.RUnlock()
@@ -143,8 +107,8 @@ func (c *Channel) ProcessSample(input float64) float64 {
 	}
 
 	// Debug logging (every 10000 samples to avoid spam)
-	if debugChannelProc && debugChannelCount%10000 == 0 {
-		log.Printf("[CHANNEL %s] input=%.6f gain=%.6f out=%.6f hasParent=%v",
+	if env.DebugChannel.Get() && debugChannelCount%10000 == 0 {
+		log.Tracef("[channel] %s input=%.6f gain=%.6f out=%.6f hasParent=%v",
 			c.id, input, gain, out, c.parent != nil)
 	}
 	debugChannelCount++
@@ -161,7 +125,7 @@ func (c *Channel) ProcessBlock(input, output []float64) {
 	gain := c.Volume()
 
 	var procs []Processor
-	if !bypassEQ {
+	if !env.BypassEQ.Get() {
 		c.mu.RLock()
 		procs = c.processors
 		c.mu.RUnlock()
@@ -197,7 +161,7 @@ func (c *Channel) ProcessSampleLocal(input float64) float64 {
 	// Mark that audio has been processed with the current chain.
 	atomic.StoreUint32(&c.samplesThruOld, 1)
 
-	if !bypassEQ {
+	if !env.BypassEQ.Get() {
 		c.mu.RLock()
 		procs := c.processors
 		oldProcs := c.oldProcessors
@@ -249,7 +213,7 @@ func (c *Channel) ProcessBlockLocal(input, output []float64) {
 	c.mu.RLock()
 	var allBlock bool
 	var blockProcs []BlockProcessor
-	if !bypassEQ {
+	if !env.BypassEQ.Get() {
 		procs = c.processors // snapshot slice header (safe: replaceProcessors creates new slice)
 		allBlock = c.allBlock
 		blockProcs = c.blockProcs
@@ -317,7 +281,7 @@ func (c *Channel) ProcessInsertsBlockLocal(input, output []float64) {
 	c.mu.RLock()
 	var allBlock bool
 	var blockProcs []BlockProcessor
-	if !bypassEQ {
+	if !env.BypassEQ.Get() {
 		procs = c.inserts
 		allBlock = c.insertsAllBlock
 		blockProcs = c.insertsBlockProcs
@@ -380,7 +344,7 @@ func (c *Channel) ProcessEQBlockLocal(input, output []float64) {
 	c.mu.RLock()
 	var allBlock bool
 	var blockProcs []BlockProcessor
-	if !bypassEQ {
+	if !env.BypassEQ.Get() {
 		procs = c.eqProcs
 		allBlock = c.eqAllBlock
 		blockProcs = c.eqBlockProcs
@@ -507,6 +471,7 @@ func (c *Channel) replaceProcessors(inserts, eqProcs []Processor) {
 	atomic.StoreUint32(&c.samplesThruOld, 0)
 	c.cacheBlockCapability()
 	c.mu.Unlock()
+	chanMgr.refreshProcChannels()
 }
 
 // addEQProcessor appends to the EQ-side chain. Inserts come first in the
@@ -518,13 +483,40 @@ func (c *Channel) addEQProcessor(p Processor) {
 	c.processors = append(append([]Processor(nil), c.inserts...), c.eqProcs...)
 	c.cacheBlockCapability()
 	c.mu.Unlock()
+	chanMgr.refreshProcChannels()
 }
 
 type channelManager struct {
 	mu          sync.RWMutex
-	channels    map[string]*Channel
-	instruments map[string]*Channel
+	channels    map[channel.ID]*Channel
+	instruments map[channel.ID]*Channel
 	main        *Channel
+
+	// procChannels are the instrument channels whose chain holds a processor
+	// (an insert effect, an EQ, an analyzer): the mixer runs each of them
+	// every block, voice or not (mixer.processBlock). Rebuilt by
+	// refreshProcChannels whenever a chain or the channel set changes.
+	procChannels atomic.Pointer[[]*Channel]
+}
+
+// refreshProcChannels recomputes procChannels. Never call it holding a
+// Channel's mu or cm.mu.
+func (cm *channelManager) refreshProcChannels() {
+	cm.mu.RLock()
+	var out []*Channel
+	for id, ch := range cm.channels {
+		if id == channel.Master {
+			continue
+		}
+		ch.mu.RLock()
+		has := len(ch.inserts)+len(ch.eqProcs) > 0
+		ch.mu.RUnlock()
+		if has {
+			out = append(out, ch)
+		}
+	}
+	cm.mu.RUnlock()
+	cm.procChannels.Store(&out)
 }
 
 func newChannelManager() *channelManager {
@@ -535,17 +527,21 @@ func newChannelManager() *channelManager {
 
 func (cm *channelManager) reset() {
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	cm.channels = make(map[string]*Channel)
-	cm.instruments = make(map[string]*Channel)
-	cm.main = newChannel(mainChannelID, nil)
-	cm.main.SetVolume(0.5) // fresh-session master default (see loudness-normalization plan)
-	cm.channels[mainChannelID] = cm.main
+	cm.channels = make(map[channel.ID]*Channel)
+	cm.instruments = make(map[channel.ID]*Channel)
+	cm.main = newChannel(channel.Master, nil)
+	cm.main.SetVolume(FreshSessionMasterVolume)
+	cm.channels[channel.Master] = cm.main
+	cm.mu.Unlock()
+	cm.procChannels.Store(&[]*Channel{}) // fresh channels hold no processor
 }
 
-func (cm *channelManager) ensureChannel(id string) *Channel {
-	if id == "" {
-		id = mainChannelID
+// ensureChannel returns the channel id names, creating it on first use. The
+// zero ID names no channel: it gets a detached channel nothing reads, so an
+// edit addressed to it is dropped instead of landing on the master bus.
+func (cm *channelManager) ensureChannel(id channel.ID) *Channel {
+	if id.IsZero() {
+		return newChannel(id, nil)
 	}
 	cm.mu.RLock()
 	ch, ok := cm.channels[id]
@@ -559,7 +555,7 @@ func (cm *channelManager) ensureChannel(id string) *Channel {
 		return ch
 	}
 	parent := cm.main
-	if id == mainChannelID {
+	if id == channel.Master {
 		parent = nil
 	}
 	ch = newChannel(id, parent)
@@ -570,7 +566,10 @@ func (cm *channelManager) ensureChannel(id string) *Channel {
 	return ch
 }
 
-func (cm *channelManager) ensureInstrumentChannel(id string) *Channel {
+func (cm *channelManager) ensureInstrumentChannel(id channel.ID) *Channel {
+	if id.IsZero() {
+		return newChannel(id, nil) // no channel: detached, see ensureChannel
+	}
 	cm.mu.RLock()
 	ch, ok := cm.instruments[id]
 	cm.mu.RUnlock()
@@ -596,8 +595,10 @@ func (cm *channelManager) ensureInstrumentChannel(id string) *Channel {
 	return ch
 }
 
-func (cm *channelManager) channelForInstrument(id string) *Channel {
-	if id == "" {
+// channelForInstrument is the channel a voice mixes through: its
+// instrument's, or the master bus directly for a voice no instrument owns.
+func (cm *channelManager) channelForInstrument(id channel.ID) *Channel {
+	if id.IsZero() {
 		return cm.main
 	}
 	cm.mu.RLock()
@@ -609,66 +610,70 @@ func (cm *channelManager) channelForInstrument(id string) *Channel {
 	return cm.ensureInstrumentChannel(id)
 }
 
-func (cm *channelManager) setVolume(id string, vol float64) *Channel {
+func (cm *channelManager) setVolume(id channel.ID, vol float64) *Channel {
 	ch := cm.ensureChannel(id)
 	ch.SetVolume(vol)
 	return ch
 }
 
-func (cm *channelManager) volume(id string) float64 {
-	ch := cm.ensureChannel(id)
+// volume reads a channel's volume without building it: a channel that does
+// not exist yet is at unity.
+func (cm *channelManager) volume(id channel.ID) float64 {
+	cm.mu.RLock()
+	ch, ok := cm.channels[id]
+	cm.mu.RUnlock()
+	if !ok {
+		return 1
+	}
 	return ch.Volume()
 }
 
-func (cm *channelManager) resetInstruments(ids []string) {
+// resetInstruments forgets every instrument channel. None is rebuilt: a
+// channel exists from its first use (a voice, a mixer setting) on.
+func (cm *channelManager) resetInstruments() {
 	cm.mu.Lock()
 	main := cm.main
-	cm.channels = map[string]*Channel{mainChannelID: main}
-	cm.instruments = make(map[string]*Channel, len(ids))
+	cm.channels = map[channel.ID]*Channel{channel.Master: main}
+	cm.instruments = map[channel.ID]*Channel{}
 	cm.mu.Unlock()
-	for _, id := range ids {
-		cm.ensureInstrumentChannel(id)
-	}
+	cm.refreshProcChannels()
 }
 
 var chanMgr = newChannelManager()
 
 func init() {
-	platformChannelVolumeChanged(mainChannelID, chanMgr.main.Volume())
+	platformChannelVolumeChanged(channel.Master, chanMgr.main.Volume())
 }
 
-func ChannelVolume(id string) float64 {
+func ChannelVolume(id channel.ID) float64 {
 	return chanMgr.volume(id)
 }
 
-func SetChannelVolume(id string, vol float64) {
+func SetChannelVolume(id channel.ID, vol float64) {
 	ch := chanMgr.setVolume(id, vol)
 	platformChannelVolumeChanged(ch.id, ch.Volume())
 }
 
+// FreshSessionMasterVolume is the master volume a fresh session starts at (and
+// a project without a master_volume gets): headroom for the loudness-normalised
+// instruments.
+const FreshSessionMasterVolume = 0.5
+
+// SetMainVolume sets the master volume, clamped to [0, MaxMasterVolume] here
+// — the one clamp both platforms' master gain receives.
 func SetMainVolume(vol float64) {
-	ch := chanMgr.setVolume(mainChannelID, vol)
+	if vol > MaxMasterVolume {
+		vol = MaxMasterVolume
+	}
+	ch := chanMgr.setVolume(channel.Master, vol)
 	platformChannelVolumeChanged(ch.id, ch.Volume())
 }
 
 func MainVolume() float64 {
-	return chanMgr.volume(mainChannelID)
+	return chanMgr.volume(channel.Master)
 }
 
-// SetChannelPan sets the stereo pan for an instrument channel.
-func SetChannelPan(id string, pan float64) {
-	ch := chanMgr.ensureChannel(id)
-	ch.SetPan(pan)
-	platformChannelPanChanged(ch.id, ch.Pan())
-}
-
-// ChannelPan returns the current pan position for a channel.
-func ChannelPan(id string) float64 {
-	ch := chanMgr.ensureChannel(id)
-	return ch.Pan()
-}
-
-func InstrumentChannel(id string) *Channel {
+func InstrumentChannel(id channel.ID) *Channel {
 	ch := chanMgr.ensureInstrumentChannel(id)
 	platformChannelVolumeChanged(ch.id, ch.Volume())
 	return ch
@@ -676,20 +681,17 @@ func InstrumentChannel(id string) *Channel {
 
 func resetChannels() {
 	chanMgr.reset()
-	platformChannelVolumeChanged(mainChannelID, chanMgr.main.Volume())
+	platformChannelVolumeChanged(channel.Master, chanMgr.main.Volume())
 	resetAnalyzers()
 }
 
-func resetInstrumentChannels(ids []string) {
-	chanMgr.resetInstruments(ids)
-	platformChannelVolumeChanged(mainChannelID, chanMgr.main.Volume())
-	for _, id := range ids {
-		platformChannelVolumeChanged(id, chanMgr.volume(id))
-	}
+func resetInstrumentChannels() {
+	chanMgr.resetInstruments()
+	platformChannelVolumeChanged(channel.Master, chanMgr.main.Volume())
 	resetAnalyzers()
 }
 
-func channelForInstrument(id string) *Channel {
+func channelForInstrument(id channel.ID) *Channel {
 	return chanMgr.channelForInstrument(id)
 }
 
@@ -697,13 +699,13 @@ func channelForInstrument(id string) *Channel {
 // channel ID with a flat list (inserts are left untouched). Code paths that
 // need the inserts/EQ split (rebuildChannelProcessors) call
 // ch.replaceProcessors directly.
-func SetChannelProcessors(id string, procs ...Processor) {
+func SetChannelProcessors(id channel.ID, procs ...Processor) {
 	ch := chanMgr.ensureChannel(id)
 	ch.replaceProcessors(nil, procs)
 }
 
 // AddChannelProcessor appends a processor to the existing chain.
-func AddChannelProcessor(id string, p Processor) {
+func AddChannelProcessor(id channel.ID, p Processor) {
 	ch := chanMgr.ensureChannel(id)
 	ch.addEQProcessor(p)
 }
@@ -711,8 +713,19 @@ func AddChannelProcessor(id string, p Processor) {
 // platformChannelVolumeChanged is implemented per-platform to propagate volume
 // changes down to the audio backend (e.g., JS GainNodes). On platforms where
 // mixing is performed in Go, it may be a no-op.
-var platformChannelVolumeChanged = func(string, float64) {}
+var platformChannelVolumeChanged = func(channel.ID, float64) {}
 
-// platformChannelPanChanged is implemented per-platform to propagate pan
-// changes to the audio backend (e.g., JS StereoPannerNode).
-var platformChannelPanChanged = func(string, float64) {}
+// InstrumentChannelIDs returns the id of every instrument channel the manager
+// currently holds (master excluded). Used by project import to clear
+// per-instrument EQ before applying the file's own, so an instrument that is
+// flat in the new project does not inherit the previous project's curve.
+func InstrumentChannelIDs() []channel.ID {
+	chanMgr.mu.RLock()
+	defer chanMgr.mu.RUnlock()
+	out := make([]channel.ID, 0, len(chanMgr.instruments))
+	for id := range chanMgr.instruments {
+		out = append(out, id)
+	}
+	slices.SortFunc(out, channel.Compare)
+	return out
+}

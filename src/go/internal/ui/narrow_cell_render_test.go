@@ -110,16 +110,16 @@ func TestNormalWidthCellBorderPresent(t *testing.T) {
 		t.Fatal("normal-width active cell must have stroked border")
 	}
 
-	// Should have top strip (1px high, inset by 1 on each side).
-	topStrip := image.Rect(r.Min.X+1, r.Min.Y, r.Max.X-1, r.Min.Y+1)
-	var hasTopStrip bool
+	// Flat (DESIGN.md Rule 2 — nothing is 3D): exactly one fill, no lit
+	// top-strip highlight.
+	fills := 0
 	for _, c := range rec.calls {
-		if c.Kind == drawCallRect && c.Filled && c.Rect == topStrip {
-			hasTopStrip = true
+		if c.Kind == drawCallRect && c.Filled {
+			fills++
 		}
 	}
-	if !hasTopStrip {
-		t.Fatal("normal-width active cell must have top strip highlight")
+	if fills != 1 {
+		t.Fatalf("normal-width active cell must be one flat fill, got %d filled rects", fills)
 	}
 }
 

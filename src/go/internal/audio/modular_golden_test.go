@@ -14,13 +14,16 @@ import "testing"
 // If a future intentional change to the modular default voice flips this,
 // regenerate by logging hashFloat32(buf) from TestModularIdentityGolden and
 // updating the constant in the same commit (same protocol as the FM goldens).
-const modularIdentityGolden = "5baf86ab569dd4349a711e09cb7a6d675ce91ea21eb3c81359416c085e789d22"
+// Re-captured 2026-10-02 (config-only refactor Phase A): the modular voice now
+// computes envelope/filter/pitch/FM from double params (no float32 narrowing at
+// any read); the NULL fast path and the identity params still agree byte for byte.
+const modularIdentityGolden = "38f767da249ec2079945f226db8de47349b8144189942fb8b0c2f13446eb605e"
 
 // TestModularIdentityGolden proves the default modular voice is byte-identical
 // across the two render entry points AND against the captured baseline:
 //
 //  1. renderModular(NULL) — the cheap unparameterized fast path (unchanged code).
-//  2. renderModularP(identity) — the parameterized recipe path with every param
+//  2. renderModularBlock(identity) — the parameterized recipe path with every param
 //     at its schema identity (all stages enabled, sine, seed 0).
 //
 // (1) == (2) proves the recipe path reproduces the fast path; (1) == baseline
@@ -30,11 +33,11 @@ func TestModularIdentityGolden(t *testing.T) {
 	const n = 48000 // 1.0s
 
 	null := make([]float32, n)
-	renderModular(null, sr, n)
+	renderModularBlock(null, sr, n, initBlockForTest(nil))
 	nullHash := hashFloat32(null)
 
 	ident := make([]float32, n)
-	renderModularP(ident, sr, n, identityModularParams())
+	renderModularBlock(ident, sr, n, identityModularParams())
 	identHash := hashFloat32(ident)
 
 	if nullHash != identHash {
@@ -48,18 +51,18 @@ func TestModularIdentityGolden(t *testing.T) {
 	}
 }
 
-// identityModularParams returns ModularParams filled from the schema identity
+// identityModularParams returns modularBlock filled from the schema identity
 // map — i.e. every stage enabled, sine oscillator, seed 0. This is the exact
 // block the recipe fast path renders for an unedited modular instrument.
-func identityModularParams() ModularParams {
-	return recipeParamsToModular(RecipeParams(ModularParamSchemaIdentity()))
+func identityModularParams() modularBlock {
+	return initBlockForTest(nil)
 }
 
 // TestModularEnableFlagsDefaultEnabled locks the bit-identical contract at the
 // schema layer: every per-stage bypass flag defaults to 1.0 (enabled) and
 // noise_seed to 0, in both the identity map and the editable ParamDefs.
 func TestModularEnableFlagsDefaultEnabled(t *testing.T) {
-	ident := ModularParamSchemaIdentity()
+	ident := modularFieldInits()
 	for _, name := range []string{"osc_enabled", "fm_enabled", "env_enabled", "filter_enabled", "drive_enabled"} {
 		if ident[name] != 1 {
 			t.Errorf("identity[%q] = %v, want 1 (enabled)", name, ident[name])
@@ -90,9 +93,9 @@ func TestModularBypassSilencesAndPassesThrough(t *testing.T) {
 
 	// Oscillator off → pure silence.
 	p := identityModularParams()
-	p.OscEnabled = 0
+	p.set("osc_enabled", 0)
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, p)
+	renderModularBlock(buf, sr, n, p)
 	if pk := peakAbs(buf); pk != 0 {
 		t.Errorf("osc disabled: peak = %v, want 0 (silence)", pk)
 	}
@@ -101,13 +104,13 @@ func TestModularBypassSilencesAndPassesThrough(t *testing.T) {
 	// a near-zero attack envelope). A default sine starts at ~0, so use a saw
 	// (starts at -1) to make the "no envelope" effect unambiguous.
 	pEnvOn := identityModularParams()
-	pEnvOn.OscType = 1 // saw
-	pEnvOff := pEnvOn
-	pEnvOff.EnvEnabled = 0
+	pEnvOn.set("osc_type", 1) // saw
+	pEnvOff := pEnvOn.clone()
+	pEnvOff.set("env_enabled", 0)
 	on := make([]float32, n)
 	off := make([]float32, n)
-	renderModularP(on, sr, n, pEnvOn)
-	renderModularP(off, sr, n, pEnvOff)
+	renderModularBlock(on, sr, n, pEnvOn)
+	renderModularBlock(off, sr, n, pEnvOff)
 	// With the envelope ON, the very first samples are scaled by the rising
 	// attack (≈0). With it OFF, they are the full saw. So the bypassed buffer
 	// must have strictly greater early energy.
@@ -132,18 +135,18 @@ func TestModularNoiseDeterministicPerSeed(t *testing.T) {
 
 	for _, osc := range []float64{5, 6} { // white, pink
 		base := identityModularParams()
-		base.OscType = osc
+		base.set("osc_type", osc)
 
 		s0a := make([]float32, n)
 		s0b := make([]float32, n)
 		s1 := make([]float32, n)
-		p0 := base
-		p0.NoiseSeed = 0
-		p1 := base
-		p1.NoiseSeed = 1
-		renderModularP(s0a, sr, n, p0)
-		renderModularP(s0b, sr, n, p0)
-		renderModularP(s1, sr, n, p1)
+		p0 := base.clone()
+		p0.set("noise_seed", 0)
+		p1 := base.clone()
+		p1.set("noise_seed", 1)
+		renderModularBlock(s0a, sr, n, p0)
+		renderModularBlock(s0b, sr, n, p0)
+		renderModularBlock(s1, sr, n, p1)
 
 		assertFinite(t, s0a)
 		if pk := peakAbs(s0a); pk <= 0 {

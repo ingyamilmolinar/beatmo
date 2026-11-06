@@ -2,12 +2,16 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // TestResetSampleToFactory_RestoresPlaybackRegistration — reverting a built-in
 // must un-register the user sample from the playback layer (desktop instrument
 // table / WASM render cache) so the synth is actually heard again, not just
-// re-bound in the registry. Asserts the UnregisterSamplePCM seam is invoked.
+// returned to its library entry. Asserts the UnregisterSamplePCM seam is invoked.
 // (The recorder seam is test-build-only, hence this file's build tag.)
 func TestResetSampleToFactory_RestoresPlaybackRegistration(t *testing.T) {
 	resetUserSamplesForTest()
@@ -16,9 +20,8 @@ func TestResetSampleToFactory_RestoresPlaybackRegistration(t *testing.T) {
 	defer restore()
 	resetSampleUnregisterCallsForTest()
 
-	const instID = "kick-1"
-	bindBuiltinInstrumentRecipes()
-	t.Cleanup(bindBuiltinInstrumentRecipes)
+	const instID = roster.KickSnap
+	resetLibraryForTest(t)
 	PutUserSample(instID, []float32{0.7, -0.7}, 44100)
 
 	ResetSampleToFactory(instID)

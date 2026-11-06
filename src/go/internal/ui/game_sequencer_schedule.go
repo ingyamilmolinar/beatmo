@@ -24,6 +24,12 @@ func (s *playbackSlate) seqScheduleTime() {
 		g.logger.Tracef("[seqschedule] releasing seqMu")
 		g.seqMu.Unlock()
 	}()
+	// The audio lane ticks on every pass — including the early returns below —
+	// still under seqMu (deferred after the unlock, so it runs first). Cells the
+	// UI lane reached before the lane committed them are observed AFTER that
+	// tick (defers run LIFO: laneTick, then observePendingLaneCells, then unlock).
+	defer g.observePendingLaneCells()
+	defer s.laneTick()
 
 	parityEnabled := !runningUnderGoTest() || g.parityWatch != parityWatchOff
 
@@ -240,7 +246,12 @@ func (s *playbackSlate) seqScheduleTime() {
 				if row < len(g.muteUntilByRow) && idx+1 > g.muteUntilByRow[row] {
 					g.muteUntilByRow[row] = idx + 1
 				}
-				audio.Stop(inst)
+				// Lane mode: the lane committed this mute as a timed StopLaneAt
+				// (sparing notes after it); an immediate Stop here would cut
+				// voices the lane already scheduled ahead.
+				if !g.audioLaneOn() {
+					audio.Stop(inst)
+				}
 				if g.scheduleHook != nil {
 					g.scheduleHook(row, idx)
 				}
@@ -320,7 +331,7 @@ func (s *playbackSlate) seqScheduleTime() {
 					}
 					continue
 				}
-				if info.NodeType == model.NodeTypeRegular {
+				if info.NodeType.Fires() {
 					if row < len(g.muteUntilByRow) && idx < g.muteUntilByRow[row] {
 						g.recordSeqDecision(row, idx, false, info.NodeType, missing)
 						g.setLastTriggered(row, info.NodeID, false)
@@ -340,10 +351,21 @@ func (s *playbackSlate) seqScheduleTime() {
 							vol, pitch, dur = applyNodeDecision(vol, pitch, dur, logicDecision)
 						}
 					}
-					if runningUnderGoTest() && g.playFn != nil && g.scheduleHook == nil {
+					if g.audioLaneOn() {
+						// Audio was committed ahead by the audio lane; the UI lane
+						// only observes it (parity) and drives the visuals.
+						g.observeLaneCell(row, idx)
+						g.scheduleSoundUI(row, idx, info, inst, pitch, dur, g.state.AudioTimeOfStep(idx, div, bpm)+RuntimeProf().AudioOffsetSec)
+					} else if runningUnderGoTest() && g.playFn != nil && g.scheduleHook == nil {
 						g.seqNextIdxs[row]++
 						incAtEnd = false
-						g.playFn(inst, vol)
+						if layers := g.playbackSlate.nodeLayersAt(info); layers != nil {
+							for _, l := range layers {
+								g.playFn(inst, vol*l.Gain)
+							}
+						} else {
+							g.playFn(inst, vol)
+						}
 						// The test-only direct-play path bypasses audioLoop; still record
 						// a parity audio event so parityScan's audio_missing check reflects
 						// what was dispatched, and mark the decision enqueued to keep the

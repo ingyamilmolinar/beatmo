@@ -9,6 +9,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -123,7 +124,7 @@ func TestRenameInvalidCharsShowsError(t *testing.T) {
 	withDefaultAudio(t)
 
 	// Use a known instrument so the rename flow works.
-	audio.ResetCatalogForTest([]audio.SoundMeta{{ID: "snare", Name: "Snare"}})
+	audio.ResetCatalogForTest([]audio.SoundMeta{{ID: roster.Snare, Name: "Snare"}})
 
 	invalidNames := []struct {
 		name string

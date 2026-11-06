@@ -4,7 +4,13 @@
 // Update loop ever stalls on a slow handler.
 package hooks
 
-import "time"
+import (
+	"time"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // Kind identifies a category of event.
 type Kind string
@@ -74,10 +80,8 @@ const (
 	// Audio settings — release-committed (added for full event coverage +
 	// undo). These fire once per gesture at drag-release, never per-frame.
 	EventRowVolume           Kind = "row.volume"
-	EventRowPan              Kind = "row.pan"
 	EventInsertEffectMoved   Kind = "audio.insert_moved"
 	EventInsertEffectToggled Kind = "audio.insert_toggled"
-	EventSendChanged         Kind = "audio.send"
 	// Synth params committed once at knob-release (the per-frame edit stays
 	// the verbose EventInstrumentParamChanged below). Reset clears overrides.
 	EventInstrumentParamsCommitted Kind = "audio.synth_committed"
@@ -87,7 +91,7 @@ const (
 
 	// Synth recipe / instrument synthesis parameters. Fires when a user
 	// edits an instrument's synth params via the instrument editor (or
-	// any other path that mutates instrumentParamsMgr in internal/audio).
+	// any other path that mutates an instrument document in internal/audio).
 	//
 	// Slider drag publishes this on every frame the slider value moves
 	// (60Hz typical), matching the pattern of EventCameraPan / Zoom /
@@ -114,6 +118,21 @@ const (
 	// settings overlay. ScopeSession (locale persists to userprefs, not the
 	// project document).
 	EventLanguageChanged Kind = "lang.changed"
+
+	// EventThemeChanged fires on a profile-scope theme edit (pick, per-category
+	// reset, reset-all, override toggle). ScopeSession: it persists to
+	// userprefs, not the project document.
+	EventThemeChanged Kind = "theme.changed"
+	// EventCircuitThemeChanged fires on a circuit-scope theme edit. It mutates
+	// the exported document and is undoable through the snapshot journal.
+	EventCircuitThemeChanged Kind = "theme.circuit.changed"
+
+	// EventWarmupStarted / EventWarmupComplete bracket the playback readiness
+	// gate: the engine is rendering the loaded circuit's working set before the
+	// user may press Play. Complete carries whether the gate opened on its
+	// deadline rather than on completion.
+	EventWarmupStarted  Kind = "warmup.started"
+	EventWarmupComplete Kind = "warmup.complete"
 
 	// EventUndo / EventRedo fire when the user reverts / re-applies one edit.
 	// ScopeSession (the meta-action itself is never journaled).
@@ -212,14 +231,16 @@ var KindAll = []Kind{
 	EventRowAdded, EventRowDeleted, EventRowInstrumentChange, EventRowMute, EventRowSolo,
 	EventMasterVolumeChange, EventEQBandChange,
 	EventInsertEffectAdded, EventInsertEffectRemoved, EventInsertEffectParam,
-	EventRowVolume, EventRowPan,
-	EventInsertEffectMoved, EventInsertEffectToggled, EventSendChanged,
+	EventRowVolume,
+	EventInsertEffectMoved, EventInsertEffectToggled,
 	EventInstrumentParamsCommitted, EventInstrumentParamsReset,
 	EventAudioPanelStateChanged,
 	EventRowColorChanged, EventCustomWAVLoaded, EventInstrumentRenamed,
 	EventEQFilterToggled,
 	EventSceneApplied, EventUIStateApplied, EventFavoriteToggled,
 	EventLanguageChanged,
+	EventThemeChanged, EventCircuitThemeChanged,
+	EventWarmupStarted, EventWarmupComplete,
 	EventRecipeSaved, EventRecipeCreated, EventRecipeDeleted, EventKitApplied,
 	EventSampleSaved, EventSampleCreated, EventSampleReset, EventSampleEditChanged,
 	EventUndo, EventRedo,
@@ -255,7 +276,10 @@ var KindAll = []Kind{
 // node groups) = 69.
 // + node.copied + node.cut + node.pasted (clipboard copy/cut/paste) = 72.
 // + mode.armed + mode.canceled (grid quick-action modes) = 74.
-const NumNonVerbose = 74
+// + theme.changed + theme.circuit.changed (theme editor) = 76.
+// + warmup.started + warmup.complete (playback readiness gate) = 78.
+// - row.pan + audio.send (pan and the delay/reverb sends deleted) = 76.
+const NumNonVerbose = 76
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
@@ -333,31 +357,34 @@ type Event struct {
 
 // NodeEdit is the payload shape for node add/delete/move events.
 type NodeEdit struct {
-	ID   int    `json:"id"`
-	I    int    `json:"i"`
-	J    int    `json:"j"`
-	Type string `json:"type,omitempty"` // "regular", "silent", "mute", "invisible"
+	ID   int            `json:"id"`
+	I    int            `json:"i"`
+	J    int            `json:"j"`
+	Type model.NodeType `json:"type"`
 }
 
 // NodeTypePayload describes a node-type change.
 type NodeTypePayload struct {
-	ID      int    `json:"id"`
-	OldType string `json:"old_type"`
-	NewType string `json:"new_type"`
+	ID      int            `json:"id"`
+	OldType model.NodeType `json:"old_type"`
+	NewType model.NodeType `json:"new_type"`
 }
 
 // NodeParamsPayload describes a node-parameter mutation. Only the
 // changed field is non-zero in the typical case.
 type NodeParamsPayload struct {
-	ID         int     `json:"id"`
-	Volume     float64 `json:"volume,omitempty"`
-	Pitch      float64 `json:"pitch,omitempty"`
-	Duration   float64 `json:"duration,omitempty"`
-	LogicKind  string  `json:"logic_kind,omitempty"`
-	LogicN     int     `json:"logic_n,omitempty"`
-	LogicP     float64 `json:"logic_p,omitempty"`
-	GrooveKind string  `json:"groove_kind,omitempty"`
-	GroovePct  float64 `json:"groove_pct,omitempty"`
+	ID         int              `json:"id"`
+	Volume     float64          `json:"volume,omitempty"`
+	Pitch      float64          `json:"pitch,omitempty"`
+	Duration   float64          `json:"duration,omitempty"`
+	LogicKind  model.LogicKind  `json:"logic_kind,omitempty"`
+	LogicN     int              `json:"logic_n,omitempty"`
+	LogicP     float64          `json:"logic_p,omitempty"`
+	GrooveKind model.GrooveKind `json:"groove_kind,omitempty"`
+	GroovePct  float64          `json:"groove_pct,omitempty"`
+	// Chord names the chord a chord node now sounds ("C#m7/E"); set only by
+	// the chord builder's edits.
+	Chord string `json:"chord,omitempty"`
 }
 
 // GroupPayload describes a node-group mutation.
@@ -388,21 +415,20 @@ type StartNodePayload struct {
 // populated only for EventRowInstrumentChange (and stays empty for the
 // other row events).
 type RowChangePayload struct {
-	Row           int     `json:"row"`
-	Instrument    string  `json:"instrument,omitempty"`
-	OldInstrument string  `json:"old_instrument,omitempty"`
-	Name          string  `json:"name,omitempty"`
-	Mute          bool    `json:"mute,omitempty"`
-	Solo          bool    `json:"solo,omitempty"`
-	Volume        float64 `json:"volume,omitempty"`
-	Pan           float64 `json:"pan,omitempty"`
+	Row           int           `json:"row"`
+	Instrument    instrument.ID `json:"instrument,omitempty"`
+	OldInstrument instrument.ID `json:"old_instrument,omitempty"`
+	Name          string        `json:"name,omitempty"`
+	Mute          bool          `json:"mute,omitempty"`
+	Solo          bool          `json:"solo,omitempty"`
+	Volume        float64       `json:"volume,omitempty"`
 }
 
 // SeekPayload describes a transport seek to a particular position.
 type SeekPayload struct {
-	Beats  int    `json:"beats"`  // destination whole-beat (Steps/div)
-	Steps  int    `json:"steps"`  // destination absolute subdivision index
-	Origin string `json:"origin"` // emitter: ribbon|transport|counter|keyboard|js|undo
+	Beats  int        `json:"beats"` // destination whole-beat (Steps/div)
+	Steps  int        `json:"steps"` // destination absolute subdivision index
+	Origin SeekOrigin `json:"origin"`
 }
 
 // SubdivPayload describes a subdivisions change.
@@ -439,41 +465,40 @@ type MasterVolumePayload struct {
 
 // EQBandPayload describes an EQ band gain change.
 type EQBandPayload struct {
-	Channel string  `json:"channel"`
-	Band    int     `json:"band"`
-	GainDB  float64 `json:"gain_db"`
+	Channel channel.ID `json:"channel"`
+	Band    int        `json:"band"`
+	GainDB  float64    `json:"gain_db"`
 }
 
-// EQFilterPayload describes a master/channel EQ HPF/LPF enable toggle. Channel
-// is the instrument id ("main", "kick", …), Filter is "hpf" or "lpf".
+// EQFilterPayload describes a master/channel EQ HPF/LPF enable toggle. Filter
+// is "hpf" or "lpf".
 type EQFilterPayload struct {
-	Channel  string  `json:"channel"`
-	Filter   string  `json:"filter"`
-	Enabled  bool    `json:"enabled"`
-	CutoffHz float64 `json:"cutoff_hz,omitempty"`
+	Channel  channel.ID `json:"channel"`
+	Filter   EQFilter   `json:"filter"`
+	Enabled  bool       `json:"enabled"`
+	CutoffHz float64    `json:"cutoff_hz,omitempty"`
 }
 
 // InsertEffectPayload covers insert-effect added/removed/param events.
 type InsertEffectPayload struct {
-	Channel  string  `json:"channel"`
-	Slot     int     `json:"slot"`
-	Type     string  `json:"type,omitempty"`
-	Param    string  `json:"param,omitempty"`
-	Value    float64 `json:"value,omitempty"`
-	Enabled  bool    `json:"enabled,omitempty"`
-	FromSlot int     `json:"from_slot,omitempty"`
-	ToSlot   int     `json:"to_slot,omitempty"`
+	Channel  channel.ID `json:"channel"`
+	Slot     int        `json:"slot"`
+	Type     string     `json:"type,omitempty"`
+	Param    string     `json:"param,omitempty"`
+	Value    float64    `json:"value,omitempty"`
+	Enabled  bool       `json:"enabled,omitempty"`
+	FromSlot int        `json:"from_slot,omitempty"`
+	ToSlot   int        `json:"to_slot,omitempty"`
 }
 
-// InstrumentParamPayload describes a per-instrument synth-recipe parameter
-// edit. Channel is the instrument id (e.g. "snare"), Recipe is the
-// SynthRecipe ID it resolves through (e.g. "drum-snare"), Param is the
-// ParamDef.Name, and Value is the new scalar.
+// InstrumentParamPayload describes a synth parameter edit: the instrument
+// edited, the library instrument its document came from (Origin), the
+// ParamDef.Name and the new value.
 type InstrumentParamPayload struct {
-	Channel string  `json:"channel"`
-	Recipe  string  `json:"recipe,omitempty"`
-	Param   string  `json:"param"`
-	Value   float64 `json:"value"`
+	Instrument instrument.ID `json:"instrument"`
+	Origin     instrument.ID `json:"origin,omitempty"`
+	Param      string        `json:"param"`
+	Value      float64       `json:"value"`
 }
 
 // RowColorPayload describes a drum-row color pick.
@@ -486,14 +511,14 @@ type RowColorPayload struct {
 // instrument. IsUpdate is true when the same instrument id was already loaded
 // (the new bytes replace the old).
 type CustomWAVPayload struct {
-	InstrumentID string `json:"instrument_id"`
-	IsUpdate     bool   `json:"is_update,omitempty"`
+	InstrumentID instrument.ID `json:"instrument_id"`
+	IsUpdate     bool          `json:"is_update,omitempty"`
 }
 
 // InstrumentRenamePayload describes an instrument id rename.
 type InstrumentRenamePayload struct {
-	OldID string `json:"old_id"`
-	NewID string `json:"new_id"`
+	OldID instrument.ID `json:"old_id"`
+	NewID instrument.ID `json:"new_id"`
 }
 
 // ScenePayload describes a scene preset being applied.
@@ -510,8 +535,8 @@ type UIStatePayload struct {
 // FavoritePayload describes an instrument being added to or removed from
 // the user's favorites set.
 type FavoritePayload struct {
-	InstrumentID string `json:"instrument_id"`
-	IsFavorite   bool   `json:"is_favorite"`
+	InstrumentID instrument.ID `json:"instrument_id"`
+	IsFavorite   bool          `json:"is_favorite"`
 }
 
 // CameraPanPayload (verbose) describes a camera pan delta.
@@ -537,10 +562,10 @@ type DragProgressPayload struct {
 // when the action was a clone of an existing recipe. InstrumentID is
 // the row instrument the action originated from, when applicable.
 type RecipePayload struct {
-	RecipeID     string `json:"recipe_id"`
-	BaseRecipe   string `json:"base_recipe,omitempty"`
-	InstrumentID string `json:"instrument_id,omitempty"`
-	DisplayName  string `json:"display_name,omitempty"`
+	RecipeID     instrument.ID `json:"recipe_id"`
+	BaseRecipe   instrument.ID `json:"base_recipe,omitempty"`
+	InstrumentID instrument.ID `json:"instrument_id,omitempty"`
+	DisplayName  string        `json:"display_name,omitempty"`
 }
 
 // SamplePayload describes a Sampler-tab lifecycle event (saved / created).
@@ -549,10 +574,10 @@ type RecipePayload struct {
 // DisplayName is the user-entered name on Save As; Frames is the baked
 // length so sinks can report sample size without the PCM bytes.
 type SamplePayload struct {
-	SampleID    string `json:"sample_id"`
-	SourceID    string `json:"source_id,omitempty"`
-	DisplayName string `json:"display_name,omitempty"`
-	Frames      int    `json:"frames,omitempty"`
+	SampleID    instrument.ID `json:"sample_id"`
+	SourceID    instrument.ID `json:"source_id,omitempty"`
+	DisplayName string        `json:"display_name,omitempty"`
+	Frames      int           `json:"frames,omitempty"`
 }
 
 // UndoPayload names the action being undone/redone (the registry label of the
@@ -566,16 +591,9 @@ type UndoPayload struct {
 // in a later phase; the payload is reserved now so the eventlogger
 // coverage test stays satisfied across the rollout.
 type KitPayload struct {
-	KitID       string            `json:"kit_id"`
-	DisplayName string            `json:"display_name,omitempty"`
-	Members     map[string]string `json:"members,omitempty"`
-}
-
-// SendPayload describes a delay/reverb send change. Kind is "delay" or "reverb".
-type SendPayload struct {
-	Channel string  `json:"channel"`
-	Kind    string  `json:"kind"`
-	Value   float64 `json:"value"`
+	KitID       string                            `json:"kit_id"`
+	DisplayName string                            `json:"display_name,omitempty"`
+	Members     map[instrument.Role]instrument.ID `json:"members,omitempty"` // role → instrument
 }
 
 // AudioPanelStatePayload describes an audio-panel preference change (spectrum
@@ -588,6 +606,25 @@ type AudioPanelStatePayload struct {
 type LanguagePayload struct {
 	Old string `json:"old"`
 	New string `json:"new"`
+}
+
+// WarmupPayload describes one playback-readiness warm-up pass.
+type WarmupPayload struct {
+	Total     int     `json:"total"`    // items that needed rendering
+	Rendered  int     `json:"rendered"` // items completed before the gate opened
+	Cached    int     `json:"cached"`   // items skipped because they were already warm
+	ElapsedMS float64 `json:"elapsed_ms"`
+	TimedOut  bool    `json:"timed_out"`
+}
+
+// ThemePayload describes a theme edit. Category/Swatch are empty for a
+// reset-all; Swatch is empty for a per-category reset. Override is non-nil
+// only for the override toggle.
+type ThemePayload struct {
+	Scope    ThemeScope `json:"scope"`
+	Category string     `json:"category,omitempty"`
+	Swatch   string     `json:"swatch,omitempty"`
+	Override *bool      `json:"override,omitempty"`
 }
 
 // UITapPayload identifies a tapped button by its resolved label (and icon id

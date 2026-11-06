@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestCatalogScope_BuiltinsAreBuiltin pins the contract that synth ids carry
@@ -23,11 +25,8 @@ func TestCatalogScope_BuiltinsAreBuiltin(t *testing.T) {
 		t.Fatalf("expected synth placeholders even with empty assets dir")
 	}
 	for _, m := range cat {
-		if m.Source != "synth" {
-			continue
-		}
-		if m.Scope != "builtin" {
-			t.Errorf("synth %q: Scope=%q, want %q", m.ID, m.Scope, "builtin")
+		if m.Source == SourceSynth && !roster.Has(m.ID) {
+			t.Errorf("synth catalog entry %q is not a built-in", m.ID)
 		}
 	}
 }
@@ -51,13 +50,10 @@ func TestCatalogScope_OnDiskShippedFolderIsShipped(t *testing.T) {
 	}
 	found := false
 	for _, m := range Catalog() {
-		if m.Source != "wav" {
+		if m.Source != SourceWAV {
 			continue
 		}
 		found = true
-		if m.Scope != "shipped" {
-			t.Errorf("on-disk wav %q (%s): Scope=%q, want %q", m.ID, m.RelPath, m.Scope, "shipped")
-		}
 	}
 	if !found {
 		t.Fatalf("expected at least one on-disk wav entry")
@@ -85,14 +81,14 @@ func TestCatalogScope_NoSavedCategory(t *testing.T) {
 		t.Fatalf("init catalog: %v", err)
 	}
 	for _, m := range Catalog() {
-		if m.Source != "wav" {
+		if m.Source != SourceWAV {
 			continue
 		}
 		t.Errorf("Saved/-rooted wav leaked into catalog: %+v", m)
 	}
-	for _, c := range CatalogCategories() {
+	for _, c := range CatalogGroups() {
 		if c == "Saved (WAV)" {
-			t.Errorf("Saved (WAV) category should not appear; got: %v", CatalogCategories())
+			t.Errorf("Saved (WAV) category should not appear; got: %v", CatalogGroups())
 		}
 	}
 }

@@ -210,3 +210,64 @@ func TestPool_SubmitBlockingNilContextDefaults(t *testing.T) {
 		t.Fatal("job did not run with nil ctx")
 	}
 }
+
+// TestPoolSubmitBlockingDuringCloseNeverPanics pins a real race found while
+// wiring the playback readiness gate (task 12): warmupController.Begin feeds
+// a real desktopWarmBackend from a background goroutine that calls
+// SubmitBlocking on the audio.prewarm pool; a test that imports a circuit or
+// changes BPM and then closes the Game shortly after (t.Cleanup(g.CloseForTest)
+// releasing the pool) could race a still-in-flight SubmitBlocking call
+// against Close()'s close(p.queue) — a send on an already-closed channel
+// panics unconditionally, even when SubmitBlocking's ctx.Done()/p.ctx.Done()
+// case is ALSO ready in the same select (Go's select does not prefer a
+// "safe" ready case over one that panics).
+//
+// Verified to reproduce without the closeMu fix: a tight loop of goroutines
+// calling SubmitBlocking against a queue kept full (so every call actually
+// blocks in the select, not the queue-has-room fast path) while another
+// goroutine calls Close() concurrently panics with "send on closed channel"
+// within a handful of iterations under -race.
+func TestPoolSubmitBlockingDuringCloseNeverPanics(t *testing.T) {
+	for iter := 0; iter < 50; iter++ {
+		p := NewPool(context.Background(), Options{MaxConcurrent: 1, QueueSize: 1})
+		// Saturate: the seed job occupies the single worker, so the 1-deep
+		// queue fills after the first submitter's send and every later
+		// submitter genuinely blocks in its select rather than taking the
+		// immediate-send fast path — exactly the case Close() must race
+		// safely against.
+		block := make(chan struct{})
+		if err := p.Submit(func(ctx context.Context) { <-block }); err != nil {
+			t.Fatalf("iter %d: seed submit: %v", iter, err)
+		}
+
+		var wg sync.WaitGroup
+		const submitters = 8
+		wg.Add(submitters)
+		for i := 0; i < submitters; i++ {
+			go func() {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("iter %d: SubmitBlocking panicked during Close: %v", iter, r)
+					}
+				}()
+				_ = p.SubmitBlocking(context.Background(), func(ctx context.Context) {})
+			}()
+		}
+		// Give the submitters a moment to actually enter their select before
+		// racing Close against them.
+		time.Sleep(time.Millisecond)
+		var closeWG sync.WaitGroup
+		closeWG.Add(1)
+		go func() {
+			defer closeWG.Done()
+			_ = p.Close()
+		}()
+		// Unblock the seed job so the worker can drain the queue and Close's
+		// internal wg.Wait() can return; races Close() for real rather than
+		// happening strictly before or after it.
+		close(block)
+		wg.Wait()
+		closeWG.Wait()
+	}
+}

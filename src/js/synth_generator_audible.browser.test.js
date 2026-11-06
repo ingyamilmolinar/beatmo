@@ -2,12 +2,10 @@
  * Generator audible regression test (WASM — primary platform), post
  * native-synth-deprecation model.
  *
- * The gen_type "Generator" selector was REMOVED by the native-deprecation
- * migration (MigrateGenType in Go; defensive `delete params.gen_type` in
- * audio.js). Waveform choice now lives in two places:
- *   - bespoke drums: the per-family `<family>_wave` knob (Sine/Saw/Square/
- *     Triangle), e.g. `snare_wave`, flowing through the family param block in
- *     synth_param_abi.gen.js into render_snare_p;
+ * Waveform choice lives in two places:
+ *   - every config-first instrument: the gen-slot `gen1_wave` knob
+ *     (Sine/Saw/Square/Triangle) in the modular param block, rendered by
+ *     render_modular_p;
  *   - FM + Noise generators: the unified `modular` voice's `osc_type`
  *     (0=Sine … 4=FM 5=Noise White 6=Noise Pink) via render_modular_p.
  *
@@ -38,6 +36,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -94,7 +93,7 @@ try {
   await page.waitForFunction(() => typeof setInstrumentParam === "function");
   await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function");
   await page.waitForFunction(() => window.audioReady !== undefined);
-  await page.evaluate(async () => { await window.audioReady; });
+  await waitForAudioReady(page);
 
   // Early ABI sanity: a stale synth_param_abi.gen.js is the root cause of the
   // "silent generator" bug — surface it before the audio assertions.
@@ -103,18 +102,12 @@ try {
   if (abi && abi.stale) fail("synth_param_abi.gen.js is STALE — modular-voiced instruments will be silent (run `make gen-synth-abi`).");
   if (abi && !abi.hasModularFields) fail("ABI is missing the modular enable-flag fields — stage toggles cannot reach C.");
 
-  // EVERY legacy family migrated to the modular engine — render_snare_p /
-  // render_hihat_p / render_fm_bass_p etc. and their family ABI blocks are ALL
-  // deleted (FM in Phase-7, the LAST). This per-recipe wave-knob check still uses
-  // fm-bass, but it is now a MIGRATED instrument: its RENDER_INFO is
-  // paramBlock:'modular', so setInstrumentParam("fm-bass","fm_wave",v) flows
-  // through the platform-push seam (modularPushParamsForInstrument →
-  // fmRecipeToModular), which translates the legacy fm_wave knob onto the modular
-  // block's gen1_wave column, rendered by render_modular_p (source==10 FM voice).
-  // The migrated drum wave knobs are covered end-to-end by the xplat audio-compare
-  // suite (hihat-wave-sine / fm-bass-wave-saw / snare-wave-triangle paramCases) and
-  // the Go native wave knob test.
-  const INST = "fm-bass"; // a MIGRATED FM instrument (render_modular_p, source==10)
+  // fm-bass is a config-first modular instrument (render_modular_p, FM voice):
+  // setInstrumentParam("fm-bass","gen1_wave",v) writes the modular block's
+  // gen1_wave column directly. The other families' wave knobs are covered by the
+  // xplat audio-compare suite (kick-wave-square / fm-bass-wave-saw /
+  // snare-wave-triangle paramCases) and the Go native wave knob test.
+  const INST = "fm-bass"; // config-first FM instrument (render_modular_p)
   const MOD = "modular"; // the unified modular voice (render_modular_p)
 
   // ── Baseline: the migrated fm-bass must be audible. ──
@@ -127,24 +120,28 @@ try {
   // ── Per-recipe wave knob: every non-default waveform must be audible AND
   //    actually change the render (renders are peak-normalized to 0.8, so the
   //    head SHAPE — not the peak — is the discriminator). ──
-  // fm_wave enum: 0=Sine (fm-bass default) 1=Saw 2=Square 3=Triangle. Sweep the
-  // three NON-default waveforms for fm-bass (avoid 0 = the native default).
+  // gen1_wave enum: 0=Sine (fm-bass default) 1=Saw 2=Square 3=Triangle. Sweep
+  // the three NON-default waveforms (avoid 0 = the native default). Writing a
+  // value the instrument's document lacks is a silent no-op, so assert it has it.
+  const WAVE = "gen1_wave";
+  const hasWave = await page.evaluate(([id, k]) => k in (getInstrumentParams(id) || {}), [INST, WAVE]);
+  if (!hasWave) throw new Error(`${INST}'s document has no ${WAVE} value`);
   for (const [wv, label] of [[1, "Saw"], [2, "Square"], [3, "Triangle"]]) {
-    await page.evaluate(([id, v]) => setInstrumentParam(id, "fm_wave", v), [INST, wv]);
+    await page.evaluate(([id, k, v]) => setInstrumentParam(id, k, v), [INST, WAVE, wv]);
     const snap = await page.evaluate((id) => window.__testCaptureSynthRender(id), INST);
-    if (!snap) { fail(`fm_wave=${wv} (${label}): render snapshot null`); continue; }
-    console.log(`[TEST] fm_wave=${wv} (${label}) peak=${snap.peak} rms=${snap.rms}`);
+    if (!snap) { fail(`${WAVE}=${wv} (${label}): render snapshot null`); continue; }
+    console.log(`[TEST] ${WAVE}=${wv} (${label}) peak=${snap.peak} rms=${snap.rms}`);
     if (!(snap.peak > 0)) {
-      fail(`fm_wave=${wv} (${label}) produced SILENCE (peak=${snap.peak}). ` +
+      fail(`${WAVE}=${wv} (${label}) produced SILENCE (peak=${snap.peak}). ` +
         `Switching the waveform off the native default must still render audio.`);
     }
     for (const x of snap.head) {
       if (!Number.isFinite(x)) { fail(`${label}: non-finite sample ${x} in head`); break; }
     }
     if (headDiff(snap, native) < 1e-6) {
-      fail(`fm_wave=${wv} (${label}) rendered identically to Native — the wave knob ` +
+      fail(`${WAVE}=${wv} (${label}) rendered identically to Native — the wave knob ` +
         `did not reach the source==10 FM voice via render_modular_p ` +
-        `(stale modular ABI block, or the push seam dropped the fm_wave→gen1_wave translation?).`);
+        `(stale modular ABI block, or the push seam dropped gen1_wave?).`);
     }
   }
 
@@ -187,9 +184,9 @@ try {
   console.log(`[TEST] LIVE Native master peak=${liveNative.peak.toFixed(5)} rms=${liveNative.rms.toFixed(5)} n=${liveNative.n}`);
   if (!(liveNative.peak > 0)) fail(`LIVE Native ${INST}: master output is SILENT (capture peak=${liveNative.peak})`);
 
-  await page.evaluate((id) => setInstrumentParam(id, "snare_wave", 1), INST); // Saw
+  await page.evaluate(([id, k]) => setInstrumentParam(id, k, 1), [INST, WAVE]); // Saw
   const liveSaw = await captureHit(INST);
-  console.log(`[TEST] LIVE snare_wave=1 (Saw) master peak=${liveSaw.peak.toFixed(5)} rms=${liveSaw.rms.toFixed(5)} n=${liveSaw.n}`);
+  console.log(`[TEST] LIVE ${WAVE}=1 (Saw) master peak=${liveSaw.peak.toFixed(5)} rms=${liveSaw.rms.toFixed(5)} n=${liveSaw.n}`);
   if (!(liveSaw.peak > 0)) {
     fail(`LIVE re-waved (Saw) master output is SILENT (peak=${liveSaw.peak}). ` +
       `This reproduces "audio is gone after switching the waveform".`);

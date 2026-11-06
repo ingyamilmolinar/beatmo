@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
@@ -159,7 +160,7 @@ func (dv *DrumView) IsFXPanelOpen() bool {
 
 // IsEQChannelOpen returns whether the EQ channel dropdown is open.
 func (dv *DrumView) IsEQChannelOpen() bool {
-	return dv.audioTree != nil && dv.portal().Has("eq-channel")
+	return dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen()
 }
 
 // IsNamingOpen returns whether the WAV-naming dialog is open.
@@ -196,7 +197,7 @@ func (dv *DrumView) anyDragActive() bool {
 		(dv.timelineZone != nil && (dv.timelineZone.IsDragging() || dv.timelineZone.IsScrubbing())) ||
 		(dv.rowVolGroup() != nil && dv.rowVolGroup().Capturing()) ||
 		(dv.transportZone != nil && dv.mainVolGroup() != nil && dv.mainVolGroup().Capturing()) ||
-		dv.eqCurveDragBand >= 0 || dv.eqCurveDragFilter != "" ||
+		dv.eqCurveDragBand >= 0 || dv.eqCurveDragFilter != hooks.FilterNone ||
 		dv.rowScroll().ScrollingCommitted() || touchDeadZone ||
 		dv.instMenuScroll.dragging
 }
@@ -266,7 +267,7 @@ func (dv *DrumView) logCapturingState() {
 			dv.timelineZone != nil && dv.timelineZone.IsScrubbing(),
 			dv.rowVolGroup() != nil && dv.rowVolGroup().Capturing(),
 			dv.transportZone != nil && dv.mainVolGroup() != nil && dv.mainVolGroup().Capturing(),
-			dv.eqCurveDragBand >= 0, dv.eqCurveDragFilter != "",
+			dv.eqCurveDragBand >= 0, dv.eqCurveDragFilter != hooks.FilterNone,
 			dv.rowScroll().ScrollingCommitted(), touchDZ,
 			dv.instMenuScroll.dragging)
 	}

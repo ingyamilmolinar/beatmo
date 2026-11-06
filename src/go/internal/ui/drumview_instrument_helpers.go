@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // instMenuHasScroll reports whether the instrument menu has more rows
@@ -27,7 +28,7 @@ func (dv *DrumView) instMenuThumbRect() image.Rectangle {
 // instDisplayLabel returns a user-facing name for an instrument ID,
 // preferring catalog metadata when available. Uses a per-DrumView
 // cache to avoid recomputing the label every frame.
-func (dv *DrumView) instDisplayLabel(id string) string {
+func (dv *DrumView) instDisplayLabel(id instrument.ID) string {
 	if id == "" {
 		return "(missing)"
 	}
@@ -38,7 +39,7 @@ func (dv *DrumView) instDisplayLabel(id string) string {
 	}
 	lbl := dv.computeInstLabel(id)
 	if dv.instLabelCache == nil {
-		dv.instLabelCache = make(map[string]string)
+		dv.instLabelCache = make(map[instrument.ID]string)
 	}
 	dv.instLabelCache[id] = lbl
 	return lbl
@@ -47,18 +48,18 @@ func (dv *DrumView) instDisplayLabel(id string) string {
 // computeInstLabel computes the display label for an instrument ID without
 // caching. Delegates to audio.InstrumentDisplayName, the single source of
 // truth: user override → catalog name → catalog basename → pretty-cased id.
-func (dv *DrumView) computeInstLabel(id string) string {
+func (dv *DrumView) computeInstLabel(id instrument.ID) string {
 	return audio.InstrumentDisplayName(id)
 }
 
 // matchInstrumentSearch reports whether the query q matches the
 // instrument id by id, display label, or relPath. Case-insensitive
 // substring match. Empty query always matches.
-func (dv *DrumView) matchInstrumentSearch(id, q string) bool {
+func (dv *DrumView) matchInstrumentSearch(id instrument.ID, q string) bool {
 	if q == "" {
 		return true
 	}
-	idLower := strings.ToLower(id)
+	idLower := strings.ToLower(string(id))
 	if strings.Contains(idLower, q) {
 		return true
 	}
@@ -146,7 +147,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		if cat, ok := dv.instCatByID[dv.Rows[rowIdx].Instrument]; ok {
 			dv.instMenuActiveCat = cat
 			if dv.instMenuActiveByRow == nil {
-				dv.instMenuActiveByRow = map[int]string{}
+				dv.instMenuActiveByRow = map[int]audio.Category{}
 			}
 			dv.instMenuActiveByRow[rowIdx] = cat
 		}
@@ -174,13 +175,12 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 
 	var instOpts []InstrumentOption
 	for _, id := range dv.instOptions {
-		label := id
-		if dv.instLabelCache != nil {
-			if l, ok := dv.instLabelCache[id]; ok {
-				label = l
-			}
-		}
-		cat := ""
+		// instDisplayLabel fills the cache on a miss. Reading the cache
+		// directly fell back to the raw id whenever nothing had warmed it —
+		// it only ever worked because calcLabelWidth used to measure every
+		// instrument option (and so warmed every entry) as a side effect.
+		label := dv.instDisplayLabel(id)
+		cat := audio.CatNone
 		if dv.instCatByID != nil {
 			cat = dv.instCatByID[id]
 		}
@@ -201,6 +201,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		anchorRect = dv.rowLabels()[rowIdx].Rect()
 	}
 	dv.instMenuComp.SetProps(InstrumentMenuProps{
+		TextFields:            dv.textFields,
 		AnchorRect:            anchorRect,
 		VertBounds:            vertBounds,
 		RowIndex:              rowIdx,
@@ -215,13 +216,19 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		ShowFavoritesCategory: dv.instMenuShowFavoritesCategory,
 		ProjectPins:           dv.ProjectPins(),
 		Style:                 DefaultMenuStyle(),
-		OnSelect: func(instID string) {
-			// SetInstrument invokes dv.onRowInstrumentChanged so
-			// dependents (EQ panel, etc.) follow per CLAUDE.md
-			// "Two-Tier Event Notification" rules.
-			dv.SetInstrument(instID)
+		OnSelect: func(instID instrument.ID) {
+			// pickInstrument never drops the row's settings: it may ask
+			// first (pick_settings.go), then SetInstrument invokes
+			// dv.onRowInstrumentChanged so dependents follow.
+			dv.pickInstrument(rowIdx, instID)
 		},
-		OnFavorite: func(instID string, fav bool) {
+		RowInstrument: func() instrument.ID {
+			if rowIdx >= 0 && rowIdx < len(dv.Rows) {
+				return dv.Rows[rowIdx].Instrument
+			}
+			return ""
+		},
+		OnFavorite: func(instID instrument.ID, fav bool) {
 			// FavoritesStore.Set is invoked by the component itself;
 			// this hook is a telemetry / future-integration seam.
 			_ = instID

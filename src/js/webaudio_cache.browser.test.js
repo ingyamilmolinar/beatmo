@@ -4,9 +4,14 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+import { waitForAudioReady } from "./browser_test_helpers.js";
+import { readAppInstrumentBlocks } from "./real_input_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
+
+// A bare audio.js page has no instruments until Go pushes their blocks.
+const { snare: SNARE } = await readAppInstrumentBlocks(["snare"]);
 
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/cache.html" : req.url;
   if (req.url === "/" || req.url === "/cache.html") { const html = `<!DOCTYPE html><html><body>
@@ -35,7 +40,8 @@ const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
 const page = await browser.newPage();
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof window.playSound === 'function' && typeof window.playSoundParams === 'function');
-await page.evaluate(async () => await window.audioReady);
+await waitForAudioReady(page);
+await page.evaluate((b) => window.setInstrumentBlock("snare", Float64Array.from(b.block), b.seconds, b.amp, b.melodic, b.gateTail, b.fx), SNARE);
 
 // Helper: peak + RMS of a numeric sample array (runs in the test process).
 function peakRms(samples) {
@@ -104,18 +110,20 @@ if (renders !== 1) { throw new Error(`expected single render after reset, got ${
 }
 if (!stats || typeof stats !== 'object' || !stats.snare) { throw new Error('render cache missing snare entry');
 }
-// frames/duration teeth — cache must hold a full-length 48k/1s buffer.
-if (stats.snare.frames !== 48000) { throw new Error(`expected 48000 frames, got ${stats.snare.frames}`);
+// frames/duration teeth — cache must hold the full voice: the document's
+// render.seconds at 48 kHz (audio.VoiceFrames = floor(sr * seconds)).
+const FRAMES = Math.max(1, Math.floor(48000 * SNARE.seconds));
+if (stats.snare.frames !== FRAMES) { throw new Error(`expected ${FRAMES} frames (${SNARE.seconds} s), got ${stats.snare.frames}`);
 }
-if (stats.snare.duration !== 1) { throw new Error(`expected duration 1, got ${stats.snare.duration}`);
+if (Math.abs(stats.snare.duration - FRAMES / 48000) > 1e-9) { throw new Error(`expected duration ${FRAMES / 48000}, got ${stats.snare.duration}`);
 }
 
 // ---- Audio-content teeth: the cached buffer must hold REAL signal --------
 // A cache of zeros (or garbage below the floor) must FAIL here. This is the
 // deterministic, tap-free authority: it reads the renderCache Float32Array.
 const cachedData = result.cachedData;
-if (!Array.isArray(cachedData) || cachedData.length !== 48000) {
-  throw new Error(`getCachedRenderData('snare') did not return 48000 samples (got ${cachedData && cachedData.length})`);
+if (!Array.isArray(cachedData) || cachedData.length !== FRAMES) {
+  throw new Error(`getCachedRenderData('snare') did not return ${FRAMES} samples (got ${cachedData && cachedData.length})`);
 }
 const cachedStats = peakRms(cachedData);
 // Non-silence floor: a meaningful signal peaks well above 0.01.

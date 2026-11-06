@@ -5,6 +5,10 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // Build a minimal export with two instruments and two nodes and verify that
@@ -17,17 +21,17 @@ func TestImportClearsPendingOriginAndPopupClickDoesNotReassign(t *testing.T) {
 	g.Layout(640, 480)
 
 	// Construct a simple exported file with two nodes and two instruments
-	exp := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	exp := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular"},
-			{ID: 1, I: 3, J: 0, Type: "regular"},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular},
+			{ID: 1, I: 3, J: 0, Type: model.NodeTypeRegular},
 		},
 		Instruments: []exportInstrument{
-			{Name: "Row0", ID: "snare", Kind: "builtin", Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
-			{Name: "Row1", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"},
+			{Name: "Row0", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
+			{Name: "Row1", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF"},
 		},
 	}
 	data, _ := json.Marshal(exp)

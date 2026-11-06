@@ -6,6 +6,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func scheduleAbsForMuteTest(g *Game, abs int) {
@@ -67,11 +68,11 @@ func TestMuteNodeStopsAudioWithoutGating(t *testing.T) {
 
 	g.SetPlaying(true)
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	inst := g.drum.Rows[0].Instrument
 	stops := 0
-	audio.SetStopHook(func(id string) {
+	audio.SetStopHook(func(id instrument.ID) {
 		if id == inst {
 			stops++
 		}
@@ -128,14 +129,14 @@ func TestMuteNodeHighlightRespectsLogic(t *testing.T) {
 		g.drum.Rows[0].Steps[i] = true
 	}
 	if n, ok := g.graph.GetNodeByID(mute.ID); ok {
-		n.Params.LogicKind = "every_n_triggers"
+		n.Params.LogicKind = model.LogicEveryN
 		n.Params.LogicN = 2
 		g.graph.Nodes[mute.ID] = n
 	}
 	g.updateBeatInfos()
 
 	g.SetPlaying(true)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	muteIdx := -1
 	for i, bi := range g.beatInfosByRow[0] {
@@ -192,7 +193,7 @@ func TestMuteNodeLogicEveryNTriggers(t *testing.T) {
 		g.drum.Rows[0].Steps[i] = true
 	}
 	if n, ok := g.graph.GetNodeByID(mute.ID); ok {
-		n.Params.LogicKind = "every_n_triggers"
+		n.Params.LogicKind = model.LogicEveryN
 		n.Params.LogicN = 2
 		g.graph.Nodes[mute.ID] = n
 	}
@@ -203,7 +204,7 @@ func TestMuteNodeLogicEveryNTriggers(t *testing.T) {
 
 	g.SetPlaying(true)
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	cycleLen := len(g.beatInfosByRow[0])
 	if len(g.seqNextIdxs) == 0 {
@@ -280,7 +281,7 @@ func TestMuteNodeHighlight(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.SetPlaying(true)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	// Advance until we schedule the mute node once.
 	scheduleAbsForMuteTest(g, 0)
@@ -313,7 +314,7 @@ type muteObservation struct {
 	stopDelta int
 }
 
-func setupMuteLoopGame(t *testing.T, logicKind string, logicN int) (*Game, model.NodeID) {
+func setupMuteLoopGame(t *testing.T, logicKind model.LogicKind, logicN int) (*Game, model.NodeID) {
 	t.Helper()
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -340,7 +341,7 @@ func setupMuteLoopGame(t *testing.T, logicKind string, logicN int) (*Game, model
 
 	g.updateBeatInfos()
 	g.SetPlaying(true)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	return g, mute.ID
 }
@@ -390,7 +391,7 @@ func TestMuteNodeSkipEveryNLogicLoopAudioHighlight(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run("N="+strconv.Itoa(tc.n), func(t *testing.T) {
-			g, muteID := setupMuteLoopGame(t, "skip_every_n", tc.n)
+			g, muteID := setupMuteLoopGame(t, model.LogicSkipEveryN, tc.n)
 			defer func() {
 				stopPlaybackForTest(g)
 				if g.engine != nil {
@@ -400,7 +401,7 @@ func TestMuteNodeSkipEveryNLogicLoopAudioHighlight(t *testing.T) {
 
 			inst := g.drum.Rows[0].Instrument
 			stops := 0
-			audio.SetStopHook(func(id string) {
+			audio.SetStopHook(func(id instrument.ID) {
 				if id == inst {
 					stops++
 				}
@@ -444,7 +445,7 @@ func TestMuteNodeEveryNLoopAudioHighlight(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run("N="+strconv.Itoa(tc.n), func(t *testing.T) {
-			g, muteID := setupMuteLoopGame(t, "every_n_triggers", tc.n)
+			g, muteID := setupMuteLoopGame(t, model.LogicEveryN, tc.n)
 			defer func() {
 				stopPlaybackForTest(g)
 				if g.engine != nil {
@@ -454,7 +455,7 @@ func TestMuteNodeEveryNLoopAudioHighlight(t *testing.T) {
 
 			inst := g.drum.Rows[0].Instrument
 			stops := 0
-			audio.SetStopHook(func(id string) {
+			audio.SetStopHook(func(id instrument.ID) {
 				if id == inst {
 					stops++
 				}

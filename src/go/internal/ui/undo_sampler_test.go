@@ -28,7 +28,7 @@ func setupSamplerForUndo(t *testing.T, g *Game) string {
 		t.Skipf("could not capture a sampler buffer for %q", instID)
 	}
 	layoutSamplerTab(t, g)
-	return instID
+	return string(instID)
 }
 
 func clickSamplerButton(t *testing.T, g *Game, tag string) {
@@ -74,17 +74,21 @@ func samplerTrimHandleDrag(t *testing.T, g *Game) {
 	h.OnRelease(x, y)
 }
 
-// samplerNumericEntry opens the shared value editor over a knob readout and
-// commits a typed value through the production editor commit.
+// samplerNumericEntry sets an exact value on a knob through the production
+// value wheel (typed entry was retired): open the gain wheel, step it down six
+// detents (live), and Accept — one commit, one undo step.
 func samplerNumericEntry(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
-	dv.openSamplerParamEditor(samplerKnobGain)
-	if dv.paramEditor == nil || !dv.paramEditor.Active() {
-		t.Fatal("sampler numeric editor did not open")
+	dv.openSamplerKnobWheelPopup(samplerKnobGain)
+	w := dv.samplerWheelPopup
+	if w == nil || !w.IsOpen() {
+		t.Fatal("sampler gain wheel did not open")
 	}
-	dv.paramEditor.ti.SetText("-6")
-	dv.paramEditor.commit()
+	for i := 0; i < 6; i++ {
+		w.StepValue(-1)
+	}
+	w.Accept()
 }
 
 // TestSamplerKnobWheelViaTreeIsUndoable is the end-to-end functional proof: it

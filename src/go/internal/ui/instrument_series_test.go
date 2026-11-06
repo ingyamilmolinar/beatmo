@@ -55,28 +55,3 @@ func TestSetInstrumentKeepsIndexColor(t *testing.T) {
 		t.Errorf("row %d color %s != seriesColorAt(%d)=%s", row, rgbKey(dv.Rows[row].Color), row, rgbKey(seriesColorAt(row)))
 	}
 }
-
-// TestResequenceRowColors asserts ResequenceRowColors re-derives every row's
-// color from the series by index, overwriting whatever colors were present
-// (e.g. off-palette colors imported from a baked circuit JSON).
-func TestResequenceRowColors(t *testing.T) {
-	assertDefaultParityState(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-	dv := g.drum
-	for len(dv.Rows) < 4 {
-		dv.AddRow()
-	}
-	// Scramble colors to an off-palette value.
-	for i := range dv.Rows {
-		dv.Rows[i].Color = parseHexColor("#123456FF")
-	}
-	dv.ResequenceRowColors()
-	for i, r := range dv.Rows {
-		want := seriesColorAt(i)
-		if rgbKey(r.Color) != rgbKey(want) {
-			t.Errorf("row %d color %s != seriesColorAt(%d)=%s after resequence", i, rgbKey(r.Color), i, rgbKey(want))
-		}
-	}
-}

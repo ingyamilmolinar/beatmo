@@ -14,6 +14,10 @@ func (s *playbackSlate) updateBeatInfos() {
 	start := time.Now()
 	defer func() { g.logger.Debugf("[update_beat_infos] total=%v", time.Since(start)) }()
 
+	// Freeze everything the playhead has passed BEFORE the paths (and then the
+	// predictor) are rebuilt from the edited graph: those cells have played.
+	g.freezePlayedThroughPlayhead()
+
 	g.rebuildNodeCache()
 	g.logger.Debugf("[update_beat_infos] rebuildNodeCache elapsed=%v", time.Since(start))
 
@@ -307,7 +311,7 @@ func (s *playbackSlate) updateBeatInfos() {
 			maxIdx := g.drum.Offset + g.drum.Length
 			for i := g.drum.Offset + 1; i < maxIdx; i++ {
 				bi := g.beatInfoAtRow(r, i)
-				if bi.NodeType == model.NodeTypeRegular || bi.NodeType == model.NodeTypeMute || bi.NodeType == model.NodeTypeSilent {
+				if bi.NodeType.Fires() || bi.NodeType == model.NodeTypeMute || bi.NodeType == model.NodeTypeSilent {
 					target = i
 					break
 				}

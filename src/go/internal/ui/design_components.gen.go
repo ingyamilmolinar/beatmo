@@ -5,8 +5,6 @@
 
 package ui
 
-import "image/color"
-
 // ComponentID enum — one per DESIGN.md component entry, in source order.
 const (
 	ComponentButtonPrimary ComponentID = iota
@@ -53,360 +51,370 @@ const (
 	componentCount
 )
 
-// componentSpecs is the generated registry. Indexed by ComponentID.
-var componentSpecs = [componentCount]ComponentSpec{
-	ComponentButtonPrimary: {
-		ID:       ComponentButtonPrimary,
-		Category: CategoryButton,
-		Fill:     color.RGBA{255, 179, 10, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaWhiteDecoration,
+// componentSpecs is the generated registry, indexed by ComponentID. It is
+// BUILT from the live genColor* token variables so a runtime theme
+// (theme_runtime.go ApplyTheme) can rebuild it after overwriting them.
+var componentSpecs = buildComponentSpecs()
+
+// rebuildComponentSpecs re-derives the registry from the current token
+// variables. Called by ApplyTheme after the genColor* writes.
+func rebuildComponentSpecs() { componentSpecs = buildComponentSpecs() }
+
+func buildComponentSpecs() [componentCount]ComponentSpec {
+	return [componentCount]ComponentSpec{
+		ComponentButtonPrimary: {
+			ID:       ComponentButtonPrimary,
+			Category: CategoryButton,
+			Fill:     genColorPrimary,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaWhiteDecoration,
+			},
+			Radius: 4,
+			Height: 44,
 		},
-		Radius: 12,
-		Height: 44,
-	},
-	ComponentButtonSecondary: {
-		ID:       ComponentButtonSecondary,
-		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentButtonSecondary: {
+			ID:       ComponentButtonSecondary,
+			Category: CategoryButton,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius:           4,
+			Height:           36,
+			IconColor:        genColorOnSurfaceMuted,
+			HasIconColor:     true,
+			TopEdgeHighlight: true,
+			Interaction: Interaction{
+				Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
+				Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+			},
 		},
-		Radius:           12,
-		Height:           36,
-		IconColor:        color.RGBA{201, 184, 214, 255},
-		HasIconColor:     true,
-		TopEdgeHighlight: true,
-		Interaction: Interaction{
-			Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
-			Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+		ComponentButtonSecondaryActive: {
+			ID:       ComponentButtonSecondaryActive,
+			Category: CategoryButton,
+			Fill:     genColorSurface3,
 		},
-	},
-	ComponentButtonSecondaryActive: {
-		ID:       ComponentButtonSecondaryActive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{56, 35, 84, 255},
-	},
-	ComponentButtonRowControl: {
-		ID:       ComponentButtonRowControl,
-		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentButtonRowControl: {
+			ID:       ComponentButtonRowControl,
+			Category: CategoryButton,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius: 4,
+			Height: 36,
+			Interaction: Interaction{
+				Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
+				Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+			},
 		},
-		Radius: 8,
-		Height: 36,
-		Interaction: Interaction{
-			Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
-			Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+		ComponentButtonRowControlMuteActive: {
+			ID:       ComponentButtonRowControlMuteActive,
+			Category: CategoryButton,
+			Fill:     genColorMute,
+			Border: BorderRef{
+				BaseColor: genColorMuteActiveBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
 		},
-	},
-	ComponentButtonRowControlMuteActive: {
-		ID:       ComponentButtonRowControlMuteActive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{196, 0, 181, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 106, 213, 255},
-			Alpha:     255,
+		ComponentButtonRowControlSoloActive: {
+			ID:       ComponentButtonRowControlSoloActive,
+			Category: CategoryButton,
+			Fill:     genColorPrimaryBright,
+			Border: BorderRef{
+				BaseColor: genColorSoloActiveBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonRowControlSoloActive: {
-		ID:       ComponentButtonRowControlSoloActive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{255, 211, 25, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 211, 25, 255},
-			Alpha:     255,
+		ComponentButtonRowControlFxActive: {
+			ID:       ComponentButtonRowControlFxActive,
+			Category: CategoryButton,
+			Fill:     genColorFxActiveFill,
+			Border: BorderRef{
+				BaseColor: genColorPrimary,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonRowControlFxActive: {
-		ID:       ComponentButtonRowControlFxActive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 179, 10, 255},
-			Alpha:     255,
+		ComponentButtonDestructive: {
+			ID:       ComponentButtonDestructive,
+			Category: CategoryButton,
+			Fill:     genColorDestructive,
+			Border: BorderRef{
+				BaseColor: genColorDestructiveBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonDestructive: {
-		ID:       ComponentButtonDestructive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{232, 74, 31, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 92, 42, 255},
-			Alpha:     255,
+		ComponentButtonDestructiveConfirm: {
+			ID:       ComponentButtonDestructiveConfirm,
+			Category: CategoryButton,
+			Fill:     genColorDestructiveConfirmFill,
+			Border: BorderRef{
+				BaseColor: genColorDestructiveConfirmBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonDestructiveConfirm: {
-		ID:       ComponentButtonDestructiveConfirm,
-		Category: CategoryButton,
-		Fill:     color.RGBA{232, 74, 31, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 92, 42, 255},
-			Alpha:     255,
+		ComponentButtonDisabled: {
+			ID:       ComponentButtonDisabled,
+			Category: CategoryButton,
+			Fill:     genColorDisabledFill,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius: 4,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonDisabled: {
-		ID:       ComponentButtonDisabled,
-		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentPanel: {
+			ID:     ComponentPanel,
+			Fill:   genColorSurfaceOverlay,
+			Radius: 8,
 		},
-		Radius: 8,
-	},
-	ComponentPanel: {
-		ID:     ComponentPanel,
-		Fill:   color.RGBA{31, 20, 56, 255},
-		Radius: 12,
-	},
-	ComponentBottomSheet: {
-		ID:     ComponentBottomSheet,
-		Fill:   color.RGBA{31, 20, 56, 255},
-		Radius: 20,
-	},
-	ComponentContextMenuItem: {
-		ID:     ComponentContextMenuItem,
-		Fill:   color.RGBA{31, 20, 56, 255},
-		Height: 36,
-	},
-	ComponentContextMenuItemDestructive: {
-		ID:   ComponentContextMenuItemDestructive,
-		Fill: color.RGBA{31, 20, 56, 255},
-	},
-	ComponentMenuSearchField: {
-		ID:       ComponentMenuSearchField,
-		Category: CategoryInput,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderDefault,
+		ComponentBottomSheet: {
+			ID:     ComponentBottomSheet,
+			Fill:   genColorSurfaceOverlay,
+			Radius: 20,
 		},
-		Radius:       8,
-		IconColor:    color.RGBA{201, 184, 214, 255},
-		HasIconColor: true,
-	},
-	ComponentMenuGroupHeader: {
-		ID:       ComponentMenuGroupHeader,
-		Category: CategoryDecoration,
-		Fill:     color.RGBA{31, 20, 56, 255},
-	},
-	ComponentFxCard: {
-		ID:       ComponentFxCard,
-		Category: CategoryContainer,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentContextMenuItem: {
+			ID:     ComponentContextMenuItem,
+			Fill:   genColorSurfaceOverlay,
+			Height: 36,
 		},
-		Radius: 8,
-	},
-	ComponentButtonRecordIdle: {
-		ID:     ComponentButtonRecordIdle,
-		Fill:   color.RGBA{40, 26, 64, 255},
-		Radius: 12,
-		Height: 36,
-	},
-	ComponentButtonRecordActive: {
-		ID:     ComponentButtonRecordActive,
-		Fill:   color.RGBA{40, 26, 64, 255},
-		Radius: 12,
-		Height: 36,
-	},
-	ComponentButtonPlayActive: {
-		ID:     ComponentButtonPlayActive,
-		Fill:   color.RGBA{40, 26, 64, 255},
-		Radius: 12,
-		Height: 36,
-	},
-	ComponentSectionHeaderActive: {
-		ID: ComponentSectionHeaderActive,
-	},
-	ComponentSplitterHandleMobile: {
-		ID:     ComponentSplitterHandleMobile,
-		Fill:   color.RGBA{255, 158, 31, 255},
-		Radius: 8,
-	},
-	ComponentRowRack: {
-		ID:   ComponentRowRack,
-		Fill: color.RGBA{28, 18, 48, 255},
-	},
-	ComponentVizCanvas: {
-		ID:     ComponentVizCanvas,
-		Fill:   color.RGBA{18, 10, 28, 255},
-		Radius: 8,
-	},
-	ComponentVizSpectrumBar: {
-		ID:   ComponentVizSpectrumBar,
-		Fill: color.RGBA{255, 179, 10, 255},
-	},
-	ComponentVizSpectrumBarPeak: {
-		ID:   ComponentVizSpectrumBarPeak,
-		Fill: color.RGBA{255, 233, 138, 255},
-	},
-	ComponentVizEqCurve: {
-		ID: ComponentVizEqCurve,
-	},
-	ComponentVizWaveTraceA: {
-		ID: ComponentVizWaveTraceA,
-	},
-	ComponentVizWaveTraceB: {
-		ID: ComponentVizWaveTraceB,
-	},
-	ComponentInputField: {
-		ID:       ComponentInputField,
-		Category: CategoryInput,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderDefault,
+		ComponentContextMenuItemDestructive: {
+			ID:   ComponentContextMenuItemDestructive,
+			Fill: genColorSurfaceOverlay,
 		},
-		Radius: 8,
-		Interaction: Interaction{
-			Focus: InteractionDelta{FillDelta: 30, BorderDelta: 80, HighlightDelta: 0},
+		ComponentMenuSearchField: {
+			ID:       ComponentMenuSearchField,
+			Category: CategoryInput,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderDefault,
+			},
+			Radius:       8,
+			IconColor:    genColorOnSurfaceMuted,
+			HasIconColor: true,
 		},
-	},
-	ComponentInputFieldFocused: {
-		ID:       ComponentInputFieldFocused,
-		Category: CategoryInput,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderEmphasis,
+		ComponentMenuGroupHeader: {
+			ID:       ComponentMenuGroupHeader,
+			Category: CategoryDecoration,
+			Fill:     genColorSurfaceOverlay,
 		},
-	},
-	ComponentButtonStepper: {
-		ID:       ComponentButtonStepper,
-		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentFxCard: {
+			ID:       ComponentFxCard,
+			Category: CategoryContainer,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius: 8,
 		},
-		Radius:           12,
-		Height:           36,
-		IconColor:        color.RGBA{201, 184, 214, 255},
-		HasIconColor:     true,
-		TopEdgeHighlight: true,
-		Interaction: Interaction{
-			Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
-			Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+		ComponentButtonRecordIdle: {
+			ID:     ComponentButtonRecordIdle,
+			Fill:   genColorSurface2,
+			Radius: 4,
+			Height: 36,
 		},
-	},
-	ComponentButtonPlayDesktop: {
-		ID:       ComponentButtonPlayDesktop,
-		Category: CategoryButton,
-		Fill:     color.RGBA{43, 200, 92, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{63, 214, 122, 255},
-			Alpha:     255,
+		ComponentButtonRecordActive: {
+			ID:     ComponentButtonRecordActive,
+			Fill:   genColorSurface2,
+			Radius: 4,
+			Height: 36,
 		},
-		Radius: 12,
-		Height: 36,
-	},
-	ComponentButtonStopDesktop: {
-		ID:       ComponentButtonStopDesktop,
-		Category: CategoryButton,
-		Fill:     color.RGBA{232, 74, 31, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 92, 42, 255},
-			Alpha:     255,
+		ComponentButtonPlayActive: {
+			ID:     ComponentButtonPlayActive,
+			Fill:   genColorSurface2,
+			Radius: 4,
+			Height: 36,
 		},
-		Radius: 12,
-		Height: 36,
-	},
-	ComponentButtonDropdown: {
-		ID:       ComponentButtonDropdown,
-		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 179, 10, 255},
-			Alpha:     genAlphaAccentTint,
+		ComponentSectionHeaderActive: {
+			ID: ComponentSectionHeaderActive,
 		},
-		Radius: 12,
-		Height: 36,
-	},
-	ComponentButtonMissingInstrument: {
-		ID:       ComponentButtonMissingInstrument,
-		Category: CategoryButton,
-		Fill:     color.RGBA{255, 92, 42, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderDefault,
+		ComponentSplitterHandleMobile: {
+			ID:     ComponentSplitterHandleMobile,
+			Fill:   genColorPrimaryDim,
+			Radius: 8,
 		},
-		Radius: 8,
-	},
-	ComponentButtonEqMute: {
-		ID:       ComponentButtonEqMute,
-		Category: CategoryButton,
-		Fill:     color.RGBA{56, 35, 84, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderDefault,
+		ComponentRowRack: {
+			ID:   ComponentRowRack,
+			Fill: genColorSurface1,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonEqMuteActive: {
-		ID:       ComponentButtonEqMuteActive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{232, 74, 31, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderDefault,
+		ComponentVizCanvas: {
+			ID:     ComponentVizCanvas,
+			Fill:   genColorVizBg,
+			Radius: 8,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonEqFilterActive: {
-		ID:       ComponentButtonEqFilterActive,
-		Category: CategoryButton,
-		Fill:     color.RGBA{255, 158, 31, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 179, 10, 255},
-			Alpha:     255,
+		ComponentVizSpectrumBar: {
+			ID:   ComponentVizSpectrumBar,
+			Fill: genColorVizBar,
 		},
-		Radius: 8,
-		Height: 36,
-	},
-	ComponentButtonTransportFollowOn: {
-		ID:       ComponentButtonTransportFollowOn,
-		Category: CategoryButton,
-		Fill:     color.RGBA{56, 35, 84, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentVizSpectrumBarPeak: {
+			ID:   ComponentVizSpectrumBarPeak,
+			Fill: genColorVizBarPeak,
 		},
-		Radius:       12,
-		Height:       36,
-		IconColor:    color.RGBA{253, 242, 255, 255},
-		HasIconColor: true,
-	},
-	ComponentButtonRowLabelMobile: {
-		ID:       ComponentButtonRowLabelMobile,
-		Category: CategoryButton,
-		Fill:     color.RGBA{28, 18, 48, 255},
-		Border: BorderRef{
-			BaseColor: color.RGBA{255, 255, 255, 255},
-			Alpha:     genAlphaBorderThin,
+		ComponentVizEqCurve: {
+			ID: ComponentVizEqCurve,
 		},
-		Radius: 8,
-		Height: 36,
-	},
+		ComponentVizWaveTraceA: {
+			ID: ComponentVizWaveTraceA,
+		},
+		ComponentVizWaveTraceB: {
+			ID: ComponentVizWaveTraceB,
+		},
+		ComponentInputField: {
+			ID:       ComponentInputField,
+			Category: CategoryInput,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderDefault,
+			},
+			Radius: 4,
+			Interaction: Interaction{
+				Focus: InteractionDelta{FillDelta: 30, BorderDelta: 80, HighlightDelta: 0},
+			},
+		},
+		ComponentInputFieldFocused: {
+			ID:       ComponentInputFieldFocused,
+			Category: CategoryInput,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderEmphasis,
+			},
+		},
+		ComponentButtonStepper: {
+			ID:       ComponentButtonStepper,
+			Category: CategoryButton,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius:           4,
+			Height:           36,
+			IconColor:        genColorOnSurfaceMuted,
+			HasIconColor:     true,
+			TopEdgeHighlight: true,
+			Interaction: Interaction{
+				Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
+				Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+			},
+		},
+		ComponentButtonPlayDesktop: {
+			ID:       ComponentButtonPlayDesktop,
+			Category: CategoryButton,
+			Fill:     genColorPlayDesktopFill,
+			Border: BorderRef{
+				BaseColor: genColorPlayDesktopBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+		ComponentButtonStopDesktop: {
+			ID:       ComponentButtonStopDesktop,
+			Category: CategoryButton,
+			Fill:     genColorStopDesktopFill,
+			Border: BorderRef{
+				BaseColor: genColorStopDesktopBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+		ComponentButtonDropdown: {
+			ID:       ComponentButtonDropdown,
+			Category: CategoryButton,
+			Fill:     genColorSurface2,
+			Border: BorderRef{
+				BaseColor: genColorPrimary,
+				Alpha:     genAlphaAccentTint,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+		ComponentButtonMissingInstrument: {
+			ID:       ComponentButtonMissingInstrument,
+			Category: CategoryButton,
+			Fill:     genColorErrorText,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderDefault,
+			},
+			Radius: 4,
+		},
+		ComponentButtonEqMute: {
+			ID:       ComponentButtonEqMute,
+			Category: CategoryButton,
+			Fill:     genColorSurface3,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderDefault,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+		ComponentButtonEqMuteActive: {
+			ID:       ComponentButtonEqMuteActive,
+			Category: CategoryButton,
+			Fill:     genColorEqMuteActiveFill,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderDefault,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+		ComponentButtonEqFilterActive: {
+			ID:       ComponentButtonEqFilterActive,
+			Category: CategoryButton,
+			Fill:     genColorEqFilterActiveFill,
+			Border: BorderRef{
+				BaseColor: genColorEqFilterActiveBorder,
+				Alpha:     255,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+		ComponentButtonTransportFollowOn: {
+			ID:       ComponentButtonTransportFollowOn,
+			Category: CategoryButton,
+			Fill:     genColorSurface3,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius:       4,
+			Height:       36,
+			IconColor:    genColorOnSurface,
+			HasIconColor: true,
+		},
+		ComponentButtonRowLabelMobile: {
+			ID:       ComponentButtonRowLabelMobile,
+			Category: CategoryButton,
+			Fill:     genColorSurface1,
+			Border: BorderRef{
+				BaseColor: genColorBorder,
+				Alpha:     genAlphaBorderThin,
+			},
+			Radius: 4,
+			Height: 36,
+		},
+	}
 }
 
 // Spec returns the immutable ComponentSpec for the given ID. The returned

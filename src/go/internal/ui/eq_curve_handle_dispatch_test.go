@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // dispatchPressViaHitIndex replicates the DrumView tree's core press-dispatch
@@ -100,7 +102,7 @@ func TestEQFilterHandlePressReachesCurveHandler(t *testing.T) {
 			"want %q captured. The opaque catch-all is swallowing the HP/LP "+
 			"handle press.", tag, res, "eq-curve-area")
 	}
-	if z.curveDragFilter != "hpf" {
+	if z.curveDragFilter != hooks.FilterHPF {
 		t.Fatalf("expected curveDragFilter=%q after dispatched press, got %q", "hpf", z.curveDragFilter)
 	}
 }

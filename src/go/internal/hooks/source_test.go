@@ -146,8 +146,8 @@ func TestSourceStringFormat(t *testing.T) {
 // not absolute machine-specific paths.
 func TestSplitPkgFileTrimToProjectRoot(t *testing.T) {
 	cases := []struct {
-		in      string
-		wantPkg string
+		in       string
+		wantPkg  string
 		wantBase string
 	}{
 		{"/home/u/Repos/beatmo/src/go/internal/ui/game_graph_nodes.go", "internal/ui", "game_graph_nodes.go"},

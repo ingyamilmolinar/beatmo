@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // SetMasterVolume sets the master output volume (0..1) and syncs the
@@ -56,12 +57,12 @@ func (g *Game) SetEQLPF(enabled bool, cutoffHz float64) {
 }
 
 // SetEQBandGain sets the gain (in dB) for a band on the given channel.
-// channel: "main" (or empty) for the master channel, or an instrument id.
-func (g *Game) SetEQBandGain(channel string, band int, gainDB float64) {
+// ch: channel.Master or an instrument's channel.
+func (g *Game) SetEQBandGain(ch channel.ID, band int, gainDB float64) {
 	if g.drum == nil {
 		return
 	}
-	gains, muted := g.drum.loadChannelBandState(channel)
+	gains, muted := g.drum.loadChannelBandState(ch)
 	if band < 0 || band >= len(gains) {
 		return
 	}

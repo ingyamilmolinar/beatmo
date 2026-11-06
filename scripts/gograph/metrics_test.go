@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestAnalyzeMetricsFixture(t *testing.T) {
-	pkgs, err := AnalyzeMetrics("testdata/fixturemod", "example.com/fixture")
+	pkgs, err := AnalyzeMetrics(Config{Root: "testdata/fixturemod", Module: "example.com/fixture", GOOS: "linux"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,4 +86,30 @@ func keys(m map[string]*Package) []string {
 		k = append(k, x)
 	}
 	return k
+}
+
+// A build-tag pair declares one name twice; only the variant the configured
+// GOOS compiles is measured, so the name appears exactly once.
+func TestAnalyzeMetricsHonoursBuildConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		goos      string
+		wantCyclo int
+	}{{"linux", 2}, {"js", 1}} {
+		pkgs, err := AnalyzeMetrics(Config{Root: "testdata/fixturemod", Module: "example.com/fixture", GOOS: tc.goos})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found []FuncMetric
+		for _, f := range pkgs["example.com/fixture/foo"].Funcs {
+			if f.Name == "Plat" {
+				found = append(found, f)
+			}
+		}
+		if len(found) != 1 {
+			t.Fatalf("GOOS=%s: Plat declared %d times, want 1", tc.goos, len(found))
+		}
+		if found[0].Cyclo != tc.wantCyclo {
+			t.Errorf("GOOS=%s: Plat cyclo = %d, want %d (wrong variant measured)", tc.goos, found[0].Cyclo, tc.wantCyclo)
+		}
+	}
 }

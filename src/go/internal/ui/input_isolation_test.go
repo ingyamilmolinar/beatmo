@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -272,8 +273,8 @@ func TestPopupBlocksBPMFocus(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.transportZone.paramEditor.Active() {
-		t.Fatal("BPM editor opened while instrument menu was open — popup failed to block input")
+	if dv.valueWheelPopup != nil && dv.valueWheelPopup.IsOpen() {
+		t.Fatal("BPM wheel opened while instrument menu was open — popup failed to block input")
 	}
 }
 
@@ -326,8 +327,8 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 			dv.Update()
 			restore()
 
-			if dv.transportZone.paramEditor.Active() {
-				t.Fatalf("BPM editor opened while %s was open", tc.name)
+			if dv.valueWheelPopup != nil && dv.valueWheelPopup.IsOpen() {
+				t.Fatalf("BPM wheel opened while %s was open", tc.name)
 			}
 		})
 	}
@@ -400,7 +401,7 @@ func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -501,7 +502,7 @@ func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     0.5,
 	}}
@@ -574,7 +575,7 @@ func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}

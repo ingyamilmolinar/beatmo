@@ -3,6 +3,10 @@
 package audio
 
 import (
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"maps"
 	"math"
 	"strconv"
 	"strings"
@@ -12,36 +16,44 @@ import (
 // defaultModularParams returns a musically-usable default voice: a sine
 // oscillator at the engine's base pitch with a short percussive amp envelope.
 // Mirrors the shipped ModularSynthParamDefs defaults.
-func defaultModularParams() ModularParams {
-	return ModularParams{
-		OscType:     0, // sine
-		OscDetune:   0,
-		OscOctave:   0,
-		FMAlgorithm: 0,
-		FMOp1Ratio:  1, FMOp2Ratio: 1, FMOp3Ratio: 1, FMOp4Ratio: 1,
-		FMOp1Depth: 0, FMOp2Depth: 0, FMOp3Depth: 0, FMOp4Depth: 0,
-		FMOp1Level: 1, FMOp2Level: 0, FMOp3Level: 0, FMOp4Level: 0,
-		AmpAttack:       0.005,
-		AmpDecay:        0.3,
-		AmpSustain:      0.6,
-		AmpRelease:      0.2,
-		AmpCurve:        1, // exponential
-		FilterType:      0, // LP
-		FilterCutoff:    8000,
-		FilterResonance: 0.707,
-		Drive:           0,
-		Pitch:           0,
-		Gain:            1,
-		// All stages enabled (identity) so this default voice is byte-identical
-		// to the NULL/zero-struct render path. A Go ModularParams literal that
-		// omits these gets 0 → the stage would be bypassed.
-		OscEnabled:    1,
-		FMEnabled:     1,
-		EnvEnabled:    1,
-		FilterEnabled: 1,
-		DriveEnabled:  1,
-		NoiseSeed:     0,
-	}
+func defaultModularParams() modularBlock {
+	// Every field not listed is 0, exactly as the zero-valued Go struct this
+	// helper used to build.
+	p := zeroModularBlock()
+	p.set("osc_type", 0)
+	p.set("osc_detune", 0)
+	p.set("osc_octave", 0)
+	p.set("fm_algorithm", 0)
+	p.set("fm_op1_ratio", 1)
+	p.set("fm_op2_ratio", 1)
+	p.set("fm_op3_ratio", 1)
+	p.set("fm_op4_ratio", 1)
+	p.set("fm_op1_depth", 0)
+	p.set("fm_op2_depth", 0)
+	p.set("fm_op3_depth", 0)
+	p.set("fm_op4_depth", 0)
+	p.set("fm_op1_level", 1)
+	p.set("fm_op2_level", 0)
+	p.set("fm_op3_level", 0)
+	p.set("fm_op4_level", 0)
+	p.set("amp_attack", 0.005)
+	p.set("amp_decay", 0.3)
+	p.set("amp_sustain", 0.6)
+	p.set("amp_release", 0.2)
+	p.set("amp_curve", 1)
+	p.set("filter_type", 0)
+	p.set("filter_cutoff", 8000)
+	p.set("filter_resonance", 0.707)
+	p.set("drive", 0)
+	p.set("pitch", 0)
+	p.set("gain", 1)
+	p.set("osc_enabled", 1)
+	p.set("fm_enabled", 1)
+	p.set("env_enabled", 1)
+	p.set("filter_enabled", 1)
+	p.set("drive_enabled", 1)
+	p.set("noise_seed", 0)
+	return p
 }
 
 func peakAbs(buf []float32) float32 {
@@ -68,9 +80,9 @@ func assertFinite(t *testing.T, buf []float32) {
 }
 
 func TestLfoTarget_RoundTripsThroughParams(t *testing.T) {
-	mp := recipeParamsToModular(map[string]float64{"lfo_target": 2})
-	if mp.LfoTarget != 2 {
-		t.Fatalf("LfoTarget round-trip = %v, want 2", mp.LfoTarget)
+	mp := initBlockForTest(map[string]float64{"lfo_target": 2})
+	if mp.get("lfo_target") != 2 {
+		t.Fatalf("LfoTarget round-trip = %v, want 2", mp.get("lfo_target"))
 	}
 }
 
@@ -78,17 +90,17 @@ func TestLfoTarget_DefaultZeroKeepsAmpLFOByteIdentical(t *testing.T) {
 	const sr, n = 48000, 24000
 	// An instrument using the amp-wobble LFO at the default target (0).
 	base := defaultModularParams()
-	base.OscType = 1 // saw
-	base.LfoEnabled = 1
-	base.LfoRate = 6
-	base.LfoDepth = 0.5
+	base.set("osc_type", 1) // saw
+	base.set("lfo_enabled", 1)
+	base.set("lfo_rate", 6)
+	base.set("lfo_depth", 0.5)
 	// LfoTarget defaults to 0 (amp). Render it.
-	withTarget := base
-	withTarget.LfoTarget = 0
+	withTarget := base.clone()
+	withTarget.set("lfo_target", 0)
 	a := make([]float32, n)
 	b := make([]float32, n)
-	renderModularP(a, sr, n, base)       // field present, zero value
-	renderModularP(b, sr, n, withTarget) // explicit 0
+	renderModularBlock(a, sr, n, base)       // field present, zero value
+	renderModularBlock(b, sr, n, withTarget) // explicit 0
 	for i := range a {
 		if a[i] != b[i] {
 			t.Fatalf("amp-LFO at target 0 not byte-identical at sample %d: %v vs %v", i, a[i], b[i])
@@ -113,7 +125,7 @@ func TestRenderModularP_DefaultsFiniteNonSilent(t *testing.T) {
 	const sr = 48000
 	n := sr / 2 // 0.5s
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, defaultModularParams())
+	renderModularBlock(buf, sr, n, defaultModularParams())
 	assertFinite(t, buf)
 	pk := peakAbs(buf)
 	if pk <= 0 {
@@ -130,14 +142,14 @@ func TestRenderModularP_EachOscTypeFiniteNonSilent(t *testing.T) {
 	// 0=sine 1=saw 2=square 3=triangle 4=FM
 	for osc := 0; osc <= 4; osc++ {
 		p := defaultModularParams()
-		p.OscType = float64(osc)
+		p.set("osc_type", float64(osc))
 		if osc == 4 {
 			// FM needs a modulator with depth to be non-trivial.
-			p.FMOp2Depth = 2
-			p.FMOp2Level = 1
+			p.set("fm_op2_depth", 2)
+			p.set("fm_op2_level", 1)
 		}
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, p)
+		renderModularBlock(buf, sr, n, p)
 		assertFinite(t, buf)
 		if peakAbs(buf) <= 0 {
 			t.Fatalf("osc_type %d produced silence", osc)
@@ -151,10 +163,10 @@ func TestRenderModularP_OscShapesDiffer(t *testing.T) {
 	sine := make([]float32, n)
 	saw := make([]float32, n)
 	ps := defaultModularParams()
-	ps.OscType = 0
-	renderModularP(sine, sr, n, ps)
-	ps.OscType = 1
-	renderModularP(saw, sr, n, ps)
+	ps.set("osc_type", 0)
+	renderModularBlock(sine, sr, n, ps)
+	ps.set("osc_type", 1)
+	renderModularBlock(saw, sr, n, ps)
 	var diff float64
 	for i := range sine {
 		diff += math.Abs(float64(sine[i] - saw[i]))
@@ -168,15 +180,15 @@ func TestRenderModularP_ExtremeParamsStayFinite(t *testing.T) {
 	const sr = 48000
 	n := sr / 8
 	p := defaultModularParams()
-	p.AmpAttack = 0        // zero attack must not divide-by-zero
-	p.FilterResonance = 16 // max Q must stay stable
-	p.FilterCutoff = 20    // near-DC cutoff
-	p.Drive = 1
-	p.OscType = 4
-	p.FMOp2Depth = 8
-	p.FMOp2Level = 1
+	p.set("amp_attack", 0)        // zero attack must not divide-by-zero
+	p.set("filter_resonance", 16) // max Q must stay stable
+	p.set("filter_cutoff", 20)    // near-DC cutoff
+	p.set("drive", 1)
+	p.set("osc_type", 4)
+	p.set("fm_op2_depth", 8)
+	p.set("fm_op2_level", 1)
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, p)
+	renderModularBlock(buf, sr, n, p)
 	assertFinite(t, buf)
 }
 
@@ -193,7 +205,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 
 	render := func(rp RecipeParams) []float32 {
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, recipeParamsToModular(rp))
+		renderModularBlock(buf, sr, n, initBlockForTest(rp))
 		return buf
 	}
 	differs := func(a, b []float32) bool {
@@ -249,42 +261,28 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp["osc_type"] = 5 // white noise
 		return rp
 	}
-	// postBase: an audible sine with the Phase-2 POST stage enabled and every
-	// per-substage gate on, so each post_* param (and the post_*_on gates) has
-	// authority. post_enabled itself is tested by enabling a post substage and
-	// toggling enabled off.
+	// postBase: an audible sine with every post op away from its identity, so
+	// each post_* param (and out_clamp) has authority. The post ops always run.
 	postBase := func() RecipeParams {
 		rp := sineBase()
-		rp["post_enabled"] = 1
 		rp["post_decay_rate"] = 6
 		rp["post_pitch"] = 5
 		rp["post_decay"] = 0.5
 		rp["post_drive"] = 0.8
 		rp["post_body"] = 0.7
 		rp["post_brightness"] = 0.7
-		rp["post_tone"] = -0.7
+		rp["post_darken"] = 0.7
 		return rp
 	}
 	// post_* substage targets that contrast with postBase to move the output.
 	postTarget := map[string]float64{
-		"post_enabled":       0, // disable the whole stage
-		"post_pitch":         -7,
-		"post_decay":         2,
-		"post_decay_rate":    20,
-		"post_body":          0,
-		"post_brightness":    0,
-		"post_tone":          0,
-		"post_drive":         0,
-		"post_pitch_on":      0,
-		"post_decay_on":      0,
-		"post_body_on":       0,
-		"post_brightness_on": 0,
-		"post_tone_on":       0,
-		"post_drive_on":      0,
-		// post_order flips the body↔drive op SEQUENCE. postBase has both post_body
-		// (0.7) and post_drive (0.8) non-default with their gates on, so order
-		// 0 (body→drive) and order 1 (drive→body) produce different output.
-		"post_order": 1,
+		"post_pitch":      -7,
+		"post_decay":      2,
+		"post_decay_rate": 20,
+		"post_body":       0,
+		"post_brightness": 0,
+		"post_darken":     0,
+		"post_drive":      0,
 	}
 	isPost := func(name string) bool { return strings.HasPrefix(name, "post_") }
 
@@ -386,8 +384,8 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			// Phase-15 FORMANT stage: active vowel bank over a harmonically rich
 			// saw so retuning the bank is audible. mix 0.6 (not 1) so mutating
 			// mix itself to 1 also registers.
-			rp["osc_type"] = 1     // saw (harmonics for the formants to shape)
-			rp["env_enabled"] = 0  // steady output for clean comparison
+			rp["osc_type"] = 1    // saw (harmonics for the formants to shape)
+			rp["env_enabled"] = 0 // steady output for clean comparison
 			rp["formant_enabled"] = 1
 			rp["formant_mix"] = 0.6
 			// The morph LFO retunes the bank only when rate>0 AND morph_to
@@ -519,9 +517,9 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("kick_pe_rate")] = 30
 		rp[p("kick_click")] = 0.35
 		rp[p("kick_noise")] = 0.18
-		// Phase-9 structural extras seeded to the base-kick literals (a 0
-		// gen_kick_sat would silence the voice — kp_get only falls back to the
-		// variant literal at NaN, not at the schema-identity 0).
+		// Phase-9 structural extras seeded to the base-kick values (a 0
+		// gen_kick_sat would silence the voice: the engine reads every value as
+		// given).
 		rp[p("kick_attack")] = 0.3
 		rp[p("kick_fade")] = 4.0
 		rp[p("kick_sat")] = 0.55
@@ -566,6 +564,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("snare_noise_m")] = 1.1
 		rp[p("snare_wire_m")] = 0.9
 		rp[p("snare_attack")] = 0.3
+		rp["snare_enabled"] = 1 // gate the source==7 voice on
 		rp["voice_freq_hz"] = 0
 	}
 	// activateSlotCymbal turns slot k into an audible Phase-6 metallic cymbal voice
@@ -584,6 +583,17 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("cym_tone_m")] = 0.85
 		rp[p("cym_noise_m")] = 0.45
 		rp[p("cym_noise_d")] = 100.0
+		// Variant 0 is always the modal plate. The engine has no defaults of its
+		// own, so the plate's geometry is spelled out (the values C used to
+		// substitute for 0 before Phase C).
+		for f, v := range map[string]float64{"cym_modes": 64, "cym_mode_lo": 300, "cym_mode_hi": 18000,
+			"cym_hf_corner": 10000, "cym_tone_f": 3000, "cym_tone_w": 0.6, "cym_body_f": 1500,
+			"cym_body_w": 0.15, "cym_spark_f": 11000, "cym_spark_w": 0.3, "cym_attack": 0.0005,
+			"cym_rattle": 1.0, "cym_rattle_rate": 2000, "cym_rattle_decay": 0.06} {
+			if _, set := rp[p(f)]; !set || rp[p(f)] == 0 {
+				rp[p(f)] = v
+			}
+		}
 		rp["voice_freq_hz"] = 0
 	}
 	// activateSlotFM turns slot k into an audible Phase-7 FM-family voice
@@ -644,6 +654,13 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			// voice active. Base = on (audible kick), target = off (silence).
 			rp := sineBase()
 			activateSlotKick(rp, 1)
+			return rp, 0, true
+		}
+		if name == "snare_enabled" {
+			// Global SNARE-stage enable: mirror of kick_enabled — only has
+			// authority with the source==7 voice active.
+			rp := sineBase()
+			activateSlotSnare(rp, 1)
 			return rp, 0, true
 		}
 		if !strings.HasPrefix(name, "gen") {
@@ -826,6 +843,16 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			rp["gen"+strconv.Itoa(k)+"_kick_variant"] = 7
 			rp[name] = 0.0
 			return rp, 0.8, true // dry → a strong room tail
+		case "kick_hold", "kick_hiss":
+			// Phase-19 physical-kick knobs: only read by the source==5 variant-8
+			// (physical) voice. Build a variant-8 kick slot, then turn each on.
+			activateSlotKick(rp, k)
+			rp["gen"+strconv.Itoa(k)+"_kick_variant"] = 8
+			rp[name] = 0.0
+			if field == "kick_hold" {
+				return rp, 0.15, true // the body rings undamped for 150 ms
+			}
+			return rp, 0.8, true // a broadband air floor under the hit
 		case "tom_variant", "tom_sweep", "tom_ring", "tom_o1", "tom_o2",
 			"tom_stick", "tom_room":
 			// Phase-4 808-style tom voice fields: only have authority when the
@@ -903,7 +930,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			switch field {
 			case "cym_variant":
 				rp[name] = 0
-				return rp, 4, true // hihat → ride (different partial table entirely)
+				return rp, 2, true // hihat plate → cowbell (a different algorithm; hihat and ride are both the plate)
 			case "cym_tune":
 				rp[name] = 1.0
 				return rp, 1.5, true // shift the partial-frequency tables up
@@ -923,6 +950,51 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp[name] = 100.0
 				return rp, 20, true // much slower sizzle decay
 			}
+		case "cym_modes", "cym_mode_lo", "cym_mode_hi", "cym_decay_tilt", "cym_hf_corner",
+			"cym_beat", "cym_tone_f", "cym_tone_w", "cym_body_f", "cym_body_w", "cym_body",
+			"cym_spark_f", "cym_spark_w", "cym_spark", "cym_wash", "cym_attack",
+			"cym_rattle", "cym_rattle_rate", "cym_rattle_decay", "cym_drive_delay", "cym_rattle_hold":
+			// Phase-18 modal-plate fields: only have authority once cym_modes > 0
+			// switches the slot to the modal voice. Build an audible modal slot
+			// with every hump present (so each width/centre has energy to move)
+			// and a nonzero HF corner term, then move one field.
+			activateSlotCymbal(rp, k)
+			p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
+			modal := map[string]float64{
+				"cym_modes": 60, "cym_mode_lo": 300, "cym_mode_hi": 14000,
+				"cym_decay_tilt": 0.5, "cym_hf_corner": 9000, "cym_beat": 0.005,
+				"cym_tone_f": 3000, "cym_tone_w": 0.5, "cym_body_f": 1500, "cym_body_w": 0.2,
+				"cym_body": 0.8, "cym_spark_f": 10000, "cym_spark_w": 0.3, "cym_spark": 1.0,
+				"cym_wash": 0.2, "cym_attack": 0.0005,
+			}
+			for f, v := range modal {
+				rp[p(f)] = v
+			}
+			rp[p("cym_variant")] = 4 // a plate variant (ride)
+			if strings.HasPrefix(field, "cym_rattle") || field == "cym_drive_delay" {
+				// The rattle only exists on the hi-hat variants (a ride has no
+				// second cymbal to rattle against).
+				rp[p("cym_variant")] = 0
+				rp[p("cym_rattle")] = 1.0
+				rp[p("cym_rattle_rate")] = 2000
+				rp[p("cym_rattle_decay")] = 0.06
+			}
+			rp[p("cym_env_tail")] = 2.0
+			rp[p("cym_env_fast")] = 10.0
+			if field == "cym_modes" {
+				rp[name] = 0
+				return rp, 60, true // legacy ride → modal plate
+			}
+			targets := map[string]float64{
+				"cym_mode_lo": 1200, "cym_mode_hi": 6000, "cym_decay_tilt": 1.2,
+				"cym_hf_corner": 4000, "cym_beat": 0.015, "cym_tone_f": 6000,
+				"cym_tone_w": 1.5, "cym_body_f": 800, "cym_body_w": 0.6, "cym_body": 3.0,
+				"cym_spark_f": 6000, "cym_spark_w": 0.8, "cym_spark": 3.0,
+				"cym_wash": 0.9, "cym_attack": 0.01,
+				"cym_rattle": 3.0, "cym_rattle_rate": 500, "cym_rattle_decay": 0.3,
+				"cym_drive_delay": 0.006, "cym_rattle_hold": 0.8,
+			}
+			return rp, targets[field], true
 		case "fm_variant", "fm_base", "fm_pe_amt", "fm_pe_decay",
 			"fm_r1", "fm_r2", "fm_r3", "fm_r4",
 			"fm_d1", "fm_d2", "fm_d3", "fm_d4",
@@ -985,6 +1057,35 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		return rp, pickNonDefaultValue(d), true
 	}
 
+	// ── WAV-clone stages (MODAL / STRIKE / NOISEBAND): their knobs only have
+	// authority over table rows, so the context seeds three modal rows (ratio
+	// mode over the 220 Hz voice), an active strike and one noise band. The
+	// toggles are tested by flipping the ACTIVE stage off. ──
+	isCloneStage := func(name string) bool {
+		return strings.HasPrefix(name, "modal_") || strings.HasPrefix(name, "strike_") || strings.HasPrefix(name, "noiseband_")
+	}
+	cloneBase := func() RecipeParams {
+		rp := sineBase()
+		rp["modal_enabled"], rp["modal_count"] = 1, 3
+		for i, row := range [][5]float64{{1, 2, 0.3, 0.2, 0}, {2.76, 4, 0.2, 1.1, 0}, {5.4, 8, 0.1, -0.7, 0}} {
+			for c, col := range []string{"modal_freq", "modal_decay", "modal_amp", "modal_phase", "modal_attack"} {
+				rp[instrument.TableCell(col, i)] = row[c]
+			}
+		}
+		rp["strike_enabled"], rp["strike_tc"] = 1, 0.001
+		rp["noiseband_enabled"], rp["noiseband_count"] = 1, 1
+		for c, col := range []string{"nb_center", "nb_q", "nb_level", "nb_attack", "nb_fast_rate", "nb_fast_mix", "nb_tail_rate"} {
+			rp[instrument.TableCell(col, 0)] = []float64{3000, 4, -30, 0.002, 60, 0.7, 6}[c]
+		}
+		return rp
+	}
+	cloneTarget := map[string]float64{
+		"modal_enabled": 0, "strike_enabled": 0, "noiseband_enabled": 0,
+		"modal_freq_mode": 1, "modal_tune": 50, "modal_stretch": 0.05, "modal_decay_x": 2,
+		"modal_bright": 3, "modal_keep": 1, "modal_law_a": 2, "modal_law_p": 1, "modal_law_b": 50000, // b·(f/10k)^6: ~1 Np/s on the 1.2 kHz top row
+		"strike_tc": 0.003, "strike_hardness": 3, "strike_click": 0.5, "noiseband_level": 6,
+	}
+
 	for _, d := range ModularSynthParamDefs() {
 		if d.Name == "osc_type" {
 			continue // exercised by TestRenderModularP_OscShapesDiffer
@@ -1000,7 +1101,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 					t.Skipf("gen param %q has no distinct target in context", d.Name)
 				}
 				baseBuf := render(base)
-				mut := cloneRecipeParams(base)
+				mut := maps.Clone(base)
 				mut[d.Name] = target
 				if !differs(baseBuf, render(mut)) {
 					t.Errorf("modular param %q: %v -> %v did not change output", d.Name, base[d.Name], target)
@@ -1017,12 +1118,30 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			case isModulatorNumeric(d.Name):
 				base = modulatorBase(d.Name)
 				target = modulatorTarget[d.Name]
+			case d.Name == "amp_release":
+				// The release fills at most half the voice (125 ms here): any
+				// release past 62.5 ms ramps over that half, so the mutation
+				// that must show is one INSIDE it (base 0.2 s is capped).
+				base = sineBase()
+				target = 0.01
+			case d.Name == "out_clamp":
+				// The output limit only acts on a signal above it: a sine
+				// driven to ~4x, clamped at 0.5 instead of the 1.5 identity.
+				base = sineBase()
+				base["gain"] = 4
+				target = 0.5
 			case isPost(d.Name):
 				base = postBase()
 				target = postTarget[d.Name]
 			case isFM(d.Name):
 				base = fmBase()
 				target = fmTarget[d.Name]
+			case isCloneStage(d.Name):
+				base = cloneBase()
+				var ok bool
+				if target, ok = cloneTarget[d.Name]; !ok {
+					t.Fatalf("no clone-stage target for %q", d.Name)
+				}
 			default:
 				base = sineBase()
 				target = pickNonDefaultValue(d)
@@ -1031,7 +1150,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				}
 			}
 			baseBuf := render(base)
-			mut := cloneRecipeParams(base)
+			mut := maps.Clone(base)
 			mut[d.Name] = target
 			if !differs(baseBuf, render(mut)) {
 				t.Errorf("modular param %q: %v -> %v did not change output", d.Name, base[d.Name], target)
@@ -1048,11 +1167,11 @@ func TestRenderModularP_FilterCutoffChangesTone(t *testing.T) {
 	// via a crude first-difference energy measure.
 	hfEnergy := func(cutoff float64) float64 {
 		p := defaultModularParams()
-		p.OscType = 1 // saw
-		p.FilterType = 0
-		p.FilterCutoff = cutoff
+		p.set("osc_type", 1) // saw
+		p.set("filter_type", 0)
+		p.set("filter_cutoff", cutoff)
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, p)
+		renderModularBlock(buf, sr, n, p)
 		var e float64
 		for i := 1; i < len(buf); i++ {
 			d := float64(buf[i] - buf[i-1])
@@ -1076,19 +1195,14 @@ func TestModularPadRendersDistinctFromBase(t *testing.T) {
 	const sr = 48000
 	n := sr / 4
 
-	render := func(recipeID string) []float32 {
-		r := NewRecipe(recipeID)
-		if r == nil {
-			t.Fatalf("NewRecipe(%q) = nil", recipeID)
-		}
-		buf := make([]float32, n)
-		r.Render(buf, sr, n, 0, RecipeDefaultParams(recipeID))
+	render := func(id instrument.ID) []float32 {
+		buf := renderFieldsForTest(t, id, sr, n, nil)
 		assertFinite(t, buf)
 		return buf
 	}
 
-	base := render("synth-modular")
-	pad := render("synth-modular-pad")
+	base := render(roster.Modular)
+	pad := render(roster.ModularPad)
 
 	var diff float64
 	for i := range base {
@@ -1104,24 +1218,24 @@ func TestLfoTarget_PitchVibratoBendsAndIsIdentityAtDepthZero(t *testing.T) {
 	const sr, n = 48000, 48000
 	mk := func(target, depth float64) []float32 {
 		p := defaultModularParams()
-		p.OscType = 0 // sine — easy to measure pitch via zero crossings
-		p.FilterEnabled = 0
-		p.EnvEnabled = 0
-		p.LfoEnabled = 1
-		p.LfoRate = 6
-		p.LfoDepth = depth
-		p.LfoTarget = target
+		p.set("osc_type", 0) // sine — easy to measure pitch via zero crossings
+		p.set("filter_enabled", 0)
+		p.set("env_enabled", 0)
+		p.set("lfo_enabled", 1)
+		p.set("lfo_rate", 6)
+		p.set("lfo_depth", depth)
+		p.set("lfo_target", target)
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, p)
+		renderModularBlock(buf, sr, n, p)
 		return buf
 	}
 	plain := mk(1, 0) // vibrato selected but depth 0 → must equal no-LFO baseline
 	base := defaultModularParams()
-	base.OscType = 0
-	base.FilterEnabled = 0
-	base.EnvEnabled = 0
+	base.set("osc_type", 0)
+	base.set("filter_enabled", 0)
+	base.set("env_enabled", 0)
 	baseBuf := make([]float32, n)
-	renderModularP(baseBuf, sr, n, base)
+	renderModularBlock(baseBuf, sr, n, base)
 	for i := range plain {
 		if plain[i] != baseBuf[i] {
 			t.Fatalf("vibrato at depth 0 not identity at %d: %v vs %v", i, plain[i], baseBuf[i])
@@ -1142,16 +1256,16 @@ func TestLfoTarget_PitchVibratoBendsAndIsIdentityAtDepthZero(t *testing.T) {
 func TestModBiquadCoeffOnly_FilterStaysFinite(t *testing.T) {
 	const sr, n = 48000, 24000
 	p := defaultModularParams()
-	p.OscType = 1 // saw
-	p.FilterEnabled = 1
-	p.FilterType = 0 // low-pass
-	p.FilterCutoff = 2000
-	p.LfoEnabled = 1
-	p.LfoRate = 5
-	p.LfoDepth = 0.5
-	p.LfoTarget = 2 // cutoff sweep — drives the coeff-only path (Task 4)
+	p.set("osc_type", 1) // saw
+	p.set("filter_enabled", 1)
+	p.set("filter_type", 0) // low-pass
+	p.set("filter_cutoff", 2000)
+	p.set("lfo_enabled", 1)
+	p.set("lfo_rate", 5)
+	p.set("lfo_depth", 0.5)
+	p.set("lfo_target", 2) // cutoff sweep — drives the coeff-only path (Task 4)
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, p)
+	renderModularBlock(buf, sr, n, p)
 	for i, v := range buf {
 		if v != v || v > 4 || v < -4 {
 			t.Fatalf("non-finite/exploded filter output at %d: %v", i, v)
@@ -1168,17 +1282,17 @@ func TestLfoTarget_CutoffSweepChangesFilteredOutput(t *testing.T) {
 	// target==0 and is OFF here for every depth value).
 	mkSweep := func(depth float64) []float32 {
 		p := defaultModularParams()
-		p.OscType = 1    // saw — harmonically rich so cutoff changes are audible
-		p.EnvEnabled = 0 // eliminate amp-envelope variation
-		p.FilterEnabled = 1
-		p.FilterType = 0 // low-pass
-		p.FilterCutoff = 2000
-		p.LfoEnabled = 1
-		p.LfoRate = 4
-		p.LfoDepth = depth
-		p.LfoTarget = 2 // cutoff sweep; amp-tremolo is gated OFF at this target
+		p.set("osc_type", 1)    // saw — harmonically rich so cutoff changes are audible
+		p.set("env_enabled", 0) // eliminate amp-envelope variation
+		p.set("filter_enabled", 1)
+		p.set("filter_type", 0) // low-pass
+		p.set("filter_cutoff", 2000)
+		p.set("lfo_enabled", 1)
+		p.set("lfo_rate", 4)
+		p.set("lfo_depth", depth)
+		p.set("lfo_target", 2) // cutoff sweep; amp-tremolo is gated OFF at this target
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, p)
+		renderModularBlock(buf, sr, n, p)
 		return buf
 	}
 
@@ -1200,14 +1314,14 @@ func TestLfoTarget_CutoffSweepChangesFilteredOutput(t *testing.T) {
 	// depth-0 is a true no-op and that the sweep — not an amplitude side-effect
 	// — is what assertion (a) measures.
 	noLFO := defaultModularParams()
-	noLFO.OscType = 1
-	noLFO.EnvEnabled = 0
-	noLFO.FilterEnabled = 1
-	noLFO.FilterType = 0
-	noLFO.FilterCutoff = 2000
-	noLFO.LfoEnabled = 0 // LFO completely off
+	noLFO.set("osc_type", 1)
+	noLFO.set("env_enabled", 0)
+	noLFO.set("filter_enabled", 1)
+	noLFO.set("filter_type", 0)
+	noLFO.set("filter_cutoff", 2000)
+	noLFO.set("lfo_enabled", 0) // LFO completely off
 	noLFOBuf := make([]float32, n)
-	renderModularP(noLFOBuf, sr, n, noLFO)
+	renderModularBlock(noLFOBuf, sr, n, noLFO)
 	for i := range shallow {
 		if shallow[i] != noLFOBuf[i] {
 			t.Fatalf("assertion (b) FAILED: depth-0 cutoff-sweep (target=2) not byte-identical to no-LFO baseline at sample %d: %v vs %v", i, shallow[i], noLFOBuf[i])
@@ -1226,27 +1340,27 @@ func TestFiltEnv_BrightenThenSettleAndIdentityWhenOff(t *testing.T) {
 	const sr, n = 48000, 48000
 	mk := func(enabled, amt float64) []float32 {
 		p := defaultModularParams()
-		p.OscType = 1 // saw (rich harmonics so cutoff motion is audible)
-		p.EnvEnabled = 0
-		p.FilterEnabled = 1
-		p.FilterType = 0
-		p.FilterCutoff = 1200
-		p.FiltEnvEnabled = enabled
-		p.FiltEnvAmt = amt
-		p.FiltEnvDecay = 0.2
+		p.set("osc_type", 1) // saw (rich harmonics so cutoff motion is audible)
+		p.set("env_enabled", 0)
+		p.set("filter_enabled", 1)
+		p.set("filter_type", 0)
+		p.set("filter_cutoff", 1200)
+		p.set("filtenv_enabled", enabled)
+		p.set("filtenv_amt", amt)
+		p.set("filtenv_decay", 0.2)
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, p)
+		renderModularBlock(buf, sr, n, p)
 		return buf
 	}
 	off := mk(0, 3) // disabled → identity (amt ignored)
 	base := defaultModularParams()
-	base.OscType = 1
-	base.EnvEnabled = 0
-	base.FilterEnabled = 1
-	base.FilterType = 0
-	base.FilterCutoff = 1200
+	base.set("osc_type", 1)
+	base.set("env_enabled", 0)
+	base.set("filter_enabled", 1)
+	base.set("filter_type", 0)
+	base.set("filter_cutoff", 1200)
 	baseBuf := make([]float32, n)
-	renderModularP(baseBuf, sr, n, base)
+	renderModularBlock(baseBuf, sr, n, base)
 	for i := range off {
 		if off[i] != baseBuf[i] {
 			t.Fatalf("filtenv disabled not byte-identical at %d", i)
@@ -1280,12 +1394,12 @@ func TestFiltEnv_BrightenThenSettleAndIdentityWhenOff(t *testing.T) {
 func renderSawWithUnison(voices int, detune, mix float64) []float32 {
 	const sr, n = 48000, 24000
 	mp := defaultModularParams()
-	mp.OscType = 1 // saw
-	mp.UnisonVoices = float64(voices)
-	mp.UnisonDetune = detune
-	mp.UnisonMix = mix
+	mp.set("osc_type", 1) // saw
+	mp.set("unison_voices", float64(voices))
+	mp.set("unison_detune", detune)
+	mp.set("unison_mix", mix)
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, mp)
+	renderModularBlock(buf, sr, n, mp)
 	return buf
 }
 
@@ -1294,16 +1408,16 @@ func renderSawWithUnison(voices int, detune, mix float64) []float32 {
 func TestUnisonVoices1ByteIdentical(t *testing.T) {
 	const sr, n = 48000, 24000
 	mp := defaultModularParams()
-	mp.OscType = 1 // saw
+	mp.set("osc_type", 1) // saw
 
 	baseline := make([]float32, n)
-	renderModularP(baseline, sr, n, mp)
+	renderModularBlock(baseline, sr, n, mp)
 
-	mp.UnisonVoices = 1
-	mp.UnisonDetune = 20
-	mp.UnisonMix = 0.5
+	mp.set("unison_voices", 1)
+	mp.set("unison_detune", 20)
+	mp.set("unison_mix", 0.5)
 	withUnison1 := make([]float32, n)
-	renderModularP(withUnison1, sr, n, mp)
+	renderModularBlock(withUnison1, sr, n, mp)
 
 	for i, v := range withUnison1 {
 		if v != baseline[i] {
@@ -1363,31 +1477,35 @@ func TestUnisonDetune0Sanity(t *testing.T) {
 func TestUnisonGenBankSource1Differs(t *testing.T) {
 	const sr, n = 48000, 24000
 
-	baseMP := ModularParams{
-		OscEnabled:    0, // disable legacy OSC; use gen bank only
-		EnvEnabled:    1,
-		FilterEnabled: 1,
-		FilterCutoff:  8000, FilterResonance: 0.707,
-		AmpAttack: 0.005, AmpDecay: 0.3, AmpSustain: 0.6, AmpRelease: 0.2, AmpCurve: 1,
-		Gain: 1,
-	}
+	baseMP := zeroModularBlock()
+	baseMP.set("osc_enabled", 0)
+	baseMP.set("env_enabled", 1)
+	baseMP.set("filter_enabled", 1)
+	baseMP.set("filter_cutoff", 8000)
+	baseMP.set("filter_resonance", 0.707)
+	baseMP.set("amp_attack", 0.005)
+	baseMP.set("amp_decay", 0.3)
+	baseMP.set("amp_sustain", 0.6)
+	baseMP.set("amp_release", 0.2)
+	baseMP.set("amp_curve", 1)
+	baseMP.set("gain", 1)
 	// slot 0: source=1 (wt_osc), freq_mode=0 (ratio), freq=1, gain=1
-	baseMP.GenSource[0] = 1
-	baseMP.GenFreqMode[0] = 0
-	baseMP.GenFreq[0] = 1
-	baseMP.GenGain[0] = 1
-	baseMP.GenEnvFastMix[0] = 1
-	baseMP.GenEnvFastRate[0] = 0
+	baseMP.set("gen1_source", 1)
+	baseMP.set("gen1_freq_mode", 0)
+	baseMP.set("gen1_freq", 1)
+	baseMP.set("gen1_gain", 1)
+	baseMP.set("gen1_env_fast_mix", 1)
+	baseMP.set("gen1_env_fast_rate", 0)
 
 	baseline := make([]float32, n)
-	renderModularP(baseline, sr, n, baseMP)
+	renderModularBlock(baseline, sr, n, baseMP)
 
-	withUnison := baseMP
-	withUnison.UnisonVoices = 3
-	withUnison.UnisonDetune = 15
-	withUnison.UnisonMix = 0.8
+	withUnison := baseMP.clone()
+	withUnison.set("unison_voices", 3)
+	withUnison.set("unison_detune", 15)
+	withUnison.set("unison_mix", 0.8)
 	unisonBuf := make([]float32, n)
-	renderModularP(unisonBuf, sr, n, withUnison)
+	renderModularBlock(unisonBuf, sr, n, withUnison)
 
 	assertFinite(t, unisonBuf)
 
@@ -1439,36 +1557,36 @@ func TestUnison_DriftIdentityAndEffect(t *testing.T) {
 
 	noDrift := func() []float32 {
 		mp := defaultModularParams()
-		mp.OscType = 1 // saw
-		mp.UnisonVoices = 5
-		mp.UnisonDetune = 20
-		mp.UnisonMix = 0.7
+		mp.set("osc_type", 1) // saw
+		mp.set("unison_voices", 5)
+		mp.set("unison_detune", 20)
+		mp.set("unison_mix", 0.7)
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, mp)
+		renderModularBlock(buf, sr, n, mp)
 		return buf
 	}
 	driftOff := func() []float32 {
 		mp := defaultModularParams()
-		mp.OscType = 1 // saw
-		mp.UnisonVoices = 5
-		mp.UnisonDetune = 20
-		mp.UnisonMix = 0.7
-		mp.UnisonDriftRate = 0
-		mp.UnisonDriftDepth = 0
+		mp.set("osc_type", 1) // saw
+		mp.set("unison_voices", 5)
+		mp.set("unison_detune", 20)
+		mp.set("unison_mix", 0.7)
+		mp.set("unison_drift_rate", 0)
+		mp.set("unison_drift_depth", 0)
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, mp)
+		renderModularBlock(buf, sr, n, mp)
 		return buf
 	}
 	driftOn := func() []float32 {
 		mp := defaultModularParams()
-		mp.OscType = 1 // saw
-		mp.UnisonVoices = 5
-		mp.UnisonDetune = 20
-		mp.UnisonMix = 0.7
-		mp.UnisonDriftRate = 2
-		mp.UnisonDriftDepth = 10
+		mp.set("osc_type", 1) // saw
+		mp.set("unison_voices", 5)
+		mp.set("unison_detune", 20)
+		mp.set("unison_mix", 0.7)
+		mp.set("unison_drift_rate", 2)
+		mp.set("unison_drift_depth", 10)
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, mp)
+		renderModularBlock(buf, sr, n, mp)
 		return buf
 	}
 
@@ -1512,19 +1630,19 @@ func TestLfoDelay_IdentityAndRampsIn(t *testing.T) {
 
 	// Base params: vibrato LFO enabled (target=1 = pitch vibrato for identity/early test)
 	base := defaultModularParams()
-	base.OscType = 1 // saw
-	base.LfoEnabled = 1
-	base.LfoRate = 6
-	base.LfoDepth = 0.3
-	base.LfoTarget = 1 // pitch vibrato
+	base.set("osc_type", 1) // saw
+	base.set("lfo_enabled", 1)
+	base.set("lfo_rate", 6)
+	base.set("lfo_depth", 0.3)
+	base.set("lfo_target", 1) // pitch vibrato
 
 	// (a) Identity: lfo_delay=0 must be byte-identical to a render where LfoDelay is absent (zero-value).
-	withZeroDelay := base
-	withZeroDelay.LfoDelay = 0
+	withZeroDelay := base.clone()
+	withZeroDelay.set("lfo_delay", 0)
 	noDelay := make([]float32, n)
 	withDelayZero := make([]float32, n)
-	renderModularP(noDelay, sr, n, base)
-	renderModularP(withDelayZero, sr, n, withZeroDelay)
+	renderModularBlock(noDelay, sr, n, base)
+	renderModularBlock(withDelayZero, sr, n, withZeroDelay)
 	for i := range noDelay {
 		if noDelay[i] != withDelayZero[i] {
 			t.Fatalf("identity broken: lfo_delay=0 not byte-identical to absent field at sample %d (%v vs %v)", i, noDelay[i], withDelayZero[i])
@@ -1532,10 +1650,10 @@ func TestLfoDelay_IdentityAndRampsIn(t *testing.T) {
 	}
 
 	// (b) With lfo_delay=0.5: early window (first 0.25s) must differ from no-delay.
-	withDelay := base
-	withDelay.LfoDelay = 0.5
+	withDelay := base.clone()
+	withDelay.set("lfo_delay", 0.5)
 	delayed := make([]float32, n)
-	renderModularP(delayed, sr, n, withDelay)
+	renderModularBlock(delayed, sr, n, withDelay)
 
 	earlyN := sr / 4 // first 0.25s
 	var earlyDiff float64
@@ -1552,19 +1670,19 @@ func TestLfoDelay_IdentityAndRampsIn(t *testing.T) {
 	// the output is sample-identical to the no-delay render.
 	// Render the same params with amp LFO (target=0).
 	baseAmp := defaultModularParams()
-	baseAmp.OscType = 1 // saw
-	baseAmp.LfoEnabled = 1
-	baseAmp.LfoRate = 6
-	baseAmp.LfoDepth = 0.3
-	baseAmp.LfoTarget = 0 // amp tremolo (stateless post-mix multiply)
+	baseAmp.set("osc_type", 1) // saw
+	baseAmp.set("lfo_enabled", 1)
+	baseAmp.set("lfo_rate", 6)
+	baseAmp.set("lfo_depth", 0.3)
+	baseAmp.set("lfo_target", 0) // amp tremolo (stateless post-mix multiply)
 
 	noDelayAmp := make([]float32, n)
-	renderModularP(noDelayAmp, sr, n, baseAmp)
+	renderModularBlock(noDelayAmp, sr, n, baseAmp)
 
-	delayedAmp := baseAmp
-	delayedAmp.LfoDelay = 0.5
+	delayedAmp := baseAmp.clone()
+	delayedAmp.set("lfo_delay", 0.5)
 	delayedAmpBuf := make([]float32, n)
-	renderModularP(delayedAmpBuf, sr, n, delayedAmp)
+	renderModularBlock(delayedAmpBuf, sr, n, delayedAmp)
 
 	// Late window (t>1.5s): ramp completed at 0.5s, so output must be identical.
 	lateStart := int(1.5 * float64(sr))
@@ -1589,34 +1707,32 @@ func TestVibrato_ReachesGenSlots(t *testing.T) {
 
 	// Gen-slot-only voice: legacy OSC disabled, single wavetable-osc gen slot.
 	mkGenOnly := func(lfoDepth float64) []float32 {
-		mp := ModularParams{
-			OscEnabled:    0, // legacy OSC stage off — tone lives in gen bank only
-			EnvEnabled:    1,
-			FilterEnabled: 0,
-			AmpAttack:     0.005,
-			AmpDecay:      2.0,
-			AmpSustain:    0.8,
-			AmpRelease:    0.2,
-			AmpCurve:      1,
-			Gain:          1,
-			// LFO: pitch vibrato
-			LfoEnabled: 1,
-			LfoTarget:  1, // pitch vibrato
-			LfoRate:    6,
-			LfoDepth:   lfoDepth,
-		}
+		mp := zeroModularBlock()
+		mp.set("osc_enabled", 0)
+		mp.set("env_enabled", 1)
+		mp.set("filter_enabled", 0)
+		mp.set("amp_attack", 0.005)
+		mp.set("amp_decay", 2.0)
+		mp.set("amp_sustain", 0.8)
+		mp.set("amp_release", 0.2)
+		mp.set("amp_curve", 1)
+		mp.set("gain", 1)
+		mp.set("lfo_enabled", 1)
+		mp.set("lfo_target", 1)
+		mp.set("lfo_rate", 6)
+		mp.set("lfo_depth", lfoDepth)
 		// slot 0: source=1 (wavetable osc), sine wave, ratio freq=1 (voice_freq), gain=1
-		mp.GenSource[0] = 1   // wavetable osc
-		mp.GenWave[0] = 0     // sine
-		mp.GenFreqMode[0] = 0 // ratio (freq × voice_freq)
-		mp.GenFreq[0] = 1     // ratio 1× (fundamental)
-		mp.GenGain[0] = 1
-		mp.GenEnvFastMix[0] = 0
-		mp.GenEnvTailMix[0] = 1
-		mp.GenEnvTailRate[0] = 0.5 // slow decay so there's sustained output to compare
+		mp.set("gen1_source", 1)    // wavetable osc
+		mp.set("gen1_wave", 0)      // sine
+		mp.set("gen1_freq_mode", 0) // ratio (freq × voice_freq)
+		mp.set("gen1_freq", 1)      // ratio 1× (fundamental)
+		mp.set("gen1_gain", 1)
+		mp.set("gen1_env_fast_mix", 0)
+		mp.set("gen1_env_tail_mix", 1)
+		mp.set("gen1_env_tail_rate", 0.5) // slow decay so there's sustained output to compare
 
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, mp)
+		renderModularBlock(buf, sr, n, mp)
 		return buf
 	}
 
@@ -1651,61 +1767,58 @@ func TestVibrato_GenSlotIdentityWhenOff(t *testing.T) {
 	const sr, n = 48000, 48000
 
 	mkGenNoLFO := func(lfoEnabled float64) []float32 {
-		mp := ModularParams{
-			OscEnabled:    0,
-			EnvEnabled:    1,
-			FilterEnabled: 0,
-			AmpAttack:     0.005,
-			AmpDecay:      2.0,
-			AmpSustain:    0.8,
-			AmpRelease:    0.2,
-			AmpCurve:      1,
-			Gain:          1,
-			LfoEnabled:    lfoEnabled, // 0 = LFO completely off
-			LfoTarget:     1,
-			LfoRate:       6,
-			LfoDepth:      0.4,
-		}
-		mp.GenSource[0] = 1
-		mp.GenWave[0] = 0
-		mp.GenFreqMode[0] = 0
-		mp.GenFreq[0] = 1
-		mp.GenGain[0] = 1
-		mp.GenEnvFastMix[0] = 0
-		mp.GenEnvTailMix[0] = 1
-		mp.GenEnvTailRate[0] = 0.5
+		mp := zeroModularBlock()
+		mp.set("osc_enabled", 0)
+		mp.set("env_enabled", 1)
+		mp.set("filter_enabled", 0)
+		mp.set("amp_attack", 0.005)
+		mp.set("amp_decay", 2.0)
+		mp.set("amp_sustain", 0.8)
+		mp.set("amp_release", 0.2)
+		mp.set("amp_curve", 1)
+		mp.set("gain", 1)
+		mp.set("lfo_enabled", lfoEnabled)
+		mp.set("lfo_target", 1)
+		mp.set("lfo_rate", 6)
+		mp.set("lfo_depth", 0.4)
+		mp.set("gen1_source", 1)
+		mp.set("gen1_wave", 0)
+		mp.set("gen1_freq_mode", 0)
+		mp.set("gen1_freq", 1)
+		mp.set("gen1_gain", 1)
+		mp.set("gen1_env_fast_mix", 0)
+		mp.set("gen1_env_tail_mix", 1)
+		mp.set("gen1_env_tail_rate", 0.5)
 
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, mp)
+		renderModularBlock(buf, sr, n, mp)
 		return buf
 	}
 
 	lfoOff := mkGenNoLFO(0) // lfo_enabled=0 → no vibrato
 	// lfo_enabled=0 with all LFO fields set should be byte-identical to a render
 	// where LFO fields are all zero (the gate must short-circuit before any per-sample work).
-	mpZeroLFO := ModularParams{
-		OscEnabled:    0,
-		EnvEnabled:    1,
-		FilterEnabled: 0,
-		AmpAttack:     0.005,
-		AmpDecay:      2.0,
-		AmpSustain:    0.8,
-		AmpRelease:    0.2,
-		AmpCurve:      1,
-		Gain:          1,
-		// LFO fields all zero (default)
-	}
-	mpZeroLFO.GenSource[0] = 1
-	mpZeroLFO.GenWave[0] = 0
-	mpZeroLFO.GenFreqMode[0] = 0
-	mpZeroLFO.GenFreq[0] = 1
-	mpZeroLFO.GenGain[0] = 1
-	mpZeroLFO.GenEnvFastMix[0] = 0
-	mpZeroLFO.GenEnvTailMix[0] = 1
-	mpZeroLFO.GenEnvTailRate[0] = 0.5
+	mpZeroLFO := zeroModularBlock()
+	mpZeroLFO.set("osc_enabled", 0)
+	mpZeroLFO.set("env_enabled", 1)
+	mpZeroLFO.set("filter_enabled", 0)
+	mpZeroLFO.set("amp_attack", 0.005)
+	mpZeroLFO.set("amp_decay", 2.0)
+	mpZeroLFO.set("amp_sustain", 0.8)
+	mpZeroLFO.set("amp_release", 0.2)
+	mpZeroLFO.set("amp_curve", 1)
+	mpZeroLFO.set("gain", 1)
+	mpZeroLFO.set("gen1_source", 1)
+	mpZeroLFO.set("gen1_wave", 0)
+	mpZeroLFO.set("gen1_freq_mode", 0)
+	mpZeroLFO.set("gen1_freq", 1)
+	mpZeroLFO.set("gen1_gain", 1)
+	mpZeroLFO.set("gen1_env_fast_mix", 0)
+	mpZeroLFO.set("gen1_env_tail_mix", 1)
+	mpZeroLFO.set("gen1_env_tail_rate", 0.5)
 
 	baseline := make([]float32, n)
-	renderModularP(baseline, sr, n, mpZeroLFO)
+	renderModularBlock(baseline, sr, n, mpZeroLFO)
 
 	for i, v := range lfoOff {
 		if v != baseline[i] {

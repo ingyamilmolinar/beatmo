@@ -4,7 +4,7 @@
 #include "modular_stages.h"
 #include "wavetable.h"
 #include "noise.h"
-#include "synth_post.h"          /* osc_wave_shared (analytic source==4) + kp_get */
+#include "synth_post.h"          /* osc_wave_shared (analytic source==4) */
 #include "synth_dsp_primitives.h" /* sp_onepole / sp_osc / sp_pitch_glide / sp_reverb3 */
 #include "fmsynth.h"             /* fm_preset + fm_render (source==10 FM-family voice) */
 
@@ -87,7 +87,7 @@ typedef struct {
 
 static void gen_slot_filter_init(gen_slot_filter *f, const modular_params *p,
                                  int k, int sr) {
-    f->type = (int)lrintf(p->gen_filt_type[k]);
+    f->type = (int)lrint(p->gen_filt_type[k]);
     f->alpha = (double)p->gen_filt_alpha[k];
     f->keep = 1.0 - f->alpha;
     f->lp = 0.0;
@@ -116,40 +116,44 @@ static inline double gen_slot_filter_tick(gen_slot_filter *f, double x) {
 /* modular_gen_slot_analytic: the source==4 analytic dual-osc voice — the
  * render_sub_bass_internal per-sample loop transplanted VERBATIM (drums.c
  * ~1986-2022), with every hardcoded literal replaced by a per-slot param read
- * through kp_get so the NaN sentinel reproduces the exact legacy double literal
- * at default (byte-identity, plan Task-1 / spec §2). Float-op order, double
+ * (the seed spells each value). Float-op order, double
  * precision, the `if (phase > 2π) phase -= 2π` normalization form, and the
  * `(float)sat * out_scale` cast positions all match the source exactly.
  *
  * Base freq: gen_freq[k] × voice_freq in ratio mode (gen_freq_mode==0), else
- * absolute gen_freq[k]. Both phase accumulators start at gen_phase (radians,
- * kp_get fallback M_PI*0.5 — float32 cannot carry the exact double π/2, so the
- * binding passes NaN and the literal fallback supplies the precise value).
+ * absolute gen_freq[k]. Both phase accumulators start at gen_phase (radians;
+ * the sub-bass seed spells math.Pi/2 exactly — the block is double).
  *
  * assign: when 1 the first sample-write ASSIGNS (out[i] = v) — matching the
  * legacy renderer's direct `out[i] = ...` — instead of accumulating, so a -0.0
  * sample is not flipped to +0.0 by a preceding zeroed buffer. */
 static void modular_gen_slot_analytic(float *out, int sampleRate, int samples,
                                       const modular_params *p, int k,
-                                      double voice_freq, int assign) {
-    double bHarm    = kp_get(p->gen_harm_mix[k], 0.08);
-    double bPitchE  = kp_get(p->gen_pitch_env_amt[k], 0.15);
-    double bPitchER = kp_get(p->gen_pitch_env_rate[k], 40.0);
-    double bAttack  = kp_get(p->gen_atk_amt[k], 0.2);
-    double bAttackR = kp_get(p->gen_atk_rate[k], 60.0);
-    double bEnvRate = kp_get(p->gen_env_fast_rate[k], 2.0);
-    double satK     = kp_get(p->gen_sat_k[k], 1.2);
-    int    bWave    = (int)kp_get(p->gen_wave[k], 0.0);
+                                      double voice_freq, int assign, double gain) {
+    /* Slot gain as a FLOAT, appended to the original expressions rather than
+     * folded into them: `(float)x * scale` and `(float)(x * scale * gain)` do
+     * not round identically, so folding would change every sample even at unity
+     * gain. Multiplying the finished float by 1.0f is exact, which is what keeps
+     * the 23 instruments that seed gen_gain=1 byte-unchanged. */
+    const float gf = (float)gain;
+    double bHarm    = p->gen_harm_mix[k];
+    double bPitchE  = p->gen_pitch_env_amt[k];
+    double bPitchER = p->gen_pitch_env_rate[k];
+    double bAttack  = p->gen_atk_amt[k];
+    double bAttackR = p->gen_atk_rate[k];
+    double bEnvRate = p->gen_env_fast_rate[k];
+    double satK     = p->gen_sat_k[k];
+    int    bWave    = (int)p->gen_wave[k];
 
     double baseFreq = (double)p->gen_freq[k];
-    if ((int)lrintf(p->gen_freq_mode[k]) == 0) baseFreq *= voice_freq;
+    if ((int)lrint(p->gen_freq_mode[k]) == 0) baseFreq *= voice_freq;
 
-    double phase  = kp_get(p->gen_phase[k], M_PI * 0.5);
+    double phase  = p->gen_phase[k];
     double phase2 = phase;
     double harmonicMix = bHarm;
 
     /* out scale read as a FLOAT (legacy `(float)sat * 0.95f` — float×float). */
-    float outScale = (float)kp_get(p->gen_out_scale[k], 0.95);
+    float outScale = (float)p->gen_out_scale[k];
 
     for (int i = 0; i < samples; i++) {
         double tSec = (double)i / (double)sampleRate;
@@ -173,16 +177,15 @@ static void modular_gen_slot_analytic(float *out, int sampleRate, int samples,
         double mixed = (fund + harm * harmonicMix) * ampEnv * attackBoost;
         double sat = tanh(mixed * satK);
 
-        if (assign) out[i] = (float)sat * outScale;
-        else        out[i] += (float)sat * outScale;
+        if (assign) out[i] = (float)sat * outScale * gf;
+        else        out[i] += (float)sat * outScale * gf;
     }
 }
 
 /* modular_gen_slot_ks: the source==3 Karplus-Strong plucked-string voice — the
  * render_bass_guitar_internal per-sample loop transplanted VERBATIM (drums.c
  * ~1865-1968). Every hardcoded literal is replaced by a per-slot param read
- * through kp_get so the NaN sentinel reproduces the exact legacy double literal
- * at default (byte-identity, plan Task-2 / spec §2).
+ * (the seed spells each value).
  *
  * KS owns a PRIVATE delay line + its own noise stream — it does NOT consume the
  * rectangular noise bus (the legacy draw order is control-flow-dependent: a
@@ -202,22 +205,27 @@ static void modular_gen_slot_analytic(float *out, int sampleRate, int samples,
  * += vs =. Matching the legacy direct-assign avoids flipping a -0.0 sample. */
 static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
                                 const modular_params *p, int k,
-                                double voice_freq, int assign) {
-    /* Family knobs — NaN keeps the original literals (bit-identical). */
-    double bSustain = kp_get(p->gen_ks_sustain[k], 0.996);
-    double bPluck   = kp_get(p->gen_ks_pluck[k], 0.35);
-    double bBlow    = kp_get(p->gen_ks_blow[k], 0.0); /* 0 = plucked (legacy); >0 = blown tube / wind */
-    double bAttack  = kp_get(p->gen_atk_amt[k], 0.25);
-    double bAttackR = kp_get(p->gen_atk_rate[k], 400.0);
-    double bEnvRate = kp_get(p->gen_env_fast_rate[k], 1.8);
-    /* KS-specific fallback 0.85: legacy bass-guitar ends with
-     * softsat((float)mixed * 0.85f) — distinct from the analytic voice's
-     * 0.95 trailing scale. Same shared field, per-source fallback. */
-    float  outScale = (float)kp_get(p->gen_out_scale[k], 0.85);
+                                double voice_freq, int assign, double gain) {
+    /* Slot gain as a FLOAT, appended to the original expressions rather than
+     * folded into them: `(float)x * scale` and `(float)(x * scale * gain)` do
+     * not round identically, so folding would change every sample even at unity
+     * gain. Multiplying the finished float by 1.0f is exact, which is what keeps
+     * the 23 instruments that seed gen_gain=1 byte-unchanged. */
+    const float gf = (float)gain;
+    /* Family knobs, read as-is. */
+    double bSustain = p->gen_ks_sustain[k];
+    double bPluck   = p->gen_ks_pluck[k];
+    double bBlow    = p->gen_ks_blow[k]; /* 0 = plucked (legacy); >0 = blown tube / wind */
+    double bAttack  = p->gen_atk_amt[k];
+    double bAttackR = p->gen_atk_rate[k];
+    double bEnvRate = p->gen_env_fast_rate[k];
+    /* Output scale before the softsat (the bass-guitar seed spells 0.85; the
+     * analytic voice reads the same shared field). */
+    float  outScale = (float)p->gen_out_scale[k];
 
     /* Karplus-Strong delay buffer size for the base frequency. */
     double baseFreq = (double)p->gen_freq[k];
-    if ((int)lrintf(p->gen_freq_mode[k]) == 0) baseFreq *= voice_freq;
+    if ((int)lrint(p->gen_freq_mode[k]) == 0) baseFreq *= voice_freq;
     int delayLen = (int)((double)sampleRate / baseFreq + 0.5);
     if (delayLen < 2) delayLen = 2;
     if (delayLen > 4096) delayLen = 4096;
@@ -281,7 +289,6 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
          * gain ~1.01-1.04 → a sustained, stable tone; lower → it decays (softer). */
         double fb      = decayFactor * 1.05; /* gen_ks_sustain → blown loop gain (>1 = self-oscillating) */
         double lpAlpha = bPluck;             /* reflection lowpass alpha (tube air color) */
-        if (lpAlpha <= 0.0) lpAlpha = 0.5;
         double lpState = 0.0;         /* reflection lowpass state */
         /* Breath = SMOOTH airy turbulence, NOT white hiss. A raw white-noise drive
          * makes the tone harsh/"industrial"; a 2-pole lowpass turns it into soft air
@@ -316,8 +323,8 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
             h2y = hpR * (h2y + h1y - h2x);
             h2x = h1y;
             float v = softsat_shared((float)(h2y * outScale));
-            if (assign) out[i] = v;
-            else        out[i] += v;
+            if (assign) out[i] = v * gf;
+            else        out[i] += v * gf;
         }
         return;
     }
@@ -351,8 +358,8 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
         double mixed = (current + attack) * envGlobal;
 
         float v = softsat_shared((float)mixed * outScale);
-        if (assign) out[i] = v;
-        else        out[i] += v;
+        if (assign) out[i] = v * gf;
+        else        out[i] += v * gf;
     }
 }
 
@@ -367,11 +374,7 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
  *
  * Each branch keeps its EXACT float-op order, noise-draw count/topology, and
  * final shaping. The CURATED kick knobs (h2/h3/h4 gains, env0/env1 rates,
- * pitch-env amount/rate, click/noise amounts, wave) are read via kp_get so the
- * NaN sentinel reproduces the legacy double literal at default; the structural
- * per-variant constants (filter coeffs, fixed harmonic env rates, attack/fade
- * rates, output scales) stay as literals exactly like the legacy functions —
- * they are not user knobs. The noise stream is noise_ma seeded 0 (→4321),
+ * pitch-env amount/rate, click/noise amounts, wave) are read directly from the param block (the seed spells every value). The noise stream is noise_ma seeded 0 (→4321),
  * bit-identical to the legacy ma_noise seed-0 stream (TestNoiseMaParity), drawn
  * in the same order as the legacy loop.
  *
@@ -399,22 +402,22 @@ static void gen_kick_acoustic(float *out, int sampleRate, int samples,
      * does); gentle saturation glues the layers into one event. Reuses every
      * kick knob (NO new ABI): mode_detune = inharmonic stretch, mode_gain =
      * high-mode level, mode_decay = high-mode damping. */
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.25);
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.60);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 60.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.20);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 12.0); /* fundamental decay /s */
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 28.0); /* low-mid mode decay /s */
-    double kH2       = kp_get(p->gen_kick_h2[k], 0.50);   /* mode-2 gain */
-    double kH3       = kp_get(p->gen_kick_h3[k], 0.35);   /* mode-3 gain */
-    double kH4       = kp_get(p->gen_kick_h4[k], 0.20);   /* mode-4 gain */
-    double kSat      = kp_get(p->gen_kick_sat[k], 1.4);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.6);
-    double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
-    double kStretch  = kp_get(p->gen_kick_mode_detune[k], 0.15); /* inharmonic stretch */
-    double kModeGain = kp_get(p->gen_kick_mode_gain[k], 1.0);    /* high-mode level */
-    double kHiDecay  = kp_get(p->gen_kick_mode_decay[k], 55.0);  /* high-mode damping /s */
-    double kReverb   = kp_get(p->gen_kick_reverb[k], 0.0);       /* room/echo tail amount */
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kClickAmt = p->gen_kick_click[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k]; /* fundamental decay /s */
+    double kEnv1Rate = p->gen_kick_env1[k]; /* low-mid mode decay /s */
+    double kH2       = p->gen_kick_h2[k];   /* mode-2 gain */
+    double kH3       = p->gen_kick_h3[k];   /* mode-3 gain */
+    double kH4       = p->gen_kick_h4[k];   /* mode-4 gain */
+    double kSat      = p->gen_kick_sat[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kStretch  = p->gen_kick_mode_detune[k]; /* inharmonic stretch */
+    double kModeGain = p->gen_kick_mode_gain[k];    /* high-mode level */
+    double kHiDecay  = p->gen_kick_mode_decay[k];  /* high-mode damping /s */
+    double kReverb   = p->gen_kick_reverb[k];       /* room/echo tail amount */
 
     /* Composed from synth_dsp_primitives.h: a 4-osc INHARMONIC modal bank, a
      * band-pass beater click + a low-mid texture (both one-pole primitives),
@@ -493,17 +496,17 @@ static void gen_kick_tight(float *out, int sampleRate, int samples,
                            double f0, int kWave, noise_ma_gen *noise, int assign) {
 #define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── tight (render_kick_tight_internal) ── */
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.15);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 65.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.05);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.5);
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.35);
-    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.15);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
-    double kFade     = kp_get(p->gen_kick_fade[k], 4.5);
-    double kSat      = kp_get(p->gen_kick_sat[k], 0.45);
+    double kClickAmt = p->gen_kick_click[k];
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k];
+    double kEnv1Rate = p->gen_kick_env1[k];
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kH3Gain   = p->gen_kick_h3[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kSat      = p->gen_kick_sat[k];
 
     float r0 = noise_ma_white_tick(noise);
     float r1 = noise_ma_white_tick(noise);
@@ -606,20 +609,20 @@ static void gen_kick_modal(float *out, int sampleRate, int samples,
      * scaled — never run through the waveshaper, the anti-"spit" rule from
      * variant 5) sit on top. Gentle tanh soft-limit, no hard clamp.
      * Reuses the kick knobs; adds three modal knobs (mode_detune/gain/decay). */
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.12);
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.30);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 45.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 1.6);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 11.0); /* batter decay /s */
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 20.0); /* harmonic decay /s */
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.30);
-    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.04);
-    double kDrive    = kp_get(p->gen_kick_sat[k], 0.8);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.5);
-    double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
-    double kDetune   = kp_get(p->gen_kick_mode_detune[k], 0.11);
-    double kModeGain = kp_get(p->gen_kick_mode_gain[k], 0.8);
-    double kModeDec  = kp_get(p->gen_kick_mode_decay[k], 4.0);
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kClickAmt = p->gen_kick_click[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k]; /* batter decay /s */
+    double kEnv1Rate = p->gen_kick_env1[k]; /* harmonic decay /s */
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kH3Gain   = p->gen_kick_h3[k];
+    double kDrive    = p->gen_kick_sat[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kDetune   = p->gen_kick_mode_detune[k];
+    double kModeGain = p->gen_kick_mode_gain[k];
+    double kModeDec  = p->gen_kick_mode_decay[k];
 
     double fR = f0 * (1.0 - kDetune);
     sp_osc oscB, oscR, osc2, osc3;
@@ -695,17 +698,17 @@ static void gen_kick_hybrid(float *out, int sampleRate, int samples,
      *       additive, envelope-scaled texture is a steady "air" instead;
      *   (3) a short bright CLICK = the attack snap + crest/punch.
      * Reuses the kick knobs: sat=distortion drive, noise=texture, click=attack. */
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.12);
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 90.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 1.5);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.0);
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
-    double kDrive    = kp_get(p->gen_kick_sat[k], 2.0);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 1.5);
-    double kFade     = kp_get(p->gen_kick_fade[k], 6.0);
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kClickAmt = p->gen_kick_click[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k];
+    double kEnv1Rate = p->gen_kick_env1[k];
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kH3Gain   = p->gen_kick_h3[k];
+    double kDrive    = p->gen_kick_sat[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
 
     sp_osc osc0, osc1, osc2;
     sp_osc_init(&osc0, M_PI * 0.5);
@@ -774,18 +777,18 @@ static void gen_kick_base(float *out, int sampleRate, int samples,
                           double f0, int kWave, noise_ma_gen *noise, int assign) {
 #define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── base (render_kick_internal) ── */
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.18);
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.35);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 30.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.10);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 5.5);
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 9.0);
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
-    double kH4Gain   = kp_get(p->gen_kick_h4[k], 0.12);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
-    double kFade     = kp_get(p->gen_kick_fade[k], 4.0);
-    double kSat      = kp_get(p->gen_kick_sat[k], 0.55);
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kClickAmt = p->gen_kick_click[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k];
+    double kEnv1Rate = p->gen_kick_env1[k];
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kH3Gain   = p->gen_kick_h3[k];
+    double kH4Gain   = p->gen_kick_h4[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kSat      = p->gen_kick_sat[k];
 
     double lpNoise = 0.0;
     double lpClick = 0.0;
@@ -862,16 +865,16 @@ static void gen_kick_lofi(float *out, int sampleRate, int samples,
                           double f0, int kWave, noise_ma_gen *noise, int assign) {
 #define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── lofi (render_kick_lofi_internal) ── */
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.25);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 20.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.08);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 4.5);
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.2);
-    double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
-    double kSat      = kp_get(p->gen_kick_sat[k], 1.5);
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k];
+    double kEnv1Rate = p->gen_kick_env1[k];
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kH3Gain   = p->gen_kick_h3[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kSat      = p->gen_kick_sat[k];
 
     double lpNoise = 0.0;
     float r0 = noise_ma_white_tick(noise);
@@ -938,17 +941,17 @@ static void gen_kick_deep(float *out, int sampleRate, int samples,
                           double f0, int kWave, noise_ma_gen *noise, int assign) {
 #define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── deep (render_kick_deep_internal) ── */
-    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.10);
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.20);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 15.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.15);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 3.5);
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.15);
-    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.10);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.15);
-    double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
-    double kSat      = kp_get(p->gen_kick_sat[k], 1.2);
+    double kNoiseAmt = p->gen_kick_noise[k];
+    double kClickAmt = p->gen_kick_click[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k];
+    double kEnv1Rate = p->gen_kick_env1[k];
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kH3Gain   = p->gen_kick_h3[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kSat      = p->gen_kick_sat[k];
 
     double lpNoise = 0.0;
     double phase0 = M_PI * 0.5;
@@ -1006,15 +1009,15 @@ static void gen_kick_punchy(float *out, int sampleRate, int samples,
                             double f0, int kWave, noise_ma_gen *noise, int assign) {
 #define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── punchy (render_kick_punchy_internal) ── */
-    double kClickAmt = kp_get(p->gen_kick_click[k], 0.45);
-    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 55.0);
-    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.25);
-    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 8.0);
-    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 14.0);
-    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-    double kAttack   = kp_get(p->gen_kick_attack[k], 0.5);
-    double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
-    double kSat      = kp_get(p->gen_kick_sat[k], 0.8);
+    double kClickAmt = p->gen_kick_click[k];
+    double kPeRate   = p->gen_kick_pe_rate[k];
+    double kPeAmt    = p->gen_kick_pe_amt[k];
+    double kEnv0Rate = p->gen_kick_env0[k];
+    double kEnv1Rate = p->gen_kick_env1[k];
+    double kH2Gain   = p->gen_kick_h2[k];
+    double kAttack   = p->gen_kick_attack[k];
+    double kFade     = p->gen_kick_fade[k];
+    double kSat      = p->gen_kick_sat[k];
 
     double lpClick = 0.0;
     float r0 = noise_ma_white_tick(noise);
@@ -1061,6 +1064,301 @@ static void gen_kick_punchy(float *out, int sampleRate, int samples,
 #undef KICK_WRITE
 }
 
+/* ── physical (variant 8): a MODAL DRUMHEAD struck by a beater ──
+ * A real bass drum is a membrane whose modes are excited by the beater's
+ * FORCE PULSE and whose pitch is set by its TENSION, which rises with the
+ * head's own vibrational energy (Avanzini/Marogna/Bank: the quasi-static
+ * tension is proportional to the membrane energy, so every mode moves
+ * together as f_k·sqrt(1+κE)). The parts, all mechanism rather than drawn
+ * envelopes:
+ *   - Beater: a raised-cosine force pulse of contact time Tc (felt ≈ 7 ms,
+ *     hard ≈ 0.7 ms). Its spectrum nulls at 2/Tc and rolls off at −18 dB/oct,
+ *     so a soft beater drives only the body (a MUTED kick) and a hard one
+ *     lights up the skin cluster; a contact SLAP whose brightness also grows
+ *     with hardness supplies the broadband smack of a hard beater.
+ *   - Head: complex one-pole modal rotators (stable under per-sample pitch
+ *     modulation). Body modes blend from a harmonic stack (1/2/2.98/3.95)
+ *     to the measured MEMBRANE ratios of recorded kicks (1/1.72/2.04/2.42 —
+ *     the (1,1)-type mode at ~1.7·f0 is what reads "real drum", the clean
+ *     harmonic stack reads "electronic"); above them a short-lived inharmonic
+ *     skin cluster.
+ *   - Tension glide: Ê = normalized modal energy Σ|z|²; pitch multiplier
+ *     sqrt(1 + a(a+2)·v²·Ê·e^{-pe_rate·t}) so pe_amt keeps the shared kick
+ *     meaning (onset pitch = f0·(1+pe_amt) at velocity 1) and a harder hit
+ *     glides further.
+ *   - Resonant head: a second, less-damped mode driven by the batter
+ *     fundamental through the cavity, riding the SAME pitch path: it holds
+ *     the body up (bloom) without beating. (A detuned head drifting through
+ *     the glide modulated the body at 2-30 Hz — WarbleDepth 1.8-3.4 vs
+ *     recorded kicks' 0.4-0.6 — and was heard as fuzz.)
+ *   - Shell / room: a FIXED-pitch (untensioned) bank of low-mid resonances
+ *     struck by the same pulse plus a short dark noise burst — the dense
+ *     46-200 Hz after-ring of a recorded kick's shell and room. Resonators,
+ *     not feedback combs (combs ring at n/D and groan against f0).
+ *   - Fullness: ONLY the fundamental + resonant head (one pitch) are
+ *     saturated, through a BIASED tanh (warm H2 + H3), then DC-blocked.
+ *     Saturating several modes together intermodulates them into a "creak",
+ *     so the other body modes, skin, slap, shell and air are added clean.
+ *     The voice is peak-normalized: at a fixed peak, fullness = energy under
+ *     the peak.
+ * Knob semantics (variant 8):
+ *   voice_freq  settled fundamental        pe_amt  onset pitch above f0 (×(1+amt))
+ *   pe_rate     glide speed /s              attack  strike velocity
+ *   click       beater hardness 0..1        env0    fundamental damping /s
+ *   env1        body-mode damping /s        h2/h3   2nd / 3rd body-mode levels
+ *   h4          skin-cluster level          mode_decay skin damping (×4 /s)
+ *   mode_detune body ratios: 0 harmonic .. 0.5 membrane
+ *   mode_gain   resonant-head level         sat     fundamental drive
+ *   noise       shell air                   fade    extra decay /s (absolute)
+ *   reverb      shell/room resonance level
+ *   hold        seconds the body rings UNDAMPED before decaying (0 = off)
+ *   hiss        the air / "vacuum" floor: broadband noise under the whole hit
+ *               that fades far slower than the body (0 = off) */
+#define KPHYS_MODES 9
+#define KPHYS_SHELL 7
+static void gen_kick_physical(float *out, int sampleRate, int samples,
+                              const modular_params *p, int k,
+                              double f0, int kWave, noise_ma_gen *noise, int assign) {
+    (void)kWave;
+    double peAmt    = p->gen_kick_pe_amt[k];
+    double peRate   = p->gen_kick_pe_rate[k];
+    double vel      = p->gen_kick_attack[k];
+    double hard     = p->gen_kick_click[k];
+    double env0     = p->gen_kick_env0[k];
+    double env1     = p->gen_kick_env1[k];
+    double h2       = p->gen_kick_h2[k];
+    double h3       = p->gen_kick_h3[k];
+    double skin     = p->gen_kick_h4[k];
+    double skinDec  = p->gen_kick_mode_decay[k] * 4.0;
+    double memb     = p->gen_kick_mode_detune[k] * 2.0;
+    double resGain  = p->gen_kick_mode_gain[k];
+    double drive    = p->gen_kick_sat[k];
+    double airAmt   = p->gen_kick_noise[k];
+    double fade     = p->gen_kick_fade[k];
+    double shellAmt = p->gen_kick_reverb[k];
+    double holdSec  = p->gen_kick_hold[k];
+    double hissAmt  = p->gen_kick_hiss[k];
+    if (hard < 0.0) hard = 0.0;
+    if (hard > 1.0) hard = 1.0;
+    if (memb < 0.0) memb = 0.0;
+    if (memb > 1.0) memb = 1.0;
+    if (vel < 0.05) vel = 0.05;
+    if (samples <= 0) return;
+
+    const double sr = (double)sampleRate;
+    /* mode 0: fundamental (saturated). 1-3: body modes, harmonic→membrane.
+     * 4-8: inharmonic skin cluster. */
+    static const double harm[4] = {1.0, 2.0, 2.98, 3.95};
+    static const double membr[4] = {1.0, 1.72, 2.04, 2.42};
+    double ratio[KPHYS_MODES] = {1.0, 0, 0, 0, 5.31, 6.63, 7.92, 9.41, 11.2};
+    for (int m = 1; m < 4; ++m) ratio[m] = harm[m] + memb * (membr[m] - harm[m]);
+    double gain[KPHYS_MODES] = {1.0, h2, h3, h3 * 0.5,
+                                skin, skin * 0.8, skin * 0.65, skin * 0.5, skin * 0.4};
+    double sigma[KPHYS_MODES] = {env0, env1, env1 * 1.3, env1 * 1.6,
+                                 skinDec, skinDec * 1.15, skinDec * 1.3, skinDec * 1.5, skinDec * 1.7};
+    double rho[KPHYS_MODES], rhoHold[KPHYS_MODES];
+    for (int m = 0; m < KPHYS_MODES; ++m) {
+        rho[m] = exp(-sigma[m] / sr);
+        /* body modes (0-3) barely damped while held; the skin keeps its decay */
+        rhoHold[m] = (m < 4) ? exp(-sigma[m] * 0.05 / sr) : rho[m];
+    }
+    int holdN = (int)(holdSec * sr);
+
+    /* shell / room: fixed-pitch resonances (ratios to the SETTLED f0) */
+    static const double shRatio[KPHYS_SHELL] = {1.38, 1.61, 2.24, 2.68, 3.22, 3.86, 4.52};
+    static const double shGain[KPHYS_SHELL]  = {1.0, 0.9, 0.8, 0.75, 0.6, 0.5, 0.4};
+    double shZr[KPHYS_SHELL] = {0}, shZi[KPHYS_SHELL] = {0};
+    double shC[KPHYS_SHELL], shS[KPHYS_SHELL], shRho[KPHYS_SHELL];
+    for (int m = 0; m < KPHYS_SHELL; ++m) {
+        double th = 2.0 * M_PI * f0 * shRatio[m] / sr;
+        if (th > M_PI * 0.95) th = M_PI * 0.95;
+        shC[m] = cos(th); shS[m] = sin(th);
+        shRho[m] = exp(-(9.0 + 1.5 * (double)m) / sr);
+    }
+
+    /* Beater force pulse: raised cosine of contact time Tc, unit area. */
+    double tc = 0.007 * (1.0 - hard) + 0.0007 * hard;
+    int nc = (int)(tc * sr);
+    if (nc < 2) nc = 2;
+    double pulseNorm = 2.0 / (double)nc;
+    int slapN = (int)(0.003 * sr);
+    double slapLP = 0.20 + 0.75 * hard; /* brighter slap from a harder beater */
+
+    double zr[KPHYS_MODES] = {0}, zi[KPHYS_MODES] = {0};
+    double sigR = env0 * 0.6;
+    double rhoR = exp(-sigR / sr);
+    double rhoRHold = exp(-sigR * 0.05 / sr);
+    double rr = 0.0, ri = 0.0;
+    double couple = sigR / sr;
+
+    double kappa = peAmt * (peAmt + 2.0) * vel * vel;
+    double eMax = 1e-30;
+
+    float *low = (float *)malloc((size_t)samples * sizeof(float));
+    float *hi  = (float *)malloc((size_t)samples * sizeof(float));
+    if (!low || !hi) {
+        free(low); free(hi);
+        if (assign) for (int i = 0; i < samples; ++i) out[i] = 0.0f;
+        return;
+    }
+
+    double lpS1 = 0.0, lpS2 = 0.0, lpA = 0.0, hpA = 0.0, lpR = 0.0;
+    double lpH = 0.0, lpH2 = 0.0, amp0Max = 0.0;
+    double lpV1 = 0.0, lpV2 = 0.0, lpV3 = 0.0, hpV = 0.0;
+    double peakLow = 1e-12;
+    int roomN = (int)(0.012 * sr);
+    for (int i = 0; i < samples; ++i) {
+        double t = (double)i / sr;
+        double force = 0.0;
+        if (i < nc) force = pulseNorm * 0.5 * (1.0 - cos(2.0 * M_PI * (double)i / (double)nc));
+
+        /* normalized modal energy → tension → pitch (every mode together) */
+        double e = 0.0;
+        for (int m = 0; m < KPHYS_MODES; ++m) e += zr[m] * zr[m] + zi[m] * zi[m];
+        if (e > eMax) eMax = e;
+        double eh = (e / eMax) * exp(-peRate * t);
+        if (i < nc) eh = 1.0; /* tension peaks while the beater is in contact */
+        double mul = sqrt(1.0 + kappa * eh);
+
+        int held = (i < holdN);
+        for (int m = 0; m < KPHYS_MODES; ++m) {
+            double rm = held ? rhoHold[m] : rho[m];
+            double th = 2.0 * M_PI * f0 * ratio[m] * mul / sr;
+            if (th > M_PI * 0.95) { zr[m] *= rm; zi[m] *= rm; continue; }
+            double c = cos(th), s = sin(th);
+            double nr = rm * (zr[m] * c - zi[m] * s) + gain[m] * force;
+            double ni = rm * (zr[m] * s + zi[m] * c);
+            zr[m] = nr; zi[m] = ni;
+        }
+        {
+            double rmR = held ? rhoRHold : rhoR;
+            double th = 2.0 * M_PI * f0 * mul / sr;
+            double c = cos(th), s = sin(th);
+            double nr = rmR * (rr * c - ri * s) + couple * zr[0];
+            double ni = rmR * (rr * s + ri * c);
+            rr = nr; ri = ni;
+        }
+        double lowS = zr[0] + resGain * rr;
+        double hiS = zr[1] + zr[2] + zr[3];
+        for (int m = 4; m < KPHYS_MODES; ++m) hiS += zr[m];
+
+        /* beater slap: contact noise, ~3 ms, brighter + louder when harder */
+        float wn = noise_ma_white_tick(noise);
+        if (i < 4 * slapN) {
+            double bp = sp_onepole_tick(&lpS1, slapLP, (double)wn);
+            bp = bp - sp_onepole_tick(&lpS2, 0.10, bp);
+            hiS += bp * exp(-(double)i / (double)slapN) * hard * 1.6;
+        }
+        /* shell / room: struck by the pulse + a short dark noise burst */
+        float rn = noise_ma_white_tick(noise);
+        if (shellAmt > 0.0) {
+            double burst = (i < 4 * roomN) ? sp_onepole_tick(&lpR, 0.05, (double)rn) * exp(-(double)i / (double)roomN) : 0.0;
+            double ex = force + burst * 0.02;
+            double sh = 0.0;
+            for (int m = 0; m < KPHYS_SHELL; ++m) {
+                double nr = shRho[m] * (shZr[m] * shC[m] - shZi[m] * shS[m]) + shGain[m] * ex;
+                double ni = shRho[m] * (shZr[m] * shS[m] + shZi[m] * shC[m]);
+                shZr[m] = nr; shZi[m] = ni;
+                sh += nr;
+            }
+            hiS += sh * shellAmt * 0.35;
+        }
+        /* shell air: dark noise riding the fundamental's ENVELOPE (additive,
+         * never the wave — no AM flutter) */
+        double amp0 = sqrt(zr[0] * zr[0] + zi[0] * zi[0]);
+        float an = noise_ma_white_tick(noise);
+        double a = sp_onepole_tick(&lpA, 0.06, (double)an);
+        a = a - sp_onepole_tick(&hpA, 0.006, a);
+        hiS += a * amp0 * airAmt * 4.0;
+        /* AIR / VACUUM: the turbulent air the heads pump through the shell
+         * and port. A recorded kick's body is ~half NOISE in 25-120 Hz (muted
+         * Alkota 47% tonal, 9th Wonder 25%; a synth kick ~90%, the "digital"
+         * tell): steep low-passed noise (three one-poles at ~70-110 Hz, HP ~25 Hz,
+         * the near-brown density the recordings show)
+         * riding the body envelope at tone level, plus a faint, steeply
+         * sloped floor above 1 kHz that fades far slower than the body.
+         * Drawn only when on, so hiss=0 is byte-identical. */
+        if (hissAmt > 0.0) {
+            if (amp0 > amp0Max) amp0Max = amp0;
+            double envB = amp0 + resGain * sqrt(rr * rr + ri * ri);
+            float vn = noise_ma_white_tick(noise);
+            double v = sp_onepole_tick(&lpV1, 0.010, (double)vn);
+            v = sp_onepole_tick(&lpV2, 0.010, v);
+            v = sp_onepole_tick(&lpV3, 0.016, v);
+            v = v - sp_onepole_tick(&hpV, 0.0036, v);
+            hiS += v * envB * hissAmt * 90.0;
+            double envH = pow(amp0 / (amp0Max + 1e-30), 0.35);
+            float hn = noise_ma_white_tick(noise);
+            double h = (double)hn - sp_onepole_tick(&lpH, 0.14, (double)hn);
+            h = sp_onepole_tick(&lpH2, 0.30, h);
+            hiS += h * envH * amp0Max * hissAmt * 0.010;
+        }
+
+        low[i] = (float)lowS;
+        hi[i]  = (float)hiS;
+        if (fabs(lowS) > peakLow) peakLow = fabs(lowS);
+    }
+
+    /* biased drive on the fundamental only, DC-blocked; the rest clean */
+    double d = drive * (0.7 + 0.3 * vel);
+    const double bias = 0.15;
+    double tb = tanh(d * bias);
+    double dn = (d > 1e-6) ? (tanh(d * (1.0 + bias)) - tb) : 1.0;
+    double inv = 1.0 / peakLow;
+    sp_dcblock dc = {0.0, 0.0};
+    double dcR = 1.0 - 2.0 * M_PI * 12.0 / sr;
+    double peak = 1e-12;
+    int fadeN = (int)(0.008 * sr);
+    for (int i = 0; i < samples; ++i) {
+        double t = (double)i / sr;
+        double x = (double)low[i] * inv;
+        double y = (d > 1e-6) ? (tanh(d * (x + bias)) - tb) / dn : x;
+        y = sp_dcblock_tick(&dc, y, dcR);
+        y += (double)hi[i] * inv;
+        if (fade > 0.0) y *= exp(-fade * t);
+        int left = samples - 1 - i;
+        if (left < fadeN) y *= 0.5 * (1.0 - cos(M_PI * (double)left / (double)fadeN));
+        low[i] = (float)y;
+    }
+    /* GLUE: a look-ahead transient limiter riding the GAIN (no waveshaping, so
+     * no intermodulation) — the slap/skin transient is held to a ceiling just
+     * above the saturated body instead of poking out over it, which is what
+     * gives a recorded, compressed kick its low crest (Rnd_K1 / F1: 3.4) and
+     * its loudness at a fixed peak. Strength follows the drive: sat 0 leaves a
+     * 3× ceiling (inert), sat 4 holds transients to 1.4× the body. */
+    {
+        double ceil = 1.0 + 2.0 / (1.0 + drive);
+        int la = (int)(0.0015 * sr);
+        if (la < 1) la = 1;
+        double relC = exp(-1.0 / (0.025 * sr));
+        double atkC = exp(-1.0 / (0.0005 * sr));
+        float *need = hi; /* reuse: hi[] is no longer needed */
+        for (int i = 0; i < samples; ++i) {
+            double a = fabs((double)low[i]);
+            need[i] = (float)((a > ceil) ? ceil / a : 1.0);
+        }
+        double gcur = 1.0;
+        for (int i = 0; i < samples; ++i) {
+            double gmin = 1.0;
+            int end = i + la < samples ? i + la : samples - 1;
+            for (int j = i; j <= end; ++j) if ((double)need[j] < gmin) gmin = (double)need[j];
+            gcur = (gmin < gcur) ? gmin + (gcur - gmin) * atkC : gmin + (gcur - gmin) * relC;
+            double y = (double)low[i] * gcur;
+            low[i] = (float)y;
+            if (fabs(y) > peak) peak = fabs(y);
+        }
+    }
+    double g = 0.98 / peak;
+    for (int i = 0; i < samples; ++i) {
+        float v = (float)((double)low[i] * g);
+        if (assign) out[i] = v; else out[i] += v;
+    }
+    free(low);
+    free(hi);
+}
+#undef KPHYS_SHELL
+#undef KPHYS_MODES
+
 static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
                                   const modular_params *p, int k,
                                   double voice_freq, int assign) {
@@ -1073,11 +1371,11 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         }
         return;
     }
-    int variant = (int)lrintf(p->gen_kick_variant[k]);
-    int kWave   = (int)kp_get(p->gen_wave[k], 0.0);
+    int variant = (int)lrint(p->gen_kick_variant[k]);
+    int kWave   = (int)p->gen_wave[k];
 
     double f0 = (double)p->gen_freq[k];
-    if ((int)lrintf(p->gen_freq_mode[k]) == 0) f0 *= voice_freq;
+    if ((int)lrint(p->gen_freq_mode[k]) == 0) f0 *= voice_freq;
 
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
@@ -1096,6 +1394,8 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         gen_kick_modal(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else if (variant == 7) {
         gen_kick_acoustic(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
+    } else if (variant == 8) {
+        gen_kick_physical(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else {
         gen_kick_base(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     }
@@ -1107,8 +1407,7 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
  * literal sets, so this is a SINGLE parameterized loop (not three branches): the
  * gen_tom_variant[k] discriminator (0=tom 1=high 2=low) selects a per-variant
  * literal set for the structural constants, while the CURATED knobs
- * (sweep/ring rates, o1/o2 gains, stick, room) are read via kp_get so the NaN
- * sentinel reproduces the exact per-variant legacy double literal at default.
+ * (sweep/ring rates, o1/o2 gains, stick, room) are read directly from the param block (the seed spells every value).
  *
  * Noise stream: noise_ma seeded 0 (→4321), bit-identical to the legacy ma_noise
  * seed-0 stream (TestNoiseMaParity), drawn in the same order as the legacy loop
@@ -1120,10 +1419,16 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
  * legacy renderer's direct out[i]= — so a -0.0 sample is not flipped to +0.0. */
 static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
                                  const modular_params *p, int k,
-                                 double voice_freq, int assign) {
-    int variant = (int)lrintf(p->gen_tom_variant[k]);
+                                 double voice_freq, int assign, double gain) {
+    /* Slot gain as a FLOAT, appended to the original expressions rather than
+     * folded into them: `(float)x * scale` and `(float)(x * scale * gain)` do
+     * not round identically, so folding would change every sample even at unity
+     * gain. Multiplying the finished float by 1.0f is exact, which is what keeps
+     * the 23 instruments that seed gen_gain=1 byte-unchanged. */
+    const float gf = (float)gain;
+    int variant = (int)lrint(p->gen_tom_variant[k]);
     if (variant < 0 || variant > 2) variant = 0;
-    int tWave = (int)kp_get(p->gen_wave[k], 0.0);
+    int tWave = (int)p->gen_wave[k];
 
     /* Per-variant STRUCTURAL literal tables, indexed [0]=tom [1]=high [2]=low,
      * transplanted VERBATIM from render_tom_internal / _high_internal /
@@ -1141,23 +1446,16 @@ static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
     static const double attackRate[3] = { 120.0, 140.0, 100.0 };
     static const double ambientRate[3]= { 6.0,  8.0,  4.0  };
     static const double globalFade[3] = { 0.05, 0.06, 0.04 };
-    /* Per-variant CURATED-knob fallbacks (the legacy kp_get literals). */
-    static const double sweepDef[3]   = { 18.0, 22.0, 14.0 };
-    static const double ringDef[3]    = { 2.8,  3.5,  2.2  };
-    static const double o1Def[3]      = { 0.5,  0.55, 0.45 };
-    static const double o2Def[3]      = { 0.25, 0.28, 0.22 };
-    static const double stickDef[3]   = { 0.35, 0.38, 0.32 };
-    static const double roomDef[3]    = { 0.08, 0.06, 0.10 };
 
-    double tSweepRate = kp_get(p->gen_tom_sweep[k], sweepDef[variant]);
-    double tRingRate  = kp_get(p->gen_tom_ring[k],  ringDef[variant]);
-    double tO1Gain    = kp_get(p->gen_tom_o1[k],    o1Def[variant]);
-    double tO2Gain    = kp_get(p->gen_tom_o2[k],    o2Def[variant]);
-    double tStick     = kp_get(p->gen_tom_stick[k], stickDef[variant]);
-    double tRoom      = kp_get(p->gen_tom_room[k],  roomDef[variant]);
+    double tSweepRate = p->gen_tom_sweep[k];
+    double tRingRate  = p->gen_tom_ring[k];
+    double tO1Gain    = p->gen_tom_o1[k];
+    double tO2Gain    = p->gen_tom_o2[k];
+    double tStick     = p->gen_tom_stick[k];
+    double tRoom      = p->gen_tom_room[k];
 
     double fundamentalHz = (double)p->gen_freq[k];
-    if ((int)lrintf(p->gen_freq_mode[k]) == 0) fundamentalHz *= voice_freq;
+    if ((int)lrint(p->gen_freq_mode[k]) == 0) fundamentalHz *= voice_freq;
 
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
@@ -1213,9 +1511,20 @@ static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
         if (global < 0.0) global = 0.0;
 
         float y = softsat_shared((float)((tone + attack + ambient) * global));
-        if (assign) out[i] = y;
-        else        out[i] += y;
+        if (assign) out[i] = y * gf;
+        else        out[i] += y * gf;
     }
+}
+
+/* snare_fc: structural bound for a filter design frequency in the snare / clap
+ * voices. A filter designed at 0 Hz divides by zero (NaN from the first
+ * sample) and an RBJ biquad above Nyquist is unstable — Tune at either end of
+ * its range reached both. 0.45·sr matches the cymbal plate's cap; values
+ * inside the band (every shipped seed) pass through unchanged. */
+static double snare_fc(double fc, int sampleRate) {
+    double nyq = 0.45 * (double)sampleRate;
+    if (!(fc >= 1.0)) return 1.0;
+    return fc > nyq ? nyq : fc;
 }
 
 /* modular_gen_slot_snare: the source==7 snare-ish voice. The three legacy
@@ -1230,10 +1539,7 @@ static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
  * transplanted verbatim for byte-identity), noise-draw topology (1 seed draw then
  * 1 white draw per sample), and final shaping (0.95f * softsat). The CURATED
  * snare knobs (tone2/tune/tone-decay/noise-decay/tail-decay/tone-mix/noise-mix/
- * wire-mix/attack, wave) are read via kp_get so the NaN sentinel reproduces the
- * exact per-variant legacy double literal at default; the structural per-variant
- * constants (fixed band centers/Qs, fixed partial ratios/decays, HP cutoffs, fade
- * slopes) stay as literals exactly like the legacy functions. The noise stream is
+ * wire-mix/attack, wave) are read directly from the param block (the seed spells every value). The noise stream is
  * noise_ma seeded 0 (→4321), bit-identical to the legacy ma_noise seed-0 stream
  * (TestNoiseMaParity), drawn in the same order as the legacy loop.
  *
@@ -1246,13 +1552,13 @@ static void gen_snare_rimshot(float *out, int sampleRate, int samples,
                               noise_ma_gen *noise, int assign) {
 #define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── rimshot (render_snare_rimshot_internal) ── */
-    double sTone2  = kp_get(p->gen_snare_tone2[k], 1050.0);
-    double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
-    double sToneD  = kp_get(p->gen_snare_tone_d[k], 40.0);
-    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 200.0);
-    double sToneM  = kp_get(p->gen_snare_tone_m[k], 1.0);
-    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.7);
-    double sAtk    = kp_get(p->gen_snare_attack[k], 2.0);
+    double sTone2  = p->gen_snare_tone2[k];
+    double sTune   = p->gen_snare_tune[k];
+    double sToneD  = p->gen_snare_tone_d[k];
+    double sNoiseD = p->gen_snare_noise_d[k];
+    double sToneM  = p->gen_snare_tone_m[k];
+    double sNoiseM = p->gen_snare_noise_m[k];
+    double sAtk    = p->gen_snare_attack[k];
 
     float seed;
     seed = noise_ma_white_tick(noise);
@@ -1268,12 +1574,12 @@ static void gen_snare_rimshot(float *out, int sampleRate, int samples,
     sp_osc_init(&osc3, 0.0);
     sp_osc_init(&osc4, 0.0);
 
-    double rc = 1.0 / (2.0 * M_PI * (400.0 * sTune));
+    double rc = 1.0 / (2.0 * M_PI * snare_fc(400.0 * sTune, sampleRate));
     double dt = 1.0 / (double)sampleRate;
     double hpAlpha = rc / (rc + dt);
     double hpPrev = 0.0, hpOut = 0.0;
 
-    double lpAlpha = dt / (1.0 / (2.0 * M_PI * (5000.0 * sTune)) + dt);
+    double lpAlpha = dt / (1.0 / (2.0 * M_PI * snare_fc(5000.0 * sTune, sampleRate)) + dt);
     double lpState = 0.0;
 
     for (int i = 0; i < samples; ++i) {
@@ -1313,13 +1619,13 @@ static void gen_snare_sidestick(float *out, int sampleRate, int samples,
                                 noise_ma_gen *noise, int assign) {
 #define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── sidestick (render_snare_sidestick_internal) ── */
-    double sTone2  = kp_get(p->gen_snare_tone2[k], 1200.0);
-    double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
-    double sToneD  = kp_get(p->gen_snare_tone_d[k], 100.0);
-    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 150.0);
-    double sToneM  = kp_get(p->gen_snare_tone_m[k], 0.5);
-    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.5);
-    double sAtk    = kp_get(p->gen_snare_attack[k], 1.0);
+    double sTone2  = p->gen_snare_tone2[k];
+    double sTune   = p->gen_snare_tune[k];
+    double sToneD  = p->gen_snare_tone_d[k];
+    double sNoiseD = p->gen_snare_noise_d[k];
+    double sToneM  = p->gen_snare_tone_m[k];
+    double sNoiseM = p->gen_snare_noise_m[k];
+    double sAtk    = p->gen_snare_attack[k];
 
     float seed;
     seed = noise_ma_white_tick(noise);
@@ -1333,7 +1639,7 @@ static void gen_snare_sidestick(float *out, int sampleRate, int samples,
 
     double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
     {
-        double fc = 1500.0 * sTune; double Q = 0.7;
+        double fc = snare_fc(1500.0 * sTune, sampleRate); double Q = 0.7;
         double w0 = 2.0 * M_PI * fc / (double)sampleRate;
         double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
         double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
@@ -1372,15 +1678,15 @@ static void gen_snare_main(float *out, int sampleRate, int samples,
      * LESS noise, a FAST body thump (tone decay) + a LONG wire ring (slow
      * noise/tail decay), darker noise tune. Defaults kept in sync with the
      * drum-snare recipe spec in synth_recipe_wired.go. */
-    double sTone2  = kp_get(p->gen_snare_tone2[k], 280.0);
-    double sTune   = kp_get(p->gen_snare_tune[k], 0.55);
-    double sToneD  = kp_get(p->gen_snare_tone_d[k], 46.0);
-    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 7.0);
-    double sTailD  = kp_get(p->gen_snare_tail_d[k], 10.0);
-    double sToneM  = kp_get(p->gen_snare_tone_m[k], 1.12);
-    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.56);
-    double sWireM  = kp_get(p->gen_snare_wire_m[k], 0.8);
-    double sAtk    = kp_get(p->gen_snare_attack[k], 0.5);
+    double sTone2  = p->gen_snare_tone2[k];
+    double sTune   = p->gen_snare_tune[k];
+    double sToneD  = p->gen_snare_tone_d[k];
+    double sNoiseD = p->gen_snare_noise_d[k];
+    double sTailD  = p->gen_snare_tail_d[k];
+    double sToneM  = p->gen_snare_tone_m[k];
+    double sNoiseM = p->gen_snare_noise_m[k];
+    double sWireM  = p->gen_snare_wire_m[k];
+    double sAtk    = p->gen_snare_attack[k];
 
     float seed;
     seed = noise_ma_white_tick(noise);
@@ -1398,7 +1704,7 @@ static void gen_snare_main(float *out, int sampleRate, int samples,
     double b0_bp3, b1_bp3, b2_bp3, a1_bp3, a2_bp3;
 
     {
-        double fc = 350.0 * sTune;
+        double fc = snare_fc(350.0 * sTune, sampleRate);
         double Q = 0.7;
         double w0 = 2.0 * M_PI * fc / (double)sampleRate;
         double cosw = cos(w0);
@@ -1413,7 +1719,7 @@ static void gen_snare_main(float *out, int sampleRate, int samples,
         a1_lp = a1 / a0; a2_lp = a2 / a0;
     }
     {
-        double fc = 1800.0 * sTune;
+        double fc = snare_fc(1800.0 * sTune, sampleRate);
         double Q = 1.0;
         double w0 = 2.0 * M_PI * fc / (double)sampleRate;
         double cosw = cos(w0);
@@ -1428,7 +1734,7 @@ static void gen_snare_main(float *out, int sampleRate, int samples,
         a1_bp1 = a1 / a0; a2_bp1 = a2 / a0;
     }
     {
-        double fc = 3200.0 * sTune;
+        double fc = snare_fc(3200.0 * sTune, sampleRate);
         double Q = 1.0;
         double w0 = 2.0 * M_PI * fc / (double)sampleRate;
         double cosw = cos(w0);
@@ -1443,7 +1749,7 @@ static void gen_snare_main(float *out, int sampleRate, int samples,
         a1_bp2 = a1 / a0; a2_bp2 = a2 / a0;
     }
     {
-        double fc = 4500.0 * sTune;
+        double fc = snare_fc(4500.0 * sTune, sampleRate);
         double Q = 1.0;
         double w0 = 2.0 * M_PI * fc / (double)sampleRate;
         double cosw = cos(w0);
@@ -1515,15 +1821,161 @@ static void gen_snare_main(float *out, int sampleRate, int samples,
 #undef SNARE_WRITE
 }
 
+/* Modal mode ratios of the reference acoustic snare, measured twice by
+ * independent methods (peak-picked 0-600 ms FFT, then narrowband complex
+ * demodulation) on soundreality-snare-drum-acoustic-sample-455287:
+ * 225 / 355 / 520 / 673 / 838 / 1015 Hz. Mode 2 is NOT taken from this table —
+ * it is driven by snare_tone2_freq so "Ring Pitch" is a live knob. */
+static const double kSnareAcousticRatio[4] = {2.31, 2.99, 3.72, 4.50};
+/* Peak levels, relative to mode 1, from the same measurement. */
+static const double kSnareAcousticGain[4]  = {0.29, 0.24, 0.29, 0.07};
+/* Per-mode damping SPREAD about tail_decay (measured 100-400 ms rates
+ * 4.5 / 5.4 / 7.2 / 7.1 /s over a ~5 /s nominal). The spread is what keeps the
+ * bank from reading as a tidy synth chord. */
+static const double kSnareAcousticSpread[4] = {0.90, 1.08, 1.44, 1.42};
+
+static void gen_snare_acoustic(float *out, int sampleRate, int samples,
+                               const modular_params *p, int k,
+                               double fundamentalHz, int sWave,
+                               noise_ma_gen *noise, int assign) {
+#define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── acoustic snare (variant 3) — INHARMONIC MODAL head bank ──
+     * An open, undamped acoustic snare is a struck head whose modes are
+     * non-integer, PLUS a shell/air resonance that outlives the strike, PLUS
+     * wires driven BY that head. The fat-bottom variant 0 cannot reach it: two
+     * partials share one envelope, the drift is clamped at 140/180 Hz and the
+     * wire bands are pinned at 1.8/3.2/4.5 kHz, while this reference rings at
+     * 355-1015 Hz for the better part of a second. Mirrors gen_kick_acoustic
+     * (variant 7) structurally and reuses every snare knob (NO new ABI).
+     *
+     * THE defining feature (see the design doc, and the guard test
+     * TestSnareAcousticIsRingingModalSnare): mode 1 is TWO-STAGE. Measured, it
+     * drops ~35 /s for 100 ms, then PLATEAUS near -32 dB and hums out to
+     * ~700 ms — that low hum is 60 % of all energy in the 400-900 ms window.
+     * A single exponential here yields a snare that is right for 150 ms and
+     * hollow after; do not "simplify" the slow term away. */
+    double sTone2  = p->gen_snare_tone2[k];
+    double sTune   = p->gen_snare_tune[k];
+    double sToneD  = p->gen_snare_tone_d[k];
+    double sNoiseD = p->gen_snare_noise_d[k];
+    double sTailD  = p->gen_snare_tail_d[k];
+    double sToneM  = p->gen_snare_tone_m[k];
+    double sNoiseM = p->gen_snare_noise_m[k];
+    double sWireM  = p->gen_snare_wire_m[k];
+    double sAtk    = p->gen_snare_attack[k];
+
+    /* The shell/air term: level -32 dB relative to the struck head, decaying
+     * at ~1.2 /s. BOTH numbers are measured, and the RATE is the one that
+     * matters — the reference's fundamental loses only 4 dB between 200 ms and
+     * 700 ms (that is the plateau). Decaying this at tail_decay (~5 /s) makes
+     * the hum die with the ring and the plateau disappears, which is the
+     * failure mode this instrument exists to avoid. Fixed internally: it is
+     * the instrument's identity, not a knob. */
+    const double kShellLevel = 0.025;
+    const double kShellDecay = 1.2;
+    /* The hum does not decay forever: measured, it holds to ~700 ms and then
+     * collapses (-36 dB at 700 ms, -57 dB at 1 s). A single exponential slow
+     * enough to hold the plateau would still be ringing when the buffer ends,
+     * so a high-order gate ends it. */
+    const double kShellGateSec = 0.95;
+
+    sp_osc osc1, osc2, oscN[4];
+    sp_osc_init(&osc1, M_PI * 0.5);
+    sp_osc_init(&osc2, M_PI * 0.5);
+    for (int m = 0; m < 4; ++m) sp_osc_init(&oscN[m], M_PI * 0.5);
+
+    /* Wire band: two band-passes spanning 2-12 kHz (measured wire energy runs
+     * 2-16 kHz with the top octave ~5 dB down), tuned by snare_noise_tune. */
+    sp_biquad bq_w1 = {0}, bq_w2 = {0};
+    {
+        double fc = snare_fc(4000.0 * sTune, sampleRate), Q = 0.8;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0), alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5, a0 = 1.0 + alpha;
+        bq_w1.b0 = b0 / a0; bq_w1.b1 = 0.0; bq_w1.b2 = -b0 / a0;
+        bq_w1.a1 = (-2.0 * cosw) / a0; bq_w1.a2 = (1.0 - alpha) / a0;
+    }
+    {
+        double fc = snare_fc(9000.0 * sTune, sampleRate), Q = 0.7;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0), alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5, a0 = 1.0 + alpha;
+        bq_w2.b0 = b0 / a0; bq_w2.b1 = 0.0; bq_w2.b2 = -b0 / a0;
+        bq_w2.a1 = (-2.0 * cosw) / a0; bq_w2.a2 = (1.0 - alpha) / a0;
+    }
+
+    double lpHi = 0.0, lpLo = 0.0, couple = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+
+        /* ── modal head bank: every mode STRUCK at t=0 (no swell → the sharp
+         * natural transient). ── */
+        double m1 = sp_osc_tick(&osc1, sWave, 2.0 * M_PI * fundamentalHz / (double)sampleRate);
+        double m2 = sp_osc_tick(&osc2, sWave, 2.0 * M_PI * sTone2 / (double)sampleRate);
+
+        /* mode 1: fast struck-head term + slow shell/air term (see above). */
+        double shellT = sec / kShellGateSec;
+        double shellT3 = shellT * shellT * shellT;
+        double shellGate = exp(-shellT3 * shellT3); /* (t/T)^6 */
+        double e1 = exp(-sToneD * sec) + kShellLevel * exp(-kShellDecay * sec) * shellGate;
+        double thump = m1 * e1;
+
+        /* mode 2 = the ring anchor, on its own knob. */
+        double ring = 0.25 * m2 * exp(-sTailD * 1.44 * sec);
+        for (int m = 0; m < 4; ++m) {
+            double fm = fundamentalHz * kSnareAcousticRatio[m];
+            double mn = sp_osc_tick(&oscN[m], sWave, 2.0 * M_PI * fm / (double)sampleRate);
+            ring += kSnareAcousticGain[m] * mn * exp(-sTailD * kSnareAcousticSpread[m] * sec);
+        }
+
+        double head = thump * sToneM + ring * sNoiseM;
+
+        /* ── wires: noise band AMPLITUDE-COUPLED to the head's instantaneous
+         * displacement. Real wires are driven by the resonant head, so the buzz
+         * breathes with the hit instead of being an independent envelope pasted
+         * on top. ── */
+        double wn = (double)noise_ma_white_tick(noise);
+        double wireBand = sp_biquad_tick(&bq_w1, wn) * 0.7 + sp_biquad_tick(&bq_w2, wn) * 0.5;
+        sp_onepole_tick(&couple, 0.08, fabs(head));
+        double drive = 0.25 + 0.75 * (couple * 2.5 > 1.0 ? 1.0 : couple * 2.5);
+        double wires = wireBand * exp(-sNoiseD * sec) * drive * sWireM;
+
+        /* ── stick transient: band-limited burst, not full-bright white. ── */
+        double cn = (double)noise_ma_white_tick(noise);
+        double bpStick = sp_onepole_tick(&lpHi, 0.45, cn) - sp_onepole_tick(&lpLo, 0.08, cn);
+        double stick = bpStick * sAtk * exp(-350.0 * sec);
+
+        /* NO saturation across the summed INHARMONIC modes — tanh on an
+         * inharmonic sum makes intermodulation roughness (the "creaky door"
+         * artifact that cost a debugging round on kick-acoustic). Final gentle
+         * soft-limit only, so the transient crest survives. */
+        double s = head + wires + stick;
+        SNARE_WRITE((float)(tanh(s) * 0.95));
+    }
+#undef SNARE_WRITE
+}
+
 static void modular_gen_slot_snare(float *out, int sampleRate, int samples,
                                    const modular_params *p, int k,
                                    double voice_freq, int assign) {
-    int variant = (int)lrintf(p->gen_snare_variant[k]);
-    if (variant < 0 || variant > 2) variant = 0;
-    int sWave = (int)kp_get(p->gen_wave[k], 0.0);
+    /* SNARE-stage enable pill (mirrors the kick's gate). A slot that is not
+     * enabled contributes nothing; when this slot would have ASSIGNED, the
+     * caller still expects out[] to be written, so zero it rather than leaving
+     * the previous buffer contents. Every real source==7 consumer sets
+     * snare_enabled=1, so existing renders are byte-identical. */
+    if (p->snare_enabled < 0.5f) {
+        if (assign) {
+            for (int i = 0; i < samples; ++i) out[i] = 0.0f;
+        }
+        return;
+    }
+    int variant = (int)lrint(p->gen_snare_variant[k]);
+    if (variant < 0 || variant > 3) variant = 0;
+    int sWave = (int)p->gen_wave[k];
 
     double fundamentalHz = (double)p->gen_freq[k];
-    if ((int)lrintf(p->gen_freq_mode[k]) == 0) fundamentalHz *= voice_freq;
+    if ((int)lrint(p->gen_freq_mode[k]) == 0) fundamentalHz *= voice_freq;
 
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
@@ -1532,6 +1984,8 @@ static void modular_gen_slot_snare(float *out, int sampleRate, int samples,
         gen_snare_rimshot(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
     } else if (variant == 2) {
         gen_snare_sidestick(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
+    } else if (variant == 3) {
+        gen_snare_acoustic(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
     } else {
         gen_snare_main(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
     }
@@ -1544,26 +1998,32 @@ static void modular_gen_slot_snare(float *out, int sampleRate, int samples,
  * one RBJ band-pass at 1800 Hz Q1.5 (inline legacy biquad form), a 3-4-burst
  * envelope (|t-offset| exp shapes), and a room tail. Final shaping is softsat()
  * with NO 0.95 scale (the legacy clap omits it). The curated clap knobs
- * (tune/noise-decay/tail-decay/noise-mix/attack) are read via kp_get.
+ * (tune/noise-decay/tail-decay/noise-mix/attack) are read directly from the param block (the seed spells every value).
  *
  * The clap does NOT use the primary tone freq (no pitched body), so voice_freq is
  * unused here. */
 static void modular_gen_slot_clap(float *out, int sampleRate, int samples,
                                   const modular_params *p, int k,
-                                  double voice_freq, int assign) {
+                                  double voice_freq, int assign, double gain) {
+    /* Slot gain as a FLOAT, appended to the original expressions rather than
+     * folded into them: `(float)x * scale` and `(float)(x * scale * gain)` do
+     * not round identically, so folding would change every sample even at unity
+     * gain. Multiplying the finished float by 1.0f is exact, which is what keeps
+     * the 23 instruments that seed gen_gain=1 byte-unchanged. */
+    const float gf = (float)gain;
     (void)voice_freq; /* clap is pure noise — no pitched body */
-    double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
-    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 7.0);
-    double sTailD  = kp_get(p->gen_snare_tail_d[k], 4.0);
-    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.15);
-    double sAtk    = kp_get(p->gen_snare_attack[k], 110.0);
+    double sTune   = p->gen_snare_tune[k];
+    double sNoiseD = p->gen_snare_noise_d[k];
+    double sTailD  = p->gen_snare_tail_d[k];
+    double sNoiseM = p->gen_snare_noise_m[k];
+    double sAtk    = p->gen_snare_attack[k];
 
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
 
     double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
     {
-        double fc = 1800.0 * sTune;
+        double fc = snare_fc(1800.0 * sTune, sampleRate);
         double Q = 1.5;
         double w0 = 2.0 * M_PI * fc / (double)sampleRate;
         double cosw = cos(w0);
@@ -1596,8 +2056,8 @@ static void modular_gen_slot_clap(float *out, int sampleRate, int samples,
         double roomTail = (double)n * exp(-sTailD * t) * sNoiseM;
 
         float y = softsat_shared((float)(ybp * burst * env + roomTail));
-        if (assign) out[i] = y;
-        else        out[i] += y;
+        if (assign) out[i] = y * gf;
+        else        out[i] += y * gf;
     }
 }
 
@@ -1617,8 +2077,7 @@ static void modular_gen_slot_clap(float *out, int sampleRate, int samples,
  * (differing only in literal sets), but are kept as distinct branches with their
  * own literal constants so every legacy float-op order is preserved exactly. The
  * CURATED cymbal knobs (tune/env_fast/env_tail/tone_mix/noise_mix/noise_decay,
- * plus cym_wave via gen_wave) are read via kp_get so the NaN sentinel reproduces
- * the exact per-variant legacy double literal at default. The noise stream is
+ * plus cym_wave via gen_wave) are read directly from the param block (the seed spells every value). The noise stream is
  * noise_ma seeded 0 (→4321), bit-identical to the legacy ma_noise seed-0 stream
  * (TestNoiseMaParity), drawn in the SAME order as the legacy loop.
  *
@@ -1627,83 +2086,19 @@ static void modular_gen_slot_clap(float *out, int sampleRate, int samples,
  *
  * assign: when 1 the first sample-write ASSIGNS (out[i]=expr) — matching the
  * legacy renderer's direct out[i]= — so a -0.0 sample is not flipped to +0.0. */
-static void gen_cymbal_hihat(float *out, int sampleRate, int samples,
-                             const modular_params *p, int k,
-                             noise_ma_gen *noise, int assign) {
-#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
-#define HH_PARTIALS 6
-    /* ── hihat (render_hihat_internal) ── */
-    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-    double cyFast   = kp_get(p->gen_cym_env_fast[k], 180.0);
-    double cyTail   = kp_get(p->gen_cym_env_tail[k], 35.0);
-    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.85);
-    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.45);
-    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 100.0);
-    int    cyWave   = (int)kp_get(p->gen_wave[k], 2.0);
-
-    static const double baseFreq[HH_PARTIALS] = {4100.0, 5400.0, 6700.0, 8300.0, 9900.0, 11800.0};
-    sp_osc osc[HH_PARTIALS];
-    double freq[HH_PARTIALS];
-    double gain[HH_PARTIALS];
-
-    for (int kk = 0; kk < HH_PARTIALS; ++kk) {
-        float s = noise_ma_white_tick(noise);
-        double det = 1.0 + 0.02 * (double)s;
-        freq[kk] = (baseFreq[kk] * cyTune) * det;
-        sp_osc_init(&osc[kk], 2.0 * M_PI * (double)s);
-        gain[kk] = (kk < 3) ? 1.0 / (double)HH_PARTIALS : 0.75 / (double)HH_PARTIALS;
-    }
-
-    double lpCluster = 0.0;
-    double lpNoise = 0.0;
-
-    for (int i = 0; i < samples; ++i) {
-        double sec = (double)i / (double)sampleRate;
-        double tNorm = (double)i / (double)samples;
-
-        double cluster = 0.0;
-        for (int kk = 0; kk < HH_PARTIALS; ++kk) {
-            double sq = sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freq[kk] / (double)sampleRate);
-            double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * (10.0 + 4.0 * kk) * sec);
-            cluster += sq * gain[kk] * lfo;
-        }
-
-        sp_onepole_mix(&lpCluster, 0.9, 0.1, cluster);
-        double hpCluster = cluster - lpCluster;
-
-        float wn = noise_ma_white_tick(noise);
-        double xNoise = (double)wn;
-        sp_onepole_mix(&lpNoise, 0.92, 0.08, xNoise);
-        double hpNoise = xNoise - lpNoise;
-
-        double envFast = exp(-sec * cyFast);
-        double envTail = exp(-sec * cyTail);
-        double env = envFast * 0.8 + envTail * 0.6;
-
-        double noiseEnv = exp(-sec * cyNoiseD);
-
-        double y = hpCluster * env * cyToneM + hpNoise * noiseEnv * cyNoiseM;
-        y *= (1.0 - 0.15 * tNorm);
-
-        CYM_WRITE(0.9f * softsat_shared((float)y));
-    }
-#undef HH_PARTIALS
-#undef CYM_WRITE
-}
-
 static void gen_cymbal_open(float *out, int sampleRate, int samples,
                             const modular_params *p, int k,
                             noise_ma_gen *noise, int assign) {
 #define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
 #define HH_PARTIALS 6
     /* ── open-hihat (render_open_hihat_internal) ── */
-    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-    double cyFast   = kp_get(p->gen_cym_env_fast[k], 120.0);
-    double cyTail   = kp_get(p->gen_cym_env_tail[k], 22.0);
-    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.7);
-    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.9);
-    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 18.0);
-    int    cyWave   = (int)kp_get(p->gen_wave[k], 2.0);
+    double cyTune   = p->gen_cym_tune[k];
+    double cyFast   = p->gen_cym_env_fast[k];
+    double cyTail   = p->gen_cym_env_tail[k];
+    double cyToneM  = p->gen_cym_tone_m[k];
+    double cyNoiseM = p->gen_cym_noise_m[k];
+    double cyNoiseD = p->gen_cym_noise_d[k];
+    int    cyWave   = (int)p->gen_wave[k];
 
     static const double baseFreq[HH_PARTIALS] = {4100.0, 5400.0, 6700.0, 8300.0, 9900.0, 11800.0};
     sp_osc osc[HH_PARTIALS];
@@ -1765,13 +2160,13 @@ static void gen_cymbal_cowbell(float *out, int sampleRate, int samples,
     float seed = noise_ma_white_tick(noise);
     double detune = 1.0 + 0.01 * (double)seed;
 
-    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-    double cyFast   = kp_get(p->gen_cym_env_fast[k], 260.0);
-    double cyTail   = kp_get(p->gen_cym_env_tail[k], 9.0);
-    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
-    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.55);
-    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 60.0);
-    int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
+    double cyTune   = p->gen_cym_tune[k];
+    double cyFast   = p->gen_cym_env_fast[k];
+    double cyTail   = p->gen_cym_env_tail[k];
+    double cyToneM  = p->gen_cym_tone_m[k];
+    double cyNoiseM = p->gen_cym_noise_m[k];
+    double cyNoiseD = p->gen_cym_noise_d[k];
+    int    cyWave   = (int)p->gen_wave[k];
 
     const double freqs[4] = {
         (640.0 * cyTune) * detune,
@@ -1837,11 +2232,11 @@ static void gen_cymbal_shaker(float *out, int sampleRate, int samples,
                               noise_ma_gen *noise, int assign) {
 #define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── shaker (render_shaker_internal) ── */
-    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-    double cyFast   = kp_get(p->gen_cym_env_fast[k], 200.0);
-    double cyTail   = kp_get(p->gen_cym_env_tail[k], 25.0);
-    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.6);
-    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.5);
+    double cyTune   = p->gen_cym_tune[k];
+    double cyFast   = p->gen_cym_env_fast[k];
+    double cyTail   = p->gen_cym_env_tail[k];
+    double cyToneM  = p->gen_cym_tone_m[k];
+    double cyNoiseM = p->gen_cym_noise_m[k];
 
     float seed = noise_ma_white_tick(noise);
     double timeVar = 0.001 * (double)seed; /* ±1ms variation */
@@ -1891,96 +2286,19 @@ static void gen_cymbal_shaker(float *out, int sampleRate, int samples,
 #undef CYM_WRITE
 }
 
-static void gen_cymbal_ride(float *out, int sampleRate, int samples,
-                            const modular_params *p, int k,
-                            noise_ma_gen *noise, int assign) {
-#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
-    /* ── ride (render_ride_internal) ── */
-    const int RIDE_PARTIALS = 10;
-    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-    double cyFast   = kp_get(p->gen_cym_env_fast[k], 40.0);
-    double cyTail   = kp_get(p->gen_cym_env_tail[k], 8.0);
-    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
-    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.3);
-    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 12.0);
-    int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
-
-    static const double baseFreq[10] = {
-        3100.0, 3800.0, 4700.0, 5900.0, 7100.0,
-        8400.0, 9800.0, 11500.0, 13200.0, 15000.0
-    };
-    static const double baseGain[10] = {
-        1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35
-    };
-
-    sp_osc osc[10];
-    double freq[10];
-    double gain[10];
-
-    for (int kk = 0; kk < RIDE_PARTIALS; ++kk) {
-        float s = noise_ma_white_tick(noise);
-        double det = 1.0 + 0.015 * (double)s;
-        freq[kk] = (baseFreq[kk] * cyTune) * det;
-        sp_osc_init(&osc[kk], 2.0 * M_PI * (double)s);
-        gain[kk] = baseGain[kk] / (double)RIDE_PARTIALS;
-    }
-
-    double bellPhase = 0.0;
-    float bs = noise_ma_white_tick(noise);
-    double bellFreq = 3000.0 * (1.0 + 0.01 * (double)bs);
-
-    double lpCluster = 0.0;
-    double lpNoise = 0.0;
-
-    for (int i = 0; i < samples; ++i) {
-        double sec = (double)i / (double)sampleRate;
-        double tNorm = (double)i / (double)samples;
-
-        double cluster = 0.0;
-        for (int kk = 0; kk < RIDE_PARTIALS; ++kk) {
-            cluster += sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freq[kk] / (double)sampleRate) * gain[kk];
-        }
-
-        sp_onepole_mix(&lpCluster, 0.92, 0.08, cluster);
-        double hpCluster = cluster - lpCluster;
-
-        bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
-        double bellEnv = exp(-6.0 * sec);
-        double bell = sin(bellPhase) * bellEnv * 0.15;
-
-        double envFast = exp(-cyFast * sec);
-        double envTail = exp(-cyTail * sec);
-        double env = envFast * 0.5 + envTail * 0.8;
-
-        float wn = noise_ma_white_tick(noise);
-        double xNoise = (double)wn;
-        sp_onepole_mix(&lpNoise, 0.92, 0.08, xNoise);
-        double hpNoise = xNoise - lpNoise;
-        double noiseEnv = exp(-cyNoiseD * sec);
-
-        double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 7.0 * sec);
-
-        double y = (hpCluster * env * cyToneM + bell) * lfo + hpNoise * noiseEnv * cyNoiseM;
-        y *= exp(-2.0 * tNorm);
-
-        CYM_WRITE(0.9f * softsat_shared((float)y));
-    }
-#undef CYM_WRITE
-}
-
 static void gen_cymbal_crash(float *out, int sampleRate, int samples,
                              const modular_params *p, int k,
                              noise_ma_gen *noise, int assign) {
 #define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
     /* ── crash (render_crash_internal) ── */
     const int CRASH_PARTIALS = 8;
-    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-    double cyFast   = kp_get(p->gen_cym_env_fast[k], 10.0);
-    double cyTail   = kp_get(p->gen_cym_env_tail[k], 3.0);
-    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
-    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.35);
-    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 8.0);
-    int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
+    double cyTune   = p->gen_cym_tune[k];
+    double cyFast   = p->gen_cym_env_fast[k];
+    double cyTail   = p->gen_cym_env_tail[k];
+    double cyToneM  = p->gen_cym_tone_m[k];
+    double cyNoiseM = p->gen_cym_noise_m[k];
+    double cyNoiseD = p->gen_cym_noise_d[k];
+    int    cyWave   = (int)p->gen_wave[k];
 
     static const double baseFreq[8] = {
         2000.0, 2800.0, 3700.0, 4800.0, 6200.0, 7800.0, 9500.0, 11500.0
@@ -2044,26 +2362,278 @@ static void gen_cymbal_crash(float *out, int sampleRate, int samples,
 #undef CYM_WRITE
 }
 
+/* ── gen_cymbal_modal: the Phase-18 MODAL PLATE voice (see modular.h). ──
+ *
+ * A struck thin plate is a sum of damped modes; nothing in it is noise. Each
+ * mode is a Mathews–Smith phasor resonator — a complex state rotated and
+ * shrunk by e^(jω−α) every sample — which costs four multiplies per sample
+ * with no sin() call, is unconditionally stable, and carries its own decay.
+ *
+ * Mode placement: plate modal density is constant per Hz, so modes are spread
+ * UNIFORMLY between lo and hi with up to half a slot of scatter (inharmonic,
+ * never on a grid). Amplitudes are the strike's spectral envelope times a
+ * Rayleigh deviate with a random sign — the strike point lands at a random
+ * height on each mode shape, which is what makes a real plate uneven and
+ * therefore dense WITHOUT being rough. Each mode is a DOUBLET: a second
+ * resonator a fraction `beat` of f above it (0.3–1.0 × beat, random), at a
+ * random 30–100 % level. Their beating — a few Hz, slow — is the shimmer.
+ *
+ * Damping: rate(f) = tail · (f/1 kHz)^tilt + fast · (f/corner)^6  [Np/s], each
+ * mode jittered ±15 %. Measured on the reference ride the ring decays at
+ * ~17 dB/s at 1 kHz rising to ~45 dB/s at 11 kHz (exponent ≈ 0.5), and only
+ * the very top octave — the stick tick — dies in tens of milliseconds, which
+ * is the corner term.
+ *
+ * The bank is peak-normalized into a private scratch buffer so knob moves
+ * change COLOUR without also changing loudness, then scaled by tone_m. The
+ * optional rivet sizzle is band-passed noise whose level FOLLOWS the plate's
+ * own envelope (rivets only buzz while the plate moves) — never a free-running
+ * noise burst. A 10 % raised-cosine end fade closes the render. Deterministic:
+ * every random draw comes from the slot's seeded noise generator, in a fixed
+ * order. */
+/* A family voice reads every block of its family at the same slot index. */
+_Static_assert(MODULAR_KICKEXTRA_SLOTS == MODULAR_KICK_SLOTS && MODULAR_KICKMODE_SLOTS == MODULAR_KICK_SLOTS &&
+               MODULAR_KICKREVERB_SLOTS == MODULAR_KICK_SLOTS && MODULAR_KICKPHYS_SLOTS == MODULAR_KICK_SLOTS,
+               "kick blocks must share one slot capacity");
+_Static_assert(MODULAR_CYMMODAL_SLOTS == MODULAR_CYM_SLOTS, "cymbal blocks must share one slot capacity");
+_Static_assert(MODULAR_KS_SLOTS <= MODULAR_BASS_SLOTS, "the KS voice reads gen_out_scale (bass block)");
+#define CYM_MODAL_MAX_MODES 400
+
+static double cym_uniform01(noise_ma_gen *noise) {
+    double u = 0.5 * ((double)noise_ma_white_tick(noise) + 1.0);
+    if (u < 1e-9) u = 1e-9;
+    if (u > 1.0) u = 1.0;
+    return u;
+}
+
+static void gen_cymbal_modal(float *out, int sampleRate, int samples,
+                             const modular_params *p, int k, int variant,
+                             noise_ma_gen *noise, int assign) {
+    if (samples <= 0 || sampleRate <= 0) return;
+    /* Plate Modes: how many modes the plate rings with. 0 modes is no plate
+     * to strike — silence. */
+    int nModes = (int)lrint(p->gen_cym_modes[k]);
+    if (nModes > CYM_MODAL_MAX_MODES) nModes = CYM_MODAL_MAX_MODES;
+    if (nModes < 1) return;
+
+    double sr     = (double)sampleRate;
+    double nyq    = 0.45 * sr;
+    double tune   = fmax(p->gen_cym_tune[k], 0.0);
+    double lo     = fmax(p->gen_cym_mode_lo[k], 0.0) * tune;
+    double hi     = fmax(p->gen_cym_mode_hi[k], 0.0) * tune;
+    double tail   = fmax(p->gen_cym_env_tail[k], 0.0);
+    double fast   = fmax(p->gen_cym_env_fast[k], 0.0);
+    double tilt   = fmax(p->gen_cym_decay_tilt[k], 0.0);
+    double corner = fmax(p->gen_cym_hf_corner[k], 0.0) * tune;
+    double beat   = fmax(p->gen_cym_beat[k], 0.0);
+    double toneF  = fmax(p->gen_cym_tone_f[k], 0.0) * tune;
+    double toneW  = fmax(p->gen_cym_tone_w[k], 0.0);
+    double bodyF  = fmax(p->gen_cym_body_f[k], 0.0) * tune;
+    double bodyW  = fmax(p->gen_cym_body_w[k], 0.0);
+    double body   = fmax(p->gen_cym_body[k], 0.0);
+    double sparkF = fmax(p->gen_cym_spark_f[k], 0.0) * tune;
+    double sparkW = fmax(p->gen_cym_spark_w[k], 0.0);
+    double spark  = fmax(p->gen_cym_spark[k], 0.0);
+    double wash   = fmax(p->gen_cym_wash[k], 0.0);
+    double attack = fmax(p->gen_cym_attack[k], 0.0);
+    double level  = p->gen_cym_tone_m[k];
+    double sizzM  = p->gen_cym_noise_m[k];
+    double sizzD  = fmax(p->gen_cym_noise_d[k], 0.0);
+    double rattle = fmax(p->gen_cym_rattle[k], 0.0);
+    double rRate  = fmax(p->gen_cym_rattle_rate[k], 0.0);
+    double rDecay = fmax(p->gen_cym_rattle_decay[k], 0.0);
+    double driveDelay = fmax(p->gen_cym_drive_delay[k], 0.0);
+    double rHold      = fmax(p->gen_cym_rattle_hold[k], 0.0);
+    /* The Variant is the cymbal's MOUNTING, which is physical, not a preset:
+     *   ride / crash (4, 5) — one suspended cymbal: nothing to rattle against.
+     *   hi-hat (0)          — two cymbals clamped: the rattle train runs.
+     *   open hi-hat (1)     — the same pair with the pedal LOOSENED: the top
+     *                         cymbal rattles for longer and the pair damps
+     *                         itself less, so it rings longer.
+     * So one set of plate knobs answers to the Variant selector the way the
+     * instrument would, and switching it is never a dead control. */
+    if (variant == 4 || variant == 5) {
+        rattle = 0.0;
+    } else if (variant == 1) {
+        rDecay *= 5.0;
+        tail   *= 0.3;
+        fast   *= 0.3;
+    }
+    if (hi > nyq) hi = nyq;
+    if (hi <= lo) hi = lo * 2.0;
+
+    float *bank = (float *)calloc((size_t)samples, sizeof(float));
+    if (!bank) return;
+
+    for (int m = 0; m < nModes; ++m) {
+        /* Fixed draw order per mode: slot scatter, Rayleigh, sign, rate
+         * jitter, doublet offset, doublet level, two phases. */
+        double scatter = (double)noise_ma_white_tick(noise);
+        double ray     = sqrt(-2.0 * log(cym_uniform01(noise)));
+        double sign    = noise_ma_white_tick(noise) < 0.0f ? -1.0 : 1.0;
+        double jitter  = 1.0 + 0.15 * (double)noise_ma_white_tick(noise);
+        double bOff    = 0.3 + 0.7 * cym_uniform01(noise);
+        double bLvl    = 0.3 + 0.7 * cym_uniform01(noise);
+        double ph0     = 2.0 * M_PI * cym_uniform01(noise);
+        double ph1     = 2.0 * M_PI * cym_uniform01(noise);
+
+        double f = lo + (hi - lo) * (((double)m + 0.5 + 0.5 * scatter) / (double)nModes);
+        if (f <= 20.0 || f >= nyq) continue;
+
+        double o;
+        double env;
+        /* A hump needs a positive centre and width (0 would make 0/0 at the
+         * centre): an unusable hump contributes nothing. */
+        env = 0.0;
+        if (toneW > 0.0 && toneF > 0.0) { o = log2(f / toneF);  env  = exp(-0.5 * (o / toneW) * (o / toneW)); }
+        if (body > 0.0 && bodyW > 0.0 && bodyF > 0.0)    { o = log2(f / bodyF);  env += body  * exp(-0.5 * (o / bodyW) * (o / bodyW)); }
+        if (spark > 0.0 && sparkW > 0.0 && sparkF > 0.0) { o = log2(f / sparkF); env += spark * exp(-0.5 * (o / sparkW) * (o / sparkW)); }
+        env += wash;
+        double amp = env * ray * sign;
+
+        double rate = tail * pow(f / 1000.0, tilt);
+        if (fast > 0.0) rate += fast * pow(f / corner, 6.0);
+        rate *= jitter;
+        if (rate < 0.05) rate = 0.05;
+
+        int nOsc = beat > 0.0 ? 2 : 1;
+        double norm = 1.0 / (1.0 + (nOsc == 2 ? bLvl : 0.0));
+        for (int d = 0; d < nOsc; ++d) {
+            double fd = d == 0 ? f : f * (1.0 + beat * bOff);
+            if (fd >= nyq) continue;
+            double a = amp * norm * (d == 0 ? 1.0 : bLvl);
+            if (a == 0.0) continue;
+            /* Render only until the mode falls 140 dB below its start. */
+            int nLive = (int)(log(1e7) / rate * sr) + 1;
+            if (nLive > samples) nLive = samples;
+            double decay = exp(-rate / sr);
+            double w = 2.0 * M_PI * fd / sr;
+            double cr = decay * cos(w), ci = decay * sin(w);
+            double ph = d == 0 ? ph0 : ph1;
+            double re = a * cos(ph), im = a * sin(ph);
+            for (int i = 0; i < nLive; ++i) {
+                bank[i] += (float)im;
+                double nr = re * cr - im * ci;
+                im = re * ci + im * cr;
+                re = nr;
+            }
+        }
+    }
+
+    /* Hi-hat rattle: re-strike the plate with a decaying Poisson train of
+     * collision impulses. The plate is linear, so this is the impulse response
+     * (bank) convolved with a sparse excitation: out = bank + Σ a_k·bank[n−t_k].
+     * Drawn AFTER every mode, so a render without rattle consumes exactly the
+     * same noise sequence as before. */
+    /* A rattle needs a positive decay time (0 would make exp(-t/0) = NaN at
+     * t = 0 and a NaN event time). */
+    if (rattle > 0.0 && rDecay > 0.0) {
+        float *hit = (float *)malloc((size_t)samples * sizeof(float));
+        if (hit) {
+            memcpy(hit, bank, (size_t)samples * sizeof(float));
+            /* A DRIVEN plate (snare wires) is never struck: drop the stick's own
+             * impulse response and let only the collisions excite it, starting
+             * driveDelay after the hit. The train's envelope is measured from
+             * its own start, so the delay shifts it rather than weakening it. */
+            if (driveDelay > 0.0) memset(bank, 0, (size_t)samples * sizeof(float));
+            /* Buzz hold: the RATE decays with its own (long) time constant, so
+             * the train stays dense while its amplitude fades; it then ends on
+             * amplitude (~-80 dB). A dense train means thousands of events, so
+             * each convolution is cut where the impulse response has decayed
+             * 120 dB below its peak (inaudible; the legacy path keeps the full
+             * length and so stays byte-identical). */
+            double rateTau = rHold > 0.0 ? rHold : rDecay;
+            int maxEvents = rHold > 0.0 ? 65536 : 4096;
+            int hitLen = samples;
+            if (rHold > 0.0) {
+                float hp = 0.0f;
+                for (int i = 0; i < samples; ++i) { float a = fabsf(hit[i]); if (a > hp) hp = a; }
+                float thr = hp * 1e-6f;
+                hitLen = 1;
+                for (int i = samples - 1; i > 0; --i) { if (fabsf(hit[i]) > thr) { hitLen = i + 1; break; } }
+            }
+            double t = 0.0;
+            for (int ev = 0; ev < maxEvents; ++ev) {
+                double lam = rRate * exp(-t / rateTau);
+                if (lam < 5.0) break;
+                if (rHold > 0.0 && t / rDecay > 9.2) break;   /* amplitude below ~-80 dB */
+                t += -log(cym_uniform01(noise)) / lam;   /* exponential gap */
+                double atT = (t + driveDelay) * sr;
+                if (!(atT >= 0.0) || atT >= (double)samples) break; /* also stops on NaN */
+                int at = (int)atT;
+                double a = rattle * exp(-t / rDecay) * (0.2 + 0.8 * cym_uniform01(noise));
+                if (noise_ma_white_tick(noise) < 0.0f) a = -a;
+                int end = at + hitLen < samples ? at + hitLen : samples;
+                for (int i = at; i < end; ++i) bank[i] += (float)(a * (double)hit[i - at]);
+            }
+            free(hit);
+        }
+    }
+
+    /* Stick-contact onset + end fade, then peak-normalize. */
+    int nAtk = (int)(attack * 6.0 * sr);
+    if (nAtk > samples) nAtk = samples;
+    for (int i = 0; i < nAtk; ++i) bank[i] *= (float)(1.0 - exp(-((double)i / sr) / attack));
+    int nFade = samples / 10;
+    for (int i = 0; i < nFade; ++i) {
+        double x = (double)i / (double)nFade;             /* 0 → 1 across the fade */
+        bank[samples - 1 - i] *= (float)(0.5 - 0.5 * cos(M_PI * x));
+    }
+    float peak = 0.0f;
+    for (int i = 0; i < samples; ++i) {
+        float a = fabsf(bank[i]);
+        if (a > peak) peak = a;
+    }
+    double gain = peak > 0.0f ? 0.9 * level / (double)peak : 0.0;
+
+    /* Rivet sizzle: band-passed noise (one-pole HP ~3 kHz, LP ~9 kHz) gated by
+     * a follower on the plate's own amplitude and its own decay. */
+    double hpA = exp(-2.0 * M_PI * 3000.0 / sr);
+    double lpA = exp(-2.0 * M_PI * 9000.0 / sr);
+    double follow = exp(-1.0 / (0.01 * sr));
+    double lpHP = 0.0, lpLP = 0.0, envF = 0.0;
+    for (int i = 0; i < samples; ++i) {
+        double y = (double)bank[i] * gain;
+        if (sizzM > 0.0) {
+            double x = (double)noise_ma_white_tick(noise);
+            lpHP = hpA * lpHP + (1.0 - hpA) * x;
+            double bp = x - lpHP;
+            lpLP = lpA * lpLP + (1.0 - lpA) * bp;
+            double a = fabs(y);
+            envF = a > envF ? a : follow * envF + (1.0 - follow) * a;
+            y += lpLP * envF * sizzM * exp(-sizzD * (double)i / sr);
+        }
+        if (assign) out[i] = (float)y; else out[i] += (float)y;
+    }
+    free(bank);
+}
+
 static void modular_gen_slot_cymbal(float *out, int sampleRate, int samples,
                                     const modular_params *p, int k,
                                     double voice_freq, int assign) {
     (void)voice_freq; /* cymbal partials are absolute Hz × cym_tune */
-    int variant = (int)lrintf(p->gen_cym_variant[k]);
+    int variant = (int)lrint(p->gen_cym_variant[k]);
     if (variant < 0 || variant > 5) variant = 0;
 
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
 
-    if (variant == 0) {
-        gen_cymbal_hihat(out, sampleRate, samples, p, k, &noise, assign);
-    } else if (variant == 1) {
+    /* Modal plate: the hi-hat (0) and ride (4) ARE the modal plate (Plate
+     * Modes 0 = silence). The open hi-hat (1) and crash (5) run the plate once
+     * Plate Modes >= 1 and their partial voices otherwise. The cowbell (2) and
+     * shaker (3) are not plates. */
+    int plate_on = p->gen_cym_modes[k] >= 1.0;
+    if (variant == 0 || variant == 4 || (plate_on && (variant == 1 || variant == 5))) {
+        gen_cymbal_modal(out, sampleRate, samples, p, k, variant, &noise, assign);
+        return;
+    }
+
+    if (variant == 1) {
         gen_cymbal_open(out, sampleRate, samples, p, k, &noise, assign);
     } else if (variant == 2) {
         gen_cymbal_cowbell(out, sampleRate, samples, p, k, &noise, assign);
     } else if (variant == 3) {
         gen_cymbal_shaker(out, sampleRate, samples, p, k, &noise, assign);
-    } else if (variant == 4) {
-        gen_cymbal_ride(out, sampleRate, samples, p, k, &noise, assign);
     } else {
         gen_cymbal_crash(out, sampleRate, samples, p, k, &noise, assign);
     }
@@ -2074,46 +2644,35 @@ static void modular_gen_slot_cymbal(float *out, int sampleRate, int samples,
  * STRUCTURAL constants taken VERBATIM from the legacy PRESET_FM_* tables
  * (fmsynth.c) — op amplitudes, freq offsets, ADSR attack/sustain/release,
  * carrier flags, num_ops, mod_matrix ROUTING — and overlays the CURATED knobs
- * (base_freq, pitch-env amount/decay, per-op ratio/depth/decay, wave) via
- * kp_get so the NaN sentinel reproduces the exact legacy double literal at
- * default. This is the SAME overlay the deleted fm_apply_params performed: the
- * legacy _p wrappers copied PRESET_FM_X, overlaid the non-NaN fm_params fields,
- * then called fm_render. Here the per-variant builder bakes the preset literals
- * AND the kp_get curated-knob defaults, so a NaN (unedited) knob lands on the
- * exact preset literal — byte-identical to the legacy NULL/all-NaN overlay.
+ * (base_freq, pitch-env amount/decay, per-op ratio/depth/decay, wave) read
+ * straight from the param block — the FM seeds spell every one.
  *
  * The depth knobs map to each preset's outgoing mod_matrix edge exactly as the
  * legacy fm_apply_params did (op i's first nonzero outgoing edge); the routing
- * topology is fixed per variant. gen_fm_wave reuses gen_wave (NaN→0=sine, the
- * preset.wave default).
+ * topology is fixed per variant. The carrier waveform is gen_wave (0 = sine).
  *
  * fm_render memset-zeros its own output, so it CANNOT write directly into the
  * shared out[] (it would erase the legacy osc / prior slots). The voice renders
  * into a private scratch buffer then ASSIGN/accumulates into out[]: when assign
  * (first writer, osc off) it copies (preserving a legacy -0.0 sample exactly as
  * the legacy renderer's direct fm_render(out) would), otherwise it adds. The
- * shared POST stage that follows (post_enabled, PostOrder=0) calls the SAME
- * apply_post_params the legacy _p wrappers used. */
+ * FINISH stage (modular_finish, modular.c) runs after every voice. */
 static void modular_gen_slot_fm(float *out, int sampleRate, int samples,
                                 const modular_params *p, int k,
                                 double voice_freq, int assign) {
     (void)voice_freq; /* FM base freq is an absolute knob (gen_fm_base), not the
                        * derived modular voice freq. */
-    int variant = (int)lrintf(p->gen_fm_variant[k]);
+    int variant = (int)lrint(p->gen_fm_variant[k]);
 
     fm_preset pr;
     memset(&pr, 0, sizeof(pr));
 
-    /* Curated knobs, read via kp_get with the per-variant legacy literal as the
-     * NaN fallback (the byte-parity contract: an unedited knob == preset
-     * literal). The per-op ratio/depth/decay arrays carry the legacy literals. */
-    double r1, r2, r3, r4, d1, d2, d3, d4, dec1, dec2, dec3, dec4;
-    double baseLit, peAmtLit, peDecayLit;
+    /* The variant fixes the preset STRUCTURE (op count, amplitudes, ADSR,
+     * carrier flags, routing); every knob below is read from the param block. */
 
     switch (variant) {
     case 1: /* PRESET_FM_BELL */
         pr.num_ops = 2;
-        baseLit = 440.0; peAmtLit = 0.0; peDecayLit = 0.0;
         /* op0 carrier */
         pr.ops[0].freq_offset = 0.0f; pr.ops[0].amplitude = 0.7f;
         pr.ops[0].attack_sec = 0.001f; pr.ops[0].sustain_level = 0.0f;
@@ -2122,13 +2681,9 @@ static void modular_gen_slot_fm(float *out, int sampleRate, int samples,
         pr.ops[1].freq_offset = 0.0f; pr.ops[1].amplitude = 0.6f;
         pr.ops[1].attack_sec = 0.001f; pr.ops[1].sustain_level = 0.0f;
         pr.ops[1].release_sec = 0.2f; pr.ops[1].is_carrier = 0;
-        r1 = 1.0; r2 = 3.5; r3 = 1.0; r4 = 1.0;
-        dec1 = 1.5; dec2 = 1.2; dec3 = 0.0; dec4 = 0.0;
-        d1 = 0.0; d2 = 3.0; d3 = 0.0; d4 = 0.0; /* op1 → op0 depth 3 */
         break;
     case 2: /* PRESET_FM_LEAD */
         pr.num_ops = 3;
-        baseLit = 220.0; peAmtLit = 1.5; peDecayLit = 0.04;
         pr.ops[0].freq_offset = 0.0f; pr.ops[0].amplitude = 0.8f;
         pr.ops[0].attack_sec = 0.003f; pr.ops[0].sustain_level = 0.5f;
         pr.ops[0].release_sec = 0.15f; pr.ops[0].is_carrier = 1;
@@ -2138,13 +2693,9 @@ static void modular_gen_slot_fm(float *out, int sampleRate, int samples,
         pr.ops[2].freq_offset = 0.0f; pr.ops[2].amplitude = 0.5f;
         pr.ops[2].attack_sec = 0.001f; pr.ops[2].sustain_level = 0.1f;
         pr.ops[2].release_sec = 0.05f; pr.ops[2].is_carrier = 0;
-        r1 = 1.0; r2 = 2.0; r3 = 3.0; r4 = 1.0;
-        dec1 = 0.2; dec2 = 0.12; dec3 = 0.08; dec4 = 0.0;
-        d1 = 0.0; d2 = 3.5; d3 = 2.0; d4 = 0.0; /* op1→op0 (3.5), op2→op1 (2.0) */
         break;
     case 3: /* PRESET_FM_EPIANO */
         pr.num_ops = 3;
-        baseLit = 220.0; peAmtLit = 0.0; peDecayLit = 0.0;
         pr.ops[0].freq_offset = 0.0f; pr.ops[0].amplitude = 0.7f;
         pr.ops[0].attack_sec = 0.002f; pr.ops[0].sustain_level = 0.3f;
         pr.ops[0].release_sec = 0.4f; pr.ops[0].is_carrier = 1;
@@ -2154,67 +2705,59 @@ static void modular_gen_slot_fm(float *out, int sampleRate, int samples,
         pr.ops[2].freq_offset = 0.5f; pr.ops[2].amplitude = 0.30f;
         pr.ops[2].attack_sec = 0.001f; pr.ops[2].sustain_level = 0.05f;
         pr.ops[2].release_sec = 0.3f; pr.ops[2].is_carrier = 1; /* independent carrier */
-        r1 = 1.0; r2 = 1.0; r3 = 2.0; r4 = 1.0;
-        dec1 = 0.8; dec2 = 0.2; dec3 = 0.5; dec4 = 0.0;
-        d1 = 0.0; d2 = 2.2; d3 = 0.0; d4 = 0.0; /* op1 → op0 depth 2.2; op2 independent */
         break;
     case 4: /* PRESET_FM_PLUCK */
         pr.num_ops = 2;
-        baseLit = 196.0; peAmtLit = 2.0; peDecayLit = 0.03;
         pr.ops[0].freq_offset = 0.0f; pr.ops[0].amplitude = 0.85f;
         pr.ops[0].attack_sec = 0.001f; pr.ops[0].sustain_level = 0.0f;
         pr.ops[0].release_sec = 0.05f; pr.ops[0].is_carrier = 1;
         pr.ops[1].freq_offset = 0.0f; pr.ops[1].amplitude = 1.0f;
         pr.ops[1].attack_sec = 0.0005f; pr.ops[1].sustain_level = 0.0f;
         pr.ops[1].release_sec = 0.02f; pr.ops[1].is_carrier = 0;
-        r1 = 1.0; r2 = 2.0; r3 = 1.0; r4 = 1.0;
-        dec1 = 0.2; dec2 = 0.04; dec3 = 0.0; dec4 = 0.0;
-        d1 = 0.0; d2 = 4.0; d3 = 0.0; d4 = 0.0; /* op1 → op0 depth 4 */
         break;
     default: /* PRESET_FM_BASS (variant 0) */
         pr.num_ops = 2;
-        baseLit = 55.0; peAmtLit = 3.0; peDecayLit = 0.06;
         pr.ops[0].freq_offset = 0.0f; pr.ops[0].amplitude = 0.9f;
         pr.ops[0].attack_sec = 0.005f; pr.ops[0].sustain_level = 0.6f;
         pr.ops[0].release_sec = 0.2f; pr.ops[0].is_carrier = 1;
         pr.ops[1].freq_offset = 0.0f; pr.ops[1].amplitude = 0.8f;
         pr.ops[1].attack_sec = 0.001f; pr.ops[1].sustain_level = 0.2f;
         pr.ops[1].release_sec = 0.1f; pr.ops[1].is_carrier = 0;
-        r1 = 1.0; r2 = 1.0; r3 = 1.0; r4 = 1.0;
-        dec1 = 0.3; dec2 = 0.15; dec3 = 0.0; dec4 = 0.0;
-        d1 = 0.0; d2 = 2.5; d3 = 0.0; d4 = 0.0; /* op1 → op0 depth 2.5 */
         break;
     }
 
-    /* Overlay curated knobs (kp_get NaN → the variant literal above). */
-    pr.base_freq        = (float)kp_get(p->gen_fm_base[k], baseLit);
-    pr.pitch_env_amount = (float)kp_get(p->gen_fm_pe_amt[k], peAmtLit);
-    pr.pitch_env_decay  = (float)kp_get(p->gen_fm_pe_decay[k], peDecayLit);
-    pr.wave             = (int)kp_get(p->gen_wave[k], 0.0);
+    /* Overlay the knobs: every value is read exactly as configured (double —
+     * no float narrowing; GCC -O2 elided some of the old (float) casts and kept
+     * others, so the native result depended on the optimizer). The variant
+     * literals above are only the preset's structure (ops/amps/envelopes). */
+    pr.base_freq        = p->gen_fm_base[k];
+    pr.pitch_env_amount = p->gen_fm_pe_amt[k];
+    pr.pitch_env_decay  = p->gen_fm_pe_decay[k];
+    pr.wave             = (int)p->gen_wave[k];
 
-    pr.ops[0].freq_ratio = (float)kp_get(p->gen_fm_r1[k], r1);
-    pr.ops[1].freq_ratio = (float)kp_get(p->gen_fm_r2[k], r2);
-    pr.ops[2].freq_ratio = (float)kp_get(p->gen_fm_r3[k], r3);
-    pr.ops[3].freq_ratio = (float)kp_get(p->gen_fm_r4[k], r4);
+    pr.ops[0].freq_ratio = p->gen_fm_r1[k];
+    pr.ops[1].freq_ratio = p->gen_fm_r2[k];
+    pr.ops[2].freq_ratio = p->gen_fm_r3[k];
+    pr.ops[3].freq_ratio = p->gen_fm_r4[k];
 
-    pr.ops[0].decay_sec = (float)kp_get(p->gen_fm_dec1[k], dec1);
-    pr.ops[1].decay_sec = (float)kp_get(p->gen_fm_dec2[k], dec2);
-    pr.ops[2].decay_sec = (float)kp_get(p->gen_fm_dec3[k], dec3);
-    pr.ops[3].decay_sec = (float)kp_get(p->gen_fm_dec4[k], dec4);
+    pr.ops[0].decay_sec = p->gen_fm_dec1[k];
+    pr.ops[1].decay_sec = p->gen_fm_dec2[k];
+    pr.ops[2].decay_sec = p->gen_fm_dec3[k];
+    pr.ops[3].decay_sec = p->gen_fm_dec4[k];
 
     /* mod_matrix routing: each variant's outgoing edge for op i carries depth
      * d(i+1). The legacy fm_apply_params replaced op i's FIRST nonzero outgoing
      * edge; here the routing is fixed by the variant so we set the exact edge. */
-    double depth[4] = {d1, d2, d3, d4};
-    depth[0] = kp_get(p->gen_fm_d1[k], d1);
-    depth[1] = kp_get(p->gen_fm_d2[k], d2);
-    depth[2] = kp_get(p->gen_fm_d3[k], d3);
-    depth[3] = kp_get(p->gen_fm_d4[k], d4);
+    double depth[4];
+    depth[0] = p->gen_fm_d1[k];
+    depth[1] = p->gen_fm_d2[k];
+    depth[2] = p->gen_fm_d3[k];
+    depth[3] = p->gen_fm_d4[k];
     /* op1 → op0 (every preset routes the first modulator into the carrier). */
-    pr.mod_matrix[1][0] = (float)depth[1];
+    pr.mod_matrix[1][0] = depth[1];
     if (variant == 2) {
         /* lead: op2 → op1 */
-        pr.mod_matrix[2][1] = (float)depth[2];
+        pr.mod_matrix[2][1] = depth[2];
     }
     /* bell/bass/pluck: op1→op0 only. epiano: op1→op0 only (op2 independent). */
 
@@ -2236,7 +2779,7 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                              unsigned int seed, int osc_wrote) {
     int active = 0;
     for (int k = 0; k < MODULAR_GEN_SLOTS; k++) {
-        if ((int)lrintf(p->gen_source[k]) > 0) { active = 1; break; }
+        if ((int)lrint(p->gen_source[k]) > 0) { active = 1; break; }
     }
     if (!active) return;
 
@@ -2251,10 +2794,10 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
      * their slot frequency, using the SAME formula as the OSC stage. When
      * inactive, the existing code path runs unchanged (byte-identity). ── */
     int   gb_lfo_on     = p->lfo_enabled >= 0.5f;
-    float gb_lfo_rate   = p->lfo_rate;
-    float gb_lfo_depth  = p->lfo_depth;
-    int   gb_lfo_target = (int)lrintf(p->lfo_target);
-    float gb_lfo_delay  = p->lfo_delay;
+    double gb_lfo_rate   = p->lfo_rate;
+    double gb_lfo_depth  = p->lfo_depth;
+    int   gb_lfo_target = (int)lrint(p->lfo_target);
+    double gb_lfo_delay  = p->lfo_delay;
     int   gb_vib_on     = gb_lfo_on && gb_lfo_target == 1
                           && gb_lfo_depth > 0.0f && gb_lfo_rate > 0.0f;
 
@@ -2262,15 +2805,15 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
      * same draws in the same order as a legacy interleaved loop (spec §2
      * shared-noise-draws rule). Layout: prelude draws first, then
      * draws-per-sample groups. ── */
-    int draws = (int)lrintf(p->noise_draws);
+    int draws = (int)lrint(p->noise_draws);
     if (draws < 1) draws = 1;
-    int prelude = (int)lrintf(p->noise_prelude);
+    int prelude = (int)lrint(p->noise_prelude);
     if (prelude < 0) prelude = 0;
     float *bus = NULL;
     int need_bus = 0;
     for (int k = 0; k < MODULAR_GEN_SLOTS; k++) {
-        int src = (int)lrintf(p->gen_source[k]);
-        int pm = (int)lrintf(p->gen_phase_mode[k]);
+        int src = (int)lrint(p->gen_source[k]);
+        int pm = (int)lrint(p->gen_phase_mode[k]);
         if (src == 2 || (src > 0 && pm == 2)) { need_bus = 1; break; }
     }
     if (need_bus) {
@@ -2281,7 +2824,7 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
     }
 
     for (int k = 0; k < MODULAR_GEN_SLOTS; k++) {
-        int src = (int)lrintf(p->gen_source[k]);
+        int src = (int)lrint(p->gen_source[k]);
         if (src <= 0) continue;
 
         /* assign: this slot ASSIGNS into out[] (first writer when osc wrote
@@ -2297,9 +2840,12 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
         gen_slot_filter filt;
         gen_slot_filter_init(&filt, p, k, sampleRate);
 
+        /* gen_gain scales every voice the slot plays — wavetable and the
+         * family voices (src 3-10) alike. 0 is silent, like any other gain. */
+
         if (src == 1) { /* wavetable oscillator */
             double f = (double)p->gen_freq[k];
-            if ((int)lrintf(p->gen_freq_mode[k]) == 0) f *= voice_freq;
+            if ((int)lrint(p->gen_freq_mode[k]) == 0) f *= voice_freq;
             if (f < 0.0) f = 0.0;
             /* Clamp to just under Nyquist: a freq above SR/2 has no meaningful
              * sample representation and would push phase_inc past the table
@@ -2311,20 +2857,20 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
              * verified by the full golden gate. */
             double nyq = 0.5 * (double)sampleRate;
             if (f > nyq * 0.99) f = nyq * 0.99;
-            const wavetable_t *wt = modular_shared_table_for((int)lrintf(p->gen_wave[k]));
+            const wavetable_t *wt = modular_shared_table_for((int)lrint(p->gen_wave[k]));
             wt_osc_t osc;
             wt_osc_init(&osc, wt, f, sampleRate);
-            int pm = (int)lrintf(p->gen_phase_mode[k]);
+            int pm = (int)lrint(p->gen_phase_mode[k]);
             if (pm == 1) {
                 wt_osc_set_phase(&osc, (double)p->gen_phase[k] / (2.0 * M_PI));
             } else if (pm == 2 && bus) {
-                int pi = (int)lrintf(p->gen_phase[k]);
+                int pi = (int)lrint(p->gen_phase[k]);
                 if (pi >= 0 && pi < prelude) {
                     wt_osc_set_phase(&osc, (double)bus[pi]); /* draw in [0,1) (or slightly negative post-wrap; wt wraps) */
                 }
             }
             /* Phase-8E unison: gated on nv>=2 so nv==1 is the exact original loop. */
-            int unison_nv = (int)lrintf(p->unison_voices);
+            int unison_nv = (int)lrint(p->unison_voices);
             if (unison_nv < 1) unison_nv = 1;
             if (unison_nv > 7) unison_nv = 7;
             if (unison_nv >= 2) {
@@ -2475,7 +3021,7 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
             }
             wrote = 1;
         } else if (src == 2 && bus) { /* noise tap */
-            int off = (int)lrintf(p->gen_noise_offset[k]);
+            int off = (int)lrint(p->gen_noise_offset[k]);
             if (off < 0) off = 0;
             if (off >= draws) off = draws - 1;
             /* Incremental-multiply envelope (see the src==1 else branch above);
@@ -2494,28 +3040,28 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
             }
             wrote = 1;
         } else if (src == 3) { /* Karplus-Strong string voice (bass-guitar transplant) */
-            modular_gen_slot_ks(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_KS_SLOTS) modular_gen_slot_ks(out, sampleRate, samples, p, k, voice_freq, assign, gain);
             wrote = 1;
         } else if (src == 4) { /* analytic dual-osc voice (sub-bass transplant) */
-            modular_gen_slot_analytic(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_BASS_SLOTS) modular_gen_slot_analytic(out, sampleRate, samples, p, k, voice_freq, assign, gain);
             wrote = 1;
         } else if (src == 5) { /* harmonic-bank kick voice (kick-family transplant) */
-            modular_gen_slot_kick(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_KICK_SLOTS) modular_gen_slot_kick(out, sampleRate, samples, p, k, voice_freq, assign);
             wrote = 1;
         } else if (src == 6) { /* 808-style tom voice (tom-family transplant) */
-            modular_gen_slot_tom(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_TOM_SLOTS) modular_gen_slot_tom(out, sampleRate, samples, p, k, voice_freq, assign, gain);
             wrote = 1;
         } else if (src == 7) { /* snare-ish voice (snare/rimshot/sidestick transplant) */
-            modular_gen_slot_snare(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_SNARE_SLOTS) modular_gen_slot_snare(out, sampleRate, samples, p, k, voice_freq, assign);
             wrote = 1;
         } else if (src == 8) { /* clap voice (clap-family transplant) */
-            modular_gen_slot_clap(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_SNARE_SLOTS) modular_gen_slot_clap(out, sampleRate, samples, p, k, voice_freq, assign, gain);
             wrote = 1;
         } else if (src == 9) { /* metallic cymbal voice (hihat/open/cowbell/shaker/ride/crash) */
-            modular_gen_slot_cymbal(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_CYM_SLOTS) modular_gen_slot_cymbal(out, sampleRate, samples, p, k, voice_freq, assign);
             wrote = 1;
         } else if (src == 10) { /* 4-op FM-family voice (bass/bell/lead/epiano/pluck) */
-            modular_gen_slot_fm(out, sampleRate, samples, p, k, voice_freq, assign);
+            if (k < MODULAR_FM_SLOTS) modular_gen_slot_fm(out, sampleRate, samples, p, k, voice_freq, assign);
             wrote = 1;
         }
     }
@@ -2556,10 +3102,10 @@ static const float form_sing_hz[4] = {3092.0f, 3000.0f, 2750.0f, 2400.0f};
  * state); init==0 uses mod_biquad_set_coeffs (state-preserving — the same
  * block-rate morph pattern as the filter-env sweep in modular.c). */
 static void formant_bank_tune(mod_biquad *bank, float *g, int voice_type,
-                              float v, float shift, int sampleRate, int init) {
+                              double v, double shift, int sampleRate, int init) {
     if (v < 0.0f) v = 0.0f; else if (v > 4.0f) v = 4.0f;
     int   i0 = (int)v; if (i0 > 3) i0 = 3;
-    float fr = v - (float)i0;
+    double fr = v - (double)i0;
     for (int k = 0; k < 5; k++) {
         double hz = ((1.0f - fr) * form_hz[voice_type][i0][k] + fr * form_hz[voice_type][i0 + 1][k])
                   * (double)shift;
@@ -2576,12 +3122,12 @@ static void formant_bank_tune(mod_biquad *bank, float *g, int voice_type,
 }
 
 void modular_formant_process(float *out, int sampleRate, int samples,
-                             int voice_type, float vowel, float mix,
-                             float shift, float sing,
-                             float morph_rate, float morph_to, float dry) {
+                             int voice_type, double vowel, double mix,
+                             double shift, double sing,
+                             double morph_rate, double morph_to, double dry) {
     if (mix <= 0.0f || samples <= 0) return;
     if (voice_type < 0) voice_type = 0; else if (voice_type > 3) voice_type = 3;
-    if (shift <= 0.0f) shift = 1.0f;
+    if (shift < 0.01) shift = 0.01; /* structural: a non-positive formant shift has no meaning */
     mod_biquad bank[5];
     float g[5];
     formant_bank_tune(bank, g, voice_type, vowel, shift, sampleRate, 1);

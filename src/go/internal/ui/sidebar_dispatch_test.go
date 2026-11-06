@@ -48,7 +48,7 @@ func openSidebarForDispatch(t *testing.T, cursorX, cursorY *int, leftPressed *bo
 func TestSidebarDispatchWheelScroll(t *testing.T) {
 	// Placeholder cursor; the sidebar's panel is now a compact card anchored
 	// beside its node (not a full-height panel docked at x=0), so the real
-	// coordinate is derived from g.sidebar.rects["panel"] below, once the
+	// coordinate is derived from g.sidebar.rects[sbPanel] below, once the
 	// sidebar is open and laid out.
 	cursorX, cursorY := 0, 0
 	leftPressed := false
@@ -57,7 +57,7 @@ func TestSidebarDispatchWheelScroll(t *testing.T) {
 	g := openSidebarForDispatch(t, &cursorX, &cursorY, &leftPressed, &wheelY)
 
 	// Point inside the sidebar's actual (node-anchored) panel content area.
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if panel.Empty() {
 		t.Fatal("panel rect should be non-empty")
 	}
@@ -164,7 +164,7 @@ func TestSidebarDispatchScrollDragCapture(t *testing.T) {
 	scrollBefore := g.sidebar.scroll.VS.First
 
 	// Move cursor outside sidebar bounds (well to the right)
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	cursorX = panel.Max.X + 100
 	cursorY = thumbCY + 40 // move down
 	_ = g.Update()
@@ -193,7 +193,7 @@ func TestSidebarDispatchScrollDragCapture(t *testing.T) {
 func TestSidebarDispatchWheelBlocksZoom(t *testing.T) {
 	// Placeholder cursor; the sidebar's panel is now a compact card anchored
 	// beside its node (not a full-height panel docked at x=0), so the real
-	// coordinate is derived from g.sidebar.rects["panel"] below, once the
+	// coordinate is derived from g.sidebar.rects[sbPanel] below, once the
 	// sidebar is open and laid out.
 	cursorX, cursorY := 0, 0
 	leftPressed := false
@@ -202,7 +202,7 @@ func TestSidebarDispatchWheelBlocksZoom(t *testing.T) {
 	g := openSidebarForDispatch(t, &cursorX, &cursorY, &leftPressed, &wheelY)
 
 	// Point inside the sidebar's actual (node-anchored) panel rect.
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if panel.Empty() {
 		t.Fatal("panel rect should be non-empty")
 	}
@@ -234,7 +234,7 @@ func TestSidebarDispatchTouchScroll(t *testing.T) {
 
 	g := openSidebarForDispatch(t, &cursorX, &cursorY, &leftPressed, &wheelY)
 
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	cx := panel.Min.X + panel.Dx()/2
 
 	// Use the content area (below header, inside panel).

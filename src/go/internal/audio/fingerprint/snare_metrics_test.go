@@ -53,8 +53,8 @@ func TestSnareDualDecay(t *testing.T) {
 	x := make([]float64, n)
 	for i := range x {
 		t := float64(i) / sr
-		body := math.Sin(2*math.Pi*190*t) * math.Exp(-40*t)   // fast body
-		buzz := 0.6 * highOsc(t) * math.Exp(-6*t)              // long bright ring
+		body := math.Sin(2*math.Pi*190*t) * math.Exp(-40*t) // fast body
+		buzz := 0.6 * highOsc(t) * math.Exp(-6*t)           // long bright ring
 		x[i] = body + buzz
 	}
 	sm := AnalyzeSnare(wave.Wave{Samples: x, SampleRate: sr})
@@ -71,7 +71,7 @@ func highNoise(sr, n int) []float64 {
 	for i := range x {
 		s = s*1664525 + 1013904223
 		v := float64(int32(s))/float64(1<<31) - 0.0
-		hp = 0.9*(hp+v-prev)/1.0
+		hp = 0.9 * (hp + v - prev) / 1.0
 		prev = v
 		x[i] = hp * math.Exp(-4*float64(i)/float64(sr))
 	}

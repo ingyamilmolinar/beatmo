@@ -53,3 +53,14 @@ func makeBiquad(kind EQKind, sr int, freq, q, gainDB float64) *biquad {
 		a1: c.A1, a2: c.A2,
 	}
 }
+
+// Reset clears the filter's delay line so the next sample is processed as if
+// the filter had only ever seen silence. Coefficients are untouched — this is
+// a state reset, not a reconfiguration.
+//
+// Needed because a biquad carries two samples of input and output history: a
+// second render (or a replayed transport) that starts with a warm delay line
+// produces different output from the same input. See audio.ResetDSPState.
+func (b *biquad) Reset() {
+	b.x1, b.x2, b.y1, b.y2 = 0, 0, 0, 0
+}

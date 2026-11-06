@@ -4,11 +4,14 @@ import (
 	"math/rand"
 	"sync"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Phase-1 race-detector hammer on the param manager. Establishes that
 // concurrent SetInstrumentParam, GetInstrumentParams, ResetInstrumentParams,
-// SetInstrumentParams (bulk), and BindInstrumentToRecipe across many
+// SetInstrumentParams (bulk), and InstrumentDoc reads across many
 // goroutines do not produce a data race under `go test -race`.
 //
 // We do not exercise Play() here because that requires real engine wiring
@@ -21,7 +24,7 @@ func TestSetInstrumentParamConcurrentHammer(t *testing.T) {
 	const opsPerGoroutine = 4000
 	const numInstruments = 6
 
-	ids := []string{"snare", "kick", "hihat", "clap", "tom", "cowbell"}
+	ids := []instrument.ID{roster.Snare, roster.Kick, roster.Hihat, roster.Clap, roster.Tom, roster.Cowbell}
 	params := []string{"pitch", "decay", "tone", "drive", "body", "brightness"}
 
 	// Pre-clear so leftover state from earlier tests doesn't bias allocation
@@ -56,7 +59,7 @@ func TestSetInstrumentParamConcurrentHammer(t *testing.T) {
 						params[r.Intn(len(params))]: r.Float64(),
 					})
 				case 4:
-					_ = RecipeForInstrument(id)
+					_, _ = InstrumentDoc(id)
 				}
 			}
 		}(g)

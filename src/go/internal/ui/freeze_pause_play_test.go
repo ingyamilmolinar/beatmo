@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 func TestApplyFreezeVisualUsesIcons(t *testing.T) {
@@ -96,16 +97,16 @@ func TestWaveControlsHasBothAutoAndFreeze(t *testing.T) {
 
 func TestLevelsLatchHoldsWhenFrozen(t *testing.T) {
 	frozenSnap := &analyzer.State{
-		Master: analyzer.ChannelMetrics{ID: "main", PeakDB: -6, RMSDB: -12, Active: true},
+		Master: analyzer.ChannelMetrics{ID: channel.Master, PeakDB: -6, RMSDB: -12, Active: true},
 	}
 	z := &EQPanelZone{}
 	z.frozenByTab = map[PanelTab]*analyzer.State{TabMeters: frozenSnap}
 	z.levelsLatches = NewMultiLevelsLatch()
 
 	z.applyLevelsFreezeHold(frozenSnap)
-	first := z.levelsLatches.Get("main").PeakHoldDB
+	first := z.levelsLatches.Get(channel.Master).PeakHoldDB
 	z.applyLevelsFreezeHold(frozenSnap)
-	second := z.levelsLatches.Get("main").PeakHoldDB
+	second := z.levelsLatches.Get(channel.Master).PeakHoldDB
 
 	if first != second {
 		t.Fatalf("frozen latch drifted: first=%v second=%v", first, second)

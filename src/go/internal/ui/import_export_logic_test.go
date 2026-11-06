@@ -6,6 +6,9 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestExportIncludesLogicFields ensures logic fields are present in export.
@@ -18,7 +21,7 @@ func TestExportIncludesLogicFields(t *testing.T) {
 	// Use skip_every_n logic
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -29,14 +32,14 @@ func TestExportIncludesLogicFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
 	found := false
 	for _, n := range f.Nodes {
 		if n.I == 0 && n.J == 0 {
-			if n.LogicKind != "skip_every_n" || n.LogicN != 3 {
+			if n.LogicKind != model.LogicSkipEveryN || n.LogicN != 3 {
 				t.Fatalf("missing logic fields: kind=%q n=%d", n.LogicKind, n.LogicN)
 			}
 			found = true
@@ -50,14 +53,14 @@ func TestExportIncludesLogicFields(t *testing.T) {
 // TestImportLogicFields verifies import applies the logic fields onto node params.
 func TestImportLogicFields(t *testing.T) {
 	assertDefaultParityState(t)
-	t.Cleanup(func() { audio.ClearInstrumentDisplayName("snare") })
-	file := exportFile{
-		Version:     1,
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(roster.Snare) })
+	file := projectFile{
+		Envelope:    schema.Current(),
 		Subdiv:      32,
 		BPM:         120,
-		Instruments: []exportInstrument{{Name: "Row", ID: "snare", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
+		Instruments: []exportInstrument{{Name: "Row", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
 		Nodes: []exportNode{
-			{ID: 1, I: 0, J: 0, Type: "regular", LogicKind: "skip_every_n", LogicN: 2},
+			{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular, LogicKind: model.LogicSkipEveryN, LogicN: 2},
 		},
 	}
 	data, _ := json.Marshal(file)
@@ -70,7 +73,7 @@ func TestImportLogicFields(t *testing.T) {
 	have := false
 	for _, n := range g.graph.Nodes {
 		if n.I == 0 && n.J == 0 {
-			if n.Params.LogicKind != "skip_every_n" || n.Params.LogicN != 2 {
+			if n.Params.LogicKind != model.LogicSkipEveryN || n.Params.LogicN != 2 {
 				t.Fatalf("logic not applied: %+v", n.Params)
 			}
 			have = true
@@ -83,20 +86,20 @@ func TestImportLogicFields(t *testing.T) {
 
 func TestImportSetsDisplayNameOverride(t *testing.T) {
 	assertDefaultParityState(t)
-	audio.ClearInstrumentDisplayName("kick")
-	t.Cleanup(func() { audio.ClearInstrumentDisplayName("kick") })
+	audio.ClearInstrumentDisplayName(roster.Kick)
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(roster.Kick) })
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	js := `{"version":1,"subdiv":8,"bpm":120,` +
+	js := `{"schema_version":"0.0.1","subdiv":8,"bpm":120,` +
 		`"instruments":[{"name":"Boomer","id":"kick","kind":"builtin","volume":1,"origin":0,"color":"#C87850FF"}],` +
 		`"nodes":[{"id":0,"i":0,"j":0,"type":"regular","outputs":[]}]}`
 	if err := g.Import([]byte(js)); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if got := audio.InstrumentDisplayName("kick"); got != "Boomer" {
+	if got := audio.InstrumentDisplayName(roster.Kick); got != "Boomer" {
 		t.Fatalf("override not set on import: got %q", got)
 	}
 }

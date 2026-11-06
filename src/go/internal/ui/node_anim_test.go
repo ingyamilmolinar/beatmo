@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestNodeTriggerAnimationIncreasesRadius verifies that when a node is
@@ -84,15 +85,15 @@ func TestNodeAnimRespectsSkipEveryNLogic(t *testing.T) {
 	// Skip every 2nd trigger at r1
 	if n, ok := g.graph.GetNodeByID(r1.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(r1.ID, p)
 	}
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	g.drum.SetInstrument("snare")
-	ensureInstrumentAvailable(t, g, "snare")
+	g.drum.SetInstrument(roster.Snare)
+	ensureInstrumentAvailable(t, g, roster.Snare)
 
 	var hits []int
 	g.highlightHook = func(row, idx int) {

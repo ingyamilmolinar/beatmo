@@ -10,7 +10,7 @@
 // Usage: GO=/path/to/.tools/go/bin/go node src/js/webaudio_output_capture.browser.test.js
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
-import { flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
+import { flushCoverage, isCoverageEnabled, waitForAudioReady } from "./browser_test_helpers.js";
 
 let exitCode = 0;
 let cleanup = null;
@@ -40,7 +40,7 @@ try {
     {},
     { timeout: 10000 }
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
   // Dynamic-import the scenario module (the dev server already serves any
   // /src/js/scenarios/*.js file as application/javascript). One round trip

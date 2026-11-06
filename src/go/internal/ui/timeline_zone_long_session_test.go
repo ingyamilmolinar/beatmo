@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // Long-session regression guards for the timeline ribbon.
@@ -49,7 +50,7 @@ func ribbonZoneForTest(t *testing.T, elapsedBeats float64) (*TimelineZone, image
 		Frame:                func() int64 { return 0 },
 		BeatLength:           func() int { return patternLength },
 		OnOffsetChange:       func(int) {},
-		OnSeekToStep:         func(int, string) {},
+		OnSeekToStep:         func(int, hooks.SeekOrigin) {},
 		SetTimelineBeats:     func(n int) { totalBeats = n },
 	}
 	z := NewTimelineZone(cb)

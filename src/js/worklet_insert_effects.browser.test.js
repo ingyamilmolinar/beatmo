@@ -19,7 +19,7 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled, waitForAudioReady } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -114,7 +114,7 @@ try {
     {},
     { timeout: 10000 }
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
   // Settle: let game loop finish buildDemo / initial import.
   await page.waitForTimeout(500);

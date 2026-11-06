@@ -5,6 +5,8 @@ package userprefs
 import (
 	"sync"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Browser SampleStore backend. PCM payloads (MBs) exceed localStorage's ~5 MB
@@ -18,22 +20,22 @@ import (
 // in time.
 var (
 	sampleCacheMu  sync.RWMutex
-	sampleCache    = map[string]SampleBlob{}
+	sampleCache    = map[instrument.ID]SampleBlob{}
 	sampleHydrated bool
 )
 
-func (s *localStorageStore) LoadSamples() (map[string]SampleBlob, error) {
+func (s *localStorageStore) LoadSamples() (map[instrument.ID]SampleBlob, error) {
 	hydrateSamplesOnce()
 	sampleCacheMu.RLock()
 	defer sampleCacheMu.RUnlock()
-	out := make(map[string]SampleBlob, len(sampleCache))
+	out := make(map[instrument.ID]SampleBlob, len(sampleCache))
 	for id, b := range sampleCache {
 		out[id] = SampleBlob{SampleRate: b.SampleRate, PCM: append([]byte(nil), b.PCM...)}
 	}
 	return out, nil
 }
 
-func (s *localStorageStore) SaveSample(id string, blob SampleBlob) error {
+func (s *localStorageStore) SaveSample(id instrument.ID, blob SampleBlob) error {
 	if id == "" {
 		return nil
 	}
@@ -45,12 +47,12 @@ func (s *localStorageStore) SaveSample(id string, blob SampleBlob) error {
 		if len(blob.PCM) > 0 {
 			js.CopyBytesToJS(u8, blob.PCM)
 		}
-		fn.Invoke(id, blob.SampleRate, u8)
+		fn.Invoke(string(id), blob.SampleRate, u8)
 	}
 	return nil
 }
 
-func (s *localStorageStore) DeleteSample(id string) error {
+func (s *localStorageStore) DeleteSample(id instrument.ID) error {
 	if id == "" {
 		return nil
 	}
@@ -58,7 +60,7 @@ func (s *localStorageStore) DeleteSample(id string) error {
 	delete(sampleCache, id)
 	sampleCacheMu.Unlock()
 	if fn := js.Global().Get("idbDeleteSample"); fn.Truthy() {
-		fn.Invoke(id)
+		fn.Invoke(string(id))
 	}
 	return nil
 }
@@ -86,9 +88,9 @@ func hydrateSamplesOnce() {
 			sampleCacheMu.Lock()
 			for i := 0; i < n; i++ {
 				e := arr.Index(i)
-				id := e.Get("id").String()
+				id, err := instrument.ParseID(e.Get("id").String())
 				u8 := e.Get("bytes")
-				if id == "" || !u8.Truthy() {
+				if err != nil || !u8.Truthy() {
 					continue
 				}
 				blen := u8.Get("length").Int()

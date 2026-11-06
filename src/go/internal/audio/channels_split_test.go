@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // gainProc is a tiny Processor that multiplies each sample by a constant
@@ -17,7 +20,7 @@ func (p *gainProc) ProcessSample(x float64) float64 { return x * p.g }
 // chain, leaving the EQ-side processors out. This is what lets the mixer
 // tap the post-FX/pre-EQ signal for scope.StageInsertFX.
 func TestProcessInsertsBlockLocalAppliesVolumeAndInsertsOnly(t *testing.T) {
-	ch := newChannel("split-inserts", nil)
+	ch := newChannel(channel.Of("split-inserts"), nil)
 	ch.SetVolume(0.5)
 	ch.replaceProcessors(
 		[]Processor{&gainProc{g: 2.0}}, // inserts: ×2
@@ -40,7 +43,7 @@ func TestProcessInsertsBlockLocalAppliesVolumeAndInsertsOnly(t *testing.T) {
 // runs ONLY the eqProcs chain and does NOT re-apply volume — that's the
 // upstream caller's (ProcessInsertsBlockLocal) responsibility.
 func TestProcessEQBlockLocalAppliesEQOnly(t *testing.T) {
-	ch := newChannel("split-eq", nil)
+	ch := newChannel(channel.Of("split-eq"), nil)
 	ch.SetVolume(0.5) // must NOT be applied here
 	ch.replaceProcessors(
 		[]Processor{&gainProc{g: 2.0}}, // inserts: ×2 (must NOT apply here)
@@ -64,7 +67,7 @@ func TestProcessEQBlockLocalAppliesEQOnly(t *testing.T) {
 // mixer can call the split methods even when an instrument has no EQ bands
 // configured.
 func TestProcessEQBlockLocalEmptyChainIsIdentity(t *testing.T) {
-	ch := newChannel("split-empty-eq", nil)
+	ch := newChannel(channel.Of("split-empty-eq"), nil)
 	ch.SetVolume(1.0)
 	ch.replaceProcessors([]Processor{&gainProc{g: 2.0}}, nil)
 
@@ -87,7 +90,7 @@ func TestProcessInsertsAndEQComposeEqualsProcessBlockLocal(t *testing.T) {
 	// Use two channels with identical config so internal block-cache state
 	// is not shared.
 	mkChan := func(name string) *Channel {
-		ch := newChannel(name, nil)
+		ch := newChannel(channel.Of(instrument.ID(name)), nil)
 		ch.SetVolume(0.6)
 		ch.replaceProcessors(
 			[]Processor{&gainProc{g: 1.5}, &gainProc{g: 0.8}},

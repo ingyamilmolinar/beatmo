@@ -4,19 +4,32 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+
+	"github.com/ingyamilmolinar/beatmo/internal/enum"
 )
 
 // GroupID identifies a node group within a Graph.
 type GroupID int
 
-// GroupParam names the node parameter a GroupRule mutates.
-type GroupParam string
+// GroupParam names the node parameter a GroupRule mutates. GroupParamNone
+// is no parameter: SetGroupRules rejects a rule naming it.
+type GroupParam int
 
 const (
-	GroupParamPitch    GroupParam = "pitch"
-	GroupParamVolume   GroupParam = "volume"
-	GroupParamDuration GroupParam = "duration"
+	GroupParamNone GroupParam = iota
+	GroupParamPitch
+	GroupParamVolume
+	GroupParamDuration
 )
+
+var groupParamNames = enum.Names[GroupParam]{Kind: "group rule param", Names: []string{"", "pitch", "volume", "duration"}}
+
+func (p GroupParam) String() string                { return enum.String(groupParamNames, p) }
+func (p GroupParam) MarshalText() ([]byte, error)  { return enum.Marshal(groupParamNames, p) }
+func (p *GroupParam) UnmarshalText(b []byte) error { return enum.Unmarshal(groupParamNames, b, p) }
+
+// ParseGroupParam reads a rule param spelled in data.
+func ParseGroupParam(s string) (GroupParam, error) { return enum.Parse(groupParamNames, s) }
 
 // GroupRule: every EveryN rounds, accumulate Delta on Param. The accumulated
 // effect (Delta × steps) clamps to [Min, Max]. Zero Min+Max on input means
@@ -65,11 +78,22 @@ var (
 	ErrGroupBadRule     = errors.New("invalid group rule")
 )
 
+// NodePitchMin / NodePitchMax bound a node's semitone pitch offset: two
+// octaves either side of the instrument's base note.
+//
+// Exported because it is not only the group-rule clamp — the UI's note-matrix
+// picker enumerates exactly this range, and the two must not drift. Any other
+// consumer that needs "how far can a node's pitch move" reads these.
+const (
+	NodePitchMin = -24.0
+	NodePitchMax = 24.0
+)
+
 // groupRuleDefaultClamp returns the default accumulated-effect clamp per param.
 func groupRuleDefaultClamp(p GroupParam) (float64, float64) {
 	switch p {
 	case GroupParamPitch:
-		return -24, 24
+		return NodePitchMin, NodePitchMax
 	case GroupParamVolume:
 		return 0, 4
 	default: // duration

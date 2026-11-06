@@ -5,6 +5,9 @@ import (
 	"math"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
+
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
@@ -29,11 +32,11 @@ func TestImportEmptyNodes(t *testing.T) {
 	g.Layout(800, 600)
 
 	f := tFile{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         100,
-		Nodes:       []tNode{},
-		Instruments: []tInst{},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           100,
+		Nodes:         []tNode{},
+		Instruments:   []tInst{},
 	}
 	data, err := json.Marshal(f)
 	if err != nil {
@@ -62,11 +65,11 @@ func TestImportTooManyNodes(t *testing.T) {
 		nodes[i] = tNode{ID: i, I: i, J: 0, Type: "regular"}
 	}
 	f := tFile{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         120,
-		Nodes:       nodes,
-		Instruments: []tInst{},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Nodes:         nodes,
+		Instruments:   []tInst{},
 	}
 	data, err := json.Marshal(f)
 	if err != nil {
@@ -85,11 +88,11 @@ func TestImportInvalidSubdiv(t *testing.T) {
 	g.Layout(800, 600)
 
 	f := tFile{
-		Version:     1,
-		Subdiv:      7, // invalid
-		BPM:         100,
-		Nodes:       []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-		Instruments: []tInst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#C87850FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        7, // invalid
+		BPM:           100,
+		Nodes:         []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Instruments:   []tInst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#C87850FF"}},
 	}
 	data, _ := json.Marshal(f)
 	if err := g.Import(data); err != nil {
@@ -108,11 +111,11 @@ func TestImportMissingSubdiv(t *testing.T) {
 	g.Layout(800, 600)
 
 	f := tFile{
-		Version:     1,
-		Subdiv:      0, // missing/zero
-		BPM:         100,
-		Nodes:       []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-		Instruments: []tInst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#C87850FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        0, // missing/zero
+		BPM:           100,
+		Nodes:         []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Instruments:   []tInst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#C87850FF"}},
 	}
 	data, _ := json.Marshal(f)
 	if err := g.Import(data); err != nil {
@@ -131,12 +134,12 @@ func TestImportInstrumentVolumePreserved(t *testing.T) {
 	g.Layout(800, 600)
 
 	f := tFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Nodes:   []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Nodes:         []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
 		Instruments: []tInst{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 0.7, Origin: 1, Color: "#C87850FF",
+			Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 0.7, Origin: 1, Color: "#C87850FF",
 		}},
 	}
 	data, _ := json.Marshal(f)
@@ -161,20 +164,20 @@ func TestImportMasterVolumeApplied(t *testing.T) {
 	// Build a payload that includes master_volume using a custom struct that
 	// extends tFile with the field.
 	type tFileMV struct {
-		Version      int     `json:"version"`
-		Subdiv       int     `json:"subdiv"`
-		BPM          int     `json:"bpm"`
-		MasterVolume float64 `json:"master_volume,omitempty"`
-		Instruments  []tInst `json:"instruments"`
-		Nodes        []tNode `json:"nodes"`
+		SchemaVersion string  `json:"schema_version"`
+		Subdiv        int     `json:"subdiv"`
+		BPM           int     `json:"bpm"`
+		MasterVolume  float64 `json:"master_volume,omitempty"`
+		Instruments   []tInst `json:"instruments"`
+		Nodes         []tNode `json:"nodes"`
 	}
 	f := tFileMV{
-		Version:      1,
-		Subdiv:       32,
-		BPM:          120,
-		MasterVolume: 0.5,
-		Nodes:        []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-		Instruments:  []tInst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		MasterVolume:  0.5,
+		Nodes:         []tNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Instruments:   []tInst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
 	}
 	data, _ := json.Marshal(f)
 	if err := g.Import(data); err != nil {
@@ -203,23 +206,23 @@ func TestImportEQFieldParsing(t *testing.T) {
 		GainsDB []float64 `json:"gains_db"`
 	}
 	type tFileEQ struct {
-		Version     int     `json:"version"`
-		Subdiv      int     `json:"subdiv"`
-		BPM         int     `json:"bpm"`
-		Instruments []tInst `json:"instruments"`
-		Nodes       []tNode `json:"nodes"`
-		EQ          *tEQ    `json:"eq,omitempty"`
+		SchemaVersion string  `json:"schema_version"`
+		Subdiv        int     `json:"subdiv"`
+		BPM           int     `json:"bpm"`
+		Instruments   []tInst `json:"instruments"`
+		Nodes         []tNode `json:"nodes"`
+		EQ            *tEQ    `json:"eq,omitempty"`
 	}
 
 	// 10 bands matching eqBandDefs length
 	gains := []float64{-6, -3, 0, 3, 6, 9, 12, -12, -9, -6}
 	f := tFileEQ{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         100,
-		Nodes:       []tNode{},
-		Instruments: []tInst{},
-		EQ:          &tEQ{GainsDB: gains},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           100,
+		Nodes:         []tNode{},
+		Instruments:   []tInst{},
+		EQ:            &tEQ{GainsDB: gains},
 	}
 	data, _ := json.Marshal(f)
 	if err := g.Import(data); err != nil {
@@ -246,15 +249,15 @@ func TestImportNodeParamsRoundTrip(t *testing.T) {
 	g.Layout(800, 600)
 
 	f := tFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
 		Nodes: []tNode{{
 			ID: 1, I: 0, J: 0, Type: "regular",
 			Volume: 0.8, Pitch: 3.0, Duration: 0.5,
 		}},
 		Instruments: []tInst{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},
 	}
 	data, _ := json.Marshal(f)
@@ -286,52 +289,26 @@ func TestImportNodeParamsRoundTrip(t *testing.T) {
 }
 
 // TestImportLogicKindAliases verifies that legacy logic kind names are mapped to canonical forms.
-func TestImportLogicKindAliases(t *testing.T) {
+func TestImportRejectsLogicKindAliases(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	f := tFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Nodes: []tNode{
-			{ID: 1, I: 0, J: 0, Type: "regular", LogicKind: "prev_fired", LogicN: 2},
-			{ID: 2, I: 4, J: 0, Type: "regular", LogicKind: "every_n_loops", LogicN: 3},
-		},
-		Instruments: []tInst{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-		}},
-	}
-	data, _ := json.Marshal(f)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import failed: %v", err)
-	}
-
-	// Collect all imported nodes and check their logic kinds.
-	type want struct {
-		logicKind string
-	}
-	// We cannot rely on the file IDs mapping 1:1 to graph IDs, so scan all nodes.
-	wantKinds := map[string]bool{
-		"trigger_if_prev_triggered": false,
-		"every_n_triggers":          false,
-	}
-	for _, n := range g.nodes {
-		mn, ok := g.graph.GetNodeByID(n.ID)
-		if !ok {
-			continue
+	for _, alias := range []string{"prev_fired", "every_n_loops"} {
+		f := tFile{
+			SchemaVersion: schema.Version,
+			Subdiv:        32,
+			BPM:           120,
+			Nodes:         []tNode{{ID: 1, I: 0, J: 0, Type: "regular", LogicKind: alias, LogicN: 2}},
+			Instruments: []tInst{{
+				Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			}},
 		}
-		if mn.Params.LogicKind != "" {
-			wantKinds[mn.Params.LogicKind] = true
+		data, _ := json.Marshal(f)
+		if err := g.Import(data); err == nil {
+			t.Errorf("import accepted the retired logic spelling %q", alias)
 		}
-	}
-	if !wantKinds["trigger_if_prev_triggered"] {
-		t.Error("expected prev_fired to map to trigger_if_prev_triggered")
-	}
-	if !wantKinds["every_n_triggers"] {
-		t.Error("expected every_n_loops to map to every_n_triggers")
 	}
 }
 
@@ -343,16 +320,16 @@ func TestImportNodeTypeRoundTrip(t *testing.T) {
 	g.Layout(800, 600)
 
 	f := tFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
 		Nodes: []tNode{
 			{ID: 1, I: 0, J: 0, Type: "mute"},
 			{ID: 2, I: 4, J: 0, Type: "silent"},
 			{ID: 3, I: 8, J: 0, Type: "regular"},
 		},
 		Instruments: []tInst{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#C87850FF",
+			Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#C87850FF",
 		}},
 	}
 	data, _ := json.Marshal(f)
@@ -397,7 +374,7 @@ func TestImportGrooveParams(t *testing.T) {
 
 	// Use raw JSON map because tNode does not have groove fields.
 	raw := map[string]interface{}{
-		"version": 1, "subdiv": 32, "bpm": 120,
+		"schema_version": "0.0.1", "subdiv": 32, "bpm": 120,
 		"nodes": []map[string]interface{}{{
 			"id": 1, "i": 0, "j": 0, "type": "regular",
 			"groove_kind": "delay", "groove_pct": 0.5,
@@ -422,7 +399,7 @@ func TestImportGrooveParams(t *testing.T) {
 			continue
 		}
 		found = true
-		if mn.Params.GrooveKind != "delay" {
+		if mn.Params.GrooveKind != model.GrooveDelay {
 			t.Errorf("expected groove_kind 'delay', got %q", mn.Params.GrooveKind)
 		}
 		if math.Abs(mn.Params.GroovePct-0.5) > 1e-9 {

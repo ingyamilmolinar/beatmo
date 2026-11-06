@@ -7,7 +7,9 @@ import (
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // jsArgs wraps the raw js.Value argument slice passed to a JS-exported
@@ -38,6 +40,34 @@ func (a jsArgs) Str(i int) string { return jsArgString(a.v, i, "") }
 // StrOr returns args[i] as a string, or def if absent / falsy.
 func (a jsArgs) StrOr(i int, def string) string { return jsArgString(a.v, i, def) }
 
+// Instrument parses args[i] as an instrument id (instrument.ParseID); ""
+// when absent or invalid, which every instrument API treats as "none".
+func (a jsArgs) Instrument(i int) instrument.ID {
+	id, err := instrument.ParseID(a.Str(i))
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
+// Channel parses args[i] as a mixer channel name ("main" or an instrument
+// id); the zero ID when absent or invalid. "" names no channel.
+func (a jsArgs) Channel(i int) channel.ID {
+	id, err := channel.Parse(a.Str(i))
+	if err != nil {
+		return channel.ID{}
+	}
+	return id
+}
+
+// ChannelOr is Channel with def for an absent argument.
+func (a jsArgs) ChannelOr(i int, def channel.ID) channel.ID {
+	if i >= len(a.v) || a.v[i].IsUndefined() || a.v[i].IsNull() {
+		return def
+	}
+	return a.Channel(i)
+}
+
 // Bool returns args[i] truthiness, or false if absent.
 func (a jsArgs) Bool(i int) bool {
 	if i >= len(a.v) {
@@ -60,12 +90,25 @@ func (a jsArgs) At(i int) js.Value {
 // this/args/interface{} signature boilerplate at every registration site.
 // Callers keep the literal Global-Set registration form, passing jsFn as the
 // second argument, so the export-name text stays visible to the catalogue
-// drift guard (which scans registration source by regex).
+// drift guard (which scans registration source by regex). The result passes
+// through jsSafe: an instrument.ID (or any named basic type) in it would make
+// syscall/js panic, and nothing at compile time can see that.
 func jsFn(fn func(a jsArgs) any) js.Func {
 	return js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		return fn(jsArgs{v: args})
+		r := jsSafe(fn(jsArgs{v: args}))
+		jsExportSeq.Add(1)
+		if h := afterJSExport; h != nil {
+			h()
+		}
+		return r
 	})
 }
+
+// afterJSExport runs after every bridge call. The Game points it at kickLane:
+// a bridge edit happens outside Update, and on WASM the sequencer goroutine
+// only runs on its next JS-timer tick — the kick makes it runnable before
+// control returns to JS, so the audio lane sees the edit at once.
+var afterJSExport func()
 
 func boolSliceToJS(arr []bool) js.Value {
 	if arr == nil {

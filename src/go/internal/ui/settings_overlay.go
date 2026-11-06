@@ -7,10 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// settingsOverlayW is the panel width in px. Sized to the content (two language
-// pills + the two-column shortcut list) with no dead right margin — the card
-// was 480 and left ~140px empty.
-const settingsOverlayW = 340
+// The Settings panel is an editor card (DESIGN.md "Menu sizing & layout"):
+// its desktop width is the editor class, menuWEditor().
 
 // settingsPanelHandler is the full-panel catch-all: it consumes any press that
 // lands on the panel background (not on a pill or the close button) so a
@@ -56,6 +54,7 @@ func (h settingsPanelHandler) OnWheel(x, y, steps int) InputResult {
 type SettingsOverlay struct {
 	onPick func(i18n.Locale)
 	closed bool
+	card   *MenuCard // shared frame: panel, title band (IconSettings), close ×
 	rect   image.Rectangle
 	enRect image.Rectangle
 	esRect image.Rectangle
@@ -93,6 +92,7 @@ const settingsShortcutRowH = 26
 // NewSettingsOverlay creates a settings portal overlay; onPick fires on a pill tap.
 func NewSettingsOverlay(onPick func(i18n.Locale)) *SettingsOverlay {
 	o := &SettingsOverlay{onPick: onPick}
+	o.card = NewMenuCard(o.Close)
 	o.enBtn = NewButtonKey(i18n.KeyLangEnglish, ComponentButtonSecondary, func() { o.pick(i18n.LocaleEN) })
 	o.esBtn = NewButtonKey(i18n.KeyLangSpanish, ComponentButtonSecondary, func() { o.pick(i18n.LocaleES) })
 	o.scroll = NewMenuScroll(DropdownScrollbarStyle, settingsShortcutRowH)
@@ -114,7 +114,7 @@ func (o *SettingsOverlay) ShouldClose() bool { return o.closed }
 // and the close button.
 func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	b := screenBounds
-	w := settingsOverlayW
+	w := menuWEditor()
 	// Clamp to the available width with a side margin so the panel (and its
 	// content, inset 24px) stays fully on-screen on narrow mobile panes — the
 	// fixed 480px width otherwise centers off both edges of a ~390px phone.
@@ -124,7 +124,7 @@ func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	// Height: header + language row, plus the shortcuts section on desktop only
 	// (mobile drops it entirely, so the panel is correspondingly shorter).
 	rows := 0
-	h := 40 + 56 + 24
+	h := menuCardTitleH + menuCardPad + 76
 	if o.shortcutsVisible() {
 		rows = len(localizedShortcutRows())
 		h += settingsShortcutRowH * (rows + 1)
@@ -146,11 +146,11 @@ func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	// derives from the shared card padding + text-role heights, so Draw stays
 	// in lock-step (it recomputes langLabelY the same way). One Title >
 	// Section > control ladder shared by all three cards.
-	titleH := StyledTextHeight(cardTitleRole)
+	o.card.Layout(o.rect, MenuCardSpec{Title: i18n.T(i18n.KeySettingsTitle), IconID: IconSettings})
 	labelH := StyledTextHeight(RoleSectionHeader)
-	o.langLabelY = o.rect.Min.Y + SpaceMD + titleH + SpaceSM
+	o.langLabelY = o.card.Body().Min.Y
 	pillW, pillH := 138, 32
-	px := o.rect.Min.X + cardContentPadX
+	px := o.card.Body().Min.X
 	py := o.langLabelY + labelH + SpaceXS
 	o.enRect = image.Rect(px, py, px+pillW, py+pillH)
 	o.esRect = image.Rect(px+pillW+SpaceMD, py, px+pillW+SpaceMD+pillW, py+pillH)
@@ -163,7 +163,7 @@ func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	if o.shortcutsVisible() && o.scroll != nil {
 		listTop := o.esRect.Max.Y + 18 + 28 // header at +18, first row at +28 (see Draw)
 		listBot := o.rect.Max.Y - 8
-		o.shortcutsView = image.Rect(o.rect.Min.X+cardContentPadX, listTop, o.rect.Max.X-SpaceMD, listBot)
+		o.shortcutsView = image.Rect(o.card.Body().Min.X, listTop, o.rect.Max.X-SpaceMD, listBot)
 		visRows := 0
 		if listBot > listTop {
 			visRows = (listBot - listTop) / settingsShortcutRowH
@@ -186,14 +186,14 @@ func (o *SettingsOverlay) HitAreas() []HitArea {
 	if o.rect.Empty() {
 		return nil
 	}
-	return []HitArea{
-		{Rect: o.enBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-en",
+	areas := o.card.ControlAreas(ZOverlayMin, "settings")
+	areas = append(areas,
+		HitArea{Rect: o.enBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-en",
 			Handler: &buttonHitAdapter{btn: o.enBtn}},
-		{Rect: o.esBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-es",
+		HitArea{Rect: o.esBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-es",
 			Handler: &buttonHitAdapter{btn: o.esBtn}},
-		{Rect: o.rect, ZIndex: ZOverlayMin, Tag: "settings-panel",
-			Handler: settingsPanelHandler{o: o}},
-	}
+	)
+	return append(areas, o.card.CatchAll(ZOverlayMin, "settings", settingsPanelHandler{o: o}))
 }
 
 // shortcutsVisible reports whether the keyboard-shortcuts section is shown.
@@ -220,19 +220,14 @@ func (o *SettingsOverlay) Draw(screen *ebiten.Image) {
 	if screen == nil || o.rect.Empty() {
 		return
 	}
-	drawRect(screen, screen.Bounds(), colScrim, true) // full-screen scrim (modal feel)
-	// Shared panel chrome (shadow + surface-overlay fill + panel border +
-	// popupCornerRadius) — identical to File and Logs. Drawn on the UNCLIPPED
-	// screen so the drop shadow is not clipped away by the content SubImage.
-	drawPanel(screen, o.rect)
+	// Shared MenuCard frame (panel, title band with the gear icon, close ×) on
+	// the UNCLIPPED screen so the drop shadow survives; the portal paints the
+	// scrim (menuCardEntry: Scrim).
+	o.card.Draw(screen)
 	// Clip the panel CONTENT to o.rect (grid-pane-clamped) so a tall shortcuts
 	// list can never spill past the split into the drum-view panel below.
 	dst := screen.SubImage(o.rect).(*ebiten.Image)
-	x := o.rect.Min.X + cardContentPadX
-	// Card title (panel-title) via the shared helper — pixel-identical to the
-	// Logs and File card titles.
-	titleH := StyledTextHeight(cardTitleRole)
-	drawCardTitleIn(dst, image.Rect(x, o.rect.Min.Y+SpaceMD, o.rect.Max.X-cardContentPadX, o.rect.Min.Y+SpaceMD+titleH), i18n.T(i18n.KeySettingsTitle))
+	x := o.card.Body().Min.X
 	// "Language" section label — same role/size/colour as "Keyboard shortcuts"
 	// below, so the two peer sections read at one hierarchy level (subtitle).
 	DrawTextStyled(dst, i18n.T(i18n.KeySettingsLanguage), x, o.langLabelY, RoleSectionHeader, colTextPrimary)
@@ -262,7 +257,7 @@ func (o *SettingsOverlay) Draw(screen *ebiten.Image) {
 		descDY := (keyH - StyledTextHeight(RoleCaption)) / 2
 		for _, row := range localizedShortcutRows() {
 			DrawTextStyled(rowsDst, row.keys, x, ry, RoleBody, colTextPrimary)
-			DrawTextStyled(rowsDst, i18n.T(row.actionKey), x+96, ry+descDY, RoleCaption, colTextSecondary)
+			DrawTextStyled(rowsDst, row.action(), x+96, ry+descDY, RoleCaption, colTextSecondary)
 			ry += settingsShortcutRowH
 		}
 		o.scroll.Draw(dst)

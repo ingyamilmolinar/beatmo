@@ -4,6 +4,10 @@ package audio
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestPlatformCapturePerInstrumentChannels verifies that per-instrument
@@ -24,18 +28,18 @@ func TestPlatformCapturePerInstrumentChannels(t *testing.T) {
 	}
 
 	// Simulate platform capture returning per-instrument + master data
-	platformRecordingStop = func() (map[string][]float64, []float64, int) {
-		perInst := map[string][]float64{
-			"kick":  {0.1, 0.2, 0.3, 0.4},
-			"snare": {0.5, 0.6, 0.7, 0.8},
+	platformRecordingStop = func() (map[channel.ID][]float64, []float64, int) {
+		perInst := map[channel.ID][]float64{
+			channel.Of(roster.Kick):  {0.1, 0.2, 0.3, 0.4},
+			channel.Of(roster.Snare): {0.5, 0.6, 0.7, 0.8},
 		}
 		master := []float64{0.6, 0.8, 1.0, 0.5}
 		return perInst, master, 44100
 	}
 
 	instruments := []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
 	}
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
@@ -43,7 +47,7 @@ func TestPlatformCapturePerInstrumentChannels(t *testing.T) {
 		BPM:         120,
 	}
 
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	if err := StartRecording(opts); err != nil {
 		t.Fatalf("StartRecording: %v", err)
 	}
@@ -114,19 +118,19 @@ func TestPlatformCaptureDoesNotOverrideGoCapture(t *testing.T) {
 	})
 
 	platformRecordingStart = func(instruments []InstrumentMeta) {}
-	platformRecordingStop = func() (map[string][]float64, []float64, int) {
+	platformRecordingStop = func() (map[channel.ID][]float64, []float64, int) {
 		// Return some data — but it should be ignored since Go mixer has data
-		return map[string][]float64{"kick": {9.9}}, []float64{9.9}, 48000
+		return map[channel.ID][]float64{channel.Of(roster.Kick): {9.9}}, []float64{9.9}, 48000
 	}
 
-	instruments := []InstrumentMeta{{ID: "kick", Name: "Kick"}}
+	instruments := []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}}
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
 		Instruments: instruments,
 		BPM:         120,
 	}
 
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	if err := StartRecording(opts); err != nil {
 		t.Fatalf("StartRecording: %v", err)
 	}
@@ -139,7 +143,7 @@ func TestPlatformCaptureDoesNotOverrideGoCapture(t *testing.T) {
 	}
 	instBufs := [][]float64{{0.1, 0.2, 0.3, 0.4}}
 	workBuf := []float64{0.5, 0.6, 0.7, 0.8}
-	pipe.Tap([]string{"kick"}, []int{0}, instBufs, workBuf, 4)
+	pipe.Tap([]channel.ID{channel.Of(roster.Kick)}, []int{0}, instBufs, workBuf, 4)
 
 	result, err := StopRecording()
 	if err != nil {

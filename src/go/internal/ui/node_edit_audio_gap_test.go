@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow reproduces the
@@ -61,9 +62,9 @@ func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.
 
 	var mu sync.Mutex
 	plays := map[string]int{}
-	g.SetPlayFunc(func(id string, _ float64, _ ...float64) {
+	g.SetPlayFunc(func(id instrument.ID, _ float64, _ ...float64) {
 		mu.Lock()
-		plays[id]++
+		plays[string(id)]++
 		mu.Unlock()
 	})
 
@@ -120,7 +121,7 @@ func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.
 	}
 
 	mu.Lock()
-	got := plays[unchangedInst]
+	got := plays[string(unchangedInst)]
 	mu.Unlock()
 	if got == 0 {
 		t.Fatalf("placing a node dropped an in-flight scheduled beat on an UNCHANGED row: "+

@@ -3,71 +3,10 @@
 package ui
 
 import (
-	"image"
 	"testing"
 
-	"github.com/hajimehoshi/ebiten/v2"
-
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
-
-// TestEveryKnobHasConceptInk guards the requirement that EVERY synth knob shows
-// a graphic — at its DEFAULT value, with no stage enabled. A renderer that
-// draws only the scope background (e.g. FM bars when all depths are zero) leaves
-// a knob with a blank band, which reads as "broken". Every knob's concept
-// renderer must put at least some non-background ink in the band.
-func TestEveryKnobHasConceptInk(t *testing.T) {
-	g := setupModularSynthGame(t)
-	bindings := g.drum.SynthTabBindings()
-	if len(bindings) == 0 {
-		t.Fatal("no synth bindings to check")
-	}
-	dst := ebiten.NewImage(160, 60)
-	r := image.Rect(0, 0, 160, 60)
-	for _, b := range bindings {
-		group := b.def.Group
-		rend := synthFocusRendererForGroup(group)
-		rects := collectFilledRects(t, func() { rend(dst, r, "modular", b.def, nil) })
-		if countNonBgRects(rects) == 0 {
-			t.Errorf("knob %q (group %q) drew NO concept graphic at its default value", b.def.Name, group)
-		}
-	}
-}
-
-// TestConceptKnobWave_RendersAndMorphs proves each knob renders its OWN wave
-// that reflects the resulting signal: the filter-cutoff knob draws a wave, and
-// that wave is DIFFERENT at a bright vs a dull cutoff (data-driven, not static).
-func TestConceptKnobWave_RendersAndMorphs(t *testing.T) {
-	const inst = "concept-knob-wave"
-	audio.BindInstrumentToRecipe(inst, "synth-modular")
-	t.Cleanup(func() { audio.ResetInstrumentParams(inst) })
-	audio.SetInstrumentParam(inst, "osc_type", 1) // saw — harmonic rich, so the filter visibly bites
-	def := audio.ParamDef{Name: "filter_cutoff", Group: "filter", Min: 20, Max: 20000}
-
-	dst := ebiten.NewImage(160, 60)
-	r := image.Rect(0, 0, 160, 60)
-	multiset := func(rs []drawnRect) map[image.Rectangle]int {
-		m := map[image.Rectangle]int{}
-		for _, x := range rs {
-			m[x.Rect]++
-		}
-		return m
-	}
-
-	audio.SetInstrumentParam(inst, "filter_cutoff", 9000)
-	hi := collectFilledRects(t, func() { conceptKnobWave(dst, r, inst, def, nil) })
-	if countNonBgRects(hi) == 0 {
-		t.Fatal("conceptKnobWave drew no wave")
-	}
-	audio.SetInstrumentParam(inst, "filter_cutoff", 150)
-	lo := collectFilledRects(t, func() { conceptKnobWave(dst, r, inst, def, nil) })
-	if countNonBgRects(lo) == 0 {
-		t.Fatal("conceptKnobWave drew no wave at low cutoff")
-	}
-	if mapsEqualRectCount(multiset(hi), multiset(lo)) {
-		t.Error("conceptKnobWave wave identical for bright vs dull cutoff — not reflecting the knob")
-	}
-}
 
 // TestSynthCellHasNoVizBand guards the post-Task-8 layout: the per-knob
 // concept-viz band is gone (the focus graph in the right pane explains the
@@ -82,7 +21,7 @@ func TestSynthCellHasNoVizBand(t *testing.T) {
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	secID, _ := synthSectionContaining(t, g, "filter")
-	g.drum.setSelectedSynthSection("modular", secID)
+	g.drum.setSelectedSynthSection(roster.Modular, secID)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	grid := g.drum.sectionGrid(secID)

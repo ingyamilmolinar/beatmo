@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestPlaybackAllocThroughput is the regression test for the fast WASM OOM
@@ -59,7 +60,7 @@ func TestPlaybackAllocThroughput(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	// Default subdivisions/BPM, default circuit (built by the standard test
 	// helper). User repro is "vanilla load → press play".

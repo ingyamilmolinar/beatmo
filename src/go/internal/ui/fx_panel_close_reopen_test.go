@@ -51,9 +51,12 @@ func injectHeldPressAt(t *testing.T, dv *DrumView, x, y, frames int) {
 }
 
 // fxCloseCenterOverRow opens row 0's FX panel and returns the centre of its
-// close "X" plus the index of the OTHER row whose FX button sits underneath that
-// point. It fails the test if the panel's close button does not overlap a
-// different row's FX button — that overlap is the repro's precondition.
+// close "X" plus the index of the OTHER row whose rack control — its FX chip or
+// its ⋯ kebab, whichever the panel's right edge lands on in the current rack
+// layout — sits underneath that point. It fails the test if the close button
+// does not overlap a different row's control — that overlap is the repro's
+// precondition. (The panel spans the rack column, so its X lands over the
+// right-most control of a row below.)
 func fxCloseCenterOverRow(t *testing.T, dv *DrumView) (image.Point, int) {
 	t.Helper()
 
@@ -73,15 +76,17 @@ func fxCloseCenterOverRow(t *testing.T, dv *DrumView) (image.Point, int) {
 	}
 	c := image.Pt(cr.Min.X+cr.Dx()/2, cr.Min.Y+cr.Dy()/2)
 
-	for i, b := range dv.rowFXBtns() {
-		if i == 0 || b == nil {
-			continue // row 0 owns the open panel; we want a DIFFERENT row
-		}
-		if c.In(b.Rect()) {
-			return c, i
+	for _, btns := range [][]*Button{dv.rowFXBtns(), dv.rowRackZone.RowMenuBtns()} {
+		for i, b := range btns {
+			if i == 0 || b == nil {
+				continue // row 0 owns the open panel; we want a DIFFERENT row
+			}
+			if c.In(b.Rect()) {
+				return c, i
+			}
 		}
 	}
-	t.Fatalf("close button %v does not overlap any other row's FX button — "+
+	t.Fatalf("close button %v does not overlap any other row's FX or kebab button — "+
 		"repro precondition unmet (panel rect %v)", cr, dv.fxPanelRect)
 	return image.Point{}, -1
 }
@@ -98,6 +103,10 @@ func TestFXPanelCloseButtonDoesNotReopenPanelForRowBeneath(t *testing.T) {
 	// A real click: the button stays down for several frames.
 	injectHeldPressAt(t, dv, c.X, c.Y, 4)
 
+	if dv.IsContextMenuOpen() {
+		t.Fatalf("clicking the FX panel close button at %v opened row %d's context "+
+			"menu: the press leaked to the kebab beneath the X", c, beneath)
+	}
 	if dv.IsFXPanelOpen() {
 		t.Fatalf("clicking the FX panel close button at %v closed the panel and then "+
 			"re-opened it for row %d (fxPanelRow=%d): the press was consumed by the "+
@@ -178,5 +187,8 @@ func TestFXPanelCloseButtonClosesOnFirstHeldFrame(t *testing.T) {
 	}
 	if dv.IsFXPanelOpen() {
 		t.Fatalf("FX panel re-opened after release (fxPanelRow=%d)", dv.fxPanelRow)
+	}
+	if dv.IsContextMenuOpen() {
+		t.Fatal("the close press leaked to the kebab beneath the X (context menu opened)")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"image/color"
 
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // colorKey returns a canonical string key for a color.
@@ -115,20 +116,6 @@ func seriesColorAt(idx int) color.Color {
 	return series[idx%len(series)]
 }
 
-// ResequenceRowColors re-derives every row's color from the canonical series by
-// row index (row N → seriesColorAt(N)), overwriting any prior colors. Used to
-// normalise a freshly imported demo circuit (whose baked JSON colors may be
-// stale/off-palette) onto the predictable sequential series.
-func (dv *DrumView) ResequenceRowColors() {
-	for i := range dv.Rows {
-		dv.Rows[i].Color = seriesColorAt(i)
-	}
-	dv.markAllRowsDirty()
-	// The row-rack controls cache (volume icon, accent stripe, label tint) is a
-	// separate cache from the grid step cells — markAllRowsDirty doesn't touch it.
-	dv.markRowControlsDirty()
-}
-
 // rowColorAt returns the live color of row idx, or nil when the index is out of
 // range or the row has no color. Used to seed menus (e.g. the color picker's
 // CurrentColor selected-ring) from the same value the grid node is drawn with.
@@ -145,7 +132,7 @@ func (dv *DrumView) rowColorAt(idx int) color.Color {
 // InstrumentOption.Color so the picker swatch / active stripe / accent match the
 // node exactly (instead of the registered instColor default). Re-read on every
 // menu (re)build, so a node recolor propagates the next time the menu opens.
-func (dv *DrumView) instrumentRowColor(id string) color.Color {
+func (dv *DrumView) instrumentRowColor(id instrument.ID) color.Color {
 	if id == "" {
 		return nil
 	}

@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -10,22 +11,22 @@ import (
 // blownKSParams builds a minimal blown-flute voice: source==3 (Karplus-Strong)
 // driven in BLOWN mode (gen_ks_blow>0) at an ABSOLUTE frequency, everything else
 // silenced. Used to test the STK jet self-limiting in isolation.
-func blownKSParams(freq, blow, sustain, pluck float64) ModularParams {
+func blownKSParams(freq, blow, sustain, pluck float64) modularBlock {
 	p := defaultModularParams()
-	p.OscEnabled = 0
-	for i := range p.GenSource {
-		p.GenSource[i] = 0
-		p.GenGain[i] = 0
+	p.set("osc_enabled", 0)
+	for i := range modularGenSlots {
+		p.set(fmt.Sprintf("gen%d_source", i+1), 0)
+		p.set(fmt.Sprintf("gen%d_gain", i+1), 0)
 	}
-	p.GenSource[0] = 3   // Karplus-Strong
-	p.GenFreqMode[0] = 1 // absolute Hz (no voice_freq dependency)
-	p.GenFreq[0] = freq
-	p.GenGain[0] = 1.0
-	p.GenKsBlow[0] = blow
-	p.GenKsSustain[0] = sustain
-	p.GenKsPluck[0] = pluck
-	p.GenOutScale[0] = 0.85 // KS output scale (recipe supplies this; 0 would silence the slot)
-	p.GenEnvFastRate[0] = 1.8
+	p.set("gen1_source", 3)    // Karplus-Strong
+	p.set("gen1_freq_mode", 1) // absolute Hz (no voice_freq dependency)
+	p.set("gen1_freq", freq)
+	p.set("gen1_gain", 1.0)
+	p.set("gen1_ks_blow", blow)
+	p.set("gen1_ks_sustain", sustain)
+	p.set("gen1_ks_pluck", pluck)
+	p.set("gen1_out_scale", 0.85) // KS output scale (recipe supplies this; 0 would silence the slot)
+	p.set("gen1_env_fast_rate", 1.8)
 	return p
 }
 
@@ -76,7 +77,7 @@ func TestBlownKS_BoundedAcrossFeedbackAndPitch(t *testing.T) {
 	for _, freq := range []float64{220, 440, 660, 1047} {
 		for _, fb := range []float64{0.90, 0.99, 0.999, 1.0, 1.05} {
 			buf := make([]float32, n)
-			renderModularP(buf, sr, n, blownKSParams(freq, 0.5, fb, 0.85))
+			renderModularBlock(buf, sr, n, blownKSParams(freq, 0.5, fb, 0.85))
 			assertFinite(t, buf)
 			if pk := peakAbs(buf); pk > 1.5 {
 				t.Fatalf("blown KS freq=%.0f fb=%.3f UNBOUNDED (peak=%.3f) — jet failed to self-limit", freq, fb, pk)
@@ -92,9 +93,9 @@ func TestBlownKS_SustainsVsPluckDecays(t *testing.T) {
 	n := sr
 	// High feedback (≈1) = a sustained blown tube; the tanh bounds the buildup.
 	blown := make([]float32, n)
-	renderModularP(blown, sr, n, blownKSParams(660, 0.35, 0.999, 0.5))
+	renderModularBlock(blown, sr, n, blownKSParams(660, 0.35, 0.999, 0.5))
 	pl := make([]float32, n)
-	renderModularP(pl, sr, n, blownKSParams(660, 0 /*pluck*/, 0.999, 0.5))
+	renderModularBlock(pl, sr, n, blownKSParams(660, 0 /*pluck*/, 0.999, 0.5))
 
 	t.Logf("blown segment RMS: 1st=%.5f mid=%.5f tail=%.5f peak=%.4f", rmsRange(blown, 0, n/4), rmsRange(blown, n/3, 2*n/3), rmsRange(blown, 3*n/4, n), peakAbs(blown))
 	blownTail := rmsRange(blown, 3*n/4, n)
@@ -115,7 +116,7 @@ func TestBlownKS_Pitched(t *testing.T) {
 	n := sr
 	freq := 660.0
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, blownKSParams(freq, 0.3, 0.99, 0.5))
+	renderModularBlock(buf, sr, n, blownKSParams(freq, 0.3, 0.99, 0.5))
 	seg := buf[n/2:] // steady-state second half
 	lag := int(float64(sr)/freq + 0.5)
 	atPeriod := autocorrNorm(seg, lag)

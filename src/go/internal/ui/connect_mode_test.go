@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestConnectModeBasicEdge verifies that connect mode creates a horizontal
@@ -196,7 +197,7 @@ func TestConnectModePlaybackSafe(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.SetPlaying(true)
 	advanceFrames(g, 10)
 
@@ -232,7 +233,7 @@ func TestConnectModeClearsOnImport(t *testing.T) {
 	}
 
 	// Import minimal valid JSON.
-	data := []byte(`{"version":1,"subdiv":8,"bpm":120,"instruments":[{"name":"Kick","id":"kick","kind":"builtin","volume":1,"origin":0,"color":"#C87850FF"}],"nodes":[{"id":0,"i":0,"j":0,"type":"regular","inputs":[],"outputs":[]}]}`)
+	data := []byte(`{"schema_version":"0.0.1","subdiv":8,"bpm":120,"instruments":[{"name":"Kick","id":"kick","kind":"builtin","volume":1,"origin":0,"color":"#C87850FF"}],"nodes":[{"id":0,"i":0,"j":0,"type":"regular","inputs":[],"outputs":[]}]}`)
 	err := g.Import(data)
 	if err != nil {
 		t.Fatalf("import error: %v", err)

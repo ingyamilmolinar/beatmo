@@ -57,7 +57,7 @@ func (g *Game) drawGridModeBanner(dst *ebiten.Image) {
 	// Keep clear of the settings gear's protected top-right zone (same
 	// no-invade contract as the long-press popup — see
 	// feedback_settings_gear_protected_zone).
-	rect = avoidReservedRect(rect, g.gridHelpReservedRect(), gridW, g.split.GridH(g.winH))
+	rect = avoidReservedRect(rect, g.gridTopButtonsReservedRect(), gridW, g.split.GridH(g.winH))
 	drawPanel(dst, rect)
 	DrawTextStyled(dst, text, rect.Min.X+SpaceMD, rect.Min.Y+SpaceXS, RoleBody, colTextPrimary)
 }

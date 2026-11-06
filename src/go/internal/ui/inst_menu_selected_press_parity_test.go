@@ -2,7 +2,12 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // activeInstBtnPressed reports whether the instrument-menu row button bound to
 // the menu's currently-selected instrument renders in the pressed-down ("keycap
@@ -17,9 +22,9 @@ func activeInstBtnPressed(t *testing.T, comp *InstrumentMenuComponent) (selected
 	for i, b := range btns {
 		id := ""
 		if i < len(ids) {
-			id = ids[i]
+			id = string(ids[i])
 		}
-		if id == active {
+		if instrument.ID(id) == active {
 			selected = b.Pressed()
 		} else if b.Pressed() {
 			otherPressed = true
@@ -49,12 +54,12 @@ func TestInstSelectedButtonPressedParity(t *testing.T) {
 
 		// Select an instrument, then let the menu settle (it stays open for
 		// audition on both platforms).
-		if !pickVisibleInstrument(t, dv, comp, "snare", W, H) {
+		if !pickVisibleInstrument(t, dv, comp, roster.Snare, W, H) {
 			t.Fatalf("snare not visible; ids=%v", comp.VisibleInstIDs())
 		}
 		idleFrames(dv, 2, W, H)()
 
-		if got := comp.ActiveInstrumentID(); got != "snare" {
+		if got := comp.ActiveInstrumentID(); got != roster.Snare {
 			t.Fatalf("active instrument = %q, want snare", got)
 		}
 
@@ -70,12 +75,12 @@ func TestInstSelectedButtonPressedParity(t *testing.T) {
 
 		// Switching the selection moves the pressed state to the new row and
 		// releases the previously-selected one.
-		if !pickVisibleInstrument(t, dv, comp, "tom", W, H) {
+		if !pickVisibleInstrument(t, dv, comp, roster.Tom, W, H) {
 			t.Fatalf("tom not visible; ids=%v", comp.VisibleInstIDs())
 		}
 		idleFrames(dv, 2, W, H)()
 
-		if got := comp.ActiveInstrumentID(); got != "tom" {
+		if got := comp.ActiveInstrumentID(); got != roster.Tom {
 			t.Fatalf("active instrument = %q, want tom", got)
 		}
 		selected, otherPressed = activeInstBtnPressed(t, comp)

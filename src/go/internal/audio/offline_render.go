@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"math"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // Deterministic offline audio-quality harness.
@@ -69,7 +71,7 @@ func newTestMixer() *mixer {
 		masterBuf: make([]float64, blockSize),
 		postFXBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
 }
 

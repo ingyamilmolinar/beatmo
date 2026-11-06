@@ -5,6 +5,8 @@ package userprefs
 import (
 	"bytes"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func TestSampleStoreFileRoundTrip(t *testing.T) {
@@ -17,7 +19,7 @@ func TestSampleStoreFileRoundTrip(t *testing.T) {
 
 	id := "user.sample.abc123"
 	blob := SampleBlob{SampleRate: 44100, PCM: []byte{1, 2, 3, 4, 5, 6, 7, 8}}
-	if err := ss.SaveSample(id, blob); err != nil {
+	if err := ss.SaveSample(instrument.ID(id), blob); err != nil {
 		t.Fatalf("SaveSample: %v", err)
 	}
 
@@ -27,7 +29,7 @@ func TestSampleStoreFileRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSamples: %v", err)
 	}
-	got, ok := loaded[id]
+	got, ok := loaded[instrument.ID(id)]
 	if !ok {
 		t.Fatalf("sample %q not loaded after reopen", id)
 	}
@@ -36,12 +38,12 @@ func TestSampleStoreFileRoundTrip(t *testing.T) {
 	}
 
 	// Delete removes it across reopen.
-	if err := store2.DeleteSample(id); err != nil {
+	if err := store2.DeleteSample(instrument.ID(id)); err != nil {
 		t.Fatalf("DeleteSample: %v", err)
 	}
 	store3 := NewBackingStore(Options{Path: dir}).(SampleStore)
 	loaded3, _ := store3.LoadSamples()
-	if _, ok := loaded3[id]; ok {
+	if _, ok := loaded3[instrument.ID(id)]; ok {
 		t.Error("sample still present after DeleteSample + reopen")
 	}
 }

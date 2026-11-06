@@ -7,6 +7,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -38,9 +40,9 @@ func newSnareSynthTabGame(t *testing.T) *Game {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 	return g
 }
 
@@ -85,7 +87,7 @@ func TestSynthStageTogglePill_DoesNotAutoAudition(t *testing.T) {
 	layoutSynthTab(t, g)
 
 	var auditions int
-	prev := SwapSynthAuditionFnForTest(func(string) { auditions++ })
+	prev := SwapSynthAuditionFnForTest(func(instrument.ID) { auditions++ })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
 	const instID, param = "ut-chip-modular", "filter_enabled"
@@ -108,7 +110,7 @@ func TestPreviewButton_StillAuditionsExactlyOnce(t *testing.T) {
 	expandSynthPanelForTest(t, g)
 
 	var auditions []string
-	prev := SwapSynthAuditionFnForTest(func(id string) { auditions = append(auditions, id) })
+	prev := SwapSynthAuditionFnForTest(func(id instrument.ID) { auditions = append(auditions, string(id)) })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
 	g.drum.previewActiveSynth()
@@ -127,40 +129,62 @@ func TestPreviewButton_StillAuditionsExactlyOnce(t *testing.T) {
 func TestSetInstrumentParam_NeverTriggersPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	const instID = "no-auto-audition-probe"
-	audio.BindInstrumentToRecipe(instID, "drum-snare")
+	_ = audio.InstallInstrumentDocForTest(instID, roster.Snare)
 	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
 
 	if !audio.LastTriggerAt(instID).IsZero() {
 		t.Fatalf("probe instrument %q already has a trigger timestamp", instID)
 	}
-	audio.SetInstrumentParam(instID, "decay", 2.5)
+	audio.SetInstrumentParam(instID, "amp_decay", 2.5)
 	if got := audio.LastTriggerAt(instID); !got.IsZero() {
 		t.Errorf("SetInstrumentParam triggered playback: LastTriggerAt = %v, want zero (no voice scheduled)", got)
 	}
 }
 
-// TestSynthControlWheelNudge_DoesNotAutoAudition drives the Task-5 desktop wheel
-// nudge (synthControlHitAdapter.OnWheel): a notch over the card must propagate the
-// param (next-trigger model) and NOT fire an audition.
+// TestSynthControlWheelNudge_DoesNotAutoAudition drives the Task-9 ARMED wheel
+// nudge (synthControlHitAdapter.OnWheel while the control is armed, spinning the
+// ArmedControlEditor's value lane): a notch over the armed value lane must
+// propagate the param (next-trigger model) and NOT fire an audition. A
+// not-armed wheel is out of scope here — it scrolls the row (see
+// TestNotArmedWheelScrollsRow) and never touches audio config at all, so it
+// could never fire an audition either; arming is what actually exercises the
+// value-edit path this invariant guards.
 func TestSynthControlWheelNudge_DoesNotAutoAudition(t *testing.T) {
 	g := newSnareSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	var auditions []string
-	prev := SwapSynthAuditionFnForTest(func(id string) { auditions = append(auditions, id) })
+	prev := SwapSynthAuditionFnForTest(func(id instrument.ID) { auditions = append(auditions, string(id)) })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
-	idx, knob, hit := firstVisibleSynthControl(t, g)
-	paramName := g.drum.SynthTabBindings()[idx].def.Name
+	idx, knob, _ := firstVisibleSynthControl(t, g)
+	dv := g.drum
+	instID := dv.synthTabActiveInstrument()
+	paramName := dv.SynthTabBindings()[idx].def.Name
 	r := knob.Rect()
-	cx := (r.Min.X + r.Max.X) / 2
-	cy := (r.Min.Y + r.Max.Y) / 2
-	knob.Value = 0.25 // low value so +1 notch always increases (discrete or endless)
-	if res := hit.Handler.OnWheel(cx, cy, 1); res != InputConsumed {
-		t.Fatalf("wheel over knob card should be consumed (nudge), got %v", res)
+	knob.Value = 0.25 // low value so the notch always increases (discrete or endless)
+
+	dv.armSynthControl(instID, idx)
+	e := dv.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
 	}
-	if _, ok := audio.GetInstrumentParams("snare")[paramName]; !ok {
-		t.Fatalf("param %q was not propagated to the audio config on wheel nudge", paramName)
+	e.SetCardRect(r)
+	h := &synthControlHitAdapter{dv: dv, idx: idx, instID: instID}
+	vx, vy := e.ValueLaneRect().Min.X+2, r.Min.Y+r.Dy()/2
+
+	if res := h.OnWheel(vx, vy, 1); res != InputConsumed {
+		t.Fatalf("armed wheel over the value lane should be consumed (nudge), got %v", res)
+	}
+	// Settle the kinetic barrel so the value lane actually crosses a detent
+	// (SHARED FACTS: ImpulseNotch only resolves into a value change via Tick).
+	for i := 0; i < 240 && e.Tick(); i++ {
+	}
+	if _, ok := audio.GetInstrumentParams(instID)[paramName]; !ok {
+		t.Fatalf("param %q was not propagated to the audio config on armed wheel nudge", paramName)
+	}
+	if knob.Value <= 0.25 {
+		t.Fatalf("armed wheel nudge should have increased the knob value above 0.25, got %.6f", knob.Value)
 	}
 	if len(auditions) != 0 {
-		t.Errorf("knob wheel nudge auto-auditioned %v; want none", auditions)
+		t.Errorf("armed knob wheel nudge auto-auditioned %v; want none", auditions)
 	}
 }

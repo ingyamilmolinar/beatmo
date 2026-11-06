@@ -20,6 +20,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // boundsCanaryFrames is the per-test iteration budget. Smaller than the
@@ -41,7 +43,7 @@ func runBoundsCanary(t *testing.T) *Game {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	if err := g.SetSubdivisions(16); err != nil {
 		t.Fatalf("set subdivisions: %v", err)
 	}
@@ -55,7 +57,7 @@ func runBoundsCanary(t *testing.T) *Game {
 	}
 	g.drum.eqPanelZone.tabState.SetActiveTab(TabMeters)
 	g.drum.eqPanelZone.callbacks.AnalyzerState = func() *analyzer.State {
-		return buildAnalyzerStateFromSnapshotsImpl("", g.drum.Rows, 48000, allocFetch)
+		return buildAnalyzerStateFromSnapshotsImpl(channel.ID{}, g.drum.Rows, 48000, allocFetch, nil)
 	}
 	g.drum.eqPanelZone.callbacks.AnalyzerMetricsOnly = func() *analyzer.State {
 		return buildAnalyzerMetricsOnlyImpl(g.drum.Rows, scalarFetch)

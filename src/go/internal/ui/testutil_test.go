@@ -28,6 +28,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // click simulates a mouse click at (x,y) and releases it on the next frame.
@@ -317,19 +318,39 @@ func waitForUpdateCond(t *testing.T, g *Game, steps int, cond func() bool) {
 	t.Fatalf("condition not met after %d steps", steps)
 }
 
-// waitForCount waits until current() reaches at least want.
+// waitForCount waits until current() reaches at least want, within the same
+// derived wall-clock budget as waitForChan (100µs/step, clamped to [25ms, 5s]).
+// The count is produced by a background goroutine (audioLoop invoking the test
+// playFn), and a bound counted in Gosched spins is not a time: under the full
+// parallel `go test ./...` run the producer's OS thread can be descheduled for
+// longer than 10000 spins take, and TestAudioDecoupledDuringHeavyDraw failed
+// at 55-63 of 64 although every note arrived within ~10ms more. It sleeps
+// between polls so the waiting goroutine does not hold a P.
 func waitForCount(t *testing.T, steps int, want int, current func() int) {
 	t.Helper()
-	for i := 0; i < steps; i++ {
+	if steps < 1 {
+		steps = 1
+	}
+	timeout := time.Duration(steps) * 100 * time.Microsecond
+	if timeout < 25*time.Millisecond {
+		timeout = 25 * time.Millisecond
+	}
+	if timeout > 5*time.Second {
+		timeout = 5 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for {
 		if current() >= want {
 			return
 		}
-		runtime.Gosched()
+		if time.Now().After(deadline) {
+			t.Fatalf("count did not reach %d within %v (%d steps) (got %d)", want, timeout, steps, current())
+		}
+		time.Sleep(100 * time.Microsecond)
 	}
-	t.Fatalf("count did not reach %d after %d steps (got %d)", want, steps, current())
 }
 
-func ensureInstrumentAvailable(t *testing.T, g *Game, id string) {
+func ensureInstrumentAvailable(t *testing.T, g *Game, id instrument.ID) {
 	t.Helper()
 	if g == nil || g.drum == nil {
 		t.Fatalf("missing drum view while ensuring instrument %q", id)
@@ -406,11 +427,46 @@ func clearMuteSolo(t *testing.T, dv *DrumView) {
 	}
 }
 
+// waitForPlaybackReady blocks until the warm-up readiness gate opens.
+//
+// Game.Update DISCARDS a Play press made while a warm set is outstanding
+// ("Never queue the press" — game_update.go) and the transport renders the
+// Play button disabled, so a real user CANNOT press Play before the gate
+// opens. A test can, and then races the warm renders: after an Import the
+// gate holds until every voice in the circuit is rendered.
+// TestSwitchInstrumentAfterStopReplayParity passed alone (its 4
+// guitar-electric voices finished before its single press) and failed under
+// the full package run with the press silently swallowed — measured
+// warmupProgress 0/4 at the press, 4/4 by the assertion, playing=false
+// throughout. Four more import-then-press tests carry the same latent race,
+// so the wait lives here in pressPlay rather than at one call site.
+//
+// Completion is driven by the prewarm pool's workers, not by frames, so this
+// deliberately does NOT call Update: the caller's frame sequence stays
+// exactly as written, which the parity/timeline tests depend on. It sleeps
+// rather than spinning — a busy-spin keeps this goroutine RUNNABLE and
+// competes with the very pool workers it is waiting on (see waitForChan).
+func waitForPlaybackReady(t *testing.T, g *Game) {
+	t.Helper()
+	if g == nil {
+		return
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for !g.playbackReady() {
+		if time.Now().After(deadline) {
+			done, total := g.warmup.Progress()
+			t.Fatalf("playback readiness gate never opened (%d/%d warmed)", done, total)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func pressPlay(t *testing.T, dv *DrumView) {
 	t.Helper()
 	if dv == nil {
 		t.Fatalf("nil drum view while pressing play")
 	}
+	waitForPlaybackReady(t, dv.game)
 	if dv.playBtn() != nil && dv.playBtn().OnClick != nil {
 		dv.playBtn().OnClick()
 		return
@@ -454,21 +510,24 @@ func pressLenDec(t *testing.T, dv *DrumView) {
 	dv.lenDecPressed = true
 }
 
+// testParityWatchDefault is the parity watch mode EVERY test Game starts in:
+// panic on the first mismatch, on every platform. Production keeps its own
+// defaults (desktop: scans fatal, inline checks off; WASM: log-only); tests
+// run strictly so a desync can never pass silently. A test that deliberately
+// manufactures a mismatch to exercise the checker opts down to log mode on
+// its own Game and reads the ring.
+const testParityWatchDefault = parityWatchPanic
+
 func assertDefaultParityState(t *testing.T) {
 	t.Helper()
 	// Reset parity globals so tests don't depend on prior side effects.
-	parityWatchDefault = parityWatchOff
+	parityWatchDefault = testParityWatchDefault
 	parityFatalEnabled.Store(true)
-	if runtime.GOOS == "js" {
-		parityWatchDefault = parityWatchLog
-		parityFatalEnabled.Store(false)
-	}
-	// Timing gate stays dormant under go test regardless of GOOS/profile (see
-	// init() in game_parity_timing.go) — belt-and-suspenders reset so a leak
-	// from any dedicated timing test (e.g. a forgotten enableParityTimingForTest
-	// cleanup) can't poison unrelated tests that follow it.
-	parityTimingWatchDefault = parityWatchOff
-	parityTimingFatalEnabled.Store(false)
+	// Timing gate is armed under go test too (see init() in
+	// game_parity_timing.go) — reset so a test that opted a gate down can't
+	// leak that into the tests that follow it.
+	parityTimingWatchDefault = parityWatchPanic
+	parityTimingFatalEnabled.Store(true)
 	if enableDefaultStart != true {
 		t.Fatalf("enableDefaultStart=%v want true (default)", enableDefaultStart)
 	}
@@ -478,6 +537,28 @@ func assertDefaultParityState(t *testing.T) {
 	if forceSmallScreenForTest != false {
 		t.Fatalf("forceSmallScreenForTest=%v want false (default)", forceSmallScreenForTest)
 	}
+	// ...and put them BACK afterwards, which is the half that was missing.
+	//
+	// Asserting the default without restoring it makes this function a
+	// tripwire that reports the SECOND test to touch a global while saying
+	// nothing about the first — the one that actually leaked. That asymmetry
+	// produced a 140-test cascade under `make test-real` in which every
+	// failure read "forceSmallScreenForTest=true want false" and not one of
+	// them named the mobile helper that set it.
+	//
+	// The leak is invisible to the stubbed build: SetForceMobileProfile is a
+	// no-op in game_state_setters_stub.go and only mutates the global in the
+	// real-build game_state_setters.go, so `make test` is structurally unable
+	// to see this class of bug. testutil_cleanup_regression_test.go pins the
+	// behaviour and documented this reset as the intended fix; the reset
+	// itself was never actually here.
+	t.Cleanup(func() {
+		if forceSmallScreenForTest || forceAutoSize {
+			forceSmallScreenForTest = false
+			forceAutoSize = false
+			UpdateProfile()
+		}
+	})
 	if defaultPerfFastPath {
 		t.Fatalf("defaultPerfFastPath=%v want false (default)", defaultPerfFastPath)
 	}
@@ -490,17 +571,8 @@ func assertDefaultParityState(t *testing.T) {
 	if debugGeom {
 		t.Fatalf("debugGeom=%v want false (default)", debugGeom)
 	}
-	if runtime.GOOS == "js" {
-		if parityWatchDefault != parityWatchLog {
-			t.Fatalf("parityWatchDefault=%v want %v for js tests", parityWatchDefault, parityWatchLog)
-		}
-		if parityFatalEnabled.Load() {
-			t.Fatalf("parityFatalEnabled=%v want false for js tests", parityFatalEnabled.Load())
-		}
-		return
-	}
-	if parityWatchDefault != parityWatchOff {
-		t.Fatalf("parityWatchDefault=%v want %v for tests (PARITY_WATCH should be unset)", parityWatchDefault, parityWatchOff)
+	if parityWatchDefault != testParityWatchDefault {
+		t.Fatalf("parityWatchDefault=%v want %v for tests", parityWatchDefault, testParityWatchDefault)
 	}
 	if !parityFatalEnabled.Load() {
 		t.Fatalf("parityFatalEnabled=%v want true for tests (PARITY_FATAL should be unset)", parityFatalEnabled.Load())
@@ -526,7 +598,7 @@ func assertDefaultParityState(t *testing.T) {
 		timelineTrace = false
 		timelineTraceRow = 0
 		debugGeom = false
-		parityWatchDefault = parityWatchOff
+		parityWatchDefault = testParityWatchDefault
 		parityFatalEnabled.Store(true)
 		UpdateProfile()
 	})

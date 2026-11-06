@@ -8,6 +8,9 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func newTestPipeline(t *testing.T, instruments []InstrumentMeta) *pipeline {
@@ -34,8 +37,8 @@ func newTestPipeline(t *testing.T, instruments []InstrumentMeta) *pipeline {
 // recording stutter fix.
 func TestPipelineHotPathNoAlloc(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
 	})
 	t.Cleanup(func() { pipe.Stop() })
 
@@ -52,7 +55,7 @@ func TestPipelineHotPathNoAlloc(t *testing.T) {
 	for i := range workBuf {
 		workBuf[i] = float64(i) * 0.00005
 	}
-	slotIDs := []string{"kick", "snare"}
+	slotIDs := []channel.ID{channel.Of(roster.Kick), channel.Of(roster.Snare)}
 	activeSlots := []int{0, 1}
 
 	// Warm pool, workers, scratch buffers.
@@ -84,7 +87,7 @@ func TestPipelineDropsOnBackpressure(t *testing.T) {
 		OutputDir:     dir,
 		SampleRate:    44100,
 		Format:        FormatWAV24,
-		Instruments:   []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments:   []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BlockCapacity: 64,
 		PoolSize:      2, // tiny pool — saturate quickly
 		QueueDepth:    1, // tiny queue
@@ -97,7 +100,7 @@ func TestPipelineDropsOnBackpressure(t *testing.T) {
 	blockLen := 64
 	instBufs := [][]float64{make([]float64, blockLen)}
 	workBuf := make([]float64, blockLen)
-	slotIDs := []string{"kick"}
+	slotIDs := []channel.ID{channel.Of(roster.Kick)}
 	activeSlots := []int{0}
 
 	// Hammer Tap without giving workers time to drain.
@@ -114,8 +117,8 @@ func TestPipelineDropsOnBackpressure(t *testing.T) {
 // and verify per-channel WAV files exist on disk after Stop.
 func TestPipelineWritesWAVFiles(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
 	})
 
 	blockLen := 256
@@ -131,7 +134,7 @@ func TestPipelineWritesWAVFiles(t *testing.T) {
 	for i := range workBuf {
 		workBuf[i] = 0.75
 	}
-	slotIDs := []string{"kick", "snare"}
+	slotIDs := []channel.ID{channel.Of(roster.Kick), channel.Of(roster.Snare)}
 	activeSlots := []int{0, 1}
 
 	for i := 0; i < 4; i++ {
@@ -170,18 +173,18 @@ func TestPipelineWritesWAVFiles(t *testing.T) {
 // pre-registered channel list. The block must be silently ignored
 // (counted as a no-op, no panic, no allocation explosion).
 func TestPipelineUnknownInstrumentDropped(t *testing.T) {
-	pipe := newTestPipeline(t, []InstrumentMeta{{ID: "kick", Name: "Kick"}})
+	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
 
 	blockLen := 64
 	instBufs := [][]float64{make([]float64, blockLen)}
 	workBuf := make([]float64, blockLen)
 	// "snare" is not registered — should be silently skipped.
-	pipe.Tap([]string{"snare"}, []int{0}, instBufs, workBuf, blockLen)
+	pipe.Tap([]channel.ID{channel.Of(roster.Snare)}, []int{0}, instBufs, workBuf, blockLen)
 
 	// Nothing should have been written to the kick channel either, since
 	// the only active slot was snare.
-	if pipe.channels["kick"].count.Load() != 0 {
+	if pipe.channels[channel.Of(roster.Kick)].count.Load() != 0 {
 		t.Fatal("kick should not have received any samples")
 	}
 }

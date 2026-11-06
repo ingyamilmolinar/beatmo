@@ -17,25 +17,28 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/testwav"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-func instMenuFilteredOptionsForTest(dv *DrumView) []string {
+func instMenuFilteredOptionsForTest(dv *DrumView) []instrument.ID {
 	if dv == nil {
 		return nil
 	}
-	filtered := append([]string(nil), dv.instOptions...)
+	filtered := append([]instrument.ID(nil), dv.instOptions...)
 	if dv.instMenuMode != instMenuModeInstruments {
 		return filtered
 	}
-	if dv.instMenuActiveCat != "" {
+	if dv.instMenuActiveCat != audio.CatNone {
 		out := filtered[:0]
 		for _, id := range filtered {
 			if dv.instCatByID != nil && dv.instCatByID[id] == dv.instMenuActiveCat {
 				out = append(out, id)
 			}
 		}
-		filtered = append([]string(nil), out...)
+		filtered = append([]instrument.ID(nil), out...)
 	}
 	if q := strings.TrimSpace(strings.ToLower(dv.instSearch)); q != "" {
 		out := filtered[:0]
@@ -44,7 +47,7 @@ func instMenuFilteredOptionsForTest(dv *DrumView) []string {
 				out = append(out, id)
 			}
 		}
-		filtered = append([]string(nil), out...)
+		filtered = append([]instrument.ID(nil), out...)
 	}
 	return filtered
 }
@@ -356,7 +359,7 @@ func TestEQChannelBtnWidthFitsLongNames(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Rows[0].Name = "Fm-epiano-1"
-	dv.Rows[0].Instrument = "fm-epiano-1"
+	dv.Rows[0].Instrument = roster.FmEpianoDrive
 
 	w := dv.eqPanelZone.calcChannelBtnWidth()
 	nameW := TextWidth("Fm-epiano-1")
@@ -536,8 +539,8 @@ func TestTimelineScrubDrag(t *testing.T) {
 	if mode != seekReqAbs {
 		t.Fatal("expected an absolute seek request, not a delta")
 	}
-	if origin != seekOriginRibbon {
-		t.Fatalf("origin=%q want %q", origin, seekOriginRibbon)
+	if origin != hooks.SeekRibbon {
+		t.Fatalf("origin=%q want %q", origin, hooks.SeekRibbon)
 	}
 	if steps != wantSteps {
 		t.Fatalf("seek steps=%d want %d (beat=%d, unitsPerBeat=%d)", steps, wantSteps, wantBeat, unitsPerBeat)
@@ -592,8 +595,8 @@ func TestTimelineScrubLongTimeline(t *testing.T) {
 	if mode != seekReqAbs {
 		t.Fatal("expected an absolute seek request, not a delta")
 	}
-	if origin != seekOriginRibbon {
-		t.Fatalf("origin=%q want %q", origin, seekOriginRibbon)
+	if origin != hooks.SeekRibbon {
+		t.Fatalf("origin=%q want %q", origin, hooks.SeekRibbon)
 	}
 	if steps != wantSteps {
 		t.Fatalf("seek steps=%d want %d (beat=%d, unitsPerBeat=%d)", steps, wantSteps, wantBeat, unitsPerBeat)
@@ -749,12 +752,17 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
 
+	// Flat-tonal (2026-07-25): button bodies paint via drawFlatButtonBody ->
+	// drawRoundedRect(filled), not the drawButton fill+border primitive. Count
+	// filled rounded rects instead; the assertion below is unchanged.
 	count := 0
-	orig := drawButton
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
-		count++
+	orig := drawRoundedRect
+	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
+		if filled {
+			count++
+		}
 	}
-	defer func() { drawButton = orig }()
+	defer func() { drawRoundedRect = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
 	// After zone refactoring: transport zone draws play, stop, bpm+/-, subdiv,
@@ -794,8 +802,8 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 			}
 			// Map rectangle center X proportionally into the step index so
 			// rounding distribution across cells doesn’t skew detection.
-			startX := dv.timelineRect.Min.X
-			totalW := dv.timelineRect.Dx()
+			startX := dv.CellGridRect().Min.X
+			totalW := dv.CellGridRect().Dx()
 			n := dv.Length
 			// Determine the step index by locating the boundary bucket.
 			col := 0
@@ -1282,12 +1290,16 @@ func TestDrumViewRenameBoxBounds(t *testing.T) {
 	}
 	inset := int(float64(minDim) * 0.1)
 	want := image.Rect(expected.Min.X+inset, expected.Min.Y+inset, expected.Max.X-inset, expected.Max.Y-inset)
+	// Flat-tonal (2026-07-25): the rename box paints via drawFlatButtonBody ->
+	// drawRoundedRect(filled), not the drawButton primitive.
 	var rects []image.Rectangle
-	old := drawButton
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed, topEdgeHighlight bool) {
-		rects = append(rects, r)
+	old := drawRoundedRect
+	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
+		if filled {
+			rects = append(rects, r)
+		}
 	}
-	defer func() { drawButton = old }()
+	defer func() { drawRoundedRect = old }()
 	dv.Draw(ebiten.NewImage(300, 200), nil, 0, nil, 0)
 	found := false
 	for _, r := range rects {
@@ -1493,7 +1505,7 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 		if b.Text == "Back" {
 			continue
 		}
-		if strings.EqualFold(b.Text, orig) {
+		if strings.EqualFold(b.Text, string(orig)) {
 			continue
 		}
 		btn = b
@@ -1518,7 +1530,7 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 			if b.Text == "Back" {
 				continue
 			}
-			if strings.EqualFold(b.Text, orig) {
+			if strings.EqualFold(b.Text, string(orig)) {
 				continue
 			}
 			btn = b
@@ -1677,10 +1689,10 @@ func TestInstrumentDropdownScrollbarDragToEnd(t *testing.T) {
 func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	staged := testwav.Stage(t, []testwav.Spec{
-		{ID: "kick-cat-1", Name: "Kick Cat 1", Category: "Kick"},
-		{ID: "snare-cat-1", Name: "Snare Cat 1", Category: "Snare"},
-		{ID: "snare-cat-2", Name: "Snare Cat 2", Category: "Snare"},
-		{ID: "snare-cat-3", Name: "Snare Cat 3", Category: "Snare"},
+		{ID: "kick-cat-1", Name: "Kick Cat 1", Group: "Kick"},
+		{ID: "snare-cat-1", Name: "Snare Cat 1", Group: "Snare"},
+		{ID: "snare-cat-2", Name: "Snare Cat 2", Group: "Snare"},
+		{ID: "snare-cat-3", Name: "Snare Cat 3", Group: "Snare"},
 	})
 	withAudioCatalog(t, staged)
 	graph := model.NewGraph(logger)
@@ -1776,8 +1788,8 @@ func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 func TestInstrumentCategoryClickKeepsMenuOpenAndIsolated(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "kick-cat-1", Name: "Kick Cat 1", Category: "Kick"},
-		{ID: "snare-cat-1", Name: "Snare Cat 1", Category: "Snare"},
+		{ID: "kick-cat-1", Name: "Kick Cat 1", Group: "Kick"},
+		{ID: "snare-cat-1", Name: "Snare Cat 1", Group: "Snare"},
 	})
 	graph := model.NewGraph(logger)
 	// Tall enough for the categories view's title band + GLOBAL SEARCH row +
@@ -1850,7 +1862,7 @@ func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	// Use IDs containing "snare" so canonical CategoryOf maps them to "Snare"
 	// (an early taxonomy entry that is always in the visible category list).
 	for i := 0; i < 30; i++ {
-		entries = append(entries, audio.SoundMeta{ID: fmt.Sprintf("snare-samp-%02d", i), Name: fmt.Sprintf("Snare Samp %02d", i), Category: "Snare"})
+		entries = append(entries, audio.SoundMeta{ID: instrument.ID(fmt.Sprintf("snare-samp-%02d", i)), Name: fmt.Sprintf("Snare Samp %02d", i), Group: "Snare"})
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
@@ -1902,10 +1914,10 @@ func TestInstrumentScrollAfterCategorySelect_NoAllCategory(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 12; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("sn-%02d", i),
-			Name:     fmt.Sprintf("Snare %02d", i),
-			Category: "Snares (WAV)",
-			Source:   "wav",
+			ID:     instrument.ID(fmt.Sprintf("sn-%02d", i)),
+			Name:   fmt.Sprintf("Snare %02d", i),
+			Group:  "Snares (WAV)",
+			Source: audio.SourceWAV,
 		})
 	}
 	withAudioCatalog(t, entries)
@@ -1980,10 +1992,10 @@ func TestInstrumentScrollbarAppearsAndClampedToRack(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 30; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("hh-%02d", i),
-			Name:     fmt.Sprintf("HiHat %02d", i),
-			Category: "Hi-Hats (WAV)",
-			Source:   "wav",
+			ID:     instrument.ID(fmt.Sprintf("hh-%02d", i)),
+			Name:   fmt.Sprintf("HiHat %02d", i),
+			Group:  "Hi-Hats (WAV)",
+			Source: audio.SourceWAV,
 		})
 	}
 	withAudioCatalog(t, entries)
@@ -2027,9 +2039,9 @@ func TestInstrumentScrollbarAppearsAndClampedToRack(t *testing.T) {
 func TestInstrumentSearchFiltersList(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	entries := []audio.SoundMeta{
-		{ID: "kick-a", Name: "Kick Alpha", Category: "Kick Drums (WAV)", Source: "wav"},
-		{ID: "kick-b", Name: "Kick Beta", Category: "Kick Drums (WAV)", Source: "wav"},
-		{ID: "snare-a", Name: "Snare Alpha", Category: "Snares (WAV)", Source: "wav"},
+		{ID: "kick-a", Name: "Kick Alpha", Group: "Kick Drums (WAV)", Source: audio.SourceWAV},
+		{ID: "kick-b", Name: "Kick Beta", Group: "Kick Drums (WAV)", Source: audio.SourceWAV},
+		{ID: "snare-a", Name: "Snare Alpha", Group: "Snares (WAV)", Source: audio.SourceWAV},
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
@@ -2195,9 +2207,9 @@ func TestInstrumentScrollbarDragIgnoresWidgetResize(t *testing.T) {
 func TestInstrumentMenuOpensAtRowCategoryWithBack(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "snare", Name: "Snare", Category: "Snares"},
-		{ID: "kick", Name: "Kick", Category: "Kicks"},
-		{ID: "clap", Name: "Clap", Category: "Claps"},
+		{ID: roster.Snare, Name: "Snare", Group: "Snares"},
+		{ID: roster.Kick, Name: "Kick", Group: "Kicks"},
+		{ID: roster.Clap, Name: "Clap", Group: "Claps"},
 	})
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 320, 240), graph, logger)
@@ -2230,7 +2242,7 @@ func TestInstrumentMenuOpensAtRowCategoryWithBack(t *testing.T) {
 	if dv.instMenuMode != "instruments" {
 		t.Fatalf("menu did not enter instruments mode")
 	}
-	if dv.instMenuActiveCat != "Snare" {
+	if dv.instMenuActiveCat != audio.CatSnare {
 		t.Fatalf("expected active category Snare, got %q", dv.instMenuActiveCat)
 	}
 	if len(dv.instMenuBtns()) == 0 || dv.instMenuBtns()[0].Text != "Back" {
@@ -2238,7 +2250,7 @@ func TestInstrumentMenuOpensAtRowCategoryWithBack(t *testing.T) {
 	}
 	foundSnare := false
 	for _, id := range instMenuFilteredOptionsForTest(dv) {
-		if strings.Contains(strings.ToLower(id), "snare") {
+		if strings.Contains(strings.ToLower(string(id)), "snare") {
 			foundSnare = true
 			break
 		}
@@ -2251,12 +2263,12 @@ func TestInstrumentMenuOpensAtRowCategoryWithBack(t *testing.T) {
 func TestInstrumentMenuShowsBackWithoutForcedCategories(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "snare", Name: "Snare", Category: "Snares"},
-		{ID: "clap", Name: "Clap", Category: "Claps"},
+		{ID: roster.Snare, Name: "Snare", Group: "Snares"},
+		{ID: roster.Clap, Name: "Clap", Group: "Claps"},
 	})
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 320, 240), graph, logger)
-	dv.SetInstrument("snare")
+	dv.SetInstrument(roster.Snare)
 	dv.calcLayout()
 
 	dv.rowLabels()[0].OnClick()
@@ -2267,7 +2279,7 @@ func TestInstrumentMenuShowsBackWithoutForcedCategories(t *testing.T) {
 		t.Fatalf("expected instruments mode, got %q", dv.instMenuMode)
 	}
 	// With canonical taxonomy, "snare" id maps to "Snare" (not old folder "Snares").
-	if dv.instMenuActiveCat != "Snare" {
+	if dv.instMenuActiveCat != audio.CatSnare {
 		t.Fatalf("expected active cat Snare, got %q", dv.instMenuActiveCat)
 	}
 	if len(dv.instMenuBtns()) == 0 || dv.instMenuBtns()[0].Text != "Back" {
@@ -2283,12 +2295,12 @@ func TestInstrumentMenuShowsBackWithoutForcedCategories(t *testing.T) {
 	}
 	kickPresent, kickLeaked := false, false
 	for _, id := range dv.instOptions {
-		if id == "kick" {
+		if id == roster.Kick {
 			kickPresent = true
 		}
 	}
 	for _, id := range filtered {
-		if id == "kick" {
+		if id == roster.Kick {
 			kickLeaked = true
 		}
 	}
@@ -2305,9 +2317,9 @@ func TestCategoryScrollbarMovesAndClampedToRack(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 20; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("cat-%02d", i),
-			Name:     fmt.Sprintf("Cat %02d", i),
-			Category: fmt.Sprintf("Category-%02d", i),
+			ID:    instrument.ID(fmt.Sprintf("cat-%02d", i)),
+			Name:  fmt.Sprintf("Cat %02d", i),
+			Group: fmt.Sprintf("Category-%02d", i),
 		})
 	}
 	withAudioCatalog(t, entries)
@@ -2355,8 +2367,8 @@ func TestCategoryScrollbarMovesAndClampedToRack(t *testing.T) {
 func TestInstrumentBackReturnsToCategoriesWithoutClosing(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "snare", Name: "Snare", Category: "Snares"},
-		{ID: "kick", Name: "Kick", Category: "Kicks"},
+		{ID: roster.Snare, Name: "Snare", Group: "Snares"},
+		{ID: roster.Kick, Name: "Kick", Group: "Kicks"},
 	})
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 320, 240), graph, logger)
@@ -2404,12 +2416,13 @@ func TestInstrumentBackReturnsToCategoriesWithoutClosing(t *testing.T) {
 func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	var metas []audio.SoundMeta
-	// Use IDs containing "snare" so canonical CategoryOf maps them to CatSnare → "Snare".
+	// Samples NAMED as snares, so CategoryOf (which classifies a non-built-in
+	// by its display name) maps them to CatSnare.
 	for i := 0; i < 12; i++ {
 		id := fmt.Sprintf("snare-var-%02d", i)
-		metas = append(metas, audio.SoundMeta{ID: id, Name: "Sn", Category: "Snare"})
+		metas = append(metas, audio.SoundMeta{ID: instrument.ID(id), Name: fmt.Sprintf("Snare %02d", i), Group: "Snare"})
 	}
-	metas = append(metas, audio.SoundMeta{ID: "kick", Name: "Kick", Category: "Kick"})
+	metas = append(metas, audio.SoundMeta{ID: roster.Kick, Name: "Kick", Group: "Kick"})
 	withAudioCatalog(t, metas)
 
 	graph := model.NewGraph(logger)
@@ -2419,7 +2432,7 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	dv.refreshInstruments()
 	dv.instMenuLastAdded = ""
 	target := "snare-var-09"
-	dv.SetInstrument(target)
+	dv.SetInstrument(instrument.ID(target))
 	dv.calcLayout()
 	dv.rowLabels()[0].OnClick()
 
@@ -2442,14 +2455,14 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	if dv.instMenuMode != "instruments" {
 		t.Fatalf("menu not open in instruments mode")
 	}
-	if dv.instMenuActiveCat != "Snare" {
+	if dv.instMenuActiveCat != audio.CatSnare {
 		t.Fatalf("active category %q", dv.instMenuActiveCat)
 	}
 	if !dv.instMenuHasScroll() {
 		t.Fatalf("expected scrollbar for long snare list")
 	}
 	filtered := instMenuFilteredOptionsForTest(dv)
-	idx := slices.Index(filtered, target)
+	idx := slices.Index(filtered, instrument.ID(target))
 	if idx < 0 {
 		t.Fatalf("target instrument not in options")
 	}
@@ -2470,8 +2483,6 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	// the list is scrollable; assert the visible window advances against the
 	// actually-derived list rather than fabricated category names.
 	withDefaultAudio(t)
-	audio.ResetCategoriesForTest() // clean taxonomy baseline (no cross-test custom cats)
-	t.Cleanup(audio.ResetCategoriesForTest)
 
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 260, 240), graph, logger)
@@ -2487,7 +2498,7 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	if !dv.instMenuHasScroll() {
 		t.Fatalf("expected scrollbar for long category list")
 	}
-	cats := append([]string(nil), dv.instCategories...)
+	cats := append([]audio.Category(nil), dv.instCategories...)
 	if len(cats) < 4 {
 		t.Fatalf("need at least 4 categories to exercise scroll, got %d: %v", len(cats), cats)
 	}
@@ -2512,7 +2523,7 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	if dv.instCategoryBtns[0].Text == firstLabel {
 		t.Fatalf("category list did not scroll: first=%q after=%q", firstLabel, dv.instCategoryBtns[0].Text)
 	}
-	if want := cats[3]; dv.instCategoryBtns[0].Text != want {
+	if want := cats[3].Label(); dv.instCategoryBtns[0].Text != want {
 		t.Fatalf("expected first visible category %q after scroll, got %q", want, dv.instCategoryBtns[0].Text)
 	}
 }
@@ -2690,28 +2701,39 @@ func TestDropdownHoverHighlight(t *testing.T) {
 	// OnClick suppresses clicks until mouse-up; clear it so hover state can update.
 	suppressClicksUntilRelease = false
 	btn := dv.instMenuBtns()[0]
-	// capture normal draw colors
+	// Flat-tonal (2026-07-25): a button paints one FILLED rounded rect and no
+	// border, so hover is observable as a fill change only. The old border
+	// assertion (colDropdownEdge) tested chrome that no longer exists.
+	// A zero-radius button falls through drawFlatButtonBody to drawRect, so
+	// intercept both primitives.
 	img := ebiten.NewImage(10, 10)
-	var normFill, normBorder color.Color
-	orig := drawButton
-	defer func() { drawButton = orig }()
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
-		normFill, normBorder = fill, border
+	var capture *color.Color
+	origRR, origR := drawRoundedRect, drawRect
+	defer func() { drawRoundedRect, drawRect = origRR, origR }()
+	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
+		if filled && capture != nil {
+			*capture = c
+		}
 	}
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled && capture != nil {
+			*capture = c
+		}
+	}
+	var normFill color.Color
+	capture = &normFill
 	btn.Draw(img)
-	if !colorsEqual(normBorder, colDropdownEdge) {
-		t.Fatalf("unexpected border color: %#v", normBorder)
+	if normFill == nil {
+		t.Fatal("button drew no filled body")
 	}
 	// simulate hover
 	mx, my := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
 	btn.HandleInputResult(mx, my, false)
-	var hovFill, hovBorder color.Color
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
-		hovFill, hovBorder = fill, border
-	}
+	var hovFill color.Color
+	capture = &hovFill
 	btn.Draw(img)
-	if colorsEqual(normFill, hovFill) || colorsEqual(normBorder, hovBorder) {
-		t.Fatalf("expected hover to change colors")
+	if colorsEqual(normFill, hovFill) {
+		t.Fatalf("expected hover to change the fill; both were %#v", normFill)
 	}
 }
 
@@ -2848,74 +2870,6 @@ func TestDrumViewSecPerBeatUpdates(t *testing.T) {
 	dv.SetBPM(240)
 	if dv.secPerBeat != 0.25 {
 		t.Fatalf("expected secPerBeat 0.25, got %f", dv.secPerBeat)
-	}
-}
-
-func TestDrumViewBPMTextInput(t *testing.T) {
-	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
-	dv.calcLayout()
-
-	// Open the shared editor (pre-fills "120"), type a replacement value.
-	dv.transportZone.openBPMEditor()
-	ed := dv.transportZone.paramEditor
-	ed.ti.SetText("250")
-
-	if dv.BPM() != 120 {
-		t.Fatalf("BPM changed before commit: %d", dv.BPM())
-	}
-
-	ed.commit()
-
-	if dv.transportZone.BPM() != 250 {
-		t.Fatalf("expected BPM 250 got %d", dv.transportZone.BPM())
-	}
-}
-
-func TestDrumViewBPMTextInputInvalid(t *testing.T) {
-	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
-	dv.calcLayout()
-
-	// Out-of-range value (>maxBPM) is invalid — no write, editor flashes.
-	dv.transportZone.openBPMEditor()
-	ed := dv.transportZone.paramEditor
-	ed.ti.SetText("2000")
-
-	if dv.BPM() != 120 {
-		t.Fatalf("BPM changed before commit: %d", dv.BPM())
-	}
-
-	ed.commit()
-
-	if dv.transportZone.BPM() != 120 {
-		t.Fatalf("expected BPM to remain 120 got %d", dv.transportZone.BPM())
-	}
-	if ed.errorAnim == 0 {
-		t.Fatalf("expected editor error highlight for invalid BPM input")
-	}
-}
-
-func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
-	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
-	dv.calcLayout()
-
-	dv.transportZone.openBPMEditor()
-	ed := dv.transportZone.paramEditor
-	ed.ti.SetText("a")
-
-	if dv.BPM() != 120 {
-		t.Fatalf("BPM changed before commit: %d", dv.BPM())
-	}
-
-	ed.commit()
-
-	if dv.transportZone.BPM() != 120 {
-		t.Fatalf("expected BPM to remain 120 got %d", dv.transportZone.BPM())
-	}
-	if ed.errorAnim == 0 {
-		t.Fatalf("expected editor error highlight for invalid BPM input")
 	}
 }
 
@@ -3123,7 +3077,7 @@ func TestMuteHighlightUsesDefaultColor(t *testing.T) {
 }
 
 func TestMuteCellsRenderGrey(t *testing.T) {
-	build := func(kind string, n int) ([]bool, []model.NodeType) {
+	build := func(kind model.LogicKind, n int) ([]bool, []model.NodeType) {
 		g := New(testLogger)
 		t.Cleanup(g.CloseForTest)
 		g.Layout(640, 480)
@@ -3143,7 +3097,7 @@ func TestMuteCellsRenderGrey(t *testing.T) {
 			g.drum.Rows[0].Steps[i] = true
 		}
 
-		if kind != "" {
+		if kind != model.LogicNone {
 			if node, ok := g.graph.GetNodeByID(m.ID); ok {
 				p := node.Params
 				p.LogicKind = kind
@@ -3157,7 +3111,7 @@ func TestMuteCellsRenderGrey(t *testing.T) {
 		return append([]bool(nil), g.drum.Rows[0].Steps...), append([]model.NodeType(nil), g.drum.Rows[0].CellTypes...)
 	}
 
-	stepsTriggered, cellsTriggered := build("", 0)
+	stepsTriggered, cellsTriggered := build(model.LogicNone, 0)
 	if len(stepsTriggered) < 2 {
 		t.Fatalf("insufficient steps in triggered scenario")
 	}
@@ -3165,7 +3119,7 @@ func TestMuteCellsRenderGrey(t *testing.T) {
 		t.Fatalf("expected mute cell to render when triggered: steps=%v cells=%v", stepsTriggered, cellsTriggered)
 	}
 
-	stepsSkipped, cellsSkipped := build("every_n_triggers", 2)
+	stepsSkipped, cellsSkipped := build(model.LogicEveryN, 2)
 	if len(stepsSkipped) < 2 {
 		t.Fatalf("insufficient steps in skipped scenario")
 	}
@@ -3207,7 +3161,7 @@ func TestRowLabelWidthExpandsForLongNames(t *testing.T) {
 func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
-		{ID: "very-long-instrument-id-name", Name: "Very Long Instrument Friendly Name That Should Fit", Category: "Kick Drums (WAV)", Source: "wav"},
+		{ID: "very-long-instrument-id-name", Name: "Very Long Instrument Friendly Name That Should Fit", Group: "Kick Drums (WAV)", Source: audio.SourceWAV},
 	})
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 600, 260), graph, logger)
@@ -3234,21 +3188,35 @@ func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 	}
 }
 
-// hasButtonInRegion checks if any drawCallButton/drawCallRoundedButton was
-// recorded in the given region. It checks both screen-space coordinates
+// isBodyPaintCall reports whether c paints a control's body. Flat-tonal
+// (2026-07-25) paints bodies via drawFlatButtonBody -> drawRoundedRect/drawRect
+// (filled) rather than the drawButton fill+border primitives; both forms are
+// accepted so this helper is agnostic to which path a control takes.
+func isBodyPaintCall(c drawCall) bool {
+	switch c.Kind {
+	case drawCallButton, drawCallRoundedButton:
+		return true
+	case drawCallRect, drawCallRoundedRect:
+		return c.Filled
+	}
+	return false
+}
+
+// hasButtonInRegion checks if any control-body paint call was recorded in the
+// given region. It checks both screen-space coordinates
 // (drawRowControlsDirect path) and cache-local coordinates (drawRowControlsToCache
 // offsets by rowControlsCacheRect.Min).
 func hasButtonInRegion(rec *drawCallRecorder, labelRect image.Rectangle, cacheOrigin image.Point) bool {
 	// Check screen-space (direct path).
 	for _, c := range rec.inRegion(labelRect) {
-		if c.Kind == drawCallButton || c.Kind == drawCallRoundedButton {
+		if isBodyPaintCall(c) {
 			return true
 		}
 	}
 	// Check cache-local coords (offset path).
 	localRect := labelRect.Sub(cacheOrigin)
 	for _, c := range rec.inRegion(localRect) {
-		if c.Kind == drawCallButton || c.Kind == drawCallRoundedButton {
+		if isBodyPaintCall(c) {
 			return true
 		}
 	}

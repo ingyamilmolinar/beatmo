@@ -369,69 +369,6 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 
 // --- BPM text input test ---
 
-func TestTransportZoneBPMTextInput(t *testing.T) {
-	z, log := newTestTransportZone()
-	z.Layout(image.Rect(10, 10, 500, 90))
-
-	// Editing happens in the shared editor now: open it, type, commit.
-	z.SetBPM(120)
-	z.openBPMEditor()
-	z.paramEditor.ti.SetText("150")
-	z.paramEditor.commit()
-
-	if z.BPM() != 150 {
-		t.Errorf("expected BPM 150 after commit, got %d", z.BPM())
-	}
-
-	if z.paramEditor.Active() {
-		t.Error("editor should be inactive after commit")
-	}
-
-	if len(log.bpmChanges) == 0 {
-		t.Error("expected OnBPMChange callback after BPM commit")
-	}
-}
-
-func TestTransportZoneBPMTextInputInvalid(t *testing.T) {
-	z, _ := newTestTransportZone()
-	z.Layout(image.Rect(10, 10, 500, 90))
-
-	z.SetBPM(120)
-	z.openBPMEditor()
-	z.paramEditor.ti.SetText("abc")
-	z.paramEditor.commit()
-
-	// Invalid input does not write — BPM stays put.
-	if z.BPM() != 120 {
-		t.Errorf("expected BPM 120 after invalid input, got %d", z.BPM())
-	}
-
-	// The editor flashes its own error on invalid commit.
-	if z.paramEditor.errorAnim <= 0 {
-		t.Error("expected editor errorAnim > 0 after invalid input")
-	}
-}
-
-func TestTransportZoneBPMEscape(t *testing.T) {
-	z, _ := newTestTransportZone()
-	z.Layout(image.Rect(10, 10, 500, 90))
-
-	z.SetBPM(120)
-	z.openBPMEditor()
-	z.paramEditor.ti.SetText("999")
-
-	// Cancel (Escape) closes without writing — BPM reverts to its prior value.
-	z.paramEditor.cancel()
-
-	if z.BPM() != 120 {
-		t.Errorf("expected BPM 120 after cancel, got %d", z.BPM())
-	}
-
-	if z.paramEditor.Active() {
-		t.Error("editor should be inactive after cancel")
-	}
-}
-
 // --- Tree lifecycle test ---
 
 func TestTransportZoneTreeLifecycle(t *testing.T) {
@@ -619,39 +556,6 @@ func TestTransportZoneUpdateNoDeltaNoChange(t *testing.T) {
 }
 
 // --- BPM editor commit edge cases ---
-
-func TestTransportZoneCommitBPMTextEmpty(t *testing.T) {
-	z, _ := newTestTransportZone()
-	z.Layout(image.Rect(10, 10, 500, 90))
-
-	z.SetBPM(100)
-	z.openBPMEditor()
-	z.paramEditor.ti.SetText("")
-	z.paramEditor.commit()
-
-	// Empty text fails to parse — no write — BPM stays at its prior value.
-	if z.BPM() != 100 {
-		t.Errorf("expected BPM 100 on empty commit, got %d", z.BPM())
-	}
-	if z.paramEditor.Active() {
-		t.Error("editor should be inactive after commit")
-	}
-}
-
-func TestTransportZoneCommitBPMTextEmptyNoPrev(t *testing.T) {
-	z, _ := newTestTransportZone()
-	z.Layout(image.Rect(10, 10, 500, 90))
-
-	z.SetBPM(80)
-	z.openBPMEditor()
-	z.paramEditor.ti.SetText("")
-	z.paramEditor.commit()
-
-	// Empty commit is invalid — BPM is left unchanged at the current value.
-	if z.BPM() != 80 {
-		t.Errorf("expected BPM 80 on empty commit, got %d", z.BPM())
-	}
-}
 
 // --- syncTrackBtnVisual() tests ---
 
@@ -855,68 +759,6 @@ func TestTransportZonePlayPressedConsumed(t *testing.T) {
 
 // --- P3 additional tests ---
 
-// TestTransport_BPMFocusGainPrefillsValue verifies that opening the shared BPM
-// editor pre-fills it with the current BPM value (so the user can see and edit
-// it) rather than presenting a blank box. The readout box itself is no longer
-// focusable — editing lives entirely in the editor.
-func TestTransport_BPMFocusGainPrefillsValue(t *testing.T) {
-	z, _ := newTestTransportZone()
-	tree := registerTransportZone(z, image.Rect(10, 10, 500, 90))
-
-	// No-input first frame for layout.
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	z.SetBPM(180)
-
-	// Opening the editor pre-fills the current tempo.
-	z.openBPMEditor()
-	if !z.paramEditor.Active() {
-		t.Fatal("editor should be active after open")
-	}
-	if z.paramEditor.ti.Value() != "180" {
-		t.Errorf("expected editor to pre-fill current value '180' on open, got %q", z.paramEditor.ti.Value())
-	}
-}
-
-// TestTransport_InputBlockedCancelsBPMEditor verifies that when inputBlocked
-// returns true while the BPM editor is active, the editor is cancelled (no
-// write) so it doesn't linger behind the overlay.
-func TestTransport_InputBlockedCancelsBPMEditor(t *testing.T) {
-	restore := noInputForTest()
-	defer restore()
-
-	z, log := newTestTransportZone()
-	tree := registerTransportZone(z, image.Rect(10, 10, 500, 90))
-	tree.Update() // initial layout
-
-	z.SetBPM(120)
-	log.bpmChanges = nil
-
-	// Open the editor and type a new value (not yet committed).
-	z.openBPMEditor()
-	z.paramEditor.ti.SetText("160")
-
-	// Set inputBlocked to return true (simulating a popup/overlay opening).
-	z.SetInputBlocked(func() bool { return true })
-
-	// Run Update() — should detect blocked + active editor and cancel it.
-	z.Update()
-
-	if z.paramEditor.Active() {
-		t.Error("expected editor to be cancelled after inputBlocked fires")
-	}
-
-	// Cancel does not write — BPM stays at its prior value (no commit).
-	if z.BPM() != 120 {
-		t.Errorf("expected BPM 120 (uncommitted edit cancelled), got %d", z.BPM())
-	}
-	if len(log.bpmChanges) != 0 {
-		t.Error("expected no OnBPMChange callback after cancelled edit")
-	}
-}
-
 func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -980,5 +822,35 @@ func TestBPMReadoutRectMatchesGroupOutline(t *testing.T) {
 	}
 	if z.bpmGroupRect.Empty() || !r.Overlaps(z.bpmGroupRect) {
 		t.Fatalf("bpm group outline (%v) no longer encloses the readout (%v)", z.bpmGroupRect, r)
+	}
+}
+
+// TestTransport_InputBlockedBPMTapOpensNothing: while a popup/overlay is open
+// (inputBlocked), a tap on the BPM readout must not open the BPM value wheel
+// beneath it — and the press is still consumed so it cannot leak to a
+// touch-expanded sibling control.
+func TestTransport_InputBlockedBPMTapOpensNothing(t *testing.T) {
+	restore := noInputForTest()
+	defer restore()
+	opened := 0
+	z, _ := newTestTransportZone()
+	z.callbacks.OnOpenBPMWheel = func(image.Rectangle) { opened++ }
+	tree := registerTransportZone(z, image.Rect(10, 10, 500, 90))
+	tree.Update()
+
+	z.SetInputBlocked(func() bool { return true })
+	z.Update()
+	if res := (&bpmOpenAdapter{z: z}).OnPress(0, 0); res != InputConsumed {
+		t.Fatalf("blocked BPM tap result = %v, want InputConsumed", res)
+	}
+	if opened != 0 {
+		t.Fatalf("a blocked BPM tap must not open the wheel (opened %d)", opened)
+	}
+
+	z.SetInputBlocked(func() bool { return false })
+	z.Update()
+	(&bpmOpenAdapter{z: z}).OnPress(0, 0)
+	if opened != 1 {
+		t.Fatalf("an unblocked BPM tap opens the wheel once (opened %d)", opened)
 	}
 }

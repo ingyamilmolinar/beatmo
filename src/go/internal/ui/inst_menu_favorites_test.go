@@ -3,6 +3,10 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstMenuComp_StarToggleHitArea verifies that the star column lays
@@ -18,8 +22,8 @@ func TestInstMenuComp_StarToggleHitArea(t *testing.T) {
 		VertBounds: image.Rect(0, 0, 400, 800),
 		RowHeight:  24,
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Drums"},
-			{ID: "snare", Label: "Snare", Category: "Drums"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatPercussion},
 		},
 		Favorites: store,
 	})
@@ -29,21 +33,24 @@ func TestInstMenuComp_StarToggleHitArea(t *testing.T) {
 		// is set; skip the precondition if categories are forced.
 		t.Logf("opened in mode=%v (instruments mode required for stars)", comp.state.mode)
 	}
-	if got := len(comp.favRects); got < 2 {
+	if got := nonEmptyStars(comp); got < 2 {
 		t.Fatalf("expected at least 2 star hit rects (one per instrument), got %d", got)
 	}
-	if got := len(comp.favIDs); got != len(comp.favRects) {
-		t.Fatalf("favIDs len %d does not match favRects len %d", got, len(comp.favRects))
+	if got := len(comp.instIDs); got != len(comp.favRects) {
+		t.Fatalf("instIDs len %d does not match favRects len %d", got, len(comp.favRects))
 	}
 	// Toggle via the component's helper — should propagate to the store.
-	comp.toggleFavoriteAt(0)
-	id := comp.favIDs[0]
-	if !store.Get(id) {
-		t.Fatalf("toggleFavoriteAt did not propagate to store; id=%q stored=%v", id, store.Get(id))
+	idx, _, id, ok := firstStarRow(comp)
+	if !ok {
+		t.Fatalf("no star row found")
 	}
-	comp.toggleFavoriteAt(0)
-	if store.Get(id) {
-		t.Fatalf("second toggleFavoriteAt did not flip back; id=%q stored=%v", id, store.Get(id))
+	comp.toggleFavoriteAt(idx)
+	if !store.Get(instrument.ID(id)) {
+		t.Fatalf("toggleFavoriteAt did not propagate to store; id=%q stored=%v", id, store.Get(instrument.ID(id)))
+	}
+	comp.toggleFavoriteAt(idx)
+	if store.Get(instrument.ID(id)) {
+		t.Fatalf("second toggleFavoriteAt did not flip back; id=%q stored=%v", id, store.Get(instrument.ID(id)))
 	}
 }
 
@@ -58,13 +65,18 @@ func TestInstMenuComp_StarColumnDisabledWhenNoStore(t *testing.T) {
 		VertBounds: image.Rect(0, 0, 400, 800),
 		RowHeight:  24,
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick"},
+			{ID: roster.Kick, Label: "Kick"},
 		},
 		Favorites: nil,
 	})
 	comp.Open()
-	if got := len(comp.favRects); got != 0 {
+	// favRects is row-indexed, so it has one (zero) slot per row; what must
+	// be absent is any drawable/hittable star.
+	if got := nonEmptyStars(comp); got != 0 {
 		t.Fatalf("expected zero star hit rects when Favorites is nil, got %d", got)
+	}
+	if got := comp.starRowAt(comp.InstBtns()[0].Rect().Max); got != -1 {
+		t.Fatalf("starRowAt found star row %d with Favorites nil", got)
 	}
 }
 
@@ -81,8 +93,8 @@ func TestInstMenuComp_BreadcrumbAccessor(t *testing.T) {
 		AnchorRect:  image.Rect(0, 0, 200, 24),
 		VertBounds:  image.Rect(0, 0, 400, 800),
 		RowHeight:   24,
-		Categories:  []string{"Drums", "Synths"},
-		Instruments: []InstrumentOption{{ID: "kick", Label: "Kick", Category: "Drums"}},
+		Categories:  []audio.Category{audio.CatPercussion, audio.CatLead},
+		Instruments: []InstrumentOption{{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion}},
 	})
 	comp.Open()
 	got := comp.BreadcrumbPath()
@@ -97,7 +109,7 @@ func TestInstMenuComp_BreadcrumbAccessor(t *testing.T) {
 // tests opt in by default; legacy tests in drumview_test.go that call
 // NewDrumView directly do not (the flag is wired by the production builder
 // and is opt-out for them).
-func instMenuTestProps(instruments []InstrumentOption, categories []string) InstrumentMenuProps {
+func instMenuTestProps(instruments []InstrumentOption, categories []audio.Category) InstrumentMenuProps {
 	return InstrumentMenuProps{
 		AnchorRect:            image.Rect(0, 0, 240, 24),
 		VertBounds:            image.Rect(0, 0, 480, 800),
@@ -114,13 +126,13 @@ func instMenuTestProps(instruments []InstrumentOption, categories []string) Inst
 // caption (categoryMeta) so a glance tells the user how many ★s they've
 // collected — the count is display metadata, not part of the label.
 func TestInstMenu_FavoritesVirtualCategoryAppearsFirst(t *testing.T) {
-	store := NewInMemoryFavoritesStore("kick", "snare")
+	store := NewInMemoryFavoritesStore(roster.Kick, roster.Snare)
 	props := instMenuTestProps(
 		[]InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Drums"},
-			{ID: "snare", Label: "Snare", Category: "Drums"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatPercussion},
 		},
-		[]string{"Drums"},
+		[]audio.Category{audio.CatPercussion},
 	)
 	props.Favorites = store
 	props.ForceCategories = true
@@ -152,9 +164,9 @@ func TestInstMenu_FavoritesEmptyState(t *testing.T) {
 	store := NewInMemoryFavoritesStore() // empty
 	props := instMenuTestProps(
 		[]InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Drums"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion},
 		},
-		[]string{"Drums"},
+		[]audio.Category{audio.CatPercussion},
 	)
 	props.Favorites = store
 	props.ForceCategories = true
@@ -193,19 +205,19 @@ func TestInstMenu_FavoritesEmptyState(t *testing.T) {
 func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 	store := NewInMemoryFavoritesStore("zeta-fav", "alpha-fav")
 	insts := []InstrumentOption{
-		{ID: "zeta-fav", Label: "Zeta Fav", Category: "Drums"},
-		{ID: "mike", Label: "Mike", Category: "Drums"},
-		{ID: "alpha-fav", Label: "Alpha Fav", Category: "Drums"},
-		{ID: "charlie", Label: "Charlie", Category: "Drums"},
+		{ID: "zeta-fav", Label: "Zeta Fav", Category: audio.CatPercussion},
+		{ID: "mike", Label: "Mike", Category: audio.CatPercussion},
+		{ID: "alpha-fav", Label: "Alpha Fav", Category: audio.CatPercussion},
+		{ID: "charlie", Label: "Charlie", Category: audio.CatPercussion},
 	}
-	props := instMenuTestProps(insts, []string{"Drums"})
+	props := instMenuTestProps(insts, []audio.Category{audio.CatPercussion})
 	props.Favorites = store
 	// Open in instruments mode targeting the Drums category directly.
 	props.CurrentInstrument = "mike"
 
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(props)
-	comp.state.activeCat = "Drums"
+	comp.state.activeCat = audio.CatPercussion
 	comp.Open()
 
 	// filteredInsts should be ordered: ★ alpha first, then non-★ in input
@@ -218,7 +230,7 @@ func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 		t.Fatalf("filteredInsts len: got %d want %d (%v)", len(got), len(want), got)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if got[i] != instrument.ID(want[i]) {
 			t.Errorf("filteredInsts[%d]: got %q want %q (full %v)", i, got[i], want[i], got)
 		}
 	}
@@ -230,18 +242,18 @@ func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 // against would surface a weakly-matched ★ ahead of a strongly-matched
 // non-★.
 func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
-	store := NewInMemoryFavoritesStore("kick-fav") // kick-fav is ★ but a weak match for "snare"
+	store := NewInMemoryFavoritesStore(roster.KickDeep) // kick-fav is ★ but a weak match for "snare"
 	insts := []InstrumentOption{
-		{ID: "snare-tight", Label: "Snare Tight", Category: "Drums"}, // strong match
-		{ID: "kick-fav", Label: "Kick Fav", Category: "Drums"},       // ★, no match for snare
-		{ID: "snare-loose", Label: "Snare Loose", Category: "Drums"}, // strong match
+		{ID: roster.SnareFat, Label: "Snare Tight", Category: audio.CatPercussion},  // strong match
+		{ID: roster.KickDeep, Label: "Kick Fav", Category: audio.CatPercussion},     // ★, no match for snare
+		{ID: roster.SnareLofi, Label: "Snare Loose", Category: audio.CatPercussion}, // strong match
 	}
-	props := instMenuTestProps(insts, []string{"Drums"})
+	props := instMenuTestProps(insts, []audio.Category{audio.CatPercussion})
 	props.Favorites = store
 
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(props)
-	comp.state.activeCat = "Drums"
+	comp.state.activeCat = audio.CatPercussion
 	comp.Open()
 	comp.SetSearchText("snare")
 
@@ -253,7 +265,7 @@ func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
 		t.Fatalf("expected 2 results for 'snare', got %d (%v)", len(got), got)
 	}
 	for _, id := range got {
-		if id == "kick-fav" {
+		if id == roster.KickDeep {
 			t.Errorf("kick-fav should not match 'snare' query (got %v)", got)
 		}
 	}
@@ -265,17 +277,17 @@ func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
 func TestInstMenu_ProjectPinsBeatUserStars(t *testing.T) {
 	store := NewInMemoryFavoritesStore("user-star")
 	insts := []InstrumentOption{
-		{ID: "project-pin", Label: "Project Pin", Category: "Drums"},
-		{ID: "user-star", Label: "User Star", Category: "Drums"},
-		{ID: "rest", Label: "Rest", Category: "Drums"},
+		{ID: "project-pin", Label: "Project Pin", Category: audio.CatPercussion},
+		{ID: "user-star", Label: "User Star", Category: audio.CatPercussion},
+		{ID: "rest", Label: "Rest", Category: audio.CatPercussion},
 	}
-	props := instMenuTestProps(insts, []string{"Drums"})
+	props := instMenuTestProps(insts, []audio.Category{audio.CatPercussion})
 	props.Favorites = store
-	props.ProjectPins = map[string]struct{}{"project-pin": {}}
+	props.ProjectPins = map[instrument.ID]struct{}{"project-pin": {}}
 
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(props)
-	comp.state.activeCat = "Drums"
+	comp.state.activeCat = audio.CatPercussion
 	comp.Open()
 
 	got := comp.state.filteredInsts
@@ -284,7 +296,7 @@ func TestInstMenu_ProjectPinsBeatUserStars(t *testing.T) {
 		t.Fatalf("filteredInsts: got %v want %v", got, want)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if got[i] != instrument.ID(want[i]) {
 			t.Errorf("filteredInsts[%d]: got %q want %q (full %v)", i, got[i], want[i], got)
 		}
 	}
@@ -294,13 +306,13 @@ func TestInstMenu_ProjectPinsBeatUserStars(t *testing.T) {
 // Back button drops favoritesView so the next category click renders that
 // category's instruments (not a leftover Favorites filter on top of it).
 func TestInstMenu_BackClearsFavoritesView(t *testing.T) {
-	store := NewInMemoryFavoritesStore("kick")
+	store := NewInMemoryFavoritesStore(roster.Kick)
 	props := instMenuTestProps(
 		[]InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Drums"},
-			{ID: "snare", Label: "Snare", Category: "Drums"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatPercussion},
 		},
-		[]string{"Drums"},
+		[]audio.Category{audio.CatPercussion},
 	)
 	props.Favorites = store
 	props.ForceCategories = true

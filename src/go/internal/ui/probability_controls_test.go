@@ -20,17 +20,17 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 	// Select Probability rule via dropdown using direct button handles
 	g.sidebar.layout()
-	if b := g.sidebar.btns["logic"]; b == nil {
+	if b := g.sidebar.btns[sbLogicSelect]; b == nil {
 		t.Fatalf("missing logic button")
 	} else {
-		b.HandleInputResult((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true)
+		b.HandleInputResult((g.sidebar.rects[sbLogicSelect].Min.X+g.sidebar.rects[sbLogicSelect].Max.X)/2, (g.sidebar.rects[sbLogicSelect].Min.Y+g.sidebar.rects[sbLogicSelect].Max.Y)/2, true)
 	}
 	_ = g.Update()
 	g.sidebar.layout()
-	if b := g.sidebar.btns["logic:probability"]; b == nil {
+	if b := g.sidebar.btns[sbLogicOption(model.LogicProbability)]; b == nil {
 		t.Fatalf("missing probability item")
 	} else {
-		r := g.sidebar.rects["logic:probability"]
+		r := g.sidebar.rects[sbLogicOption(model.LogicProbability)]
 		b.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
@@ -41,10 +41,10 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		before = mn.Params.LogicP
 	}
 	// Click lp+
-	if b := g.sidebar.btns["lp+"]; b == nil {
+	if b := g.sidebar.btns[sbPlus(fieldLogicP)]; b == nil {
 		t.Fatalf("missing lp+ button")
 	} else {
-		r := g.sidebar.rects["lp+"]
+		r := g.sidebar.rects[sbPlus(fieldLogicP)]
 		b.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
@@ -56,10 +56,10 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		t.Fatalf("expected LogicP to increase: before=%.2f after=%.2f", before, after)
 	}
 	// Click lp- and ensure it decreases
-	if b := g.sidebar.btns["lp-"]; b == nil {
+	if b := g.sidebar.btns[sbMinus(fieldLogicP)]; b == nil {
 		t.Fatalf("missing lp- button")
 	} else {
-		r := g.sidebar.rects["lp-"]
+		r := g.sidebar.rects[sbMinus(fieldLogicP)]
 		b.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()

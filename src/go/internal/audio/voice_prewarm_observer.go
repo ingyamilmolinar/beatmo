@@ -1,5 +1,7 @@
 package audio
 
+import "github.com/ingyamilmolinar/beatmo/internal/instrument"
+
 // VoiceCacheInvalidateObserver, when set, is notified with the instrument id
 // whenever the voice cache is invalidated (ClearInstrument), or "" when the
 // whole cache is cleared (Clear). The UI voice-prewarmer registers it to
@@ -9,10 +11,10 @@ package audio
 // callback must be cheap and non-blocking; it is invoked from cache-mutation
 // paths. Untagged so every build (native/test/js) can reference the var; only
 // the native cache actually fires it.
-var VoiceCacheInvalidateObserver func(id string)
+var VoiceCacheInvalidateObserver func(id instrument.ID)
 
 // notifyVoiceCacheInvalidated fires the observer if one is registered.
-func notifyVoiceCacheInvalidated(id string) {
+func notifyVoiceCacheInvalidated(id instrument.ID) {
 	if f := VoiceCacheInvalidateObserver; f != nil {
 		f(id)
 	}

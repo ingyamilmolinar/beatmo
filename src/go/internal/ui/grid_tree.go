@@ -27,6 +27,7 @@ const (
 	GZSidebar        = 60
 	GZGroupMenu      = 62
 	GZCursorLabel    = 70
+	GZToast          = 75
 	GZGridHelpButton = 80
 )
 

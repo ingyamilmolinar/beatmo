@@ -20,7 +20,7 @@ func TestUndoRedoButtonsDimViaRealFrame(t *testing.T) {
 		t.Fatal("undo/redo buttons not constructed")
 	}
 	dimmed := color.Color(colTextDisabled)
-	lit := color.Color(colTextPrimary)
+	lit := color.Color(colTextSecondary)
 
 	img := newTrackedImage("test.undobtns", 1280, 720)
 	defer releaseImage(img)

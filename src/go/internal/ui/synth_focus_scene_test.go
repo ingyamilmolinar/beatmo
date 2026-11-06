@@ -22,9 +22,8 @@ func TestSynthFocusSceneSelectsIntendedControl(t *testing.T) {
 		{"crop_synth_focus_burst", "burst1_amp"},
 		{"crop_synth_focus_burst_hit", "burst2_amp"},
 		{"crop_synth_focus_drive", "drive"},
-		{"crop_synth_full_note", "amp_decay"},
-		{"crop_synth_focus_fm_decay", "fm_op2_decay"},
-		{"crop_synth_focus_fm_penv", "fm_pitch_env_amount"},
+		{"crop_synth_focus_fm_decay", "gen1_fm_dec2"},
+		{"crop_synth_focus_fm_penv", "gen1_fm_pe_amt"},
 	}
 	for _, c := range cases {
 		c := c

@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.0.1",
+  "id": "glass-armonica",
+  "name": "Glass Armonica",
+  "category": "modular",
+  "notes": "glassArmonicaSeed: a glass armonica (Franklin's spinning wine-glasses) — an\nalmost-pure sine ensemble with a slow ethereal swell, a slight detuned shimmer,\nand a long sustain. Delicate, otherworldly, glassy.",
+  "render": {
+    "seconds": 1.25,
+    "amplitude": 0.418,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.8,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.9,
+        "amp_sustain": 0.92
+      },
+      "notes": "amp_attack: slow ethereal swell\namp_decay: slow ethereal swell\namp_release: slow ethereal swell\namp_sustain: slow ethereal swell"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.6,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 6000,
+        "filter_resonance": 0.8,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.4,
+        "lfo_depth": 0.015,
+        "lfo_rate": 4,
+        "lfo_target": 1
+      },
+      "notes": "lfo_delay: faint shimmer\nlfo_depth: faint shimmer\nlfo_enabled: faint shimmer\nlfo_rate: faint shimmer\nlfo_target: faint shimmer"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 5,
+        "unison_drift_depth": 4,
+        "unison_drift_rate": 0.3,
+        "unison_mix": 0.5,
+        "unison_voices": 3
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    },
+    "notes": "osc_enabled: pure sine\nosc_type: pure sine"
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.06,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_source: a whisper of a bright partial for glass edge"
+    }
+  ]
+}

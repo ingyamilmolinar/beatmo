@@ -14,21 +14,11 @@ func TestImportRealBeatmoJSON(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
 
-	// Load the actual beatmo.json (try multiple paths to handle different working directories)
-	paths := []string{
-		"../../beatmo.json",
-		"../../../../beatmo.json",
-	}
-	var data []byte
-	var err error
-	for _, p := range paths {
-		data, err = os.ReadFile(p)
-		if err == nil {
-			break
-		}
-	}
+	// A real exported project (current schema, 6 instruments incl. embedded
+	// PCM, 53 nodes) — committed, so the test never depends on a local file.
+	data, err := os.ReadFile("testdata/import_embedded_pcm.json")
 	if err != nil {
-		t.Skipf("beatmo.json not found: %v", err)
+		t.Fatalf("read fixture: %v", err)
 	}
 
 	// First import

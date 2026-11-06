@@ -252,7 +252,6 @@ func TestFXPanelRemoveEffectViaUI(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open FX panel.
 	dv.toggleFXPanel(0)
@@ -283,7 +282,6 @@ func TestFXPanelToggleEffectViaUI(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	effects := audio.GetInsertEffects(instID)
 	if !effects[0].Enabled {
@@ -772,7 +770,6 @@ func TestFXPanelBlocksClickThrough_GameLoop(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open FX panel and advance past debounce.
 	dv.toggleFXPanel(0)
@@ -817,7 +814,6 @@ func TestFXPanelBlocksToolbarClickThrough_GameLoop(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -865,7 +861,6 @@ func TestFXPanelBlocksClickThrough_UpdateOnly(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -929,7 +924,6 @@ func TestFXPanelClickOutsideClosesViaTree(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -957,7 +951,6 @@ func TestFXPanelWidthFitsLabels(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
@@ -987,7 +980,6 @@ func TestFXParamLabelsNotTruncated(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 	// Filter has the longest label: "Cutoff: 20000 Hz"
 	audio.AddInsertEffect(instID, audio.EffectFilter, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
@@ -1022,7 +1014,6 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
@@ -1074,7 +1065,6 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
@@ -1134,7 +1124,6 @@ func TestFXPanelSliderDragDoesNotActivateRowControls(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
@@ -1184,7 +1173,6 @@ func TestFXPanelClickInsideDoesNotActivateRowControls(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
@@ -1292,7 +1280,6 @@ func TestFXPanelSliderDragDoesNotToggleOtherRow(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open FX panel for row 0.
 	dv.toggleFXPanel(0)

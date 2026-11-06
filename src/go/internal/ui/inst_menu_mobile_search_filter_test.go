@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // navigateToInstrumentsMode opens the instrument menu on a mobile-sized game and
@@ -68,7 +70,7 @@ func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 	comp := navigateToInstrumentsMode(t, g)
 
 	// Baseline: empty query shows the full category list.
-	baseline := append([]string(nil), comp.state.filteredInsts...)
+	baseline := append([]instrument.ID(nil), comp.state.filteredInsts...)
 	if len(baseline) == 0 {
 		t.Fatal("no instruments available in instruments mode")
 	}
@@ -79,7 +81,7 @@ func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 	target := baseline[0]
 	label := comp.state.displayLabelByID[target]
 	if label == "" {
-		label = target
+		label = string(target)
 	}
 	query := strings.ToLower(label)
 

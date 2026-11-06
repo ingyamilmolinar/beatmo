@@ -4,30 +4,31 @@ import (
 	"fmt"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// resolveRender builds the merged recipe params (defaults + instrument params +
-// overrides + pitch) and the sample count for instID. Shared by the production
-// and test renderers so param resolution is identical in both build modes.
-func resolveRender(instID string, pitch float64, sr int, durSec float64, overrides map[string]float64) (recipeID string, merged audio.RecipeParams, samples int, err error) {
-	recipeID = audio.RecipeForInstrument(instID)
-	if recipeID == "" {
-		return "", nil, 0, fmt.Errorf("synthmatch: no recipe for instrument %q", instID)
-	}
-	merged = audio.MergeRecipeDefaults(recipeID, audio.GetInstrumentParams(instID))
-	if merged == nil {
-		merged = audio.RecipeParams{}
-	}
+// resolveRender resolves what a render of instID plays: the instrument's
+// document with the overrides and "pitch" set through it (the same document
+// the production renderer flattens), its flat field view, and the sample
+// count. Shared by the production and test renderers so param resolution is
+// identical in both build modes.
+func resolveRender(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (fields map[string]float64, merged map[string]float64, samples int, err error) {
+	fields = make(map[string]float64, len(overrides)+1)
 	for k, v := range overrides {
-		merged[k] = v
+		fields[k] = v
 	}
-	merged["pitch"] = pitch
+	fields["pitch"] = pitch
+	d, err := audio.InstrumentDocWithFields(instID, fields)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("synthmatch: %w", err)
+	}
+	merged = instrument.FieldValues(d, audio.BuiltinModuleRegistry())
 	if durSec <= 0 {
 		durSec = audio.ConfigForInstrument(instID).DurationSec
 	}
 	samples = int(float64(sr) * durSec)
 	if samples < 1 {
-		return "", nil, 0, fmt.Errorf("synthmatch: 0 samples for dur=%v sr=%d", durSec, sr)
+		return nil, nil, 0, fmt.Errorf("synthmatch: 0 samples for dur=%v sr=%d", durSec, sr)
 	}
-	return recipeID, merged, samples, nil
+	return fields, merged, samples, nil
 }

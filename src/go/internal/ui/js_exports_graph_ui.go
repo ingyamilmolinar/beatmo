@@ -12,7 +12,9 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func (g *Game) initJSGraphUI() {
@@ -23,15 +25,9 @@ func (g *Game) initJSGraphUI() {
 		}
 		i := args.Int(0)
 		j := args.Int(1)
-		t := args.Str(2)
-		nt := model.NodeTypeRegular
-		switch t {
-		case "invisible":
-			nt = model.NodeTypeInvisible
-		case "silent":
-			nt = model.NodeTypeSilent
-		case "mute":
-			nt = model.NodeTypeMute
+		nt, err := model.ParseNodeType(args.Str(2))
+		if err != nil {
+			return js.ValueOf(-1)
 		}
 		n := g.tryAddNode(i, j, nt)
 		return js.ValueOf(int(n.ID))
@@ -120,7 +116,10 @@ func (g *Game) initJSGraphUI() {
 		}
 		i := args.Int(0)
 		j := args.Int(1)
-		kind := args.Str(2)
+		kind, err := model.ParseLogicKind(args.Str(2))
+		if err != nil {
+			return nil
+		}
 		n := 0
 		if args.Len() > 3 {
 			n = args.Int(3)
@@ -136,10 +135,10 @@ func (g *Game) initJSGraphUI() {
 		if mn, ok := g.graph.GetNodeByID(node.ID); ok {
 			ps := mn.Params
 			ps.LogicKind = kind
-			if kind == "every_n_triggers" || kind == "skip_every_n" {
+			if kind == model.LogicEveryN || kind == model.LogicSkipEveryN {
 				ps.LogicN = n
 			}
-			if kind == "probability" {
+			if kind == model.LogicProbability {
 				ps.LogicP = p
 			}
 			g.graph.SetNodeParams(node.ID, ps)
@@ -184,7 +183,10 @@ func (g *Game) initJSGraphUI() {
 	// to apply immediately; there is no separate JS export for the toggle.
 	js.Global().Set("setGroupRule", jsFn(func(args jsArgs) any {
 		gid := model.GroupID(args.Int(0))
-		param := model.GroupParam(args.Str(1))
+		param, err := model.ParseGroupParam(args.Str(1))
+		if err != nil || param == model.GroupParamNone {
+			return false
+		}
 		anchor := g.ruleAnchorIdxNow()
 		if grp, ok := g.graph.Group(gid); ok {
 			for _, r := range grp.Rules {
@@ -233,13 +235,12 @@ func (g *Game) initJSGraphUI() {
 		if args.Len() < 1 {
 			return nil
 		}
-		id := args.Str(0)
 		g.sidebar.layout()
-		r, ok := g.sidebar.rects[id]
+		id, ok := g.sidebar.laidOutID(args.Str(0))
 		if !ok {
 			return nil
 		}
-		return rectToJS(r)
+		return rectToJS(g.sidebar.rects[id])
 	}))
 
 	// triggerOnce(i,j,pitch,dur) – test helper to schedule one audio + highlight for a grid node.
@@ -284,7 +285,7 @@ func (g *Game) initJSGraphUI() {
 		obj.Set("volume", mn.Params.Volume)
 		obj.Set("pitch", mn.Params.Pitch)
 		obj.Set("duration", mn.Params.Duration)
-		obj.Set("logicKind", mn.Params.LogicKind)
+		obj.Set("logicKind", mn.Params.LogicKind.String())
 		obj.Set("logicN", mn.Params.LogicN)
 		obj.Set("logicP", mn.Params.LogicP)
 		obj.Set("type", int(mn.Type))
@@ -312,7 +313,7 @@ func (g *Game) initJSGraphUI() {
 			g.graph.SetNodeParams(node.ID, p)
 		case "vol+":
 			p := mn.Params
-			p.Volume = stepNodeVolume(p.Volume, true)
+			p.Volume = clampNodeVolume(stepNodeVolume(p.Volume, true))
 			g.graph.SetNodeParams(node.ID, p)
 		case "pit-":
 			p := mn.Params
@@ -334,8 +335,8 @@ func (g *Game) initJSGraphUI() {
 				p.Duration = 1
 			}
 			p.Duration -= 0.1
-			if p.Duration < 0.25 {
-				p.Duration = 0.25
+			if p.Duration < nodeParamLimits.DurationMin {
+				p.Duration = nodeParamLimits.DurationMin
 			}
 			g.graph.SetNodeParams(node.ID, p)
 		case "dur+":
@@ -344,8 +345,8 @@ func (g *Game) initJSGraphUI() {
 				p.Duration = 1
 			}
 			p.Duration += 0.1
-			if p.Duration > 4 {
-				p.Duration = 4
+			if p.Duration > nodeParamLimits.DurationMax {
+				p.Duration = nodeParamLimits.DurationMax
 			}
 			g.graph.SetNodeParams(node.ID, p)
 		case "ln-":
@@ -353,15 +354,15 @@ func (g *Game) initJSGraphUI() {
 			if p.LogicN > 0 {
 				p.LogicN--
 			}
-			if p.LogicN < 1 {
-				p.LogicN = 1
+			if p.LogicN < nodeParamLimits.LogicNMin {
+				p.LogicN = nodeParamLimits.LogicNMin
 			}
 			g.graph.SetNodeParams(node.ID, p)
 		case "ln+":
 			p := mn.Params
 			p.LogicN++
-			if p.LogicN > 64 {
-				p.LogicN = 64
+			if p.LogicN > nodeParamLimits.LogicNMax {
+				p.LogicN = nodeParamLimits.LogicNMax
 			}
 			g.graph.SetNodeParams(node.ID, p)
 		case "lp-":
@@ -379,17 +380,7 @@ func (g *Game) initJSGraphUI() {
 			}
 			g.graph.SetNodeParams(node.ID, p)
 		case "aud":
-			n := mn
-			switch n.Type {
-			case model.NodeTypeSilent:
-				n.Type = model.NodeTypeMute
-			case model.NodeTypeMute:
-				n.Type = model.NodeTypeRegular
-			default:
-				n.Type = model.NodeTypeSilent
-			}
-			g.graph.Nodes[node.ID] = n
-			g.updateBeatInfos()
+			g.cycleNodeType(node.ID) // the sidebar's cycle (Chord included)
 		}
 		g.notifyPredictorNode(node.ID)
 		return nil
@@ -418,7 +409,7 @@ func (g *Game) initJSGraphUI() {
 			g.graph.SetNodeParams(n.ID, p)
 		case "vol+":
 			p := mn.Params
-			p.Volume = stepNodeVolume(p.Volume, true)
+			p.Volume = clampNodeVolume(stepNodeVolume(p.Volume, true))
 			g.graph.SetNodeParams(n.ID, p)
 		case "pit-":
 			p := mn.Params
@@ -440,8 +431,8 @@ func (g *Game) initJSGraphUI() {
 				p.Duration = 1
 			}
 			p.Duration -= 0.1
-			if p.Duration < 0.25 {
-				p.Duration = 0.25
+			if p.Duration < nodeParamLimits.DurationMin {
+				p.Duration = nodeParamLimits.DurationMin
 			}
 			g.graph.SetNodeParams(n.ID, p)
 		case "dur+":
@@ -450,8 +441,8 @@ func (g *Game) initJSGraphUI() {
 				p.Duration = 1
 			}
 			p.Duration += 0.1
-			if p.Duration > 4 {
-				p.Duration = 4
+			if p.Duration > nodeParamLimits.DurationMax {
+				p.Duration = nodeParamLimits.DurationMax
 			}
 			g.graph.SetNodeParams(n.ID, p)
 		case "ln-":
@@ -459,15 +450,15 @@ func (g *Game) initJSGraphUI() {
 			if p.LogicN > 0 {
 				p.LogicN--
 			}
-			if p.LogicN < 1 {
-				p.LogicN = 1
+			if p.LogicN < nodeParamLimits.LogicNMin {
+				p.LogicN = nodeParamLimits.LogicNMin
 			}
 			g.graph.SetNodeParams(n.ID, p)
 		case "ln+":
 			p := mn.Params
 			p.LogicN++
-			if p.LogicN > 64 {
-				p.LogicN = 64
+			if p.LogicN > nodeParamLimits.LogicNMax {
+				p.LogicN = nodeParamLimits.LogicNMax
 			}
 			g.graph.SetNodeParams(n.ID, p)
 		case "lp-":
@@ -485,17 +476,7 @@ func (g *Game) initJSGraphUI() {
 			}
 			g.graph.SetNodeParams(n.ID, p)
 		case "aud":
-			n2 := mn
-			switch n2.Type {
-			case model.NodeTypeSilent:
-				n2.Type = model.NodeTypeMute
-			case model.NodeTypeMute:
-				n2.Type = model.NodeTypeRegular
-			default:
-				n2.Type = model.NodeTypeSilent
-			}
-			g.graph.Nodes[n.ID] = n2
-			g.updateBeatInfos()
+			g.cycleNodeType(n.ID) // the sidebar's cycle (Chord included)
 		}
 		g.notifyPredictorNode(n.ID)
 		return nil
@@ -706,10 +687,14 @@ func (g *Game) initJSGraphUI() {
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
-		id := args.Str(1)
+		id := args.Instrument(1)
+		if id == "" {
+			return nil
+		}
+		// A pick like the instrument menu's: the row's settings are never
+		// dropped (pick_settings.go — it may ask first).
 		prev := g.drum.selRow
-		g.drum.selRow = row
-		g.drum.SetInstrument(id)
+		g.drum.pickInstrument(row, id)
 		g.drum.selRow = prev
 		return nil
 	}))
@@ -859,7 +844,7 @@ func (g *Game) initJSGraphUI() {
 		if i < 0 || i >= len(g.drum.Rows) {
 			return js.ValueOf("")
 		}
-		return js.ValueOf(g.drum.Rows[i].Instrument)
+		return js.ValueOf(string(g.drum.Rows[i].Instrument))
 	}))
 
 	// instOptions() -> []string
@@ -869,7 +854,7 @@ func (g *Game) initJSGraphUI() {
 			return arr
 		}
 		for _, id := range g.drum.instOptions {
-			arr.Call("push", id)
+			arr.Call("push", string(id))
 		}
 		return arr
 	}))
@@ -899,7 +884,7 @@ func (g *Game) initJSGraphUI() {
 			if i < len(ids) {
 				obj := js.Global().Get("Object").New()
 				r := btn.Rect()
-				obj.Set("id", ids[i])
+				obj.Set("id", string(ids[i]))
 				obj.Set("x", r.Min.X)
 				obj.Set("y", r.Min.Y)
 				obj.Set("w", r.Dx())
@@ -1445,7 +1430,7 @@ func (g *Game) initJSGraphUI() {
 		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		g.drum.RequestSeekSteps(args.Int(0), seekOriginJS)
+		g.drum.RequestSeekSteps(args.Int(0), hooks.SeekJS)
 		return nil
 	}))
 
@@ -1472,7 +1457,7 @@ func (g *Game) initJSGraphUI() {
 		if row, ok := g.nodeRows[n.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
 			dr := g.drum.Rows[row]
 			obj.Set("row", row)
-			obj.Set("instrument", dr.Instrument)
+			obj.Set("instrument", string(dr.Instrument))
 			obj.Set("name", dr.Name)
 			obj.Set("color", g.drum.colorKey(dr.Color))
 		} else {
@@ -1672,7 +1657,7 @@ func (g *Game) initJSGraphUI() {
 		if args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(Favorites().Get(args.Str(0)))
+		return js.ValueOf(Favorites().Get(args.Instrument(0)))
 	}))
 
 	// instrumentSetFavorite(id, fav) -> bool. Programmatic setter that
@@ -1682,7 +1667,7 @@ func (g *Game) initJSGraphUI() {
 		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		Favorites().Set(args.Str(0), args.Bool(1))
+		Favorites().Set(args.Instrument(0), args.Bool(1))
 		return js.ValueOf(true)
 	}))
 
@@ -1691,7 +1676,7 @@ func (g *Game) initJSGraphUI() {
 	js.Global().Set("instrumentFavoriteKeys", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		for _, k := range Favorites().Keys() {
-			arr.Call("push", js.ValueOf(k))
+			arr.Call("push", js.ValueOf(string(k)))
 		}
 		return arr
 	}))
@@ -1707,7 +1692,7 @@ func (g *Game) initJSGraphUI() {
 			return arr
 		}
 		for _, id := range g.drum.instMenuComp.state.filteredInsts {
-			arr.Call("push", js.ValueOf(id))
+			arr.Call("push", js.ValueOf(string(id)))
 		}
 		return arr
 	}))
@@ -1737,7 +1722,7 @@ func (g *Game) initJSGraphUI() {
 			return arr
 		}
 		for _, id := range g.drum.exportPinnedInstrumentIDs() {
-			arr.Call("push", js.ValueOf(id))
+			arr.Call("push", js.ValueOf(string(id)))
 		}
 		return arr
 	}))
@@ -1756,9 +1741,13 @@ func (g *Game) initJSGraphUI() {
 			return js.ValueOf(false)
 		}
 		n := arr.Length()
-		ids := make([]string, 0, n)
+		ids := make([]instrument.ID, 0, n)
 		for i := 0; i < n; i++ {
-			ids = append(ids, arr.Index(i).String())
+			id, err := instrument.ParseID(arr.Index(i).String())
+			if err != nil {
+				return js.ValueOf(false)
+			}
+			ids = append(ids, id)
 		}
 		g.drum.SetProjectPins(ids)
 		return js.ValueOf(true)
@@ -1937,7 +1926,8 @@ func (g *Game) initJSGraphUI() {
 		if args.Len() < 1 || !g.sidebar.IsOpen() {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(g.sidebar.sectionOpen[args.Str(0)])
+		sec, ok := parseSBSection(args.Str(0))
+		return js.ValueOf(ok && g.sidebar.sectionOpen[sec])
 	}))
 
 	// sidebarSectionRect(name) -> {x,y,w,h} or null — get section header rect
@@ -1946,8 +1936,9 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		g.sidebar.layout()
-		r, ok := g.sidebar.rects["sec-"+args.Str(0)]
-		if !ok || r.Empty() {
+		sec, known := parseSBSection(args.Str(0))
+		r, ok := g.sidebar.rects[sbSectionHeader(sec)]
+		if !known || !ok || r.Empty() {
 			return nil
 		}
 		return rectToJS(r)
@@ -1986,7 +1977,7 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		g.sidebar.layout()
-		r, ok := g.sidebar.rects["panel"]
+		r, ok := g.sidebar.rects[sbPanel]
 		if !ok {
 			return nil
 		}
@@ -2005,7 +1996,7 @@ func (g *Game) initJSGraphUI() {
 		obj.Set("hasScroll", g.sidebar.scroll.HasScroll())
 		obj.Set("contentH", g.sidebar.scroll.VS.Total)
 		obj.Set("viewportH", g.sidebar.scroll.VS.Visible)
-		if r, ok := g.sidebar.rects["panel"]; ok {
+		if r, ok := g.sidebar.rects[sbPanel]; ok {
 			obj.Set("panelH", r.Dy())
 		}
 		return obj
@@ -2176,6 +2167,40 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		return rectToJS(g.drum.fxPanelRect)
+	}))
+
+	// fxPanelControlRects() -> {add, picks:[{effect,x,y,w,h}], sliders:[{slot,param,x,y,w,h}]}
+	// or null when the FX panel is closed: where a pointer presses to add an
+	// effect, pick one in the add picker, or drag a param (real-input benches).
+	js.Global().Set("fxPanelControlRects", jsFn(func(args jsArgs) any {
+		dv := g.drum
+		if dv == nil || !dv.IsFXPanelOpen() {
+			return nil
+		}
+		out := map[string]any{"add": nil}
+		if dv.fxAddEffectBtn != nil {
+			out["add"] = rectToJS(dv.fxAddEffectBtn.Rect())
+		}
+		picks := make([]any, 0, len(dv.fxAddRowBtn))
+		for i, b := range dv.fxAddRowBtn {
+			if b == nil || i >= len(dv.fxAddRowEffect) {
+				continue
+			}
+			r := b.Rect()
+			picks = append(picks, map[string]any{"effect": string(dv.fxAddRowEffect[i]), "x": r.Min.X, "y": r.Min.Y, "w": r.Dx(), "h": r.Dy()})
+		}
+		out["picks"] = picks
+		sliders := make([]any, 0, len(dv.fxPanelSliders))
+		for i, sl := range dv.fxPanelSliders {
+			if sl == nil || i >= len(dv.fxSliderBindings) {
+				continue
+			}
+			b := dv.fxSliderBindings[i]
+			r := sl.Rect()
+			sliders = append(sliders, map[string]any{"slot": b.slotIndex, "param": b.paramName, "x": r.Min.X, "y": r.Min.Y, "w": r.Dx(), "h": r.Dy()})
+		}
+		out["sliders"] = sliders
+		return out
 	}))
 
 	// rowFXBtnRect(row) -> {x,y,w,h} or null

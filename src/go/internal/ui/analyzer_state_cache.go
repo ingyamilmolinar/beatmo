@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -25,7 +26,7 @@ type analyzerStateCacheEntry struct {
 	mu         sync.Mutex
 	lastBuild  time.Time
 	state      *analyzer.State
-	activeID   string
+	activeID   channel.ID
 	rowsFP     uint64
 	sampleRate int
 }
@@ -41,7 +42,7 @@ type scopeStateCacheEntry struct {
 	mu        sync.Mutex
 	lastBuild time.Time
 	state     *scope.State
-	instID    string
+	instID    channel.ID
 	tapA      scope.Stage
 	tapB      scope.Stage
 }
@@ -84,7 +85,7 @@ func rowsFingerprint(rows []*DrumRow) uint64 {
 // otherwise calls build and caches the result. Pure Go; no platform
 // dependencies — same signature on every build so tests + the WASM
 // bridge share the same code path.
-func cachedAnalyzerState(activeID string, rowsFP uint64, sampleRate int, build func() *analyzer.State) *analyzer.State {
+func cachedAnalyzerState(activeID channel.ID, rowsFP uint64, sampleRate int, build func() *analyzer.State) *analyzer.State {
 	c := analyzerStateCache
 	c.mu.Lock()
 	if c.state != nil && time.Since(c.lastBuild) < stateCacheTTL &&
@@ -125,7 +126,7 @@ func cachedAnalyzerMetrics(rowsFP uint64, build func() *analyzer.State) *analyze
 }
 
 // cachedScopeState is the scope counterpart.
-func cachedScopeState(instID string, tapA, tapB scope.Stage, build func() *scope.State) *scope.State {
+func cachedScopeState(instID channel.ID, tapA, tapB scope.Stage, build func() *scope.State) *scope.State {
 	c := scopeStateCache
 	c.mu.Lock()
 	if c.state != nil && time.Since(c.lastBuild) < stateCacheTTL &&

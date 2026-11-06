@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func differs(a, b []float64) bool {
@@ -30,7 +31,7 @@ func TestRenderStub_RespondsToMultipleParams(t *testing.T) {
 	// A 2 s note reaches the decay stage (whose target level is amp_sustain),
 	// so every tunable param below produces an observable change.
 	const dur = 2.0
-	base, err := RenderInstrument("sax", 0, 44100, dur)
+	base, err := RenderInstrument(roster.Sax, 0, 44100, dur)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestRenderStub_RespondsToMultipleParams(t *testing.T) {
 		case "lfo_depth":
 			val = 0.18
 		}
-		mod, err := RenderWithParams("sax", 0, 44100, dur, map[string]float64{key: val})
+		mod, err := RenderWithParams(roster.Sax, 0, 44100, dur, map[string]float64{key: val})
 		if err != nil {
 			t.Fatal(err)
 		}

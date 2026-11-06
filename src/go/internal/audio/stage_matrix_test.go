@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // stageMatrixChecksum is the same order-sensitive bit checksum the golden net
@@ -208,6 +210,20 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		}
 		return false
 
+	case "snare_enabled":
+		// modular.h (Phase-17) + modular_gen_slot_snare: snare_enabled<0.5
+		// silences every gen-slot voice configured with source==7 (the
+		// snare-ish voice); the toggle is a no-op unless at least one of the
+		// (up to modularGenSlots) gen slots selects it. Exact mirror of the
+		// kick_enabled rule above.
+		for k := 1; k <= modularGenSlots; k++ {
+			name := fmt.Sprintf("gen%d_source", k)
+			if int(math.Round(get(name, 0))) == 7 {
+				return true
+			}
+		}
+		return false
+
 	case "formant_enabled":
 		// modular.c (Phase-15): formant_on gates two consumers — the breath
 		// noise injection (runs only when formant_breath > 0) and the vowel-
@@ -217,37 +233,21 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		// direction.
 		return get("formant_mix", 0) > 0 || get("formant_breath", 0) > 0
 
-	case "post_enabled":
-		// modular.c:954-971 assembles the shared POST stage's synth_params +
-		// gate config; drums.c:182-281 (apply_post_params) applies each of
-		// the 6 transforms only when BOTH its own post_*_on gate is true AND
-		// its value differs from that transform's OWN identity:
-		//   pitch !=0, decay(decayMul) !=1 (NOT 0 — a multiplier, drums.c:218),
-		//   body >0, brightness >0, tone <0 (ONLY negative tone acts,
-		//   drums.c:261), drive(post_drive) >0. Matches
-		//   ModularParamSchemaIdentity (synth_param_schema.go:131-134).
-		if get("post_enabled", 0) < 0.5 {
-			return false
-		}
-		if get("post_pitch_on", 1) >= 0.5 && get("post_pitch", 0) != 0 {
-			return true
-		}
-		if get("post_decay_on", 1) >= 0.5 && get("post_decay", 1) != 1 {
-			return true
-		}
-		if get("post_body_on", 1) >= 0.5 && get("post_body", 0) > 0 {
-			return true
-		}
-		if get("post_brightness_on", 1) >= 0.5 && get("post_brightness", 0) > 0 {
-			return true
-		}
-		if get("post_tone_on", 1) >= 0.5 && get("post_tone", 0) < 0 {
-			return true
-		}
-		if get("post_drive_on", 1) >= 0.5 && get("post_drive", 0) > 0 {
-			return true
-		}
-		return false
+	case "modal_enabled":
+		// modal_bank.c: the MODAL stage renders its table rows; with no rows
+		// (modal_count 0) or modal_keep 0 there is nothing to ring.
+		return get("modal_count", 0) > 0 && get("modal_keep", 128) > 0
+
+	case "strike_enabled":
+		// modal_bank.c: STRIKE only reweights the modal rows (and adds its
+		// click to them) — inert without a playing MODAL stage, and an exact
+		// identity at tc 0 / hardness 0 / click 0.
+		modal := get("modal_enabled", 0) >= 0.5 && get("modal_count", 0) > 0 && get("modal_keep", 128) > 0
+		return modal && (get("strike_tc", 0) > 0 || get("strike_hardness", 0) != 0 || get("strike_click", 0) > 0)
+
+	case "noiseband_enabled":
+		// modal_bank.c: the NOISEBAND stage renders its table rows only.
+		return get("noiseband_count", 0) > 0
 
 	default:
 		// An *_enabled toggle with no modeled predicate: fail loud (treat as
@@ -286,23 +286,25 @@ func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 		}
 	}
 
-	for _, id := range BuiltinInstrumentIDs {
-		recipeID := RecipeForInstrument(id)
-		if recipeID == "" {
-			continue
-		}
-		reg := RecipeRegistrations()[recipeID]
-		if reg == nil {
+	for _, id := range roster.All {
+		defs := InstrumentParamDefs(id)
+		if len(defs) == 0 {
 			continue
 		}
 
 		base, _ := RenderInstrumentOneShotRaw(id)
 		baseSum := stageMatrixChecksum(base)
 
-		merged := MergeRecipeDefaults(recipeID, GetInstrumentParams(id))
-		for _, def := range reg.Params {
+		merged := MergedInstrumentParamsRO(id)
+		for _, def := range defs {
 			name := def.Name
 			if len(name) < 9 || name[len(name)-8:] != "_enabled" {
+				continue
+			}
+			// kick_enabled / snare_enabled are constants of the kick / snare
+			// voice MODULE TYPE (spec 2026-10-04 §4), not user switches: the
+			// voice IS the instrument, and the Synth tab never offered them.
+			if IsFamilyEnableParam(name) {
 				continue
 			}
 			cur, ok := merged[name]
@@ -322,9 +324,9 @@ func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 				t.Errorf("%s: flipping %s rendered empty", id, name)
 				continue
 			}
-			assertFinite(t, id, name, buf)
+			assertFinite(t, string(id), name, buf)
 
-			key := [2]string{id, name}
+			key := [2]string{string(id), name}
 			why, exempt := stageMatrixNeutralFlips[key]
 
 			if stageMatrixChecksum(buf) != baseSum {

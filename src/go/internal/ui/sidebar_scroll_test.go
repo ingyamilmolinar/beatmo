@@ -155,7 +155,7 @@ func TestSidebarTouchScrollMobile(t *testing.T) {
 
 	// Simulate touch drag within sidebar HandleInput.
 	// Use coordinates within the panel bounds (not absolute screen coords).
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	cx := panel.Min.X + panel.Dx()/2
 	startY := panel.Max.Y - 10 // near bottom of panel
 	endY := panel.Min.Y + 20   // near top of panel
@@ -189,7 +189,7 @@ func TestSidebarViewportClipping(t *testing.T) {
 	g.sidebar.layout()
 
 	// The first section header ("sec-vol") should now be above the viewport
-	secVol := g.sidebar.rects["sec-vol"]
+	secVol := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secVol.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}
@@ -201,16 +201,16 @@ func TestSidebarViewportClipping(t *testing.T) {
 
 	// Find the last section that exists and verify it IS in viewport.
 	// "sec-grp" (task-sidebar-create: always laid out, last in layout()) is
-	// now the true bottom section on every platform; "sec-move"/"sec-aud"/
-	// "sec-groove" are the prior (still-correct) desktop/mobile fallbacks.
-	lastSection := ""
-	for _, sec := range []string{"sec-grp", "sec-move", "sec-aud", "sec-groove"} {
+	// now the true bottom section on every platform; "sec-aud"/"sec-groove"
+	// are the prior (still-correct) desktop/mobile fallbacks.
+	var lastSection sbID
+	for _, sec := range []sbID{sbSectionHeader(secGrp), sbSectionHeader(secAud), sbSectionHeader(secGroove)} {
 		if r, ok := g.sidebar.rects[sec]; ok && !r.Empty() {
 			lastSection = sec
 			break
 		}
 	}
-	if lastSection == "" {
+	if lastSection == (sbID{}) {
 		t.Fatal("no bottom section found")
 	}
 	lastRect := g.sidebar.rects[lastSection]
@@ -226,13 +226,13 @@ func TestSidebarTouchScrollDoesNotToggleSection(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
 	// Record which sections are open before the touch.
-	openBefore := make(map[string]bool)
+	openBefore := make(map[sbSection]bool)
 	for k, v := range g.sidebar.sectionOpen {
 		openBefore[k] = v
 	}
 
 	// Find a section header rect to touch on.
-	secRect := g.sidebar.rects["sec-vol"]
+	secRect := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secRect.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}
@@ -272,9 +272,9 @@ func TestSidebarTapStillTogglesSection(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
 	// Find a closed section.
-	volOpen := g.sidebar.sectionOpen["vol"]
+	volOpen := g.sidebar.sectionOpen[secVol]
 
-	secRect := g.sidebar.rects["sec-vol"]
+	secRect := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secRect.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}
@@ -285,7 +285,7 @@ func TestSidebarTapStillTogglesSection(t *testing.T) {
 	g.sidebar.HandleInput(cx, cy, true)
 	g.sidebar.HandleInput(cx, cy, false)
 
-	if g.sidebar.sectionOpen["vol"] == volOpen {
+	if g.sidebar.sectionOpen[secVol] == volOpen {
 		t.Fatalf("section 'vol' should have toggled from %v after tap", volOpen)
 	}
 }
@@ -296,10 +296,10 @@ func TestSidebarButtonSuppressedDuringScroll(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
 	// Expand volume section so vol+/- buttons exist.
-	g.sidebar.sectionOpen["vol"] = true
+	g.sidebar.sectionOpen[secVol] = true
 	g.sidebar.layout()
 
-	volPlusRect := g.sidebar.rects["vol+"]
+	volPlusRect := g.sidebar.rects[sbPlus(fieldVol)]
 	if volPlusRect.Empty() {
 		t.Fatal("vol+ rect should exist when volume section is open")
 	}
@@ -352,13 +352,13 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
 	// Record section state before.
-	openBefore := make(map[string]bool)
+	openBefore := make(map[sbSection]bool)
 	for k, v := range g.sidebar.sectionOpen {
 		openBefore[k] = v
 	}
 
 	// Find a section header to scroll on.
-	secRect := g.sidebar.rects["sec-vol"]
+	secRect := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secRect.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}
@@ -411,14 +411,14 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 func TestSidebarGestureTapStillToggles(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
-	secRect := g.sidebar.rects["sec-vol"]
+	secRect := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secRect.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}
 	cx := (secRect.Min.X + secRect.Max.X) / 2
 	cy := (secRect.Min.Y + secRect.Max.Y) / 2
 
-	volBefore := g.sidebar.sectionOpen["vol"]
+	volBefore := g.sidebar.sectionOpen[secVol]
 
 	// Direct tap — no prior scroll state. Section headers toggle on the press
 	// edge (see NodeSidebar.HandleInput step 9); the release call mirrors what
@@ -426,7 +426,7 @@ func TestSidebarGestureTapStillToggles(t *testing.T) {
 	g.sidebar.HandleInput(cx, cy, true)
 	g.sidebar.HandleInput(cx, cy, false)
 
-	if g.sidebar.sectionOpen["vol"] == volBefore {
+	if g.sidebar.sectionOpen[secVol] == volBefore {
 		t.Fatalf("section 'vol' should have toggled from %v after gesture tap", volBefore)
 	}
 }
@@ -442,7 +442,7 @@ func TestSidebarGestureTapStillToggles(t *testing.T) {
 func TestSidebarScrollStateCleanAfterGestureTap(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
-	secRect := g.sidebar.rects["sec-vol"]
+	secRect := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secRect.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}

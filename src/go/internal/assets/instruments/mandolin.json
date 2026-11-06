@@ -1,0 +1,117 @@
+{
+  "schema_version": "0.0.1",
+  "id": "mandolin",
+  "name": "Mandolin",
+  "category": "modular",
+  "notes": "mandolinSeed: a bright tremolo mandolin — a bright steel-string KS with the\nsignature fast tremolo (an amplitude LFO ~8 Hz standing in for tremolo picking)\nthrough a steel body. Sits between banjo and steel guitar.",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 1.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0
+      }
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0.2,
+        "body_model": 4,
+        "bow_dynamics": 0
+      },
+      "notes": "body_mix: bright steel body\nbody_model: bright steel body"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 6500,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0,
+        "lfo_depth": 0.3,
+        "lfo_rate": 8,
+        "lfo_target": 0
+      },
+      "notes": "lfo_enabled: tremolo picking"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "ks",
+      "v": 1,
+      "on": true,
+      "values": {
+        "atk_amt": 0,
+        "atk_rate": 0,
+        "env_fast_rate": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "ks_blow": 0,
+        "ks_pluck": 0.5,
+        "ks_sustain": 0.982,
+        "out_scale": 1
+      }
+    }
+  ]
+}

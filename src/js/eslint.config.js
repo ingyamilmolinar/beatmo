@@ -5,8 +5,6 @@ export default [
   {
     ignores: [
       "drums.single.js",
-      "drums.js",
-      "audio_config.generated.js",
       "wasm_exec.js",
       "node_modules/",
       "recordings/",
