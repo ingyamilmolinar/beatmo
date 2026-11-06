@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -14,20 +15,7 @@ type RowPaths struct {
 	IsLoop    []bool
 	LoopStart []int
 	Nodes     map[model.NodeID]model.Node
-	RowInst   []string
-}
-
-func nodeType(s string) model.NodeType {
-	switch s {
-	case "invisible":
-		return model.NodeTypeInvisible
-	case "silent":
-		return model.NodeTypeSilent
-	case "mute":
-		return model.NodeTypeMute
-	default:
-		return model.NodeTypeRegular
-	}
+	RowInst   []instrument.ID
 }
 
 // BuildGraph constructs a model.Graph from the parsed template and computes one
@@ -36,14 +24,17 @@ func BuildGraph(pt ParsedTemplate) (RowPaths, error) {
 	g := model.NewGraph(game_log.New(io.Discard, game_log.LevelError))
 	idMap := make(map[int]model.NodeID, len(pt.Nodes))
 	for _, n := range pt.Nodes {
-		nid := g.AddNode(n.I, n.J, nodeType(n.Type))
+		nid := g.AddNode(n.I, n.J, n.Type)
 		g.SetNodeParams(nid, model.NodeParams{
-			Volume:    n.Volume,
-			Pitch:     n.Pitch,
-			Duration:  n.Duration,
-			LogicKind: n.LogicKind,
-			LogicN:    n.LogicN,
-			LogicP:    n.LogicP,
+			Volume:     n.Volume,
+			Pitch:      n.Pitch,
+			Duration:   n.Duration,
+			LogicKind:  n.LogicKind,
+			LogicN:     n.LogicN,
+			LogicP:     n.LogicP,
+			GrooveKind: n.GrooveKind,
+			GroovePct:  n.GroovePct,
+			Chord:      n.Chord.model(),
 		})
 		idMap[n.ID] = nid
 	}

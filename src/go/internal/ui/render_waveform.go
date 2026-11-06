@@ -16,7 +16,7 @@ import (
 // color is served from pixelCache (no per-column color alloc); drawWaveTrace
 // emits one fill rect per column above/below the midline, the trace line on
 // top.
-var colWaveTraceFill = WithAlpha(colWaveTrace, AlphaSubtle)
+var colWaveTraceFill color.NRGBA // derived in rebuildThemeAliases (theme.go)
 
 // drawAnalyzerWaveform renders a waveform from the given channel metrics into
 // the rectangle. It picks frozen capture data when available, otherwise

@@ -44,6 +44,7 @@ func TestTokenDiscipline(t *testing.T) {
 		"icons.go":                 true,
 		"design_tokens.gen.go":     true,
 		"design_components.gen.go": true, // generated; literals come from DESIGN.md
+		"theme_derive.go":          true, // HSL math constructs RGBA from computed channels, never from hex
 		"token_discipline_test.go": true,
 	}
 

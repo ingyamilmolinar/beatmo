@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Regression for TestBPMChangeDuringLoopKeepsForwardProgress flaking under
@@ -56,7 +57,7 @@ func TestParityAudioCarriesSchedulingGenAcrossMutation(t *testing.T) {
 	g.ClearParityMismatches()
 	// audioLoop records the lagged sound now. It must inherit the scheduling
 	// generation (schedGen), not the current one.
-	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load(), schedGen)
+	g.recordParityAudio(0, abs, 1.0, roster.Kick, 1, 0, 1, g.audioGen.Load(), schedGen)
 
 	g.parityScan("test-audio-sched-gen")
 

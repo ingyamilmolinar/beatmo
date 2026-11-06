@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -22,10 +23,10 @@ func TestInstMenuScrollbarBackgroundExtended(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 20; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("inst-%02d", i),
-			Name:     fmt.Sprintf("Instrument %02d", i),
-			Category: "Test (WAV)",
-			Source:   "wav",
+			ID:     instrument.ID(fmt.Sprintf("inst-%02d", i)),
+			Name:   fmt.Sprintf("Instrument %02d", i),
+			Group:  "Test (WAV)",
+			Source: audio.SourceWAV,
 		})
 	}
 	withAudioCatalog(t, entries)
@@ -101,7 +102,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	// Add rows to create scrollable EQ channel menu
 	for i := 0; i < 12; i++ {
 		dv.AddRow()
-		dv.Rows[i].Instrument = fmt.Sprintf("inst-%d", i)
+		dv.Rows[i].Instrument = instrument.ID(fmt.Sprintf("inst-%d", i))
 		dv.Rows[i].Name = fmt.Sprintf("Inst %d", i)
 	}
 
@@ -109,10 +110,10 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 20; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("test-%02d", i),
-			Name:     fmt.Sprintf("Test %02d", i),
-			Category: "Test (WAV)",
-			Source:   "wav",
+			ID:     instrument.ID(fmt.Sprintf("test-%02d", i)),
+			Name:   fmt.Sprintf("Test %02d", i),
+			Group:  "Test (WAV)",
+			Source: audio.SourceWAV,
 		})
 	}
 	withAudioCatalog(t, entries)
@@ -183,10 +184,10 @@ func TestInstMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 20; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("inst-%02d", i),
-			Name:     fmt.Sprintf("Instrument %02d", i),
-			Category: "Test (WAV)",
-			Source:   "wav",
+			ID:     instrument.ID(fmt.Sprintf("inst-%02d", i)),
+			Name:   fmt.Sprintf("Instrument %02d", i),
+			Group:  "Test (WAV)",
+			Source: audio.SourceWAV,
 		})
 	}
 	withAudioCatalog(t, entries)
@@ -264,7 +265,7 @@ func TestEQMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	// Add many rows to force both row scrolling and EQ menu scrolling
 	for i := 0; i < 15; i++ {
 		dv.AddRow()
-		dv.Rows[i].Instrument = fmt.Sprintf("inst-%d", i)
+		dv.Rows[i].Instrument = instrument.ID(fmt.Sprintf("inst-%d", i))
 		dv.Rows[i].Name = fmt.Sprintf("Inst %d", i)
 	}
 	dv.calcLayout()
@@ -320,10 +321,10 @@ func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	var entries []audio.SoundMeta
 	for i := 0; i < 20; i++ {
 		entries = append(entries, audio.SoundMeta{
-			ID:       fmt.Sprintf("inst-%02d", i),
-			Name:     fmt.Sprintf("Instrument %02d", i),
-			Category: "Test (WAV)",
-			Source:   "wav",
+			ID:     instrument.ID(fmt.Sprintf("inst-%02d", i)),
+			Name:   fmt.Sprintf("Instrument %02d", i),
+			Group:  "Test (WAV)",
+			Source: audio.SourceWAV,
 		})
 	}
 	withAudioCatalog(t, entries)

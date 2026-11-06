@@ -8,6 +8,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestEQSliderLinearMapping(t *testing.T) {
@@ -58,8 +60,8 @@ func TestPerInstrumentEQInitialization(t *testing.T) {
 		t.Fatal("expected at least one row")
 	}
 	row := g.drum.Rows[0]
-	if len(row.EQGainsDB) != len(eqBandDefs) {
-		t.Errorf("EQGainsDB not initialized: got %d, want %d", len(row.EQGainsDB), len(eqBandDefs))
+	if len(rowEQ(row).GainsDB) != len(eqBandDefs) {
+		t.Errorf("EQGainsDB not initialized: got %d, want %d", len(rowEQ(row).GainsDB), len(eqBandDefs))
 	}
 
 	// Add a new row and verify EQ is initialized
@@ -68,8 +70,8 @@ func TestPerInstrumentEQInitialization(t *testing.T) {
 		t.Fatal("expected 2 rows after AddRow")
 	}
 	row2 := g.drum.Rows[1]
-	if len(row2.EQGainsDB) != len(eqBandDefs) {
-		t.Errorf("new row EQGainsDB not initialized: got %d, want %d", len(row2.EQGainsDB), len(eqBandDefs))
+	if len(rowEQ(row2).GainsDB) != len(eqBandDefs) {
+		t.Errorf("new row EQGainsDB not initialized: got %d, want %d", len(rowEQ(row2).GainsDB), len(eqBandDefs))
 	}
 }
 
@@ -80,7 +82,7 @@ func TestPerInstrumentEQChannelSelection(t *testing.T) {
 	g.Layout(640, 480)
 
 	// Default should be master
-	if g.drum.activeEQChannel() != "main" {
+	if g.drum.activeEQChannel() != channel.Master {
 		t.Errorf("default active channel should be 'main', got %q", g.drum.activeEQChannel())
 	}
 
@@ -89,14 +91,14 @@ func TestPerInstrumentEQChannelSelection(t *testing.T) {
 	inst := g.drum.Rows[1].Instrument
 
 	// Switch to per-instrument channel
-	g.drum.setEQActiveChannel(inst)
-	if g.drum.activeEQChannel() != inst {
+	g.drum.setEQActiveChannel(channel.Of(inst))
+	if g.drum.activeEQChannel() != channel.Of(inst) {
 		t.Errorf("active channel should be %q, got %q", inst, g.drum.activeEQChannel())
 	}
 
 	// Switch back to master
-	g.drum.setEQActiveChannel("main")
-	if g.drum.activeEQChannel() != "main" {
+	g.drum.setEQActiveChannel(channel.Master)
+	if g.drum.activeEQChannel() != channel.Master {
 		t.Errorf("active channel should be 'main', got %q", g.drum.activeEQChannel())
 	}
 }
@@ -108,16 +110,16 @@ func TestPerInstrumentEQCycle(t *testing.T) {
 	g.Layout(640, 480)
 
 	// Start at master
-	g.drum.setEQActiveChannel("main")
+	g.drum.setEQActiveChannel(channel.Master)
 
 	// Add two rows with different instruments
 	g.drum.AddRow()
 	g.drum.AddRow()
 
 	// Rename instruments to be unique for the test
-	g.drum.Rows[0].Instrument = "kick"
-	g.drum.Rows[1].Instrument = "hihat"
-	g.drum.Rows[2].Instrument = "snare"
+	g.drum.Rows[0].Instrument = roster.Kick
+	g.drum.Rows[1].Instrument = roster.Hihat
+	g.drum.Rows[2].Instrument = roster.Snare
 
 	inst0 := g.drum.Rows[0].Instrument
 	inst1 := g.drum.Rows[1].Instrument
@@ -125,25 +127,25 @@ func TestPerInstrumentEQCycle(t *testing.T) {
 
 	// Cycle: main -> inst0
 	g.drum.cycleEQChannel()
-	if g.drum.activeEQChannel() != inst0 {
+	if g.drum.activeEQChannel() != channel.Of(inst0) {
 		t.Errorf("after first cycle, expected %q, got %q", inst0, g.drum.activeEQChannel())
 	}
 
 	// Cycle: inst0 -> inst1
 	g.drum.cycleEQChannel()
-	if g.drum.activeEQChannel() != inst1 {
+	if g.drum.activeEQChannel() != channel.Of(inst1) {
 		t.Errorf("after second cycle, expected %q, got %q", inst1, g.drum.activeEQChannel())
 	}
 
 	// Cycle: inst1 -> inst2
 	g.drum.cycleEQChannel()
-	if g.drum.activeEQChannel() != inst2 {
+	if g.drum.activeEQChannel() != channel.Of(inst2) {
 		t.Errorf("after third cycle, expected %q, got %q", inst2, g.drum.activeEQChannel())
 	}
 
 	// Cycle: inst2 -> main (wrap around)
 	g.drum.cycleEQChannel()
-	if g.drum.activeEQChannel() != "main" {
+	if g.drum.activeEQChannel() != channel.Master {
 		t.Errorf("after fourth cycle, expected 'main', got %q", g.drum.activeEQChannel())
 	}
 }
@@ -159,8 +161,8 @@ func TestPerInstrumentEQDeleteRowResetsChannel(t *testing.T) {
 	inst := g.drum.Rows[1].Instrument
 
 	// Select that row's channel
-	g.drum.setEQActiveChannel(inst)
-	if g.drum.activeEQChannel() != inst {
+	g.drum.setEQActiveChannel(channel.Of(inst))
+	if g.drum.activeEQChannel() != channel.Of(inst) {
 		t.Errorf("active channel should be %q, got %q", inst, g.drum.activeEQChannel())
 	}
 
@@ -168,7 +170,7 @@ func TestPerInstrumentEQDeleteRowResetsChannel(t *testing.T) {
 	g.drum.DeleteRow(1)
 
 	// Channel should reset to master
-	if g.drum.activeEQChannel() != "main" {
+	if g.drum.activeEQChannel() != channel.Master {
 		t.Errorf("after deleting active channel row, should reset to 'main', got %q", g.drum.activeEQChannel())
 	}
 }
@@ -185,9 +187,9 @@ func TestPerInstrumentEQExportImport(t *testing.T) {
 	g.updateBeatInfos()
 
 	// Set non-zero EQ on the first row
-	g.drum.Rows[0].EQGainsDB = make([]float64, len(eqBandDefs))
-	g.drum.Rows[0].EQGainsDB[0] = 6.0  // +6dB on first band
-	g.drum.Rows[0].EQGainsDB[5] = -3.0 // -3dB on sixth band
+	rowEQ(g.drum.Rows[0]).GainsDB = make([]float64, len(eqBandDefs))
+	rowEQ(g.drum.Rows[0]).GainsDB[0] = 6.0  // +6dB on first band
+	rowEQ(g.drum.Rows[0]).GainsDB[5] = -3.0 // -3dB on sixth band
 
 	// Export
 	data, err := g.drum.exportBytes()
@@ -196,7 +198,7 @@ func TestPerInstrumentEQExportImport(t *testing.T) {
 	}
 
 	// Parse and verify
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -232,7 +234,7 @@ func TestPerInstrumentEQNoExportWhenZero(t *testing.T) {
 	g.updateBeatInfos()
 
 	// Ensure all EQ bands are zero
-	g.drum.Rows[0].EQGainsDB = make([]float64, len(eqBandDefs))
+	rowEQ(g.drum.Rows[0]).GainsDB = make([]float64, len(eqBandDefs))
 
 	// Export
 	data, err := g.drum.exportBytes()
@@ -241,7 +243,7 @@ func TestPerInstrumentEQNoExportWhenZero(t *testing.T) {
 	}
 
 	// Parse and verify EQ is not included
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -360,13 +362,13 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 
 	// Add rows with different instruments for the test
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[1].Instrument = "snare"
+	dv.Rows[1].Instrument = roster.Snare
 	dv.Rows[1].Name = "Snare"
 
 	// Verify starting state
-	if dv.eqActiveChannel != "main" {
+	if dv.eqActiveChannel != channel.Master {
 		t.Fatalf("initial active channel should be 'main', got %q", dv.eqActiveChannel)
 	}
 	if dv.eqChannelBtn() == nil {
@@ -437,7 +439,7 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	if dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen()) {
 		t.Fatalf("EQ channel menu did not close after selection")
 	}
-	if dv.eqActiveChannel != "kick" {
+	if dv.eqActiveChannel != channel.Of(roster.Kick) {
 		t.Fatalf("active channel should be 'kick', got %q", dv.eqActiveChannel)
 	}
 	if dv.eqChannelBtn().Text != "Kick" {
@@ -458,13 +460,13 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 
 	// Add rows with different instruments for the test
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[1].Instrument = "snare"
+	dv.Rows[1].Instrument = roster.Snare
 	dv.Rows[1].Name = "Snare"
 
 	// Verify starting state
-	if dv.eqActiveChannel != "main" {
+	if dv.eqActiveChannel != channel.Master {
 		t.Fatalf("initial active channel should be 'main', got %q", dv.eqActiveChannel)
 	}
 	if dv.eqChannelBtn() == nil {
@@ -533,7 +535,7 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 	if dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen()) {
 		t.Fatalf("EQ channel menu did not close after selection via Game.Update()")
 	}
-	if dv.eqActiveChannel != "kick" {
+	if dv.eqActiveChannel != channel.Of(roster.Kick) {
 		t.Fatalf("active channel should be 'kick', got %q", dv.eqActiveChannel)
 	}
 	if dv.eqChannelBtn().Text != "Kick" {
@@ -589,7 +591,7 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 
 	// Add a row
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
 
 	if dv.eqChannelBtn() == nil {
@@ -749,7 +751,7 @@ func TestEQBandMuteExport(t *testing.T) {
 	}
 
 	// Parse and verify
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -784,17 +786,15 @@ func TestPerInstrumentEQBandMute(t *testing.T) {
 	// Add a row and set up per-instrument mute state
 	g.drum.AddRow()
 	row := g.drum.Rows[1]
-	row.Instrument = "snare"
+	row.Instrument = roster.Snare
 
 	// Initialize EQ for the row
-	g.drum.ensureRowEQ(1)
-	g.drum.ensureRowEQMuted(1)
 
 	// Mute a band on the row
-	row.EQBandMuted[3] = true
+	rowEQ(row).BandMuted[3] = true
 
 	// Build bands for this row
-	bands := g.drum.buildEQBands(row.EQGainsDB, row.EQBandMuted)
+	bands := g.drum.buildFullEQBands(rowEQ(row).GainsDB, rowEQ(row).BandMuted, false, 20, false, 20000)
 
 	// Verify the muted band
 	if !bands[3].Muted {
@@ -1012,21 +1012,19 @@ func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 	// Add a row with a UNIQUE instrument (different from existing rows)
 	// The first row already has "snare" as its instrument, so we use "hihat"
 	dv.AddRow()
-	dv.Rows[1].Instrument = "hihat"
+	dv.Rows[1].Instrument = roster.Hihat
 	dv.Rows[1].Name = "HiHat"
 
 	// Initialize EQ for the row
-	dv.ensureRowEQ(1)
-	dv.ensureRowEQMuted(1)
 
 	// Switch to per-instrument channel
-	dv.setEQActiveChannel("hihat")
-	if dv.activeEQChannel() != "hihat" {
+	dv.setEQActiveChannel(channel.Of(roster.Hihat))
+	if dv.activeEQChannel() != channel.Of(roster.Hihat) {
 		t.Fatalf("active channel should be 'hihat', got %q", dv.activeEQChannel())
 	}
 
 	// Verify band 2 starts unmuted
-	if dv.Rows[1].EQBandMuted[2] {
+	if rowEQ(dv.Rows[1]).BandMuted[2] {
 		t.Fatal("band 2 should be unmuted initially")
 	}
 
@@ -1034,7 +1032,7 @@ func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 	dv.toggleEQBandMute(2)
 
 	// Verify mute toggled ON for the per-instrument channel
-	if !dv.Rows[1].EQBandMuted[2] {
+	if !rowEQ(dv.Rows[1]).BandMuted[2] {
 		t.Error("band 2 should be muted after toggle for hihat channel")
 	}
 
@@ -1044,14 +1042,13 @@ func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 	}
 
 	// Row 0 (snare) should be unaffected
-	dv.ensureRowEQMuted(0)
-	if dv.Rows[0].EQBandMuted[2] {
+	if rowEQ(dv.Rows[0]).BandMuted[2] {
 		t.Error("row 0 band 2 should not be muted")
 	}
 
 	// Toggle again to unmute
 	dv.toggleEQBandMute(2)
-	if dv.Rows[1].EQBandMuted[2] {
+	if rowEQ(dv.Rows[1]).BandMuted[2] {
 		t.Error("band 2 should be unmuted after second toggle")
 	}
 }
@@ -1072,17 +1069,15 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 
 	// Add a row with a unique instrument
 	dv.AddRow()
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.Rows[0].Name = "Kick"
-	dv.Rows[1].Instrument = "snare"
+	dv.Rows[1].Instrument = roster.Snare
 	dv.Rows[1].Name = "Snare"
 
 	// Initialize EQ state for master and rows
 	if len(dv.eqBandMuted()) != len(eqBandDefs) {
 		dv.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
-	dv.ensureRowEQMuted(0)
-	dv.ensureRowEQMuted(1)
 
 	// Skip if mute buttons not initialized
 	if len(dv.eqMuteBtns()) == 0 || dv.eqMuteBtns()[0] == nil {
@@ -1090,15 +1085,15 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 
 	// Start on Master channel
-	dv.setEQActiveChannel("main")
-	if dv.activeEQChannel() != "main" {
+	dv.setEQActiveChannel(channel.Master)
+	if dv.activeEQChannel() != channel.Master {
 		t.Fatalf("active channel should be 'main', got %q", dv.activeEQChannel())
 	}
 
 	// Mute band 0 on Master
 	dv.eqBandMuted()[0] = true
 	// Re-sync after manual change
-	dv.setEQActiveChannel("main")
+	dv.setEQActiveChannel(channel.Master)
 
 	// Verify button 0 shows muted (active style)
 	if dv.eqMuteBtns()[0].Style != EQMuteButtonActiveStyle {
@@ -1106,8 +1101,8 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 
 	// Switch to Kick channel (which has band 0 unmuted)
-	dv.setEQActiveChannel("kick")
-	if dv.activeEQChannel() != "kick" {
+	dv.setEQActiveChannel(channel.Of(roster.Kick))
+	if dv.activeEQChannel() != channel.Of(roster.Kick) {
 		t.Fatalf("active channel should be 'kick', got %q", dv.activeEQChannel())
 	}
 
@@ -1117,9 +1112,9 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 
 	// Mute band 1 on Kick
-	dv.Rows[0].EQBandMuted[1] = true
+	rowEQ(dv.Rows[0]).BandMuted[1] = true
 	// Re-sync after manual change
-	dv.setEQActiveChannel("kick")
+	dv.setEQActiveChannel(channel.Of(roster.Kick))
 
 	// Verify button 1 shows muted on Kick
 	if dv.eqMuteBtns()[1].Style != EQMuteButtonActiveStyle {
@@ -1127,7 +1122,7 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 
 	// Switch back to Master
-	dv.setEQActiveChannel("main")
+	dv.setEQActiveChannel(channel.Master)
 
 	// Verify band 0 still shows muted (Master's state)
 	if dv.eqMuteBtns()[0].Style != EQMuteButtonActiveStyle {
@@ -1200,9 +1195,9 @@ func TestEQ_MutePressWinsOverDBReadoutOverlap(t *testing.T) {
 	rp()
 
 	if !dv.eqBandMuted()[band] {
-		t.Errorf("press in mute/dB overlap must toggle mute, not open the dB editor (band %d)", band)
+		t.Errorf("press in mute/dB overlap must toggle mute, not open the dB wheel (band %d)", band)
 	}
-	if z.paramEditor != nil && z.paramEditor.Active() {
-		t.Errorf("dB editor must NOT open on a mute-button press in the overlap region")
+	if dv.eqWheelPopup != nil && dv.eqWheelPopup.IsOpen() {
+		t.Errorf("dB wheel must NOT open on a mute-button press in the overlap region")
 	}
 }

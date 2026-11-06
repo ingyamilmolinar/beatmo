@@ -59,15 +59,9 @@ func TestWheelLadderHoverTracksRung(t *testing.T) {
 	}
 }
 
-// Finest rung renders at the TOP (scroll up = finer stays true).
-func TestWheelLadderFinestAtTop(t *testing.T) {
-	w, _, b := mkWheelForLadder(t)
-	rungs := w.rungRects()
-	if len(rungs) < 2 {
-		t.Skip("degenerate ladder")
-	}
-	_ = b
-	if !(rungs[0].Min.Y < rungs[len(rungs)-1].Min.Y) {
-		t.Fatal("rung 0 (finest) must be the top pill")
-	}
-}
+// The ladder's vertical ORDER (coarsest rung at the top, so the strip reads the
+// same way as the value barrel beside it) is pinned by
+// TestWheelResolutionLadderCoarsestOnTop and TestWheelResolutionTopPillSelectsCoarsest
+// in mobile_wheel_res_order_test.go. The two tests above deliberately stay
+// order-agnostic: they index rungRects() by LADDER rung, which is the contract
+// that survives the flip.

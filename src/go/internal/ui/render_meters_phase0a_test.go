@@ -107,11 +107,9 @@ func TestSpectrumPhase0a_BarFillsBetweenHits(t *testing.T) {
 
 	// Seed peak state with a recent "hit" pattern in all 10 bands.
 	peaks := &SpectrumPeakState{}
-	for i := range peaks.Peaks {
-		peaks.Peaks[i] = 0.8
-		peaks.Ages[i] = 0
+	for i := range peaks.PeaksDB {
+		peaks.PeaksDB[i] = -20 // dBFS, comfortably above the window floor
 	}
-	peaks.MaxAge = 30
 
 	// Build a silent ChannelMetrics — all FFT bins at the floor.
 	// Provide non-empty FreqBins so the renderer doesn't take its

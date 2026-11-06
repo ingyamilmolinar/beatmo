@@ -70,9 +70,9 @@ func TestSynthCardDraw_NameValueAndDivider(t *testing.T) {
 
 	texts = draw()
 	joined = strings.ToLower(strings.Join(mapKeys(texts), "\n"))
-	wantDivider := strings.ToLower(i18n.T(i18n.KeySynthAdvanced))
+	wantDivider := strings.ToLower(i18n.T(i18n.KeySynthMore))
 	if !strings.Contains(joined, wantDivider) {
-		t.Fatalf("advanced divider label %q not drawn; texts:\n%s", wantDivider, joined)
+		t.Fatalf("More divider label %q not drawn; texts:\n%s", wantDivider, joined)
 	}
 }
 

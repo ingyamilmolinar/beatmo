@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // After registering a WAV matching a missing instrument ID, the row label
@@ -17,10 +20,10 @@ func TestMissingInstrumentStyleResetsOnRegister(t *testing.T) {
 	dv := g.drum
 	dv.refreshInstruments()
 	// Import with missing instrument "myst"
-	exp := exportFile{
-		Version: 1, Subdiv: 32, BPM: 120,
-		Nodes:       []exportNode{{ID: 0, I: 0, J: 0, Type: "regular"}},
-		Instruments: []exportInstrument{{Name: "Myst", ID: "myst", Kind: "builtin", Volume: 1, Origin: 0, Color: "#FFFFFFFF"}},
+	exp := projectFile{
+		Envelope: schema.Current(), Subdiv: 32, BPM: 120,
+		Nodes:       []exportNode{{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular}},
+		Instruments: []exportInstrument{{Name: "Myst", ID: "myst", Kind: kindBuiltin, Volume: 1, Origin: 0, Color: "#FFFFFFFF"}},
 	}
 	data, _ := json.Marshal(exp)
 	if err := g.Import(data); err != nil {

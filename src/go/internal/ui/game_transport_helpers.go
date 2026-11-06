@@ -7,6 +7,13 @@ import (
 // Transport helpers (used by tests to introspect gamestate.State).
 func (g *Game) Playing() bool { return g.state.Playing() }
 
+// playbackReady reports whether the user may start playback. False only while
+// the readiness gate is warming the voice cache after a wholesale invalidation
+// (import / BPM / sample-rate change). The gate is enforced at the single
+// PlayPressed() chokepoint in Update() — NOT inside SetPlaying, which tests,
+// scenes, parity harnesses and the bench drive directly.
+func (g *Game) playbackReady() bool { return g.warmup == nil || g.warmup.Ready() }
+
 func (g *Game) Paused() bool { return g.state.Paused() }
 
 func (g *Game) AppliedBPM() int { return g.state.AppliedBPM() }

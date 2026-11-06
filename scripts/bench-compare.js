@@ -112,6 +112,24 @@ for (const bpm of allBPMs) {
 
 both("");
 
+// ── Playback probe (browser): what the listener actually heard ──
+// Onset-level measurement on the audio thread (src/js/audio_probe_*.js):
+// lag = detected onset − scheduler request; IOI err = rhythm evenness vs the
+// predictor; arrLate = notes that reached audio.js already overdue (the Go
+// sequencer was starved by the main thread); jsQ = request → start() wait.
+if (browser.some((r) => r.probeNotesJudged != null)) {
+  both("## Browser Playback Probe (heard audio)");
+  both("");
+  both("| BPM | Heard/Judged | Silent | Lag p50 | Lag p99 | Late>20ms | IOI err p95 | ArrLate | jsQ p99 | Shifts | Slips | Clicks |");
+  both("|-----|--------------|--------|---------|---------|-----------|-------------|---------|---------|--------|-------|--------|");
+  for (const bpm of allBPMs) {
+    const b = bMap[bpm];
+    if (!b || b.probeNotesJudged == null) continue;
+    both(`| ${bpm} | ${pad(`${b.probeNotesHeard}/${b.probeNotesJudged}`, 12)} | ${pad(b.probeNotesMissed, 6)} | ${pad(fmtMs(b.probeLagIdealP50MS), 7)} | ${pad(fmtMs(b.probeLagIdealP99MS), 7)} | ${pad(b.probeLateOver20, 9)} | ${pad(fmtMs(b.probeIoiErrP95MS), 11)} | ${pad(b.probeArrivedLate, 7)} | ${pad(fmtMs(b.probeJsQueueP99MS), 7)} | ${pad(b.probeLookaheadShifts, 6)} | ${pad(b.probeSlips, 5)} | ${pad(b.probeMasterClicks ?? "N/A", 6)} |`);
+  }
+  both("");
+}
+
 // ── Image metrics ──
 both("## Ebiten Image Metrics");
 both("");
@@ -166,6 +184,13 @@ for (const bpm of allBPMs) {
 
   if (d.schedLagP99MS != null && d.schedLagP99MS > 25)
     issues.push({ severity: "MEDIUM", bpm, msg: `Desktop lagP99 ${d.schedLagP99MS.toFixed(2)}ms > 25ms` });
+
+  if ((b.probeNotesMissed || 0) > 0)
+    issues.push({ severity: "HIGH", bpm, msg: `Browser: ${b.probeNotesMissed} notes silent in the output (playback probe)` });
+  if ((b.probeLateOver20 || 0) > 0)
+    issues.push({ severity: "MEDIUM", bpm, msg: `Browser: ${b.probeLateOver20} notes heard >20ms late (probe lag p99 ${fmt(b.probeLagIdealP99MS, 1)}ms, ${b.probeArrivedLate} arrived late from the sequencer)` });
+  if ((b.probeSlips || 0) > 0)
+    issues.push({ severity: "HIGH", bpm, msg: `Browser: ${b.probeSlips} audio-thread underruns (${fmt(b.probeSlipMS, 1)}ms)` });
 
   if (d.fps && b.fps) {
     const ratio = d.fps / b.fps;

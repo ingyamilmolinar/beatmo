@@ -7,6 +7,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // coverage_fill_test.go closes coverage gaps in helper / accessor files
@@ -195,24 +196,24 @@ func TestEmitNodeAddedPublishesPayload(t *testing.T) {
 	if !ok {
 		t.Fatalf("payload type: %T", e.Payload)
 	}
-	if p.ID != 7 || p.I != 3 || p.J != 4 || p.Type != "mute" {
+	if p.ID != 7 || p.I != 3 || p.J != 4 || p.Type != model.NodeTypeMute {
 		t.Errorf("unexpected payload: %#v", p)
 	}
 }
 
 func TestEmitNodeDeletedPublishesPayload(t *testing.T) {
 	e := awaitEvent(t, hooks.EventNodeDeleted, func() {
-		emitNodeDeleted(model.NodeID(11), 1, 2)
+		emitNodeDeleted(model.NodeID(11), 1, 2, model.NodeTypeMute)
 	})
 	p := e.Payload.(hooks.NodeEdit)
-	if p.ID != 11 || p.I != 1 || p.J != 2 {
+	if p.ID != 11 || p.I != 1 || p.J != 2 || p.Type != model.NodeTypeMute {
 		t.Errorf("payload: %#v", p)
 	}
 }
 
 func TestEmitNodeMovedPublishesPayload(t *testing.T) {
 	e := awaitEvent(t, hooks.EventNodeMoved, func() {
-		emitNodeMoved(model.NodeID(13), 4, 5)
+		emitNodeMoved(model.NodeID(13), 4, 5, model.NodeTypeRegular)
 	})
 	p := e.Payload.(hooks.NodeEdit)
 	if p.ID != 13 || p.I != 4 || p.J != 5 {
@@ -225,7 +226,7 @@ func TestEmitNodeTypeChangedPublishesNames(t *testing.T) {
 		emitNodeTypeChanged(model.NodeID(1), model.NodeTypeRegular, model.NodeTypeSilent)
 	})
 	p := e.Payload.(hooks.NodeTypePayload)
-	if p.OldType != "regular" || p.NewType != "silent" {
+	if p.OldType != model.NodeTypeRegular || p.NewType != model.NodeTypeSilent {
 		t.Errorf("payload: %#v", p)
 	}
 }
@@ -233,15 +234,15 @@ func TestEmitNodeTypeChangedPublishesNames(t *testing.T) {
 func TestEmitNodeParamsChangedCarriesAllFields(t *testing.T) {
 	params := model.NodeParams{
 		Volume: 0.5, Pitch: 1.0, Duration: 2.0,
-		LogicKind: "probability", LogicN: 3, LogicP: 0.7,
-		GrooveKind: "swing", GroovePct: 30,
+		LogicKind: model.LogicProbability, LogicN: 3, LogicP: 0.7,
+		GrooveKind: model.GrooveDelay, GroovePct: 30,
 	}
 	e := awaitEvent(t, hooks.EventNodeParamsChanged, func() {
 		emitNodeParamsChanged(model.NodeID(2), params)
 	})
 	p := e.Payload.(hooks.NodeParamsPayload)
-	if p.ID != 2 || p.Volume != 0.5 || p.LogicKind != "probability" ||
-		p.LogicN != 3 || p.LogicP != 0.7 || p.GrooveKind != "swing" ||
+	if p.ID != 2 || p.Volume != 0.5 || p.LogicKind != model.LogicProbability ||
+		p.LogicN != 3 || p.LogicP != 0.7 || p.GrooveKind != model.GrooveDelay ||
 		p.GroovePct != 30 {
 		t.Errorf("payload: %#v", p)
 	}
@@ -277,9 +278,9 @@ func TestEmitEdgeAddedDeleted(t *testing.T) {
 }
 
 func TestEmitTransportEvents(t *testing.T) {
-	if e := awaitEvent(t, hooks.EventSeek, func() { emitSeek(42, 336, seekOriginUndo) }); func() bool {
+	if e := awaitEvent(t, hooks.EventSeek, func() { emitSeek(42, 336, hooks.SeekUndo) }); func() bool {
 		p := e.Payload.(hooks.SeekPayload)
-		return p.Beats != 42 || p.Steps != 336 || p.Origin != seekOriginUndo
+		return p.Beats != 42 || p.Steps != 336 || p.Origin != hooks.SeekUndo
 	}() {
 		t.Errorf("seek")
 	}
@@ -296,7 +297,7 @@ func TestEmitTransportEvents(t *testing.T) {
 }
 
 func TestEmitRowEvents(t *testing.T) {
-	if e := awaitEvent(t, hooks.EventRowAdded, func() { emitRowAdded(1, "kick", "Kick") }); e.Payload.(hooks.RowChangePayload).Instrument != "kick" {
+	if e := awaitEvent(t, hooks.EventRowAdded, func() { emitRowAdded(1, roster.Kick, "Kick") }); e.Payload.(hooks.RowChangePayload).Instrument != roster.Kick {
 		t.Errorf("rowAdded")
 	}
 	if e := awaitEvent(t, hooks.EventRowDeleted, func() { emitRowDeleted(2) }); e.Payload.(hooks.RowChangePayload).Row != 2 {
@@ -324,11 +325,11 @@ func TestNodeTypeNameMapping(t *testing.T) {
 		{model.NodeTypeInvisible, "invisible"},
 		{model.NodeTypeSilent, "silent"},
 		{model.NodeTypeMute, "mute"},
-		{model.NodeType(99), "unknown"},
+		{model.NodeType(99), "node type(99)"},
 	}
 	for _, c := range cases {
-		if got := nodeTypeName(c.t); got != c.want {
-			t.Errorf("nodeTypeName(%v): got %q want %q", c.t, got, c.want)
+		if got := c.t.String(); got != c.want {
+			t.Errorf("String(%d): got %q want %q", int(c.t), got, c.want)
 		}
 	}
 }

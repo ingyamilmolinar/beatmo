@@ -5,6 +5,9 @@ package userprefs
 import (
 	"sync"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
 // localStorageStore is the WASM backend. Browser localStorage is
@@ -17,14 +20,13 @@ type localStorageStore struct {
 	logf func(format string, args ...any)
 
 	mu            sync.RWMutex
-	favorites     map[string]bool
-	overrides     map[string]map[string]float64
-	userRecipes   map[string][]byte
+	favorites     map[instrument.ID]bool
 	audioPanel    AudioPanelStateDoc
-	sampleEdits   map[string]map[string]float64
+	sampleEdits   map[instrument.ID]map[string]float64
 	notifications []NotificationRecord
 	knobSteps     map[string]float64
 	language      string
+	theme         theme.UserDoc
 	loaded        bool
 }
 
@@ -59,37 +61,53 @@ func (s *localStorageStore) ensureLoadedLocked() {
 	}
 	ls := localStorageOrNil()
 	if ls.IsUndefined() {
-		s.favorites = map[string]bool{}
-		s.overrides = map[string]map[string]float64{}
-		s.userRecipes = map[string][]byte{}
-		s.sampleEdits = map[string]map[string]float64{}
-		s.knobSteps = map[string]float64{}
-		s.loaded = true
+		s.applySnapshotLocked(emptyPrefsSnapshot())
 		return
 	}
 	if val := ls.Call("getItem", s.key); !val.IsNull() && !val.IsUndefined() {
-		data := []byte(val.String())
-		s.favorites, s.overrides, s.userRecipes, s.audioPanel = parsePrefsV3(data, s.logf)
-		s.sampleEdits = parseSampleEdits(data)
-		s.notifications = parseNotifications(data)
-		s.knobSteps, _ = parseKnobStepsFromPrefs(data)
-		s.language = parseLanguageFromPrefs(data)
-		s.loaded = true
+		// A rejected schema_version yields empty-but-usable state; the
+		// error is swallowed deliberately (parsePrefs already logged it)
+		// because prefs load at boot and must not fail startup.
+		snap, _ := parsePrefs([]byte(val.String()), s.logf)
+		s.applySnapshotLocked(snap)
 		return
 	}
-	s.favorites = map[string]bool{}
-	s.overrides = map[string]map[string]float64{}
-	s.userRecipes = map[string][]byte{}
-	s.sampleEdits = map[string]map[string]float64{}
-	s.knobSteps = map[string]float64{}
+	s.applySnapshotLocked(emptyPrefsSnapshot())
+}
+
+// snapshotLocked captures the live cache as a snapshot for marshalling.
+// Caller must hold s.mu. The maps are handed over by reference — safe
+// because marshalPrefs deep-copies every section through its sanitizers.
+func (s *localStorageStore) snapshotLocked() prefsSnapshot {
+	return prefsSnapshot{
+		favorites:     s.favorites,
+		audioPanel:    s.audioPanel,
+		sampleEdits:   s.sampleEdits,
+		notifications: s.notifications,
+		knobSteps:     s.knobSteps,
+		language:      s.language,
+		theme:         s.theme.Clone(),
+	}
+}
+
+// applySnapshotLocked copies a parsed snapshot into the live cache.
+// Caller must hold s.mu.
+func (s *localStorageStore) applySnapshotLocked(snap prefsSnapshot) {
+	s.favorites = snap.favorites
+	s.audioPanel = snap.audioPanel
+	s.sampleEdits = snap.sampleEdits
+	s.notifications = snap.notifications
+	s.knobSteps = snap.knobSteps
+	s.language = snap.language
+	s.theme = snap.theme
 	s.loaded = true
 }
 
-func (s *localStorageStore) LoadFavorites() (map[string]bool, error) {
+func (s *localStorageStore) LoadFavorites() (map[instrument.ID]bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureLoadedLocked()
-	out := make(map[string]bool, len(s.favorites))
+	out := make(map[instrument.ID]bool, len(s.favorites))
 	for k, v := range s.favorites {
 		if v {
 			out[k] = true
@@ -98,8 +116,8 @@ func (s *localStorageStore) LoadFavorites() (map[string]bool, error) {
 	return out, nil
 }
 
-func (s *localStorageStore) SaveFavorites(favs map[string]bool) error {
-	snap := make(map[string]bool, len(favs))
+func (s *localStorageStore) SaveFavorites(favs map[instrument.ID]bool) error {
+	snap := make(map[instrument.ID]bool, len(favs))
 	for k, v := range favs {
 		if v {
 			snap[k] = true
@@ -111,63 +129,9 @@ func (s *localStorageStore) SaveFavorites(favs map[string]bool) error {
 	return s.persistLocked()
 }
 
-func (s *localStorageStore) SaveRecipeOverride(recipeID string, params map[string]float64) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	s.ensureLoadedLocked()
-	if len(params) == 0 {
-		delete(s.overrides, recipeID)
-	} else {
-		cp := make(map[string]float64, len(params))
-		for k, v := range params {
-			if !isFiniteFloat(v) {
-				continue
-			}
-			cp[k] = v
-		}
-		if len(cp) == 0 {
-			delete(s.overrides, recipeID)
-		} else {
-			s.overrides[recipeID] = cp
-		}
-	}
-	return s.persistLocked()
-}
-
-func (s *localStorageStore) DeleteRecipeOverride(recipeID string) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	s.ensureLoadedLocked()
-	if _, ok := s.overrides[recipeID]; !ok {
-		s.mu.Unlock()
-		return nil
-	}
-	delete(s.overrides, recipeID)
-	return s.persistLocked()
-}
-
-func (s *localStorageStore) LoadRecipeOverrides() (map[string]map[string]float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	out := make(map[string]map[string]float64, len(s.overrides))
-	for id, params := range s.overrides {
-		cp := make(map[string]float64, len(params))
-		for k, v := range params {
-			cp[k] = v
-		}
-		out[id] = cp
-	}
-	return out, nil
-}
-
 // SaveSampleEdit upserts the non-destructive sample-edit descriptor fields
-// for an instrument. Empty fields delete (parity with SaveRecipeOverride).
-func (s *localStorageStore) SaveSampleEdit(instID string, fields map[string]float64) error {
+// for an instrument. Empty fields delete.
+func (s *localStorageStore) SaveSampleEdit(instID instrument.ID, fields map[string]float64) error {
 	if instID == "" {
 		return nil
 	}
@@ -192,7 +156,7 @@ func (s *localStorageStore) SaveSampleEdit(instID string, fields map[string]floa
 	return s.persistLocked()
 }
 
-func (s *localStorageStore) DeleteSampleEdit(instID string) error {
+func (s *localStorageStore) DeleteSampleEdit(instID instrument.ID) error {
 	if instID == "" {
 		return nil
 	}
@@ -206,55 +170,16 @@ func (s *localStorageStore) DeleteSampleEdit(instID string) error {
 	return s.persistLocked()
 }
 
-func (s *localStorageStore) LoadSampleEdits() (map[string]map[string]float64, error) {
+func (s *localStorageStore) LoadSampleEdits() (map[instrument.ID]map[string]float64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureLoadedLocked()
-	out := make(map[string]map[string]float64, len(s.sampleEdits))
+	out := make(map[instrument.ID]map[string]float64, len(s.sampleEdits))
 	for id, fields := range s.sampleEdits {
 		cp := make(map[string]float64, len(fields))
 		for k, v := range fields {
 			cp[k] = v
 		}
-		out[id] = cp
-	}
-	return out, nil
-}
-
-func (s *localStorageStore) SaveUserRecipe(recipeID string, doc []byte) error {
-	if recipeID == "" || len(doc) == 0 {
-		return nil
-	}
-	s.mu.Lock()
-	s.ensureLoadedLocked()
-	cp := make([]byte, len(doc))
-	copy(cp, doc)
-	s.userRecipes[recipeID] = cp
-	return s.persistLocked()
-}
-
-func (s *localStorageStore) DeleteUserRecipe(recipeID string) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	s.ensureLoadedLocked()
-	if _, ok := s.userRecipes[recipeID]; !ok {
-		s.mu.Unlock()
-		return nil
-	}
-	delete(s.userRecipes, recipeID)
-	return s.persistLocked()
-}
-
-func (s *localStorageStore) LoadUserRecipes() (map[string][]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureLoadedLocked()
-	out := make(map[string][]byte, len(s.userRecipes))
-	for id, raw := range s.userRecipes {
-		cp := make([]byte, len(raw))
-		copy(cp, raw)
 		out[id] = cp
 	}
 	return out, nil
@@ -337,11 +262,27 @@ func (s *localStorageStore) SaveLanguage(lang string) error {
 	return s.persistLocked()
 }
 
+// LoadTheme returns the persisted user theme (empty when never set).
+func (s *localStorageStore) LoadTheme() (theme.UserDoc, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	return s.theme.Clone(), nil
+}
+
+// SaveTheme upserts the user theme.
+func (s *localStorageStore) SaveTheme(d theme.UserDoc) error {
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	s.theme = d.Clone()
+	return s.persistLocked()
+}
+
 // persistLocked marshals the current cache to localStorage. Caller must
 // hold s.mu; the lock is released before the JS call so any recover'd
 // panic from setItem doesn't strand the mutex.
 func (s *localStorageStore) persistLocked() error {
-	data, err := marshalPrefsV7(s.favorites, s.overrides, s.userRecipes, s.audioPanel, s.sampleEdits, s.notifications, s.knobSteps, s.language)
+	data, err := marshalPrefs(s.snapshotLocked())
 	s.mu.Unlock()
 	if err != nil {
 		return err

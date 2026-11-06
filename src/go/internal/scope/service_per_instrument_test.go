@@ -4,6 +4,9 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Regression guard for the Chn-tab two-trace scenario the user reported:
@@ -17,7 +20,7 @@ func TestServicePerInstrumentBothTapsActive(t *testing.T) {
 
 	svc.SetTapA(StageSynth)
 	svc.SetTapB(StageInsertFX)
-	svc.SetInstrument("kick")
+	svc.SetInstrument(channel.Of(roster.Kick))
 
 	go svc.Run()
 	defer svc.Stop()
@@ -31,14 +34,14 @@ func TestServicePerInstrumentBothTapsActive(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		svc.PushSamples(StageSynth, "kick", synthBuf)
-		svc.PushSamples(StageInsertFX, "kick", fxBuf)
+		svc.PushSamples(StageSynth, channel.Of(roster.Kick), synthBuf)
+		svc.PushSamples(StageInsertFX, channel.Of(roster.Kick), fxBuf)
 		st := svc.State()
 		if st != nil && st.TapA.Active && st.TapB.Active {
 			if st.TapA.Stage != StageSynth || st.TapB.Stage != StageInsertFX {
 				t.Fatalf("stages: A=%v B=%v; want Synth + InsertFX", st.TapA.Stage, st.TapB.Stage)
 			}
-			if st.TapA.InstID != "kick" || st.TapB.InstID != "kick" {
+			if st.TapA.InstID != channel.Of(roster.Kick) || st.TapB.InstID != channel.Of(roster.Kick) {
 				t.Fatalf("instIDs: A=%q B=%q; want both \"kick\"", st.TapA.InstID, st.TapB.InstID)
 			}
 			// Sanity-check the trace contents differ between A and B so we
@@ -66,7 +69,7 @@ func TestServicePerInstrumentDropsMismatchedAndKeepsMaster(t *testing.T) {
 
 	svc.SetTapA(StageSynth)
 	svc.SetTapB(StageMaster)
-	svc.SetInstrument("kick")
+	svc.SetInstrument(channel.Of(roster.Kick))
 
 	go svc.Run()
 	defer svc.Stop()
@@ -78,8 +81,8 @@ func TestServicePerInstrumentDropsMismatchedAndKeepsMaster(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		svc.PushSamples(StageSynth, "snare", buf) // mismatched per-instrument
-		svc.PushSamples(StageMaster, "master", buf)
+		svc.PushSamples(StageSynth, channel.Of(roster.Snare), buf) // mismatched per-instrument
+		svc.PushSamples(StageMaster, channel.Master, buf)
 		st := svc.State()
 		if st != nil && st.TapB.Active && st.TapB.Stage == StageMaster {
 			if st.TapA.Active {

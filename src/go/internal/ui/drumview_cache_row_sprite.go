@@ -11,32 +11,31 @@ import (
 
 const rowCachePatchMax = 12
 
-// drumCellGradientBands is the band count for the backlit-hardware micro
-// gradient baked into ON drum cells. The gradient draws into the cached row
-// sprite (once per dirty, not per frame), so band fills are served from
-// pixelCache after the first paint — alloc-free in steady state.
-const drumCellGradientBands = 4
-
-// drawDrumCell renders a single drum cell into the row sprite. ON regular
-// cells get a subtle vertical micro-gradient (top slightly lighter → bottom
-// slightly darker) in the instrument color for a backlit-hardware ("808")
-// look; everything else (OFF cells, mute cells, narrow cells, highlights)
-// falls through to the shared DrumCellUI.Draw path unchanged. The gradient is
-// derived from the instrument color via adjustColor so it threads the same hue
-// the graph cluster uses — chrome stays restrained; color is the signal.
+// drawDrumCell renders a single drum cell into the row sprite: a FLAT fill in
+// the instrument color (or the off / mute fill) with the 1 px cell border
+// that separates adjacent hits. DESIGN.md Rule 2 — nothing is 3D: the ON
+// cells used to carry a 4-band "backlit 808" vertical gradient (plus a lighter
+// top strip), which read as banding stripes and a bevel at row height.
 func drawDrumCell(dst *ebiten.Image, rect image.Rectangle, on bool, fillCol color.Color, isMute bool) {
-	// Backlit gradient only applies to ON, non-mute, non-narrow cells where
-	// the gradient bands are actually visible. Otherwise defer to the shared
-	// flat-cell style so muted/off/narrow rendering is byte-identical.
-	if on && !isMute && fillCol != nil && rect.Dx() > narrowCellThreshold && rect.Dy() > drumCellGradientBands {
-		top := adjustColor(fillCol, 22)  // lighter top edge — "lit from above"
-		bot := adjustColor(fillCol, -26) // darker bottom — recessed body
-		fillVerticalGradient(dst, rect, top, bot, drumCellGradientBands)
-		// 1px border keeps cell separation crisp over the gradient body.
-		drawRect(dst, rect, DrumCellUI.Border, false)
+	DrumCellUI.Draw(dst, rect, on, false, fillCol)
+}
+
+// drawDrumCellTyped is drawDrumCell plus the cell type's own mark: a
+// sounding CHORD cell carries three stacked ticks (the voice stack), so
+// chords read at a glance on the timeline — past cells included, since the
+// played tier freezes the type.
+func drawDrumCellTyped(dst *ebiten.Image, rect image.Rectangle, on bool, fillCol color.Color, typ model.NodeType) {
+	drawDrumCell(dst, rect, on, fillCol, typ == model.NodeTypeMute)
+	if !on || typ != model.NodeTypeChord || rect.Dx() < 5 || rect.Dy() < 9 {
 		return
 	}
-	DrumCellUI.Draw(dst, rect, on, false, fillCol)
+	tick := WithAlpha(colBGTop, AlphaStrong)
+	w := rect.Dx() / 2
+	x0 := rect.Min.X + (rect.Dx()-w)/2
+	cy := rect.Min.Y + rect.Dy()/2
+	for _, dy := range [3]int{-3, 0, 3} {
+		drawRect(dst, image.Rect(x0, cy+dy, x0+w, cy+dy+1), tick, true)
+	}
 }
 
 // drawBeatGroupSeparators bakes faint vertical lines at every per-beat group
@@ -66,7 +65,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 	if i < 0 || i >= len(dv.Rows) {
 		return rowRebuildFull
 	}
-	w := dv.timelineRect.Dx()
+	w := dv.cellGridRect.Dx()
 	h := dv.rowHeight()
 	if w <= 0 || h <= 0 {
 		return rowRebuildFull
@@ -150,11 +149,10 @@ func (dv *DrumView) buildRowSprite(i int) int {
 					cellType = dv.Rows[i].CellTypes[j]
 				}
 				fillCol := onCol
-				isMute := cellType == model.NodeTypeMute
-				if isMute {
+				if cellType == model.NodeTypeMute {
 					fillCol = colMuteCell
 				}
-				drawDrumCell(newImg, rect, on, fillCol, isMute)
+				drawDrumCellTyped(newImg, rect, on, fillCol, cellType)
 			}
 			dv.rowCache[i], dv.rowCacheScratch[i] = newImg, dv.rowCache[i]
 			dv.rowCacheLen = dv.Length
@@ -205,11 +203,10 @@ func (dv *DrumView) buildRowSprite(i int) int {
 						}
 						rect := image.Rect(x0, 0, x1, h)
 						fillCol := onCol
-						isMute := typ == model.NodeTypeMute
-						if isMute {
+						if typ == model.NodeTypeMute {
 							fillCol = colMuteCell
 						}
-						drawDrumCell(dv.rowCache[i], rect, step, fillCol, isMute)
+						drawDrumCellTyped(dv.rowCache[i], rect, step, fillCol, typ)
 						// A patched cell starts exactly on its group-boundary
 						// separator column; re-draw the line so the 808 grouping
 						// survives in-place cell edits.
@@ -261,11 +258,10 @@ func (dv *DrumView) buildRowSprite(i int) int {
 				cellType = dv.Rows[i].CellTypes[j]
 			}
 			fillCol := onCol
-			isMute := cellType == model.NodeTypeMute
-			if isMute {
+			if cellType == model.NodeTypeMute {
 				fillCol = colMuteCell
 			}
-			drawDrumCell(img, rect, on, fillCol, isMute)
+			drawDrumCellTyped(img, rect, on, fillCol, cellType)
 		}
 		// Bake faint per-beat group separators so the rack reads as an 808
 		// step row. Drawn after cells so ON-cell gradients don't overpaint
@@ -317,7 +313,7 @@ func (dv *DrumView) rowHasContent(row int) bool {
 	if row < dv.rowOffset || row >= dv.rowOffset+dv.visibleRows() {
 		return false
 	}
-	if dv.timelineRect.Dx() <= 0 || dv.rowHeight() <= 0 {
+	if dv.cellGridRect.Dx() <= 0 || dv.rowHeight() <= 0 {
 		return false
 	}
 	// Sample along the row center.
@@ -327,8 +323,8 @@ func (dv *DrumView) rowHasContent(row int) bool {
 	}
 	// Choose up to 16 sample points across timeline rect.
 	samples := 16
-	if dv.timelineRect.Dx() < samples {
-		samples = dv.timelineRect.Dx()
+	if dv.cellGridRect.Dx() < samples {
+		samples = dv.cellGridRect.Dx()
 	}
 	if samples < 1 {
 		samples = 1
@@ -347,7 +343,7 @@ func (dv *DrumView) rowHasContent(row int) bool {
 	}
 	for i := 0; i < samples; i++ {
 		// Distribute samples evenly across [MinX, MaxX)
-		x := dv.timelineRect.Min.X + (i*dv.timelineRect.Dx())/samples
+		x := dv.cellGridRect.Min.X + (i*dv.cellGridRect.Dx())/samples
 		if readAlpha(x, y) > 0 {
 			return true
 		}

@@ -64,7 +64,7 @@ import path from "path";
 // A distinctive circuit the INV-4 file chooser is filled with (bpm 123).
 const importFile = path.join(os.tmpdir(), "beatmo_realdevice_import_probe.json");
 fs.writeFileSync(importFile, JSON.stringify({
-  version: 1, subdiv: 8, bpm: 123,
+  schema_version: "0.0.1", subdiv: 8, bpm: 123,
   instruments: [{ name: "Kick", id: "kick", kind: "builtin", volume: 1.0, origin: 0, color: "#C87850FF" }],
   nodes: [
     { id: 0, i: 0, j: 0, type: "regular", inputs: [], outputs: [1], volume: 1.0, pitch: 0, duration: 1.0 },

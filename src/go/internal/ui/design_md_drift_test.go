@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestDesignMDDrift pins the YAML front matter in DESIGN.md to the runtime Go
@@ -45,6 +47,8 @@ func TestDesignMDDrift(t *testing.T) {
 		"primary-dim":         colAccentDim,
 		"background":          colBGTop,
 		"surface-1":           colSurface1,
+		"rack-bed":            colRackSurface,
+		"toolbar-bed":         colTransportSurface,
 		"surface-2":           colSurface2,
 		"surface-3":           colSurface3,
 		"on-surface":          colTextPrimary,
@@ -178,12 +182,18 @@ func TestDesignMDDrift(t *testing.T) {
 	}
 
 	wantRounded := map[string]int{
+		// raw scale
 		"xxs": RadiusXXS,
 		"xs":  RadiusXS,
 		"sm":  RadiusSM,
 		"md":  RadiusMD,
 		"lg":  RadiusLG,
 		"xl":  RadiusXL,
+		// role layer — what call sites actually reach for (DESIGN.md "Shapes")
+		"none":      RadiusNone,
+		"control":   RadiusControl,
+		"container": RadiusContainer,
+		"sheet":     RadiusSheet,
 	}
 	for key, want := range wantRounded {
 		raw, ok := gotRounded[key]
@@ -199,6 +209,12 @@ func TestDesignMDDrift(t *testing.T) {
 		if got != want {
 			t.Errorf("DESIGN.md rounded.%s = %dpx but Go has %d", key, got, want)
 		}
+	}
+	// A pill is not a shape this system can express — see DESIGN.md
+	// "The anti-pill invariant". Re-adding the token would let a call site
+	// name one, even though drawRoundedRect would still clamp it.
+	if _, ok := gotRounded["full"]; ok {
+		t.Error("DESIGN.md declares rounded.full; the pill step was retired — use rounded.control, or drawCapsule for a genuine capsule")
 	}
 
 	gotIcon := extractScalarBlock(front, "icon")
@@ -250,7 +266,7 @@ func TestDesignMDDrift(t *testing.T) {
 			t.Errorf("DESIGN.md instrumentDefaults.%s = %q: %v", id, hex, err)
 			continue
 		}
-		got, ok := genInstrumentDefaults[id]
+		got, ok := genInstrumentDefaults[instrument.ID(id)]
 		if !ok {
 			t.Errorf("DESIGN.md instrumentDefaults.%s present in YAML but missing from genInstrumentDefaults", id)
 			continue

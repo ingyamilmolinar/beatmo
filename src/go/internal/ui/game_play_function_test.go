@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSetPlayFunc_FutureWhenSchedulesNotSpawns verifies the migration:
@@ -25,7 +27,7 @@ func TestSetPlayFunc_FutureWhenSchedulesNotSpawns(t *testing.T) {
 	t.Cleanup(restore)
 
 	var fired atomic.Int64
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { fired.Add(1) })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { fired.Add(1) })
 
 	runtime.GC()
 	before := runtime.NumGoroutine()
@@ -35,7 +37,7 @@ func TestSetPlayFunc_FutureWhenSchedulesNotSpawns(t *testing.T) {
 	// sequencer's lookahead. The old code spawned a goroutine per note;
 	// the new code uses one scheduler goroutine + bounded pool.
 	for i := range N {
-		g.playFn("kick", 1.0, 0.020+float64(i)*0.001)
+		g.playFn(roster.Kick, 1.0, 0.020+float64(i)*0.001)
 	}
 
 	// Goroutine count must NOT grow with N. The scheduler owns one goroutine;
@@ -69,10 +71,10 @@ func TestSetPlayFunc_PausedSkipsAtFireTime(t *testing.T) {
 	t.Cleanup(restore)
 
 	var fired atomic.Bool
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { fired.Store(true) })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { fired.Store(true) })
 
 	// Schedule far enough in the future that we have time to pause first.
-	g.playFn("kick", 1.0, 0.080)
+	g.playFn(roster.Kick, 1.0, 0.080)
 	g.SetPausedForTest(true)
 	t.Cleanup(func() { g.SetPausedForTest(false) })
 
@@ -95,10 +97,10 @@ func TestSetPlayFunc_ImmediateWhenBypassesScheduler(t *testing.T) {
 	t.Cleanup(restore)
 
 	var fired atomic.Bool
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { fired.Store(true) })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { fired.Store(true) })
 
 	// 50µs is well under the 100µs epsilon — must dispatch immediately.
-	g.playFn("kick", 1.0, 0.00005)
+	g.playFn(roster.Kick, 1.0, 0.00005)
 
 	if !fired.Load() {
 		t.Fatal("immediate dispatch did not fire synchronously")

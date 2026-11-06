@@ -17,9 +17,9 @@ import (
 // a bare unitless number ("0.40").
 //
 // This file is purely presentational: it never touches audio rendering, the
-// ParamDef ABI, defaults, or the NaN sentinels. It only maps a param id +
-// value + unit to display strings. To enumerate the live param universe it
-// reads audio.RecipeRegistrations() (read-only) — see
+// ParamDef ABI or defaults. It only maps a param id +
+// value + unit to display strings. The live param universe is the modular
+// schema (audio.ModularSynthParamDefs) — see
 // synth_param_display_test.go, which asserts EVERY reachable ParamDef resolves
 // to a non-empty name that is not its raw id.
 
@@ -34,6 +34,11 @@ import (
 // `amp_decay` (seconds). They get distinct names ("Decay ×" vs "Decay") so the
 // pane never shows two captions both reading "Decay".
 var synthParamNameOverrides = map[string]string{
+	// ---- WAV-clone stages (MODAL / STRIKE / NOISE) ----
+	"modal_tune": "Tune", "modal_stretch": "Stretch", "modal_decay_x": "Damping", "modal_bright": "Brightness",
+	"modal_keep": "Partials", "modal_law_a": "Decay Rate", "modal_law_p": "Decay Tilt", "modal_law_b": "Top Damping",
+	"strike_tc": "Contact", "strike_hardness": "Hardness", "strike_click": "Click", "noiseband_level": "Noise Level",
+
 	// ---- generic post knobs ----
 	"pitch":      "Tune",
 	"decay":      "Decay ×", // multiplier — disambiguated from amp_decay (seconds)
@@ -139,6 +144,16 @@ var synthParamNameKeys = map[string]i18n.Key{
 	"body":       i18n.KeySynthControlBody,
 	"brightness": i18n.KeySynthControlBright,
 	"gain":       i18n.KeySynthControlGain,
+
+	// ---- FINISH stage (post ops + output limit) ----
+	"post_pitch":      i18n.KeySynthControlResample,
+	"post_decay":      i18n.KeySynthControlLength,
+	"post_decay_rate": i18n.KeySynthControlFadeSpeed,
+	"post_body":       i18n.KeySynthControlLowBoost,
+	"post_brightness": i18n.KeySynthControlCrisp,
+	"post_darken":     i18n.KeySynthControlDarken,
+	"post_drive":      i18n.KeySynthControlCrunch,
+	"out_clamp":       i18n.KeySynthControlLimit,
 
 	// ---- OSC stage ----
 	"osc_type":   i18n.KeySynthControlWave,
@@ -311,6 +326,16 @@ func synthParamDisplayName(name string) string {
 	// (4) the fallback prettifier.
 	if k, ok := synthParamNameKeys[name]; ok {
 		return i18n.T(k)
+	}
+	// (1b) the family-stage registry's declared label for a gen-bank knob.
+	// It sits above the composed/override/prettify fallbacks because it is an
+	// explicit authored name, not an inference from the id: without it the
+	// gen-bank knobs prettify to "Fm Dec2" / "Cym Env Fast" / "Kick H2"
+	// instead of the wording those families have always used ("Op 2 Decay",
+	// "Attack Decay", "2nd Harmonic"). Below the i18n keys so a translated
+	// label still wins where one exists.
+	if lbl, ok := audio.StageKnobLabelForParam(name); ok {
+		return lbl
 	}
 	if lbl, ok := composeOpLabel(name); ok {
 		return lbl
@@ -497,6 +522,9 @@ func formatSynthParamValueStep(def audio.ParamDef, value, step float64) string {
 	case "pitch":
 		// Generic post pitch ships unitless but is a semitone offset.
 		return formatParamValueStep(value, step, "st")
+	case "modal_keep":
+		// A count of mode rows ("Partials").
+		return strconv.Itoa(int(math.Round(value)))
 	}
 	return formatParamValueStep(value, step, def.Unit)
 }

@@ -28,6 +28,11 @@ type ColorWheelProps struct {
 	// CurrentColor is the row's currently-applied color. When it matches a
 	// palette swatch, that swatch renders a selected ring. Optional.
 	CurrentColor color.Color
+	// CurrentColorFn, when set, supersedes CurrentColor with a LIVE read, so
+	// the selected ring follows a value that changes while the picker is
+	// open (the Theme editor's category swatch under an external theme
+	// change — undo, a circuit load) instead of the value seeded at open.
+	CurrentColorFn func() color.Color
 	// OnColorPick is called when a swatch is picked.
 	OnColorPick func(c color.Color)
 	// OnClose is called when the picker should close.
@@ -38,7 +43,16 @@ type ColorWheelProps struct {
 type ColorWheelState struct {
 	open   bool
 	hold   bool // Capture flag (set when opened, released on mouse-up)
-	picked bool // Set when a color is picked; defers Close() until mouse release
+	picked bool // Set when the CONFIRM gesture fires; defers Close() until mouse release
+	// pressing is true while a pick-press is in flight (applied but not yet
+	// released), so Capturing() keeps reporting ownership for the whole
+	// gesture even when the press did not close the picker.
+	pressing bool
+	// applied is the colour picked during this session, which supersedes
+	// props.CurrentColor. Props are seeded once at open time, so without this
+	// the selected ring and the confirm check would both go stale the moment
+	// the user picks anything.
+	applied color.Color
 }
 
 // swatchCell is one color cell in the grid: its on-screen rect and color.
@@ -51,9 +65,13 @@ type swatchCell struct {
 // to the curated instrument palette.
 type ColorWheelComponent struct {
 	overlayBase
-	props    ColorWheelProps
-	state    ColorWheelState
-	closeBtn *Button
+	props ColorWheelProps
+	state ColorWheelState
+	// card is the shared MenuCard frame (panel, title band, close ×); the
+	// picker is the frame's REFERENCE aesthetic, so the card's bands equal the
+	// picker's own solveSwatchGrid bands (TestMenuCardReproducesSwatchPickerFrame).
+	card     *MenuCard
+	closeBtn *Button // alias of card.CloseBtn() kept for existing call/test sites
 
 	cells     []swatchCell
 	gridRect  image.Rectangle // body region (label gutter + cells)
@@ -62,6 +80,10 @@ type ColorWheelComponent struct {
 	hintRect  image.Rectangle // shade-direction caption band above the cells (empty if suppressed)
 	cellW     int             // cell width (for gap-tolerant hit mapping)
 	cellH     int             // cell height
+
+	// keyNav is the keyboard cursor over the swatch grid — the same MenuKeyNav
+	// the note matrix and the list menus use.
+	keyNav *MenuKeyNav
 }
 
 // Grid layout tuning. 5 columns (shades, light→deep) × 7 rows (hue families)
@@ -132,7 +154,14 @@ func (c *ColorWheelComponent) Props() ColorWheelProps { return c.props }
 // all subsequent input until a mouse release clears it.
 func (c *ColorWheelComponent) Open() {
 	c.state.open = true
+	c.state.applied = nil
+	c.state.pressing = false
 	c.rebuildWheel()
+	// Start the cursor on the colour already applied.
+	if c.keyNav != nil {
+		c.keyNav.Reset()
+	}
+	c.syncCursorToApplied()
 }
 
 // ClearHold clears the hold state (for testing when opened via direct callback).
@@ -145,6 +174,8 @@ func (c *ColorWheelComponent) Close() {
 	c.state.open = false
 	c.state.hold = false
 	c.state.picked = false
+	c.state.pressing = false
+	c.state.applied = nil
 	if c.props.OnClose != nil {
 		c.props.OnClose()
 	}
@@ -153,6 +184,18 @@ func (c *ColorWheelComponent) Close() {
 // IsOpen returns whether the color picker is currently open.
 func (c *ColorWheelComponent) IsOpen() bool {
 	return c.state.open
+}
+
+// currentColor is the colour currently applied to the row: whatever was picked
+// in this session, else the value the picker was opened with.
+func (c *ColorWheelComponent) currentColor() color.Color {
+	if c.state.applied != nil {
+		return c.state.applied
+	}
+	if c.props.CurrentColorFn != nil {
+		return c.props.CurrentColorFn()
+	}
+	return c.props.CurrentColor
 }
 
 // swatches returns the curated palette to render.
@@ -170,162 +213,33 @@ func (c *ColorWheelComponent) rebuildWheel() {
 	c.cells = c.cells[:0]
 	if c.props.AnchorRect.Empty() || c.props.Bounds.Empty() {
 		c.SetBounds(image.Rectangle{})
+		c.card = nil
 		c.closeBtn = nil
 		return
 	}
 
-	bounds := c.props.Bounds
-
-	// Cell edge: floor at the touch minimum on mobile (so each cell is a
-	// 44 px tap target) and at colorSwatchCellMin on desktop. Grow the cell
-	// to use available width when the container is roomy.
-	cellMin := colorSwatchCellMin
-	if tm := TouchMinTarget(); Profile().IsMobile() && tm > cellMin {
-		cellMin = tm
-	}
-
-	// Available width for the grid (mobile favors the full container width).
-	availW := bounds.Dx()
-	if !Profile().UseBottomSheet {
-		// Desktop: don't span the whole rack — pick a sensible panel width.
-		if availW > 360 {
-			availW = 360
-		}
-	}
-	// Left label gutter, sized to the widest family label (see labelGutterW).
-	gutter := c.labelGutterW()
-
-	// Solve cell edge from the available width. The left label gutter is fixed
-	// per-open, so cells only consume the remainder:
-	// availW = 2*pad + gutter + cols*cell + (cols-1)*gap.
-	cellFromW := (availW - 2*colorSwatchPad - gutter - (colorSwatchCols-1)*colorSwatchGap) / colorSwatchCols
-	cell := max(cellMin, cellFromW)
-
-	panelW := 2*colorSwatchPad + gutter + colorSwatchCols*cell + (colorSwatchCols-1)*colorSwatchGap
-	gridH := colorSwatchRows*cell + (colorSwatchRows-1)*colorSwatchGap
-	// Reserve a slim band above the columns for the "Light … Deep" shade hint so
-	// the swatches keep their full size on a roomy panel.
-	panelH := colorSwatchHeader + colorSwatchPad + colorShadeHintH + gridH + colorSwatchPad
-
-	// Clamp the panel size to the container so it always fits fully inside
-	// Bounds (the rack), which keeps it inside the DrumView. The grid-cell
-	// dimensions are re-derived from the FINAL gridRect below, so a shrunk
-	// panel produces correspondingly smaller cells that still tile the body —
-	// never the collapsed-into-the-header failure the naive clamp caused.
-	if panelW > bounds.Dx() {
-		panelW = bounds.Dx()
-	}
-	if panelH > bounds.Dy() {
-		panelH = bounds.Dy()
-	}
-
-	// Position the panel near the anchor, preferring whichever vertical
-	// direction has more room (mirrors the instrument menu), then clamp inside
-	// Bounds.
-	rect := image.Rect(0, 0, panelW, panelH)
-	if Profile().UseBottomSheet {
-		// Mobile: center horizontally, anchor toward the bottom of the container.
-		cx := bounds.Min.X + (bounds.Dx()-panelW)/2
-		rect = rect.Add(image.Pt(cx, bounds.Max.Y-panelH))
-	} else {
-		spaceDown := bounds.Max.Y - c.props.AnchorRect.Max.Y
-		spaceUp := c.props.AnchorRect.Min.Y - bounds.Min.Y
-		originY := c.props.AnchorRect.Max.Y
-		if spaceDown < panelH && spaceUp > spaceDown {
-			originY = c.props.AnchorRect.Min.Y - panelH // open upward
-		}
-		rect = rect.Add(image.Pt(c.props.AnchorRect.Min.X, originY))
-	}
-
-	// Clamp fully inside bounds.
-	if rect.Min.X < bounds.Min.X {
-		rect = rect.Add(image.Pt(bounds.Min.X-rect.Min.X, 0))
-	}
-	if rect.Min.Y < bounds.Min.Y {
-		rect = rect.Add(image.Pt(0, bounds.Min.Y-rect.Min.Y))
-	}
-	if rect.Max.X > bounds.Max.X {
-		rect = rect.Add(image.Pt(bounds.Max.X-rect.Max.X, 0))
-	}
-	if rect.Max.Y > bounds.Max.Y {
-		rect = rect.Add(image.Pt(0, bounds.Max.Y-rect.Max.Y))
-	}
-
-	c.SetBounds(rect)
-
-	// Header + padding adapt down when the panel was clamped short, so the
-	// grid body always keeps a usable height (a tiny rack must still show
-	// clickable cells filling most of the panel rather than collapsing into
-	// the header band). Header is capped at a third of the panel and padding
-	// shrinks to fit so the grid spans the lower ~two-thirds — keeping the
-	// panel's vertical center inside a swatch cell at any clamped size.
-	header := colorSwatchHeader
-	if maxHeader := rect.Dy() / 3; header > maxHeader {
-		header = maxHeader
-	}
-	pad := colorSwatchPad
-	// Cap padding so header+2*pad never eats more than half the panel; this
-	// guarantees the grid body spans the lower half, so the panel's vertical
-	// center always falls inside a swatch cell regardless of clamping.
-	if maxPad := (rect.Dy()/2 - header) / 2; maxPad >= 0 && pad > maxPad {
-		pad = maxPad
-	}
-	if pad < 0 {
-		pad = 0
-	}
-
-	// Header band (title left, close button right).
-	c.titleRect = image.Rect(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y+header)
-	// Grid body below the header (includes the left label gutter).
-	c.gridRect = image.Rect(
-		rect.Min.X+pad,
-		rect.Min.Y+header+pad,
-		rect.Max.X-pad,
-		rect.Max.Y-pad,
-	)
-	// Cell region = grid body minus the left label gutter. Cells are laid out
-	// and hit-tested over this rect (NOT gridRect) so the label gutter is never
-	// a hit area. rebuildWheel and pickColorAt MUST agree on cellsRect.
-	labelW := gutter
-	if maxLabel := c.gridRect.Dx() / 2; labelW > maxLabel {
-		labelW = maxLabel
-	}
-	if labelW < 0 {
-		labelW = 0
-	}
-	c.cellsRect = image.Rect(
-		c.gridRect.Min.X+labelW,
-		c.gridRect.Min.Y,
-		c.gridRect.Max.X,
-		c.gridRect.Max.Y,
-	)
-
-	// Carve the shade-direction hint band off the TOP of the cell region (over
-	// the columns only, so it never collides with the gutter labels). Suppressed
-	// when the panel is clamped so short that reserving it would starve the cells
-	// — tiny racks keep every swatch clickable, matching the header/pad guards.
-	c.hintRect = image.Rectangle{}
-	if c.cellsRect.Dy()-colorShadeHintH >= colorSwatchRows*20 {
-		c.hintRect = image.Rect(
-			c.cellsRect.Min.X,
-			c.cellsRect.Min.Y,
-			c.cellsRect.Max.X,
-			c.cellsRect.Min.Y+colorShadeHintH,
-		)
-		c.cellsRect.Min.Y += colorShadeHintH
-	}
-
-	// Final cell dimensions derived from the laid-out cell region so cells
-	// always fit inside cellsRect (handles any residual clamping).
-	cw := (c.cellsRect.Dx() - (colorSwatchCols-1)*colorSwatchGap) / colorSwatchCols
-	ch := (c.cellsRect.Dy() - (colorSwatchRows-1)*colorSwatchGap) / colorSwatchRows
-	if cw < 1 {
-		cw = 1
-	}
-	if ch < 1 {
-		ch = 1
-	}
-	c.cellW, c.cellH = cw, ch
+	// Shared with the note-matrix picker — see swatch_grid_geometry.go for the
+	// cell-solve / touch-min floor / clamp / re-derive sequence.
+	lay := solveSwatchGrid(swatchGridSpec{
+		Anchor:      c.props.AnchorRect,
+		Bounds:      c.props.Bounds,
+		Cols:        colorSwatchCols,
+		Rows:        colorSwatchRows,
+		Gutter:      c.labelGutterW(),
+		Gap:         colorSwatchGap,
+		Pad:         colorSwatchPad,
+		Header:      colorSwatchHeader,
+		CellMin:     colorSwatchCellMin,
+		DesktopMaxW: 360,
+		BandH:       colorShadeHintH,
+	})
+	c.SetBounds(lay.Panel)
+	c.titleRect = lay.Title
+	c.gridRect = lay.Grid
+	c.cellsRect = lay.Cells
+	c.hintRect = lay.Band
+	c.cellW, c.cellH = lay.CellW, lay.CellH
+	cw, ch := lay.CellW, lay.CellH
 
 	// Lay out the swatch cells over the cell region (row-major: family per row,
 	// shade light→deep per column).
@@ -342,13 +256,24 @@ func (c *ColorWheelComponent) rebuildWheel() {
 		c.cells = append(c.cells, swatchCell{rect: cellRect, col: s.RGBA})
 	}
 
-	// Close button inside the header (top-right) — desktop only, via the shared
-	// newPopupCloseButton helper (nil on mobile, where tap-away closes). Every
-	// draw/hit site already guards `if c.closeBtn != nil`.
-	c.closeBtn = newPopupCloseButton(func() { c.Close() })
-	if c.closeBtn != nil {
-		c.closeBtn.SetRect(closeButtonRect(c.titleRect, SpaceXS))
+	// Frame via the shared MenuCard: panel + title band + close × (desktop
+	// only, per desktopCloseVisible). Rebuilt with the layout so a profile
+	// flip re-evaluates the close-× policy. The title/chip are refreshed at
+	// draw time (cardSpec) because the pick changes them without a relayout.
+	c.card = NewMenuCard(func() { c.Close() })
+	c.card.Layout(lay.Panel, c.cardSpec())
+	c.closeBtn = c.card.CloseBtn()
+}
+
+// cardSpec is the picker's frame content: the current swatch's canonical
+// name + chip when the applied color is on the palette, else "Color".
+func (c *ColorWheelComponent) cardSpec() MenuCardSpec {
+	title := i18n.T(i18n.KeyMenuColor)
+	var chip color.Color
+	if name, col, ok := c.selectedSwatchName(); ok {
+		title, chip = name, col
 	}
+	return MenuCardSpec{Title: title, Swatch: chip}
 }
 
 // pickColorAt returns the palette color for the point (x, y). A direct cell
@@ -409,22 +334,42 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 		return InputCaptured
 	}
 
-	// Close button (highest z-order).
-	if c.closeBtn != nil && c.closeBtn.HandleInputResult(x, y, pressed) != InputIgnored {
+	// Frame controls (close ×) — highest z-order.
+	if c.card != nil && c.card.HandleInput(x, y, pressed) != InputIgnored {
 		return InputConsumed
 	}
 
 	pt := image.Pt(x, y)
 
-	// Pressed on a swatch cell → pick that color (deferred close on release).
+	// Pressed on a swatch cell.
+	//
+	// SELECTING APPLIES, RE-SELECTING CONFIRMS: a different colour is applied
+	// immediately and the picker stays OPEN, so several can be tried without
+	// reopening it; pressing the colour already applied is the confirm gesture
+	// and closes (deferred to the release so the press cannot fall through).
+	// The note-matrix picker follows the same rule.
 	if pressed {
 		if col := c.pickColorAt(x, y); col != nil {
-			if c.props.OnColorPick != nil {
-				c.props.OnColorPick(col)
+			// Cells store color.RGBA; the assertion is total in practice and
+			// falls back to "not equal" (a plain apply) if it ever is not.
+			rgba, _ := col.(color.RGBA)
+			if colorsEqualRGB(c.currentColor(), rgba) {
+				c.state.picked = true // confirm → close on release
+				return InputCaptured
 			}
-			c.state.picked = true
+			c.state.pressing = true
+			// Shared with the keyboard path (applySwatch), so pointer and
+			// Enter cannot diverge.
+			c.applySwatch(rgba)
 			return InputCaptured
 		}
+	}
+
+	// Release after an apply-press: the picker stays open, ready for the next
+	// audition or the confirm re-press.
+	if !pressed && c.state.pressing {
+		c.state.pressing = false
+		return InputConsumed
 	}
 
 	// Pressed inside the panel but not on a swatch → absorb (no pick, no close).
@@ -547,11 +492,11 @@ func isAllDigits(s string) bool {
 // matching the row's currently-applied color, plus ok=false when the current
 // color is off-palette (or unset). Drives the header readout.
 func (c *ColorWheelComponent) selectedSwatchName() (string, color.Color, bool) {
-	if c.props.CurrentColor == nil {
+	if c.currentColor() == nil {
 		return "", nil, false
 	}
 	for _, s := range c.swatches() {
-		if colorsEqualRGB(c.props.CurrentColor, s.RGBA) {
+		if colorsEqualRGB(c.currentColor(), s.RGBA) {
 			return canonicalColorName(s.Name), s.RGBA, true
 		}
 	}
@@ -577,18 +522,13 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		return
 	}
 
-	// Panel chrome + unified menu title. When the row's current color is on the
-	// palette, the header reads it back as a canonical name ("Rose") with a chip
-	// of that color — never a hex code; otherwise it shows the plain "Color" title.
-	drawPanel(dst, r)
-	drawMenuHeaderBand(dst, c.titleRect)
-	titleRect := image.Rect(c.titleRect.Min.X+colorSwatchPad, c.titleRect.Min.Y, c.titleRect.Max.X, c.titleRect.Max.Y)
-	title := i18n.T(i18n.KeyMenuColor)
-	var titleChip color.Color
-	if name, col, ok := c.selectedSwatchName(); ok {
-		title, titleChip = name, col
+	// Frame (panel + title band + close ×) through the shared MenuCard. When
+	// the row's current color is on the palette, the title reads it back as a
+	// canonical name ("Rose") with a chip of that color — never a hex code.
+	if c.card != nil {
+		c.card.Layout(r, c.cardSpec())
+		c.card.Draw(dst)
 	}
-	drawMenuTitle(dst, titleRect, title, titleChip)
 
 	// Shade-direction hint above the columns: "Light" at the light end (left),
 	// "Deep" at the deep end (right). Skipped when the band was suppressed.
@@ -614,22 +554,32 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		DrawTextStyled(dst, label, c.gridRect.Min.X, ly, RoleCaption, colTextSecondary)
 	}
 
-	radius := SpaceXS
-	for _, cell := range c.cells {
+	// Swatches are small controls — control role, bounded by each rect's own
+	// size. The selection ring insets outward/inward, so it is bounded
+	// separately rather than reusing the swatch's radius.
+	cursor := c.KeyCursorSwatch()
+	for i, cell := range c.cells {
+		radius := fitRadius(RadiusControl, cell.rect)
 		drawRoundedRect(dst, cell.rect, cell.col, radius, true)
 		// Subtle border so light swatches read against the panel.
 		drawRoundedRect(dst, cell.rect, colPanelBorder, radius, false)
 		// Selected ring on the swatch matching the row's current color.
-		if colorsEqualRGB(c.props.CurrentColor, cell.col) {
+		if colorsEqualRGB(c.currentColor(), cell.col) {
 			ring := cell.rect.Inset(-2)
-			drawRoundedRect(dst, ring, genColorFocusRing, radius, false)
-			drawRoundedRect(dst, cell.rect.Inset(2), colTextPrimary, radius, false)
+			inner := cell.rect.Inset(2)
+			drawRoundedRect(dst, ring, genColorFocusRing, fitRadius(RadiusControl, ring), false)
+			drawRoundedRect(dst, inner, colTextPrimary, fitRadius(RadiusControl, inner), false)
+		}
+		// Keyboard cursor: a bright inset outline. A swatch IS its colour, so
+		// this cannot be a tint the way the note matrix highlights a keycap —
+		// an outline is the only mark that does not misrepresent the swatch.
+		if i == cursor {
+			in := cell.rect.Inset(3)
+			drawRoundedRect(dst, in, colTextPrimary, fitRadius(RadiusControl, in), false)
+			drawRoundedRect(dst, cell.rect, colTextPrimary, radius, false)
 		}
 	}
 
-	if c.closeBtn != nil {
-		c.closeBtn.Draw(dst)
-	}
 }
 
 // CloseBtn returns the close button (for testing).
@@ -637,7 +587,7 @@ func (c *ColorWheelComponent) CloseBtn() *Button { return c.closeBtn }
 
 // Capturing returns whether the component is capturing input.
 func (c *ColorWheelComponent) Capturing() bool {
-	return c.state.hold || c.state.picked
+	return c.state.hold || c.state.picked || c.state.pressing
 }
 
 // InputBounds returns the picker panel bounds for overlay compatibility.

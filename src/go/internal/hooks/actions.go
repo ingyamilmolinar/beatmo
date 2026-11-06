@@ -98,10 +98,8 @@ var ActionRegistry = []ActionMeta{
 	{EventInsertEffectRemoved, "remove effect", "fx", ScopeDocument, ""},
 	{EventInsertEffectParam, "adjust effect", "fx", ScopeDocument, ""},
 	{EventRowVolume, "set row volume", "row", ScopeDocument, ""},
-	{EventRowPan, "set row pan", "row", ScopeDocument, "import-only; no UI commit site yet"},
 	{EventInsertEffectMoved, "reorder effect", "fx", ScopeDocument, ""},
 	{EventInsertEffectToggled, "toggle effect", "fx", ScopeDocument, ""},
-	{EventSendChanged, "adjust send", "send", ScopeDocument, "import-only; no UI commit site yet"},
 	{EventInstrumentParamsCommitted, "edit synth", "synth", ScopeDocument, ""},
 	{EventInstrumentParamsReset, "reset synth", "synth", ScopeDocument, ""},
 	{EventAudioPanelStateChanged, "change audio-panel view", "panel", ScopeSession, ""},
@@ -114,6 +112,11 @@ var ActionRegistry = []ActionMeta{
 	{EventUIStateApplied, "apply UI state", "uistate", ScopeSession, ""},
 	{EventFavoriteToggled, "toggle favorite", "favorite", ScopeSession, ""},
 	{EventLanguageChanged, "change language", "lang", ScopeSession, ""},
+	{EventThemeChanged, "change theme", "theme", ScopeSession, ""},
+	{EventCircuitThemeChanged, "change circuit theme", "theme", ScopeDocument, ""},
+
+	{EventWarmupStarted, "warm up circuit", "warmup", ScopeSession, ""},
+	{EventWarmupComplete, "circuit ready", "warmup", ScopeSession, ""},
 
 	{EventRecipeSaved, "save recipe", "recipe", ScopeSession, ""},
 	{EventRecipeCreated, "create recipe", "recipe", ScopeSession, ""},

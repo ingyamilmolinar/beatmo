@@ -4,9 +4,13 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+import { readAppInstrumentBlocks } from "./real_input_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
+
+// A bare audio.js page has no instruments until Go pushes their blocks.
+const { snare: SNARE } = await readAppInstrumentBlocks(["snare"]);
 
 // Serve audio.js (and drums.single.js) directly from the repo.
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/rate.html" : req.url;
@@ -36,6 +40,7 @@ const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
 const page = await browser.newPage();
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof window.ensureSynthSample === 'function' && typeof window.resetRenderCache === 'function');
+await page.evaluate((b) => window.setInstrumentBlock("snare", Float64Array.from(b.block), b.seconds, b.amp, b.melodic, b.gateTail, b.fx), SNARE);
 
 const result = await page.evaluate(async () => { // Force a fresh render at the current AudioContext sample rate.
   window.resetRenderCache();
@@ -57,7 +62,7 @@ if (!result.meta) { throw new Error('missing render meta for snare');
 const expectedSR = result.ctxSR ?? 48000;
 if (expectedSR !== result.meta.sr) { throw new Error(`sample rate mismatch: ctx=${result.ctxSR}, render=${result.meta.sr}`);
 }
-const expectedFrames = Math.round(result.meta.sr * 1.0); // snare seconds=1.0
+const expectedFrames = Math.round(result.meta.sr * SNARE.seconds); // the document's render.seconds
 const tolerance = Math.max(16, Math.round(expectedFrames * 0.02)); // ±2%
 if (Math.abs(result.meta.frames - expectedFrames) > tolerance) { throw new Error(`rendered frames off: got ${result.meta.frames}, expected ~${expectedFrames} (±${tolerance})`);
 }

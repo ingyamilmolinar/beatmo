@@ -95,7 +95,7 @@ async function clickNodeAndWaitForMenu(page, x, y, maxRetries = 3) {
     // Poll for nodeMenuOpen (set on the tick after mouse-up)
     try {
       await page.waitForFunction(
-        () => debugGridInputState?.()?.nodeMenuOpen === true,
+        () => debugGridInputState?.()?.nodeMenuOpen === true, null,
         { timeout: 2000 },
       );
       return; // Success

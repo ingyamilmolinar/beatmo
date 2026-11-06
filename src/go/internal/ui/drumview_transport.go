@@ -1,13 +1,16 @@
 package ui
 
 import (
+	"hash/crc32"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func (dv *DrumView) PlayPressed() bool {
@@ -37,6 +40,7 @@ func (dv *DrumView) SetPlaying(p bool) {
 		dv.transportZone.SetPlaying(p)
 		return
 	}
+	dv.playBtn().SetToggled(p) // active state, as TransportZone.SetPlaying
 	// DESIGN.md §0/§5: icon-only button — never raw Unicode in Text.
 	dv.playBtn().Text = ""
 	if p {
@@ -338,7 +342,17 @@ func (dv *DrumView) SetLengthClamped(length int) {
 	}
 }
 
-func (dv *DrumView) SetInstrument(id string) {
+// rowUsesInstrument reports whether any row other than skip plays id.
+func (dv *DrumView) rowUsesInstrument(id instrument.ID, skip int) bool {
+	for i, r := range dv.Rows {
+		if i != skip && r != nil && r.Instrument == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (dv *DrumView) SetInstrument(id instrument.ID) {
 	if len(dv.Rows) == 0 {
 		return
 	}
@@ -357,6 +371,13 @@ func (dv *DrumView) SetInstrument(id string) {
 	if oldID != id && dv.onStructuralMutation != nil {
 		dv.onStructuralMutation("instrument-change")
 	}
+	// A pick is a copy of the library entry (spec 2026-10-04 §6): edits live
+	// with the rows using an instrument, so when no other row uses id, a copy
+	// left edited by rows that have since moved off it starts over from the
+	// library.
+	if oldID != id && id != "" && !dv.rowUsesInstrument(id, dv.selRow) && audio.InstrumentDocModified(id) {
+		audio.ResetInstrumentParams(id)
+	}
 	dv.Rows[dv.selRow].Instrument = id
 	if id != "" {
 		dv.Rows[dv.selRow].Name = dv.computeInstLabel(id)
@@ -365,7 +386,7 @@ func (dv *DrumView) SetInstrument(id string) {
 		if cat, ok := dv.instCatByID[id]; ok {
 			dv.instMenuActiveCat = cat
 			if dv.instMenuActiveByRow == nil {
-				dv.instMenuActiveByRow = map[int]string{}
+				dv.instMenuActiveByRow = map[int]audio.Category{}
 			}
 			dv.instMenuActiveByRow[dv.selRow] = cat
 		}
@@ -400,9 +421,9 @@ func (dv *DrumView) SetInstrument(id string) {
 	dv.onRowInstrumentChanged(dv.selRow, oldID, id)
 }
 
-func (dv *DrumView) AddInstrument(id string) {
+func (dv *DrumView) AddInstrument(id instrument.ID) {
 	dv.instOptions = audio.Instruments()
-	dv.SetInstrument(id)
+	dv.pickInstrument(dv.selRow, id)
 	// If this is a known custom sample id, try to re-register from cache.
 	if dv.samplePath != nil {
 		if p, ok := dv.samplePath[id]; ok && p != "" && !dv.IsInstrumentAvailable(id) {
@@ -420,14 +441,25 @@ func (dv *DrumView) CycleInstrument() {
 	for i, id := range dv.instOptions {
 		if id == cur {
 			next := dv.instOptions[(i+1)%len(dv.instOptions)]
-			dv.SetInstrument(next)
+			dv.pickInstrument(dv.selRow, next)
 			return
 		}
 	}
 }
 
-func (dv *DrumView) registerInstrument(id string) {
-	if id == "" {
+// wavInstrumentID is the id of the WAV instrument the user named name: a user
+// sample id derived from the name alone, so loading another file under the
+// same name updates that instrument. It is never a built-in's id, whatever
+// the name says — a WAV called "Kick" is its own instrument, not the kick.
+func wavInstrumentID(name string) instrument.ID {
+	return instrument.UserSampleID(crc32.ChecksumIEEE([]byte("wav|" + strings.ToLower(name))))
+}
+
+// registerInstrument loads the pending WAV as the instrument the user named
+// name (the text typed in the naming prompt; the instrument's display name).
+func (dv *DrumView) registerInstrument(name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		dv.logger.Debugf("[drumview] ignored empty WAV name")
 		dv.notifyErrorKey(i18n.KeyNotifInstNameEmpty)
 		dv.pendingWAV = ""
@@ -437,39 +469,26 @@ func (dv *DrumView) registerInstrument(id string) {
 		dv.savePressed = false
 		return
 	}
-	existed := false
-	canonicalID := id
-	for _, opt := range dv.instOptions {
-		if strings.EqualFold(opt, id) {
-			existed = true
-			canonicalID = opt
-			break
-		}
-	}
+	id := wavInstrumentID(name)
+	existed := slices.Contains(dv.instOptions, id)
 
-	if err := audio.RegisterWAV(canonicalID, dv.pendingWAV); err == nil {
+	if err := audio.RegisterWAV(id, dv.pendingWAV); err == nil {
 		if dv.samplePath == nil {
-			dv.samplePath = map[string]string{}
+			dv.samplePath = map[instrument.ID]string{}
 		}
-		dv.samplePath[canonicalID] = dv.pendingWAV
+		dv.samplePath[id] = dv.pendingWAV
+		dv.applyInstrumentDisplayName(id, name)
 		dv.refreshInstruments()
 		if dv.IsInstMenuOpen() {
 			dv.refreshInstMenuComponent()
 		}
 		if existed {
-			for row := range dv.Rows {
-				if strings.EqualFold(dv.Rows[row].Instrument, canonicalID) {
-					dv.Rows[row].Instrument = canonicalID
-					// Color stays index-bound (pure sequential series); reloading a
-					// WAV onto an existing row does not re-tint it.
-				}
-			}
-			dv.notifyInfoKey(i18n.KeyNotifUpdatedWAVInst, canonicalID)
+			dv.notifyInfoKey(i18n.KeyNotifUpdatedWAVInst, name)
 		} else {
-			dv.notifyInfoKey(i18n.KeyNotifLoadedWAVInst, canonicalID)
+			dv.notifyInfoKey(i18n.KeyNotifLoadedWAVInst, name)
 		}
-		dv.logger.Debugf("[drumview] loaded user WAV %s (existing=%v)", canonicalID, existed)
-		emitCustomWAVLoaded(canonicalID, existed)
+		dv.logger.Debugf("[drumview] loaded user WAV %s as %s (existing=%v)", name, id, existed)
+		emitCustomWAVLoaded(id, existed)
 	} else {
 		dv.logger.Errorf("[drumview] failed to load WAV: %v", err)
 		dv.notifyErrorKey(i18n.KeyNotifErrLoadWAV, err.Error())

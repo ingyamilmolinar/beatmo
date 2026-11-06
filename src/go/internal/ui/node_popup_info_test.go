@@ -23,7 +23,7 @@ func TestSidebarViewportStartsBelowGrownHeader(t *testing.T) {
 	g.sidebar.Open(a)
 	g.sidebar.layout()
 
-	hdr := g.sidebar.rects["header"]
+	hdr := g.sidebar.rects[sbHeader]
 	realTop := hdr.Max.Y + sidebarGap
 	gridH := g.split.GridH(g.winH)
 
@@ -54,7 +54,7 @@ func TestNodePopupShowsCoordinates(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
 
-	hdr, ok := g.sidebar.rects["header"]
+	hdr, ok := g.sidebar.rects[sbHeader]
 	if !ok || hdr.Empty() {
 		t.Fatal("header rect missing or empty")
 	}
@@ -88,11 +88,11 @@ func TestNodePopupCoordinateLine(t *testing.T) {
 	g.sidebar.layout()
 
 	// The coords rect exists inside the header band and is non-empty.
-	coords, ok := g.sidebar.rects["coords"]
+	coords, ok := g.sidebar.rects[sbCoords]
 	if !ok || coords.Empty() {
 		t.Fatal("coords rect missing or empty")
 	}
-	hdr := g.sidebar.rects["header"]
+	hdr := g.sidebar.rects[sbHeader]
 	if !coords.In(hdr) {
 		t.Fatalf("coords rect %v must sit inside header band %v", coords, hdr)
 	}
@@ -117,7 +117,7 @@ func TestNodePopupHeaderDrawPlaying(t *testing.T) {
 	g.sidebar.layout()
 
 	// Playing reserves a second coord line.
-	coords := g.sidebar.rects["coords"]
+	coords := g.sidebar.rects[sbCoords]
 	if coords.Dy() < 2*StyledTextHeight(RoleCaption) {
 		t.Fatalf("playing coords rect too short for 2 lines: %v (line=%d)", coords, StyledTextHeight(RoleCaption))
 	}
@@ -151,7 +151,7 @@ func TestNodePopupShowsInstrument(t *testing.T) {
 	g.sidebar.layout()
 
 	// Verify header exists
-	hdr, ok := g.sidebar.rects["header"]
+	hdr, ok := g.sidebar.rects[sbHeader]
 	if !ok || hdr.Empty() {
 		t.Fatal("header rect missing")
 	}
@@ -168,7 +168,12 @@ func TestNodePopupShowsInstrument(t *testing.T) {
 	}
 }
 
-func TestNodePopupMoveButtonExists(t *testing.T) {
+// TestNodePopupHasNoMoveButton pins the removal of the "Move Node" row (and its
+// section header) from the main node popup on desktop: moving a node is already
+// covered by copy/paste and by the long-press quick-action popup, so the popup
+// no longer duplicates it. The mobile counterpart is
+// TestMoveButtonRemovedFromMobilePopup.
+func TestNodePopupHasNoMoveButton(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
 	t.Cleanup(g.CloseForTest)
@@ -179,12 +184,10 @@ func TestNodePopupMoveButtonExists(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
 
-	moveRect, ok := g.sidebar.rects["move"]
-	if !ok || moveRect.Empty() {
-		t.Fatal("move button rect missing or empty")
-	}
-	if moveRect.Dx() < 10 || moveRect.Dy() < 10 {
-		t.Fatalf("move button too small: %v", moveRect)
+	for _, id := range []string{"move", "sec-move"} {
+		if _, ok := g.sidebar.laidOutID(id); ok {
+			t.Fatalf("%q should not be laid out in the node popup", id)
+		}
 	}
 }
 

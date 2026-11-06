@@ -3,6 +3,8 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // SetInsertEffects is the project-import boundary for insert chains: a
@@ -22,7 +24,7 @@ func TestSetInsertEffectsSanitizesParams(t *testing.T) {
 	}
 	p0, p1, p2 := dist.Params[0], dist.Params[1], dist.Params[2]
 
-	SetInsertEffects("snare", []EffectSlot{
+	SetInsertEffects(roster.Snare, []EffectSlot{
 		{Type: "distortion", Enabled: true, Params: map[string]float64{
 			p0.Name: p0.Max + 1e9, // far above max → clamp to Max
 			p1.Name: p1.Min - 50,  // below min → clamp to Min
@@ -32,7 +34,7 @@ func TestSetInsertEffectsSanitizesParams(t *testing.T) {
 		{Type: "totally-unknown-fx", Enabled: false, Params: map[string]float64{"weird": 123}},
 	})
 
-	got := GetInsertEffects("snare")
+	got := GetInsertEffects(roster.Snare)
 	if len(got) != 2 {
 		t.Fatalf("chain length: got %d want 2 (unknown types must be kept for forward-compat)", len(got))
 	}

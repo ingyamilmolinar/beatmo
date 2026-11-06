@@ -1,6 +1,8 @@
 // Package scope provides real-time oscilloscope data types and services for A/B pipeline stage comparison.
 package scope
 
+import "github.com/ingyamilmolinar/beatmo/internal/channel"
+
 // Stage represents a named point in the audio signal chain.
 type Stage int
 
@@ -9,7 +11,6 @@ const (
 	StageAntiPop
 	StageInsertFX
 	StageEQ
-	StageSends
 	StageMaster
 	stageCount
 )
@@ -28,8 +29,6 @@ func StageLabel(s Stage) string {
 		return "FX"
 	case StageEQ:
 		return "EQ"
-	case StageSends:
-		return "Bus"
 	case StageMaster:
 		return "Master"
 	default:
@@ -50,14 +49,15 @@ func StageDescription(s Stage) string {
 		return "Insert FX chain (distortion, delay, reverb, …)"
 	case StageEQ:
 		return "EQ (per-band bass/treble shaping)"
-	case StageSends:
-		return "Send bus (reverb/delay return)"
 	case StageMaster:
 		return "Master (post-mix, post-compressor)"
 	default:
 		return ""
 	}
 }
+
+// NumStages is how many stages the pipeline has; arrays indexed by Stage use it.
+const NumStages = int(stageCount)
 
 // AllStages returns all stages in signal-flow order.
 func AllStages() []Stage {
@@ -78,7 +78,7 @@ type State struct {
 // TapData contains captured audio samples and computed metrics for a single tap point.
 type TapData struct {
 	Stage   Stage
-	InstID  string
+	InstID  channel.ID
 	Samples []float64
 	PeakDB  float64
 	RMSDB   float64

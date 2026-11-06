@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // mismatchEntry captures a single scheduler-vs-UI discrepancy for diagnostics.
@@ -90,7 +91,7 @@ type parityAudioEvent struct {
 	Row   int
 	Abs   int
 	When  float64
-	Inst  string
+	Inst  instrument.ID
 	Vol   float64
 	Pitch float64
 	Dur   float64

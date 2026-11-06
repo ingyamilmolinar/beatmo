@@ -40,7 +40,7 @@ func TestNodeSidebarStaysWithinGridPane(t *testing.T) {
 	g.sidebar.Open(g.nodeByID(n.ID))
 	g.sidebar.layout()
 
-	panel, ok := g.sidebar.rects["panel"]
+	panel, ok := g.sidebar.rects[sbPanel]
 	if !ok || panel.Empty() {
 		t.Fatalf("sidebar panel rect missing")
 	}

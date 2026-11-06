@@ -2,8 +2,8 @@
 
 // Package audio — pure-Go WAV decoder stub for the test build.
 // Under -tags test the CGo loadAudio / miniaudio path is absent; this file
-// provides a stdlib-only DecodeWAVToPCM so synthmatch/refs_smoke_test.go can
-// read real 16-bit mono WAVs produced by scripts/aiff_to_wav.py.
+// provides a stdlib-only DecodeWAVToPCM so test-build code paths that decode a
+// WAV (always a GENERATED one -- tests never read reference audio) still work.
 package audio
 
 import (
@@ -13,6 +13,17 @@ import (
 	"math"
 	"os"
 )
+
+// DecodeWAVAtRate is DecodeWAVToPCM converted (ResampleToRate) to rate when
+// the file's own rate differs — the production contract, for the reference
+// tools that read at the corpus rate.
+func DecodeWAVAtRate(path string, rate int) ([]float32, int, error) {
+	buf, sr, err := DecodeWAVToPCM(path)
+	if err != nil || sr == rate {
+		return buf, sr, err
+	}
+	return ResampleToRate(buf, sr, rate), rate, nil
+}
 
 // DecodeWAVToPCM decodes a mono or stereo PCM WAV file to mono float32 at its
 // native sample rate. No resampling is applied; the caller receives the file's

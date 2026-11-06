@@ -4,11 +4,10 @@ package ui
 
 import (
 	"encoding/json"
-	"math"
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
-	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Phase 5: JS exports for the SynthRecipe registry + per-instrument
@@ -45,6 +44,13 @@ func recipeParamDefToJS(d audio.ParamDef) js.Value {
 	if d.Curve != "" {
 		obj.Set("curve", d.Curve)
 	}
+	if len(d.Enum) > 0 {
+		enum := js.Global().Get("Array").New(len(d.Enum))
+		for i, e := range d.Enum {
+			enum.SetIndex(i, e)
+		}
+		obj.Set("enum", enum)
+	}
 	return obj
 }
 
@@ -54,7 +60,7 @@ func (g *Game) initJSSynthRecipe() {
 		if args.Len() < 3 {
 			return nil
 		}
-		id := args.Str(0)
+		id := args.Instrument(0)
 		name := args.Str(1)
 		value := args.Float(2)
 		audio.SetInstrumentParam(id, name, value)
@@ -67,7 +73,7 @@ func (g *Game) initJSSynthRecipe() {
 		if args.Len() < 2 {
 			return nil
 		}
-		id := args.Str(0)
+		id := args.Instrument(0)
 		obj := args.At(1)
 		if obj.Type() != js.TypeObject {
 			return nil
@@ -82,12 +88,58 @@ func (g *Game) initJSSynthRecipe() {
 		return nil
 	}))
 
+	// setSampleEdit(instrumentID, fieldsObject) — applies a non-destructive
+	// Sampler edit descriptor (the flat field map the project file carries under
+	// "sample_edit": start/end, transpose, gain_db, reverse, …) and announces it.
+	// The same audio write the Sampler tab's Save performs; an empty object
+	// clears the edit. Lets browser tests reach the sample-edit half of the
+	// edit → export → import contract without driving the Sampler UI.
+	js.Global().Set("setSampleEdit", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		id := args.Instrument(0)
+		obj := args.At(1)
+		if obj.Type() != js.TypeObject {
+			return nil
+		}
+		fields := map[string]float64{}
+		keys := js.Global().Get("Object").Call("keys", obj)
+		for i := 0; i < keys.Length(); i++ {
+			k := keys.Index(i).String()
+			fields[k] = obj.Get(k).Float()
+		}
+		if len(fields) == 0 {
+			audio.ClearSampleEdit(id)
+			return nil
+		}
+		audio.SetSampleEdit(id, audio.SampleEditFromFields(fields))
+		return nil
+	}))
+
 	// getInstrumentParams(instrumentID) -> {name: value, ...}
+	// getInstrumentDoc(id) → the instrument's project document as JSON ("" when
+	// it has none) — the single source of a synth voice (spec 2026-10-04 §3).
+	js.Global().Set("getInstrumentDoc", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
+			return ""
+		}
+		d, ok := audio.InstrumentDoc(args.Instrument(0))
+		if !ok {
+			return ""
+		}
+		b, err := json.Marshal(d)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}))
+
 	js.Global().Set("getInstrumentParams", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 {
 			return js.Global().Get("Object").New()
 		}
-		id := args.Str(0)
+		id := args.Instrument(0)
 		return recipeParamsToJS(audio.GetInstrumentParams(id))
 	}))
 
@@ -96,7 +148,7 @@ func (g *Game) initJSSynthRecipe() {
 		if args.Len() < 1 {
 			return nil
 		}
-		audio.ResetInstrumentParams(args.Str(0))
+		audio.ResetInstrumentParams(args.Instrument(0))
 		return nil
 	}))
 
@@ -129,311 +181,51 @@ func (g *Game) initJSSynthRecipe() {
 		return true
 	}))
 
-	// saveActiveRecipe(instrumentID) -> recipeID
-	// Mirrors the Synth-tab Save button for an explicit instrument id: folds
-	// the instrument's effective params into the recipe defaults and persists,
-	// keeping the per-instrument overlay so the WebAudio voice cache retains
-	// the just-saved tone. Routes through the same Go core as the button.
+	// saveActiveRecipe(instrumentID) -> library id
+	// Save As "over" for an explicit instrument id: the project copy and its
+	// audio bundle become a new version of the library instrument it comes
+	// from (persisted). The copy itself is untouched, so the voice does not
+	// change. Same Go core as the dialog.
 	js.Global().Set("saveActiveRecipe", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		return saveRecipeForInstrument(args.Str(0))
+		return saveRecipeForInstrument(args.Instrument(0))
 	}))
 
-	// resetActiveRecipe(instrumentID) -> recipeID
-	// Mirrors the Synth-tab Reset button for an explicit instrument id:
-	// restores the recipe's original shipped defaults (undoing any Save) and
-	// clears the per-instrument overlay. Routes through the same Go core.
-	js.Global().Set("resetActiveRecipe", jsFn(func(args jsArgs) any {
-		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
+	// saveActiveRecipeAs(instrumentID, name) -> new library id
+	// Save As "new" for an explicit instrument id: a new
+	// content-addressed user instrument, with the project copy repointed at it.
+	js.Global().Set("saveActiveRecipeAs", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 || args.At(0).Type() != js.TypeString || g.drum == nil {
 			return ""
 		}
-		return resetRecipeForInstrument(args.Str(0))
+		return g.drum.SaveActiveRecipeAsFor(args.Instrument(0), args.Str(1))
 	}))
 
-	// recipeForInstrument(instrumentID) -> recipeID string
-	js.Global().Set("recipeForInstrument", jsFn(func(args jsArgs) any {
+	// instrumentParamDefs(instrumentID) -> [paramDef...]
+	// The knob definitions of the instrument's document — the same schema the
+	// Synth tab builds its controls from (audio.InstrumentParamDefs). [] for an
+	// id without a document.
+	js.Global().Set("instrumentParamDefs", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 {
-			return ""
+			return js.Global().Get("Array").New(0)
 		}
-		return audio.RecipeForInstrument(args.Str(0))
-	}))
-
-	// synthRecipeCatalog() -> { recipeID: { displayName, category, params: [paramDef...] } }
-	// Mirrors insertEffectCatalog() for the recipe registry.
-	js.Global().Set("synthRecipeCatalog", jsFn(func(args jsArgs) any {
-		out := js.Global().Get("Object").New()
-		regs := audio.RecipeRegistrations()
-		for _, id := range audio.RecipeOrder() {
-			r := regs[id]
-			if r == nil {
-				continue
-			}
-			entry := js.Global().Get("Object").New()
-			entry.Set("displayName", r.DisplayName)
-			entry.Set("category", r.Category)
-			params := js.Global().Get("Array").New(len(r.Params))
-			for i, d := range r.Params {
-				params.SetIndex(i, recipeParamDefToJS(d))
-			}
-			entry.Set("params", params)
-			out.Set(id, entry)
+		defs := audio.InstrumentParamDefs(args.Instrument(0))
+		out := js.Global().Get("Array").New(len(defs))
+		for i, d := range defs {
+			out.SetIndex(i, recipeParamDefToJS(d))
 		}
 		return out
 	}))
 
-	// recipeDefaultParams(recipeID) -> {name: value}
-	js.Global().Set("recipeDefaultParams", jsFn(func(args jsArgs) any {
-		if args.Len() < 1 {
-			return js.Global().Get("Object").New()
-		}
-		return recipeParamsToJS(audio.RecipeDefaultParams(args.Str(0)))
-	}))
-
-	// synthMirrorPCMLen() -> int
-	// Stage 5 debug bridge: renders the right-pane synth mirror SYNCHRONOUSLY
-	// for the active synth instrument and returns the resulting PCM sample
-	// count. Lets a browser test verify the WASM↔audio mirror path produces a
-	// non-empty render without reaching into DSP internals. Returns 0 when no
-	// synth instrument is active. (DSP correctness is covered in Go — see the
-	// synth_mirror_test.go suite.)
-	js.Global().Set("synthMirrorPCMLen", jsFn(func(args jsArgs) any {
-		if g.drum == nil {
-			return 0
-		}
-		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
-		if inst == "" {
-			return 0
-		}
-		g.drum.renderSynthMirrorNow(inst)
-		return g.drum.synthMirrorPCMLen()
-	}))
-
-	// synthMirrorPCMChecksum() -> int
-	// Companion to synthMirrorPCMLen: renders the mirror SYNCHRONOUSLY for the
-	// active synth instrument and returns a 32-bit fingerprint of the PCM
-	// CONTENT. A browser test calls it before/after a knob change to prove the
-	// WASM mirror REACTS to params (the fingerprint differs) — a length-only
-	// check would pass even for a frozen render. Returns 0 when no synth is
-	// active. (DSP correctness is covered in Go — see synth_mirror_test.go.)
-	js.Global().Set("synthMirrorPCMChecksum", jsFn(func(args jsArgs) any {
-		if g.drum == nil {
-			return 0
-		}
-		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
-		if inst == "" {
-			return 0
-		}
-		g.drum.renderSynthMirrorNow(inst)
-		return g.drum.synthMirrorPCMChecksum()
-	}))
-
-	g.initJSSynthRecipeManagement()
 	g.initJSKitManagement()
 
-	// Bootstrap-push the shipped defaults of any divergent preset (e.g.
-	// modular-pad) into the JS audio bridge now that window.seedInstrumentDefaults
-	// is defined (audio.js evaluates before the Go runtime starts) and the
-	// recipe registry is populated. Runs for every browser entry point
-	// (production main.wasm + the playtest harness), so a preset whose defaults
-	// diverge from the C render built-ins renders correctly before any edit.
-	// Desktop never reaches here (js build only); its native push hook is a
-	// no-op because the instrument's Render closure already bakes the preset.
-	audio.SeedInstrumentDefaultsToPlatform()
-}
-
-// initJSSynthRecipeManagement wires the Phase 5 user-recipe lifecycle
-// surface: save / create / delete / list / export / import. These are
-// the JS-side handles the Synth tab Save / Save-As buttons mirror —
-// browser tests and any future scripting consumers go through here.
-//
-// All write paths funnel through the same ui.RecipeSaveSink the desktop
-// builds use; if no sink is registered (test harness without
-// SetRecipeSink), the writes silently no-op but the in-process registry
-// still mutates so the user hears the change.
-func (g *Game) initJSSynthRecipeManagement() {
-	// saveUserRecipe(recipeID, paramsObj) — persist the override map as
-	// the new defaults for recipeID. Mirrors the Synth-tab Save button.
-	// Returns the recipe id on success, empty string on failure.
-	js.Global().Set("saveUserRecipe", jsFn(func(args jsArgs) any {
-		if args.Len() < 2 || args.At(0).Type() != js.TypeString {
-			return ""
-		}
-		recipeID := args.Str(0)
-		params := jsObjectToParams(args.At(1))
-		if sink := activeRecipeSink(); sink != nil {
-			_ = sink.SaveRecipeOverride(recipeID, params)
-		}
-		audio.UpdateRecipeDefaultsAndInvalidate(recipeID, params)
-		hooks.PublishKind(hooks.EventRecipeSaved, hooks.RecipePayload{RecipeID: recipeID})
-		return recipeID
-	}))
-
-	// createUserRecipe(baseRecipeID, displayName, paramsObj, instrumentID?) → newID
-	// Registers a new user-scoped recipe id delegating to baseRecipeID;
-	// persists the doc via the sink. Mirrors the Synth-tab Save-As button.
-	// Optional fourth arg rebinds the given instrument id to the new
-	// recipe so the next trigger uses it (matches dv.SaveActiveRecipeAs
-	// semantics — passing the row's instrument id from JS keeps the
-	// rebind in lockstep with what the Save-As button does in Go).
-	js.Global().Set("createUserRecipe", jsFn(func(args jsArgs) any {
-		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
-			return ""
-		}
-		baseID := args.Str(0)
-		displayName := ""
-		if args.Len() >= 2 && args.At(1).Type() == js.TypeString {
-			displayName = args.Str(1)
-		}
-		var seed map[string]float64
-		if args.Len() >= 3 {
-			seed = jsObjectToParams(args.At(2))
-		}
-		rebindInst := ""
-		if args.Len() >= 4 && args.At(3).Type() == js.TypeString {
-			rebindInst = args.Str(3)
-		}
-		if displayName == "" {
-			if reg, ok := audio.RecipeRegistrations()[baseID]; ok && reg != nil {
-				displayName = reg.DisplayName + " (saved)"
-			} else {
-				displayName = baseID + " (saved)"
-			}
-		}
-		newID := generateUserRecipeID(baseID, seed)
-		doc, err := audio.RegisterUserRecipeFromBase(newID, displayName, baseID, seed)
-		if err != nil {
-			return ""
-		}
-		if sink := activeRecipeSink(); sink != nil {
-			if raw, mErr := json.Marshal(doc); mErr == nil {
-				_ = sink.SaveUserRecipe(newID, raw)
-			}
-		}
-		if rebindInst != "" {
-			audio.BindInstrumentToRecipe(rebindInst, newID)
-			audio.ResetInstrumentParams(rebindInst)
-		}
-		hooks.PublishKind(hooks.EventRecipeCreated, hooks.RecipePayload{
-			RecipeID:     newID,
-			BaseRecipe:   baseID,
-			InstrumentID: rebindInst,
-			DisplayName:  displayName,
-		})
-		return newID
-	}))
-
-	// deleteUserRecipe(recipeID) — unregister + ask the sink to drop the
-	// persisted doc + persisted override (idempotent).
-	js.Global().Set("deleteUserRecipe", jsFn(func(args jsArgs) any {
-		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
-			return false
-		}
-		recipeID := args.Str(0)
-		audio.UnregisterRecipeForTest(recipeID)
-		if sink := activeRecipeSink(); sink != nil {
-			if rs, ok := sink.(recipeStoreDeleter); ok {
-				_ = rs.DeleteUserRecipe(recipeID)
-				_ = rs.DeleteRecipeOverride(recipeID)
-			}
-		}
-		hooks.PublishKind(hooks.EventRecipeDeleted, hooks.RecipePayload{RecipeID: recipeID})
-		return true
-	}))
-
-	// listUserRecipes() → [{id, displayName, baseRecipe, origin}]
-	// Iterates the recipe registry and returns the entries whose
-	// category is the user-scope ("user"). Cheap O(N) walk over a
-	// process-global table; called rarely (menu open / picker refresh).
-	js.Global().Set("listUserRecipes", jsFn(func(args jsArgs) any {
-		regs := audio.RecipeRegistrations()
-		arr := js.Global().Get("Array").New(0)
-		i := 0
-		for _, id := range audio.RecipeOrder() {
-			reg := regs[id]
-			if reg == nil || reg.Category != "user" {
-				continue
-			}
-			entry := js.Global().Get("Object").New()
-			entry.Set("id", id)
-			entry.Set("displayName", reg.DisplayName)
-			entry.Set("category", reg.Category)
-			arr.SetIndex(i, entry)
-			i++
-		}
-		return arr
-	}))
-
-	// exportUserRecipe(recipeID) → JSON string ready to share or save
-	// as a .beatmo-preset.json file. Returns empty string if the recipe
-	// isn't registered or marshalling fails.
-	js.Global().Set("exportUserRecipe", jsFn(func(args jsArgs) any {
-		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
-			return ""
-		}
-		recipeID := args.Str(0)
-		reg := audio.RecipeRegistrations()[recipeID]
-		if reg == nil {
-			return ""
-		}
-		// Reconstruct a RecipeDoc from the live registration WITH a resolvable
-		// base + seed so importUserRecipe can round-trip it (the prior version
-		// dropped BaseRecipe/ParamSeed, so the tone was unrecoverable on import).
-		base := audio.RecipeBaseOf(recipeID)
-		if base == "" {
-			base = recipeID // builtin — its own base
-		}
-		effective := audio.RecipeDefaultParams(recipeID)
-		baseShipped := audio.RecipeShippedDefaults(base)
-		seed := map[string]float64{}
-		for k, v := range effective {
-			if s, ok := baseShipped[k]; !ok || math.Abs(v-s) > 1e-9 {
-				seed[k] = v
-			}
-		}
-		doc := audio.RecipeDoc{
-			ID:          reg.ID,
-			DisplayName: reg.DisplayName,
-			Category:    reg.Category,
-			BaseRecipe:  base,
-			ParamDefs:   reg.Params,
-			ParamSeed:   seed,
-			Origin:      audio.OriginUser,
-		}
-		raw, err := json.Marshal(doc)
-		if err != nil {
-			return ""
-		}
-		return string(raw)
-	}))
-
-	// importUserRecipe(jsonString) → newID
-	// Decodes the JSON into a RecipeDoc, registers it via the plugin
-	// path, persists it via the sink. The decoded BaseRecipe must
-	// already be registered or the import is rejected.
-	js.Global().Set("importUserRecipe", jsFn(func(args jsArgs) any {
-		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
-			return ""
-		}
-		raw := []byte(args.Str(0))
-		var doc audio.RecipeDoc
-		if err := json.Unmarshal(raw, &doc); err != nil || doc.ID == "" {
-			return ""
-		}
-		if _, err := audio.RegisterUserRecipeFromBase(doc.ID, doc.DisplayName, doc.BaseRecipe, doc.ParamSeed); err != nil {
-			return ""
-		}
-		if sink := activeRecipeSink(); sink != nil {
-			_ = sink.SaveUserRecipe(doc.ID, raw)
-		}
-		hooks.PublishKind(hooks.EventRecipeCreated, hooks.RecipePayload{
-			RecipeID:    doc.ID,
-			BaseRecipe:  doc.BaseRecipe,
-			DisplayName: doc.DisplayName,
-		})
-		return doc.ID
-	}))
+	// Push every instrument document's flattened block into audio.js now that
+	// window.setInstrumentBlock is defined (audio.js evaluates before the Go
+	// runtime starts). Every later document change pushes itself
+	// (SetInstrumentDoc → platformInstrumentDocChanged).
+	audio.PushAllInstrumentDocsToPlatform()
 }
 
 // jsObjectToParams converts a plain-object JS value (param map) into a
@@ -474,7 +266,7 @@ func kitsJSValue() js.Value {
 		entry.Set("displayName", k.DisplayName)
 		members := js.Global().Get("Object").New()
 		for role, instID := range k.Members {
-			members.Set(role, instID)
+			members.Set(role.String(), string(instID))
 		}
 		entry.Set("members", members)
 		arr.SetIndex(i, entry)
@@ -499,18 +291,24 @@ func (g *Game) initJSKitManagement() {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		kit := audio.Kit{ID: args.Str(0), Members: map[string]string{}}
+		kit := audio.Kit{ID: args.Str(0), Members: map[instrument.Role]instrument.ID{}}
 		if args.Len() >= 2 && args.At(1).Type() == js.TypeString {
 			kit.DisplayName = args.Str(1)
 		}
 		if args.Len() >= 3 && args.At(2).Type() == js.TypeObject {
 			keys := js.Global().Get("Object").Call("keys", args.At(2))
 			for i := 0; i < keys.Length(); i++ {
-				role := keys.Index(i).String()
-				val := args.At(2).Get(role)
-				if val.Type() == js.TypeString {
-					kit.Members[role] = val.String()
+				key := keys.Index(i).String()
+				val := args.At(2).Get(key)
+				role, err := instrument.ParseRole(key)
+				if err != nil || role == instrument.RoleNone || val.Type() != js.TypeString {
+					return ""
 				}
+				id, err := instrument.ParseID(val.String())
+				if err != nil {
+					return ""
+				}
+				kit.Members[role] = id
 			}
 		}
 		audio.RegisterKit(kit)
@@ -523,13 +321,18 @@ func (g *Game) initJSKitManagement() {
 		if args.Len() < 3 || args.At(0).Type() != js.TypeString || args.At(1).Type() != js.TypeString || args.At(2).Type() != js.TypeString {
 			return false
 		}
-		kitID, role, instID := args.Str(0), args.Str(1), args.Str(2)
+		kitID := args.Str(0)
+		role, err := instrument.ParseRole(args.Str(1))
+		instID := args.Instrument(2)
+		if err != nil || role == instrument.RoleNone || instID == "" {
+			return false
+		}
 		k, ok := audio.KitForID(kitID)
 		if !ok {
 			return false
 		}
 		if k.Members == nil {
-			k.Members = map[string]string{}
+			k.Members = map[instrument.Role]instrument.ID{}
 		}
 		k.Members[role] = instID
 		audio.RegisterKit(k)
@@ -558,14 +361,4 @@ func (g *Game) initJSKitManagement() {
 		}
 		return g.drum.ApplyKit(k)
 	}))
-}
-
-// recipeStoreDeleter is the optional subset of ui.RecipeSaveSink that
-// also supports deletion. The sink interface itself is write-only
-// (Save*); deletion lives on the underlying userprefs.RecipeStore.
-// Type-assert at the call site so test sinks that only implement Save*
-// don't need a delete stub.
-type recipeStoreDeleter interface {
-	DeleteUserRecipe(recipeID string) error
-	DeleteRecipeOverride(recipeID string) error
 }

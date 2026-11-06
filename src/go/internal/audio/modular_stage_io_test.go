@@ -20,12 +20,12 @@ import (
 // from amplitude shaping); biquad tests skip the filter's transient head.
 
 // renderMP is the common render harness: 0.25s at 48 kHz.
-func renderMP(t *testing.T, p ModularParams) []float32 {
+func renderMP(t *testing.T, p modularBlock) []float32 {
 	t.Helper()
 	const sr = 48000
 	n := sr / 4
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, p)
+	renderModularBlock(buf, sr, n, p)
 	assertFinite(t, buf)
 	return buf
 }
@@ -35,12 +35,12 @@ const stageIOSampleRate = 48000
 // steadyWave returns params for a steady-state oscillator of the given type:
 // env/filter/drive all disabled so the generator output reaches the buffer
 // untouched. Base pitch is the engine's 220 Hz.
-func steadyWave(oscType float64) ModularParams {
+func steadyWave(oscType float64) modularBlock {
 	p := identityModularParams()
-	p.OscType = oscType
-	p.EnvEnabled = 0
-	p.FilterEnabled = 0
-	p.DriveEnabled = 0
+	p.set("osc_type", oscType)
+	p.set("env_enabled", 0)
+	p.set("filter_enabled", 0)
+	p.set("drive_enabled", 0)
 	return p
 }
 
@@ -163,13 +163,13 @@ func TestModularStageIO_WaveSignatures(t *testing.T) {
 // and the bypassed signal stays flat across the note.
 func TestModularStageIO_EnvelopeStage(t *testing.T) {
 	in := steadyWave(1) // saw input
-	out := in
-	out.EnvEnabled = 1
-	out.AmpAttack = 0.05 // 2400 samples — long enough to measure the ramp
-	out.AmpDecay = 0.05
-	out.AmpSustain = 0.5
-	out.AmpRelease = 0.05
-	out.AmpCurve = 0 // linear, so sustain level is exact
+	out := in.clone()
+	out.set("env_enabled", 1)
+	out.set("amp_attack", 0.05) // 2400 samples — long enough to measure the ramp
+	out.set("amp_decay", 0.05)
+	out.set("amp_sustain", 0.5)
+	out.set("amp_release", 0.05)
+	out.set("amp_curve", 0) // linear, so sustain level is exact
 
 	inBuf := renderMP(t, in)
 	outBuf := renderMP(t, out)
@@ -215,10 +215,10 @@ func TestModularStageIO_FilterStage(t *testing.T) {
 
 	filtered := func(ft, cutoff, q float64) []float32 {
 		p := steadyWave(1)
-		p.FilterEnabled = 1
-		p.FilterType = ft
-		p.FilterCutoff = cutoff
-		p.FilterResonance = q
+		p.set("filter_enabled", 1)
+		p.set("filter_type", ft)
+		p.set("filter_cutoff", cutoff)
+		p.set("filter_resonance", q)
 		return renderMP(t, p)
 	}
 
@@ -261,9 +261,9 @@ func TestModularStageIO_FilterStage(t *testing.T) {
 func TestModularStageIO_DriveStage(t *testing.T) {
 	const fund = 220.0
 	in := steadyWave(0) // pure sine input
-	out := in
-	out.DriveEnabled = 1
-	out.Drive = 0.8
+	out := in.clone()
+	out.set("drive_enabled", 1)
+	out.set("drive", 0.8)
 
 	inBuf := renderMP(t, in)
 	outBuf := renderMP(t, out)
@@ -287,8 +287,8 @@ func TestModularStageIO_DriveStage(t *testing.T) {
 
 func TestModularStageIO_GainStage(t *testing.T) {
 	unity := steadyWave(0)
-	half := unity
-	half.Gain = 0.5
+	half := unity.clone()
+	half.set("gain", 0.5)
 	u := renderMP(t, unity)
 	h := renderMP(t, half)
 	for i := range u {
@@ -309,62 +309,78 @@ func TestModularStageIO_GainStage(t *testing.T) {
 func TestModularStageIO_BypassRemovesParamAuthority(t *testing.T) {
 	cases := []struct {
 		name    string
-		mutateA func(*ModularParams)
-		mutateB func(*ModularParams)
+		mutateA func(modularBlock)
+		mutateB func(modularBlock)
 	}{
 		{
 			name: "env",
-			mutateA: func(p *ModularParams) {
-				p.EnvEnabled = 0
-				p.AmpAttack, p.AmpDecay, p.AmpSustain, p.AmpRelease = 0.001, 0.01, 0.1, 0.01
+			mutateA: func(p modularBlock) {
+				p.set("env_enabled", 0)
+				p.set("amp_attack", 0.001)
+				p.set("amp_decay", 0.01)
+				p.set("amp_sustain", 0.1)
+				p.set("amp_release", 0.01)
 			},
-			mutateB: func(p *ModularParams) {
-				p.EnvEnabled = 0
-				p.AmpAttack, p.AmpDecay, p.AmpSustain, p.AmpRelease = 1, 1, 1, 1
+			mutateB: func(p modularBlock) {
+				p.set("env_enabled", 0)
+				p.set("amp_attack", 1)
+				p.set("amp_decay", 1)
+				p.set("amp_sustain", 1)
+				p.set("amp_release", 1)
 			},
 		},
 		{
 			name: "filter",
-			mutateA: func(p *ModularParams) {
-				p.FilterEnabled = 0
-				p.FilterType, p.FilterCutoff, p.FilterResonance = 0, 300, 12
+			mutateA: func(p modularBlock) {
+				p.set("filter_enabled", 0)
+				p.set("filter_type", 0)
+				p.set("filter_cutoff", 300)
+				p.set("filter_resonance", 12)
 			},
-			mutateB: func(p *ModularParams) {
-				p.FilterEnabled = 0
-				p.FilterType, p.FilterCutoff, p.FilterResonance = 1, 18000, 0.5
+			mutateB: func(p modularBlock) {
+				p.set("filter_enabled", 0)
+				p.set("filter_type", 1)
+				p.set("filter_cutoff", 18000)
+				p.set("filter_resonance", 0.5)
 			},
 		},
 		{
 			name: "drive",
-			mutateA: func(p *ModularParams) {
-				p.DriveEnabled = 0
-				p.Drive = 0.2
+			mutateA: func(p modularBlock) {
+				p.set("drive_enabled", 0)
+				p.set("drive", 0.2)
 			},
-			mutateB: func(p *ModularParams) {
-				p.DriveEnabled = 0
-				p.Drive = 1
+			mutateB: func(p modularBlock) {
+				p.set("drive_enabled", 0)
+				p.set("drive", 1)
 			},
 		},
 		{
 			name: "fm-depths",
-			mutateA: func(p *ModularParams) {
-				p.OscType = 4
-				p.FMEnabled = 0
-				p.FMOp1Depth, p.FMOp2Depth, p.FMOp3Depth, p.FMOp4Depth = 0, 0, 0, 0
+			mutateA: func(p modularBlock) {
+				p.set("osc_type", 4)
+				p.set("fm_enabled", 0)
+				p.set("fm_op1_depth", 0)
+				p.set("fm_op2_depth", 0)
+				p.set("fm_op3_depth", 0)
+				p.set("fm_op4_depth", 0)
 			},
-			mutateB: func(p *ModularParams) {
-				p.OscType = 4
-				p.FMEnabled = 0
-				p.FMOp1Depth, p.FMOp2Depth, p.FMOp3Depth, p.FMOp4Depth = 8, 8, 8, 8
+			mutateB: func(p modularBlock) {
+				p.set("osc_type", 4)
+				p.set("fm_enabled", 0)
+				p.set("fm_op1_depth", 8)
+				p.set("fm_op2_depth", 8)
+				p.set("fm_op3_depth", 8)
+				p.set("fm_op4_depth", 8)
 			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			a := identityModularParams()
-			tc.mutateA(&a)
+			tc.mutateA(a)
 			b := identityModularParams()
-			tc.mutateB(&b)
+			tc.mutateB(b)
 			ha := hashFloat32(renderMP(t, a))
 			hb := hashFloat32(renderMP(t, b))
 			if ha != hb {
@@ -377,10 +393,10 @@ func TestModularStageIO_BypassRemovesParamAuthority(t *testing.T) {
 	// the two ways of "no drive" are the same code path.
 	t.Run("drive-off-equals-zero-drive", func(t *testing.T) {
 		off := identityModularParams()
-		off.DriveEnabled = 0
-		off.Drive = 0.9
+		off.set("drive_enabled", 0)
+		off.set("drive", 0.9)
 		zero := identityModularParams()
-		zero.Drive = 0
+		zero.set("drive", 0)
 		if hashFloat32(renderMP(t, off)) != hashFloat32(renderMP(t, zero)) {
 			t.Errorf("drive bypassed (drive=0.9) != drive=0 enabled — bypass is not a clean no-op")
 		}
@@ -402,16 +418,16 @@ func TestModularStageIO_StageComboMatrix(t *testing.T) {
 			filt := combo&2 != 0
 			drive := combo&4 != 0
 			p := identityModularParams()
-			p.OscType = osc
-			p.Drive = 0.6 // give the drive stage authority when enabled
+			p.set("osc_type", osc)
+			p.set("drive", 0.6) // give the drive stage authority when enabled
 			if !env {
-				p.EnvEnabled = 0
+				p.set("env_enabled", 0)
 			}
 			if !filt {
-				p.FilterEnabled = 0
+				p.set("filter_enabled", 0)
 			}
 			if !drive {
-				p.DriveEnabled = 0
+				p.set("drive_enabled", 0)
 			}
 			name := map[bool]string{true: "on", false: "off"}
 			t.Run(

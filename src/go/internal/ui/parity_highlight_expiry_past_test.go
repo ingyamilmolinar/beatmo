@@ -5,6 +5,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestParityIgnoresExpiredHighlightInPast reproduces the second-form crash:
@@ -65,7 +66,7 @@ func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 		Row:       0,
 		Abs:       139,
 		When:      eventWhen,
-		Inst:      "kick",
+		Inst:      roster.Kick,
 		Vol:       1.0,
 		Dur:       1.0,
 		Gen:       g.audioGen.Load(),

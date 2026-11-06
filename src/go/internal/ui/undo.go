@@ -11,6 +11,12 @@ import (
 type undoEntry struct {
 	label    string
 	snapshot []byte
+	// circuit is the session state that was current with snapshot but is not
+	// part of the document bytes — the open circuit's instrument documents
+	// (Reset's target), which only a circuit OPEN changes. Restored alongside
+	// the snapshot so undoing a template load also resets to the previous
+	// circuit's tones.
+	circuit any
 }
 
 // UndoManager is a session-only, bounded snapshot journal. It is decoupled
@@ -21,10 +27,15 @@ type UndoManager struct {
 	capture   func() []byte
 	restore   func([]byte) error
 	committed []byte
-	undo      []undoEntry
-	redo      []undoEntry
-	maxDepth  int
-	restoring bool
+	// committedCircuit is the session-side companion of committed (see
+	// undoEntry.circuit); captured/restored through SetCircuitState's hooks.
+	committedCircuit any
+	captureCircuit   func() any
+	restoreCircuit   func(any)
+	undo             []undoEntry
+	redo             []undoEntry
+	maxDepth         int
+	restoring        bool
 
 	// Grouping: a compound user gesture (e.g. deleting a mid-circuit node, which
 	// removes the node, its edges, cascades a row, and reconnects neighbours)
@@ -45,6 +56,28 @@ func NewUndoManager(capture func() []byte, restore func([]byte) error) *UndoMana
 		committed: capture(),
 		maxDepth:  100,
 	}
+}
+
+// SetCircuitState installs the capture/restore pair for the session state that
+// travels with each snapshot without being part of it (undoEntry.circuit), and
+// captures the current value as the committed one.
+func (m *UndoManager) SetCircuitState(capture func() any, restore func(any)) {
+	m.captureCircuit, m.restoreCircuit = capture, restore
+	m.committedCircuit = m.circuitNow()
+}
+
+func (m *UndoManager) circuitNow() any {
+	if m.captureCircuit == nil {
+		return nil
+	}
+	return m.captureCircuit()
+}
+
+func (m *UndoManager) applyCircuit(v any) {
+	if m.restoreCircuit != nil {
+		m.restoreCircuit(v)
+	}
+	m.committedCircuit = v
 }
 
 // record snapshots the current (post-change) document and, if it differs from
@@ -81,16 +114,18 @@ func (m *UndoManager) commitNow(label string) {
 		// No valid baseline yet (a prior capture failed). Adopt this snapshot
 		// as the baseline without recording a step to undo "to nothing".
 		m.committed = snap
+		m.committedCircuit = m.circuitNow()
 		return
 	}
 	if bytes.Equal(snap, m.committed) {
 		return
 	}
-	m.undo = append(m.undo, undoEntry{label: label, snapshot: m.committed})
+	m.undo = append(m.undo, undoEntry{label: label, snapshot: m.committed, circuit: m.committedCircuit})
 	if len(m.undo) > m.maxDepth {
 		m.undo = m.undo[len(m.undo)-m.maxDepth:]
 	}
 	m.committed = snap
+	m.committedCircuit = m.circuitNow()
 	m.redo = m.redo[:0]
 }
 
@@ -154,9 +189,10 @@ func (m *UndoManager) Undo() {
 	}
 	e := m.undo[len(m.undo)-1]
 	m.undo = m.undo[:len(m.undo)-1]
-	m.redo = append(m.redo, undoEntry{label: e.label, snapshot: m.committed})
+	m.redo = append(m.redo, undoEntry{label: e.label, snapshot: m.committed, circuit: m.committedCircuit})
 	_ = m.restore(e.snapshot)
 	m.committed = e.snapshot
+	m.applyCircuit(e.circuit)
 }
 
 func (m *UndoManager) Redo() {
@@ -165,9 +201,10 @@ func (m *UndoManager) Redo() {
 	}
 	e := m.redo[len(m.redo)-1]
 	m.redo = m.redo[:len(m.redo)-1]
-	m.undo = append(m.undo, undoEntry{label: e.label, snapshot: m.committed})
+	m.undo = append(m.undo, undoEntry{label: e.label, snapshot: m.committed, circuit: m.committedCircuit})
 	_ = m.restore(e.snapshot)
 	m.committed = e.snapshot
+	m.applyCircuit(e.circuit)
 }
 
 // OnExternalLoad clears history (called by a real user import/scene-apply).
@@ -179,6 +216,7 @@ func (m *UndoManager) OnExternalLoad() {
 	m.undo = m.undo[:0]
 	m.redo = m.redo[:0]
 	m.committed = m.capture()
+	m.committedCircuit = m.circuitNow()
 }
 
 // RecordExternalLoad records a document swap (template / file load) as a SINGLE

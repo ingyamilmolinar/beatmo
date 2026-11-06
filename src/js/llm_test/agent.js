@@ -77,9 +77,9 @@ TOOLS — prefer these deterministic tools over pixel-clicking:
 - checkpoint {name, expect}: assert objective state and get an immediate PASS/FAIL. USE THIS to prove every state change (see CHECKPOINTS).
 
 AUDIO-PANEL CHROME: tab-chrome pills are clickable by name with click_ui — "chrome:slope", "chrome:pre",
-"chrome:k20", "chrome:clearClips", "chrome:logFreq", "chrome:resetHold" (sticky bar) and
+"chrome:k20", "chrome:clearClips", "chrome:detail" (sticky bar) and
 "chrome:overlay"/"chrome:split"/"chrome:diff"/"chrome:ag"/"chrome:freeze" (Chain). Verify the effect with
-checkpoint_export against the matching getter (spectrumSlope/preOverlay/k20View/freqScaleLog/chainDisplayMode/autoGain/scopeFrozen).
+checkpoint_export against the matching getter (k20View/chainDisplayMode/autoGain/scopeFrozen).
 - query_ui: full layout JSON. computer: grid clicks, drags, slider drags, scroll (only where no deterministic tool exists).
 
 The State hint line each turn reports: playing, bpm, rows, nodes, subdiv, camScale, camOffset.
@@ -343,7 +343,7 @@ const READ_EXPORT_TOOL = {
     "Read a value from a WASM JS export (a getter) so you can record a baseline before an " +
     "interaction. Calls globalThis[export](...args) and drills an optional dot/bracket path. " +
     'Examples: {export:"eqControlsSnapshot", path:"gainsDB.3"}, {export:"getInstrumentParams", ' +
-    'args:["kick-1"], path:"osc_tune"}, {export:"spectrumSlope"}, {export:"rowVolume", args:[0]}.',
+    'args:["kick"], path:"amp_decay"}, {export:"k20View"}, {export:"rowVolume", args:[0]}.',
   input_schema: {
     type: "object",
     properties: {
@@ -361,7 +361,7 @@ const CALL_EXPORT_TOOL = {
     "Invoke a WASM SETTER export with args, then apply it (force-ticks the game loop). Use to " +
     "deterministically drive a continuous control through its REAL handler when a pixel-drag won't " +
     "register headless — e.g. EQ band gain or a synth/sampler param — then verify with checkpoint_export. " +
-    'Examples: {export:"setEQBandGain", args:["main",3,6]}, {export:"setInstrumentParam", args:["kick-1","osc_tune",0.5]}.',
+    'Examples: {export:"setEQBandGain", args:["main",3,6]}, {export:"setInstrumentParam", args:["kick","amp_decay",0.5]}.',
   input_schema: {
     type: "object",
     properties: {

@@ -6,6 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // recording_pipeline_accessors_test.go covers the public-ish accessors on
@@ -14,7 +17,7 @@ import (
 // so the construction stays in lockstep with production wiring.
 
 func TestPipelineMIDIEventsCopyOnRead(t *testing.T) {
-	pipe := newTestPipeline(t, []InstrumentMeta{{ID: "kick", Name: "Kick"}})
+	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
 
 	pipe.AppendMIDIEvent(MIDIEvent{Note: 36, Velocity: 100})
@@ -41,7 +44,7 @@ func TestPipelineMIDIEventsCopyOnRead(t *testing.T) {
 }
 
 func TestPipelineAppendMIDIEventConcurrent(t *testing.T) {
-	pipe := newTestPipeline(t, []InstrumentMeta{{ID: "kick", Name: "Kick"}})
+	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
 
 	const goroutines = 4
@@ -65,7 +68,7 @@ func TestPipelineAppendMIDIEventConcurrent(t *testing.T) {
 }
 
 func TestPipelineElapsedAdvances(t *testing.T) {
-	pipe := newTestPipeline(t, []InstrumentMeta{{ID: "kick", Name: "Kick"}})
+	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
 
 	first := pipe.Elapsed()
@@ -81,7 +84,7 @@ func TestPipelineElapsedAdvances(t *testing.T) {
 }
 
 func TestPipelineIsAutoStoppedFalseInitially(t *testing.T) {
-	pipe := newTestPipeline(t, []InstrumentMeta{{ID: "kick", Name: "Kick"}})
+	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
 
 	if pipe.IsAutoStopped() {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
@@ -31,8 +32,10 @@ func (dv *DrumView) exportActiveInstrument() {
 	}
 }
 
-// instrumentFileName turns an instrument display name into a safe download
-// filename with the portable-instrument extension.
+// instrumentFileName turns an instrument display name into a safe, timestamped
+// download filename with the portable-instrument extension. The stamp is what
+// keeps a re-export from colliding in the Downloads folder — see
+// download_name.go for why a colliding name renders differently per browser.
 func instrumentFileName(name string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
@@ -47,7 +50,7 @@ func instrumentFileName(name string) string {
 	if base == "" {
 		base = "instrument"
 	}
-	return base + ".beatmo-inst.json"
+	return stampedFileName(base, ".beatmo-inst.json")
 }
 
 // importInstrumentFromFile opens the file picker and queues the picked bytes for
@@ -114,10 +117,14 @@ func (dv *DrumView) applyInstrumentBundleWithChoice(b *audio.InstrumentBundle, c
 //     (deterministic; covers same-machine round-trips and cached samples);
 //   - file: read the WAV file from a local path (desktop; no-op in the browser);
 //   - url: fetch the WAV over HTTP (desktop; async fetch on browser is a follow-up).
-func (dv *DrumView) wavImportLocators() map[string]audio.WavLocator {
-	return map[string]audio.WavLocator{
+func (dv *DrumView) wavImportLocators() map[audio.WavSourceKind]audio.WavLocator {
+	return map[audio.WavSourceKind]audio.WavLocator{
 		audio.WavSourceLocalStorage: func(ref string) ([]byte, bool) {
-			if rec, ok := audio.UserSamplePCM(ref); ok {
+			id, err := instrument.ParseID(ref)
+			if err != nil {
+				return nil, false
+			}
+			if rec, ok := audio.UserSamplePCM(id); ok {
 				if data, err := wavgen.EncodeWAV(rec.PCM, rec.SampleRate); err == nil {
 					return data, true
 				}

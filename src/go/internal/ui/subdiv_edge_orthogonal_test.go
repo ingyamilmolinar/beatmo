@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
-	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 // edgeInfo captures edge state for comparison before/after subdivision changes.
@@ -82,13 +81,39 @@ func TestSubdivisionResizePreservesOrthogonalEdges(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	// Import the startup demo (subdiv=8)
-	if len(assets_pkg.StartupDemoJSON) == 0 {
-		t.Fatalf("startup demo JSON missing")
+	// A subdiv-8 circuit with horizontal AND vertical edges, negative
+	// coordinates, and grooved nodes (the shape that went diagonal).
+	if err := g.SetSubdivisions(8); err != nil {
+		t.Fatalf("SetSubdivisions(8): %v", err)
 	}
-	if err := g.Import(assets_pkg.StartupDemoJSON); err != nil {
-		t.Fatalf("import startup demo: %v", err)
+	for len(g.drum.Rows) < 2 {
+		g.drum.AddRow()
 	}
+	loop := func(row int, pts [][2]int, grooves map[int]model.NodeParams) {
+		var ns []*uiNode
+		for k, p := range pts {
+			if k == 0 {
+				g.pendingStartRow = row
+			}
+			n := g.tryAddNode(p[0], p[1], model.NodeTypeRegular)
+			if n == nil {
+				t.Fatalf("row %d node %v not created", row, p)
+			}
+			if gp, ok := grooves[k]; ok {
+				g.graph.SetNodeParams(n.ID, gp)
+			}
+			ns = append(ns, n)
+		}
+		for k := range ns {
+			g.addEdge(ns[k], ns[(k+1)%len(ns)])
+		}
+	}
+	loop(0, [][2]int{{0, 0}, {4, 0}, {4, 3}, {0, 3}}, nil)
+	loop(1, [][2]int{{-33, -1}, {-31, -1}, {-31, -5}, {-33, -5}}, map[int]model.NodeParams{
+		0: {Volume: 1, Duration: 1, GrooveKind: model.GrooveRush},
+		1: {Volume: 1, Duration: 1, GrooveKind: model.GrooveDelay, GroovePct: 0.3},
+	})
+	g.updateBeatInfos()
 
 	// Verify initial subdivision is 8
 	if div := g.grid.MaxDiv(); div != 8 {
@@ -97,8 +122,8 @@ func TestSubdivisionResizePreservesOrthogonalEdges(t *testing.T) {
 
 	// Capture all edges before subdivision change
 	edgesBefore := captureEdges(g)
-	if len(edgesBefore) == 0 {
-		t.Fatalf("no edges found in startup demo")
+	if len(edgesBefore) != 8 {
+		t.Fatalf("built %d edges, want 8", len(edgesBefore))
 	}
 
 	// Verify all edges are orthogonal before the change
@@ -168,7 +193,8 @@ func TestSubdivisionResizePreservesOrthogonalEdges(t *testing.T) {
 }
 
 // TestSubdivisionResizeGrooveNodesSpecific creates an isolated test case
-// matching the problematic nodes 25 and 26 from the startup demo.
+// matching the two nodes that first showed the bug (they came from an early
+// startup demo).
 // These nodes have different groove settings that cause diagonal edges
 // after subdivision change.
 func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
@@ -182,7 +208,7 @@ func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 		t.Fatalf("SetSubdivisions(8) failed: %v", err)
 	}
 
-	// Create two nodes matching startup demo nodes 25 and 26:
+	// Create the two nodes:
 	// - Node 25: i=-33, j=-1, groove_kind="rush", groove_pct=0 (default)
 	// - Node 26: i=-31, j=-1, groove_kind="delay", groove_pct=0.3
 	// Both share j=-1 (horizontal edge)
@@ -194,7 +220,7 @@ func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 	}
 	// Set node A params: rush groove with pct=0 (default behavior)
 	if na, ok := g.graph.Nodes[nodeA.ID]; ok {
-		na.Params.GrooveKind = "rush"
+		na.Params.GrooveKind = model.GrooveRush
 		na.Params.GroovePct = 0
 		g.graph.Nodes[nodeA.ID] = na
 	}
@@ -205,7 +231,7 @@ func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 	}
 	// Set node B params: delay groove with pct=0.3
 	if nb, ok := g.graph.Nodes[nodeB.ID]; ok {
-		nb.Params.GrooveKind = "delay"
+		nb.Params.GrooveKind = model.GrooveDelay
 		nb.Params.GroovePct = 0.3
 		g.graph.Nodes[nodeB.ID] = nb
 	}

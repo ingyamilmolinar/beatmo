@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Deterministic release-commit points for continuous controls. The live
@@ -48,50 +49,80 @@ func (dv *DrumView) commitRowVolume(row int) {
 // live to audio (knob drag release, stage enable/disable toggle, numeric value
 // entry). The live audio.SetInstrumentParam runs at the edit site; this records
 // exactly one undo step for the whole gesture. No-op without an instrument.
-func (dv *DrumView) commitInstrumentParams(instID string) {
+func (dv *DrumView) commitInstrumentParams(instID instrument.ID) {
 	if instID == "" {
 		return
 	}
-	recipe := audio.RecipeForInstrument(instID)
-	emitInstrumentParamsCommitted(instID, recipe)
+	// The payload's Recipe field names the library instrument the edited
+	// document came from (its Origin).
+	d, _ := audio.InstrumentDoc(instID)
+	emitInstrumentParamsCommitted(instID, d.Origin)
 	dv.recordUndoStep(hooks.EventInstrumentParamsCommitted)
 }
 
-// commitSamplerEdit applies the Sampler tab's staged edit live to the exported
-// document (audio.SetSampleEdit) and records ONE undo step per gesture. It is
-// the reusable commit point for every sampler edit gesture (trim handles, knobs,
-// reverse/normalize/fade toggles, numeric entry) — the analog of
-// commitInstrumentParams for synth and commitEQBand for EQ.
+// applySamplerEditLive pushes the Sampler tab's CURRENT descriptor to the audio
+// layer so the change is audible on the next trigger — no Enter, no click-away,
+// no Save. Every live sampler write goes through here: knob turn, arrow
+// keypress, trim-handle drag.
 //
-// BOTH sources apply live through the SAME non-destructive descriptor: the edit
-// is an audio.SampleEdit the export round-trips, so each gesture is
-// snapshot-undoable. For a synth the dispatcher applies the descriptor to the
-// fresh recipe render at trigger time; for a WAV / user sample (no recipe)
-// audio.SetSampleEdit re-derives the playable PCM from the stored pristine
-// source and re-registers it (reapplyUserSampleEdit), so the chop updates in
-// real time without waiting for Save. The WAV's pristine PCM is seeded into the
-// user-sample store by ensureSamplerLoaded, which the descriptor decorates. No-op
-// without a captured buffer or capture id.
+// It deliberately announces nothing and records no undo step. Those belong to
+// the GESTURE (commitSamplerEdit), not to each value change — publishing per
+// detent would put one narrative line per notch in the log. Splitting the two
+// is what fixes the original defect: audio.SetSampleEdit was reachable ONLY
+// from the commit, so a turned knob moved its own Value while the audio layer
+// kept playing the old chop until the gesture ended.
+//
+// No-op without a captured buffer or capture id.
+func (dv *DrumView) applySamplerEditLive() {
+	s := &dv.sampler
+	if s.captureID == "" || !s.hasBuffer() {
+		return
+	}
+	audio.ApplySampleEditLive(s.captureID, s.editDescriptor())
+}
+
+// commitSamplerEdit ends a Sampler edit GESTURE: it makes sure the descriptor is
+// applied (idempotent — the live path normally got there first), announces it
+// ONCE, and records ONE undo step. It is the reusable commit point for every
+// sampler edit gesture (trim handles, knobs, reverse/normalize/fade toggles,
+// numeric entry) — the analog of commitInstrumentParams for synth and
+// commitEQBand for EQ.
+//
+// BOTH sources apply through the SAME non-destructive descriptor: the edit is an
+// audio.SampleEdit the export round-trips, so each gesture is snapshot-undoable.
+// For a synth the dispatcher applies the descriptor to the fresh recipe render
+// at trigger time; for a WAV / user sample (no recipe) the apply re-derives the
+// playable PCM from the stored pristine source and re-registers it
+// (reapplyUserSampleEdit), so the chop updates in real time without waiting for
+// Save. The WAV's pristine PCM is seeded into the user-sample store by
+// ensureSamplerLoaded, which the descriptor decorates. No-op without a captured
+// buffer or capture id.
+//
+// The announcement is made HERE rather than inside the audio setter so it fires
+// once per gesture even though the descriptor was already stored live (see
+// audio.ApplySampleEditLive) — and so the emit site is a UI commit site, like
+// every other event in this file.
 func (dv *DrumView) commitSamplerEdit() {
 	s := &dv.sampler
 	if s.captureID == "" || !s.hasBuffer() {
 		return
 	}
-	audio.SetSampleEdit(s.captureID, s.editDescriptor())
+	audio.ApplySampleEditLive(s.captureID, s.editDescriptor())
+	emitSampleEditChanged(s.captureID)
 	dv.recordUndoStep(hooks.EventSampleEditChanged)
 }
 
 // commitEQFilter emits + records a single HPF/LPF enable toggle for the active
 // EQ channel. filter is "hpf" or "lpf". Called once by toggleHPF/toggleLPF
 // after the live applyEQ. Mirrors commitEQBand.
-func (dv *DrumView) commitEQFilter(filter string) {
+func (dv *DrumView) commitEQFilter(filter hooks.EQFilter) {
 	ch := dv.activeEQChannel()
 	var enabled bool
 	var cutoff float64
 	switch filter {
-	case "hpf":
+	case hooks.FilterHPF:
 		enabled, cutoff = dv.activeHPFEnabled(), dv.activeHPFCutoffHz()
-	case "lpf":
+	case hooks.FilterLPF:
 		enabled, cutoff = dv.activeLPFEnabled(), dv.activeLPFCutoffHz()
 	default:
 		return
@@ -112,4 +143,10 @@ func (dv *DrumView) commitEQBandMute(band int) {
 	}
 	emitEQBandChange(ch, band, gainDB)
 	dv.recordUndoStep(hooks.EventEQBandChange)
+}
+
+// commitBPM announces the tempo the BPM value wheel left behind: one log line
+// and one undo step per gesture (the live writes already happened per detent).
+func (dv *DrumView) commitBPM() {
+	emitBPMChange(dv.bpm)
 }

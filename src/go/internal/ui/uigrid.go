@@ -131,6 +131,11 @@ type Button struct {
 	// colButtonBorder when zero.
 	Icon      string
 	IconColor color.Color
+	// specIconSeed is the IconColor SetSpec seeded (nil when the spec has no
+	// iconColor). effectiveIconColor re-reads the spec while IconColor still
+	// equals the seed, so a runtime theme recolors the glyph without losing a
+	// call-site override.
+	specIconSeed color.Color
 	// Highlights contains rune indices in Text to draw with a colored
 	// background, used for fuzzy search match visualization. Only applied
 	// when Icon is empty. Indices that fall outside the clipped text are
@@ -147,6 +152,73 @@ type Button struct {
 	// rather than testing zero, since ComponentID 0 is a valid spec.
 	SpecID    ComponentID
 	hasSpecID bool
+	// SquareCorners, when true, renders the keycap with square (0-radius)
+	// corners instead of the default RadiusSM rounding. Used by the timeline
+	// lock/free keycap, which reads as a solid square block filling the left
+	// strip of the timeline rather than a rounded chip.
+	SquareCorners bool
+	// LeadSwatch, when non-nil, paints a leading identity swatch (the
+	// instrument menu's rounded square, spacing.swatch-md) at the left of the
+	// body and LEFT-aligns the label after it — the "swatch + text" list-row
+	// pattern DESIGN.md names as the gold standard. Used by the rack's row
+	// labels so each row carries its instrument color beside its name.
+	LeadSwatch color.Color
+}
+
+// labelArea returns the rect the label is laid out in and whether it is
+// left-aligned. A LeadSwatch reserves its leading slot; otherwise the label
+// centers inside the body minus the hairline inset.
+func (b *Button) labelArea(cap image.Rectangle) (image.Rectangle, bool) {
+	if b.LeadSwatch != nil {
+		sr := b.leadSwatchRect(cap)
+		gap := SpaceSM
+		if Profile().IsMobile() {
+			gap = SpaceXS // the slim mobile bar needs less air than a square
+		}
+		return image.Rect(sr.Max.X+gap, cap.Min.Y, cap.Max.X-SpaceXS, cap.Max.Y), true
+	}
+	// Centered labels keep a 1 px side margin: the label is clipped only when
+	// it genuinely cannot fit the body. A wider hairline inset turned a single
+	// letter on a narrow chip ("M" on an 18 px mobile toggle) into "...".
+	return image.Rect(cap.Min.X+1, cap.Min.Y, cap.Max.X-1, cap.Max.Y), false
+}
+
+// leadSwatchRect is the LeadSwatch, vertically centered at the body's leading
+// edge: the instrument menu's swatch-md square, or — on a mobile profile,
+// where a narrow rack label cannot spare a square's width — a slim identity
+// bar of the same color (the profile's accent-stripe width).
+func (b *Button) leadSwatchRect(cap image.Rectangle) image.Rectangle {
+	sz := SwatchSizeMD
+	if sz > cap.Dy() {
+		sz = cap.Dy()
+	}
+	sx := cap.Min.X + SpaceSM
+	if Profile().IsMobile() {
+		w := Profile().AccentStripeWidth
+		if w < 2 {
+			w = 2
+		}
+		h := cap.Dy() - 2*SpaceSM
+		if h < sz {
+			h = sz
+		}
+		sx = cap.Min.X + SpaceXS
+		sy := cap.Min.Y + (cap.Dy()-h)/2
+		return image.Rect(sx, sy, sx+w, sy+h)
+	}
+	sy := cap.Min.Y + (cap.Dy()-sz)/2
+	return image.Rect(sx, sy, sx+sz, sy+sz)
+}
+
+// labelOrigin places a label of size (w,h) in the label area: centered, or
+// flush left when the button carries a LeadSwatch.
+func (b *Button) labelOrigin(cap image.Rectangle, w, h int) (int, int) {
+	area, left := b.labelArea(cap)
+	x := area.Min.X + (area.Dx()-w)/2
+	if left {
+		x = area.Min.X
+	}
+	return x, cap.Min.Y + (cap.Dy()-h)/2
 }
 
 // SetSpec assigns a generated ComponentSpec ID to this button. Subsequent
@@ -163,8 +235,25 @@ func (b *Button) SetSpec(id ComponentID) {
 	b.hasSpecID = true
 	if spec := Spec(id); spec.HasIconColor {
 		b.IconColor = spec.IconColor
+		b.specIconSeed = spec.IconColor
 	}
 }
+
+// effectiveIconColor returns the icon tint: a call-site override wins; an
+// icon color seeded from the spec is re-read live so a runtime theme
+// (ApplyTheme rebuilds the spec table) recolors existing buttons.
+func (b *Button) effectiveIconColor() color.Color {
+	if b.hasSpecID && b.specIconSeed != nil && b.IconColor == b.specIconSeed {
+		if spec := Spec(b.SpecID); spec.HasIconColor {
+			return spec.IconColor
+		}
+	}
+	return liveCaptured(b.IconColor)
+}
+
+// effectiveTextColor is the label tint with a captured token resolved live
+// (see liveCaptured); nil when no explicit color was set.
+func (b *Button) effectiveTextColor() color.Color { return liveCaptured(b.TextColor) }
 
 // HasSpecID reports whether SetSpec has been called on this button.
 func (b *Button) HasSpecID() bool { return b.hasSpecID }
@@ -222,35 +311,39 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	// Advance the springy press scale once per visible frame. Draw is the
 	// per-frame tick site for buttons; a settled button no-ops here.
 	b.AdvancePressAnim()
-	rad := RadiusSM
-	// Keycap framing: dark socket/wall behind a cap that travels with the
-	// press depth (negative = raised). A latched button (Active) sits recessed
-	// (pressed-IN) with a lamp-amber fill — never raised — so the cap rect uses
-	// raised=false regardless of toggled state (matte retro-analogue restyle).
-	cap := keycapCapRect(b.r, b.pressTravelPx(), false)
-	fill := b.fillColor()
-	drawKeycapShell(dst, b.r, rad, fill)
-	if b.pressDepth <= 0 {
-		drawKeycapContactShadow(dst, cap, rad)
+	// Every interactive control shares one radius regardless of size — see
+	// DESIGN.md "Shapes". This is the chokepoint that gives the whole app its
+	// button silhouette; a per-size radius here is what made the toolbar read
+	// as a pile of unrelated widgets.
+	rad := fitRadius(RadiusControl, b.r)
+	if b.SquareCorners {
+		rad = RadiusNone
 	}
-	sr := cap
+	// Flat-tonal body: ONE filled rounded rect at the full button rect. The
+	// control's silhouette is the tone step against its container — no socket
+	// wall, no contact shadow, no bevel, no border. See DESIGN.md
+	// "Elevation & Depth". `cap` is retained as the content rect name so the
+	// label/icon centering below is unchanged; it is now simply b.r.
+	cap := b.r
 	switch {
 	case b.Disabled:
 		// Greyed-out chrome; never reflect press/hover/active state.
-		DisabledButtonStyle.Draw(dst, sr, false, false)
+		DisabledButtonStyle.Draw(dst, cap, false, false)
 	case b.hasSpecID:
-		Render(dst, sr, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered, Active: b.toggled})
+		Render(dst, cap, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered, Active: b.toggled})
 	case b.Style != nil:
-		b.Style.Draw(dst, sr, b.pressed, b.hovered)
+		b.Style.Draw(dst, cap, b.pressed, b.hovered)
 	}
-	if !b.Disabled {
-		if b.toggled {
-			// Latched: lit-amber cap, pressed-IN (inverted bevel). No glow/flash.
-			drawRoundedButton(dst, cap, keycapActiveFill, keycapActiveFill, rad, false)
-			drawKeycapActiveInset(dst, cap, rad)
-		} else {
-			drawKeycapBevel(dst, cap, rad)
-		}
+	if !b.Disabled && b.toggled {
+		// Latched: an accent TINT over the body plus a 2px accent bar. Never a
+		// flood — the accent belongs to values, not chrome, so a selected
+		// control reads clearly without shouting over its neighbours.
+		drawRoundedRect(dst, cap, WithAlpha(colAccent, AlphaSubtle), rad, true)
+		drawFlatSelectionBar(dst, cap, colAccent, selectionEdgeBottom, 1)
+	}
+	if b.LeadSwatch != nil {
+		sr := b.leadSwatchRect(cap)
+		drawRoundedRect(dst, sr, b.LeadSwatch, fitRadius(RadiusControl, sr), true)
 	}
 	// Skip text rendering when an icon is set — the icon is the visual
 	// representation and the debug font can't render Unicode icon glyphs
@@ -262,14 +355,14 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		if scale <= 0 {
 			scale = 1.0
 		}
-		// Clip text to fit within the cap face.
-		clipped := clipTextToWidth(b.displayText(), cap.Dx()-2*SpaceXS)
+		// Clip text to fit within the label area.
+		area, _ := b.labelArea(cap)
+		clipped := clipTextToWidth(b.displayText(), int(float64(area.Dx())/scale))
 		spr := TextSprite(clipped)
-		// Center the scaled text within the cap.
+		// Center (or, with a LeadSwatch, left-align) the scaled text.
 		w := int(float64(TextWidth(clipped)) * scale)
 		h := int(float64(TextHeight()) * scale)
-		x := cap.Min.X + (cap.Dx()-w)/2
-		y := cap.Min.Y + (cap.Dy()-h)/2
+		x, y := b.labelOrigin(cap, w, h)
 
 		// Draw fuzzy-match highlight rectangles behind matched chars.
 		if len(b.Highlights) > 0 {
@@ -279,13 +372,14 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		var op ebiten.DrawImageOptions
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(float64(x), float64(y))
-		textCol := b.TextColor
+		textCol := b.effectiveTextColor()
 		if b.Disabled {
 			textCol = colTextDisabled
 		} else if b.toggled && textCol == nil {
-			// Dark legend on the lit-amber latched cap (genColorBackground),
-			// matching the active-pill text treatment.
-			textCol = genColorBackground
+			// Bright legend on the accent-TINTED latched body. (The old dark
+			// legend existed for the solid-amber flood, which the flat-tonal
+			// restyle removed — on a tint, dark text is unreadable.)
+			textCol = colTextPrimary
 		}
 		if textCol != nil {
 			r, g, bb, a := textCol.RGBA()
@@ -297,15 +391,16 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	}
 	// Icon overlay (font-independent)
 	if b.Icon != "" {
-		col := b.IconColor
+		col := b.effectiveIconColor()
 		if col == nil {
 			col = colButtonBorder
 		}
 		if b.Disabled {
 			col = colTextDisabled
 		} else if b.toggled && b.IconColor == nil {
-			// Dark glyph on the lit-amber latched cap.
-			col = genColorBackground
+			// Accent glyph on the tinted latched body — the icon carries the
+			// "on" signal alongside the selection bar.
+			col = colAccent
 		}
 		// Proportional margin: 18% of min(w,h), min 2px.
 		dim := cap.Dx()
@@ -335,7 +430,7 @@ func (b *Button) Draw(dst *ebiten.Image) {
 }
 
 // colFuzzyHighlight is the background color for fuzzy-match highlighted chars.
-var colFuzzyHighlight = WithAlpha(genColorPrimary, genAlphaSubtle) // cyan accent, semi-transparent
+var colFuzzyHighlight color.NRGBA // accent, semi-transparent; derived in rebuildThemeAliases (theme.go)
 
 // drawTextHighlights draws small colored rectangles behind characters at the
 // given rune indices. Used to visualize fuzzy search matches. measure and
@@ -407,15 +502,15 @@ func (b *Button) StyledTextRole() (TextRole, bool) { return b.textRole, b.hasTex
 func (b *Button) drawStyledLabel(dst *ebiten.Image, cap image.Rectangle) {
 	role := b.textRole
 	measure := func(s string) int { return StyledTextWidth(s, role) }
-	clipped := clipTextToWidthMeasure(b.displayText(), cap.Dx()-2*SpaceXS, measure)
+	area, _ := b.labelArea(cap)
+	clipped := clipTextToWidthMeasure(b.displayText(), area.Dx(), measure)
 	w := measure(clipped)
 	h := StyledTextHeight(role)
-	x := cap.Min.X + (cap.Dx()-w)/2
-	y := cap.Min.Y + (cap.Dy()-h)/2
+	x, y := b.labelOrigin(cap, w, h)
 	if len(b.Highlights) > 0 {
 		drawTextHighlights(dst, clipped, b.Highlights, x, y, 1.0, h, measure)
 	}
-	textCol := b.TextColor
+	textCol := b.effectiveTextColor()
 	if b.Disabled {
 		textCol = colTextDisabled
 	} else if b.toggled && textCol == nil {
@@ -435,22 +530,22 @@ func (b *Button) drawStyledLabel(dst *ebiten.Image, cap image.Rectangle) {
 func (b *Button) textRect() image.Rectangle {
 	if b.hasTextRole {
 		measure := func(s string) int { return StyledTextWidth(s, b.textRole) }
-		clipped := clipTextToWidthMeasure(b.displayText(), b.r.Dx()-2*SpaceXS, measure)
+		area, _ := b.labelArea(b.r)
+		clipped := clipTextToWidthMeasure(b.displayText(), area.Dx(), measure)
 		w := measure(clipped)
 		h := StyledTextHeight(b.textRole)
-		x := b.r.Min.X + (b.r.Dx()-w)/2
-		y := b.r.Min.Y + (b.r.Dy()-h)/2
+		x, y := b.labelOrigin(b.r, w, h)
 		return image.Rect(x, y, x+w, y+h).Intersect(b.r)
 	}
 	scale := b.TextScale
 	if scale <= 0 {
 		scale = 1.0
 	}
-	clipped := clipTextToWidth(b.displayText(), b.r.Dx()-2*SpaceXS)
+	area, _ := b.labelArea(b.r)
+	clipped := clipTextToWidth(b.displayText(), int(float64(area.Dx())/scale))
 	w := int(float64(TextWidth(clipped)) * scale)
 	h := int(float64(TextHeight()) * scale)
-	x := b.r.Min.X + (b.r.Dx()-w)/2
-	y := b.r.Min.Y + (b.r.Dy()-h)/2
+	x, y := b.labelOrigin(b.r, w, h)
 	return image.Rect(x, y, x+w, y+h).Intersect(b.r)
 }
 
@@ -473,11 +568,19 @@ func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 		b.held = 0
 		return InputIgnored
 	}
-	// Expand hit area for touch devices (skip if button has zero-area rect,
-	// e.g. hidden columns on mobile that should not be interactable).
+	inside := image.Pt(mx, my).In(b.HitRect())
+	return b.applyPress(inside, pressed)
+}
+
+// HitRect is the rect a press must land in to hit the button: the drawn rect,
+// grown to TouchMinTarget on touch profiles. It is THE hit geometry for the
+// button — an input handler that routes presses to it must route on this rect,
+// not on Rect(), or a press inside the touch target is never delivered and
+// falls through to whatever lies beneath (the mobile top-right-button bug).
+// A zero-area rect (e.g. a hidden mobile column) stays empty: not interactable.
+func (b *Button) HitRect() image.Rectangle {
 	hitRect := b.r
 	if minTarget := TouchMinTarget(); minTarget > 0 && !hitRect.Empty() {
-		// Expand hit area if button is smaller than minimum touch target
 		if hitRect.Dx() < minTarget {
 			expand := (minTarget - hitRect.Dx()) / 2
 			hitRect.Min.X -= expand
@@ -489,8 +592,7 @@ func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 			hitRect.Max.Y += expand
 		}
 	}
-	inside := image.Pt(mx, my).In(hitRect)
-	return b.applyPress(inside, pressed)
+	return hitRect
 }
 
 // applyPress is the shared press/fire/repeat/release core for one pointer
@@ -611,12 +713,6 @@ func (b *Button) AdvancePressAnim() {
 	}
 }
 
-// pressTravelPx is the current cap travel in px: positive descends toward
-// bottom-out, negative raises (release overshoot). keycapCapRect consumes it.
-func (b *Button) pressTravelPx() int {
-	return int(math.Round(b.pressDepth * float64(genGeomKeycapWallDepth)))
-}
-
 // fillColor resolves the cap's base fill for the shell/wall derivation: the
 // spec's Fill when spec-driven, else a neutral surface fallback.
 func (b *Button) fillColor() color.Color {
@@ -638,18 +734,15 @@ func (b *Button) SetToggled(on bool) { b.toggled = on }
 // Toggled reports whether the button is in the latched/active state.
 func (b *Button) Toggled() bool { return b.toggled }
 
+// repeatTick reports whether this held button fires an auto-repeat this frame.
+//
+// The cadence now comes from the shared buttonRepeat curve (key_repeat.go) so
+// MenuKeyNav can reuse the same acceleration ramp instead of growing a second
+// copy. tickLegacyModulo preserves this button's exact historical firing rule,
+// double-fire at acceleration steps included — see key_repeat.go for why menus
+// use dueSince instead.
 func (b *Button) repeatTick() bool {
-	d := b.held
-	if d <= 60 {
-		return false
-	}
-	step := d - 60
-	accel := step / 30
-	if accel > 5 {
-		accel = 5
-	}
-	interval := 6 - accel
-	return step%interval == 0
+	return buttonRepeat.tickLegacyModulo(b.held)
 }
 
 // GridLayout splits a rectangle into rows and columns using fractional weights.

@@ -1,7 +1,8 @@
 // audio_ready_gate.browser.test.js
 //
 // Verifies that the audio readiness gate works correctly:
-//   1. window.audioReady resolves and all 6 core samples are pre-rendered
+//   1. every instrument in the LOADED circuit is pre-rendered by Go's circuit
+//      warm-up (the circuit — not a hardcoded id list — decides what is warm)
 //   2. Game is not interactive until audioReady + WASM both resolve
 //   3. No stale-burst on first play (mobile emulation)
 //   4. Deferred render plays immediately (no stale when timestamp)
@@ -54,39 +55,49 @@ try {
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 
   // ========================================================================
-  // Scenario 1: audioReady resolves and all 6 core samples are pre-rendered
+  // Scenario 1: every voice the LOADED circuit plays is warm. Go's circuit
+  // warm-up gate renders them after seeding each instrument's recipe defaults;
+  // audio.js used to pre-render a hardcoded "core" list instead, which rendered
+  // the wrong (unseeded) voice for every config-first instrument and was then
+  // evicted — so it asserted a list that no longer described the app.
   // ========================================================================
-  console.log("--- Scenario 1: audioReady resolves with all 6 core samples ---");
+  console.log("--- Scenario 1: the loaded circuit's voices are warm ---");
   {
     const page = await browser.newPage();
     await page.goto(`http://localhost:${port}/`);
 
-    // Wait for WASM exports to be available (implies both audioReady and WASM resolved).
-    await page.waitForFunction(() => typeof addNode === "function", { timeout: 30000 });
+    await page.waitForFunction(() => typeof addNode === "function" && typeof rowInstrument === "function" &&
+      typeof voiceCachedFor === "function" && typeof drumRowCount === "function" && drumRowCount() > 0, null, { timeout: 30000 });
 
-    // Verify audioReady resolved by checking that renderCache has all 6 core instruments.
-    const result = await page.evaluate(() => {
+    // Non-melodic voices share one bare-id cache key; melodic ones are cached
+    // per node pitch, so for those any cached pitch proves the warm-up ran.
+    const probe = () => {
       const stats = getRenderCacheStats?.() || {};
-      const coreIds = ['snare', 'kick', 'hihat', 'tom', 'clap', 'cowbell'];
-      const present = coreIds.filter(id => stats[id] && stats[id].frames > 0);
-      const missing = coreIds.filter(id => !stats[id] || stats[id].frames === 0);
-      return { present, missing, stats };
-    });
+      const ids = [];
+      for (let i = 0; i < drumRowCount(); i++) { const id = rowInstrument(i); if (id && !ids.includes(id)) ids.push(id); }
+      const warm = (id) => isMelodicInstrumentJS(id)
+        ? Object.keys(stats).some((k) => (k === id || k.startsWith(id + ":")) && stats[k].frames > 0)
+        : voiceCachedFor(id, 0);
+      return { ids, missing: ids.filter((id) => !warm(id)), stats };
+    };
+    let result;
+    try {
+      await page.waitForFunction(new Function(`return (${probe.toString()})().missing.length === 0;`), null, { timeout: 20000 });
+    } catch (_) { /* reported below */ }
+    result = await page.evaluate(probe);
 
-    console.log(`  Cached: ${result.present.join(', ')}`);
+    console.log(`  Circuit: ${result.ids.join(', ')}`);
+    if (result.ids.length === 0) throw new Error("Scenario 1 FAIL: the startup circuit has no rows");
     if (result.missing.length > 0) {
-      throw new Error(`Scenario 1 FAIL: missing core samples in cache: ${result.missing.join(', ')}`);
+      throw new Error(`Scenario 1 FAIL: circuit voices not warm: ${result.missing.join(', ')} (cache keys: ${Object.keys(result.stats).join(', ')})`);
     }
-
-    // Verify each sample has reasonable duration.
-    for (const id of result.present) {
-      const s = result.stats[id];
-      if (s.duration < 0.05) {
-        throw new Error(`Scenario 1 FAIL: ${id} sample too short: ${s.duration}s`);
+    for (const [k, st] of Object.entries(result.stats)) {
+      if (st.frames > 0 && st.duration < 0.05) {
+        throw new Error(`Scenario 1 FAIL: ${k} sample too short: ${st.duration}s`);
       }
     }
 
-    console.log("  PASS: all 6 core samples pre-rendered in cache");
+    console.log("  PASS: every circuit voice pre-rendered in cache");
     await page.close();
   }
 
@@ -115,20 +126,23 @@ try {
     console.log("  window.audioReady is a Promise");
 
     // Wait for WASM to be fully ready.
-    await page.waitForFunction(() => typeof addNode === "function", { timeout: 30000 });
+    await page.waitForFunction(() => typeof addNode === "function", null, { timeout: 30000 });
 
-    // At this point, audioReady must have resolved (since the game gate waited on it).
-    // Verify by checking that core samples exist.
-    const cacheReady = await page.evaluate(() => {
-      const stats = getRenderCacheStats?.() || {};
-      return Object.keys(stats).length >= 6;
+    // At this point audioReady must have resolved (the game gate waited on it),
+    // which means the C DSP module is loaded and can render synchronously.
+    const gate = await page.evaluate(async () => {
+      let settled = false;
+      window.audioReady.then(() => { settled = true; });
+      await Promise.resolve();
+      await Promise.resolve();
+      return { settled };
     });
 
-    if (!cacheReady) {
-      throw new Error("Scenario 2 FAIL: render cache not populated when game became interactive");
+    if (!gate.settled) {
+      throw new Error(`Scenario 2 FAIL: game became interactive before audio was ready (${JSON.stringify(gate)})`);
     }
 
-    console.log("  PASS: game interactive only after audio warmup completed");
+    console.log("  PASS: game interactive only after the audio module loaded");
     await page.close();
   }
 
@@ -155,7 +169,7 @@ try {
       typeof stopPlay === "function" &&
       typeof startOutputCapture === "function" &&
       typeof stopOutputCapture === "function"
-    , { timeout: 30000 });
+    , null, { timeout: 30000 });
 
     // Unlock audio context.
     await page.evaluate(() => {
@@ -174,6 +188,11 @@ try {
       forceDraw?.();
     });
     await page.waitForTimeout(200);
+
+    // Play is DELIBERATELY ignored while the circuit readiness gate is warming
+    // (game_update.go: "never queue the press"), so wait for the app's own
+    // gate — the same signal the Play button renders from — before pressing.
+    await page.waitForFunction(() => typeof warmupProgress === "function" && warmupProgress().ready === true, null, { timeout: 20000 });
 
     // Enable output capture and start playback.
     // Use a polling warmup loop to wait for the WebAudio pipeline to produce
@@ -260,7 +279,7 @@ try {
       typeof playSound === "function" &&
       typeof resetRenderCache === "function" &&
       typeof getRenderCacheStats === "function"
-    , { timeout: 30000 });
+    , null, { timeout: 30000 });
 
     // Unlock audio context.
     await page.evaluate(() => {
@@ -269,19 +288,28 @@ try {
     });
     await page.waitForTimeout(200);
 
-    // Pre-warm the kick channel by playing once from the existing cache.
-    // This ensures the WebAudio channel pipeline (bus -> channel -> main -> limiter)
-    // is fully established before we test the deferred render path.
-    await page.evaluate(() => playSound?.("kick", 1.0));
-    await page.waitForTimeout(200);
+    // The probe voice is a NON-melodic instrument of the loaded circuit (one
+    // bare-id cache key), warmed by the circuit warm-up — not a hardcoded id.
+    await page.waitForFunction(() => typeof rowInstrument === "function" && drumRowCount() > 0, null, { timeout: 30000 });
+    await page.evaluate(() => {
+      for (let i = 0; i < drumRowCount(); i++) {
+        const id = rowInstrument(i);
+        if (id && !isMelodicInstrumentJS(id)) { window.__probeId = id; return; }
+      }
+    });
+    // Pre-warm the probe channel by playing once. This ensures the WebAudio
+    // channel pipeline (bus -> channel -> main -> limiter) is fully established
+    // before we test the deferred render path.
+    await page.evaluate(() => playSound?.(window.__probeId, 1.0));
+    await page.waitForFunction(() => { const s = getRenderCacheStats?.() || {}; return !!(s[window.__probeId] && s[window.__probeId].frames > 0); }, null, { timeout: 15000 }).catch(() => {});
 
-    // Verify cache has kick before clearing.
+    // Verify cache has the probe before clearing.
     const preStats = await page.evaluate(() => {
       const s = getRenderCacheStats?.() || {};
-      return { hasKick: !!(s.kick && s.kick.frames > 0) };
+      return { hasKick: !!(s[window.__probeId] && s[window.__probeId].frames > 0) };
     });
     if (!preStats.hasKick) {
-      throw new Error("Scenario 4 FAIL: kick not in cache before clear");
+      throw new Error("Scenario 4 FAIL: probe voice not in cache before clear");
     }
 
     // Clear the render cache to force a deferred render on next play.
@@ -290,7 +318,7 @@ try {
     // Verify cache is empty.
     const postClearStats = await page.evaluate(() => {
       const s = getRenderCacheStats?.() || {};
-      return { hasKick: !!(s.kick && s.kick.frames > 0) };
+      return { hasKick: !!(s[window.__probeId] && s[window.__probeId].frames > 0) };
     });
     if (postClearStats.hasKick) {
       throw new Error("Scenario 4 FAIL: cache not cleared");
@@ -305,14 +333,14 @@ try {
 
     // Trigger a sound — this will hit the deferred path since cache was cleared.
     const result = await page.evaluate(async () => {
-      // Fire a kick — will defer since cache is cleared.
-      playSound?.("kick", 1.0);
+      // Fire the probe — will defer since cache is cleared.
+      playSound?.(window.__probeId, 1.0);
 
       // Wait for the deferred render to complete (cache repopulated).
       let cacheReady = false;
       for (let i = 0; i < 100; i++) {
         const stats = getRenderCacheStats?.() || {};
-        if (stats.kick && stats.kick.frames > 0) { cacheReady = true; break; }
+        if (stats[window.__probeId] && stats[window.__probeId].frames > 0) { cacheReady = true; break; }
         await new Promise((r) => setTimeout(r, 20));
       }
 
@@ -323,7 +351,7 @@ try {
       // Cache is now repopulated. Play multiple kicks from the repopulated
       // cache to verify it produces audible audio.
       for (let j = 0; j < 3; j++) {
-        playSound?.("kick", 1.0);
+        playSound?.(window.__probeId, 1.0);
         await new Promise((r) => setTimeout(r, 150));
       }
 

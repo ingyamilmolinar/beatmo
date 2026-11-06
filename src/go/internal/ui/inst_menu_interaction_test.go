@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // ---------- helpers ----------
@@ -33,14 +36,14 @@ func newCategoryDrumView(t *testing.T, w, h int) (*DrumView, int, int) {
 	t.Helper()
 
 	dv := NewDrumView(image.Rect(0, 0, w, h), nil, testLogger)
-	dv.instOptions = []string{"kick", "snare", "tom", "hihat", "crash"}
-	dv.instCategories = []string{"Drums", "Cymbals"}
-	dv.instCatByID = map[string]string{
-		"kick":  "Drums",
-		"snare": "Drums",
-		"tom":   "Drums",
-		"hihat": "Cymbals",
-		"crash": "Cymbals",
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Tom, roster.Hihat, roster.Crash}
+	dv.instCategories = []audio.Category{audio.CatPercussion, audio.CatCymbal}
+	dv.instCatByID = map[instrument.ID]audio.Category{
+		roster.Kick:  audio.CatPercussion,
+		roster.Snare: audio.CatPercussion,
+		roster.Tom:   audio.CatPercussion,
+		roster.Hihat: audio.CatCymbal,
+		roster.Crash: audio.CatCymbal,
 	}
 	dv.instMenuForceCategories = true
 	// Legacy tests built on this helper assume Categories[0] is the first
@@ -51,7 +54,7 @@ func newCategoryDrumView(t *testing.T, w, h int) (*DrumView, int, int) {
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -245,7 +248,7 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	// Click "Cymbals" category.
 	var cymbalsBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Cymbals" {
+		if btn.Text == "Cymbal" {
 			cymbalsBtn = btn
 			break
 		}
@@ -262,14 +265,14 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	if comp.Mode() != InstMenuModeInstruments {
 		t.Fatalf("expected instruments mode after category click, got %s", comp.Mode())
 	}
-	if comp.ActiveCategory() != "Cymbals" {
+	if comp.ActiveCategory() != audio.CatCymbal {
 		t.Fatalf("expected active category Cymbals, got %s", comp.ActiveCategory())
 	}
 
 	// Verify visible instruments are in the Cymbals category.
 	visIDs := comp.VisibleInstIDs()
 	for _, id := range visIDs {
-		if id != "hihat" && id != "crash" {
+		if id != roster.Hihat && id != roster.Crash {
 			t.Fatalf("unexpected instrument %q in Cymbals category", id)
 		}
 	}
@@ -293,7 +296,7 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	ri()
 	var drumsBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Drums" {
+		if btn.Text == "Percussion" {
 			drumsBtn = btn
 			break
 		}
@@ -304,7 +307,7 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	dr := drumsBtn.Rect()
 	clickDrumViewAt(t, dv, dr.Min.X+dr.Dx()/2, dr.Min.Y+dr.Dy()/2, W, H)
 
-	if comp.ActiveCategory() != "Drums" {
+	if comp.ActiveCategory() != audio.CatPercussion {
 		t.Fatalf("expected active category Drums, got %s", comp.ActiveCategory())
 	}
 
@@ -312,10 +315,10 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	visIDs = comp.VisibleInstIDs()
 	hasDrum := false
 	for _, id := range visIDs {
-		if id == "kick" || id == "snare" || id == "tom" {
+		if id == roster.Kick || id == roster.Snare || id == roster.Tom {
 			hasDrum = true
 		}
-		if id == "hihat" || id == "crash" {
+		if id == roster.Hihat || id == roster.Crash {
 			t.Fatalf("cymbal %q visible in Drums category", id)
 		}
 	}
@@ -334,7 +337,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	const W, H = 800, 600
 	dv, cx, cy := newCategoryDrumView(t, W, H)
 
-	if dv.Rows[0].Instrument != "kick" {
+	if dv.Rows[0].Instrument != roster.Kick {
 		t.Fatalf("expected initial instrument kick, got %q", dv.Rows[0].Instrument)
 	}
 
@@ -362,7 +365,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	// Click "Cymbals".
 	var cymbalsBtn *Button
 	for _, btn := range comp.CategoryBtns() {
-		if btn.Text == "Cymbals" {
+		if btn.Text == "Cymbal" {
 			cymbalsBtn = btn
 			break
 		}
@@ -401,7 +404,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	}
 
 	// Verify instrument was applied.
-	if dv.Rows[0].Instrument != "hihat" {
+	if dv.Rows[0].Instrument != roster.Hihat {
 		t.Fatalf("expected instrument hihat, got %q", dv.Rows[0].Instrument)
 	}
 

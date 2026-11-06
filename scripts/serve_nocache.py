@@ -8,10 +8,18 @@ broken"). This handler forces no-store on every response and pins the JS/WASM
 MIME types (Python's mimetypes db pre-3.12 returns application/octet-stream for
 .wasm, which can break WebAssembly.instantiateStreaming on some browsers).
 
-Usage: cd src/js && python3 ../scripts/serve_nocache.py [PORT]
+It must serve connections CONCURRENTLY. index.html's first <head> script
+starts fetch("main.wasm") before audio.js and its static imports have loaded,
+and nothing reads that response until they have. Chromium stops reading an
+unread body after a few MB, so a one-connection-at-a-time server (the
+socketserver.TCPServer this used to be) blocks writing the wasm, never answers
+audio.js's imports, and the page hangs on "Loading..." with no console error.
+Guards: src/go/internal/deploy/dev_server_concurrency_test.go,
+src/js/dev_server_boot.browser.test.js.
+
+Usage: cd src/js && python3 ../../scripts/serve_nocache.py [PORT]
 """
 import http.server
-import socketserver
 import sys
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
@@ -32,8 +40,9 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("", PORT), NoCacheHandler) as httpd:
+# One thread per connection (see the docstring). ThreadingHTTPServer also sets
+# allow_reuse_address and daemon_threads (Ctrl-C exits mid-download).
+with http.server.ThreadingHTTPServer(("", PORT), NoCacheHandler) as httpd:
     print(f"serving {sys.path[0] and '.'} on http://localhost:{PORT} (no-cache, .wasm=application/wasm)")
     try:
         httpd.serve_forever()

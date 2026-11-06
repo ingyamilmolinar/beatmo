@@ -291,7 +291,7 @@ func TestRebaseAtWithMuteNodes(t *testing.T) {
 	// Give mute node a logic kind so shouldGateMute returns true.
 	if node, ok := graph.GetNodeByID(mute); ok {
 		params := node.Params
-		params.LogicKind = "every_n_triggers"
+		params.LogicKind = model.LogicEveryN
 		params.LogicN = 1
 		graph.SetNodeParams(mute, params)
 	}
@@ -348,7 +348,7 @@ func TestEnsureAfterSetPathsDirtyRebuild(t *testing.T) {
 
 	// Give node A skip_every_n logic.
 	nodeA, _ := graph.GetNodeByID(a)
-	nodeA.Params.LogicKind = "skip_every_n"
+	nodeA.Params.LogicKind = model.LogicSkipEveryN
 	nodeA.Params.LogicN = 2
 	graph.SetNodeParams(a, nodeA.Params)
 
@@ -437,7 +437,7 @@ func TestEnsureMultiRowIsolation(t *testing.T) {
 	b := graph.AddNode(1, 0, model.NodeTypeRegular)
 	graph.Edges[[2]model.NodeID{b, b}] = struct{}{}
 	nodeB, _ := graph.GetNodeByID(b)
-	nodeB.Params.LogicKind = "probability"
+	nodeB.Params.LogicKind = model.LogicProbability
 	nodeB.Params.LogicP = 0
 	graph.SetNodeParams(b, nodeB.Params)
 

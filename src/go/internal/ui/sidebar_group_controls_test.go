@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -59,7 +58,7 @@ func createCommittedGroup(t *testing.T, g *Game, name string, nodeIDs []model.No
 // sidebar's group controls. Always re-lays-out first so callers never need a
 // separate g.sidebar.layout() call between successive clicks (e.g. opening
 // the add dropdown then clicking one of its rows).
-func clickSidebarControl(t *testing.T, g *Game, id string) {
+func clickSidebarControl(t *testing.T, g *Game, id sbID) {
 	t.Helper()
 	g.sidebar.layout()
 	r, ok := g.sidebar.rects[id]
@@ -78,12 +77,12 @@ func clickSidebarControl(t *testing.T, g *Game, id string) {
 // (TestSidebarAddToGroup_Click). Fails the test if the dropdown didn't open.
 func clickRemoveOption(t *testing.T, g *Game, gid model.GroupID) {
 	t.Helper()
-	clickSidebarControl(t, g, "grpremove")
+	clickSidebarControl(t, g, sbGroupRemove)
 	advanceFrames(g, 1)
 	if !g.sidebar.groupRemoveDropdownOpen {
 		t.Fatalf("precondition: groupRemoveDropdownOpen should be true after clicking grpremove")
 	}
-	clickSidebarControl(t, g, fmt.Sprintf("grpremoveopt:%d", gid))
+	clickSidebarControl(t, g, sbGroupRemoveOption(gid))
 }
 
 // TestRemoveSelectorListsOnlyMemberships: node in 2 of 3 groups → the
@@ -96,14 +95,13 @@ func TestRemoveSelectorListsOnlyMemberships(t *testing.T) {
 	gid3 := createCommittedGroup(t, g, "G3", []model.NodeID{bID})
 	openSidebarGrpExpanded(t, g, aID)
 
-	clickSidebarControl(t, g, "grpremove")
+	clickSidebarControl(t, g, sbGroupRemove)
 	advanceFrames(g, 1)
 	g.sidebar.layout()
 
 	got := map[model.GroupID]bool{}
 	for id := range g.sidebar.rects {
-		var gid model.GroupID
-		if _, err := fmt.Sscanf(id, "grpremoveopt:%d", &gid); err == nil {
+		if gid := model.GroupID(id.arg); id.el == elGroupRemoveOpt {
 			got[gid] = true
 		}
 	}
@@ -120,7 +118,7 @@ func TestRemoveSelectorListsOnlyMemberships(t *testing.T) {
 		t.Fatalf("dropdown must not list gid3=%d (node is not a member)", gid3)
 	}
 	for _, gid := range []model.GroupID{gid1, gid2} {
-		id := fmt.Sprintf("grpremoveopt:%d", gid)
+		id := sbGroupRemoveOption(gid)
 		btn, ok := g.sidebar.btns[id]
 		if !ok || btn == nil {
 			t.Fatalf("missing button for %s", id)
@@ -178,7 +176,7 @@ func TestRemoveSelectorRemovesMembership(t *testing.T) {
 		t.Fatalf("dropdown must close after selecting a group")
 	}
 	g.sidebar.layout()
-	if r, ok := g.sidebar.rects[fmt.Sprintf("grpchip:%d", gid1)]; ok && !r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupChip(gid1)]; ok && !r.Empty() {
 		t.Fatalf("chip row for gid1 must be gone next frame, got rect=%v", r)
 	}
 }
@@ -224,7 +222,7 @@ func TestRemoveSelectorHiddenWhenNoMemberships(t *testing.T) {
 	createCommittedGroup(t, g, "G1", []model.NodeID{bID})
 	openSidebarGrpExpanded(t, g, aID)
 	g.sidebar.layout()
-	if r, ok := g.sidebar.rects["grpremove"]; ok && !r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupRemove]; ok && !r.Empty() {
 		t.Fatalf("grpremove row must be absent with zero memberships, got rect=%v", r)
 	}
 }
@@ -240,17 +238,17 @@ func TestChipsAreOpenOnlyFullWidth(t *testing.T) {
 	g.sidebar.layout()
 
 	for id := range g.sidebar.rects {
-		if strings.HasPrefix(id, "grpdel:") {
+		if strings.HasPrefix(id.String(), "grpdel:") {
 			t.Fatalf("grpdel machinery must be fully removed, found rect id=%s", id)
 		}
 	}
 	for id := range g.sidebar.btns {
-		if strings.HasPrefix(id, "grpdel:") {
+		if strings.HasPrefix(id.String(), "grpdel:") {
 			t.Fatalf("grpdel machinery must be fully removed, found button id=%s", id)
 		}
 	}
 
-	clickSidebarControl(t, g, fmt.Sprintf("grpchip:%d", gid))
+	clickSidebarControl(t, g, sbGroupChip(gid))
 	advanceFrames(g, 1)
 	if !g.groupMenu.IsOpen() || g.groupMenu.GroupID() != gid {
 		t.Fatalf("chip click must open the GroupMenu for gid=%d, open=%v menuGid=%d", gid, g.groupMenu.IsOpen(), g.groupMenu.GroupID())
@@ -268,17 +266,17 @@ func TestSidebarAddToGroup_Click(t *testing.T) {
 	gidX := createCommittedGroup(t, g, "X", []model.NodeID{bID})
 	gidY := createCommittedGroup(t, g, "Y", []model.NodeID{bID})
 	g.sidebar.Open(g.nodesByID[aID])
-	g.sidebar.sectionOpen["grp"] = true
+	g.sidebar.sectionOpen[secGrp] = true
 	advanceFrames(g, 1)
 
-	clickSidebarControl(t, g, "grpadd")
+	clickSidebarControl(t, g, sbGroupAdd)
 	advanceFrames(g, 1)
 	if !g.sidebar.groupAddDropdownOpen {
 		t.Fatalf("precondition: groupAddDropdownOpen should be true after clicking grpadd")
 	}
 
 	undoBefore := len(g.undoManager.undo)
-	clickSidebarControl(t, g, fmt.Sprintf("grpaddopt:%d", gidX))
+	clickSidebarControl(t, g, sbGroupAddOption(gidX))
 	advanceFrames(g, 2)
 
 	found := false
@@ -297,10 +295,10 @@ func TestSidebarAddToGroup_Click(t *testing.T) {
 		t.Fatalf("dropdown must close after selecting a group")
 	}
 	g.sidebar.layout()
-	if r, ok := g.sidebar.rects["grpadd"]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupAdd]; !ok || r.Empty() {
 		t.Fatalf("grpadd row must still be visible: group Y remains a candidate")
 	}
-	if r, ok := g.sidebar.rects[fmt.Sprintf("grpaddopt:%d", gidY)]; ok && !r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupAddOption(gidY)]; ok && !r.Empty() {
 		t.Fatalf("dropdown must be closed; grpaddopt rows must not be laid out, got rect for gidY=%v", r)
 	}
 }
@@ -318,17 +316,16 @@ func TestAddSelectorListsOnlyNonMembers(t *testing.T) {
 	gid3 := createCommittedGroup(t, g, "G3", []model.NodeID{bID})
 
 	g.sidebar.Open(g.nodesByID[aID])
-	g.sidebar.sectionOpen["grp"] = true
+	g.sidebar.sectionOpen[secGrp] = true
 	advanceFrames(g, 1)
 
-	clickSidebarControl(t, g, "grpadd")
+	clickSidebarControl(t, g, sbGroupAdd)
 	advanceFrames(g, 1)
 	g.sidebar.layout()
 
 	got := map[model.GroupID]bool{}
 	for id := range g.sidebar.rects {
-		var gid model.GroupID
-		if _, err := fmt.Sscanf(id, "grpaddopt:%d", &gid); err == nil {
+		if gid := model.GroupID(id.arg); id.el == elGroupAddOpt {
 			got[gid] = true
 		}
 	}
@@ -346,7 +343,7 @@ func TestAddSelectorListsOnlyNonMembers(t *testing.T) {
 	}
 
 	for _, gid := range []model.GroupID{gid2, gid3} {
-		id := fmt.Sprintf("grpaddopt:%d", gid)
+		id := sbGroupAddOption(gid)
 		btn, ok := g.sidebar.btns[id]
 		if !ok || btn == nil {
 			t.Fatalf("missing button for %s", id)
@@ -376,19 +373,19 @@ func TestSidebarGrpSectionVisibility(t *testing.T) {
 	t.Run("no_groups_shows_create_only", func(t *testing.T) {
 		g, aID, _ := buildGroupSidebarFixture(t)
 		g.sidebar.Open(g.nodesByID[aID])
-		g.sidebar.sectionOpen["grp"] = true
+		g.sidebar.sectionOpen[secGrp] = true
 		g.sidebar.layout()
-		if r, ok := g.sidebar.rects["sec-grp"]; !ok || r.Empty() {
+		if r, ok := g.sidebar.rects[sbSectionHeader(secGrp)]; !ok || r.Empty() {
 			t.Fatalf("sec-grp must be present even with zero groups")
 		}
-		if r, ok := g.sidebar.rects["grpnew"]; !ok || r.Empty() {
+		if r, ok := g.sidebar.rects[sbGroupNew]; !ok || r.Empty() {
 			t.Fatalf("grpnew row must be present with zero groups")
 		}
-		if r, ok := g.sidebar.rects["grpadd"]; ok && !r.Empty() {
+		if r, ok := g.sidebar.rects[sbGroupAdd]; ok && !r.Empty() {
 			t.Fatalf("grpadd row must be absent with zero groups, got rect=%v", r)
 		}
 		for id := range g.sidebar.rects {
-			if strings.HasPrefix(id, "grpchip:") {
+			if id.el == elGroupChip {
 				t.Fatalf("zero groups must produce no chip rows, found %s", id)
 			}
 		}
@@ -398,16 +395,16 @@ func TestSidebarGrpSectionVisibility(t *testing.T) {
 		g, aID, bID := buildGroupSidebarFixture(t)
 		createCommittedGroup(t, g, "G1", []model.NodeID{bID})
 		g.sidebar.Open(g.nodesByID[aID])
-		g.sidebar.sectionOpen["grp"] = true
+		g.sidebar.sectionOpen[secGrp] = true
 		g.sidebar.layout()
-		if r, ok := g.sidebar.rects["sec-grp"]; !ok || r.Empty() {
+		if r, ok := g.sidebar.rects[sbSectionHeader(secGrp)]; !ok || r.Empty() {
 			t.Fatalf("sec-grp must be present when a group exists in the graph")
 		}
-		if r, ok := g.sidebar.rects["grpadd"]; !ok || r.Empty() {
+		if r, ok := g.sidebar.rects[sbGroupAdd]; !ok || r.Empty() {
 			t.Fatalf("grpadd row must be present for a non-member node")
 		}
 		for id := range g.sidebar.rects {
-			if strings.HasPrefix(id, "grpchip:") {
+			if id.el == elGroupChip {
 				t.Fatalf("non-member node must have no chip rows, found %s", id)
 			}
 		}
@@ -417,12 +414,12 @@ func TestSidebarGrpSectionVisibility(t *testing.T) {
 		g, aID, bID := buildGroupSidebarFixture(t)
 		gid := createCommittedGroup(t, g, "G1", []model.NodeID{aID, bID})
 		g.sidebar.Open(g.nodesByID[aID])
-		g.sidebar.sectionOpen["grp"] = true
+		g.sidebar.sectionOpen[secGrp] = true
 		g.sidebar.layout()
-		if r, ok := g.sidebar.rects[fmt.Sprintf("grpchip:%d", gid)]; !ok || r.Empty() {
+		if r, ok := g.sidebar.rects[sbGroupChip(gid)]; !ok || r.Empty() {
 			t.Fatalf("chip row must be present for a member node")
 		}
-		if r, ok := g.sidebar.rects["grpremove"]; !ok || r.Empty() {
+		if r, ok := g.sidebar.rects[sbGroupRemove]; !ok || r.Empty() {
 			t.Fatalf("grpremove row must be present for a member node")
 		}
 	})
@@ -474,12 +471,12 @@ func TestSidebarAddRemoveDuringPlayback(t *testing.T) {
 	}
 
 	g.sidebar.Open(g.nodesByID[aID])
-	g.sidebar.sectionOpen["grp"] = true
+	g.sidebar.sectionOpen[secGrp] = true
 	advanceFrames(g, 1)
 
-	clickSidebarControl(t, g, "grpadd")
+	clickSidebarControl(t, g, sbGroupAdd)
 	advanceFrames(g, 1)
-	clickSidebarControl(t, g, fmt.Sprintf("grpaddopt:%d", gid))
+	clickSidebarControl(t, g, sbGroupAddOption(gid))
 	advanceFrames(g, 3)
 
 	_, pAfterAdd, _ := g.evalNodeParamsOnly(0, idxRound2, infoAt(idxRound2))
@@ -547,9 +544,9 @@ func TestFourDropdownsMutuallyExclusive(t *testing.T) {
 	// Only expand the three sections under test (not ExpandAllSections,
 	// which stacks vol/pit/dur/aud/move too and overflows the sidebar's
 	// unscrolled viewport at this fixture's window size).
-	g.sidebar.sectionOpen["logic"] = true
-	g.sidebar.sectionOpen["groove"] = true
-	g.sidebar.sectionOpen["grp"] = true
+	g.sidebar.sectionOpen[secLogic] = true
+	g.sidebar.sectionOpen[secGroove] = true
+	g.sidebar.sectionOpen[secGrp] = true
 	advanceFrames(g, 1)
 
 	assertOnlyOpen := func(t *testing.T, want string) {
@@ -570,25 +567,25 @@ func TestFourDropdownsMutuallyExclusive(t *testing.T) {
 		}
 	}
 
-	clickSidebarControl(t, g, "logic")
+	clickSidebarControl(t, g, sbLogicSelect)
 	advanceFrames(g, 1)
 	assertOnlyOpen(t, "logic")
 
-	clickSidebarControl(t, g, "grv")
+	clickSidebarControl(t, g, sbGrooveSelect)
 	advanceFrames(g, 1)
 	assertOnlyOpen(t, "groove")
 
-	clickSidebarControl(t, g, "grpadd")
+	clickSidebarControl(t, g, sbGroupAdd)
 	advanceFrames(g, 1)
 	assertOnlyOpen(t, "grpadd")
 
-	clickSidebarControl(t, g, "grpremove")
+	clickSidebarControl(t, g, sbGroupRemove)
 	advanceFrames(g, 1)
 	assertOnlyOpen(t, "grpremove")
 
 	// One more round, starting from grpremove open, to confirm the other
 	// three each independently close it too.
-	clickSidebarControl(t, g, "logic")
+	clickSidebarControl(t, g, sbLogicSelect)
 	advanceFrames(g, 1)
 	assertOnlyOpen(t, "logic")
 }
@@ -606,9 +603,9 @@ func TestSidebarAddRemoveNegative(t *testing.T) {
 		g, aID, bID := buildGroupSidebarFixture(t)
 		createCommittedGroup(t, g, "All", []model.NodeID{aID, bID})
 		g.sidebar.Open(g.nodesByID[aID])
-		g.sidebar.sectionOpen["grp"] = true
+		g.sidebar.sectionOpen[secGrp] = true
 		g.sidebar.layout()
-		if r, ok := g.sidebar.rects["grpadd"]; ok && !r.Empty() {
+		if r, ok := g.sidebar.rects[sbGroupAdd]; ok && !r.Empty() {
 			t.Fatalf("grpadd row must be absent when node is a member of every group, got rect=%v", r)
 		}
 	})
@@ -617,7 +614,7 @@ func TestSidebarAddRemoveNegative(t *testing.T) {
 		g, aID, bID := buildGroupSidebarFixture(t)
 		gid := createCommittedGroup(t, g, "Solo", []model.NodeID{aID, bID})
 		g.sidebar.Open(g.nodesByID[aID])
-		g.sidebar.sectionOpen["grp"] = true
+		g.sidebar.sectionOpen[secGrp] = true
 		g.sidebar.layout()
 
 		undoBefore := len(g.undoManager.undo)

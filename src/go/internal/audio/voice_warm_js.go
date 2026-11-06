@@ -5,6 +5,8 @@ package audio
 import (
 	"encoding/json"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // warmInstrumentPlatform (browser) forwards the candidate pitch spread to the
@@ -13,7 +15,7 @@ import (
 // render inside audio.js (ensureRenderReady ignores pitch for them), so passing
 // the full spread is safe. Mirrors synth_recipe_wasm.go's bridge pattern:
 // marshal + invoke a global JS function; a no-op if the function is absent.
-func warmInstrumentPlatform(id string, pitches []int) {
+func warmInstrumentPlatform(id instrument.ID, pitches []int) {
 	fn := js.Global().Get("warmInstrument")
 	if !fn.Truthy() {
 		return
@@ -22,5 +24,5 @@ func warmInstrumentPlatform(id string, pitches []int) {
 	if err != nil {
 		return
 	}
-	fn.Invoke(id, string(data))
+	fn.Invoke(string(id), string(data))
 }

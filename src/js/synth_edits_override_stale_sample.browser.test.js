@@ -8,7 +8,7 @@
  * over a builtin and persisted it. On every later browser session,
  * audio.ApplySavedSamples re-registers that PCM (registerSamplePCM →
  * DELETES RENDER['snare'], plants frozen PCM in renderCache) while
- * bindBuiltinInstrumentRecipes restores the snare→drum-snare binding. The
+ * bindBuiltinInstrumentRecipes restores the snare's recipe binding. The
  * Synth tab then shows live knobs (binding intact) and every edit flows
  * through the Go→JS bridge — but _updateInstrumentParams skips cache
  * invalidation for sample instruments (no RENDER[id]) and ensureRenderedSample
@@ -26,6 +26,7 @@
  */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
+import { waitForAudioReady } from "./browser_test_helpers.js";
 
 if (!buildMainWasm({ logLevel: "INFO" })) throw new Error("go build main.wasm failed");
 const server = await createServer();
@@ -50,11 +51,11 @@ const waitForApp = async () => {
     () => typeof setInstrumentParam === "function" &&
           typeof window.idbPutSample === "function" &&
           typeof window.__testCaptureSynthRender === "function" &&
-          typeof window.getCachedRenderData === "function",
+          typeof window.getCachedRenderData === "function", null,
     { timeout: 30000 },
   );
   await page.mouse.click(200, 200);
-  await page.evaluate(async () => { try { await window.audioReady; } catch (_) {} });
+  await waitForAudioReady(page, { allowReject: true });
 };
 
 try {
@@ -88,11 +89,15 @@ try {
 
     // Synth knob edits — the user gesture that must always be audible on a
     // recipe-bound builtin. decay extremes produce visibly different tails.
-    setInstrumentParam(id, "decay", 0.25);
+    // Decay renders through the shared FINISH stage (post_decay, [0,1], 1 =
+    // no fade). This test is about the edit REACHING the render past a stale
+    // sample, so any live value proves it.
+    const DECAY = "post_decay";
+    setInstrumentParam(id, DECAY, 0.25);
     await new Promise((r) => setTimeout(r, 100));
     const shortDecay = summarize(await window.__testCaptureSynthRender(id));
 
-    setInstrumentParam(id, "decay", 4);
+    setInstrumentParam(id, DECAY, 1);
     await new Promise((r) => setTimeout(r, 100));
     const longDecay = summarize(await window.__testCaptureSynthRender(id));
 

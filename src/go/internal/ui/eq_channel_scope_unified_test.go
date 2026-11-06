@@ -5,6 +5,9 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestChainPanelZoneHasNoInstrumentButton enforces that the Scope tab does
@@ -49,21 +52,21 @@ func TestEQChannelChangeUpdatesScopeInstrument(t *testing.T) {
 	// Seed a row so the dropdown would offer something other than Master.
 	dv.Rows = []*DrumRow{{
 		Name:       "Snare",
-		Instrument: "snare",
+		Instrument: roster.Snare,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
 
 	// Drive the production callback as if the user picked the Snare entry.
-	dv.eqPanelZone.callbacks.OnChannelChange("snare")
+	dv.eqPanelZone.callbacks.OnChannelChange(channel.Of(roster.Snare))
 
-	if got := dv.eqPanelZone.chainZone.instrumentID; got != "snare" {
+	if got := dv.eqPanelZone.chainZone.instrumentID; got != channel.Of(roster.Snare) {
 		t.Fatalf("chainZone.instrumentID = %q after EQ channel change; want %q", got, "snare")
 	}
 
 	// Switching back to master must propagate too.
-	dv.eqPanelZone.callbacks.OnChannelChange("main")
-	if got := dv.eqPanelZone.chainZone.instrumentID; got != "main" {
+	dv.eqPanelZone.callbacks.OnChannelChange(channel.Master)
+	if got := dv.eqPanelZone.chainZone.instrumentID; got != channel.Master {
 		t.Fatalf("chainZone.instrumentID = %q after switch to master; want %q", got, "main")
 	}
 }

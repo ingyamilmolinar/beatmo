@@ -149,18 +149,3 @@ func TestEnumLabelFor_ENMatchesCanonical(t *testing.T) {
 		}
 	}
 }
-
-// TestParseParamEntry_AcceptsLocalizedEnum proves the numeric editor round-trips
-// the localized label a user sees: typing "Triángulo" under the Spanish locale
-// resolves to the canonical index, and the canonical English form still works.
-func TestParseParamEntry_AcceptsLocalizedEnum(t *testing.T) {
-	withLocaleES(t)
-	def := audio.ParamDef{Name: "osc_type", Min: 0, Max: 3, Enum: []string{"Sine", "Saw", "Square", "Triangle"}}
-	if v, ok := parseParamEntry(def, "Triángulo"); !ok || v != 3 {
-		t.Errorf("parseParamEntry(localized) = (%v,%v), want (3,true)", v, ok)
-	}
-	// Canonical English still parses regardless of locale.
-	if v, ok := parseParamEntry(def, "square"); !ok || v != 2 {
-		t.Errorf("parseParamEntry(canonical) = (%v,%v), want (2,true)", v, ok)
-	}
-}

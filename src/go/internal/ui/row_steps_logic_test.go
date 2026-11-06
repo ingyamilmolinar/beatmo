@@ -48,7 +48,7 @@ func TestRowStepsEveryNTriggers(t *testing.T) {
 	// A triggers every 2nd time only
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -70,7 +70,7 @@ func TestRowStepsSkipEveryN(t *testing.T) {
 	// B skip every 1 (always skip)
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 1
 		g.graph.SetNodeParams(b.ID, p)
 	}
@@ -94,7 +94,7 @@ func TestRowStepsPrevTriggeredAndPrevSkipped(t *testing.T) {
 	// Case 1: C requires previous triggered; with A,B regular, expect [true,true,true]
 	if n, ok := g.graph.GetNodeByID(c.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(c.ID, p)
 	}
 	g.updateBeatInfos()
@@ -117,13 +117,13 @@ func TestRowStepsPrevTriggeredAndPrevSkipped(t *testing.T) {
 	// Case 2: Make B always skipped; then C requires previous skipped => true only at C
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 1
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(c.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_skipped"
+		p.LogicKind = model.LogicIfPrevSkipped
 		g.graph.SetNodeParams(c.ID, p)
 	}
 	g.updateBeatInfos()
@@ -154,7 +154,7 @@ func TestRowStepsProbabilityEdgeCases(t *testing.T) {
 	// A p=0 => false, B regular => true
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -170,7 +170,7 @@ func TestRowStepsProbabilityEdgeCases(t *testing.T) {
 	// A p=1 => true
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 1
 		g.graph.SetNodeParams(a.ID, p)
 	}

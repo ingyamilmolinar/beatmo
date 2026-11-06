@@ -7,6 +7,8 @@ import (
 	"image"
 	"strings"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // These tests reproduce the screenshot bug: the FM section of the modular
@@ -37,8 +39,10 @@ func modularSynthGameRealistic(t *testing.T) *Game {
 	g.Layout(800, 720)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-	// Open the FM stage so its detail-pane knobs + ControlGrid are laid out.
-	g.drum.setSelectedSynthSection("modular", synthSectionFM)
+	// Drill into the FM stage (all 13 knobs: open More so the fine-tuning
+	// operators lay out too) so its ControlGrid overflows and scrolls.
+	g.drum.setSelectedSynthSection(roster.Modular, synthSectionFM)
+	g.drum.setSynthMoreOpen(roster.Modular, true)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	return g
 }
@@ -85,7 +89,7 @@ func TestSynthSection_FMControlsDoNotOverlap(t *testing.T) {
 	if s.KnobCount() < 6 {
 		t.Fatalf("precondition: FM section should have many knobs, got %d", s.KnobCount())
 	}
-	card := s.Rect()
+	card := g.drum.instEditorMacroDetailR
 	rects := visibleFMKnobRects(g)
 	if len(rects) == 0 {
 		t.Fatal("no visible FM knobs")
@@ -137,10 +141,10 @@ func TestSynthSection_FMScrolls(t *testing.T) {
 
 	// Drive the scroll through the published hit-area, exactly as a wheel
 	// event over the FM card would.
-	tag := "synth-scroll-" + fmt.Sprint(int(synthSectionFM))
+	tag := "synth-macro-scroll"
 	var wheeled bool
 	for _, h := range g.drum.eqPanelZone.HitAreas() {
-		if strings.HasPrefix(h.Tag, "synth-scroll-") && h.Tag == tag {
+		if h.Tag == tag {
 			cx := (h.Rect.Min.X + h.Rect.Max.X) / 2
 			cy := (h.Rect.Min.Y + h.Rect.Max.Y) / 2
 			h.Handler.OnWheel(cx, cy, -1)
@@ -166,7 +170,7 @@ func TestSynthSection_ThumbDragAdvancesOneRowPerStep(t *testing.T) {
 		t.Fatalf("FM section should overflow and scroll (grid=%v)", grid)
 	}
 	// Find the FM scrollbar thumb hit-area.
-	tag := "synth-scroll-" + fmt.Sprint(int(synthSectionFM))
+	tag := "synth-macro-scroll"
 	var ha *HitArea
 	hits := g.drum.eqPanelZone.HitAreas()
 	for i := range hits {
@@ -204,7 +208,7 @@ func TestSynthSection_ThumbDragAdvancesOneRowPerStep(t *testing.T) {
 // surface a finger grabs to scroll the content (as opposed to the thumb).
 func synthBodyHitArea(t *testing.T, g *Game) *HitArea {
 	t.Helper()
-	tag := "synth-scrollbody-" + fmt.Sprint(int(synthSectionFM))
+	tag := "synth-macro-scrollbody"
 	hits := g.drum.eqPanelZone.HitAreas()
 	for i := range hits {
 		if hits[i].Tag == tag {
@@ -217,9 +221,21 @@ func synthBodyHitArea(t *testing.T, g *Game) *HitArea {
 
 // TestSynthSection_BodyDragIsNatural pins the reported fix: grabbing the synth
 // card BODY scrolls naturally — the content follows the finger. Dragging the
-// finger DOWN moves the content down (revealing earlier rows → First decreases);
-// dragging UP reveals later rows (First increases). This is the opposite of the
-// scrollbar thumb, which stays direct (TestSynthSection_ThumbDragAdvancesOneRowPerStep).
+// finger DOWN reveals earlier rows (First decreases); dragging UP reveals
+// later rows (First increases). This is the opposite of the scrollbar thumb,
+// which stays direct (TestSynthSection_ThumbDragAdvancesOneRowPerStep).
+//
+// Task 8 switched the synth-section card body to SetSmoothScroll(true): the
+// body grab now rides ControlGrid's continuous pixel + momentum touch path
+// (ScrollBehavior.HandleTouchBegin/Move, backed by TouchScroller) instead of
+// the old row-stepped drag. TouchScroller has its own dead zone (10px) and a
+// direction-lock frame before any pixel delta is applied, so a SINGLE
+// synthetic OnDrag — which used to land an exact one-row delta — no longer
+// produces a deterministic row count. Drive several OnDrag steps well past
+// the dead zone so the gesture both locks direction and accrues enough pixel
+// travel to move the window (ParamCardH tops out at 64px across densities),
+// then assert the NATURAL direction still holds — the content-follows-finger
+// contract is the thing this test exists to pin, not an exact row count.
 func TestSynthSection_BodyDragIsNatural(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
@@ -230,39 +246,58 @@ func TestSynthSection_BodyDragIsNatural(t *testing.T) {
 	cx := (ha.Rect.Min.X + ha.Rect.Max.X) / 2
 	cy := (ha.Rect.Min.Y + ha.Rect.Max.Y) / 2
 
-	// Drag finger UP one step from a mid position → content follows the finger
-	// (slides up), revealing later rows → First increases.
+	// Drag finger UP, in repeated 20px steps, from a mid position → content
+	// follows the finger (slides up), revealing later rows → First increases.
 	grid.Scroll().VS.First = 1
 	if res := ha.Handler.OnPress(cx, cy); res != InputCaptured {
 		t.Fatalf("press on body returned %v, want InputCaptured", res)
 	}
-	ha.Handler.OnDrag(cx, cy-controlGridDragStepPx)
-	if got := grid.Scroll().VS.First; got != 2 {
-		t.Errorf("finger UP: First=%d, want 2 (natural: drag up reveals later rows)", got)
+	y := cy
+	for i := 0; i < 10; i++ {
+		y -= 20
+		ha.Handler.OnDrag(cx, y)
 	}
-	ha.Handler.OnRelease(cx, cy-controlGridDragStepPx)
+	ha.Handler.OnRelease(cx, y)
+	if got := grid.Scroll().VS.First; got <= 1 {
+		t.Errorf("finger UP (smooth natural drag): First=%d, want > 1 (drag up should reveal later rows)", got)
+	}
 
-	// Drag finger DOWN one step → content follows the finger (slides down),
-	// revealing earlier rows → First decreases.
+	// Drag finger DOWN the same way → content follows the finger (slides
+	// down), revealing earlier rows → First decreases.
 	grid.Scroll().VS.First = 1
 	if res := ha.Handler.OnPress(cx, cy); res != InputCaptured {
 		t.Fatalf("press on body returned %v, want InputCaptured", res)
 	}
-	ha.Handler.OnDrag(cx, cy+controlGridDragStepPx)
-	if got := grid.Scroll().VS.First; got != 0 {
-		t.Errorf("finger DOWN: First=%d, want 0 (natural: drag down reveals earlier rows)", got)
+	y = cy
+	for i := 0; i < 10; i++ {
+		y += 20
+		ha.Handler.OnDrag(cx, y)
 	}
-	ha.Handler.OnRelease(cx, cy+controlGridDragStepPx)
+	ha.Handler.OnRelease(cx, y)
+	if got := grid.Scroll().VS.First; got >= 1 {
+		t.Errorf("finger DOWN (smooth natural drag): First=%d, want < 1 (drag down should reveal earlier rows)", got)
+	}
 }
 
-func TestSynthSection_WheelThrottledOneRowPerCooldown(t *testing.T) {
+// TestSynthSection_WheelIsContinuous supersedes the old
+// TestSynthSection_WheelThrottledOneRowPerCooldown: Task 8 switched the synth
+// card body's wheel handling to ControlGrid's smooth path
+// (ScrollBehavior.HandleWheel), which moves the window proportionally to the
+// notch magnitude with NO cooldown gate — the one-row-per-throttle-window
+// contract this test used to pin no longer holds for synth sections. Assert
+// the new contract instead: a multi-notch spin advances by more than one row,
+// and back-to-back notches keep moving immediately (no cooldown wait). The
+// stepped, one-row-per-cooldown contract is still real and still pinned —
+// just no longer for synth sections — by TestControlGrid_DefaultStaysStepped
+// (sampler knob grid / row rack, which never call SetSmoothScroll).
+func TestSynthSection_WheelIsContinuous(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
 	if grid == nil || !grid.HasScroll() {
 		t.Fatalf("FM section should overflow and scroll (grid=%v)", grid)
 	}
 	// Find the FM card-body scroll catch-all (where wheel-over-empty-space lands).
-	tag := "synth-scrollbody-" + fmt.Sprint(int(synthSectionFM))
+	tag := "synth-macro-scrollbody"
 	var ha *HitArea
 	hits := g.drum.eqPanelZone.HitAreas()
 	for i := range hits {
@@ -277,25 +312,20 @@ func TestSynthSection_WheelThrottledOneRowPerCooldown(t *testing.T) {
 	cx := (ha.Rect.Min.X + ha.Rect.Max.X) / 2
 	cy := (ha.Rect.Min.Y + ha.Rect.Max.Y) / 2
 
-	// One notch -> one row.
-	ha.Handler.OnWheel(cx, cy, -1)
-	if got := grid.Scroll().VS.First; got != 1 {
-		t.Fatalf("first notch: First=%d, want 1", got)
+	// A single 3-notch spin should move MORE than one row — proportional to
+	// magnitude, unlike the old stepped path's hard one-row-per-notch cap.
+	first := grid.Scroll().VS.First
+	ha.Handler.OnWheel(cx, cy, -3)
+	if got := grid.Scroll().VS.First; got < first+2 {
+		t.Fatalf("multi-notch wheel over smooth synth section did not advance continuously: First=%d, want >= %d", got, first+2)
 	}
-	// Rapid extra notches in the same window are throttled (no fly-through).
+
+	// Back-to-back notches keep moving immediately — no cooldown gate for a
+	// smooth section (contrast the old test's throttle-to-1-per-window).
+	afterSpin := grid.Scroll().VS.First
 	ha.Handler.OnWheel(cx, cy, -1)
-	ha.Handler.OnWheel(cx, cy, -1)
-	if got := grid.Scroll().VS.First; got != 1 {
-		t.Errorf("rapid notches flew past cooldown: First=%d, want 1", got)
-	}
-	// Advancing real frames (the per-frame Synth update ticks the cooldown)
-	// re-arms the wheel — proving the throttle is driven by elapsed cycles.
-	for i := 0; i <= controlGridScrollCooldownFrames; i++ {
-		g.drum.eqPanelZone.Update()
-	}
-	ha.Handler.OnWheel(cx, cy, -1)
-	if got := grid.Scroll().VS.First; got != 2 {
-		t.Errorf("after cooldown frames: First=%d, want 2", got)
+	if got := grid.Scroll().VS.First; got <= afterSpin {
+		t.Fatalf("back-to-back wheel notch was throttled on a smooth synth section: First=%d, want > %d", got, afterSpin)
 	}
 }
 
@@ -365,8 +395,8 @@ func TestSynthSection_DenseSectionsFitAllDensities(t *testing.T) {
 			restore := SetDensityForTest(d)
 			defer restore()
 			g := modularSynthGameRealistic(t)
-			s := fmSection(t, g)
-			card := s.Rect()
+			_ = fmSection(t, g)
+			card := g.drum.instEditorMacroDetailR
 			minD := Profile().DensityValues().SynthControlMin
 			rects := visibleFMKnobRects(g)
 			if len(rects) == 0 {

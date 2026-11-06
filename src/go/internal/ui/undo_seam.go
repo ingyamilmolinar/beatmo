@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/ingyamilmolinar/beatmo/internal/i18n"
+import (
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
+)
 
 // undoCaptureHook, when non-nil, is invoked at the top of every undoCapture that
 // actually serializes the document. It exists so perf-regression tests can count
@@ -94,6 +98,12 @@ func (g *Game) performRedo() {
 	g.drum.notifyUndoRedo(i18n.KeyNotifRedo, label)
 }
 
+// restoringUndo reports whether the current Import is an undo/redo restore
+// (a snapshot re-import) rather than a circuit being opened. Its own flag, not
+// the undo manager's restoring: buildDemo raises that one too (to keep the
+// startup load out of the history), and the startup circuit IS an open.
+func (g *Game) restoringUndo() bool { return g.undoRestoring }
+
 // undoRestore re-imports a snapshot while preserving the playhead. The
 // restoring guard keeps Import from clearing the undo stack and keeps the
 // record tap a no-op during the rebuild.
@@ -103,10 +113,30 @@ func (g *Game) undoRestore(snapshot []byte) error {
 	}
 	div := max1(g.grid.MaxDiv())
 	beat := g.playheadAbsSubdiv() / div
+	// What has played is history, not document: carry it across the re-import
+	// (which rebuilds rows and drops the timeline) instead of letting the past
+	// be re-derived from the restored circuit.
+	var held map[model.NodeID]*timeline.PlayedHistory
+	if g.Playing() || g.Paused() {
+		g.freezePlayedThroughPlayhead()
+		held = g.detachPlayedByOrigin()
+	}
 	g.undoManager.restoring = true
-	defer func() { g.undoManager.restoring = false }()
+	g.undoRestoring = true
+	defer func() {
+		g.undoManager.restoring = false
+		g.undoRestoring = false
+	}()
 	if err := g.Import(snapshot); err != nil {
 		return err
+	}
+	// Reattach BEFORE the seek: the seek rewinds to the start of the current
+	// beat, and that stretch is genuinely replayed with the restored circuit,
+	// so its RewindTo must truncate it (re-recorded as it plays again, like
+	// any backward seek). Everything before it keeps what played.
+	// Abs indices only mean the same cells on the same grid.
+	if held != nil && max1(g.grid.MaxDiv()) == div {
+		g.reattachPlayedByOrigin(held)
 	}
 	g.Seek(beat)
 	return nil

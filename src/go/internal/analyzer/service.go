@@ -5,12 +5,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
 // instSlot holds per-instrument registration and ring buffer.
 type instSlot struct {
-	id   string
+	id   channel.ID
 	name string
 	ring *RingBuffer
 }
@@ -23,7 +24,7 @@ type instSlot struct {
 // are actually consumed (dropped triggers — overwritten before the next
 // tick — never pay the conversion cost).
 type pendingCap struct {
-	instID string
+	instID channel.ID
 	bufF32 []float32
 }
 
@@ -50,7 +51,7 @@ type Service struct {
 	frozen atomic.Bool
 
 	// Detail channel ID.
-	detailID atomic.Pointer[string]
+	detailID atomic.Pointer[channel.ID]
 
 	// Monotonic trigger index for capture ordering.
 	triggerIdx atomic.Int64
@@ -73,7 +74,7 @@ type Service struct {
 // NewService creates an analyzer service with the given config.
 func NewService(cfg Config) *Service {
 	if cfg.FFTSize <= 0 {
-		cfg.FFTSize = 1024
+		cfg.FFTSize = SpectrumFFTSize
 	}
 	if cfg.WindowSize <= 0 {
 		cfg.WindowSize = 2048
@@ -98,7 +99,7 @@ func NewService(cfg Config) *Service {
 
 // RegisterInstrument registers an instrument at the given slot index.
 // Must be called before Run or while the service is running (mutex-protected).
-func (s *Service) RegisterInstrument(slot int, id, name string) {
+func (s *Service) RegisterInstrument(slot int, id channel.ID, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if slot < 0 || slot >= len(s.slots) {
@@ -149,7 +150,7 @@ func (s *Service) PushMasterBuf(buf []float64) {
 // Previously this allocated a ~80 KB []float64 per call; the synth-tab
 // profile attributed 252 MB of cumulative allocations to this single
 // function over 60 seconds.
-func (s *Service) NotifyTrigger(instID string, rawBuf []float32) {
+func (s *Service) NotifyTrigger(instID channel.ID, rawBuf []float32) {
 	idx := s.triggerIdx.Add(1)
 	cap := &pendingCap{
 		instID: instID,
@@ -171,7 +172,7 @@ func (s *Service) Unfreeze() {
 
 // SetDetailChannel sets the instrument ID for detailed analysis (FFT +
 // envelope). Pass "" to disable detail.
-func (s *Service) SetDetailChannel(id string) {
+func (s *Service) SetDetailChannel(id channel.ID) {
 	s.detailID.Store(&id)
 }
 
@@ -248,7 +249,7 @@ func (s *Service) Reset() {
 	s.lastCapture.Store(nil)
 	s.clearGen.Add(1)
 	s.state.Store(&State{
-		Master:    ChannelMetrics{ID: "master", Name: "Master"},
+		Master:    ChannelMetrics{ID: channel.Master, Name: "Master"},
 		Timestamp: time.Now().UnixNano(),
 	})
 }
@@ -276,11 +277,11 @@ func (s *Service) processTick(
 	masterW := wave.Wave{
 		Samples:    masterSamples,
 		SampleRate: sr,
-		Label:      "master",
+		Label:      channel.Master.String(),
 	}
 
 	var master ChannelMetrics
-	master.ID = "master"
+	master.ID = channel.Master
 	master.Name = "Master"
 
 	if masterN > 0 {
@@ -319,7 +320,7 @@ func (s *Service) processTick(
 	s.mu.Unlock()
 
 	// Determine detail channel ID.
-	var detailID string
+	var detailID channel.ID
 	if p := s.detailID.Load(); p != nil {
 		detailID = *p
 	}
@@ -328,7 +329,7 @@ func (s *Service) processTick(
 	var detail *ChannelMetrics
 
 	for _, sl := range slotsCopy {
-		if sl.ring == nil || sl.id == "" {
+		if sl.ring == nil || sl.id.IsZero() {
 			continue
 		}
 
@@ -344,7 +345,7 @@ func (s *Service) processTick(
 			w := wave.Wave{
 				Samples:    samples,
 				SampleRate: sr,
-				Label:      sl.id,
+				Label:      sl.id.String(),
 			}
 			prObs := peakRMS.Observe(w)
 			im.PeakDB = prObs.PeakDB

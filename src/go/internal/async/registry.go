@@ -32,15 +32,19 @@ var ErrBudgetExhausted = errors.New("async: registry budget exhausted")
 // It MUST cover the whole standing-pool footprint documented in CLAUDE.md:
 //
 //	hooks.fanout 2 + eventlogger.format 1 + eventstream.persist 1 +
-//	audio.timers 1 + audio.prewarm 2 + synth.preview 1 +
-//	recording.lifecycle 1 + ui.dialog 1 + userprefs.persist 1 = 11
+//	audio.timers 1 + audio.prewarm 4 + synth.preview 1 +
+//	recording.lifecycle 1 + ui.dialog 1 + userprefs.persist 1 = 13
+//
+// audio.prewarm went 2 → 4 with the import warm-up gate (2026-09-13): the
+// gated warm set is fed with SubmitBlocking, so worker count is the gate's
+// wall-clock divisor.
 //
 // A floor below that saves nothing — every caller with a private-pool
 // fallback allocates the same workers anyway, just outside the budget —
 // while breaking the two callers that have no fallback: ui.dialog (WAV
 // upload silently fails) and recording.lifecycle (MustGet panics the app).
 // registry_footprint_test.go pins this constant to that table.
-const minDefaultBudget = 11
+const minDefaultBudget = 13
 
 // NewRegistry creates a registry with an explicit budget. parent is the
 // root context inherited by every pool created here.

@@ -68,7 +68,7 @@ page.on("pageerror", (err) => console.log(`[PAGE ERROR] ${err.message}`));
 
 try {
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof instMenuOpenState === "function", { timeout: 30000 });
+  await page.waitForFunction(() => typeof instMenuOpenState === "function", null, { timeout: 30000 });
   await page.waitForTimeout(400);
 
   // Warm-up gate. Under headless software-GL the game loop runs at only ~5–6fps

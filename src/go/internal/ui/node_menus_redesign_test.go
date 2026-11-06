@@ -49,7 +49,7 @@ func TestGroupMenuSaveFaceNeutral(t *testing.T) {
 	g.groupMenu.OpenAt(gid, 100, 100)
 	drawGroupMenuFrame(g)
 
-	b := g.groupMenu.btns["save"]
+	b := g.groupMenu.btns[gmSave]
 	if b == nil {
 		t.Fatal("save button missing")
 	}
@@ -107,15 +107,15 @@ func TestSidebarDropdownOptionsIndented(t *testing.T) {
 		t.Fatal("could not add node")
 	}
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
-	trigger, ok := g.sidebar.rects["logic"]
+	trigger, ok := g.sidebar.rects[sbLogicSelect]
 	if !ok || trigger.Empty() {
 		t.Fatal("logic trigger rect missing")
 	}
-	opt, ok := g.sidebar.rects["logic:probability"]
+	opt, ok := g.sidebar.rects[sbLogicOption(model.LogicProbability)]
 	if !ok || opt.Empty() {
 		t.Fatal("logic option rect missing while dropdown open")
 	}

@@ -78,6 +78,13 @@ async function awaitWasmReady(page) {
         () => typeof window.runScene === "function" && typeof window.forceDraw === "function" && typeof window.subjectRectJS === "function",
         { timeout: 15000 }
     );
+    // A `make wasm` (shipped, -tags noscenes) binary registers runScene but has
+    // an EMPTY catalog, so every capture would silently be the default boot
+    // screen. Fail loudly instead.
+    const sceneCount = await page.evaluate(() => (window.listScenes && window.listScenes().length) || 0);
+    if (sceneCount === 0) {
+        throw new Error("main.wasm has no scene catalog (built by `make wasm` with -tags noscenes) -- build it with `make wasm-dev`");
+    }
     // Settle.
     await page.waitForTimeout(800);
 }

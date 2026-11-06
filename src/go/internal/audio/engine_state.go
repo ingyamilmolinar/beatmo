@@ -5,6 +5,8 @@ package audio
 import (
 	"sync"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 type scaledVoice struct {
@@ -33,10 +35,6 @@ func (s *scaledVoice) SampleBlock(dst []float64) (int, bool) {
 		}
 		dst[i] = val * s.gain
 	}
-	// Probe: voice may be exactly exhausted at block boundary.
-	if _, done := s.v.Sample(); done {
-		return len(dst), true
-	}
 	return len(dst), false
 }
 
@@ -59,8 +57,11 @@ func SetNowForTest(fn func() float64) func() {
 	return func() { nowOverride = old }
 }
 
-// Reset closes the current audio context so queued sounds are dropped.
+// Reset closes the current audio context so queued sounds are dropped. The
+// live mixer's player stops with it: left playing, the orphaned mixer would
+// keep running every channel from the device callback.
 func Reset() {
+	Close()
 	ctx = nil
 	mix = nil
 	once = sync.Once{}
@@ -79,9 +80,9 @@ func Resume() {
 func SetBPM(b int) { bpm = b }
 
 // Instruments returns the list of registered instrument IDs.
-func Instruments() []string {
+func Instruments() []instrument.ID {
 	instMu.RLock()
-	ids := append([]string(nil), instOrder...)
+	ids := append([]instrument.ID(nil), instOrder...)
 	instMu.RUnlock()
 	return ids
 }

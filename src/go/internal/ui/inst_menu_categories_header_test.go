@@ -5,6 +5,9 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func openCategoriesModeMenu(t *testing.T) *InstrumentMenuComponent {
@@ -13,12 +16,12 @@ func openCategoriesModeMenu(t *testing.T) *InstrumentMenuComponent {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        image.Rect(0, 50, 300, 500),
-		CurrentInstrument: "kick",
-		Categories:        []string{"Kicks", "Snares", "Cymbals"},
+		CurrentInstrument: roster.Kick,
+		Categories:        []audio.Category{audio.CatKick, audio.CatSnare, audio.CatCymbal},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Kicks"},
-			{ID: "snare", Label: "Snare", Category: "Snares"},
-			{ID: "hihat", Label: "Hi-Hat", Category: "Cymbals"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatSnare},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatCymbal},
 		},
 		RowHeight:       24,
 		ForceCategories: true,

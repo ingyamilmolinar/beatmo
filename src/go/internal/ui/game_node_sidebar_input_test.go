@@ -15,7 +15,7 @@ import (
 func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
-	panelR := g.sidebar.rects["panel"]
+	panelR := g.sidebar.rects[sbPanel]
 	if panelR.Empty() {
 		t.Skip("no panel rect")
 	}
@@ -42,7 +42,7 @@ func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 	// After release with scroll committed, deferred tap should be canceled
 	// (not fired). We can verify that no section was toggled.
 	// Record current section states.
-	for _, sec := range []string{"vol", "pit", "dur"} {
+	for _, sec := range []sbSection{secVol, secPit, secDur} {
 		if !g.sidebar.sectionOpen[sec] {
 			t.Errorf("section %q should still be open (expanded earlier)", sec)
 		}
@@ -50,7 +50,7 @@ func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 
 	// Now test short touch (no scroll) — should fire deferred tap.
 	// First, find a section header rect to tap on.
-	secDurRect := g.sidebar.rects["sec-dur"]
+	secDurRect := g.sidebar.rects[sbSectionHeader(secDur)]
 	if secDurRect.Empty() {
 		t.Skip("sec-dur rect empty — cannot test deferred tap fire")
 	}
@@ -64,7 +64,7 @@ func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 
 	// After release with no scroll, deferred tap should have fired on sec-dur.
 	// sec-dur was open; toggling it closes it.
-	if g.sidebar.sectionOpen["dur"] {
+	if g.sidebar.sectionOpen[secDur] {
 		t.Error("expected 'dur' section to be toggled closed by deferred tap")
 	}
 }
@@ -80,7 +80,7 @@ func TestSidebar_DropdownCloseOnOutsideClick(t *testing.T) {
 
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sidebar.Open(n)
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
@@ -90,7 +90,7 @@ func TestSidebar_DropdownCloseOnOutsideClick(t *testing.T) {
 
 	// Find the panel rect and click in a spot that is inside the panel
 	// but outside all dropdown rects. The header area (top of panel) works.
-	headerR := g.sidebar.rects["header"]
+	headerR := g.sidebar.rects[sbHeader]
 	if headerR.Empty() {
 		t.Fatal("header rect should not be empty")
 	}

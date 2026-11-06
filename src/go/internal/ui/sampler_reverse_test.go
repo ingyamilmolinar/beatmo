@@ -5,6 +5,8 @@ package ui
 import (
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // fEq32 compares a float64 (widened from a float32 sample) against an expected
@@ -310,7 +312,7 @@ func TestSamplerActivePlayheadSweepsForwardAfterReverse(t *testing.T) {
 	s.reverseBuffer()
 
 	base := int64(1e9)
-	tr.observe(base, map[string]int64{"a": base}, 2.0)
+	tr.observe(base, map[instrument.ID]int64{"a": base}, 2.0)
 
 	frac := func(elapsedMs int) float64 {
 		v := tr.active(base+int64(elapsedMs)*int64(time.Millisecond), 2.0, 0.0, 1.0)

@@ -22,6 +22,9 @@ func (g *Game) SetActiveEQTab(name string) error {
 	case "levels", "meters":
 		g.drum.eqPanelZone.tabState.SetActiveTab(TabMeters)
 	case "chain", "scope":
+		if !panelTabAvailable(TabScope) {
+			return fmt.Errorf("EQ tab %q is not available in this build", name)
+		}
 		g.drum.eqPanelZone.tabState.SetActiveTab(TabScope)
 		g.drum.bgDirty = true
 	case "synth":

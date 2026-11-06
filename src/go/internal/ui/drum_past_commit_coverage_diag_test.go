@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
@@ -16,7 +17,7 @@ func TestDiag_PastCommitCoverageUnderFollow(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)

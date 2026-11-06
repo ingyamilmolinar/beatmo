@@ -4,6 +4,8 @@ package ui
 
 import (
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // initJSScenes registers every public opener/closer and the runScene/listScenes
@@ -28,6 +30,81 @@ func (g *Game) initJSScenes() {
 	js.Global().Set("closeOverflowMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseOverflowMenu() })
 		return nil
+	}))
+
+	// menuKeyNavState(menu) -> {selected,count} | null
+	//
+	// Exposes a list menu's shared keyboard cursor (menu_keynav.go) so browser
+	// tests can drive REAL key events at the canvas and observe the highlight.
+	// `menu` is "overflow" (File/Templates), "subdiv", "jump", "context" or
+	// "instrument".
+	js.Global().Set("menuKeyNavState", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		var nav *MenuKeyNav
+		var count int
+		switch args.StrOr(0, "overflow") {
+		case "overflow":
+			if !g.drum.IsOverflowMenuOpen() {
+				return nil
+			}
+			nav = g.drum.OverflowKeyNavForTest()
+			count = overflowNavHost{dv: g.drum}.MenuItemCount()
+		case "subdiv":
+			if g.drum.subdivMenuComp == nil {
+				return nil
+			}
+			nav = g.drum.subdivMenuComp.MenuKeyNavForTest()
+			count = g.drum.subdivMenuComp.MenuItemCount()
+		case "jump":
+			if g.drum.jumpMenuComp == nil {
+				return nil
+			}
+			nav = g.drum.jumpMenuComp.MenuKeyNavForTest()
+			count = g.drum.jumpMenuComp.MenuItemCount()
+		case "context":
+			if !g.drum.IsContextMenuOpen() {
+				return nil
+			}
+			nav = g.drum.ContextKeyNavForTest()
+			count = contextNavHost{dv: g.drum}.MenuItemCount()
+		case "instrument":
+			if g.drum.instMenuComp == nil {
+				return nil
+			}
+			nav = g.drum.instMenuComp.MenuKeyNavForTest()
+			count = g.drum.instMenuComp.MenuItemCount()
+		default:
+			return nil
+		}
+		if nav == nil {
+			return nil
+		}
+		return map[string]any{"selected": nav.Selected(), "count": count}
+	}))
+
+	// overflowMenuScrollState() -> {first,total,visible} | null
+	//
+	// Exposes the open overflow/template menu's scroll position so browser
+	// tests can measure how far ONE real wheel notch moves the list. That is
+	// only observable from the browser: the platform wheel-unit boundary
+	// (input_dynamics.go) differs precisely because ebiten.Wheel() is stubbed
+	// under -tags test, so no native Go test can see the real DOM deltas.
+	js.Global().Set("overflowMenuScrollState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.IsOverflowMenuOpen() {
+			return nil
+		}
+		sc := g.drum.OverflowMenuScrollForTest()
+		if sc == nil {
+			return nil
+		}
+		vs := sc.ScrollBehavior().VS
+		return map[string]any{
+			"first":   vs.First,
+			"total":   vs.Total,
+			"visible": vs.Visible,
+		}
 	}))
 	js.Global().Set("openColorMenu", jsFn(func(args jsArgs) any {
 		row := args.IntOr(0, 0)
@@ -89,10 +166,13 @@ func (g *Game) initJSScenes() {
 		return nil
 	}))
 	js.Global().Set("setEQBandGain", jsFn(func(args jsArgs) any {
-		channel := args.StrOr(0, "main")
+		ch := args.ChannelOr(0, channel.Master)
+		if ch.IsZero() {
+			return nil
+		}
 		band := args.IntOr(1, 0)
 		gainDB := args.FloatOr(2, 0)
-		g.QueueAction(func(g *Game) { g.SetEQBandGain(channel, band, gainDB) })
+		g.QueueAction(func(g *Game) { g.SetEQBandGain(ch, band, gainDB) })
 		return nil
 	}))
 

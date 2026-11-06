@@ -5,6 +5,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // These tests pin the invariant that editing the graph during playback —
@@ -59,12 +60,12 @@ func TestDeleteNodeDuringPlaybackDoesNotStopInstrumentAudio(t *testing.T) {
 	_, mid, _ := buildPlayingLoop(t, g)
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	inst := g.drum.Rows[0].Instrument
 	instStops := 0
 	anyStops := 0
-	audio.SetStopHook(func(id string) {
+	audio.SetStopHook(func(id instrument.ID) {
 		anyStops++
 		if id == inst {
 			instStops++
@@ -115,12 +116,12 @@ func TestAddNodeDuringPlaybackDoesNotStopInstrumentAudio(t *testing.T) {
 	start, mid, _ := buildPlayingLoop(t, g)
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	inst := g.drum.Rows[0].Instrument
 	instStops := 0
 	anyStops := 0
-	audio.SetStopHook(func(id string) {
+	audio.SetStopHook(func(id instrument.ID) {
 		anyStops++
 		if id == inst {
 			instStops++

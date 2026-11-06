@@ -69,18 +69,6 @@ func fmtOnOff(v float64) string {
 	return "Off"
 }
 
-// fmtPan renders a -1..+1 pan: 0 → "C", positive → "R<pct>", negative → "L<pct>".
-func fmtPan(v float64) string {
-	switch {
-	case v > 0:
-		return "R" + strconv.Itoa(int(math.Round(v*100)))
-	case v < 0:
-		return "L" + strconv.Itoa(int(math.Round(-v*100)))
-	default:
-		return "C"
-	}
-}
-
 // sampleEditFacet maps a sample_edit map key to its facet, reusing the exact
 // i18n labels and unit formatters the Sampler tab captions use. ok=false for an
 // unknown key. This is the table samplerKnobCaption renders from, so the Sampler
@@ -97,6 +85,8 @@ func sampleEditFacet(key string) (paramFacet, bool) {
 		return keyFacet(i18n.KeySamplerKnobFine, fmtUnit("cents")), true
 	case "gain_db":
 		return keyFacet(i18n.KeySamplerKnobGain, fmtUnit("dB")), true
+	case "fade":
+		return keyFacet(i18n.KeyFade, fmtOnOff), true
 	case "reverse":
 		return keyFacet(i18n.KeyReverse, fmtOnOff), true
 	case "normalize":

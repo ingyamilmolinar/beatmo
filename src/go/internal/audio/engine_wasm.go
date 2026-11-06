@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
@@ -17,28 +20,26 @@ type Voice interface{}
 type Instrument interface{}
 
 var (
-	instruments   = append([]string(nil), BuiltinInstrumentIDs...)
+	instruments   = append([]instrument.ID(nil), roster.All...)
 	instrumentsMu sync.RWMutex
 )
 
-func Register(id string, inst Instrument) {
+func Register(id instrument.ID, inst Instrument) {
 	instrumentsMu.Lock()
 	for _, existing := range instruments {
 		if existing == id {
 			instrumentsMu.Unlock()
-			InstrumentChannel(id)
 			return
 		}
 	}
 	instruments = append(instruments, id)
 	instrumentsMu.Unlock()
 	bumpInstrumentsVersion()
-	InstrumentChannel(id)
 }
 
 // Unregister removes a runtime-registered instrument id from the playable set
 // (the inverse of Register). No-op if absent.
-func Unregister(id string) {
+func Unregister(id instrument.ID) {
 	instrumentsMu.Lock()
 	found := false
 	out := instruments[:0]
@@ -56,7 +57,7 @@ func Unregister(id string) {
 	}
 }
 
-func Play(id string, when ...float64) {
+func Play(id instrument.ID, when ...float64) {
 	fn := js.Global().Get("playSound")
 	if !fn.Truthy() {
 		return
@@ -67,15 +68,15 @@ func Play(id string, when ...float64) {
 	// WASM and those signals stay invisible.
 	RecordVoiceTrigger(id)
 	if len(when) > 0 {
-		fn.Invoke(id, 1.0, when[0])
+		fn.Invoke(string(id), 1.0, when[0])
 		return
 	}
-	fn.Invoke(id, 1.0)
+	fn.Invoke(string(id), 1.0)
 }
 
 // PlayVol plays an instrument at the given volume. Volume is forwarded
 // to the WebAudio bridge which applies a GainNode before the destination.
-func PlayVol(id string, vol float64, when ...float64) {
+func PlayVol(id instrument.ID, vol float64, when ...float64) {
 	// Pass id and volume to JS. Optionally pass the first 'when' timestamp
 	// if provided (seconds in AudioContext time). The JS side may ignore it.
 	fn := js.Global().Get("playSound")
@@ -84,15 +85,15 @@ func PlayVol(id string, vol float64, when ...float64) {
 	}
 	RecordVoiceTrigger(id)
 	if len(when) > 0 {
-		fn.Invoke(id, vol, when[0])
+		fn.Invoke(string(id), vol, when[0])
 		return
 	}
-	fn.Invoke(id, vol)
+	fn.Invoke(string(id), vol)
 }
 
 // PlayParams forwards volume, pitch (semitones) and duration multiplier to the
 // WebAudio bridge. The JS side applies playbackRate = 2^(pitch/12)/dur.
-func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
+func PlayParams(id instrument.ID, vol, pitch, dur float64, when ...float64) {
 	fn := js.Global().Get("playSoundParams")
 	if !fn.Truthy() {
 		// Fallback to volume-only if extended bridge is not present
@@ -102,14 +103,14 @@ func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 	}
 	RecordVoiceTrigger(id)
 	if len(when) > 0 {
-		fn.Invoke(id, vol, pitch, dur, when[0])
+		fn.Invoke(string(id), vol, pitch, dur, when[0])
 		return
 	}
-	fn.Invoke(id, vol, pitch, dur)
+	fn.Invoke(string(id), vol, pitch, dur)
 }
 
 // PlayParamsAt schedules a sound with explicit 'when'. When when<=0 starts immediately.
-func PlayParamsAt(id string, vol, pitch, dur, when float64) {
+func PlayParamsAt(id instrument.ID, vol, pitch, dur, when float64) {
 	if when > 0 {
 		PlayParams(id, vol, pitch, dur, when)
 	} else {
@@ -120,37 +121,37 @@ func PlayParamsAt(id string, vol, pitch, dur, when float64) {
 // SampleSeconds returns the base sample duration in seconds for an instrument ID.
 // For synthesized instruments, this reads from the JS audio bridge; for WAVs,
 // it reflects the decoded buffer duration. Returns 0 if unknown.
-func SampleSeconds(id string) float64 {
+func SampleSeconds(id instrument.ID) float64 {
 	fn := js.Global().Get("sampleDurationSec")
 	if !fn.Truthy() {
 		return 0
 	}
-	v := fn.Invoke(id)
+	v := fn.Invoke(string(id))
 	if v.Truthy() {
 		return v.Float()
 	}
 	return 0
 }
 
-func Stop(id string) {
+func Stop(id instrument.ID) {
 	if fn := js.Global().Get("stopSound"); fn.Truthy() {
-		fn.Invoke(id)
+		fn.Invoke(string(id))
 	}
 }
 
 // ResetInstruments restores the default instrument ID list.
 func ResetInstruments() {
+	ResetInstrumentDocs()
 	instrumentsMu.Lock()
-	instruments = append([]string(nil), BuiltinInstrumentIDs...)
+	instruments = append(append([]instrument.ID(nil), roster.All...), userOnlyLibraryIDs()...)
 	instrumentsMu.Unlock()
 	bumpInstrumentsVersion()
 	ClearAllInsertEffects()
-	resetInstrumentChannels(instruments)
+	resetInstrumentChannels()
 	clearInstrumentDisplayNames()
 	// Phase 5: wire each shipped instrument id to its SynthRecipe so the
 	// browser audio pipeline can pick up user-edited params at render time
 	// (mirrors the desktop + stub build paths).
-	bindBuiltinInstrumentRecipes()
 }
 
 // Now returns the current WebAudio time in seconds as reported by
@@ -197,9 +198,9 @@ func SampleRate() int {
 	return 48000
 }
 
-func Instruments() []string {
+func Instruments() []instrument.ID {
 	instrumentsMu.RLock()
-	ids := append([]string(nil), instruments...)
+	ids := append([]instrument.ID(nil), instruments...)
 	instrumentsMu.RUnlock()
 	return ids
 }
@@ -253,9 +254,16 @@ func EnableScopeExport() {
 	}
 	sr := SampleRate()
 	wasmExportSvc = scopeexport.NewService(scopeexport.Config{
-		SampleRate:      sr,
-		Interval:        2 * time.Second,
-		InstrumentsFunc: func() []string { return Instruments() },
+		SampleRate: sr,
+		Interval:   2 * time.Second,
+		InstrumentsFunc: func() []channel.ID {
+			ids := Instruments()
+			out := make([]channel.ID, len(ids))
+			for i, id := range ids {
+				out[i] = channel.Of(id)
+			}
+			return out
+		},
 	})
 	wasmExportStop = make(chan struct{})
 	stop := wasmExportStop
@@ -287,36 +295,31 @@ func EnableScopeExport() {
 // instrument into the export service ring buffers. Shared by the background
 // goroutine ticker and ForceScopeExportSnapshot.
 //
-// All six pipeline stages are bridged via the matching JS analyser nodes:
+// All five pipeline stages are bridged via the matching JS analyser nodes:
 //   - StageSynth / StageAntiPop  → channel-ingress (pre-FX) analyser
 //   - StageInsertFX              → pre-EQ analyser (post-inserts, pre-EQ)
 //   - StageEQ                    → channel analyser (post-EQ)
-//   - StageSends                 → send-bus analyser (delay + reverb returns)
 //   - StageMaster                → main-channel analyser
 func pollExportSamples(svc *scopeexport.Service) {
 	for _, id := range Instruments() {
-		synth := SynthAnalyzerSnapshot(id)
+		synth := SynthAnalyzerSnapshot(channel.Of(id))
 		if len(synth.Waveform) > 0 {
-			svc.PushSamples(scope.StageSynth, id, synth.Waveform)
+			svc.PushSamples(scope.StageSynth, channel.Of(id), synth.Waveform)
 			// AntiPop shares the synth ingress in WASM — see ScopeStageSnapshots.
-			svc.PushSamples(scope.StageAntiPop, id, synth.Waveform)
+			svc.PushSamples(scope.StageAntiPop, channel.Of(id), synth.Waveform)
 		}
-		pre := PreEQAnalyzerSnapshot(id)
+		pre := PreEQAnalyzerSnapshot(channel.Of(id))
 		if len(pre.Waveform) > 0 {
-			svc.PushSamples(scope.StageInsertFX, id, pre.Waveform)
+			svc.PushSamples(scope.StageInsertFX, channel.Of(id), pre.Waveform)
 		}
-		post := ChannelAnalyzerSnapshot(id)
+		post := ChannelAnalyzerSnapshot(channel.Of(id))
 		if len(post.Waveform) > 0 {
-			svc.PushSamples(scope.StageEQ, id, post.Waveform)
+			svc.PushSamples(scope.StageEQ, channel.Of(id), post.Waveform)
 		}
 	}
-	sends := SendBusAnalyzerSnapshot()
-	if len(sends.Waveform) > 0 {
-		svc.PushSamples(scope.StageSends, "master", sends.Waveform)
-	}
-	master := ChannelAnalyzerSnapshot("main")
+	master := ChannelAnalyzerSnapshot(channel.Master)
 	if len(master.Waveform) > 0 {
-		svc.PushSamples(scope.StageMaster, "master", master.Waveform)
+		svc.PushSamples(scope.StageMaster, channel.Master, master.Waveform)
 	}
 }
 

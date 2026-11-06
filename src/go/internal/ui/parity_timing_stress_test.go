@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // This file is Task 2.3 (Phase 2, final task) of the parity-timing-sync
 // plan. It stress-tests the timing gate (parityTimingCheck,
@@ -72,7 +76,7 @@ func cycleInstrumentForTest(g *Game, row int) {
 func TestParityTimingStressRealPlaybackNoFalsePositive(t *testing.T) {
 	g := newTestGameForParity(t)
 	enableParityTimingForTest(t, g)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	const rows = 8
 	loadStressCircuitForTest(t, g, rows, 240)
@@ -113,7 +117,7 @@ func TestParityTimingStressRealPlaybackNoFalsePositive(t *testing.T) {
 func TestParityTimingStressSyntheticFeedNoFalsePositive(t *testing.T) {
 	g := newTestGameForParity(t)
 	enableParityTimingForTest(t, g)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	const rows = 8
 	loadStressCircuitForTest(t, g, rows, 240)
@@ -176,7 +180,7 @@ func TestParityTimingStressCatchesInjectedDrift(t *testing.T) {
 func TestParityTimingStressPauseResumeNoFalsePositive(t *testing.T) {
 	g := newTestGameForParity(t)
 	enableParityTimingForTest(t, g)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	const rows = 4
 	loadStressCircuitForTest(t, g, rows, 240)

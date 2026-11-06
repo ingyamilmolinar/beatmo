@@ -13,6 +13,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // pipelineUnderLoad spawns the pipeline and a Tap-driver goroutine that
@@ -38,7 +42,7 @@ func pipelineUnderLoad(t *testing.T, ctx context.Context, instruments []Instrume
 	t.Cleanup(func() { pipelinePtr.Store(nil) })
 
 	instBufs := make([][]float64, len(instruments))
-	slotIDs := make([]string, len(instruments))
+	slotIDs := make([]channel.ID, len(instruments))
 	activeSlots := make([]int, len(instruments))
 	for i, inst := range instruments {
 		buf := make([]float64, blockLen)
@@ -125,9 +129,9 @@ func TestPipelineSurvivesCPUNoise(t *testing.T) {
 	defer func() { close(noiseStop); noiseWg.Wait() }()
 
 	instruments := []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
-		{ID: "hihat", Name: "HiHat"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
+		{ID: channel.Of(roster.Hihat), Name: "HiHat"},
 	}
 	pipe, blocksTapped := pipelineUnderLoad(t, ctx, instruments, 480, 1000) // 1 s
 	metas, err := pipe.Stop()
@@ -186,8 +190,8 @@ func TestPipelineSurvivesAllocNoise(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	instruments := []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
 	}
 	pipe, blocksTapped := pipelineUnderLoad(t, ctx, instruments, 480, 1000)
 	if _, err := pipe.Stop(); err != nil {
@@ -237,7 +241,7 @@ func TestPipelineSurvivesDiskNoise(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	pipe, blocksTapped := pipelineUnderLoad(t, ctx,
-		[]InstrumentMeta{{ID: "kick", Name: "Kick"}}, 480, 1000)
+		[]InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}}, 480, 1000)
 	metas, err := pipe.Stop()
 	if err != nil {
 		t.Fatalf("Stop: %v", err)
@@ -262,12 +266,12 @@ func TestPipelineSurvivesDiskNoise(t *testing.T) {
 // 5 ms even when the writers have buffered work — the slow file Close
 // must run on the lifecycle pool, not the calling goroutine.
 func TestStopRecordingFastReturn(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
 		Format: FormatWAV24,
 		Instruments: []InstrumentMeta{
-			{ID: "kick", Name: "Kick"},
-			{ID: "snare", Name: "Snare"},
+			{ID: channel.Of(roster.Kick), Name: "Kick"},
+			{ID: channel.Of(roster.Snare), Name: "Snare"},
 		},
 		BPM: 120,
 	}
@@ -284,7 +288,7 @@ func TestStopRecordingFastReturn(t *testing.T) {
 	instBufs := [][]float64{make([]float64, blockLen), make([]float64, blockLen)}
 	workBuf := make([]float64, blockLen)
 	for i := 0; i < 50; i++ {
-		pipe.Tap([]string{"kick", "snare"}, []int{0, 1}, instBufs, workBuf, blockLen)
+		pipe.Tap([]channel.ID{channel.Of(roster.Kick), channel.Of(roster.Snare)}, []int{0, 1}, instBufs, workBuf, blockLen)
 	}
 
 	start := time.Now()
@@ -313,10 +317,10 @@ func TestStopRecordingFastReturn(t *testing.T) {
 // to a single channel and verify the resulting WAV file matches when
 // decoded back (within int24 quantization tolerance).
 func TestRecordingByteIntegrity(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
 		Format:      FormatWAV24,
-		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments: []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BPM:         120,
 	}
 	if err := StartRecording(opts); err != nil {
@@ -341,7 +345,7 @@ func TestRecordingByteIntegrity(t *testing.T) {
 
 	for b := 0; b < nBlocks; b++ {
 		buf := expected[b*blockLen : (b+1)*blockLen]
-		pipe.Tap([]string{"kick"}, []int{0}, [][]float64{buf}, buf, blockLen)
+		pipe.Tap([]channel.ID{channel.Of(roster.Kick)}, []int{0}, [][]float64{buf}, buf, blockLen)
 	}
 
 	result, err := StopRecording()

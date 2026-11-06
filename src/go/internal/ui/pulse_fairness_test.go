@@ -3,8 +3,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/beatmo/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestEqualRowPulseSpeeds ensures that for equal-length segments on different

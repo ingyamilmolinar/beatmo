@@ -57,6 +57,7 @@ func TestParityDetectsMissingAudioJustBehindPlayhead(t *testing.T) {
 	g.parityMu.Unlock()
 
 	g.ClearParityMismatches()
+	g.state.SetPaused(true) // production scans a paused transport, never a stopped one
 	g.parityScan("test-audio-missing-recent-past")
 
 	found := false

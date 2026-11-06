@@ -1,0 +1,132 @@
+{
+  "schema_version": "0.0.1",
+  "id": "snare-deep",
+  "name": "Deep Snare",
+  "category": "modular",
+  "notes": "snareDeepSeed: the deep head plus darker wires — approved by ear as \"a great\nsnare\" (2026-09-29), then heard to \"rattle throughout\": the wire collisions\nthinned out with their amplitude and turned into audible ticks.\ncym_rattle_hold keeps the collision train dense (a fused buzz) while it fades\n(fingerprint.TailRattle 608 -> ~7).",
+  "render": {
+    "seconds": 1.4,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 172
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "snare.acoustic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "snare_attack": 1.69,
+        "snare_noise_d": 0,
+        "snare_noise_m": 0.6,
+        "snare_tail_d": 4.5,
+        "snare_tone2": 258,
+        "snare_tone_d": 26,
+        "snare_tone_m": 1.15,
+        "snare_tune": 1,
+        "snare_wire_m": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "cym.hihat",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cym_attack": 0.002,
+        "cym_beat": 0.004,
+        "cym_body": 0,
+        "cym_body_f": 1500,
+        "cym_body_w": 0.15,
+        "cym_decay_tilt": 0.622,
+        "cym_drive_delay": 0,
+        "cym_env_fast": 30,
+        "cym_env_tail": 114.44,
+        "cym_hf_corner": 7000,
+        "cym_mode_hi": 11145.4,
+        "cym_mode_lo": 1250,
+        "cym_modes": 360,
+        "cym_noise_d": 4,
+        "cym_noise_m": 0,
+        "cym_rattle": 1.5,
+        "cym_rattle_decay": 0.16,
+        "cym_rattle_hold": 1.5,
+        "cym_rattle_rate": 4615,
+        "cym_spark": 0,
+        "cym_spark_f": 11000,
+        "cym_spark_w": 0.3,
+        "cym_tone_f": 3500,
+        "cym_tone_m": 0.4592,
+        "cym_tone_w": 3.166,
+        "cym_tune": 1,
+        "cym_wash": 1.0756
+      }
+    }
+  ]
+}

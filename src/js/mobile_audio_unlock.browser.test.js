@@ -15,7 +15,7 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled, waitForAudioReady } from "./browser_test_helpers.js";
 import { cdpTap } from "./touch_cdp_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,7 +79,7 @@ try {
     await page.waitForFunction(() =>
       typeof addNode === "function" &&
       typeof audioNow === "function"
-    , { timeout: 30000 });
+    , null, { timeout: 30000 });
 
     // Check that AudioContext was NOT created during WASM init.
     // audioNow() should return 0 without creating a context.
@@ -152,10 +152,11 @@ try {
       typeof setChannelVolume === "function" &&
       typeof channelVolume === "function" &&
       typeof playSound === "function"
-    , { timeout: 30000 });
+    , null, { timeout: 30000 });
 
     // Delegate to the shared scenario module so test_runner.html on a real
     // phone can run the same assertions.
+    await waitForAudioReady(page, { allowReject: true });
     const r2 = await page.evaluate(async () => {
       const m = await import("/scenarios/mobile_audio_unlock.js");
       return await m.scenarioQueuedChannelOpsAppliedAfterUnlock();
@@ -187,7 +188,7 @@ try {
       typeof startOutputCapture === "function" &&
       typeof stopOutputCapture === "function" &&
       typeof resumeAudio === "function"
-    , { timeout: 30000 });
+    , null, { timeout: 30000 });
 
     // Create and unlock the context first.
     await page.evaluate(() => {
@@ -262,10 +263,11 @@ try {
       typeof stopPlay === "function" &&
       typeof startOutputCapture === "function" &&
       typeof stopOutputCapture === "function"
-    , { timeout: 30000 });
+    , null, { timeout: 30000 });
 
     // Delegate to the shared scenario module — same assertions are run on
     // a real phone via test_runner.html.
+    await waitForAudioReady(page, { allowReject: true });
     const s4 = await page.evaluate(async () => {
       const m = await import("/scenarios/mobile_audio_unlock.js");
       return await m.scenarioPlaybackAfterUnlock();

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 	minHighlightSeconds = 0.05 // 50ms minimum
 )
 
-func (s *playbackSlate) queueSoundParams(id string, vol, pitch, dur float64) {
+func (s *playbackSlate) queueSoundParams(id instrument.ID, vol, pitch, dur float64) {
 	g := s.g
 	// Queue non-blockingly; if the buffer is saturated, drop the oldest
 	// and enqueue the latest so playback remains responsive while tests
@@ -59,12 +60,14 @@ func (s *playbackSlate) bumpRowStructGen(row int) {
 }
 
 // queueSoundAtParams schedules with explicit timestamp seconds.
-func (s *playbackSlate) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, whenSec float64) {
+// gridSec is the predictor's trigger time without the lookahead cushion (0 =
+// unknown); it only feeds timing measurement, never the schedule.
+func (s *playbackSlate) queueSoundAtParams(row, abs int, id instrument.ID, vol, pitch, dur, whenSec, gridSec float64) {
 	g := s.g
 	if vol < 0 {
 		vol = 0
 	}
-	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, when: whenSec, hasWhen: true, enqAt: time.Now(), gen: g.audioGen.Load(), rowGen: g.rowStructGenLoad(row), parityGen: g.parityGen.Load(), row: row, abs: abs}
+	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, when: whenSec, hasWhen: true, grid: gridSec, enqAt: time.Now(), gen: g.audioGen.Load(), rowGen: g.rowStructGenLoad(row), parityGen: g.parityGen.Load(), row: row, abs: abs}
 	// Mark the seq decision as having reached the audio pipeline so parity's
 	// audio_missing check does not flag in-flight/dropped audio as a scheduler
 	// bug (see paritySeqDecision.Enqueued). Sequencer reqs only (row >= 0).
@@ -118,11 +121,26 @@ func (s *playbackSlate) runtimeAudioLookahead() float64 {
 	if look > 0.15 {
 		look = 0.15
 	}
+	// Ratchet within a transport session: never SHRINK mid-play. The cushion
+	// is added to every beat's `when`, so each change shifts all later notes
+	// by the delta — the extras above follow draw/update timings, and a UI
+	// hovering around a threshold made the audio grid wobble (measured with
+	// the playback probe: 20 ms tempo hiccups while nothing about the circuit
+	// changed). Growing still costs one shift, but at most three per session;
+	// the floor resets on the next transport generation (Stop/Pause/seek).
+	if gen := g.audioGen.Load(); gen != s.lookaheadGen {
+		s.lookaheadGen = gen
+		s.lookaheadFloor = 0
+	}
+	if look < s.lookaheadFloor {
+		look = s.lookaheadFloor
+	}
+	s.lookaheadFloor = look
 	return look
 }
 
 // scheduleSound applies groove (swing and micro-delay) and enqueues the sound.
-func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol, pitch, dur, baseNow float64, sequencer bool) {
+func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst instrument.ID, vol, pitch, dur, baseNow float64, sequencer bool) {
 	g := s.g
 	if info.NodeType == model.NodeTypeMute {
 		g.ensureGateSlices()
@@ -146,8 +164,15 @@ func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst st
 	// Only for real sequencer beats — fire-and-forget UI sounds (sequencer=false)
 	// play immediately and don't need pre-warming. Reached only for non-mute
 	// regular beats (mute nodes returned above).
+	// A chord cell sounds one voice per layer (nil = one voice, untouched).
+	layers := s.nodeLayersAt(info)
 	if sequencer && g.voicePrewarmer != nil {
-		g.voicePrewarmer.warmPitch(inst, pitch)
+		if layers == nil {
+			g.voicePrewarmer.warmPitch(inst, pitch)
+		}
+		for _, l := range layers {
+			g.voicePrewarmer.warmPitch(inst, pitch+l.Semis)
+		}
 	}
 	when := baseNow
 	if !(when > 0) {
@@ -155,6 +180,7 @@ func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst st
 	}
 	d := g.nodeNudgeSecondsAt(row, idx, info) // apply per-node groove; fallback to previous node
 	when += d
+	grid := when
 	if look := g.runtimeAudioLookahead(); look > 0 {
 		when += look
 	}
@@ -178,7 +204,21 @@ func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst st
 		// true device jitter, which is what the gate is meant to catch.
 		g.openTimingTrace(row, idx, when, g.audioGen.Load(), g.parityGen.Load())
 	}
-	g.queueSoundAtParams(parityRow, parityAbs, inst, vol, pitch, dur, when)
+	if layers == nil {
+		g.queueSoundAtParams(parityRow, parityAbs, inst, vol, pitch, dur, when, grid)
+	}
+	for _, l := range layers {
+		g.queueSoundAtParams(parityRow, parityAbs, inst, vol*l.Gain, pitch+l.Semis, dur, when, grid)
+	}
+	s.scheduleSoundUI(row, idx, info, inst, pitch, dur, when)
+}
+
+// scheduleSoundUI is the visual half of scheduling a beat: highlight duration
+// matched to the audio length, the node's highlight window on the audio
+// clock, and the node animation. The audio lane calls it alone (its audio
+// was committed ahead); the legacy path calls it after queueing the sound.
+func (s *playbackSlate) scheduleSoundUI(row, idx int, info model.BeatInfo, inst instrument.ID, pitch, dur, when float64) {
+	g := s.g
 	// Adjust highlight durations to match audio length as closely as possible.
 	if sec := g.expectedHighlightSeconds(inst, pitch, dur); sec > 0 {
 		// Timeline highlight uses frames based on seconds
@@ -199,7 +239,7 @@ func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst st
 // expectedHighlightSeconds estimates the number of seconds a highlight should
 // persist, capped to provide a short visual "punch" regardless of audio length.
 // The highlight indicates "a note fired" not "the note is still playing".
-func (s *playbackSlate) expectedHighlightSeconds(inst string, pitch, dur float64) float64 {
+func (s *playbackSlate) expectedHighlightSeconds(inst instrument.ID, pitch, dur float64) float64 {
 	g := s.g
 	base := audio.SampleSeconds(inst)
 	if base <= 0 {
@@ -233,7 +273,7 @@ func (s *playbackSlate) expectedHighlightSeconds(inst string, pitch, dur float64
 	return sec
 }
 
-func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
+func (g *Game) queueSoundParams(id instrument.ID, vol, pitch, dur float64) {
 	g.playbackSlate.queueSoundParams(id, vol, pitch, dur)
 }
 
@@ -241,18 +281,22 @@ func (g *Game) rowStructGenLoad(row int) uint64 { return g.playbackSlate.rowStru
 
 func (g *Game) bumpRowStructGen(row int) { g.playbackSlate.bumpRowStructGen(row) }
 
-func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, whenSec float64) {
-	g.playbackSlate.queueSoundAtParams(row, abs, id, vol, pitch, dur, whenSec)
+func (g *Game) queueSoundAtParams(row, abs int, id instrument.ID, vol, pitch, dur, whenSec, gridSec float64) {
+	g.playbackSlate.queueSoundAtParams(row, abs, id, vol, pitch, dur, whenSec, gridSec)
 }
 
 func (g *Game) audioChNearFull() bool { return g.playbackSlate.audioChNearFull() }
 
 func (g *Game) runtimeAudioLookahead() float64 { return g.playbackSlate.runtimeAudioLookahead() }
 
-func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol, pitch, dur, baseNow float64, sequencer bool) {
+func (g *Game) scheduleSoundUI(row, idx int, info model.BeatInfo, inst instrument.ID, pitch, dur, when float64) {
+	g.playbackSlate.scheduleSoundUI(row, idx, info, inst, pitch, dur, when)
+}
+
+func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst instrument.ID, vol, pitch, dur, baseNow float64, sequencer bool) {
 	g.playbackSlate.scheduleSound(row, idx, info, inst, vol, pitch, dur, baseNow, sequencer)
 }
 
-func (g *Game) expectedHighlightSeconds(inst string, pitch, dur float64) float64 {
+func (g *Game) expectedHighlightSeconds(inst instrument.ID, pitch, dur float64) float64 {
 	return g.playbackSlate.expectedHighlightSeconds(inst, pitch, dur)
 }

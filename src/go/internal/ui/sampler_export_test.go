@@ -4,13 +4,14 @@ package ui
 
 import (
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
-	"math"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestExportImportSampleEditRoundTrip — a recipe-bound instrument with a
@@ -40,7 +41,7 @@ func TestExportImportSampleEditRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -80,6 +81,11 @@ func TestImportClearsStaleSampleEdit(t *testing.T) {
 	inst := dv.Rows[0].Instrument
 	t.Cleanup(func() { audio.ClearSampleEdit(inst) })
 
+	// State the precondition instead of inheriting it. Sampler edits apply LIVE
+	// into a process-global store, so an earlier test that merely turned a knob
+	// can leave a descriptor on this instrument — and then the "clean" export
+	// below carries the very edit this test asserts import clears.
+	audio.ClearSampleEdit(inst)
 	data, err := dv.exportBytes() // exported with NO descriptor
 	if err != nil {
 		t.Fatalf("export: %v", err)
@@ -127,26 +133,6 @@ func TestEncodeSamplePCMIsGzipped(t *testing.T) {
 	}
 }
 
-func TestDecodeSamplePCMAcceptsLegacyUncompressed(t *testing.T) {
-	// Defensive: a pre-gzip payload (raw LE float32 bytes, no gzip wrapper)
-	// must still decode, so a hand-written or older payload isn't rejected.
-	want := []float32{0.1, -0.2, 0.3}
-	buf := make([]byte, len(want)*4)
-	for i, v := range want {
-		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(v))
-	}
-	legacy := &exportSamplePCM{SampleRate: 44100, Frames: len(want), DataB64: base64.StdEncoding.EncodeToString(buf)}
-	pcm, sr, ok := decodeSamplePCM(legacy)
-	if !ok || sr != 44100 || len(pcm) != len(want) {
-		t.Fatalf("legacy decode: ok=%v sr=%d len=%d", ok, sr, len(pcm))
-	}
-	for i := range want {
-		if pcm[i] != want[i] {
-			t.Errorf("legacy sample %d = %v, want %v", i, pcm[i], want[i])
-		}
-	}
-}
-
 func TestDecodeSamplePCMRejectsGarbage(t *testing.T) {
 	if _, _, ok := decodeSamplePCM(nil); ok {
 		t.Error("nil PCM should decode ok=false")
@@ -167,33 +153,33 @@ func TestExportEmbedsUserSamplePCM(t *testing.T) {
 
 	id := "user.sample.export"
 	want := []float32{0.1, -0.2, 0.3, -0.4}
-	audio.PutUserSample(id, want, 44100)
+	audio.PutUserSample(instrument.ID(id), want, 44100)
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.drum.Rows[0].Origin = a.ID
 	g.drum.Rows[0].Node = a
-	g.drum.Rows[0].Instrument = id
+	g.drum.Rows[0].Instrument = instrument.ID(id)
 
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
-	if f.Version != 1 {
-		t.Errorf("export version = %d, want 1 (embedded PCM must stay additive)", f.Version)
+	if f.SchemaVersion != schema.Version {
+		t.Errorf("export schema_version = %q, want %q", f.SchemaVersion, schema.Version)
 	}
 	var found *exportInstrument
 	for i := range f.Instruments {
-		if f.Instruments[i].ID == id {
+		if f.Instruments[i].ID == instrument.ID(id) {
 			found = &f.Instruments[i]
 		}
 	}
 	if found == nil {
 		t.Fatalf("instrument %q not in export", id)
 	}
-	if found.Kind != "sample" {
+	if found.Kind != kindSample {
 		t.Errorf("kind = %q, want sample", found.Kind)
 	}
 	if found.Path != "" {
@@ -217,13 +203,13 @@ func TestImportRegistersEmbeddedSamplePCM(t *testing.T) {
 	assertDefaultParityState(t)
 	id := "user.sample.import.unique"
 	want := []float32{0.9, -0.8, 0.7}
-	file := exportFile{
-		Version: 1, Subdiv: 32, BPM: 120,
+	file := projectFile{
+		Envelope: schema.Current(), Subdiv: 32, BPM: 120,
 		Instruments: []exportInstrument{{
-			Name: "Chop", ID: id, Kind: "sample", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Chop", ID: instrument.ID(id), Kind: kindSample, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 			PCM: encodeSamplePCM(audio.SampleRecord{PCM: want, SampleRate: 44100}),
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 	}
 	data, _ := json.Marshal(file)
 
@@ -233,10 +219,10 @@ func TestImportRegistersEmbeddedSamplePCM(t *testing.T) {
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if !audio.IsUserSample(id) {
+	if !audio.IsUserSample(instrument.ID(id)) {
 		t.Fatalf("import did not register embedded sample %q", id)
 	}
-	rec, ok := audio.UserSamplePCM(id)
+	rec, ok := audio.UserSamplePCM(instrument.ID(id))
 	if !ok || len(rec.PCM) != len(want) || rec.SampleRate != 44100 {
 		t.Fatalf("imported record wrong: ok=%v len=%d sr=%d", ok, len(rec.PCM), rec.SampleRate)
 	}

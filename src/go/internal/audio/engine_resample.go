@@ -9,18 +9,24 @@ import (
 // pow2 computes 2^x.
 func pow2(x float64) float64 { return math.Pow(2, x) }
 
-// resampleVoice wraps a source Voice and produces samples at a fractional
-// rate using linear interpolation.
+// resampleVoice plays its source at a fractional rate: output sample k is the
+// source linearly interpolated at position k·step, the source counting as
+// silent past its end, for every k with k·step < its length. That is the
+// whole definition — the browser builds a pitched drum's buffer with the same
+// arithmetic (played_voice.js resampleVoiceBuffer), so a note is the same
+// samples on both platforms. Positions are k·step, never a running sum, so
+// they do not drift over a long voice.
 type resampleVoice struct {
 	src  Voice
 	step float64
-	pos  float64
+	k    int
 	buf  []float64
-	done bool
+	done bool // src exhausted
 }
 
-// SampleBlock implements BlockVoice for resampleVoice using per-sample
-// interpolation (resampling inherently needs per-sample position tracking).
+// SampleBlock implements BlockVoice. It never reads ahead: the old version
+// "probed" for the end after every block by calling Sample, which consumed —
+// and dropped — one output sample per 64-frame mixer block.
 func (r *resampleVoice) SampleBlock(dst []float64) (int, bool) {
 	for i := range dst {
 		val, done := r.Sample()
@@ -29,11 +35,6 @@ func (r *resampleVoice) SampleBlock(dst []float64) (int, bool) {
 		}
 		dst[i] = val
 	}
-	// Probe: voice may be exactly exhausted at block boundary.
-	if _, done := r.Sample(); done {
-		r.done = true
-		return len(dst), true
-	}
 	return len(dst), false
 }
 
@@ -41,43 +42,24 @@ func (r *resampleVoice) Sample() (float64, bool) {
 	if r.step <= 0 {
 		r.step = 1
 	}
-	// Ensure we have enough source samples to interpolate at current pos.
-	need := int(r.pos) + 2
-	for !r.done && len(r.buf) < need {
+	pos := float64(r.k) * r.step
+	i0 := int(pos)
+	for !r.done && len(r.buf) < i0+2 {
 		s, d := r.src.Sample()
-		r.buf = append(r.buf, s)
 		if d {
 			r.done = true
 			break
 		}
+		r.buf = append(r.buf, s)
 	}
-	if len(r.buf) == 0 {
+	n := len(r.buf)
+	if i0 >= n {
 		return 0, true
 	}
-	i0 := int(r.pos)
-	if i0 >= len(r.buf)-1 {
-		if r.done {
-			return 0, true
-		}
-		// Try to fetch one more sample.
-		s, d := r.src.Sample()
-		r.buf = append(r.buf, s)
-		if d {
-			r.done = true
-		}
-		if i0 >= len(r.buf)-1 && r.done {
-			return 0, true
-		}
-	}
-	var s0, s1 float64
-	s0 = r.buf[i0]
-	if i0+1 < len(r.buf) {
+	s0, s1 := r.buf[i0], 0.0
+	if i0+1 < n {
 		s1 = r.buf[i0+1]
-	} else {
-		s1 = 0
 	}
-	frac := r.pos - float64(i0)
-	out := s0 + (s1-s0)*frac
-	r.pos += r.step
-	return out, false
+	r.k++
+	return s0 + (s1-s0)*(pos-float64(i0)), false
 }

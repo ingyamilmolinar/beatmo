@@ -10,6 +10,7 @@ func (p *Predictor) UpdateNode(id model.NodeID, node model.Node) {
 	}
 	p.nodes[id] = node
 	p.predDirty = true
+	p.epoch.Add(1)
 	p.mu.Unlock()
 }
 
@@ -18,6 +19,7 @@ func (p *Predictor) DeleteNode(id model.NodeID) {
 	p.mu.Lock()
 	delete(p.nodes, id)
 	p.predDirty = true
+	p.epoch.Add(1)
 	p.mu.Unlock()
 }
 

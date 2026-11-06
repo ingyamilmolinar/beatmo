@@ -9,6 +9,9 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // --- EQPanelZone test helpers ---
@@ -24,13 +27,13 @@ func newTestEQPanelZone(rows []*DrumRow) (*EQPanelZone, *eqTestCallbackLog) {
 		OnMuteToggle: func(band int) {
 			log.muteToggles = append(log.muteToggles, band)
 		},
-		OnChannelChange: func(id string) {
+		OnChannelChange: func(id channel.ID) {
 			log.channelChanges = append(log.channelChanges, id)
 		},
 		OnToggleHPF: func() { log.hpfToggles++ },
 		OnToggleLPF: func() { log.lpfToggles++ },
 		OnApplyEQ:   func() { log.applyCount++ },
-		AnalyzerSnapshot: func(ch string) audio.AnalyzerSnapshot {
+		AnalyzerSnapshot: func(ch channel.ID) audio.AnalyzerSnapshot {
 			return audio.AnalyzerSnapshot{}
 		},
 		ActiveRows: func() []*DrumRow { return rows },
@@ -58,7 +61,7 @@ type eqGainChange struct {
 type eqTestCallbackLog struct {
 	gainChanges      []eqGainChange
 	muteToggles      []int
-	channelChanges   []string
+	channelChanges   []channel.ID
 	hpfToggles       int
 	lpfToggles       int
 	applyCount       int
@@ -224,8 +227,8 @@ func TestEQPanelZoneChannelButton(t *testing.T) {
 	defer restore()
 
 	rows := []*DrumRow{
-		{Name: "Kick", Instrument: "kick"},
-		{Name: "Snare", Instrument: "snare"},
+		{Name: "Kick", Instrument: roster.Kick},
+		{Name: "Snare", Instrument: roster.Snare},
 	}
 	z, _ := newTestEQPanelZone(rows)
 	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
@@ -475,178 +478,6 @@ func TestEQPanelZoneCurveHandleDragSyncsSlider(t *testing.T) {
 
 // --- dB text input tests ---
 
-// openDBEditor opens the shared dB editor for band (the production path is a
-// press on the dB readout rect, which routes to eqDBOpenAdapter → openEQDBEditor).
-func openDBEditor(t *testing.T, z *EQPanelZone, band int) {
-	t.Helper()
-	z.openEQDBEditor(band)
-	if z.paramEditor == nil || !z.paramEditor.Active() {
-		t.Fatalf("editor did not open for band %d", band)
-	}
-}
-
-func TestEQPanelZone_DBInputFocusGainedClearsText(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, _ := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	// Set a non-zero gain so we can verify the editor opens pre-filled with it.
-	z.bandGainsDB[3] = 4.5
-
-	openDBEditor(t, z, 3)
-
-	if got := z.paramEditor.ti.Value(); got != "+4.5" {
-		t.Errorf("expected editor pre-filled with '+4.5', got %q", got)
-	}
-	if !z.paramEditor.Active() {
-		t.Error("expected editor active after open")
-	}
-}
-
-func TestEQPanelZone_DBInputCommitValid(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	openDBEditor(t, z, 2)
-	z.paramEditor.ti.SetText("6.0")
-	z.paramEditor.commit()
-
-	if z.bandGainsDB[2] != 6.0 {
-		t.Errorf("expected gain=6.0, got %v", z.bandGainsDB[2])
-	}
-	if len(log.gainChanges) == 0 || log.gainChanges[len(log.gainChanges)-1].db != 6.0 {
-		t.Error("expected OnGainChange(2, 6.0)")
-	}
-	if log.applyCount == 0 {
-		t.Error("expected OnApplyEQ fired")
-	}
-	_ = tree
-}
-
-func TestEQPanelZone_DBInputCommitInvalid(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	z.bandGainsDB[0] = 3.0
-	openDBEditor(t, z, 0)
-	z.paramEditor.ti.SetText("abc")
-	z.paramEditor.commit()
-
-	// Invalid: gain unchanged, readout still shows the prior value.
-	if z.bandGainsDB[0] != 3.0 {
-		t.Errorf("expected gain unchanged at 3.0, got %v", z.bandGainsDB[0])
-	}
-	if got := formatDB(z.bandGainsDB[0]); got != "+3.0" {
-		t.Errorf("expected readout '+3.0', got %q", got)
-	}
-	if len(log.gainChanges) != 0 {
-		t.Error("expected no OnGainChange for invalid input")
-	}
-	_ = tree
-}
-
-func TestEQPanelZone_DBInputCommitEmpty(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	z.bandGainsDB[1] = -2.0
-	openDBEditor(t, z, 1)
-	z.paramEditor.ti.SetText("")
-	z.paramEditor.commit()
-
-	if z.bandGainsDB[1] != -2.0 {
-		t.Errorf("expected gain unchanged at -2.0, got %v", z.bandGainsDB[1])
-	}
-	if got := formatDB(z.bandGainsDB[1]); got != "-2.0" {
-		t.Errorf("expected readout '-2.0', got %q", got)
-	}
-	if len(log.gainChanges) != 0 {
-		t.Error("expected no OnGainChange for empty input")
-	}
-	_ = tree
-}
-
-func TestEQPanelZone_DBInputClamp(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	openDBEditor(t, z, 4)
-	z.paramEditor.ti.SetText("20.0")
-	z.paramEditor.commit()
-
-	if z.bandGainsDB[4] != 12.0 {
-		t.Errorf("expected clamped to 12.0, got %v", z.bandGainsDB[4])
-	}
-	if len(log.gainChanges) == 0 || log.gainChanges[len(log.gainChanges)-1].db != 12.0 {
-		t.Error("expected OnGainChange with clamped value 12.0")
-	}
-	_ = tree
-}
-
-func TestEQPanelZone_DBInputOnlyOneFocused(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	// One shared editor: opening band 3, then band 5, re-targets the editor at
-	// band 5. Committing writes band 5 only; band 3 is left untouched.
-	z.bandGainsDB[3] = 1.0
-	openDBEditor(t, z, 3)
-	openDBEditor(t, z, 5)
-
-	z.paramEditor.ti.SetText("5.0")
-	z.paramEditor.commit()
-
-	if z.paramEditor.Active() {
-		t.Error("expected editor closed after commit")
-	}
-	// Band 5 committed with 5.0; band 3 unchanged at its prior 1.0.
-	if z.bandGainsDB[5] != 5.0 {
-		t.Errorf("expected band 5 gain=5.0, got %v", z.bandGainsDB[5])
-	}
-	if z.bandGainsDB[3] != 1.0 {
-		t.Errorf("expected band 3 gain unchanged at 1.0, got %v", z.bandGainsDB[3])
-	}
-	if len(log.gainChanges) == 0 {
-		t.Error("expected OnGainChange fired for committed band 5")
-	}
-	_ = tree
-}
-
 func TestEQPanelZone_SyncDBInputText(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -675,67 +506,6 @@ func TestEQPanelZone_SyncDBInputText(t *testing.T) {
 	}
 	if !z.curveDirty {
 		t.Error("expected curveDirty after SyncBandState")
-	}
-	_ = tree
-}
-
-func TestEQPanelZone_HandleKeyEnterCommits(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	// While the editor is open HandleKey consumes keys; the editor owns commit.
-	openDBEditor(t, z, 6)
-	if result := z.HandleKey(ebiten.KeyEnter); result != InputConsumed {
-		t.Errorf("expected InputConsumed while editor open, got %d", result)
-	}
-	z.paramEditor.ti.SetText("8.5")
-	z.paramEditor.commit()
-
-	if z.bandGainsDB[6] != 8.5 {
-		t.Errorf("expected gain=8.5, got %v", z.bandGainsDB[6])
-	}
-	if log.applyCount == 0 {
-		t.Error("expected OnApplyEQ fired")
-	}
-	_ = tree
-}
-
-func TestEQPanelZone_HandleKeyEscapeReverts(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	z.bandGainsDB[7] = 2.5
-	openDBEditor(t, z, 7)
-	if result := z.HandleKey(ebiten.KeyEscape); result != InputConsumed {
-		t.Errorf("expected InputConsumed while editor open, got %d", result)
-	}
-	z.paramEditor.ti.SetText("10.0")
-	z.paramEditor.cancel()
-
-	if z.paramEditor.Active() {
-		t.Error("expected editor closed after Escape")
-	}
-	if z.bandGainsDB[7] != 2.5 {
-		t.Errorf("expected gain unchanged at 2.5, got %v", z.bandGainsDB[7])
-	}
-	if got := formatDB(z.bandGainsDB[7]); got != "+2.5" {
-		t.Errorf("expected readout '+2.5', got %q", got)
-	}
-	// Escape should NOT fire OnGainChange or OnApplyEQ.
-	if len(log.gainChanges) != 0 {
-		t.Error("expected no OnGainChange on Escape")
 	}
 	_ = tree
 }
@@ -870,7 +640,7 @@ func TestEQPanelZone_ChannelDropdownDeferredTap(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
-	rows := []*DrumRow{{Name: "Kick", Instrument: "kick"}}
+	rows := []*DrumRow{{Name: "Kick", Instrument: roster.Kick}}
 	z, log := newTestEQPanelZone(rows)
 	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
 
@@ -909,7 +679,7 @@ func TestEQPanelZone_ChannelDropdownSelectMaster(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
-	rows := []*DrumRow{{Name: "Kick", Instrument: "kick"}}
+	rows := []*DrumRow{{Name: "Kick", Instrument: roster.Kick}}
 	z, log := newTestEQPanelZone(rows)
 	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
 
@@ -918,7 +688,7 @@ func TestEQPanelZone_ChannelDropdownSelectMaster(t *testing.T) {
 	restore()
 
 	// Switch to a non-master channel first.
-	z.activeChannel = "kick"
+	z.activeChannel = channel.Of(roster.Kick)
 	z.stickyBar.ChannelBtn().Text = "Kick"
 
 	z.stickyBar.ChannelBtn().OnClick() // open dropdown
@@ -937,13 +707,13 @@ func TestEQPanelZone_ChannelDropdownSelectMaster(t *testing.T) {
 
 	masterBtn.OnClick()
 
-	if len(log.channelChanges) == 0 || log.channelChanges[0] != "main" {
+	if len(log.channelChanges) == 0 || log.channelChanges[0] != channel.Master {
 		t.Error("expected OnChannelChange('main')")
 	}
 	if z.channelOpen {
 		t.Error("expected dropdown closed after selection")
 	}
-	if z.activeChannel != "main" {
+	if z.activeChannel != channel.Master {
 		t.Errorf("expected activeChannel='main', got %q", z.activeChannel)
 	}
 	_ = tree
@@ -975,7 +745,7 @@ func TestEQPanelZone_HPFHandleDrag(t *testing.T) {
 	if result != InputCaptured {
 		t.Fatalf("expected InputCaptured on HPF handle, got %d", result)
 	}
-	if z.curveDragFilter != "hpf" {
+	if z.curveDragFilter != hooks.FilterHPF {
 		t.Fatalf("expected curveDragFilter='hpf', got %q", z.curveDragFilter)
 	}
 
@@ -991,7 +761,7 @@ func TestEQPanelZone_HPFHandleDrag(t *testing.T) {
 	}
 
 	adapter.OnRelease(newX, hy)
-	if z.curveDragFilter != "" {
+	if z.curveDragFilter != hooks.FilterNone {
 		t.Error("expected curveDragFilter cleared after release")
 	}
 	if log.applyCount == 0 {
@@ -1022,7 +792,7 @@ func TestEQPanelZone_LPFHandleDrag(t *testing.T) {
 	if result != InputCaptured {
 		t.Fatalf("expected InputCaptured on LPF handle, got %d", result)
 	}
-	if z.curveDragFilter != "lpf" {
+	if z.curveDragFilter != hooks.FilterLPF {
 		t.Fatalf("expected curveDragFilter='lpf', got %q", z.curveDragFilter)
 	}
 
@@ -1072,7 +842,7 @@ func TestEQPanelZone_FilterDragReleaseClears(t *testing.T) {
 	if z.curveDragDBText != "" {
 		t.Errorf("expected drag label cleared after release, got %q", z.curveDragDBText)
 	}
-	if z.curveDragFilter != "" {
+	if z.curveDragFilter != hooks.FilterNone {
 		t.Errorf("expected curveDragFilter cleared, got %q", z.curveDragFilter)
 	}
 	_ = tree

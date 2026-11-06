@@ -7,8 +7,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
-	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // The Sampler tab. A waveform-prominent editor: a full-width waveform with
@@ -20,7 +20,7 @@ import (
 // Upload action). All sample logic lives on samplerState (sampler_state.go);
 // this file owns only layout, drawing, and input.
 
-const samplerPreviewID = "preview.sampler"
+const samplerPreviewID instrument.ID = "preview.sampler"
 
 // samplerTitlePad is the left inset of the "SAMPLER" title inside the
 // header strip.
@@ -63,18 +63,18 @@ func samplerKnobPlainEnglish(idx int) string {
 
 // samplerBtnWidth sizes a button to fit its label with comfortable padding,
 // so no header/control button ever truncates ("From Sy…" / "Load …").
-// Delegates to the shared labelButtonWidth (also used by the Synth header).
+// Delegates to audioTabActionButtonWidth (shared with the Synth header).
 func samplerBtnWidth(label string) int {
-	return labelButtonWidth(label)
+	return audioTabActionButtonWidth(label)
 }
 
 // samplerAuditionFn triggers playback of the preview instrument. Swappable in
 // tests via SwapSamplerAuditionFnForTest, mirroring synthAuditionFn.
-var samplerAuditionFn = func(instID string) { audio.Play(instID) }
+var samplerAuditionFn = func(instID instrument.ID) { audio.Play(instID) }
 
 // SwapSamplerAuditionFnForTest installs a test fake for the preview trigger and
 // returns the previous value.
-func SwapSamplerAuditionFnForTest(fn func(string)) func(string) {
+func SwapSamplerAuditionFnForTest(fn func(instrument.ID)) func(instrument.ID) {
 	prev := samplerAuditionFn
 	if fn != nil {
 		samplerAuditionFn = fn
@@ -86,7 +86,7 @@ func SwapSamplerAuditionFnForTest(fn func(string)) func(string) {
 // or 0 when the instrument has never been triggered. It reads the same
 // per-instrument timestamps the engine stamps on every Play — no parallel audio
 // path.
-func samplerTriggerNanos(id string) int64 {
+func samplerTriggerNanos(id instrument.ID) int64 {
 	t := audio.LastTriggerAt(id)
 	if t.IsZero() {
 		return 0
@@ -107,7 +107,7 @@ func (p *samplerPanel) updateSamplerPlayheads() {
 		s.playheads.reset()
 		return
 	}
-	triggers := map[string]int64{samplerPreviewID: samplerTriggerNanos(samplerPreviewID)}
+	triggers := map[instrument.ID]int64{samplerPreviewID: samplerTriggerNanos(samplerPreviewID)}
 	if s.captureID != "" && s.captureID != samplerPreviewID {
 		triggers[s.captureID] = samplerTriggerNanos(s.captureID)
 	}
@@ -156,7 +156,7 @@ func (p *samplerPanel) samplerActivePlayheads() []samplerPlayheadDraw {
 
 // samplerActiveInstrument resolves the default load/override target — the
 // active EQ channel, else the first row's instrument.
-func (p *samplerPanel) samplerActiveInstrument() string {
+func (p *samplerPanel) samplerActiveInstrument() instrument.ID {
 	dv := p.dv
 	return dv.synthTabActiveInstrument()
 }
@@ -194,7 +194,7 @@ func (p *samplerPanel) resyncSamplerEditFromDocument() {
 	s.loadEditDescriptor(e)
 }
 
-func (p *samplerPanel) ensureSamplerLoaded(instID string) {
+func (p *samplerPanel) ensureSamplerLoaded(instID instrument.ID) {
 	dv := p.dv
 	s := &dv.sampler
 	if instID == "" {
@@ -249,11 +249,11 @@ func (p *samplerPanel) ensureSamplerLoaded(instID string) {
 		}
 		return
 	}
-	// A saved sample-edit descriptor on a RECIPE-bound instrument means it is a
-	// SYNTH with a non-destructive edit: load the RAW recipe render and overlay
-	// the saved edit. (A non-recipe instrument with a descriptor is a user sample,
-	// handled above.)
-	if e, hasEdit := audio.SampleEditFor(instID); hasEdit && audio.RecipeForInstrument(instID) != "" {
+	// A saved sample-edit descriptor on an instrument with a DOCUMENT means it is
+	// a SYNTH with a non-destructive edit: load the RAW synth render and overlay
+	// the saved edit. (An instrument without one with a descriptor is a user
+	// sample, handled above.)
+	if e, hasEdit := audio.SampleEditFor(instID); hasEdit && audio.HasInstrumentDoc(instID) {
 		pcm, sr := samplerRawCaptureFn(instID)
 		if len(pcm) == 0 {
 			s.captureID = instID
@@ -273,14 +273,14 @@ func (p *samplerPanel) ensureSamplerLoaded(instID string) {
 		s.status = "Loading — play the sound once if it doesn't appear"
 		return
 	}
-	// A recipe binding is what makes an instrument a SYNTH (the descriptor is
-	// applied to the fresh recipe render at trigger time). A file-picker WAV
-	// (audio.RegisterWAV) is a raw PCM Sample with NO recipe and no user-sample
-	// store entry, so it is a WAV source. Seed its pristine PCM into the store so
+	// An instrument document is what makes an instrument a SYNTH (the
+	// descriptor is applied to the fresh synth render at trigger time). A
+	// file-picker WAV (audio.RegisterWAV) is a raw PCM Sample with NO document
+	// and no user-sample store entry, so it is a WAV source. Seed its pristine PCM into the store so
 	// the real-time edit path (audio.SetSampleEdit → reapplyUserSampleEdit) has a
 	// source to bake from — this is what makes trim/reverse/etc audible
 	// immediately, without waiting for Save.
-	if audio.RecipeForInstrument(instID) == "" {
+	if !audio.HasInstrumentDoc(instID) {
 		audio.PutUserSample(instID, pcm, sr)
 		s.loadFromInstrument(instID, pcm, sr, samplerSourceWAV)
 		return
@@ -301,7 +301,7 @@ func (p *samplerPanel) ensureSamplerLoaded(instID string) {
 // Empty state (no buffer): the waveform card fills the whole body as a
 // load/capture placeholder and the knobs + Rev/Norm/Fade/Preview/Save are
 // suppressed so the panel never presents dead affordances.
-func (p *samplerPanel) buildSamplerTab(contentR image.Rectangle, instID string) {
+func (p *samplerPanel) buildSamplerTab(contentR image.Rectangle, instID instrument.ID) {
 	dv := p.dv
 	s := &dv.sampler
 	// The dropdown instrument selector is the single source of truth for what
@@ -815,15 +815,12 @@ func (p *samplerPanel) buildSamplerButtons(hasBuf bool) {
 		{NewSpecButton(i18n.T(i18n.KeyPreview), actionSpec(false), guard(func() {
 			dv.samplerPreview()
 		})), "sampler-preview", nil},
-		{NewSpecButton(i18n.T(i18n.KeySave), actionSpec(true), guard(func() {
-			dv.samplerSave()
-		})), "sampler-save", nil},
-		{NewSpecButton(i18n.T(i18n.KeySaveAs), actionSpec(false), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeySaveAs), actionSpec(true), guard(func() {
 			dv.samplerSaveAs()
 		})), "sampler-save-as", nil},
-		{NewSpecButton(i18n.T(i18n.KeyReset), actionSpec(false), guard(func() {
-			dv.samplerReset()
-		})), "sampler-reset", nil},
+	}
+	for _, d := range defs {
+		d.btn.SetTextRole(RoleBody)
 	}
 	dv.samplerButtons = defs
 	dv.refreshSamplerToggleStates()
@@ -861,8 +858,15 @@ func (p *samplerPanel) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangl
 
 	// Header background + title.
 	if !s.headerRect.Empty() {
-		drawRoundedRect(dst, s.headerRect, TokenSurface1(), RadiusSM, true)
-		DrawTextStyled(dst, i18n.T(i18n.KeyCapSamplerTitle), s.headerRect.Min.X+samplerTitlePad, s.headerRect.Min.Y+(s.headerRect.Dy()-StyledTextHeight(RoleSectionHeader))/2, RoleSectionHeader, TokenTextPrimary())
+		drawRoundedRect(dst, s.headerRect, TokenSurface1(), fitRadius(RadiusSM, s.headerRect), true)
+		tx := s.headerRect.Min.X + samplerTitlePad
+		maxW := s.headerRect.Max.X - tx
+		for _, tag := range []string{"sampler-save", "sampler-save-as", "sampler-reset"} {
+			if b := dv.samplerButtonByTag(tag); b != nil && !b.Rect().Empty() && b.Rect().Min.X-SpaceMD-tx < maxW {
+				maxW = b.Rect().Min.X - SpaceMD - tx
+			}
+		}
+		drawAudioTabHeaderTitle(dst, s.headerRect, tx, maxW, i18n.T(i18n.KeyCapSamplerTitle), audioTabHeaderName(dv.samplerActiveInstrument()))
 	}
 
 	// Waveform card.
@@ -900,12 +904,6 @@ func (p *samplerPanel) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangl
 			continue
 		}
 		b.btn.Draw(dst)
-	}
-
-	// Numeric param editor floats above the knob captions (shared with the
-	// Synth tab's editor; only one can be open at a time).
-	if dv.paramEditor != nil {
-		dv.paramEditor.Draw(dst)
 	}
 
 	// Save As name-prompt dialog floats above the tab content (shared with the
@@ -1020,7 +1018,9 @@ func (p *samplerPanel) drawSamplerWaveform(dst *ebiten.Image) {
 	// Reuse the cached float64 scratch (no per-frame allocation).
 	wave := s.waveFloat64()
 	midY := w.Min.Y + w.Dy()/2
-	drawWaveTrace(dst, wave, w, midY, w.Dx(), colAccent, 1.0, TokenSurface3())
+	// The sample waveform is a DATA canvas: Visualizers family (viz-wave-a),
+	// like the Wave tab trace and the synth graphs — not the chrome accent.
+	drawWaveTrace(dst, wave, w, midY, w.Dx(), colWaveTrace, 1.0, TokenSurface3())
 
 	// Shade the trimmed-away regions (outside [start,end]) so the kept area
 	// reads as the bright part.
@@ -1145,6 +1145,11 @@ func (p *samplerPanel) applySamplerKnob(idx int) {
 		return
 	}
 	dv.sampler.setKnob(idx, dv.sampler.knobs[idx].Value)
+	// Audible NOW, not at the end of the gesture: setKnob writes only the UI's
+	// copy of the edit, so without this the knob moved on screen while the audio
+	// layer kept the old chop until commitSamplerEdit ran (Enter / tap-away /
+	// the 600 ms wheel debounce). The undo step stays one-per-gesture.
+	dv.applySamplerEditLive()
 }
 
 // samplerKnobReadoutRect returns the caption hit-rect for the given sampler
@@ -1167,44 +1172,9 @@ func (dv *DrumView) samplerKnobDef(idx int) audio.ParamDef {
 	return audio.ParamDef{Name: samplerStepPrefName(idx), Min: sc.Min, Max: sc.Max, Unit: sc.Unit}
 }
 
-// openSamplerParamEditor opens the shared numeric editor anchored over the
-// caption (readout) of sampler knob at idx. The setValue callback writes
-// back through setKnob so the state stays consistent with the knob.
-// Numeric entry must NOT audition (sampler edits apply on Save/Preview).
-func (p *samplerPanel) openSamplerParamEditor(idx int) {
-	dv := p.dv
-	if idx < 0 || idx >= samplerKnobCount {
-		return
-	}
-	if dv.paramEditor == nil {
-		dv.paramEditor = NewParamValueEditor()
-	}
-	sc := samplerKnobScale(idx)
-	def := dv.samplerKnobDef(idx)
-	anchor := dv.samplerKnobReadoutRect(idx)
-	span := sc.Max - sc.Min
-	if span <= 0 {
-		span = 1
-	}
-	dv.paramEditor.OpenValue(ValueOpen{
-		Spec:          paramSpec(def),
-		Anchor:        anchor,
-		MobileInputID: "sampler-param",
-		Get: func() float64 {
-			return sc.Min + dv.sampler.knobValue(idx)*span
-		},
-		Set: func(v float64) {
-			dv.sampler.knobs[idx].Value = (v - sc.Min) / span
-			dv.applySamplerKnob(idx)
-			// A typed value is one discrete commit → one undo step.
-			dv.commitSamplerEdit()
-		},
-	})
-}
-
-// samplerTabUpdate pumps the shared numeric editor so blur-to-commit works
-// in production. Returns true when the editor just closed, signalling
-// EQPanelZone.Update to request a re-layout so the caption refreshes.
+// samplerTabUpdate is the Sampler tab's per-frame tick (handle hover, the
+// debounced wheel-nudge commit, the knob-grid scroll cooldown). Returns true
+// when the tab needs a re-layout.
 func (p *samplerPanel) samplerTabUpdate() bool {
 	dv := p.dv
 	// Refresh which trim handle the cursor is hovering (desktop only) so the
@@ -1216,13 +1186,6 @@ func (p *samplerPanel) samplerTabUpdate() bool {
 	// Tick the mobile knob-scroll cooldown clock (see ControlGrid.WheelStep/Tick).
 	if dv.sampler.knobGrid != nil {
 		dv.sampler.knobGrid.Tick()
-	}
-	if dv.paramEditor != nil {
-		wasActive := dv.paramEditor.Active()
-		dv.paramEditor.Update()
-		if wasActive && !dv.paramEditor.Active() {
-			return true
-		}
 	}
 	return false
 }
@@ -1254,6 +1217,10 @@ func (p *samplerPanel) samplerHandleDrag(which, x int) {
 			s.knobs[samplerKnobEnd].Value = frac
 		}
 	}
+	// The trim moves in audio WHILE dragging, not on release — same reason as
+	// applySamplerKnob. ApplySampleEditLive skips an unchanged descriptor, so a
+	// frame that did not move the handle costs nothing.
+	dv.applySamplerEditLive()
 }
 
 // samplerPreview bakes the current edit, registers it under a transient id, and
@@ -1268,93 +1235,11 @@ func (p *samplerPanel) samplerPreview() {
 	samplerAuditionFn(samplerPreviewID)
 }
 
-// samplerSave overrides the dropdown-selected instrument in place (converting a
-// synth instrument into the chopped sample) and refreshes the instrument
-// picker. Mirrors the Synth tab's Save (overwrite current, keep editing it).
-func (p *samplerPanel) samplerSave() {
-	dv := p.dv
-	dv.sampler.save()
-	// Record an undo step at the user-action site. The sample-edit descriptor's
-	// hooks event is published from the audio package (which Import also drives),
-	// so it never taps recordUndo on its own. Without this, a Save changed the
-	// exported document but left the undo baseline stale — undoing a later,
-	// unrelated action would silently revert the sample edit (baseline drift).
-	dv.recordUndoStep(hooks.EventSampleEditChanged)
-	dv.refreshInstruments()
-	dv.markAllRowsDirty()
-}
-
-// samplerReset reverts the loaded instrument to its factory state (built-in →
-// original synth recipe; user WAV → original buffer) and refreshes the picker.
-// Clearing captureID forces ensureSamplerLoaded to re-pull the reverted buffer
-// (or synth one-shot) on the next Layout — without it the early-return keeps the
-// stale chopped buffer in view.
-func (p *samplerPanel) samplerReset() {
-	dv := p.dv
-	dv.ResetActiveSampler()
-	dv.sampler.captureID = ""
-	dv.refreshInstruments()
-	dv.markAllRowsDirty()
-}
-
-// samplerSaveAs opens the name-prompt dialog. Mirrors the Synth tab's Save As,
-// which prompts for a display name before cloning. The actual save runs in
-// samplerSaveAsConfirmed once the user confirms a name.
+// samplerSaveAs opens Save As — the same dialog as the Synth tab's — for the
+// instrument the Sampler edits. Its Sampler edit is saved as data in the
+// instrument's audio bundle; nothing is baked.
 func (p *samplerPanel) samplerSaveAs() {
-	dv := p.dv
-	dv.openSamplerSaveAsDialog()
-}
-
-// samplerSaveAsConfirmed bakes the current edit into a brand-new sample
-// instrument named displayName, points the row that played the source
-// instrument at the new sample (so it is immediately playable and selectable in
-// the dropdown — mirroring the Synth tab's Save As, which rebinds the active
-// row to the clone), selects it, and refreshes the picker. displayName arrives
-// already trimmed from the dialog.
-func (p *samplerPanel) samplerSaveAsConfirmed(displayName string) {
-	dv := p.dv
-	if displayName == "" {
-		displayName = samplerSaveAsSuggestion(dv, dv.sampler.captureID)
-	}
-	old := dv.sampler.captureID
-	id := dv.sampler.saveAs(displayName)
-	if id == "" {
-		return
-	}
-	// Rebind the row that played the source instrument to the new sample.
-	for i, r := range dv.Rows {
-		if r != nil && r.Instrument == old {
-			dv.selRow = i
-			dv.SetInstrument(id)
-			dv.Rows[i].Name = displayName
-			if i < len(dv.rowLabels()) {
-				dv.rowLabels()[i].Text = displayName
-			}
-			break
-		}
-	}
-	dv.selectAudioChannel(id)
-	dv.refreshInstruments()
-	dv.markAllRowsDirty()
-}
-
-// samplerSaveAsSuggestion proposes a default Save As name: the source row's
-// display name with a " chop" suffix, falling back to a pretty-printed id.
-func samplerSaveAsSuggestion(dv *DrumView, base string) string {
-	label := ""
-	for _, r := range dv.Rows {
-		if r != nil && r.Instrument == base && r.Name != "" {
-			label = r.Name
-			break
-		}
-	}
-	if label == "" {
-		label = audio.PrettyName(base)
-	}
-	if label == "" {
-		return "Sample"
-	}
-	return label + " chop"
+	p.dv.openSaveAsDialogFor(p.dv.sampler.captureID)
 }
 
 // samplerTabHitAreas publishes hit areas for the knobs, trim handles, and
@@ -1498,10 +1383,6 @@ func (h *samplerKnobHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) imag
 // entry now live in the popup). Flush any pending wheel-nudge commit first so
 // the popup snapshots the committed value. Mirrors synthControlHitAdapter.OnPress.
 func (h *samplerKnobHitAdapter) OnPress(x, y int) InputResult {
-	// Numeric editor open: swallow the tap so nothing starts beneath it.
-	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
-		return InputConsumed
-	}
 	// Capture the gesture and begin tap-vs-scroll arbitration (mirrors the Synth
 	// tab): a vertical sweep scrolls the knob grid, a stationary tap opens the
 	// value-wheel popup on RELEASE. Capturing (not consuming) is what lets the
@@ -1536,11 +1417,6 @@ func (h *samplerKnobHitAdapter) OnRelease(x, y int) {
 // one-rung-finer. The whole spin collapses into ONE debounced undo step (see
 // wheelNudger). Mirrors the Synth tab's card wheel with sampler plumbing.
 func (h *samplerKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
-	// Numeric editor open: swallow the notch so a wheel spin can't mutate the
-	// param (and arm a second commit) beneath the inline editor — mirrors OnPress.
-	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
-		return InputConsumed
-	}
 	k := h.knob()
 	if k == nil || steps == 0 {
 		return InputIgnored
@@ -1589,8 +1465,11 @@ func (h *samplerHandleHitAdapter) OnWheel(x, y, steps int) InputResult { return 
 // catch-all (a grab on empty column space) and scrolls naturally (content follows
 // the finger, BeginContentDrag); with body == false it is the scrollbar thumb and
 // scrolls directly (thumb follows the finger, BeginDrag). A scroll change calls
-// Invalidate so the next Layout re-derives the visible knob rects. Mirrors
-// synthSectionScrollAdapter.
+// Invalidate so the next Layout re-derives the visible knob rects. Mirrors the
+// shape of synthSectionScrollAdapter, but the two now DIVERGE in scroll
+// behavior: this sampler grid stays row-by-row stepped (no
+// SetSmoothScroll(true)), while the synth section grid is smooth
+// (continuous + momentum).
 type samplerKnobScrollAdapter struct {
 	dv   *DrumView
 	body bool
@@ -1660,13 +1539,13 @@ func (dv *DrumView) samplerActivePlayheads() []samplerPlayheadDraw {
 	return dv.sp().samplerActivePlayheads()
 }
 
-func (dv *DrumView) samplerActiveInstrument() string { return dv.sp().samplerActiveInstrument() }
+func (dv *DrumView) samplerActiveInstrument() instrument.ID { return dv.sp().samplerActiveInstrument() }
 
 func (dv *DrumView) resyncSamplerEditFromDocument() { dv.sp().resyncSamplerEditFromDocument() }
 
-func (dv *DrumView) ensureSamplerLoaded(instID string) { dv.sp().ensureSamplerLoaded(instID) }
+func (dv *DrumView) ensureSamplerLoaded(instID instrument.ID) { dv.sp().ensureSamplerLoaded(instID) }
 
-func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID string) {
+func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID instrument.ID) {
 	dv.sp().buildSamplerTab(contentR, instID)
 }
 
@@ -1697,8 +1576,8 @@ func (dv *DrumView) layoutSamplerMobileToggleRow(toggleR image.Rectangle) {
 }
 
 // MobileActionButtons returns the Sampler tab's trailing action cluster for the
-// sticky bar ([Preview][Save][⋯]), or nil off-mobile / when no sample buffer is
-// loaded (nothing to preview or save). Mirrors the Synth tab.
+// sticky bar ([Preview][Save As][⋯]), or nil off-mobile / when no sample
+// buffer is loaded (nothing to preview or save). Mirrors the Synth tab.
 func (p *samplerPanel) MobileActionButtons() []*Button {
 	dv := p.dv
 	if !Profile().IsMobile() {
@@ -1709,8 +1588,8 @@ func (p *samplerPanel) MobileActionButtons() []*Button {
 	}
 	p.ensureMobileActionButtons()
 	p.mobilePreviewBtn.Text = i18n.T(i18n.KeyPreview)
-	p.mobileSaveBtn.Text = i18n.T(i18n.KeySave)
-	return []*Button{p.mobilePreviewBtn, p.mobileSaveBtn, p.mobileOverflowBtn}
+	p.mobileSaveAsBtn.Text = i18n.T(i18n.KeySaveAs)
+	return []*Button{p.mobilePreviewBtn, p.mobileSaveAsBtn, p.mobileOverflowBtn}
 }
 
 // ensureMobileActionButtons builds the persistent sticky-bar action buttons.
@@ -1728,8 +1607,8 @@ func (p *samplerPanel) ensureMobileActionButtons() {
 	if p.mobilePreviewBtn == nil {
 		p.mobilePreviewBtn = NewSpecButton(i18n.T(i18n.KeyPreview), ComponentButtonSecondary, guard(func() { dv.samplerPreview() }))
 	}
-	if p.mobileSaveBtn == nil {
-		p.mobileSaveBtn = NewSpecButton(i18n.T(i18n.KeySave), ComponentButtonPrimary, guard(func() { dv.samplerSave() }))
+	if p.mobileSaveAsBtn == nil {
+		p.mobileSaveAsBtn = NewSpecButton(i18n.T(i18n.KeySaveAs), ComponentButtonPrimary, guard(func() { dv.samplerSaveAs() }))
 	}
 	if p.mobileOverflowBtn == nil {
 		p.mobileOverflowBtn = NewSpecButton("", ComponentButtonSecondary, func() {
@@ -1771,22 +1650,12 @@ func (dv *DrumView) samplerKnobReadoutRect(idx int) image.Rectangle {
 	return dv.sp().samplerKnobReadoutRect(idx)
 }
 
-func (dv *DrumView) openSamplerParamEditor(idx int) { dv.sp().openSamplerParamEditor(idx) }
-
 func (dv *DrumView) samplerTabUpdate() bool { return dv.sp().samplerTabUpdate() }
 
 func (dv *DrumView) samplerHandleDrag(which, x int) { dv.sp().samplerHandleDrag(which, x) }
 
 func (dv *DrumView) samplerPreview() { dv.sp().samplerPreview() }
 
-func (dv *DrumView) samplerSave() { dv.sp().samplerSave() }
-
-func (dv *DrumView) samplerReset() { dv.sp().samplerReset() }
-
 func (dv *DrumView) samplerSaveAs() { dv.sp().samplerSaveAs() }
-
-func (dv *DrumView) samplerSaveAsConfirmed(displayName string) {
-	dv.sp().samplerSaveAsConfirmed(displayName)
-}
 
 func (dv *DrumView) samplerTabHitAreas() []HitArea { return dv.sp().samplerTabHitAreas() }

@@ -36,7 +36,7 @@ func awaitEvent(t *testing.T, k Kind, do func()) Event {
 func TestGlobalBusPublishKindRoundTrip(t *testing.T) {
 	// Round-trip via PublishKind.
 	e := awaitEvent(t, EventSeek, func() {
-		PublishKind(EventSeek, SeekPayload{Beats:120})
+		PublishKind(EventSeek, SeekPayload{Beats: 120})
 	})
 	if e.Kind != EventSeek {
 		t.Errorf("Kind=%v want %v", e.Kind, EventSeek)
@@ -62,8 +62,8 @@ func TestGlobalBusPublishMatchesPublishKind(t *testing.T) {
 	})
 	t.Cleanup(unsub)
 
-	Publish(Event{Kind: EventSeek, Payload: SeekPayload{Beats:60}})
-	PublishKind(EventSeek, SeekPayload{Beats:90})
+	Publish(Event{Kind: EventSeek, Payload: SeekPayload{Beats: 60}})
+	PublishKind(EventSeek, SeekPayload{Beats: 90})
 
 	collected := make([]Event, 0, 2)
 	deadline := time.After(500 * time.Millisecond)

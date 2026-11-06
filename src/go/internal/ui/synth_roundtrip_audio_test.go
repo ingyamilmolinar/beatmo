@@ -32,10 +32,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"math"
+	"slices"
 	"sort"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // hashFloat32RT mirrors internal/audio's golden-test hash (SHA256 over
@@ -67,16 +69,15 @@ func firstSampleDiff(a, b []float32) int {
 }
 
 // synthRoundTrip performs the full export→import→render round-trip for one
-// instrument and asserts the imported circuit renders byte-for-byte identical
-// audio to the original. instID is the row instrument id, recipe its synth
-// recipe, tweak the per-instrument synth params applied before export.
-func synthRoundTrip(t *testing.T, instID, recipe string, tweak audio.RecipeParams) {
+// instrument with one synth tweak and asserts the rendered audio is
+// byte-for-byte identical.
+func synthRoundTrip(t *testing.T, instID string, tweak audio.RecipeParams) {
 	t.Helper()
 	if len(tweak) == 0 {
-		t.Fatalf("empty tweak for instID=%s recipe=%s — round-trip would be a no-op", instID, recipe)
+		t.Fatalf("empty tweak for instID=%s — round-trip would be a no-op", instID)
 	}
 
-	// --- Source circuit: bind row 0 to the recipe, apply the synth tweak. ---
+	// --- Source circuit: row 0 plays instID with the synth tweak applied. ---
 	g1 := New(testLogger)
 	t.Cleanup(g1.CloseForTest)
 	g1.Layout(800, 600)
@@ -84,38 +85,24 @@ func synthRoundTrip(t *testing.T, instID, recipe string, tweak audio.RecipeParam
 		t.Fatalf("source game has no default rows")
 	}
 	g1.drum.selRow = 0
-	g1.drum.SetInstrument(instID)
-	audio.BindInstrumentToRecipe(instID, recipe)
-	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
-	audio.SetInstrumentParams(instID, tweak)
+	g1.drum.SetInstrument(instrument.ID(instID))
+	t.Cleanup(func() { audio.ResetInstrumentParams(instrument.ID(instID)) })
+	audio.SetInstrumentParams(instrument.ID(instID), tweak)
 
-	// Pin the global BPM before BOTH the original and imported renders.
-	// RenderInstrumentOneShot derives the voice duration from the package-global
-	// bpm for legacy/family voices (e.g. drum-kick-punchy), so a tempo change
-	// between the two renders would change the SAMPLE COUNT and falsely fail.
-	// g2.Import below sets the global bpm from the imported file, so without this
-	// pin orig and imp can render at different tempos. (The modular voice is
-	// fixed-duration, so this only bites BPM-dependent family voices.)
+	// Pin the global BPM before BOTH renders: g2.Import below sets it from the
+	// file, and a BPM-sized voice would otherwise change its SAMPLE COUNT.
 	const roundTripBPM = 120
 	audio.SetBPM(roundTripBPM)
-	orig, sr := audio.RenderInstrumentOneShot(instID)
+	orig, sr := audio.RenderInstrumentOneShot(instrument.ID(instID))
 	if len(orig) == 0 {
-		t.Fatalf("instID=%s recipe=%s rendered 0 samples (sr=%d)", instID, recipe, sr)
+		t.Fatalf("instID=%s rendered 0 samples (sr=%d)", instID, sr)
 	}
 	origHash := hashFloat32RT(orig)
 
-	// Precondition: the tweak actually produced a non-empty exported delta,
-	// otherwise the round-trip is trivially identical and proves nothing.
-	effective := audio.MergeRecipeDefaults(recipe, audio.GetInstrumentParams(instID))
-	shipped := audio.RecipeShippedDefaults(recipe)
-	deltaKeys := 0
-	for k, v := range effective {
-		if s, ok := shipped[k]; !ok || math.Abs(v-s) > 1e-9 {
-			deltaKeys++
-		}
-	}
-	if deltaKeys == 0 {
-		t.Fatalf("instID=%s recipe=%s: tweak %v produced no export delta vs shipped defaults", instID, recipe, tweak)
+	// Precondition: the tweak actually changed the document, otherwise the
+	// round-trip is trivially identical and proves nothing.
+	if !audio.InstrumentDocModified(instrument.ID(instID)) {
+		t.Fatalf("instID=%s: tweak %v did not change its document", instID, tweak)
 	}
 
 	data, err := g1.drum.exportBytes()
@@ -123,24 +110,20 @@ func synthRoundTrip(t *testing.T, instID, recipe string, tweak audio.RecipeParam
 		t.Fatalf("export: %v", err)
 	}
 
-	// --- Fresh instance: import the JSON and re-render. A new Game plus the
-	// cache invalidation inside Import guarantees a cold recompute. ---
+	// --- Fresh instance: import the JSON and re-render. ---
+	audio.ResetInstrumentParams(instrument.ID(instID)) // the file alone must bring the tweak back
 	g2 := New(testLogger)
 	t.Cleanup(g2.CloseForTest)
 	g2.Layout(800, 600)
 	if err := g2.Import(data); err != nil {
 		t.Fatalf("import into fresh instance: %v", err)
 	}
-
-	// Re-pin the global BPM: g2.Import set it from the imported file, which can
-	// differ from the tempo orig rendered at (see roundTripBPM note above).
 	audio.SetBPM(roundTripBPM)
-	imp, _ := audio.RenderInstrumentOneShot(instID)
+	imp, _ := audio.RenderInstrumentOneShot(instrument.ID(instID))
 
 	// --- Byte-for-byte assertion. ---
 	if len(orig) != len(imp) {
-		t.Fatalf("instID=%s recipe=%s: sample count diverged after round-trip: orig=%d imp=%d",
-			instID, recipe, len(orig), len(imp))
+		t.Fatalf("instID=%s: sample count diverged after round-trip: orig=%d imp=%d", instID, len(orig), len(imp))
 	}
 	if impHash := hashFloat32RT(imp); origHash != impHash {
 		idx := firstSampleDiff(orig, imp)
@@ -148,9 +131,9 @@ func synthRoundTrip(t *testing.T, instID, recipe string, tweak audio.RecipeParam
 		if idx >= 0 {
 			ov, iv = orig[idx], imp[idx]
 		}
-		t.Fatalf("instID=%s recipe=%s: rendered audio NOT byte-identical after export/import round-trip\n"+
+		t.Fatalf("instID=%s: rendered audio NOT byte-identical after export/import round-trip\n"+
 			"  orig sha256=%s\n  imp  sha256=%s\n  first diff at sample %d: orig=%v imp=%v\n  tweak=%v",
-			instID, recipe, origHash, impHash, idx, ov, iv, tweak)
+			instID, origHash, impHash, idx, ov, iv, tweak)
 	}
 }
 
@@ -168,37 +151,29 @@ func TestSynthRoundtripByteIdentical_ModularPerStage(t *testing.T) {
 	for _, c := range audio.ParityMatrix() {
 		c := c
 		t.Run(c.Name, func(t *testing.T) {
-			synthRoundTrip(t, c.InstrumentID, c.Recipe, c.Tweak)
+			synthRoundTrip(t, string(c.InstrumentID), c.Tweak)
 		})
 	}
 }
 
-// nudgeFirstEffective binds instID to recipe, then finds a single recipe-valid
-// parameter whose value can be moved off its shipped default (surviving
-// SetInstrumentParams' sanitize/clamp), and returns that as a one-key tweak.
-// Returns nil if no parameter can be effectively changed. Deriving the tweak
-// from the recipe's OWN schema avoids the false-pass trap where a modular-only
-// key is silently dropped for a drum/FM recipe.
-func nudgeFirstEffective(instID, recipe string) audio.RecipeParams {
-	shipped := audio.RecipeShippedDefaults(recipe)
-	if len(shipped) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(shipped))
-	for k := range shipped {
+// nudgeFirstEffective finds a single value of instID's document that can be
+// moved (surviving SetInstrumentParams' sanitize/clamp) and returns it as a
+// one-key tweak, or nil. Deriving the tweak from the instrument's OWN document
+// avoids the false-pass trap where a key the instrument has no module for is
+// silently skipped.
+func nudgeFirstEffective(instID string) audio.RecipeParams {
+	owned := audio.GetInstrumentParams(instrument.ID(instID))
+	keys := make([]string, 0, len(owned))
+	for k := range owned {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
-	audio.BindInstrumentToRecipe(instID, recipe)
-	defer audio.ResetInstrumentParams(instID)
-
+	defer audio.ResetInstrumentParams(instrument.ID(instID))
 	for _, k := range keys {
-		base := shipped[k]
+		base := owned[k]
 		for _, cand := range []float64{base + 1, base - 1, base + 0.5, base - 0.5, base + 5} {
-			audio.SetInstrumentParams(instID, audio.RecipeParams{k: cand})
-			got := audio.GetInstrumentParams(instID)
-			if v, ok := got[k]; ok && math.Abs(v-base) > 1e-9 {
+			audio.SetInstrumentParams(instrument.ID(instID), audio.RecipeParams{k: cand})
+			if v, ok := audio.GetInstrumentParams(instrument.ID(instID))[k]; ok && math.Abs(v-base) > 1e-9 {
 				// Return the STORED (post-sanitize) value so the tweak is
 				// stable under a second SetInstrumentParams.
 				return audio.RecipeParams{k: v}
@@ -208,111 +183,34 @@ func nudgeFirstEffective(instID, recipe string) audio.RecipeParams {
 	return nil
 }
 
-// synthImportIsByteStable verifies that once a tweaked instrument is exported
-// and imported, a FURTHER export→import reproduces byte-for-byte identical
-// audio. This is the faithful, robust round-trip property for the broad
-// instrument sweep ("re-export is byte-stable: the delta recomputed vs shipped
-// is the original delta", per import.go).
-//
-// Why idempotency rather than pre-export==post-import (which synthRoundTrip uses
-// for the modular stages): legacy family recipes (e.g. drum-kick-punchy) carry
-// HIDDEN shipped keys (post_enabled) that are in RecipeShippedDefaults but not
-// in the visible RecipeDefaultParams. Import pins shipped⊕delta (so the imported
-// overlay carries the hidden key), while the original sparse-overlay render
-// resolves missing keys via MergeRecipeDefaults (which omits hidden keys) — so a
-// raw pre-vs-post comparison trips on that asymmetry, which is orthogonal to
-// "does the round-trip preserve audio". Idempotency holds regardless and is what
-// matters: import twice ⇒ identical sound.
-func synthImportIsByteStable(t *testing.T, instID, recipe string, tweak audio.RecipeParams) {
-	t.Helper()
-	const roundTripBPM = 120
-
-	// Source circuit with the tweak applied.
-	g1 := New(testLogger)
-	t.Cleanup(g1.CloseForTest)
-	g1.Layout(800, 600)
-	if len(g1.drum.Rows) == 0 {
-		t.Fatalf("source game has no default rows")
-	}
-	g1.drum.selRow = 0
-	g1.drum.SetInstrument(instID)
-	audio.BindInstrumentToRecipe(instID, recipe)
-	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
-	audio.SetInstrumentParams(instID, tweak)
-	data1, err := g1.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("first export: %v", err)
-	}
-
-	// First import → render imp1 → re-export.
-	g2 := New(testLogger)
-	t.Cleanup(g2.CloseForTest)
-	g2.Layout(800, 600)
-	if err := g2.Import(data1); err != nil {
-		t.Fatalf("first import: %v", err)
-	}
-	audio.SetBPM(roundTripBPM) // see roundTripBPM note in synthRoundTrip
-	imp1, _ := audio.RenderInstrumentOneShot(instID)
-	if len(imp1) == 0 {
-		t.Fatalf("instID=%s recipe=%s rendered 0 samples", instID, recipe)
-	}
-	data2, err := g2.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("re-export: %v", err)
-	}
-
-	// Second import → render imp2. Must be byte-identical to imp1.
-	g3 := New(testLogger)
-	t.Cleanup(g3.CloseForTest)
-	g3.Layout(800, 600)
-	if err := g3.Import(data2); err != nil {
-		t.Fatalf("second import: %v", err)
-	}
-	audio.SetBPM(roundTripBPM)
-	imp2, _ := audio.RenderInstrumentOneShot(instID)
-
-	if len(imp1) != len(imp2) {
-		t.Fatalf("instID=%s recipe=%s: sample count not stable across re-import: imp1=%d imp2=%d",
-			instID, recipe, len(imp1), len(imp2))
-	}
-	if h1, h2 := hashFloat32RT(imp1), hashFloat32RT(imp2); h1 != h2 {
-		idx := firstSampleDiff(imp1, imp2)
-		t.Fatalf("instID=%s recipe=%s: audio NOT byte-stable across re-import\n"+
-			"  imp1 sha256=%s\n  imp2 sha256=%s\n  first diff at sample %d\n  tweak=%v",
-			instID, recipe, h1, h2, idx, tweak)
-	}
-}
-
 // TestSynthRoundtripByteIdentical_AllInstruments sweeps every registered
-// instrument (the ~25 shipped base+variant ids), nudges one recipe-valid
-// parameter, and asserts the export/import round-trip is byte-stable (import
-// idempotency). This catches family-specific (drum / FM / modular) export/import
-// plumbing drift that the modular-only per-stage cases would miss.
+// instrument with a document, nudges one of its values, and asserts the
+// export/import round-trip is byte-identical. This catches instrument-specific
+// export/import plumbing drift the modular-only per-stage cases would miss.
 func TestSynthRoundtripByteIdentical_AllInstruments(t *testing.T) {
 	withDefaultAudio(t)
 	ids := audio.Instruments()
 	if len(ids) == 0 {
 		t.Fatal("no registered instruments")
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	tested := 0
 	for _, id := range ids {
-		recipe := audio.RecipeForInstrument(id)
-		if recipe == "" {
-			continue // user samples / unbound ids carry no synth recipe
+		if !audio.HasInstrumentDoc(id) {
+			continue // user samples carry no instrument document
 		}
-		id, recipe := id, recipe
-		t.Run(id, func(t *testing.T) {
-			tweak := nudgeFirstEffective(id, recipe)
+		id := id
+		t.Run(string(id), func(t *testing.T) {
+			tweak := nudgeFirstEffective(string(id))
 			if tweak == nil {
-				t.Skipf("recipe %s has no effectively-tweakable parameter", recipe)
+				t.Skipf("%s has no effectively-tweakable value", id)
 			}
-			synthImportIsByteStable(t, id, recipe, tweak)
+			synthRoundTrip(t, string(id), tweak)
 		})
 		tested++
 	}
 	if tested == 0 {
-		t.Fatal("no instrument had a synth recipe binding — sweep covered nothing")
+		t.Fatal("no instrument had a document — sweep covered nothing")
 	}
-	t.Logf("swept %d recipe-bound instruments", tested)
+	t.Logf("swept %d instruments", tested)
 }

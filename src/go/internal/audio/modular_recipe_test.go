@@ -38,11 +38,16 @@ func TestParamDefEnumRoundTrip(t *testing.T) {
 
 func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 	defs := ModularSynthParamDefs()
-	schema := ModularParamSchema()
-	if len(defs) != len(schema) {
-		t.Fatalf("ModularSynthParamDefs len = %d, want %d (1:1 with full schema)", len(defs), len(schema))
+	var schema []string // table cells and row counts are never knobs
+	for _, f := range ModularParamSchema() {
+		if !IsTableField(f) {
+			schema = append(schema, f)
+		}
 	}
-	ident := ModularParamSchemaIdentity()
+	if len(defs) != len(schema) {
+		t.Fatalf("ModularSynthParamDefs len = %d, want %d (1:1 with the scalar schema)", len(defs), len(schema))
+	}
+	ident := modularFieldInits()
 	// Phase-8C carve-out: the modulator-stage NUMERICS (pitchenv/lfo/burst
 	// knobs) deliberately default to AUDIBLE values (12 st sweep, 8 Hz / 0.5
 	// wobble, clap bursts) while their schema identity stays 0. The invariant
@@ -99,83 +104,5 @@ func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 		if got := len(byName[name].Enum); got != want {
 			t.Errorf("%s enum len = %d, want %d", name, got, want)
 		}
-	}
-}
-
-func TestModularRecipeRegistered(t *testing.T) {
-	reg, ok := RecipeRegistrations()["synth-modular"]
-	if !ok || reg == nil {
-		t.Fatalf("synth-modular not registered")
-	}
-	if reg.Category != "modular" {
-		t.Errorf("synth-modular category = %q, want modular", reg.Category)
-	}
-	if len(reg.Params) != len(ModularParamSchema()) {
-		t.Errorf("synth-modular params = %d, want %d", len(reg.Params), len(ModularParamSchema()))
-	}
-	r := NewRecipe("synth-modular")
-	if r == nil {
-		t.Fatalf("NewRecipe(synth-modular) = nil")
-	}
-	if r.ID() != "synth-modular" {
-		t.Errorf("recipe ID = %q, want synth-modular", r.ID())
-	}
-}
-
-func TestModularInstrumentBoundAndListed(t *testing.T) {
-	if got := factoryRecipeForInstrument("modular"); got != "synth-modular" {
-		t.Errorf("modular instrument bound to %q, want synth-modular", got)
-	}
-	found := false
-	for _, id := range BuiltinInstrumentIDs {
-		if id == "modular" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("modular not in BuiltinInstrumentIDs")
-	}
-}
-
-// TestModularPadPresetRegistered — the second shipped modular preset
-// (modular-pad) must be a distinct instrument bound to its own
-// synth-modular-pad recipe, whose default params diverge from the base
-// synth-modular recipe via the descriptor Seed. Same schema shape (27
-// params), different default values — proving preset divergence rides on
-// ParamSeed, not a forked schema.
-func TestModularPadPresetRegistered(t *testing.T) {
-	// Instrument exists and is bound to its own recipe.
-	if got := factoryRecipeForInstrument("modular-pad"); got != "synth-modular-pad" {
-		t.Errorf("modular-pad instrument bound to %q, want synth-modular-pad", got)
-	}
-	found := false
-	for _, id := range BuiltinInstrumentIDs {
-		if id == "modular-pad" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("modular-pad not in BuiltinInstrumentIDs")
-	}
-
-	// Recipe registered, same modular category + schema length.
-	reg, ok := RecipeRegistrations()["synth-modular-pad"]
-	if !ok || reg == nil {
-		t.Fatalf("synth-modular-pad not registered")
-	}
-	if reg.Category != modularRecipeCategory {
-		t.Errorf("synth-modular-pad category = %q, want %q", reg.Category, modularRecipeCategory)
-	}
-	if len(reg.Params) != len(ModularParamSchema()) {
-		t.Errorf("synth-modular-pad params = %d, want %d (same schema as base)", len(reg.Params), len(ModularParamSchema()))
-	}
-
-	// Defaults must diverge from the base modular recipe.
-	base := RecipeDefaultParams("synth-modular")
-	pad := RecipeDefaultParams("synth-modular-pad")
-	if hashRecipeParams(base) == hashRecipeParams(pad) {
-		t.Fatalf("synth-modular-pad defaults are identical to synth-modular; the pad Seed must change the sound")
 	}
 }

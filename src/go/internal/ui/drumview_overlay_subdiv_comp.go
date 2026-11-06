@@ -46,6 +46,10 @@ type SubdivMenuComponent struct {
 	// menuScroll shares the app-wide scroll component so a long options list
 	// (rare, but possible) scrolls like every other list menu.
 	menuScroll *MenuScroll
+
+	// nav is the shared keyboard cursor (arrows / Enter / Home / End).
+	// Lazily created by keyNav(); see menu_keynav.go.
+	nav *MenuKeyNav
 }
 
 // SetScreenBounds sets the clamp region used by AnchorPopupRect. The portal
@@ -217,8 +221,14 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 // plain cursor position each frame so the hover tint shows on desktop
 // (portal input handlers only run on press edges).
 func (s *SubdivMenuComponent) HoverAt(mx, my int) {
-	for _, b := range s.buttons {
+	for i, b := range s.buttons {
 		b.UpdateHover(mx, my)
+		// One highlight, shared with the keyboard: pointing at a row takes the
+		// cursor over so the mouse and the arrows can never light two rows.
+		if b.hovered {
+			s.keyNav().BindHost(s)
+			s.keyNav().SetSelected(i)
+		}
 	}
 }
 
@@ -274,8 +284,8 @@ func (s *SubdivMenuComponent) Draw(dst *ebiten.Image) {
 		handleW, handleH := 36, 4
 		hx := s.cardRect.Min.X + s.cardRect.Dx()/2 - handleW/2
 		hy := s.cardRect.Min.Y + 8
-		drawRoundedRect(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
-			WithAlpha(genColorBorder, genAlphaScrollbarThumb), handleH/2, true)
+		drawCapsule(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
+			WithAlpha(genColorBorder, genAlphaScrollbarThumb), true)
 	} else {
 		drawPanel(dst, s.cardRect)
 	}
@@ -284,7 +294,7 @@ func (s *SubdivMenuComponent) Draw(dst *ebiten.Image) {
 		if i < len(s.props.Options) {
 			v = s.props.Options[i]
 		}
-		s.drawSubdivRow(dst, btn, v)
+		s.drawSubdivRow(dst, btn, i, v)
 	}
 	if s.menuScroll != nil {
 		s.menuScroll.Draw(dst)
@@ -295,17 +305,19 @@ func (s *SubdivMenuComponent) Draw(dst *ebiten.Image) {
 // drawMenuRow primitive (keycap chrome + press/hover animation). Current
 // subdivision → active with colTextAccent label; hover/press → hover; rest
 // = plain. Label is centered.
-func (s *SubdivMenuComponent) drawSubdivRow(dst *ebiten.Image, btn *Button, v int) {
+func (s *SubdivMenuComponent) drawSubdivRow(dst *ebiten.Image, btn *Button, idx, v int) {
 	if btn.Rect().Empty() {
 		return
 	}
-	// Current subdivision → active; hover/press → hover.
+	// Current subdivision → active; hover/press/keyboard cursor → hover.
+	// The keyboard cursor and the mouse share ONE highlight (see menu_keynav.go),
+	// so this reads both and never lights two rows.
 	state := menuItemRest
 	var labelCol color.Color // nil → colTextPrimary in drawMenuRow
 	if v == s.props.Current {
 		state = menuItemActive
 		labelCol = colTextAccent
-	} else if btn.hovered || btn.pressed {
+	} else if btn.hovered || btn.pressed || idx == s.keyNav().Selected() {
 		state = menuItemHover
 	}
 	drawMenuRow(dst, btn, MenuRowSpec{
@@ -344,14 +356,69 @@ func (s *SubdivMenuComponent) HandleWheel(x, y, steps int) InputResult {
 }
 
 // Update drives one frame of touch-fling momentum so a flick keeps scrolling
-// after the finger lifts — the inertial half of the shared instrument-menu feel.
+// after the finger lifts — the inertial half of the shared instrument-menu feel,
+// and one frame of keyboard navigation (arrows / Enter / Home / End).
 // Called once per frame via the subdiv portal's updateFn.
 func (s *SubdivMenuComponent) Update() {
-	if !s.state.open || s.menuScroll == nil {
+	if !s.state.open {
 		return
 	}
-	s.menuScroll.Tick(s.rebuildButtons)
+	// Momentum needs the scroller; keyboard navigation does NOT. A short option
+	// list never configures a MenuScroll, and gating both on it left such a menu
+	// (the jump-size picker) with no keyboard support at all.
+	if s.menuScroll != nil {
+		s.menuScroll.Tick(s.rebuildButtons)
+	}
+	s.keyNav().Update(s)
 }
+
+// keyNav lazily creates this menu's keyboard cursor.
+func (s *SubdivMenuComponent) keyNav() *MenuKeyNav {
+	if s.nav == nil {
+		s.nav = NewMenuKeyNav()
+	}
+	return s.nav
+}
+
+// --- MenuKeyNavHost ---
+//
+// Every option row is a plain choice, so there is no unselectable chrome to
+// skip here (contrast the Templates menu, which interleaves group headers).
+
+// MenuItemCount implements MenuKeyNavHost.
+func (s *SubdivMenuComponent) MenuItemCount() int { return len(s.props.Options) }
+
+// MenuItemSelectable implements MenuKeyNavHost.
+func (s *SubdivMenuComponent) MenuItemSelectable(i int) bool {
+	return i >= 0 && i < len(s.props.Options)
+}
+
+// MenuActivate implements MenuKeyNavHost: identical to clicking the row.
+func (s *SubdivMenuComponent) MenuActivate(i int) {
+	if i < 0 || i >= len(s.props.Options) {
+		return
+	}
+	v := s.props.Options[i]
+	if s.props.OnSelect != nil {
+		s.props.OnSelect(v)
+	}
+	s.Close()
+}
+
+// MenuScrollBehavior implements MenuKeyNavHost.
+func (s *SubdivMenuComponent) MenuScrollBehavior() *ScrollBehavior {
+	if s.menuScroll == nil {
+		return nil
+	}
+	return s.menuScroll.ScrollBehavior()
+}
+
+// MenuKeyNavForTest exposes the keyboard cursor for tests.
+func (s *SubdivMenuComponent) MenuKeyNavForTest() *MenuKeyNav { return s.keyNav() }
+
+// ClaimsKeyboard implements KeyboardClaimant: while this menu is open its
+// arrows/Enter drive the list, so the grid's arrow-pan must yield.
+func (s *SubdivMenuComponent) ClaimsKeyboard() bool { return s.state.open }
 
 // MenuScrollForTest exposes the scroll component for tests.
 func (s *SubdivMenuComponent) MenuScrollForTest() *MenuScroll { return s.menuScroll }

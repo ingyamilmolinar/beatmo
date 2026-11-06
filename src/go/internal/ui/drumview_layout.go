@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"image/color"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
@@ -16,10 +17,22 @@ func (dv *DrumView) refreshLenButtonsStyle() {
 	if dv.lenDecBtn == nil || dv.lenIncBtn == nil {
 		return
 	}
-	dv.lenDecBtn.Style = LenDecStyle
-	dv.lenDecBtn.IconColor = colIncDecIcon
-	dv.lenIncBtn.Style = LenIncStyle
-	dv.lenIncBtn.IconColor = colIncDecIcon
+	// Muted glyphs, like the lock, the counter's target icon and the grid's
+	// top-right cluster — the band's keycaps read as one family.
+	setButtonStyleAndIcon(dv.lenDecBtn, LenDecStyle, colTextSecondary)
+	setButtonStyleAndIcon(dv.lenIncBtn, LenIncStyle, colTextSecondary)
+}
+
+// setButtonStyleAndIcon assigns style + icon color only when they changed:
+// storing a value into the ButtonVisual / color.Color interface fields boxes
+// it, and recalcButtons runs every layout pass (a per-frame allocation).
+func setButtonStyleAndIcon(b *Button, st ButtonStyle, icon color.RGBA) {
+	if cur, ok := b.Style.(ButtonStyle); !ok || cur != st {
+		b.Style = st
+	}
+	if cur, ok := b.IconColor.(color.RGBA); !ok || cur != icon {
+		b.IconColor = icon
+	}
 }
 
 func (dv *DrumView) recalcButtons() {
@@ -463,41 +476,19 @@ func (dv *DrumView) recalcButtons() {
 	if top < tlWidget.Min.Y {
 		top = tlWidget.Min.Y
 	}
-	// Compute track button width. The track/lock chip is now the unified
-	// LEFT anchor of the band on BOTH platforms (counter + notification area
-	// sit to its right), so the timeline reserves left space on both. Mobile
-	// uses the touch-target floor; desktop matches the play-button width.
-	const trackBtnGap = 4 // breathing room between track button and timeline
-	trackBtnW := dv.playBtn().Rect().Dx()
-	if trackBtnW <= 0 {
-		trackBtnW = 44
-	}
-	if p.IsMobile() {
-		if tm := TouchMinTarget(); tm > trackBtnW {
-			trackBtnW = tm
-		}
-	}
-	// bandLeftReserved is the strip the track/lock chip occupies at the band's
-	// left on BOTH platforms (chip → counter → notif). On DESKTOP the timeline
-	// bar also steps around it (tall strip never paints over the bar). On
-	// MOBILE the bar keeps its full width — the short chip overlaps only the
-	// bar's left corner, the same trade the old right-edge chip made — so the
-	// narrow mobile ruler doesn't drop below its min-width floor
-	// (TestMobileDrumTimelineMinPercent).
-	bandLeftReserved := trackBtnW + trackBtnGap
-	tlLeftReserved := 0
-	if !p.IsMobile() {
-		tlLeftReserved = bandLeftReserved
-	}
+	// The track/lock keycap is the LEFT anchor of the counter band on BOTH
+	// platforms (counter + notification area sit to its right). It is a
+	// compact square the height of the beat-counter keycap, so the timeline
+	// ruler below keeps its full width.
+	const trackBtnGap = 4 // breathing room between track button and counter
 	dv.timelineRect = image.Rect(
-		tlWidget.Min.X+tlLeftReserved,
+		tlWidget.Min.X,
 		top,
 		tlWidget.Max.X,
 		top+tlBarHeight(),
 	)
 
-	// Beat counter rect: above the timeline bar. Aligned to timelineRect's
-	// left edge — that edge already accounts for the track button reservation.
+	// Beat counter rect: above the timeline bar, right of the track keycap.
 	// infoH must accommodate the keycap chrome drawBeatCounter actually paints
 	// (`pillH = TextHeight() + 2*pillPadY + keycap wall depth`); otherwise the
 	// keycap bleeds below Max.Y into the timeline bar (startup-chrome bug) or is
@@ -522,49 +513,46 @@ func (dv *DrumView) recalcButtons() {
 	// (TestDesktopBeatCounterAboveTimeline). drawBeatCounter clamps its pill to
 	// beatCounterRect.Dy(), so a slightly-shorter band shrinks the keycap
 	// rather than bleeding past it.
-	if avail := dv.timelineRect.Min.Y - tlWidget.Min.Y - minChromeGap; avail > 0 && infoH > avail {
+	//
+	// bandTopGap keeps the band's keycaps clear of the pane splitter's 2 px
+	// line, drawn over the drum's top edge, which clipped their top corners.
+	const bandTopGap = 2
+	if avail := dv.timelineRect.Min.Y - tlWidget.Min.Y - minChromeGap - bandTopGap; avail > 0 && infoH > avail {
 		infoH = avail
 	}
 	bcTop := dv.timelineRect.Min.Y - infoH - minChromeGap
-	if bcTop < tlWidget.Min.Y {
-		bcTop = tlWidget.Min.Y
+	if bcTop < tlWidget.Min.Y+bandTopGap {
+		bcTop = tlWidget.Min.Y + bandTopGap
 	}
-	// Band content (counter + notif) starts right of the track chip on both
-	// platforms. On desktop this equals timelineRect.Min.X (the bar is also
-	// reserved); on mobile the bar starts further left, so anchor explicitly.
+	// Band keycaps — the track/lock chip, the beat counter and the len ± pair —
+	// share ONE height (the counter keycap's, clamped to the band) and one
+	// vertical centre, so the band reads as a single row of equal keycaps like
+	// the transport and the grid's top-right cluster.
+	keyH := pillH
+	if keyH > infoH {
+		keyH = infoH
+	}
+	keyY := bcTop + (infoH-keyH)/2
+	bandLeftReserved := keyH + trackBtnGap
 	dv.beatCounterRect = image.Rect(
 		tlWidget.Min.X+bandLeftReserved, bcTop,
 		dv.timelineRect.Max.X, bcTop+infoH,
 	)
 
-	// Position len +/- buttons at top-right of timeline widget area on
+	// Position len +/- buttons at the right end of the counter band on
 	// desktop only. On mobile (or in EQ/Wave audio view) the +/− pair
 	// next to the timeline is too narrow to discover on phone-class
 	// screens (A7 in the screenshot critique); the entries live behind
 	// the overflow menu instead.
 	if !p.IsMobile() && dv.currentViewMode != viewModeEQ {
-		btnW := 36
-		// Stack vertically: Inc on top, Dec below. Shrink btnH so the
-		// pair fits inside the header band rather than overflowing into
-		// the rows area below (`Bounds.Min.Y + headerH`). Pre-clamp fix:
-		// btnH defaulted to beatCounterRect.Dy() and the pair extended
-		// below the header on every desktop viewport.
-		headerBottom := dv.Bounds.Min.Y + dv.headerH
-		y := dv.beatCounterRect.Min.Y
-		maxStackBtnH := (headerBottom - y) / 2
-		btnH := dv.beatCounterRect.Dy()
-		if btnH < 20 {
-			btnH = 20
-		}
-		if maxStackBtnH < btnH {
-			btnH = maxStackBtnH
-		}
-		x := dv.timelineRect.Max.X - btnW
-		dv.lenIncBtn.SetRect(image.Rect(x, y, x+btnW, y+btnH))
-		dv.lenDecBtn.SetRect(image.Rect(x, y+btnH, x+btnW, y+2*btnH))
-		// Shrink beat counter and timeline to avoid overlapping the buttons.
-		dv.beatCounterRect.Max.X = x - 4
-		dv.timelineRect.Max.X = x - 4
+		// Side by side (− then +), square keycaps matching the counter. They
+		// sit in the band only, so the ruler below keeps its full width.
+		gap := SpaceXS
+		incX := dv.beatCounterRect.Max.X - SpaceXS - keyH
+		decX := incX - gap - keyH
+		dv.lenDecBtn.SetRect(image.Rect(decX, keyY, decX+keyH, keyY+keyH))
+		dv.lenIncBtn.SetRect(image.Rect(incX, keyY, incX+keyH, keyY+keyH))
+		dv.beatCounterRect.Max.X = decX - SpaceXS
 	} else {
 		dv.lenIncBtn.SetRect(image.Rectangle{})
 		dv.lenDecBtn.SetRect(image.Rectangle{})
@@ -610,13 +598,20 @@ func (dv *DrumView) recalcButtons() {
 		if y1-y0 < side {
 			y1 = y0 + side
 		}
-		mid := (y0 + y1) / 2
 		dv.rowZoomChipRect = image.Rect(chipsLeft, y0, chipsRight, y1)
+		// Each chip is a compact keycap the band's height, centred in its half
+		// of the strip (+ level with the lock and counter); its hit area fills
+		// the half (Touch + ClipRect, see the row-zoom hit areas below).
+		incCell, decCell := dv.rowZoomCells()
+		chipSide := keyH
+		if gapped := incCell.Dy() - SpaceXS; chipSide > gapped {
+			chipSide = gapped // keep the two keycaps visibly apart
+		}
 		if dv.rowZoomIncBtn != nil {
-			dv.rowZoomIncBtn.SetRect(image.Rect(chipsLeft, y0, chipsRight, mid))
+			dv.rowZoomIncBtn.SetRect(centeredSquare(incCell, chipSide))
 		}
 		if dv.rowZoomDecBtn != nil {
-			dv.rowZoomDecBtn.SetRect(image.Rect(chipsLeft, mid, chipsRight, y1))
+			dv.rowZoomDecBtn.SetRect(centeredSquare(decCell, chipSide))
 		}
 		// Shrink the beat counter pill and timeline ruler bar so they do
 		// not paint under the chip strip.
@@ -637,23 +632,14 @@ func (dv *DrumView) recalcButtons() {
 		}
 	}
 
-	// Position the track/lock keycap — the LEFT anchor of the band, aligned to
-	// the beat-counter keycap's top so the two read as a control pair rather
-	// than the old tall two-row strip. Width matches the reserved left strip
-	// (trackBtnW == bandLeftReserved-gap) so the counter abuts it cleanly.
-	// Desktop matches the counter-band height exactly; mobile grows the keycap
-	// DOWN to the 44px touch target (the timeline bar steps around its left
-	// strip), since a phone needs a real finger target here.
+	// Position the track/lock keycap — the LEFT anchor of the band, a square
+	// the counter keycap's height on its vertical centre. Its hit area is
+	// Touch-expanded (timeline_zone.go), so a phone still gets a 44 px target
+	// without the visual block that used to fill the left of the timeline.
 	if !dv.beatCounterRect.Empty() {
-		bottom := dv.beatCounterRect.Max.Y
-		if p.IsMobile() {
-			if h := bottom - dv.beatCounterRect.Min.Y; h < TouchMinTarget() {
-				bottom = dv.beatCounterRect.Min.Y + TouchMinTarget()
-			}
-		}
 		dv.trackBtn().SetRect(image.Rect(
-			tlWidget.Min.X, dv.beatCounterRect.Min.Y,
-			tlWidget.Min.X+trackBtnW, bottom,
+			tlWidget.Min.X, keyY,
+			tlWidget.Min.X+keyH, keyY+keyH,
 		))
 	}
 
@@ -675,6 +661,19 @@ func (dv *DrumView) recalcButtons() {
 			counterSlotW = dv.beatCounterRect.Dx()
 		}
 		dv.beatCounterRect.Max.X = dv.beatCounterRect.Min.X + counterSlotW
+	}
+
+	// Cell-grid anchor. Step cells fill the full horizontal span the timeline
+	// widget dedicates to them; the ribbon bar's chrome reservations (track
+	// chip, len +/- buttons, mobile zoom chips) are header-only and must not
+	// narrow the grid. See DrumView.cellGridRect.
+	{
+		cellsTop := dv.Bounds.Min.Y + dv.headerH
+		cellsBottom := dv.rowsBottom()
+		if cellsBottom < cellsTop {
+			cellsBottom = cellsTop
+		}
+		dv.cellGridRect = image.Rect(tlWidget.Min.X, cellsTop, tlWidget.Max.X, cellsBottom)
 	}
 
 	// Delegate timeline zone layout when available.
@@ -712,8 +711,11 @@ func (dv *DrumView) recalcButtons() {
 		}
 		dv.timelineZone.SetTimelineBarHeight(tlBarHeight())
 		dv.timelineZone.SetTimelineBarRect(dv.timelineRect)
+		dv.timelineZone.SetCellGridRect(dv.cellGridRect)
 		dv.tree.SetZoneRect("timeline", tlZoneRect)
-		dv.tree.LayoutZoneNow("timeline")
+		if dv.timelineLayoutDue(tlZoneRect) {
+			dv.tree.LayoutZoneNow("timeline")
+		}
 	}
 
 	// EQ panel is anchored to the Wave widget; if missing, fall back to the bottom of the timeline widget.
@@ -779,12 +781,15 @@ func (dv *DrumView) recalcButtons() {
 		dv.audioTree.SetZoneRect("eq-panel", dv.eqRect)
 		// Force immediate layout so slider/button rects are available
 		// before Draw or the next Update cycle (fixes first-frame
-		// clicks). LayoutZoneNow consults the zone's registered
-		// visibility predicate (the canonical "should the EQ panel
-		// paint?" decision in drumview_ctor.go): hidden zones get their
-		// HitIndex entry cleared so the panel's catch-all can never
-		// re-introduce the Pads-tab input leak.
-		dv.audioTree.LayoutZoneNow("eq-panel")
+		// clicks) — when its inputs moved (eqPanelLayoutDue).
+		// LayoutZoneNow consults the zone's registered visibility
+		// predicate (the canonical "should the EQ panel paint?" decision
+		// in drumview_ctor.go): hidden zones get their HitIndex entry
+		// cleared so the panel's catch-all can never re-introduce the
+		// Pads-tab input leak.
+		if dv.eqPanelLayoutDue() {
+			dv.audioTree.LayoutZoneNow("eq-panel")
+		}
 	}
 
 	// Layout resize zone — refresh hit areas so column/row divider pills
@@ -813,21 +818,28 @@ func (dv *DrumView) recalcButtons() {
 		// Row-zoom chip hit areas — Theme 3 of the mobile UI consistency
 		// pass. ⊕/⊖ buttons live above the rows zone on mobile only;
 		// rect zeroed elsewhere by recalcButtons.
+		// The visible keycaps are compact; Touch + ClipRect grows each target
+		// to its whole half of the chip strip and never past it.
 		var zoomAreas []HitArea
+		incCell, decCell := dv.rowZoomCells()
 		if dv.rowZoomIncBtn != nil && !dv.rowZoomIncBtn.Rect().Empty() {
 			zoomAreas = append(zoomAreas, HitArea{
-				Rect:    dv.rowZoomIncBtn.Rect(),
-				ZIndex:  140, // above rack rows, below overlays
-				Handler: &buttonHitAdapter{btn: dv.rowZoomIncBtn},
-				Tag:     "drumview-row-zoom-in",
+				Rect:     dv.rowZoomIncBtn.Rect(),
+				ZIndex:   140, // above rack rows, below overlays
+				Handler:  &buttonHitAdapter{btn: dv.rowZoomIncBtn},
+				Tag:      "drumview-row-zoom-in",
+				Touch:    true,
+				ClipRect: incCell,
 			})
 		}
 		if dv.rowZoomDecBtn != nil && !dv.rowZoomDecBtn.Rect().Empty() {
 			zoomAreas = append(zoomAreas, HitArea{
-				Rect:    dv.rowZoomDecBtn.Rect(),
-				ZIndex:  140,
-				Handler: &buttonHitAdapter{btn: dv.rowZoomDecBtn},
-				Tag:     "drumview-row-zoom-out",
+				Rect:     dv.rowZoomDecBtn.Rect(),
+				ZIndex:   140,
+				Handler:  &buttonHitAdapter{btn: dv.rowZoomDecBtn},
+				Tag:      "drumview-row-zoom-out",
+				Touch:    true,
+				ClipRect: decCell,
 			})
 		}
 		dv.tree.HitIndexRef().Update("drumview-row-zoom", zoomAreas)
@@ -902,7 +914,7 @@ func (dv *DrumView) clampLength(n int) int {
 	minLen := inc
 
 	// Use the same effective width that calcLayout uses for cell sizing.
-	w := dv.timelineRect.Dx()
+	w := dv.cellGridRect.Dx()
 
 	if w > 0 {
 		mcw := MinCellWidth()
@@ -995,7 +1007,7 @@ func (dv *DrumView) calcLayout() {
 	}
 	dv.calcLabelWidth()
 	if len(dv.Rows) > 0 {
-		w := dv.timelineRect.Dx()
+		w := dv.cellGridRect.Dx()
 		if w <= 0 {
 			w = dv.Bounds.Dx() - dv.labelW - dv.controlsW
 		}
@@ -1019,8 +1031,8 @@ func (dv *DrumView) calcLayout() {
 	// the same step. Accessor methods on DrumView delegate to the zone.
 	dv.tree.LayoutZoneNow("row-rack")
 	// If timeline dimensions changed, row sprite caches must be rebuilt.
-	if dv.rowCacheW != dv.timelineRect.Dx() || dv.rowCacheH != dv.rowHeight() {
-		dv.rowCacheW = dv.timelineRect.Dx()
+	if dv.rowCacheW != dv.cellGridRect.Dx() || dv.rowCacheH != dv.rowHeight() {
+		dv.rowCacheW = dv.cellGridRect.Dx()
 		dv.rowCacheH = dv.rowHeight()
 		dv.markAllRowsDirty()
 	}
@@ -1050,6 +1062,11 @@ func (dv *DrumView) invalidateLabelCaches() {
 	dv.labelWidthDirty = true
 	dv.instLabelCache = nil
 }
+
+// rackLabelMinW is the narrowest rack label column: room for a short
+// instrument name beside its swatch, so a kit of short names ("Kick", "Hat")
+// does not collapse the rack into a sliver.
+const rackLabelMinW = 140
 
 // calcLabelWidth adjusts labelW to fit the longest row or instrument label
 // while keeping it within half of the viewport width.
@@ -1084,16 +1101,17 @@ func (dv *DrumView) calcLabelWidth() {
 			maxPx = w
 		}
 	}
-	for _, id := range dv.instOptions {
-		lbl := dv.instDisplayLabel(id)
-		if w := TextWidth(lbl); w > maxPx {
-			maxPx = w
-		}
-	}
-	pad := SpaceXS*2 + 12
+	// Measured over the rows ON SCREEN only. Measuring every instrument the
+	// picker could offer (the whole catalog) sized the label column to the
+	// longest name in the roster — ~370 px of empty bar beside "Kick".
+	// A longer name chosen later re-measures (labelCacheRowNames changes).
+	// Leading identity swatch slot (SpaceSM + swatch-md + SpaceSM, see
+	// Button.LeadSwatch) plus a trailing SpaceSM so the longest name never
+	// touches the volume gutter.
+	pad := SpaceSM*3 + SwatchSizeMD
 	target := maxPx + pad
-	if target < 80 {
-		target = 80
+	if target < rackLabelMinW {
+		target = rackLabelMinW
 	}
 	// Cache the pre-clamped value so bounds changes don't require full recompute.
 	dv.cachedLabelW = target
@@ -1154,3 +1172,27 @@ func (h *segmentedHitAdapter) OnPress(x, y int) InputResult {
 func (h *segmentedHitAdapter) OnDrag(x, y int)                     {}
 func (h *segmentedHitAdapter) OnRelease(x, y int)                  {}
 func (h *segmentedHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
+
+// rowZoomCells splits the mobile row-zoom chip strip into its + (top) and −
+// (bottom) halves: each chip's touch target, with its keycap centred inside.
+func (dv *DrumView) rowZoomCells() (inc, dec image.Rectangle) {
+	r := dv.rowZoomChipRect
+	if r.Empty() {
+		return image.Rectangle{}, image.Rectangle{}
+	}
+	mid := (r.Min.Y + r.Max.Y) / 2
+	return image.Rect(r.Min.X, r.Min.Y, r.Max.X, mid), image.Rect(r.Min.X, mid, r.Max.X, r.Max.Y)
+}
+
+// centeredSquare is the side×side square centred in cell, shrunk to fit it.
+func centeredSquare(cell image.Rectangle, side int) image.Rectangle {
+	if side > cell.Dx() {
+		side = cell.Dx()
+	}
+	if side > cell.Dy() {
+		side = cell.Dy()
+	}
+	x := cell.Min.X + (cell.Dx()-side)/2
+	y := cell.Min.Y + (cell.Dy()-side)/2
+	return image.Rect(x, y, x+side, y+side)
+}

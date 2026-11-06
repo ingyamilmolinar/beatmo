@@ -161,10 +161,11 @@ func TestMobileAddRowButton_ClickAddsRow(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButton_BelowRowsArea verifies the footer button sits at or
-// below the bottom of the rows area (i.e. it lives in the reserved footer
-// strip, not floating over the row content). Combined with the no-overlap
-// test above, this guarantees the button has dedicated layout space.
+// TestMobileAddRowButton_BelowRowsArea verifies the add-row ghost row sits
+// one slot BELOW the last visible row — never over row content, and never
+// floating at the rack bottom with an empty strip above it (DESIGN.md "Row
+// control" → Add row). Combined with the no-overlap test above, this
+// guarantees the button has dedicated layout space.
 func TestMobileAddRowButton_BelowRowsArea(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum
@@ -181,23 +182,23 @@ func TestMobileAddRowButton_BelowRowsArea(t *testing.T) {
 	if btnRect.Empty() {
 		t.Fatal("addRowBtn rect empty")
 	}
-	// Compute the bottom edge of the visible rows area.
 	rh := dv.rowHeight()
-	vis := dv.visibleRows()
-	rackRect := dv.widgetRects[WidgetRack]
-	rowsBottom := rackRect.Min.Y + vis*rh
-	if btnRect.Min.Y < rowsBottom-1 { // -1 tolerates pixel rounding/inset.
-		t.Errorf("add-row button top Y=%d should be at or below visible-rows bottom Y=%d",
-			btnRect.Min.Y, rowsBottom)
+	labels := dv.rowLabels()
+	last := image.Rectangle{}
+	for _, l := range labels {
+		if !l.Rect().Empty() {
+			last = l.Rect()
+		}
 	}
-
-	// Sanity: rect should be within the bottom rowHeight strip of the
-	// USABLE rack region (rowsBottom-rh ↘ rowsBottom). The footer strip
-	// is anchored to rowsBottom() — NOT to rackRect.Max.Y — so it stays
-	// above the mobile bottom action bar (Pads/EQ/Wave/...).
-	footerStripTop := dv.rowsBottom() - rh
-	footerStrip := image.Rect(rackRect.Min.X, footerStripTop, rackRect.Max.X, dv.rowsBottom())
-	if !btnRect.Overlaps(footerStrip) {
-		t.Errorf("add-row button %v does not overlap footer strip %v", btnRect, footerStrip)
+	if last.Empty() {
+		t.Fatal("no visible row")
+	}
+	if btnRect.Min.Y != last.Min.Y+rh {
+		t.Errorf("add-row button top Y=%d should be one slot under the last visible row (Y=%d)",
+			btnRect.Min.Y, last.Min.Y+rh)
+	}
+	// And it stays above the mobile bottom action bar (Pads/EQ/Wave/...).
+	if btnRect.Max.Y > dv.rowsBottom() {
+		t.Errorf("add-row button %v extends below the usable rows bottom %d", btnRect, dv.rowsBottom())
 	}
 }

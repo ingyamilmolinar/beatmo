@@ -162,7 +162,7 @@ try {
 
   try {
     await page.waitForFunction(
-      () => typeof instMenuOpenState === "function" && instMenuOpenState() === false,
+      () => typeof instMenuOpenState === "function" && instMenuOpenState() === false, null,
       { timeout: 3000 },
     );
   } catch (_) {

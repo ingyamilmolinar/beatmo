@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // Ensure that rows referencing missing instruments are marked red and silent.
@@ -14,15 +17,15 @@ func TestImportMissingInstrumentMarksRedAndSilent(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Export-like JSON with a missing instrument id "unknown"
-	exp := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	exp := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular"},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular},
 		},
 		Instruments: []exportInstrument{
-			{Name: "Unknown", ID: "unknown", Kind: "builtin", Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
+			{Name: "Unknown", ID: "unknown", Kind: kindBuiltin, Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
 		},
 	}
 	data, _ := json.Marshal(exp)
@@ -46,7 +49,7 @@ func TestImportMissingInstrumentMarksRedAndSilent(t *testing.T) {
 	}
 	// Install a playFn to capture any playback
 	var plays int
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 	// Trigger a highlight that would normally play
 	info := g.beatInfoAtRow(0, 0)
 	if info.NodeType == 0 { // NodeTypeRegular

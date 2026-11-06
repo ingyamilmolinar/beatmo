@@ -8,8 +8,14 @@
  * but NOT to those tables, so playSoundParams('organ'|'sax') found no render
  * function and threw "Unknown sound" — SILENT on beatmo.io while playing fine on
  * desktop (the native build renders them directly via render_modular, never
- * consulting the JS table). Templates such as sax-blues / bach-toccata were
- * therefore mute in the browser.
+ * consulting the JS table). Every template using organ or sax was therefore
+ * mute in the browser.
+ *
+ * The template library has since been rebuilt from public-domain scores and no
+ * longer uses organ or sax, but they stay in SUBJECTS as the regression anchor
+ * for the original bug. The rest of SUBJECTS covers the instrument families the
+ * current templates actually play, so the same drift in a NEW builtin is caught
+ * end-to-end rather than only by the Go-side table guard.
  *
  * This test renders each instrument through the REAL WASM↔WebAudio bridge
  * (window.__testCaptureSynthRender → ensureRenderedSample → render_modular_p)
@@ -31,6 +37,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -89,12 +96,30 @@ const withTimeout = (p, ms, label) =>
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function", null, { timeout: 60_000 });
 await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 60_000 });
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 // The instruments the masterpiece templates depend on. `bass-guitar` is the
 // control: it was always in the RENDER table and proves the harness renders.
 // `organ` and `sax` are the regression subjects.
-const SUBJECTS = ["bass-guitar", "organ", "sax"];
+// One representative per render family the shipped templates use (strings,
+// winds, plucked keyboard, struck keyboard, voice, nylon guitar), plus the two
+// historical offenders. The Go-side guard
+// (internal/audio/render_table_jssrc_test.go) proves the TABLE covers every
+// recipe-bound builtin; this list proves the BRIDGE actually renders them.
+// Every instrument a shipped template plays, read from the template files
+// themselves — a hand-kept list drifted the moment the groove templates added
+// fifteen new voices (drum kits, marimba, accordion, 808, acid bass, …). A
+// second row of one instrument is minted "<id>--2"; its voice is the base id.
+// organ and sax stay as the regression anchors for the original bug.
+const templatesDir = path.join(jsDir, "..", "go", "internal", "assets", "templates");
+const SUBJECTS = [...new Set([
+  "organ", "sax",
+  ...fs.readdirSync(templatesDir)
+    .filter((f) => f.endsWith(".json"))
+    .flatMap((f) => JSON.parse(fs.readFileSync(path.join(templatesDir, f), "utf8")).instruments)
+    .map((inst) => inst.id.split("--")[0]),
+])].sort();
+if (SUBJECTS.length < 40) throw new Error(`only ${SUBJECTS.length} template instruments found in ${templatesDir}`);
 
 const failures = [];
 for (const id of SUBJECTS) {

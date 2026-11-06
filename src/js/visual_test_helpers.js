@@ -89,7 +89,7 @@ export async function initPage(browser, viewport, port) {
       typeof widgetLayoutSnapshot === "function" &&
       typeof forceDraw === "function" &&
       typeof importJSON === "function" &&
-      typeof fullLayoutSnapshot === "function",
+      typeof fullLayoutSnapshot === "function", null,
     { timeout: 30000 }
   );
   // Let layout settle
@@ -126,7 +126,7 @@ export async function waitForWasmReady(page, timeout = 90000) {
     const windowMs = Math.min(20000, deadline - Date.now());
     if (windowMs <= 0) break;
     try {
-      await page.waitForFunction(exportsReady, { timeout: windowMs });
+      await page.waitForFunction(exportsReady, null, { timeout: windowMs });
       ready = true;
       break;
     } catch (e) {
@@ -187,7 +187,12 @@ export function extractRegion(pngBuf, rect) {
 /**
  * Get the drum row cell region from the WASM page.
  * This is the area where step sequencer cells appear — below the timeline
- * header bar, using the same x/width as the timeline.
+ * header bar, spanning the x/width of the CELL GRID.
+ *
+ * Use cellGridRect, not timelineRect, for the horizontal span: the ribbon bar
+ * is narrowed by header-only chrome (track/lock chip, len +/- buttons, mobile
+ * row-zoom chips) while the cell grid fills the full width the timeline widget
+ * dedicates to it. timelineRect is still the right rect for scrub/seek.
  *
  * The layout is:
  *   timelineRect (header: transport controls)
@@ -204,18 +209,20 @@ export async function getDrumRowRegion(page) {
   });
 
   if (dbg) {
-    // debugDrumLayout gives us precise info
+    // debugDrumLayout gives us precise info. Prefer cellGridRect (the true
+    // cell span); fall back to timelineRect for older builds.
     const tl = dbg.timelineRect;
     if (!tl || tl.w <= 0) {
       throw new Error(`Invalid timelineRect from debugDrumLayout: ${JSON.stringify(tl)}`);
     }
+    const cg = dbg.cellGridRect && dbg.cellGridRect.w > 0 ? dbg.cellGridRect : tl;
     // Rows start below the timeline header
     const rowsY = tl.y + tl.h;
     const rowsH = dbg.rowsAreaHeight ?? 0;
     if (rowsH <= 0) {
       throw new Error(`rowsAreaHeight=${rowsH} from debugDrumLayout`);
     }
-    return { x: tl.x, y: rowsY, w: tl.w, h: rowsH };
+    return { x: cg.x, y: rowsY, w: cg.w, h: rowsH };
   }
 
   // Fallback: use widgetLayoutSnapshot

@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // clearClickSuppressionInst clears the global click suppression state for tests.
@@ -28,12 +31,12 @@ func TestInstrumentMenuComponent_OpenClose(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        image.Rect(0, 50, 300, 500),
-		CurrentInstrument: "kick",
-		Categories:        []string{"Kicks", "Snares"},
+		CurrentInstrument: roster.Kick,
+		Categories:        []audio.Category{audio.CatKick, audio.CatSnare},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Kicks"},
-			{ID: "snare", Label: "Snare", Category: "Snares"},
-			{ID: "hihat", Label: "Hi-Hat", Category: "Cymbals"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatSnare},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatCymbal},
 		},
 		RowHeight:       24,
 		LabelWidth:      100,
@@ -63,12 +66,12 @@ func TestInstrumentMenuComponent_CategoriesMode(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        image.Rect(0, 50, 300, 500),
-		CurrentInstrument: "kick",
-		Categories:        []string{"Kicks", "Snares", "Cymbals"},
+		CurrentInstrument: roster.Kick,
+		Categories:        []audio.Category{audio.CatKick, audio.CatSnare, audio.CatCymbal},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Kicks"},
-			{ID: "snare", Label: "Snare", Category: "Snares"},
-			{ID: "hihat", Label: "Hi-Hat", Category: "Cymbals"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatSnare},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatCymbal},
 		},
 		RowHeight:       24,
 		ForceCategories: true, // Start in categories mode
@@ -86,7 +89,7 @@ func TestInstrumentMenuComponent_CategoriesMode(t *testing.T) {
 	}
 
 	// Active category should be set based on current instrument
-	if comp.ActiveCategory() != "Kicks" {
+	if comp.ActiveCategory() != audio.CatKick {
 		t.Errorf("expected active category 'Kicks', got '%s'", comp.ActiveCategory())
 	}
 }
@@ -96,11 +99,11 @@ func TestInstrumentMenuComponent_InstrumentsMode(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        image.Rect(0, 50, 300, 500),
-		CurrentInstrument: "kick",
-		Categories:        []string{}, // No categories - go directly to instruments
+		CurrentInstrument: roster.Kick,
+		Categories:        []audio.Category{}, // No categories - go directly to instruments
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
-			{ID: "snare", Label: "Snare", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -122,17 +125,17 @@ func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 
 	comp := NewInstrumentMenuComponent()
 
-	var selectedID string
+	var selectedID instrument.ID
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
-			{ID: "snare", Label: "Snare", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatNone},
 		},
 		RowHeight: 24,
-		OnSelect: func(instID string) {
+		OnSelect: func(instID instrument.ID) {
 			selectedID = instID
 		},
 	})
@@ -169,7 +172,7 @@ func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 	}
 
 	// Verify callback was invoked
-	if selectedID != "kick" {
+	if selectedID != roster.Kick {
 		t.Errorf("expected selectedID 'kick', got '%s'", selectedID)
 	}
 }
@@ -179,9 +182,9 @@ func TestInstrumentMenuComponent_HoldCapture(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -221,9 +224,9 @@ func TestInstrumentMenuComponent_ClickOutsideCloses(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 		OnClose: func() {
@@ -254,11 +257,11 @@ func TestInstrumentMenuComponent_SearchFiltering(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick Drum", Category: ""},
-			{ID: "snare", Label: "Snare Drum", Category: ""},
-			{ID: "hihat", Label: "Hi-Hat", Category: ""},
+			{ID: roster.Kick, Label: "Kick Drum", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare Drum", Category: audio.CatNone},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -278,7 +281,7 @@ func TestInstrumentMenuComponent_SearchFiltering(t *testing.T) {
 	if len(comp.state.filteredInsts) != 1 {
 		t.Errorf("expected 1 filtered instrument, got %d", len(comp.state.filteredInsts))
 	}
-	if comp.state.filteredInsts[0] != "kick" {
+	if comp.state.filteredInsts[0] != roster.Kick {
 		t.Errorf("expected 'kick' to match search, got '%s'", comp.state.filteredInsts[0])
 	}
 }
@@ -288,18 +291,18 @@ func TestInstrumentMenuComponent_CategoryFiltering(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{"Kicks", "Snares"},
+		Categories: []audio.Category{audio.CatKick, audio.CatSnare},
 		Instruments: []InstrumentOption{
-			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
-			{ID: "kick2", Label: "Kick 2", Category: "Kicks"},
-			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
+			{ID: roster.Kick, Label: "Kick 1", Category: audio.CatKick},
+			{ID: roster.KickDeep, Label: "Kick 2", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare 1", Category: audio.CatSnare},
 		},
 		RowHeight: 24,
 	})
 	comp.Open()
 
 	// Switch to instruments mode with active category
-	comp.state.activeCat = "Kicks"
+	comp.state.activeCat = audio.CatKick
 	comp.state.mode = InstMenuModeInstruments
 	comp.rebuildMenu()
 
@@ -308,7 +311,7 @@ func TestInstrumentMenuComponent_CategoryFiltering(t *testing.T) {
 		t.Errorf("expected 2 filtered instruments (kicks only), got %d", len(comp.state.filteredInsts))
 	}
 	for _, id := range comp.state.filteredInsts {
-		if comp.state.categoryByID[id] != "Kicks" {
+		if comp.state.categoryByID[id] != audio.CatKick {
 			t.Errorf("expected category 'Kicks', got '%s' for instrument '%s'",
 				comp.state.categoryByID[id], id)
 		}
@@ -320,9 +323,9 @@ func TestInstrumentMenuComponent_HandleInputWhenClosed(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -339,9 +342,9 @@ func TestInstrumentMenuComponent_BoundsSet(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -359,7 +362,7 @@ func TestInstrumentMenuComponent_EmptyInstruments(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:  image.Rect(10, 100, 100, 124),
 		VertBounds:  image.Rect(0, 50, 300, 500),
-		Categories:  []string{},
+		Categories:  []audio.Category{},
 		Instruments: []InstrumentOption{},
 		RowHeight:   24,
 	})
@@ -381,9 +384,9 @@ func TestInstrumentMenuComponent_ScrollState(t *testing.T) {
 	insts := []InstrumentOption{}
 	for i := 0; i < 20; i++ {
 		insts = append(insts, InstrumentOption{
-			ID:       "inst" + string(rune('a'+i)),
+			ID:       instrument.ID("inst" + string(rune('a'+i))),
 			Label:    "Instrument " + string(rune('A'+i)),
-			Category: "",
+			Category: audio.CatNone,
 		})
 	}
 
@@ -391,7 +394,7 @@ func TestInstrumentMenuComponent_ScrollState(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:  image.Rect(10, 100, 100, 124),
 		VertBounds:  image.Rect(0, 50, 300, 400), // Limited height
-		Categories:  []string{},
+		Categories:  []audio.Category{},
 		Instruments: insts,
 		RowHeight:   24,
 	})
@@ -415,10 +418,10 @@ func TestInstrumentMenuComponent_AnchorRectConsumed(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 50, 100, 74),
 		VertBounds: image.Rect(0, 0, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
-			{ID: "snare", Label: "Snare", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -468,10 +471,10 @@ func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: ""},
-			{ID: "snare", Label: "Snare", Category: ""},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -503,12 +506,12 @@ func newInstMenuInInstrumentsMode(t *testing.T) *InstrumentMenuComponent {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick Drum", Category: ""},
-			{ID: "snare", Label: "Snare Drum", Category: ""},
-			{ID: "hihat", Label: "Hi-Hat", Category: ""},
-			{ID: "clap", Label: "Clap", Category: ""},
+			{ID: roster.Kick, Label: "Kick Drum", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare Drum", Category: audio.CatNone},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatNone},
+			{ID: roster.Clap, Label: "Clap", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -588,7 +591,7 @@ func TestInstMenuSearchBox_TypeCharsUpdatesFilter(t *testing.T) {
 	// Only "Kick Drum" should match.
 	if len(comp.state.filteredInsts) != 1 {
 		t.Errorf("expected 1 filtered instrument, got %d", len(comp.state.filteredInsts))
-	} else if comp.state.filteredInsts[0] != "kick" {
+	} else if comp.state.filteredInsts[0] != roster.Kick {
 		t.Errorf("expected filtered inst 'kick', got %q", comp.state.filteredInsts[0])
 	}
 }
@@ -847,9 +850,9 @@ func TestInstrumentMenuComponent_WheelScroll(t *testing.T) {
 	insts := []InstrumentOption{}
 	for i := 0; i < 20; i++ {
 		insts = append(insts, InstrumentOption{
-			ID:       "inst" + string(rune('a'+i)),
+			ID:       instrument.ID("inst" + string(rune('a'+i))),
 			Label:    "Instrument " + string(rune('A'+i)),
-			Category: "",
+			Category: audio.CatNone,
 		})
 	}
 
@@ -857,7 +860,7 @@ func TestInstrumentMenuComponent_WheelScroll(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:  image.Rect(10, 100, 100, 124),
 		VertBounds:  image.Rect(0, 50, 300, 400),
-		Categories:  []string{},
+		Categories:  []audio.Category{},
 		Instruments: insts,
 		RowHeight:   24,
 	})

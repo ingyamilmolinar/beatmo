@@ -8,6 +8,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -47,7 +48,7 @@ func TestNewDrumView_RowNameUsesPrettyName(t *testing.T) {
 	if len(dv.Rows) == 0 {
 		t.Fatal("expected at least one row")
 	}
-	want := audio.PrettyName(dv.Rows[0].Instrument)
+	want := audio.PrettyName(string(dv.Rows[0].Instrument))
 	if dv.Rows[0].Name != want {
 		t.Fatalf("Rows[0].Name = %q, want %q (audio.PrettyName(%q))",
 			dv.Rows[0].Name, want, dv.Rows[0].Instrument)
@@ -59,7 +60,7 @@ func TestNewDrumView_RowNameUsesPrettyName(t *testing.T) {
 // if AddRow falls back to the inline title-case.
 func TestAddRow_RowNameUsesComputeInstLabel(t *testing.T) {
 	dv := newTestDrumViewForName(t)
-	dv.instOptions = []string{"hi-hat"}
+	dv.instOptions = []instrument.ID{"hi-hat"}
 	before := len(dv.Rows)
 	dv.AddRow()
 	if len(dv.Rows) != before+1 {
@@ -79,7 +80,7 @@ func TestSetInstrument_RowNameFromCatalogName(t *testing.T) {
 	if len(dv.Rows) == 0 {
 		t.Fatal("expected at least one row")
 	}
-	dv.instMeta = map[string]audio.SoundMeta{
+	dv.instMeta = map[instrument.ID]audio.SoundMeta{
 		"hi-hat": {ID: "hi-hat", Name: "Hi Hat"},
 	}
 	// Bust the label cache so the next computeInstLabel sees instMeta.

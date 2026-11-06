@@ -115,7 +115,7 @@ func TestPopupCloseButtonNoNodeCreation(t *testing.T) {
 	g.sidebar.layout()
 
 	// Verify close button exists.
-	r, ok := g.sidebar.rects["close"]
+	r, ok := g.sidebar.rects[sbClose]
 	if !ok || r.Empty() {
 		t.Fatal("close rect missing or empty")
 	}
@@ -175,7 +175,7 @@ func TestPopupCloseButtonMultiFrameTouch(t *testing.T) {
 	g.sidebar.layout()
 
 	// Get close button position.
-	r, ok := g.sidebar.rects["close"]
+	r, ok := g.sidebar.rects[sbClose]
 	if !ok || r.Empty() {
 		t.Fatal("close rect missing or empty")
 	}

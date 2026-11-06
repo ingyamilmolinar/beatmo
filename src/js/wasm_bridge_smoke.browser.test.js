@@ -132,6 +132,7 @@ const CATALOGUE = {
     { name: "addCustomWidget", skipCall: true },
     { name: "downloadScopeExport", skipCall: true },
     { name: "enableScopeExport", args: [false], returns: "any" },
+    { name: "eqBandHandlePoints", args: [], returns: "array" },
     { name: "eqBandsSnapshot", args: [], returns: "any" },
     { name: "eqControlsSnapshot", args: [], returns: "any" },
     { name: "eqFreqResponse", args: [], returns: "any" },
@@ -153,10 +154,7 @@ const CATALOGUE = {
     // setSubdivisions(n): direct deterministic subdiv setter (agent set_subdiv tool).
     { name: "setSubdivisions", args: [8], returns: "boolean" },
     // Audio-panel chrome read-back getters (agent sanity-test checkpoints).
-    { name: "spectrumSlope", args: [], returns: "any" },
-    { name: "preOverlay", args: [], returns: "any" },
     { name: "k20View", args: [], returns: "any" },
-    { name: "freqScaleLog", args: [], returns: "any" },
     { name: "chainDisplayMode", args: [], returns: "any" },
     { name: "autoGain", args: [], returns: "any" },
     { name: "scopeFrozen", args: [], returns: "any" },
@@ -165,6 +163,9 @@ const CATALOGUE = {
     // (non-selected) stages have zero-size rects (w=0,h=0) — only the selected
     // stage's controls are drag-targetable in the chip-strip layout.
     { name: "synthControlRects", args: [], returns: "any" },
+    // The Synth root's macro dials [{card, dial, x, y, w, h}] (benches drive
+    // them with real pointer input).
+    { name: "synthDialRects", args: [], returns: "any" },
     // Pipeline chip strip: synthChipRects lists one chip per stage in pipeline
     // order; selectSynthSection opens a stage by chip label (next frame).
     { name: "synthChipRects", args: [], returns: "any" },
@@ -223,6 +224,7 @@ const CATALOGUE = {
     { name: "exportBtnRect", args: [], returns: "any" },
     { name: "exportJSON", args: [], returns: "string" },
     { name: "fileMenuBtnRect", args: [], returns: "any" },
+    { name: "fxPanelControlRects", args: [], returns: "any" },
     { name: "fxPanelOpen", args: [], returns: "boolean" },
     { name: "fxPanelRect", args: [], returns: "any" },
     { name: "fxPanelRow", args: [], returns: "number" },
@@ -413,38 +415,26 @@ const CATALOGUE = {
   synth_recipe: [
     { name: "setInstrumentParam", skipCall: true },
     { name: "setInstrumentParams", skipCall: true },
+    { name: "setSampleEdit", skipCall: true },
     // Mutates the active audio-panel tab — existence-only.
     { name: "setActiveEQTab", skipCall: true },
     { name: "getInstrumentParams", args: ["kick"], returns: "object" },
     { name: "resetInstrumentParams", skipCall: true },
-    // Mirror the Synth-tab Save / Reset buttons for an explicit instrument id.
-    // They mutate the recipe registry; behavior is covered by
+    // Mirror the Synth-tab Save / Save As / Reset buttons for an explicit
+    // instrument id. They mutate the instrument library; behavior is covered by
     // webaudio_synth_save_persist.browser.test.js, so skipCall here.
     { name: "saveActiveRecipe", skipCall: true },
-    { name: "resetActiveRecipe", skipCall: true },
-    { name: "recipeForInstrument", args: ["kick"], returns: "string" },
-    // Stage 5 debug bridge: renders the right-pane synth mirror for the active
-    // synth instrument and returns the PCM sample count (0 when no synth tab is
-    // active). Safe + idempotent to call. DSP correctness is covered in Go
-    // (synth_mirror_test.go); this only checks the WASM↔audio boundary.
-    { name: "synthMirrorPCMLen", args: [], returns: "number" },
-    // 32-bit fingerprint of the mirror PCM content; a browser test compares it
-    // before/after a knob change to prove the WASM mirror reacts to params.
-    { name: "synthMirrorPCMChecksum", args: [], returns: "number" },
-    // Returns a native JS object: { recipeID: { displayName, category, params } }.
-    { name: "synthRecipeCatalog", args: [], returns: "object" },
-    { name: "recipeDefaultParams", args: ["drum-kick"], returns: "object" },
-    // Phase 5: user-recipe lifecycle (save / clone / delete / list /
-    // export / import). The write paths mutate persistent storage
-    // (localStorage) — skipCall here keeps the smoke test idempotent.
-    // existence-only assertion catches "Go forgot to register the
-    // export" regressions; semantic coverage lives in dedicated tests.
-    { name: "saveUserRecipe", skipCall: true },
-    { name: "createUserRecipe", skipCall: true },
-    { name: "deleteUserRecipe", skipCall: true },
-    { name: "listUserRecipes", args: [], returns: "object" },
-    { name: "exportUserRecipe", args: ["drum-snare"], returns: "string" },
-    { name: "importUserRecipe", skipCall: true },
+    { name: "saveActiveRecipeAs", skipCall: true },
+    // Instrument documents (spec 2026-10-04): the project document as JSON
+    // ("" for an id without one). Read-only.
+    { name: "getInstrumentDoc", args: ["kick"], returns: "string" },
+    // The Synth tab's knob schema for an instrument's document.
+    { name: "instrumentParamDefs", args: ["kick"], returns: "object" },
+    // Go → audio.js: the flattened param block a render reads (pushed by
+    // internal/audio/instrument_docs_wasm.go) and its removal. Mutating —
+    // existence-only; instrument_params.browser.test.js drives them.
+    { name: "setInstrumentBlock", skipCall: true },
+    { name: "clearInstrumentBlock", skipCall: true },
     // Phase 6: kit (instrument-set / drum-kit) infra. No UI in this
     // round; the exports exist for browser tests + future picker UI.
     // applyKit / createKit mutate process state — skipCall keeps the
@@ -465,11 +455,33 @@ const CATALOGUE = {
   sampler: [
     { name: "registerSamplePCM", skipCall: true },
     { name: "captureInstrumentPCM", skipCall: true },
+    // The Synth-tab graph render (Go audio.RenderDocForGraph): renders a
+    // flattened document like playback does. Typed-array args → skipCall;
+    // identity with the played voice: synth_graph_render.browser.test.js.
+    { name: "renderDocPCM", skipCall: true },
     { name: "decodeWavToPCM", skipCall: true },
     // Cross-session sample persistence (IndexedDB) — wasm SampleStore backend.
     { name: "idbGetAllSamples", skipCall: true },
     { name: "idbPutSample", skipCall: true },
     { name: "idbDeleteSample", skipCall: true },
+  ],
+
+  // ───────── warm-up gate bridge (audio.js + voice_prewarm_js.go) ─────────
+  // The browser side of the playback-readiness gate's warmBackend. Go's
+  // VoiceCached / IsMelodicInstrument / WarmVoiceItem
+  // (internal/audio/voice_prewarm_js.go) delegate to these three globals.
+  // warmInstrumentBatch mutates renderCache + fires an async callback, so it
+  // is existence-only here — its behavior is pinned end-to-end by
+  // warm_batch.browser.test.js. voiceCachedFor / isMelodicInstrumentJS are
+  // pure reads, safe to call.
+  warmup_bridge: [
+    { name: "warmInstrumentBatch", skipCall: true },
+    { name: "voiceCachedFor", args: ["kick", 0], returns: "boolean" },
+    { name: "isMelodicInstrumentJS", args: ["cello"], returns: "boolean" },
+    // flushPendingChannelOps forces the AudioContext into existence as a
+    // side effect (getCtx()), so it is existence-only here rather than
+    // called for real in the smoke pass.
+    { name: "flushPendingChannelOps", skipCall: true },
   ],
 
   // ───────── playback + perf (js_exports_playback_perf.go) ─────────
@@ -493,6 +505,29 @@ const CATALOGUE = {
     { name: "startPlay", skipCall: true },
     { name: "stopPlay", skipCall: true },
     { name: "syncHighlights", args: [], returns: "any" },
+    // Playback-readiness gate: pure read of the warm-up controller's state,
+    // safe to call. import-cold bench (Task 2) and the re-import acceptance
+    // check (Task 15) poll this.
+    {
+      name: "warmupProgress",
+      args: [],
+      returns: { kind: "object", keys: ["done", "total", "ready"] },
+    },
+    // Audio-tab source-of-truth taps (read-only). audioTabTapDigest runs
+    // the shared Go derivations over a canonical fixture so the browser can
+    // be compared byte-for-byte against the native golden;
+    // audioTabTapLiveShape reports what the LIVE analyser bridge actually
+    // delivers. See xplat_audio_tab_tap.browser.test.js.
+    {
+      name: "audioTabTapDigest",
+      args: [],
+      returns: { kind: "object", keys: ["circuit", "sample_rate", "sections"] },
+    },
+    {
+      name: "audioTabTapLiveShape",
+      args: ["main"],
+      returns: { kind: "object", keys: ["channel", "spectrumBins", "bandBinCounts", "declaredBins"] },
+    },
     // Diagnostics + perf probes (read-only; safe to call).
     { name: "dumpHeapProbe", args: [], returns: "any" },
     { name: "dumpLevelsLatch", args: [], returns: "any" },
@@ -505,6 +540,32 @@ const CATALOGUE = {
     // timing_traces.browser.test.js.
     { name: "getTimingTraces", args: [], returns: "array" },
     { name: "resetTimingTraces", skipCall: true },
+    // Playback probe (audio.js + audio_probe_worklet.js): what the listener
+    // actually hears. Existence-only — exercised end-to-end by
+    // webaudio_audio_isolation_bench.browser.test.js and the probe-enabled
+    // benches (audio_probe_bench_helpers.js).
+    { name: "startAudioProbe", skipCall: true },
+    { name: "stopAudioProbe", skipCall: true },
+    { name: "audioProbeRaw", args: [], returns: "any" },
+    { name: "audioProbeReport", skipCall: true },
+    // Which host runs each insert effect on a channel (worklet vs fallback).
+    { name: "insertEffectHosts", args: ["kick"], returns: "array" },
+    // WebAudio graph churn counters (insert-chain rebuilds vs in-place param
+    // updates, worklet nodes built, EQ rebuilds, channel rewires) — the hard
+    // gates of webaudio_live_edit_budget.browser.test.js.
+    { name: "audioGraphStats", args: [], returns: "object" },
+    // In-place insert-FX param edit and the DSP-state reset, called from Go
+    // (internal/audio/insert_effects_wasm.go). Behavior: live_edit_budget,
+    // xplat_audio_stages.
+    { name: "retuneInsertEffect", skipCall: true },
+    { name: "resetDSPState", args: [], returns: "any" },
+    // Audio lane (audio.js): cancel / stop / cancel-all lane voices, called
+    // from Go (internal/audio/lane_wasm.go). Existence-only — behavior is
+    // verified by audio_lane_cancel.browser.test.js.
+    { name: "cancelLaneVoices", skipCall: true },
+    { name: "stopLaneAt", skipCall: true },
+    { name: "cancelAllLaneFuture", skipCall: true },
+    { name: "laneVoiceStateForTest", args: [1], returns: "string" },
   ],
 
   // ───────── diagnostics (js_exports_diag.go) ─────────
@@ -556,6 +617,8 @@ const CATALOGUE = {
     { name: "openInstrumentMenu", skipCall: true },
     { name: "openMasterVolumePopup", skipCall: true },
     { name: "openOverflowMenu", skipCall: true },
+    { name: "menuKeyNavState", args: [], returns: "any" },
+    { name: "overflowMenuScrollState", args: [], returns: "any" },
     { name: "openSubdivMenu", skipCall: true },
     { name: "openVolumePopup", skipCall: true },
     { name: "runScene", skipCall: true },
@@ -683,7 +746,7 @@ if (missingFromCatalogue.length > 0) {
     if (!snap.bottomNav || typeof snap.bottomNav !== "object") out.errs.push("snap.bottomNav missing");
     if (!snap.chrome || typeof snap.chrome !== "object") out.errs.push("snap.chrome missing");
     // Chrome read-back getters must be callable and return bool/number/null (not throw).
-    for (const g of ["spectrumSlope", "preOverlay", "k20View", "freqScaleLog", "chainDisplayMode", "autoGain", "scopeFrozen"]) {
+    for (const g of ["k20View", "chainDisplayMode", "autoGain", "scopeFrozen"]) {
       if (typeof globalThis[g] !== "function") { out.errs.push(`${g} not a function`); continue; }
       try {
         const v = globalThis[g]();

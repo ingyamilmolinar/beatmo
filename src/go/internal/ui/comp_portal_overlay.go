@@ -84,6 +84,33 @@ func (o *compPortalOverlay) ClaimsKeyboard() bool {
 	return false
 }
 
+// ClaimedKeys / HandleClaimedKeys forward the partial keyboard claim
+// (KeyboardKeyClaimant) when the wrapped component makes one — the navigation
+// menu's go-to wheel owns the arrows while open. A component without a claim
+// claims nothing.
+func (o *compPortalOverlay) ClaimedKeys() []ebiten.Key {
+	if c, ok := o.comp.(KeyboardKeyClaimant); ok {
+		return c.ClaimedKeys()
+	}
+	return nil
+}
+
+func (o *compPortalOverlay) HandleClaimedKeys() bool {
+	if c, ok := o.comp.(KeyboardKeyClaimant); ok {
+		return c.HandleClaimedKeys()
+	}
+	return false
+}
+
+// HandleEnter forwards Enter (portalEnterHandler) when the wrapped component
+// handles it; otherwise Enter is not consumed (the prior behaviour).
+func (o *compPortalOverlay) HandleEnter() bool {
+	if h, ok := o.comp.(portalEnterHandler); ok {
+		return h.HandleEnter()
+	}
+	return false
+}
+
 // compHitHandler routes HitHandler events to a compOverlayable.
 type compHitHandler struct {
 	comp compOverlayable

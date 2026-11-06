@@ -149,7 +149,7 @@ try {
   await page.waitForFunction(
     () => typeof fullLayoutSnapshot === "function" &&
           typeof instMenuOpenState === "function" &&
-          typeof __navSegRect === "function",
+          typeof __navSegRect === "function", null,
     { timeout: 30000 },
   );
   await settle(500);
@@ -210,6 +210,13 @@ try {
   //   pads=0 eq=1 wave=2 spectrum=3 levels=4 chain=5 synth=6 sampler=7
   console.log("\n=== 6. bottom-nav views ===");
   for (const [slug, idx] of [["eq", 1], ["synth", 6], ["pads", 0]]) {
+    if (slug === "synth") {
+      // The Synth view edits ONE instrument, so it is blocked while the audio
+      // panel's channel is Master (synthViewDisabled) — and Master is where the
+      // app starts. Pick row 0's instrument first, as a user must.
+      await page.evaluate(() => setEQChannel(rowInstrument(0)));
+      await page.waitForTimeout(150);
+    }
     const ok = await tapUntil(() => read("__navSegRect", idx),
       async () => await read("__viewMode") === idx, `view:${slug}`);
     assert(ok, `view: real tap on "${slug}" segment set viewMode=${idx} (got ${await read("__viewMode")})`);

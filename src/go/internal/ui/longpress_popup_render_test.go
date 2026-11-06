@@ -120,10 +120,19 @@ func TestLongPressPopupButtonsRounded(t *testing.T) {
 		{"delete", g.longPressPopupDel},
 	} {
 		if rec.hasSquareButton(btn.rect) {
-			t.Errorf("%s button uses square drawButton at %v, want drawRoundedButton", btn.name, btn.rect)
+			t.Errorf("%s button uses square drawButton at %v, want a rounded body", btn.name, btn.rect)
 		}
-		if !rec.hasRoundedButton(btn.rect, 1) {
-			t.Errorf("%s button missing drawRoundedButton call at %v", btn.name, btn.rect)
+		// Flat-tonal paints the body via drawFlatButtonBody -> drawRoundedRect
+		// (filled), not the drawRoundedButton fill+border composite.
+		var rounded bool
+		for _, c := range rec.calls {
+			if c.Kind == drawCallRoundedRect && c.Filled && c.Rect == btn.rect && c.Radius > 0 {
+				rounded = true
+				break
+			}
+		}
+		if !rounded {
+			t.Errorf("%s button missing filled rounded body at %v", btn.name, btn.rect)
 		}
 	}
 
@@ -171,9 +180,9 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 	expectDropdown := color.RGBAModel.Convert(colDropdown).(color.RGBA)
 	expectDelete := color.RGBAModel.Convert(colDeleteFill).(color.RGBA)
 
-	// The cap face is inset from the hit rect: keycapCapRect(hitRect, 0, true).
-	// We look for a drawRoundedButton whose rect equals the cap rect and whose
-	// fill matches the semantic button color (not the darkened shell color).
+	// Flat-tonal: the body IS the hit rect (no inset cap face), painted by
+	// drawFlatPanelButton -> drawFlatButtonBody -> drawRoundedRect. We look for
+	// a filled rounded rect at the button rect whose fill is the semantic color.
 	for _, btn := range []struct {
 		name      string
 		hitRect   image.Rectangle
@@ -184,19 +193,16 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 		{"connect", g.longPressPopupConn, expectDropdown},
 		{"delete", g.longPressPopupDel, expectDelete},
 	} {
-		capRect := keycapCapRect(btn.hitRect, 0, true)
+		capRect := btn.hitRect
 		found := false
 		for _, c := range rec.calls {
-			if c.Kind == drawCallRoundedButton && c.Rect == capRect {
+			if c.Kind == drawCallRoundedRect && c.Rect == capRect && c.Color == btn.wantColor {
 				found = true
-				if c.Color != btn.wantColor {
-					t.Errorf("%s button cap fill=%v, want %v", btn.name, c.Color, btn.wantColor)
-				}
 				break
 			}
 		}
 		if !found {
-			t.Errorf("%s button: no drawRoundedButton call at cap rect %v", btn.name, capRect)
+			t.Errorf("%s button: no filled rounded rect at %v with fill %v", btn.name, capRect, btn.wantColor)
 		}
 	}
 }

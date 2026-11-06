@@ -32,14 +32,14 @@ func TestRuntimeTriggerIfPrevTriggered(t *testing.T) {
 	// Make A skip every 2nd trigger so B can observe both prev-triggered states.
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(a.ID, p)
 	}
 	// B triggers only if previous regular triggered.
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	g.updateBeatInfos()
@@ -86,14 +86,14 @@ func TestRuntimeTriggerIfPrevSkipped(t *testing.T) {
 	// Make A skip every 2nd trigger so B can observe both prev-triggered states.
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(a.ID, p)
 	}
 	// B triggers only if previous regular skipped.
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_skipped"
+		p.LogicKind = model.LogicIfPrevSkipped
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	g.updateBeatInfos()

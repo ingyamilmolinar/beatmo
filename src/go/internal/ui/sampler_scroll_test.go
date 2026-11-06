@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -64,8 +65,8 @@ func TestSamplerKnobsSingleRowDesktop(t *testing.T) {
 	g := samplerLayoutGame(t)
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), roster.Kick)
 
 	vis := visibleSamplerKnobRects(g.drum)
 	if len(vis) != samplerKnobCount {
@@ -93,11 +94,11 @@ func samplerScrollGame(t *testing.T) (*Game, image.Rectangle) {
 	withSmallScreen(t, true)
 	restore := SetDensityForTest(DensitySpacious)
 	t.Cleanup(restore)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	// A deliberately short content rect so the five single-column knob cells
 	// cannot all fit — the overflow is what the scrollbar exists for.
 	contentR := image.Rect(0, 0, 390, 210)
-	g.drum.buildSamplerTab(contentR, "kick")
+	g.drum.buildSamplerTab(contentR, roster.Kick)
 	return g, contentR
 }
 
@@ -161,7 +162,7 @@ func TestSamplerScrollRevealsLaterKnobs(t *testing.T) {
 	// window updates.
 	for i := 0; i < 500 && !gainVisible(); i++ {
 		if grid.WheelStep(-1) {
-			dv.buildSamplerTab(contentR, "kick")
+			dv.buildSamplerTab(contentR, roster.Kick)
 		} else {
 			grid.Tick()
 		}

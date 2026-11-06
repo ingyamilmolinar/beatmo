@@ -1,10 +1,14 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 func TestSynthMacroNav_RootAndDrill(t *testing.T) {
 	dv := &DrumView{}
-	const id = "violin"
+	const id = roster.Violin
 	if !dv.synthAtMacroRoot(id) {
 		t.Fatal("fresh instrument should start at the Basic root")
 	}
@@ -19,7 +23,7 @@ func TestSynthMacroNav_RootAndDrill(t *testing.T) {
 		t.Errorf("open id = %q, want brightness", got)
 	}
 	// A second instrument stays independent.
-	if !dv.synthAtMacroRoot("cello") {
+	if !dv.synthAtMacroRoot(roster.Cello) {
 		t.Error("unrelated instrument should still be at root")
 	}
 	dv.setSynthMacroOpen(id, "")

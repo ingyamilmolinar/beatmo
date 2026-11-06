@@ -1,9 +1,10 @@
 package songmatch
 
 import (
-	"sort"
+	"slices"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -46,12 +47,12 @@ func NNLS(cols [][]float64, b []float64, iters int) []float64 {
 // InstrumentActivity estimates each stem-instrument's per-frame presence in the
 // real timeline via NNLS over per-instrument band templates. APPROXIMATE: reliable
 // on solo/sparse passages, indicative on dense mixes.
-func InstrumentActivity(realTL fingerprint.SongTimeline, stems map[string][]float64, sr int, cfg fingerprint.AnalysisConfig) ([]string, [][]float64) {
-	ids := make([]string, 0, len(stems))
+func InstrumentActivity(realTL fingerprint.SongTimeline, stems map[instrument.ID][]float64, sr int, cfg fingerprint.AnalysisConfig) ([]instrument.ID, [][]float64) {
+	ids := make([]instrument.ID, 0, len(stems))
 	for id := range stems {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	if len(ids) == 0 || len(realTL.Frames) == 0 {
 		return ids, nil
 	}

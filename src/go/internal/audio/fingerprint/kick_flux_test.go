@@ -2,7 +2,6 @@ package fingerprint
 
 import (
 	"math"
-	"os"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
@@ -82,21 +81,4 @@ func TestKickDistance_FluxTerm(t *testing.T) {
 	if dr := KickDistance(warbly, clean); math.Abs(dr.Flux-d.Flux) > 1e-12 {
 		t.Errorf("Flux term not symmetric: %g vs %g", d.Flux, dr.Flux)
 	}
-}
-
-// --- optional real-WAV reference ---------------------------------------------
-
-func TestKickAnalyze_SandyrbFluxInharmAttack(t *testing.T) {
-	const path = "../../../../../36010__sandyrb__dnb-kick-003.wav"
-	if _, err := os.Stat(path); err != nil {
-		t.Skip("sandyrb reference WAV unavailable")
-	}
-	w, ok := decodeWAVMono(path)
-	if !ok {
-		t.Skip("sandyrb WAV decode failed")
-	}
-	fp := KickAnalyze(w)
-	t.Logf("sandyrb: SpectralFluxAvg=%.5f WarbleDepth=%.5f", fp.SpectralFluxAvg, fp.WarbleDepth)
-	t.Logf("sandyrb: Inharmonicity=%.5f", fp.Inharmonicity)
-	t.Logf("sandyrb: LogAttackTime=%.4f TemporalCentroidSec=%.5f", fp.LogAttackTime, fp.TemporalCentroidSec)
 }

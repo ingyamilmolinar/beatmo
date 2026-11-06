@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -82,9 +83,24 @@ await page.evaluate(() => {
   resetTimingTraces();
   buildPerfRect(2, 1);
   forceDraw?.(); forceDraw?.();
-  setBPM(240);
-  startPlay();
+  // Observe every trace the Go Stage-D drain consumes. Sequencer batches now
+  // start their voices SYNCHRONOUSLY inside the Go→JS call (audio.js
+  // enqueueAudioEvents(…, true)), and the drain runs right after PlayBatch in
+  // the same audioLoop iteration — so the ring is refilled and emptied before
+  // control ever returns to the page, and a poll between frames sees it empty.
+  // Go resolves window.resetTimingTraces by name on every drain, so wrapping
+  // it captures exactly what Stage D receives.
+  window.__ttCaptured = [];
+  const origReset = window.resetTimingTraces;
+  window.resetTimingTraces = () => {
+    const snap = window.getTimingTraces();
+    if (snap.length) window.__ttCaptured.push(...snap);
+    return origReset();
+  };
 });
+// Press Play only once the readiness gate opens — a bare startPlay() right
+// after buildPerfRect is ignored while the new rows' voices warm up.
+await startPlaybackWhenReady(page, { bpm: 240 });
 
 // Task 4.2 wires drainEmissionReports() into the js build: on every audio
 // batch dispatch (game_audio_loop.go), Go now pulls window.getTimingTraces()
@@ -109,6 +125,8 @@ for (let i = 0; i < 30; i++) {
   }
   if (Array.isArray(snap) && snap.length > best.length) best = snap;
 }
+const drained = await page.evaluate(() => window.__ttCaptured.slice());
+if (drained.length > best.length) best = drained;
 
 await page.evaluate(() => { stopPlay?.(); });
 
@@ -157,15 +175,13 @@ if (after !== 0) {
   throw new Error("resetTimingTraces() did not clear the ring: len=" + after + " (was " + before + " before reset)");
 }
 
-await page.evaluate(() => {
-  setBPM(240);
-  startPlay();
-});
+const capturedBeforeReplay = await page.evaluate(() => window.__ttCaptured.length);
+await startPlaybackWhenReady(page, { bpm: 240 });
 
 let bestAfterReplay = 0;
 for (let i = 0; i < 20; i++) {
   await page.waitForTimeout(100);
-  const len = await page.evaluate(() => window.getTimingTraces().length);
+  const len = await page.evaluate((b) => window.getTimingTraces().length + window.__ttCaptured.length - b, capturedBeforeReplay);
   if (len > bestAfterReplay) bestAfterReplay = len;
 }
 

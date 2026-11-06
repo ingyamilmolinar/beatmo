@@ -3,6 +3,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // controlHeaderHeight mirrors stickyBarHeight: 32 desktop, 40 mobile.
@@ -127,12 +129,12 @@ func TestLevelsControlsButtonsAndWiring(t *testing.T) {
 	}
 
 	// Clear-Clips clears the latches (proxy for the wired callback firing).
-	z.levelsLatches.Get("main").Update(3, -1, -1)
-	if !z.levelsLatches.Get("main").Latched() {
+	z.levelsLatches.Get(channel.Master).Update(3, -1, -1)
+	if !z.levelsLatches.Get(channel.Master).Latched() {
 		t.Fatal("precondition: latch should be latched after a clip update")
 	}
 	z.levelsControls.clearClipsBtn.OnClick()
-	if z.levelsLatches.Get("main").Latched() {
+	if z.levelsLatches.Get(channel.Master).Latched() {
 		t.Fatal("Clear-Clips did not clear the latch")
 	}
 }
@@ -148,48 +150,26 @@ func TestSpectrumControlsButtonsAndWiring(t *testing.T) {
 	for _, h := range z.HitAreas() {
 		tags[h.Tag] = true
 	}
-	for _, want := range []string{
-		"spectrum-freeze-btn", "spectrum-freqscale-btn",
-		"spectrum-slope-btn", "spectrum-pre-btn", "spectrum-reset-hold-btn",
-	} {
+	for _, want := range []string{"spectrum-freeze-btn"} {
 		if !tags[want] {
 			t.Fatalf("spectrum control %q hit area missing", want)
 		}
 	}
-
-	if z.spectrumControls.SlopeDBPerOct() != 0 {
-		t.Fatal("slope should start at 0")
-	}
-	z.spectrumControls.slopeBtn.OnClick()
-	if z.spectrumControls.SlopeDBPerOct() != 3 {
-		t.Fatalf("slope after 1 click = %v, want 3", z.spectrumControls.SlopeDBPerOct())
-	}
-	z.spectrumControls.slopeBtn.OnClick()
-	if z.spectrumControls.SlopeDBPerOct() != 4.5 {
-		t.Fatalf("slope after 2 clicks = %v, want 4.5", z.spectrumControls.SlopeDBPerOct())
-	}
-	z.spectrumControls.slopeBtn.OnClick()
-	if z.spectrumControls.SlopeDBPerOct() != 0 {
-		t.Fatalf("slope after 3 clicks = %v, want 0 (wrap)", z.spectrumControls.SlopeDBPerOct())
+	// The four retired pills must leave no hit area behind: an unreachable
+	// rect that still swallows clicks is worse than the pill was.
+	for _, gone := range []string{
+		"spectrum-freqscale-btn", "spectrum-slope-btn",
+		"spectrum-pre-btn", "spectrum-reset-hold-btn", "spectrum-detail-btn",
+	} {
+		if tags[gone] {
+			t.Errorf("hit area %q outlived its pill", gone)
+		}
 	}
 
-	if !z.spectrumControls.FreqScaleLog() {
-		t.Fatal("freq scale should default to log")
+	// Detail is unconditional now — there is no pill and nothing to toggle.
+	if !z.spectrumControls.Detail() {
+		t.Fatal("spectrum detail is off; the dB numbers and note anchors are unreachable")
 	}
-	z.spectrumControls.freqScaleBtn.OnClick()
-	if z.spectrumControls.FreqScaleLog() {
-		t.Fatal("freq scale did not toggle to lin")
-	}
-
-	if z.spectrumControls.PreOverlay() {
-		t.Fatal("pre overlay should start false")
-	}
-	z.spectrumControls.preBtn.OnClick()
-	if !z.spectrumControls.PreOverlay() {
-		t.Fatal("pre overlay did not toggle")
-	}
-
-	z.spectrumControls.resetHoldBtn.OnClick() // must not panic
 }
 
 // On another tab, the wave AUTO hit area is not published.

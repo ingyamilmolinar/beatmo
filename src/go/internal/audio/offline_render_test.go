@@ -9,6 +9,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -76,7 +78,7 @@ func buildComplexNodeRuleCircuit(t *testing.T) (*engine.Predictor, int, int) {
 	}
 	graph.StartNodeID = ids[0]
 
-	setLogic := func(idx int, kind string, ln int, lp float64) {
+	setLogic := func(idx int, kind model.LogicKind, ln int, lp float64) {
 		node, ok := graph.GetNodeByID(ids[idx])
 		if !ok {
 			t.Fatalf("node %d missing", idx)
@@ -87,11 +89,11 @@ func buildComplexNodeRuleCircuit(t *testing.T) (*engine.Predictor, int, int) {
 		p.LogicP = lp
 		graph.SetNodeParams(ids[idx], p)
 	}
-	setLogic(2, "every_n_triggers", 2, 0)
-	setLogic(4, "skip_every_n", 3, 0)
-	setLogic(6, "probability", 0, 0.5) // deterministic hash roll, reproducible
-	setLogic(8, "trigger_if_prev_triggered", 0, 0)
-	setLogic(10, "trigger_if_prev_skipped", 0, 0)
+	setLogic(2, model.LogicEveryN, 2, 0)
+	setLogic(4, model.LogicSkipEveryN, 3, 0)
+	setLogic(6, model.LogicProbability, 0, 0.5) // deterministic hash roll, reproducible
+	setLogic(8, model.LogicIfPrevTriggered, 0, 0)
+	setLogic(10, model.LogicIfPrevSkipped, 0, 0)
 
 	return finishPredictor(graph), 1, 4 // rows=1, div=4
 }
@@ -138,7 +140,7 @@ func renderCircuitOffline(trigs []trigger, voiceFactory func() Voice, sr int) []
 	m := newTestMixer()
 	last := 0
 	for _, tr := range trigs {
-		m.Schedule("kick", voiceFactory(), tr.sampleOffset, -1, -1)
+		m.Schedule(channel.Of(roster.Kick), voiceFactory(), tr.sampleOffset, -1, -1)
 		if tr.sampleOffset > last {
 			last = tr.sampleOffset
 		}
@@ -165,7 +167,7 @@ func pinSampleRate(t *testing.T, sr int) {
 // than the UI default. Restores afterward.
 func pinMasterVolume(t *testing.T, v float64) {
 	t.Helper()
-	mainCh := channelForInstrument("")
+	mainCh := channelForInstrument(channel.ID{})
 	old := mainCh.Volume()
 	mainCh.SetVolume(v)
 	t.Cleanup(func() { mainCh.SetVolume(old) })
@@ -194,7 +196,7 @@ func TestBurstVoiceLandsAtOffset(t *testing.T) {
 
 	off := sampleRate / 100 // 10ms in
 	m := newTestMixer()
-	m.Schedule("kick", newBurstVoice(), off, -1, -1)
+	m.Schedule(channel.Of(roster.Kick), newBurstVoice(), off, -1, -1)
 	got := renderMixer(m, sampleRate/20) // 50ms
 
 	_, peak := argmaxAbs(got)
@@ -295,10 +297,14 @@ func TestComplexCircuitSimpleAudioByteExact(t *testing.T) {
 	if len(onsets) != len(trigs) {
 		t.Fatalf("onsets=%d triggers=%d (audio diverges from schedule)", len(onsets), len(trigs))
 	}
+	// A voice starts on its own sample (it used to wait for the next 64-frame
+	// block), so every hit crosses the onset floor the same few samples into
+	// its 5 ms fade-in.
+	first := onsets[0] - trigs[0].sampleOffset
 	for i := range trigs {
 		d := onsets[i] - trigs[i].sampleOffset
-		if d < 0 || d > 64 {
-			t.Fatalf("onset %d at %d, trigger at %d (delta %d, mistimed)", i, onsets[i], trigs[i].sampleOffset, d)
+		if d != first || d < 0 || d > 48 {
+			t.Fatalf("onset %d at %d, trigger at %d (delta %d, first hit %d: mistimed)", i, onsets[i], trigs[i].sampleOffset, d, first)
 		}
 	}
 	// (b) Silence between hits: no spurious noise / denormal leakage.
@@ -307,7 +313,10 @@ func TestComplexCircuitSimpleAudioByteExact(t *testing.T) {
 	// (c) Byte-exact golden — any signal regression flips the hash.
 	got := hashFloat64PCM(master)
 	t.Logf("master sha256=%s samples=%d triggers=%d onsets=%d", got, len(master), len(trigs), len(onsets))
-	const golden = "e89d9fc235a5376a2385cf992cbdc9430355a682cb0ff91ad66e50e1849964f1"
+	// Re-pinned 2026-10-27: voices start on their own sample instead of the
+	// next 64-frame block (every onset moved by its trigger's offset within
+	// the block; the check above now requires one common delta).
+	const golden = "d329403a821c9f2747097882c6d2e8e8076432e0a25e6f38cde23e60f97cb929"
 	if golden != "" && got != golden {
 		t.Fatalf("master hash drift: got %s want %s", got, golden)
 	}

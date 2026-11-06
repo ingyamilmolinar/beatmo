@@ -71,7 +71,7 @@ func DefaultAnalysisConfig() AnalysisConfig {
 }
 
 // LoadAnalysisConfig unmarshals partialJSON over a defaults base, so only the
-// fields present in the JSON override defaults (mirrors audio.MergeRecipeDefaults).
+// fields present in the JSON override defaults (a shallow overlay merge).
 func LoadAnalysisConfig(partialJSON []byte) (AnalysisConfig, error) {
 	c := DefaultAnalysisConfig()
 	if len(partialJSON) == 0 {

@@ -103,7 +103,7 @@ func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 
 	g.sidebar.Open(n)
 	g.sidebar.ExpandAllSections()
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 
 	// Draw a frame, then assert the faces are the untinted DropdownStyle
@@ -112,7 +112,7 @@ func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 
 	wantFill := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
 
-	if vb := g.sidebar.btns["vol+"]; vb != nil {
+	if vb := g.sidebar.btns[sbPlus(fieldVol)]; vb != nil {
 		if bs, ok := vb.Style.(ButtonStyle); ok {
 			if got := color.RGBAModel.Convert(bs.Fill).(color.RGBA); got != wantFill {
 				t.Errorf("vol+ stepper face = %v, want neutral DropdownStyle fill %v", got, wantFill)
@@ -124,7 +124,7 @@ func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 		t.Error("vol+ stepper missing after layout")
 	}
 
-	if lb := g.sidebar.btns["logic"]; lb != nil {
+	if lb := g.sidebar.btns[sbLogicSelect]; lb != nil {
 		if bs, ok := lb.Style.(ButtonStyle); ok {
 			if got := color.RGBAModel.Convert(bs.Fill).(color.RGBA); got != wantFill {
 				t.Errorf("logic selector face = %v, want neutral DropdownStyle fill %v", got, wantFill)
@@ -156,12 +156,12 @@ func TestNodeSidebarSelectedLogicOptionTintsToInstrument(t *testing.T) {
 
 	g.sidebar.Open(n)
 	g.sidebar.ExpandAllSections()
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
 
 	// The selected logic option for a fresh regular node is "none" → id "logic:".
-	selRect, ok := g.sidebar.rects["logic:"]
+	selRect, ok := g.sidebar.rects[sbLogicOption(model.LogicNone)]
 	if !ok || selRect.Empty() || !g.sidebar.inViewport(selRect) {
 		t.Skip("selected logic option rect not laid out / not in viewport")
 	}

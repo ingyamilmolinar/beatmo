@@ -32,12 +32,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
 // stageKeyNames maps scope.Stage to the JSON key used in snapshots.
-var stageKeyNames = [6]string{"synth", "antipop", "insertfx", "eq", "sends", "master"}
+var stageKeyNames = [scope.NumStages]string{"synth", "antipop", "insertfx", "eq", "master"}
 
 // Config holds configuration for the export service.
 type Config struct {
@@ -50,10 +51,9 @@ type Config struct {
 
 	// Callbacks avoid circular import with audio package.
 	BPMFunc         func() int
-	InstrumentsFunc func() []string
-	LookupMeta      func(id string) (name, kind string, ok bool)
-	ChannelVolume   func(id string) float64
-	ChannelPan      func(id string) float64
+	InstrumentsFunc func() []channel.ID
+	LookupMeta      func(id channel.ID) (name, kind string, ok bool)
+	ChannelVolume   func(id channel.ID) float64
 	MainVolume      func() float64
 }
 
@@ -84,14 +84,14 @@ func (r *ringBuf) drain() []float64 {
 // stageRings holds ring buffers for all instruments at a single pipeline stage.
 type stageRings struct {
 	mu    sync.Mutex
-	rings map[string]*ringBuf
+	rings map[channel.ID]*ringBuf
 }
 
-func (sr *stageRings) getOrCreate(id string) *ringBuf {
+func (sr *stageRings) getOrCreate(id channel.ID) *ringBuf {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	if sr.rings == nil {
-		sr.rings = make(map[string]*ringBuf)
+		sr.rings = make(map[channel.ID]*ringBuf)
 	}
 	rb, ok := sr.rings[id]
 	if !ok {
@@ -101,9 +101,9 @@ func (sr *stageRings) getOrCreate(id string) *ringBuf {
 	return rb
 }
 
-func (sr *stageRings) drainAll() map[string][]float64 {
+func (sr *stageRings) drainAll() map[channel.ID][]float64 {
 	sr.mu.Lock()
-	ids := make([]string, 0, len(sr.rings))
+	ids := make([]channel.ID, 0, len(sr.rings))
 	rbs := make([]*ringBuf, 0, len(sr.rings))
 	for id, rb := range sr.rings {
 		ids = append(ids, id)
@@ -111,7 +111,7 @@ func (sr *stageRings) drainAll() map[string][]float64 {
 	}
 	sr.mu.Unlock()
 
-	result := make(map[string][]float64)
+	result := make(map[channel.ID][]float64)
 	for i, rb := range rbs {
 		if samples := rb.drain(); len(samples) > 0 {
 			result[ids[i]] = samples
@@ -123,7 +123,7 @@ func (sr *stageRings) drainAll() map[string][]float64 {
 // Service captures audio pipeline data and writes JSONL snapshots.
 type Service struct {
 	cfg     Config
-	stages  [6]stageRings
+	stages  [len(stageKeyNames)]stageRings
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
 	tickNum int64
@@ -161,7 +161,7 @@ func NewService(cfg Config) *Service {
 // PushSamples is called from the audio thread to push samples for a
 // pipeline stage and instrument. Lock-free on the fast path when the
 // ring buffer already exists.
-func (s *Service) PushSamples(stage scope.Stage, id string, samples []float64) {
+func (s *Service) PushSamples(stage scope.Stage, id channel.ID, samples []float64) {
 	if int(stage) < 0 || int(stage) >= len(s.stages) {
 		return
 	}
@@ -229,16 +229,16 @@ func (s *Service) buildSnapshot(peakObs, fftObs, zcObs wave.Observer) *Snapshot 
 	}
 
 	// Drain all stages.
-	var drainedStages [6]map[string][]float64
-	for i := 0; i < 6; i++ {
+	var drainedStages [len(stageKeyNames)]map[channel.ID][]float64
+	for i := range drainedStages {
 		drainedStages[i] = s.stages[i].drainAll()
 	}
 
-	// Collect all unique instrument IDs (excluding "master").
-	instSet := make(map[string]struct{})
+	// Collect every instrument channel (the master bus has its own snapshot).
+	instSet := make(map[channel.ID]struct{})
 	for _, stage := range drainedStages {
 		for id := range stage {
-			if id != "master" {
+			if id != channel.Master {
 				instSet[id] = struct{}{}
 			}
 		}
@@ -259,9 +259,6 @@ func (s *Service) buildSnapshot(peakObs, fftObs, zcObs wave.Observer) *Snapshot 
 		if s.cfg.ChannelVolume != nil {
 			ch.Volume = s.cfg.ChannelVolume(id)
 		}
-		if s.cfg.ChannelPan != nil {
-			ch.Pan = s.cfg.ChannelPan(id)
-		}
 
 		// Per-instrument stages: synth (0), antipop (1), insertfx (2), eq (3).
 		for stageIdx := 0; stageIdx <= 3; stageIdx++ {
@@ -281,12 +278,10 @@ func (s *Service) buildSnapshot(peakObs, fftObs, zcObs wave.Observer) *Snapshot 
 	if s.cfg.MainVolume != nil {
 		snap.Master.Volume = s.cfg.MainVolume()
 	}
-	// Master stages: sends (4), master (5).
-	for stageIdx := 4; stageIdx <= 5; stageIdx++ {
-		if samples, ok := drainedStages[stageIdx]["master"]; ok {
-			metrics := computeStageMetrics(samples, s.cfg.SampleRate, s.cfg.WaveformBins, s.cfg.FFTTopN, peakObs, fftObs, zcObs)
-			snap.Master.Stages[stageKeyNames[stageIdx]] = metrics
-		}
+	// Master stage (4).
+	if samples, ok := drainedStages[scope.StageMaster][channel.Master]; ok {
+		metrics := computeStageMetrics(samples, s.cfg.SampleRate, s.cfg.WaveformBins, s.cfg.FFTTopN, peakObs, fftObs, zcObs)
+		snap.Master.Stages[stageKeyNames[scope.StageMaster]] = metrics
 	}
 
 	return snap

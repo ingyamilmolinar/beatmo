@@ -9,8 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/async"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -51,15 +54,15 @@ func TestEventLoggerGoldenSession(t *testing.T) {
 	// Publish a deterministic sequence covering every non-verbose Kind that
 	// is NOT coalesced, in user-recognizable narrative order.
 	pubFixed(bus, hooks.EventPlayStart, nil)
-	pubFixed(bus, hooks.EventNodeAdded, hooks.NodeEdit{ID: 1, I: 0, J: 0, Type: "regular"})
-	pubFixed(bus, hooks.EventNodeAdded, hooks.NodeEdit{ID: 2, I: 1, J: 0, Type: "regular"})
+	pubFixed(bus, hooks.EventNodeAdded, hooks.NodeEdit{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular})
+	pubFixed(bus, hooks.EventNodeAdded, hooks.NodeEdit{ID: 2, I: 1, J: 0, Type: model.NodeTypeRegular})
 	pubFixed(bus, hooks.EventEdgeAdded, hooks.EdgeEdit{FromID: 1, ToID: 2, FromI: 0, FromJ: 0, ToI: 1, ToJ: 0})
 	pubFixed(bus, hooks.EventStartNodeChanged, hooks.StartNodePayload{Row: 0, ID: 1})
-	pubFixed(bus, hooks.EventRowAdded, hooks.RowChangePayload{Row: 0, Name: "kick", Instrument: "kick"})
-	pubFixed(bus, hooks.EventRowInstrumentChange, hooks.RowChangePayload{Row: 0, OldInstrument: "kick", Instrument: "snare"})
-	pubFixed(bus, hooks.EventInsertEffectAdded, hooks.InsertEffectPayload{Channel: "snare", Slot: 0, Type: "reverb"})
-	pubFixed(bus, hooks.EventInsertEffectRemoved, hooks.InsertEffectPayload{Channel: "snare", Slot: 0})
-	pubFixed(bus, hooks.EventNodeTypeChanged, hooks.NodeTypePayload{ID: 2, OldType: "regular", NewType: "mute"})
+	pubFixed(bus, hooks.EventRowAdded, hooks.RowChangePayload{Row: 0, Name: "kick", Instrument: roster.Kick})
+	pubFixed(bus, hooks.EventRowInstrumentChange, hooks.RowChangePayload{Row: 0, OldInstrument: roster.Kick, Instrument: roster.Snare})
+	pubFixed(bus, hooks.EventInsertEffectAdded, hooks.InsertEffectPayload{Channel: channel.Of(roster.Snare), Slot: 0, Type: "reverb"})
+	pubFixed(bus, hooks.EventInsertEffectRemoved, hooks.InsertEffectPayload{Channel: channel.Of(roster.Snare), Slot: 0})
+	pubFixed(bus, hooks.EventNodeTypeChanged, hooks.NodeTypePayload{ID: 2, OldType: model.NodeTypeRegular, NewType: model.NodeTypeMute})
 	pubFixed(bus, hooks.EventNodeParamsChanged, hooks.NodeParamsPayload{ID: 1, Volume: 0.7})
 	pubFixed(bus, hooks.EventEdgeDeleted, hooks.EdgeEdit{FromI: 0, FromJ: 0, ToI: 1, ToJ: 0})
 	pubFixed(bus, hooks.EventNodeDeleted, hooks.NodeEdit{ID: 2, I: 1, J: 0})
@@ -78,10 +81,10 @@ func TestEventLoggerGoldenSession(t *testing.T) {
 	pubFixed(bus, hooks.EventPlayStop, nil)
 	// Round 2 additions exercised in golden:
 	pubFixed(bus, hooks.EventCustomWAVLoaded, hooks.CustomWAVPayload{InstrumentID: "snare2", IsUpdate: false})
-	pubFixed(bus, hooks.EventInstrumentRenamed, hooks.InstrumentRenamePayload{OldID: "kick", NewID: "kick_v2"})
+	pubFixed(bus, hooks.EventInstrumentRenamed, hooks.InstrumentRenamePayload{OldID: roster.Kick, NewID: "kick_v2"})
 	pubFixed(bus, hooks.EventSceneApplied, hooks.ScenePayload{Name: "transport_idle"})
 	pubFixed(bus, hooks.EventUIStateApplied, hooks.UIStatePayload{Path: "/tmp/ui.json"})
-	pubFixed(bus, hooks.EventFavoriteToggled, hooks.FavoritePayload{InstrumentID: "kick", IsFavorite: true})
+	pubFixed(bus, hooks.EventFavoriteToggled, hooks.FavoritePayload{InstrumentID: roster.Kick, IsFavorite: true})
 	// EventRowColorChanged is coalesced; FlushNow below drains it.
 	pubFixed(bus, hooks.EventRowColorChanged, hooks.RowColorPayload{Row: 0, Color: 0xFF8040FF})
 

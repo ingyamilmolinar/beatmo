@@ -27,6 +27,10 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
+import {
+  startPlaybackWhenReady, startPlaybackProbe, stopPlaybackProbe, probeGateFailures,
+  PROBE_ENABLED, PROBE_STRICT, PROBE_LIMITS_DEFAULT,
+} from "./audio_probe_bench_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -105,16 +109,17 @@ async function runScenario({ name, rows, bpm, playMs }) {
   await page.goto(`http://localhost:${port}/`);
   await page.waitForFunction(() => typeof startPlay === "function" && typeof getThreeStageLatency === "function" && typeof resetThreeStageLatency === "function");
 
-  await page.evaluate(({ rows, bpm }) => {
+  await page.evaluate(({ rows }) => {
     document.dispatchEvent(new Event("pointerdown"));
     resumeAudio?.();
     resetAudioScheduleMetrics?.();
     resetPerfStats?.();
     buildPerfRect(rows, 1);
     forceDraw?.(); forceDraw?.();
-    setBPM(bpm);
-    startPlay();
-  }, { rows, bpm });
+  }, { rows });
+  // Play only after the readiness gate opens — a bare startPlay() here was
+  // swallowed by the warm-up gate, so every scenario measured `null`.
+  await startPlaybackWhenReady(page, { bpm });
 
   // Warmup: discard early measurements while AudioContext stabilises and
   // pre-roll allocations happen.
@@ -124,15 +129,22 @@ async function runScenario({ name, rows, bpm, playMs }) {
     resetAudioScheduleMetrics?.();
     resetPerfStats?.();
   });
+  if (PROBE_ENABLED) await startPlaybackProbe(page);
 
   await page.waitForTimeout(playMs);
 
   const snap = await page.evaluate(() => getThreeStageLatency?.());
   const stats = await page.evaluate(() => perfStats?.());
+  const { report: probe } = await stopPlaybackProbe(page, name);
   await page.evaluate(() => stopPlay?.());
   await page.close();
 
   dumpSnap(name, snap, stats);
+  // What the listener heard (onset vs predictor time, jitter, silent notes).
+  // Informational unless AUDIO_PROBE_STRICT=1 — see audio_probe_bench_helpers.
+  for (const m of probeGateFailures(probe, PROBE_LIMITS_DEFAULT, name)) {
+    if (PROBE_STRICT) failures.push(m); else console.log(`  [probe info] ${m}`);
+  }
   return { snap, stats };
 }
 
@@ -145,7 +157,8 @@ async function runScenario({ name, rows, bpm, playMs }) {
 //   long RAF spans). They are gated at ~1.5× observed P99 to catch
 //   regressions, but not aspirational sub-frame targets.
 // - Stage B (goroutine handoff) caps reflect typical observed bridge max
-//   plus headroom for occasional spikes during long RAF-blocking frames.
+//   plus headroom for occasional spikes during long RAF-blocking frames. It
+//   applies to the legacy path only: the audio lane has no such handoff.
 const scenarios = [
   // Threshold philosophy:
   // - Audio-critical gates stay TIGHT (overdue=0, smallLead=0,
@@ -201,7 +214,13 @@ for (const sc of scenarios) {
     gate(sc.name, "A.p99", a.p99 != null && a.p99 <= lim.seqFire.p99, `seqFire P99 ${fmtMs(a.p99)} > ${fmtMs(lim.seqFire.p99)}`);
     gate(sc.name, "A.stddev", a.stddev != null && a.stddev <= lim.seqFire.stddev, `seqFire stddev ${fmtMs(a.stddev)} > ${fmtMs(lim.seqFire.stddev)}`);
   }
-  if (b) {
+  // On the audio lane (the browser default) a note is committed from the
+  // sequencer pass itself — there is no enqueue → audioLoop handoff to time, so
+  // Stage B is empty by design; the legacy path (BEATMO_AUDIO_LANE=0) must fill it.
+  if (snap.lane) {
+    gate(sc.name, "B.lane", !b || b.count === 0, `the lane recorded ${b && b.count} Stage B handoffs`);
+  } else if (b) {
+    gate(sc.name, "B.count", b.count > 0, `legacy path recorded no Stage B handoff`);
     gate(sc.name, "B.p99", b.p99 != null && b.p99 <= lim.bridge.p99, `bridge P99 ${fmtMs(b.p99)} > ${fmtMs(lim.bridge.p99)}`);
     gate(sc.name, "B.max", b.max != null && b.max <= lim.bridge.max, `bridge max ${fmtMs(b.max)} > ${fmtMs(lim.bridge.max)}`);
     gate(sc.name, "B.stddev", b.stddev != null && b.stddev <= lim.bridge.stddev, `bridge stddev ${fmtMs(b.stddev)} > ${fmtMs(lim.bridge.stddev)}`);

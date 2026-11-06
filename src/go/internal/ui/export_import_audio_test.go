@@ -6,271 +6,13 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// --- Pan & Send Tests ---
-
-func TestExportIncludesPanAndSends(t *testing.T) {
-	assertDefaultParityState(t)
-	logger := game_log.New(nil, game_log.LevelError)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.drum.Rows[0].Origin = ui.ID
-	g.drum.Rows[0].Node = ui
-	g.drum.Rows[0].Pan = -0.5
-	g.drum.Rows[0].DelaySend = 0.3
-	g.drum.Rows[0].ReverbSend = 0.7
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	var f exportFile
-	if err := json.Unmarshal(data, &f); err != nil {
-		t.Fatalf("json: %v", err)
-	}
-	if len(f.Instruments) == 0 {
-		t.Fatal("no instruments")
-	}
-	inst := f.Instruments[0]
-	if inst.Pan != -0.5 {
-		t.Errorf("Pan: got %f want -0.5", inst.Pan)
-	}
-	if inst.DelaySend != 0.3 {
-		t.Errorf("DelaySend: got %f want 0.3", inst.DelaySend)
-	}
-	if inst.ReverbSend != 0.7 {
-		t.Errorf("ReverbSend: got %f want 0.7", inst.ReverbSend)
-	}
-}
-
-func TestExportOmitsPanAndSendsWhenDefault(t *testing.T) {
-	assertDefaultParityState(t)
-	logger := game_log.New(nil, game_log.LevelError)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.drum.Rows[0].Origin = ui.ID
-	g.drum.Rows[0].Node = ui
-	// Leave pan/sends at zero defaults
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	// Check raw JSON doesn't contain pan/send keys
-	raw := string(data)
-	for _, key := range []string{`"pan"`, `"delay_send"`, `"reverb_send"`} {
-		if contains(raw, key) {
-			t.Errorf("expected %s omitted from JSON when default, got: %s", key, raw)
-		}
-	}
-}
-
-func TestImportAppliesPanAndSends(t *testing.T) {
-	assertDefaultParityState(t)
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-			Pan: 0.8, DelaySend: 0.4, ReverbSend: 0.6,
-		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-	}
-	data, _ := json.Marshal(file)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(400, 200)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	if len(g.drum.Rows) == 0 {
-		t.Fatal("no rows")
-	}
-	row := g.drum.Rows[0]
-	if row.Pan != 0.8 {
-		t.Errorf("Pan: got %f want 0.8", row.Pan)
-	}
-	if row.DelaySend != 0.4 {
-		t.Errorf("DelaySend: got %f want 0.4", row.DelaySend)
-	}
-	if row.ReverbSend != 0.6 {
-		t.Errorf("ReverbSend: got %f want 0.6", row.ReverbSend)
-	}
-	// Verify audio API was called
-	if audio.ChannelPan("kick") != 0.8 {
-		t.Errorf("audio.ChannelPan: got %f want 0.8", audio.ChannelPan("kick"))
-	}
-	if audio.DelaySend("kick") != 0.4 {
-		t.Errorf("audio.DelaySend: got %f want 0.4", audio.DelaySend("kick"))
-	}
-	if audio.ReverbSend("kick") != 0.6 {
-		t.Errorf("audio.ReverbSend: got %f want 0.6", audio.ReverbSend("kick"))
-	}
-}
-
-func TestImportClampsPanAndSends(t *testing.T) {
-	assertDefaultParityState(t)
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-			Pan: -5, DelaySend: 2.0, ReverbSend: -1,
-		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-	}
-	data, _ := json.Marshal(file)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(400, 200)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	row := g.drum.Rows[0]
-	if row.Pan != -1 {
-		t.Errorf("Pan clamped: got %f want -1", row.Pan)
-	}
-	if row.DelaySend != 1 {
-		t.Errorf("DelaySend clamped: got %f want 1", row.DelaySend)
-	}
-	if row.ReverbSend != 0 {
-		t.Errorf("ReverbSend clamped: got %f want 0", row.ReverbSend)
-	}
-}
-
-func TestImportLegacyNoPanSends(t *testing.T) {
-	assertDefaultParityState(t)
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-			// No pan/send fields
-		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-	}
-	data, _ := json.Marshal(file)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(400, 200)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	row := g.drum.Rows[0]
-	if row.Pan != 0 {
-		t.Errorf("Pan: got %f want 0", row.Pan)
-	}
-	if row.DelaySend != 0 {
-		t.Errorf("DelaySend: got %f want 0", row.DelaySend)
-	}
-	if row.ReverbSend != 0 {
-		t.Errorf("ReverbSend: got %f want 0", row.ReverbSend)
-	}
-}
-
-func TestExportImportPanSendsRoundTrip(t *testing.T) {
-	assertDefaultParityState(t)
-	logger := game_log.New(nil, game_log.LevelError)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.drum.Rows[0].Origin = ui.ID
-	g.drum.Rows[0].Node = ui
-	g.drum.Rows[0].Pan = -0.75
-	g.drum.Rows[0].DelaySend = 0.5
-	g.drum.Rows[0].ReverbSend = 0.25
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("export: %v", err)
-	}
-
-	g2 := New(logger)
-	t.Cleanup(g2.CloseForTest)
-	g2.Layout(640, 480)
-	if err := g2.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	row := g2.drum.Rows[0]
-	if row.Pan != -0.75 {
-		t.Errorf("Pan round-trip: got %f want -0.75", row.Pan)
-	}
-	if row.DelaySend != 0.5 {
-		t.Errorf("DelaySend round-trip: got %f want 0.5", row.DelaySend)
-	}
-	if row.ReverbSend != 0.25 {
-		t.Errorf("ReverbSend round-trip: got %f want 0.25", row.ReverbSend)
-	}
-}
-
 // --- Synth Params Tests ---
-
-func TestExportIncludesSynthParams(t *testing.T) {
-	assertDefaultParityState(t)
-	logger := game_log.New(nil, game_log.LevelError)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.drum.Rows[0].Origin = ui.ID
-	g.drum.Rows[0].Node = ui
-
-	g.graph.SetNodeParams(ui.ID, model.NodeParams{
-		Volume:          1,
-		Duration:        1,
-		SynthDecay:      0.5,
-		SynthTone:       -0.3,
-		SynthAttack:     0.1,
-		SynthDrive:      0.6,
-		SynthBody:       0.4,
-		SynthColor:      -0.5,
-		SynthBrightness: 0.9,
-	})
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	var f exportFile
-	if err := json.Unmarshal(data, &f); err != nil {
-		t.Fatalf("json: %v", err)
-	}
-	if len(f.Nodes) == 0 {
-		t.Fatal("no nodes")
-	}
-	n := f.Nodes[0]
-	// Synth params flow through the synth_overrides map; the map carries
-	// the expected values.
-	if n.SynthOverrides == nil {
-		t.Fatalf("expected synth_overrides map; got nil")
-	}
-	if got := n.SynthOverrides["decay"]; got != 0.5 {
-		t.Errorf("SynthOverrides[decay]: got %f want 0.5", got)
-	}
-	if got := n.SynthOverrides["tone"]; got != -0.3 {
-		t.Errorf("SynthOverrides[tone]: got %f want -0.3", got)
-	}
-	if got := n.SynthOverrides["drive"]; got != 0.6 {
-		t.Errorf("SynthOverrides[drive]: got %f want 0.6", got)
-	}
-	if got := n.SynthOverrides["brightness"]; got != 0.9 {
-		t.Errorf("SynthOverrides[brightness]: got %f want 0.9", got)
-	}
-}
 
 func TestExportOmitsSynthParamsWhenDefault(t *testing.T) {
 	assertDefaultParityState(t)
@@ -292,108 +34,12 @@ func TestExportOmitsSynthParamsWhenDefault(t *testing.T) {
 	for _, key := range []string{
 		`"synth_decay"`, `"synth_tone"`, `"synth_attack"`,
 		`"synth_drive"`, `"synth_body"`, `"synth_color"`, `"synth_brightness"`,
+		`"synth_overrides"`,
 	} {
 		if contains(raw, key) {
 			t.Errorf("expected %s omitted from JSON when default", key)
 		}
 	}
-}
-
-func TestImportAppliesSynthParams(t *testing.T) {
-	assertDefaultParityState(t)
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-		}},
-		Nodes: []exportNode{{
-			ID: 1, I: 0, J: 0, Type: "regular",
-			SynthOverrides: map[string]float64{
-				"decay": 0.5, "tone": -0.3, "attack": 0.1,
-				"drive": 0.6, "body": 0.4, "color": -0.5,
-				"brightness": 0.9,
-			},
-		}},
-	}
-	data, _ := json.Marshal(file)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(400, 200)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	// Find the imported node
-	var found bool
-	for _, n := range g.graph.Nodes {
-		if n.Type == model.NodeTypeRegular {
-			if n.Params.SynthDecay != 0.5 {
-				t.Errorf("SynthDecay: got %f want 0.5", n.Params.SynthDecay)
-			}
-			if n.Params.SynthTone != -0.3 {
-				t.Errorf("SynthTone: got %f want -0.3", n.Params.SynthTone)
-			}
-			if n.Params.SynthDrive != 0.6 {
-				t.Errorf("SynthDrive: got %f want 0.6", n.Params.SynthDrive)
-			}
-			if n.Params.SynthBrightness != 0.9 {
-				t.Errorf("SynthBrightness: got %f want 0.9", n.Params.SynthBrightness)
-			}
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("imported node not found")
-	}
-}
-
-func TestImportClampsSynthParams(t *testing.T) {
-	assertDefaultParityState(t)
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-		}},
-		Nodes: []exportNode{{
-			ID: 1, I: 0, J: 0, Type: "regular",
-			SynthOverrides: map[string]float64{
-				"tone": 99, "drive": -5, "body": 10,
-				"color": -99, "brightness": 50,
-			},
-		}},
-	}
-	data, _ := json.Marshal(file)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(400, 200)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	for _, n := range g.graph.Nodes {
-		if n.Type == model.NodeTypeRegular {
-			if n.Params.SynthTone != 10 {
-				t.Errorf("SynthTone clamped: got %f want 10", n.Params.SynthTone)
-			}
-			if n.Params.SynthDrive != 0 {
-				t.Errorf("SynthDrive clamped: got %f want 0", n.Params.SynthDrive)
-			}
-			if n.Params.SynthBody != 1 {
-				t.Errorf("SynthBody clamped: got %f want 1", n.Params.SynthBody)
-			}
-			if n.Params.SynthColor != -1 {
-				t.Errorf("SynthColor clamped: got %f want -1", n.Params.SynthColor)
-			}
-			if n.Params.SynthBrightness != 1 {
-				t.Errorf("SynthBrightness clamped: got %f want 1", n.Params.SynthBrightness)
-			}
-			return
-		}
-	}
-	t.Fatal("no regular node found")
 }
 
 // --- Insert Effects Tests ---
@@ -420,7 +66,7 @@ func TestExportIncludesInsertEffects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -444,15 +90,15 @@ func TestImportAppliesInsertEffects(t *testing.T) {
 	effects := []audio.EffectSlot{
 		{Type: "reverb", Enabled: true, Params: map[string]float64{"mix": 0.5}},
 	}
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Kick", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 			Effects: effects,
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 	}
 	data, _ := json.Marshal(file)
 	g := New(testLogger)
@@ -462,14 +108,14 @@ func TestImportAppliesInsertEffects(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 	row := g.drum.Rows[0]
-	if len(row.Effects) != 1 {
-		t.Fatalf("Effects: got %d want 1", len(row.Effects))
+	if len(audio.GetInsertEffects(row.Instrument)) != 1 {
+		t.Fatalf("Effects: got %d want 1", len(audio.GetInsertEffects(row.Instrument)))
 	}
-	if row.Effects[0].Type != "reverb" || !row.Effects[0].Enabled {
-		t.Errorf("Effects[0]: %+v", row.Effects[0])
+	if audio.GetInsertEffects(row.Instrument)[0].Type != "reverb" || !audio.GetInsertEffects(row.Instrument)[0].Enabled {
+		t.Errorf("Effects[0]: %+v", audio.GetInsertEffects(row.Instrument)[0])
 	}
 	// Verify audio.SetInsertEffects was called
-	got := audio.GetInsertEffects("kick")
+	got := audio.GetInsertEffects(roster.Kick)
 	if len(got) != 1 || got[0].Type != "reverb" {
 		t.Errorf("audio.GetInsertEffects: %+v", got)
 	}
@@ -504,14 +150,14 @@ func TestExportImportInsertEffectsRoundTrip(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 	row := g2.drum.Rows[0]
-	if len(row.Effects) != 2 {
-		t.Fatalf("Effects round-trip: got %d want 2", len(row.Effects))
+	if len(audio.GetInsertEffects(row.Instrument)) != 2 {
+		t.Fatalf("Effects round-trip: got %d want 2", len(audio.GetInsertEffects(row.Instrument)))
 	}
-	if row.Effects[0].Type != "chorus" || row.Effects[0].Params["rate"] != 0.5 {
-		t.Errorf("Effects[0] round-trip: %+v", row.Effects[0])
+	if audio.GetInsertEffects(row.Instrument)[0].Type != "chorus" || audio.GetInsertEffects(row.Instrument)[0].Params["rate"] != 0.5 {
+		t.Errorf("Effects[0] round-trip: %+v", audio.GetInsertEffects(row.Instrument)[0])
 	}
-	if row.Effects[1].Type != "bitcrusher" || row.Effects[1].Params["bits"] != 8 {
-		t.Errorf("Effects[1] round-trip: %+v", row.Effects[1])
+	if audio.GetInsertEffects(row.Instrument)[1].Type != "bitcrusher" || audio.GetInsertEffects(row.Instrument)[1].Params["bits"] != 8 {
+		t.Errorf("Effects[1] round-trip: %+v", audio.GetInsertEffects(row.Instrument)[1])
 	}
 }
 
@@ -532,7 +178,7 @@ func TestExportImportNodeParamsRoundTrip(t *testing.T) {
 		Volume:     0.7,
 		Pitch:      3,
 		Duration:   1.5,
-		GrooveKind: "delay",
+		GrooveKind: model.GrooveDelay,
 		GroovePct:  0.3,
 	})
 
@@ -558,7 +204,7 @@ func TestExportImportNodeParamsRoundTrip(t *testing.T) {
 			if n.Params.Duration != 1.5 {
 				t.Errorf("Duration: got %f want 1.5", n.Params.Duration)
 			}
-			if n.Params.GrooveKind != "delay" {
+			if n.Params.GrooveKind != model.GrooveDelay {
 				t.Errorf("GrooveKind: got %q want delay", n.Params.GrooveKind)
 			}
 			if n.Params.GroovePct != 0.3 {
@@ -640,7 +286,7 @@ func TestExportIncludesMasterVolume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -719,15 +365,15 @@ func TestImportAppliesMasterVolume(t *testing.T) {
 	t.Cleanup(func() { audio.SetMainVolume(prevVol) })
 
 	mv := 0.4
-	file := exportFile{
-		Version:      1,
+	file := projectFile{
+		Envelope:     schema.Current(),
 		Subdiv:       32,
 		BPM:          120,
 		MasterVolume: &mv,
 		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Kick", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 	}
 	data, _ := json.Marshal(file)
 	g := New(testLogger)
@@ -739,36 +385,6 @@ func TestImportAppliesMasterVolume(t *testing.T) {
 	got := audio.MainVolume()
 	if got != 0.4 {
 		t.Errorf("MainVolume: got %f want 0.4", got)
-	}
-}
-
-func TestImportLegacyNoMasterVolume(t *testing.T) {
-	assertDefaultParityState(t)
-	prevVol := audio.MainVolume()
-	audio.SetMainVolume(0.3) // set non-default before import
-	t.Cleanup(func() { audio.SetMainVolume(prevVol) })
-
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		// No MasterVolume field
-		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
-		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
-	}
-	data, _ := json.Marshal(file)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(400, 200)
-	if err := g.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	// Legacy files without master_volume should default to 1.0
-	got := audio.MainVolume()
-	if got != 1 {
-		t.Errorf("MainVolume: got %f want 1 (default for legacy)", got)
 	}
 }
 

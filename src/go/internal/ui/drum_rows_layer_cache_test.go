@@ -36,7 +36,7 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 
 	t.Logf("initial length=%d", g.drum.Length)
 
-	rowWidth := g.drum.timelineRect.Dx()
+	rowWidth := g.drum.CellGridRect().Dx()
 	if rowWidth <= 0 {
 		t.Fatalf("timeline width should be > 0")
 	}

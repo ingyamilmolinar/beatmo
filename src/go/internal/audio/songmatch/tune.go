@@ -2,33 +2,11 @@ package songmatch
 
 import (
 	"sort"
-	"strings"
-	"unicode"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/synthmatch"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
-
-// SeedVarName converts an instrument id to its camelCase "…Seed" variable name.
-func SeedVarName(instID string) string {
-	parts := strings.FieldsFunc(instID, func(r rune) bool { return r == '-' || r == '_' || unicode.IsSpace(r) })
-	var sb strings.Builder
-	for i, p := range parts {
-		if p == "" {
-			continue
-		}
-		if i == 0 {
-			sb.WriteString(strings.ToLower(p))
-		} else {
-			r := []rune(p)
-			r[0] = unicode.ToUpper(r[0])
-			sb.WriteString(string(r))
-		}
-	}
-	sb.WriteString("Seed")
-	return sb.String()
-}
 
 // TunePassages runs the per-instrument matcher on each manifest tuning passage,
 // returning a "seed" TuningHint per passage (sorted by instrument id). Never patches.
@@ -44,7 +22,7 @@ func TunePassages(refWav wave.Wave, manifest fingerprint.TimeManifest, budget, r
 		}
 		hints = append(hints, TuningHint{
 			Instrument: p.Instrument, Kind: "seed",
-			Suggestion: "re-tune " + SeedVarName(p.Instrument) + " toward the solo passage (review git diff + ear)",
+			Suggestion: "re-tune " + string(p.Instrument) + "'s document toward the solo passage (review git diff + ear)",
 			SeedDeltas: res.Params,
 		})
 	}

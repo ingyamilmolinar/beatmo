@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // audio_panel_dispatcher.go — cross-tab analyzer-enable rules for the
@@ -25,9 +26,8 @@ import (
 // it's trivial to unit test (audio_panel_dispatcher_test.go) without
 // instantiating the whole Game.
 
-// audioPanelMasterChannelID is the ID used by the master / "main"
+// channel.Master is the ID used by the master / "main"
 // channel across the audio package and the analyzer registry.
-const audioPanelMasterChannelID = "main"
 
 // tabReadsMasterAnalyzer reports whether the given tab renders data
 // sourced from the master analyzer (and therefore needs the master
@@ -56,11 +56,11 @@ func tabReadsMasterAnalyzer(tab PanelTab) bool {
 // Today every tab in the readsMaster set uses the master analyzer at
 // "main"; future split-tab views may add per-row IDs and this is the
 // hook to extend.
-func AnalyzerTapsForTab(tab PanelTab) []string {
+func AnalyzerTapsForTab(tab PanelTab) []channel.ID {
 	if !tabReadsMasterAnalyzer(tab) {
 		return nil
 	}
-	return []string{audioPanelMasterChannelID}
+	return []channel.ID{channel.Master}
 }
 
 // AnalyzerInstrumentTapsForTab returns the analyzer IDs to enable for a
@@ -79,14 +79,14 @@ func AnalyzerTapsForTab(tab PanelTab) []string {
 //
 // Returns nil for tabs that don't read the analyzer at all (Synth,
 // Sampler), matching AnalyzerTapsForTab.
-func AnalyzerInstrumentTapsForTab(tab PanelTab, instrumentIDs []string) []string {
+func AnalyzerInstrumentTapsForTab(tab PanelTab, instrumentIDs []channel.ID) []channel.ID {
 	if !tabReadsMasterAnalyzer(tab) {
 		return nil
 	}
-	taps := make([]string, 0, 1+len(instrumentIDs))
-	taps = append(taps, audioPanelMasterChannelID)
+	taps := make([]channel.ID, 0, 1+len(instrumentIDs))
+	taps = append(taps, channel.Master)
 	for _, id := range instrumentIDs {
-		if id == "" || id == audioPanelMasterChannelID {
+		if id.IsZero() || id == channel.Master {
 			continue
 		}
 		taps = append(taps, id)
@@ -112,8 +112,8 @@ func AnalyzerInstrumentTapsForTab(tab PanelTab, instrumentIDs []string) []string
 // import path (rows change without a tab transition). The function never
 // panics on stub audio builds — the audio.Enable* helpers are no-ops
 // when no oto context is alive.
-func EnsureAnalyzersForTab(tab PanelTab, activeChannelID string, instrumentIDs ...string) {
-	enable := func(id string) {
+func EnsureAnalyzersForTab(tab PanelTab, activeChannelID channel.ID, instrumentIDs ...channel.ID) {
+	enable := func(id channel.ID) {
 		_ = audio.EnableChannelAnalyzer(id, 512)
 		_ = audio.EnablePreEQAnalyzer(id, 512)
 		_ = audio.EnableSynthAnalyzer(id, 512)
@@ -122,7 +122,7 @@ func EnsureAnalyzersForTab(tab PanelTab, activeChannelID string, instrumentIDs .
 	for _, id := range AnalyzerInstrumentTapsForTab(tab, instrumentIDs) {
 		enable(id)
 	}
-	if activeChannelID != "" && activeChannelID != audioPanelMasterChannelID {
+	if !activeChannelID.IsZero() && activeChannelID != channel.Master {
 		enable(activeChannelID)
 	}
 }

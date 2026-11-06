@@ -19,16 +19,28 @@ import (
 // {f/2, f, 2f} pick the one with the most harmonic coverage in the full-window
 // spectrum) and snapped to the nearest strong spectral peak for sub-bin
 // accuracy. Returns 0 if no pitch is found.
-func DetectF0(w wave.Wave) float64 {
+func DetectF0(w wave.Wave) float64 { return DetectF0Detailed(w).Hz }
+
+// DetectF0Detailed is DetectF0 plus the CONFIDENCE the detector already had
+// and used to throw away.
+//
+// The per-frame YIN loop below already decides, frame by frame, whether its
+// period estimate is trustworthy (the frameConfidenceThreshold gate). That
+// judgement is exactly what tells a pitched instrument apart from an unpitched
+// one — a hi-hat still yields SOME number from the octave guard, and the bare
+// float64 return made that number indistinguishable from a cello's. Several
+// descriptors are only meaningful when a harmonic series genuinely exists, so
+// the judgement has to survive the return.
+func DetectF0Detailed(w wave.Wave) F0Estimate {
 	// Use the shared sustain window (sustainWindow handles the <4-sample fallback).
 	seg := sustainWindow(w)
 	if len(seg.Samples) < 4 {
-		return 0
+		return F0Estimate{}
 	}
 
 	sr := seg.SampleRate
 	if sr == 0 {
-		return 0
+		return F0Estimate{}
 	}
 	buf := seg.Samples
 
@@ -40,7 +52,7 @@ func DetectF0(w wave.Wave) float64 {
 		}
 	}
 	if peakAmp < 1e-9 {
-		return 0
+		return F0Estimate{}
 	}
 
 	// --- Median-of-short-windows YIN ---
@@ -51,17 +63,29 @@ func DetectF0(w wave.Wave) float64 {
 	const hop = 2048
 
 	var perFrameF0s []float64
+	// Frame energies feed the confidence score (pitch_confidence.go): a
+	// plucked or struck note spends its tail near the noise floor, where YIN
+	// legitimately gives up, and counting those frames equally with the loud
+	// periodic ones would score a koto or a felt piano as unpitched.
+	totalFrames := 0
+	var confidentEnergy, totalEnergy float64
 	for start := 0; start+frameLen <= len(buf); start += hop {
+		totalFrames++
 		frame := buf[start : start+frameLen]
+		var frameEnergy float64
+		for _, v := range frame {
+			frameEnergy += v * v
+		}
+		totalEnergy += frameEnergy
 		f0, dp := yinF0ForFrame(frame, sr)
 		if f0 <= 0 {
 			continue
 		}
 		// Reject frames where YIN is not confident — these are likely
 		// transient or noisy segments. Keep confident estimates only.
-		const frameConfidenceThreshold = 0.25
 		if dp < frameConfidenceThreshold {
 			perFrameF0s = append(perFrameF0s, f0)
+			confidentEnergy += frameEnergy
 		}
 	}
 
@@ -78,7 +102,7 @@ func DetectF0(w wave.Wave) float64 {
 		// Try the full buffer as a single frame.
 		f0, dp := yinF0ForFrame(buf, sr)
 		if f0 <= 0 {
-			return 0
+			return F0Estimate{}
 		}
 		yinF0 = f0
 		bestDp = dp
@@ -115,7 +139,7 @@ func DetectF0(w wave.Wave) float64 {
 	// a vibrato sideband (e.g. f0-vibHz) instead of the true center.
 	const yinConfidenceThreshold = 0.10
 	if !haveFrameMedian && bestDp < yinConfidenceThreshold {
-		return snapToSpectralPeak(mag, binHz, yinF0, 0.03)
+		return f0Estimate(snapToSpectralPeak(mag, binHz, yinF0, 0.03), perFrameF0s, totalFrames, confidentEnergy, totalEnergy, bestDp)
 	}
 
 	// Spectral octave guard: among {f/3, f/2, f, 2f, 3f}, pick the candidate
@@ -216,9 +240,9 @@ func DetectF0(w wave.Wave) float64 {
 	// degrading accuracy. Skip the snap in that case — the per-frame median plus
 	// the octave guard already produced a reliable center-frequency estimate.
 	if haveFrameMedian {
-		return bestCandidate
+		return f0Estimate(bestCandidate, perFrameF0s, totalFrames, confidentEnergy, totalEnergy, bestDp)
 	}
-	return snapToSpectralPeak(mag, binHz, bestCandidate, 0.03)
+	return f0Estimate(snapToSpectralPeak(mag, binHz, bestCandidate, 0.03), perFrameF0s, totalFrames, confidentEnergy, totalEnergy, bestDp)
 }
 
 // halveOnOddHarmonicEvidence returns f0/3 or f0/2 when the spectrum contains
@@ -277,9 +301,9 @@ func yinF0ForFrame(buf []float64, sr int) (f0 float64, dp float64) {
 		return 0, 1
 	}
 
-	// Lag range for 50–2000 Hz.
-	tauMin := sr / 2000
-	tauMax := sr / 50
+	// Lag range for F0SearchMinHz–F0SearchMaxHz.
+	tauMin := sr / F0SearchMaxHz
+	tauMax := sr / F0SearchMinHz
 	if tauMin < 1 {
 		tauMin = 1
 	}

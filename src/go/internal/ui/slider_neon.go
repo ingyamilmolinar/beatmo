@@ -22,13 +22,10 @@ func drawSliderRail(dst *ebiten.Image, rail image.Rectangle, value float64, hori
 	if value > 1 {
 		value = 1
 	}
-	// Radius = half of the narrow axis so the rail ends are fully pill-shaped.
-	narrow := rail.Dy()
-	if rail.Dx() < narrow {
-		narrow = rail.Dx()
-	}
-	rad := narrow / 2
-	drawRoundedRect(dst, rail, genColorSurface3, rad, true)
+	// A slider rail is a CAPSULE, not an over-rounded button: its ends are
+	// semicircles by design. drawCapsule derives the radius from the rect and
+	// is exempt from the anti-pill ceiling — see DESIGN.md "Shapes".
+	drawCapsule(dst, rail, genColorSurface3, true)
 	if value <= 0 {
 		return
 	}
@@ -46,7 +43,7 @@ func drawSliderRail(dst *ebiten.Image, rail image.Rectangle, value float64, hori
 		}
 		fill = image.Rect(rail.Min.X, rail.Max.Y-fh, rail.Max.X, rail.Max.Y)
 	}
-	drawRoundedRect(dst, fill, fillCol, rad, true)
+	drawCapsule(dst, fill, fillCol, true)
 	// Matte rail — no outer glow stroke (retro-analogue restyle 2026-06-17).
 }
 
@@ -61,11 +58,14 @@ func drawSliderThumb(dst *ebiten.Image, center image.Point, diameter int, active
 	}
 	rad := diameter / 2
 	r := image.Rect(center.X-rad, center.Y-rad, center.X+rad, center.Y+rad)
+	// A thumb is a CIRCLE — a capsule whose axes are equal — not a rounded
+	// button, so it draws through drawCapsule and is exempt from the anti-pill
+	// ceiling. See DESIGN.md "Shapes".
 	// Contact shadow 1px below → reads as a raised cap.
-	drawRoundedRect(dst, image.Rect(r.Min.X, r.Min.Y+1, r.Max.X, r.Max.Y+1),
-		WithAlphaFromColor(color.Black, 64), rad, true)
+	drawCapsule(dst, image.Rect(r.Min.X, r.Min.Y+1, r.Max.X, r.Max.Y+1),
+		WithAlphaFromColor(color.Black, 64), true)
 	// Matte body — no specular highlight.
-	drawRoundedRect(dst, r, genColorOnSurface, rad, true)
+	drawCapsule(dst, r, genColorOnSurface, true)
 	// Neutral edge rim: stronger while dragging (active), halved when calm. No
 	// cyan accent.
 	ringAlpha := genAlphaMedium
@@ -75,5 +75,5 @@ func drawSliderThumb(dst *ebiten.Image, center image.Point, diameter int, active
 	if calm {
 		ringAlpha /= 2
 	}
-	drawRoundedRect(dst, r, WithAlpha(colTextPrimary, ringAlpha), rad, false)
+	drawCapsule(dst, r, WithAlpha(colTextPrimary, ringAlpha), false)
 }

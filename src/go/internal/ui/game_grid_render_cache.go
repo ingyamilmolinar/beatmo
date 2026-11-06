@@ -26,6 +26,8 @@ type gridRenderCache struct {
 	gridTile       *ebiten.Image // SubImage view of gridTileBacking for the current stepPx
 	gridTileStepPx int
 	gridTileSubSig uint64
+	// gridTileThemeGen is the ThemeGeneration the tile was baked under.
+	gridTileThemeGen int
 	// Grow-only backing texture for the grid tile. The logical tile is a
 	// stepPx×stepPx square that changes size on every frame of a continuous
 	// zoom; allocating it fresh each frame churns the GPU atlas and stalls the
@@ -51,6 +53,10 @@ type gridRenderCache struct {
 	gridCachePad    int
 	gridCacheStepPx int
 	gridCacheSubSig uint64
+	// gridCacheThemeGen is the ThemeGeneration the composed cache was baked
+	// under: the pad-shift reuse path must not survive a theme change (it
+	// re-blitted grid lines in the previous theme's colors).
+	gridCacheThemeGen int
 
 	// Cached SubImage wrapper for the grid pane region of the screen.
 	// Reused across frames when the parent screen pointer and grid rect are

@@ -5,6 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -17,14 +20,20 @@ import (
 
 type Game struct {
 	/* subsystems */
+	tour                        tourDriver // scripted showcase tour (-tour); nil in normal runs (tour_hook.go)
 	cam                         *Camera
 	split                       *Splitter
 	drum                        *DrumView
-	i18nCancel                  func()  // cancels the i18n.OnChange listener registered in NewGame
-	gridHelpBtn                 *Button // settings gear in grid pane top-right (opens settings overlay; both desktop and mobile)
-	gridFileBtn                 *Button // folder button just left of the gear (opens the file menu; both desktop and mobile)
-	gridLogsBtn                 *Button // logs button left of the folder button (opens the Logs Navigation Panel; both desktop and mobile)
-	gridHelpCapturing           bool    // true while the grid gear/folder/logs button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
+	i18nCancel                  func()        // cancels the i18n.OnChange listener registered in NewGame
+	themeCancel                 func()        // cancels the OnThemeChange listener registered in NewGame
+	recordStopUnsub             func()        // releases the hooks.EventRecordStop subscription taken in New
+	userTheme                   theme.UserDoc // per-user profile theme + override flag (persisted via ThemeSaveSink)
+	circuitTheme                theme.Doc     // the open circuit's own theme (exported in beatmo.json)
+	gridHelpBtn                 *Button       // settings gear in grid pane top-right (opens settings overlay; both desktop and mobile)
+	gridFileBtn                 *Button       // folder button just left of the gear (opens the file menu; both desktop and mobile)
+	gridLogsBtn                 *Button       // logs button left of the folder button (opens the Logs Navigation Panel; both desktop and mobile)
+	gridThemeBtn                *Button       // theme button left of the logs button (opens the Theme editor; both desktop and mobile)
+	gridHelpCapturing           bool          // true while the grid gear/folder/logs button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
 	undoManager                 *UndoManager
 	keyboardRouter              *keyboardShortcutRouter // component-owned keyboard shortcut dispatch (keyboard_shortcuts.go)
 	inputDispatcher             *InputDispatcher
@@ -71,10 +80,27 @@ type Game struct {
 	closing atomic.Bool
 	bpmCh   chan int
 	bpmAck  chan int
-	playFn  func(string, float64, ...float64)
+	playFn  func(instrument.ID, float64, ...float64)
 	// voicePrewarmer renders upcoming melody voices off the audioLoop dispatch
 	// goroutine so dispatch never cold-renders (fixes the overdue/absmax panic).
 	voicePrewarmer *voicePrewarmer
+	// warmup gates playback on a warm voice cache after a wholesale
+	// cache-invalidating event (warmup_controller.go).
+	warmup *warmupController
+	// heldInstruments is the held set last handed to the audio layer
+	// (syncHeldInstruments).
+	heldInstruments []instrument.ID
+	heldSynced      bool
+
+	// warmupSampleRate is the sample rate the last warm set was rendered at.
+	// The voice cache key carries sampleRate, so a rate change re-keys
+	// everything — see checkWarmupSampleRate in warmup_controller.go.
+	warmupSampleRate int
+	// warmupSampleRateCheckCounter throttles checkWarmupSampleRate's actual
+	// audio.SampleRate() read to once every warmupSampleRateCheckInterval
+	// calls (see that const's doc comment).
+	warmupSampleRateCheckCounter int
+
 	// audioScheduler dispatches future-timestamped playFn calls onto a
 	// bounded pool instead of spawning a goroutine per scheduled note.
 	// Initialized by New(); tests that construct Game directly may leave
@@ -157,7 +183,7 @@ type Game struct {
 	// audio.SetInstrumentParam churn against benchStormInst during the bench
 	// measure window; benchStormPushes is counted into [bench_json].
 	benchStorm       benchStormScenario
-	benchStormInst   string
+	benchStormInst   instrument.ID
 	benchStormTick   int
 	benchStormPushes int
 	// Record-bench mode: when true, also start recording when the bench
@@ -224,6 +250,10 @@ type Game struct {
 	// file load); left false for demo/startup/JS loads and undo-restore
 	// re-imports, which keep the clear-history behavior. Consumed once per Import.
 	importAsUndoStep bool
+	// undoRestoring is set while undoRestore re-imports a snapshot: Import then
+	// restores the snapshot's instrument documents verbatim instead of opening
+	// a circuit (where the user's saved instruments trump the file's).
+	undoRestoring bool
 
 	// pendingActions are deferred UI mutations queued by external callers
 	// (e.g. JS exports invoked via page.evaluate between frames). Game.Update
@@ -331,6 +361,25 @@ type Game struct {
 
 	// Audio scheduling lookahead in seconds (web)
 	audioLookaheadSec float64
+
+	// Audio lane (audio_lane*.go): commits audio up to the horizon ahead and
+	// reconciles it on edits. laneOn gates it (RuntimeProfile.AudioLaneEnabled,
+	// off under go test unless enableAudioLaneForTest). laneGraphVersion is
+	// bumped by node / group changes the lane fingerprints.
+	audioLane        *audioLane
+	laneSrc          *gameLaneSource
+	laneOn           atomic.Bool
+	laneGraphVersion atomic.Uint64
+	laneSink         *outboxSink
+	laneWake         chan struct{}
+	laneKick         chan struct{} // kickLane → sequencerLoop: run a pass now (edits outside Update)
+	laneBatchScratch []audio.BatchParam
+	laneOldScratch   []uint64
+	laneFlushMu      sync.Mutex // serialises flushLaneOps (audioLoop vs Close)
+	// lanePendingObs: cells the UI lane passed this sequencer pass before the
+	// lane had committed them (play start, seek, row add) — observed again
+	// after the pass's laneTick (observePendingLaneCells). seqMu-guarded.
+	lanePendingObs [][2]int
 
 	// Parity diagnostics between scheduler (audio) and DrumView slate — grouped
 	// into the embedded parityTracker (see game_parity_tracker.go). Anonymous so

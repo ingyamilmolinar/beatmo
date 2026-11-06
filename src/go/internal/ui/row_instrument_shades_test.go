@@ -11,8 +11,9 @@ import (
 func lum(c color.RGBA) int { return int(c.R) + int(c.G) + int(c.B) }
 
 // TestRowToggleShadesDeriveFromInstrumentColor verifies that the per-row
-// toggle fills are shades of the instrument color: mute darker, solo brighter,
-// fx the full hue, and the off state a dim (low-alpha) tint — all distinct.
+// toggle ACTIVE fills are shades of the instrument color: mute darker, solo
+// brighter, fx the full hue — all distinct — while the off state is the
+// neutral row-control body.
 func TestRowToggleShadesDeriveFromInstrumentColor(t *testing.T) {
 	base := color.RGBA{180, 120, 60, 255} // a mid-tone orange instrument color
 
@@ -32,8 +33,8 @@ func TestRowToggleShadesDeriveFromInstrumentColor(t *testing.T) {
 	if fx.R != base.R || fx.G != base.G || fx.B != base.B {
 		t.Errorf("fx active fill should be the full instrument hue: got %v, want %v", fx, base)
 	}
-	if off.A >= 200 {
-		t.Errorf("off fill should be a dim (low-alpha) tint, got alpha %d", off.A)
+	if want := rowShadeToRGBA(InstButtonStyle.fill()); off != want {
+		t.Errorf("off fill should be the neutral row-control body %v, got %v", want, off)
 	}
 
 	// The three active states must all be visually distinct from each other
@@ -56,8 +57,8 @@ func TestRowToggleStyleDiffersByInstrumentColor(t *testing.T) {
 	if colorsEqual(mOrange.Fill, mTeal.Fill) {
 		t.Errorf("differently-colored rows must yield different mute fills: %v vs %v", mOrange.Fill, mTeal.Fill)
 	}
-	if mOrange.Radius != RadiusSM {
-		t.Errorf("row toggle radius should be RadiusSM (%d), got %d", RadiusSM, mOrange.Radius)
+	if mOrange.Radius != RadiusControl {
+		t.Errorf("row toggle radius should be RadiusControl (%d), got %d", RadiusControl, mOrange.Radius)
 	}
 }
 
@@ -68,5 +69,21 @@ func TestRowToggleNilColorIsSafe(t *testing.T) {
 	st := rowToggleStyle(nil, roleSolo, true)
 	if st.Fill == nil {
 		t.Error("nil instrument color should fall back to a non-nil fill")
+	}
+}
+
+// TestRowToggleLetterIsLegibleOnEveryInstrumentColor sweeps the instrument
+// sequence: every active toggle letter must clear WCAG 4.5:1 against its
+// fill — a pale instrument (yellow, mint) gets a dark letter, a deep one a
+// light letter.
+func TestRowToggleLetterIsLegibleOnEveryInstrumentColor(t *testing.T) {
+	for _, base := range genInstrumentSequence {
+		for _, role := range []rowToggleRole{roleMute, roleSolo, roleFX} {
+			fill := rowToggleFillRGBA(base, role, true)
+			txt := rowToggleLabelColor(base, role, true)
+			if r := wcagContrast(relLuminance(fill), relLuminance(txt)); r < 4.5 {
+				t.Errorf("instrument %v role %d: letter %v on %v contrast %.2f < 4.5", base, role, txt, fill, r)
+			}
+		}
 	}
 }

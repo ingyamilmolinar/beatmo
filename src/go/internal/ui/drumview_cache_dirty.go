@@ -92,6 +92,11 @@ func (dv *DrumView) invalidateRowCaches() {
 func (dv *DrumView) OnLocaleChanged() {
 	dv.invalidateRowCaches()
 	dv.invalidateLabelCaches()
+	// The Synth graph's built plot carries its words (title, readout, axis
+	// words); its key does not change with the locale, so drop it.
+	if p := dv.synp(); p != nil {
+		p.graphPlot = nil
+	}
 	// Invalidate text-heavy panel zones so they re-layout at new string widths.
 	// Nil-guard each: a partially-built DrumView (or a Game without all zones)
 	// must not panic on a locale flip.
@@ -138,7 +143,7 @@ func (dv *DrumView) needsRowRebuild(i int) bool {
 	if i < len(dv.rowFullDirty) && dv.rowFullDirty[i] {
 		return true
 	}
-	if dv.rowCacheW != dv.timelineRect.Dx() || dv.rowCacheH != dv.rowHeight() {
+	if dv.rowCacheW != dv.cellGridRect.Dx() || dv.rowCacheH != dv.rowHeight() {
 		return true
 	}
 	if dv.rowCacheLen != dv.Length {

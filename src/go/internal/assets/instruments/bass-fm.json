@@ -1,0 +1,93 @@
+{
+  "schema_version": "0.0.1",
+  "id": "bass-fm",
+  "name": "FM Bass DX",
+  "category": "modular",
+  "notes": "bassFMSeed: punchy FM/DX bass — a sine-ish carrier modulated by a decaying FM\noperator for the metallic DX attack that quickly settles into a clean low\ntone. Fast amp attack + short decay + low sustain make it punchy.",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.5915,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.002,
+        "amp_curve": 1,
+        "amp_decay": 0.18,
+        "amp_release": 0.12,
+        "amp_sustain": 0.25
+      },
+      "notes": "amp_attack: metallic-attack FM index decay rides the amp envelope: fast attack, short\ndecay, low sustain so the bright FM transient settles into the low body."
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2500,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_type: a decaying FM index/attack via the modulator's own fast envelope is carried\nby the amp envelope shaping below — the modulator decays out leaving the\nclean carrier."
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.fm",
+    "v": 1,
+    "on": true,
+    "values": {
+      "fm_algorithm": 0,
+      "fm_enabled": 1,
+      "fm_op1_depth": 0,
+      "fm_op1_level": 1,
+      "fm_op1_ratio": 1,
+      "fm_op2_depth": 3,
+      "fm_op2_level": 0,
+      "fm_op2_ratio": 2,
+      "fm_op3_depth": 0,
+      "fm_op3_level": 0,
+      "fm_op3_ratio": 1,
+      "fm_op4_depth": 0,
+      "fm_op4_level": 0,
+      "fm_op4_ratio": 1
+    },
+    "notes": "fm_algorithm: 2-op\nfm_op1_ratio: carrier\nfm_op2_ratio: modulator — metallic overtones\nosc_type: FM"
+  }
+}

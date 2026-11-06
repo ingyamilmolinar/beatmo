@@ -6,17 +6,18 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func TestRefreshInstrumentsSkipsWhenUnchanged(t *testing.T) {
-	withAudioCatalog(t, []audio.SoundMeta{{ID: "sample-1", Name: "Sample 1", Category: "Samples"}})
+	withAudioCatalog(t, []audio.SoundMeta{{ID: "sample-1", Name: "Sample 1", Group: "Samples"}})
 	dv := newTestDrumView(t, 800, 600)
 	if dv.instMeta == nil || dv.instCatByID == nil {
 		t.Fatalf("expected initial instrument metadata to be set")
 	}
 	metaPtr := reflect.ValueOf(dv.instMeta).Pointer()
 	catPtr := reflect.ValueOf(dv.instCatByID).Pointer()
-	opts := append([]string(nil), dv.instOptions...)
+	opts := append([]instrument.ID(nil), dv.instOptions...)
 
 	dv.refreshInstruments()
 	if reflect.ValueOf(dv.instMeta).Pointer() != metaPtr {
@@ -31,12 +32,12 @@ func TestRefreshInstrumentsSkipsWhenUnchanged(t *testing.T) {
 }
 
 func TestRefreshInstrumentsUpdatesOnCatalogChange(t *testing.T) {
-	withAudioCatalog(t, []audio.SoundMeta{{ID: "old", Name: "Old", Category: "Olds"}})
+	withAudioCatalog(t, []audio.SoundMeta{{ID: "old", Name: "Old", Group: "Olds"}})
 	dv := newTestDrumView(t, 800, 600)
 	if _, ok := dv.instMeta["old"]; !ok {
 		t.Fatalf("expected initial catalog entry to exist")
 	}
-	audio.ResetCatalogForTest([]audio.SoundMeta{{ID: "new", Name: "New", Category: "News"}})
+	audio.ResetCatalogForTest([]audio.SoundMeta{{ID: "new", Name: "New", Group: "News"}})
 	dv.refreshInstruments()
 	if _, ok := dv.instMeta["new"]; !ok {
 		t.Fatalf("expected refreshed catalog entry to exist")
@@ -50,11 +51,11 @@ func TestEnsureInstrumentKnownForcesRefresh(t *testing.T) {
 	withAudioCatalog(t, nil)
 	dv := newTestDrumView(t, 800, 600)
 	missing := "missing-sample"
-	if slices.Contains(dv.instOptions, missing) {
+	if slices.Contains(dv.instOptions, instrument.ID(missing)) {
 		t.Fatalf("missing instrument unexpectedly present before ensure")
 	}
-	dv.EnsureInstrumentKnown(missing)
-	if !slices.Contains(dv.instOptions, missing) {
+	dv.EnsureInstrumentKnown(instrument.ID(missing))
+	if !slices.Contains(dv.instOptions, instrument.ID(missing)) {
 		t.Fatalf("missing instrument not surfaced after ensure")
 	}
 }
@@ -63,12 +64,12 @@ func TestRefreshInstrumentsUpdatesOnRegister(t *testing.T) {
 	withAudioCatalog(t, nil)
 	dv := newTestDrumView(t, 800, 600)
 	id := "custom-inst"
-	if slices.Contains(dv.instOptions, id) {
+	if slices.Contains(dv.instOptions, instrument.ID(id)) {
 		t.Fatalf("custom instrument unexpectedly present before register")
 	}
-	audio.Register(id, nil)
+	audio.Register(instrument.ID(id), nil)
 	dv.refreshInstruments()
-	if !slices.Contains(dv.instOptions, id) {
+	if !slices.Contains(dv.instOptions, instrument.ID(id)) {
 		t.Fatalf("custom instrument missing after register")
 	}
 }

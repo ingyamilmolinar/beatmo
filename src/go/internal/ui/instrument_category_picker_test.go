@@ -2,18 +2,18 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 func TestPickerCategoriesFromCanonicalTaxonomy(t *testing.T) {
 	dv := newTestDrumView(t, 800, 600)
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
-	if got := dv.instCatByID["kick"]; got != "Kick" {
-		t.Fatalf("kick category = %q, want %q", got, "Kick")
-	}
-	for _, c := range dv.instCategories {
-		if c == "Registered" {
-			t.Fatalf("stale fallback category 'Registered' still present: %v", dv.instCategories)
-		}
+	if got := dv.instCatByID[roster.Kick]; got != audio.CatKick {
+		t.Fatalf("kick category = %v, want %v", got, audio.CatKick)
 	}
 }

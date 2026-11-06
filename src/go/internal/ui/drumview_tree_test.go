@@ -1428,50 +1428,6 @@ func TestTree_AutoFocusTransportWhenBPMBoxFocused(t *testing.T) {
 	}
 }
 
-// TestTree_AutoFocusEQPanelWhenDBInputFocused verifies that when an
-// EQPanelZone is registered and a dB TextInput is focused, tree.Update()
-// sets focusedZone to "eq-panel". Blurring clears focus.
-func TestTree_AutoFocusEQPanelWhenDBInputFocused(t *testing.T) {
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 600 },
-	)
-	defer restore()
-
-	tree := NewDrumViewTree()
-	ez := NewEQPanelZone(EQCallbacks{})
-	tree.RegisterZone(ez, 120)
-	tree.SetZoneRect("eq-panel", image.Rect(0, 60, 800, 300))
-
-	// Initial: no focus.
-	tree.Update()
-	if tree.focusedZone != "" {
-		t.Errorf("expected no focus initially, got %q", tree.focusedZone)
-	}
-
-	// Open the shared dB editor for band 3 to simulate user editing.
-	// EQPanelZone now derives its focus state from paramEditor.Active(), and
-	// the tree mirrors that into focusedZone.
-	ez.openEQDBEditor(3)
-	tree.Update()
-
-	if tree.focusedZone != "eq-panel" {
-		t.Errorf("expected focusedZone='eq-panel' when dB editor is open, got %q", tree.focusedZone)
-	}
-
-	// Close (cancel) the dB editor.
-	ez.paramEditor.cancel()
-	tree.Update()
-
-	if tree.focusedZone != "" {
-		t.Errorf("expected focusedZone='' after dB input blur, got %q", tree.focusedZone)
-	}
-}
-
 // --- Fall-through regression tests ---
 
 // TestTreeFallThrough_HigherZIgnoredFallsToLowerZ verifies that when the

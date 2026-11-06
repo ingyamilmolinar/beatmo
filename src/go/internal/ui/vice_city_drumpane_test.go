@@ -29,64 +29,40 @@ func rgbaEq(a, b color.Color) bool {
 	return ar == br
 }
 
-// TestDrumCellGradientHelper asserts that an ON, non-mute, wide cell draws a
-// multi-band vertical gradient in the instrument color (backlit-hardware
-// look), while an OFF cell does not. The gradient bands must all be distinct
-// shades derived from the instrument color via adjustColor.
-func TestDrumCellGradientHelper(t *testing.T) {
-	var rec drawCallRecorder
+// TestDrumCellIsFlat asserts drum cells are FLAT (DESIGN.md Rule 2 — nothing
+// is 3D): an ON cell fills its rect exactly once in the instrument color and
+// strokes the 1 px separating border — no gradient bands, no lit top strip.
+// The former 4-band "backlit" gradient read as banding stripes.
+func TestDrumCellIsFlat(t *testing.T) {
 	dst := ebiten.NewImage(40, 20)
 	rowCol := color.RGBA{200, 80, 120, 255}
 	cell := image.Rect(0, 0, 30, 20)
-
-	rec.record(t, func() {
-		drawDrumCell(dst, cell, true, rowCol, false)
-	})
-	// Gradient bakes drumCellGradientBands filled rects covering the cell
-	// width plus a 1px border stroke. Count the filled full-width band rects.
-	bands := 0
-	for _, c := range rec.calls {
-		if c.Kind == drawCallRect && c.Filled && c.Rect.Dx() == cell.Dx() {
-			bands++
-		}
-	}
-	if bands < drumCellGradientBands {
-		t.Fatalf("ON cell: expected >= %d gradient bands, got %d", drumCellGradientBands, bands)
-	}
-
-	// OFF cell: no gradient — defers to the flat DrumCellUI.Draw path which
-	// fills the cell exactly once with the off color.
-	rec.record(t, func() {
-		drawDrumCell(dst, cell, false, rowCol, false)
-	})
-	fullFills := 0
-	for _, c := range rec.calls {
-		if c.Kind == drawCallRect && c.Filled && c.Rect.Dx() == cell.Dx() {
-			fullFills++
-		}
-	}
-	if fullFills >= drumCellGradientBands {
-		t.Fatalf("OFF cell must not draw a gradient; got %d full-width fills", fullFills)
-	}
-}
-
-// TestDrumCellMuteNoGradient asserts mute cells stay flat (the gradient is an
-// ON-instrument-color treatment only; mute uses the dedicated mute fill).
-func TestDrumCellMuteNoGradient(t *testing.T) {
-	var rec drawCallRecorder
-	dst := ebiten.NewImage(40, 20)
-	cell := image.Rect(0, 0, 30, 20)
-	rec.record(t, func() {
-		drawDrumCell(dst, cell, true, colMuteCell, true)
-	})
-	fills := 0
-	for _, c := range rec.calls {
-		if c.Kind == drawCallRect && c.Filled && c.Rect.Dx() == cell.Dx() {
+	for _, tc := range []struct {
+		name string
+		on   bool
+		col  color.Color
+		mute bool
+		want color.Color
+	}{
+		{"on", true, rowCol, false, rowCol},
+		{"off", false, rowCol, false, DrumCellUI.Off},
+		{"mute", true, colMuteCell, true, colMuteCell},
+	} {
+		var rec drawCallRecorder // fresh per case: record() accumulates
+		rec.record(t, func() { drawDrumCell(dst, cell, tc.on, tc.col, tc.mute) })
+		fills := 0
+		for _, c := range rec.calls {
+			if c.Kind != drawCallRect || !c.Filled {
+				continue
+			}
 			fills++
+			if c.Rect != cell || !rgbaEq(c.Color, tc.want) {
+				t.Errorf("%s cell: fill %v %v, want one flat fill of the whole cell in %v", tc.name, c.Rect, c.Color, tc.want)
+			}
 		}
-	}
-	if fills >= drumCellGradientBands {
-		t.Fatalf("mute cell must not draw a gradient; got %d full-width fills", fills)
+		if fills != 1 {
+			t.Errorf("%s cell: %d filled rects, want exactly 1 (flat)", tc.name, fills)
+		}
 	}
 }
 
@@ -121,35 +97,37 @@ func TestBeatGroupSeparators(t *testing.T) {
 	}
 }
 
-// TestRowLabelTintUsesRowColor asserts the row-rack label tint draws a faint
-// wash in the row's instrument color across the label rect, threading the
-// same hue the graph cluster uses.
-func TestRowLabelTintUsesRowColor(t *testing.T) {
+// TestRowLabelCarriesIdentitySwatch asserts a rack label with a LeadSwatch
+// paints a rounded swatch in the row's instrument color at its leading edge,
+// ON the label body (drawn after it) — the instrument menu's swatch + text
+// row. The former faint wash + accent stripe were drawn BEFORE the opaque
+// label body, which covered both: the rack showed no identity at all.
+func TestRowLabelCarriesIdentitySwatch(t *testing.T) {
 	var rec drawCallRecorder
-	dst := ebiten.NewImage(120, 24)
+	dst := ebiten.NewImage(160, 30)
 	rowCol := color.RGBA{72, 180, 255, 255}
-	lbl := image.Rect(0, 0, 100, 24)
-	want := WithAlphaFromColor(rowCol, AlphaFaint)
+	b := NewButton("Kick", InstButtonStyle, nil)
+	b.SetRect(image.Rect(0, 0, 150, 30))
+	b.LeadSwatch = rowCol
 
-	rec.record(t, func() {
-		drawRowLabelTint(dst, lbl, rowCol)
-	})
-	found := false
-	for _, c := range rec.calls {
-		if c.Kind == drawCallRect && c.Filled && c.Rect == lbl && rgbaEq(c.Color, want) {
-			found = true
+	rec.record(t, func() { b.Draw(dst) })
+	body, swatch := -1, -1
+	for i, c := range rec.calls {
+		if !c.Filled {
+			continue
+		}
+		if c.Rect == b.Rect() && body < 0 {
+			body = i
+		}
+		if rgbaEq(c.Color, rowCol) && c.Rect.Dx() == SwatchSizeMD && c.Rect.Min.X == SpaceSM {
+			swatch = i
 		}
 	}
-	if !found {
-		t.Fatalf("row-label tint not drawn in row color at AlphaFaint")
+	if body < 0 || swatch < 0 {
+		t.Fatalf("want label body and identity swatch drawn; body=%d swatch=%d (calls %+v)", body, swatch, rec.calls)
 	}
-
-	// nil color is a no-op (test paths build DrumRow values directly).
-	rec.record(t, func() {
-		drawRowLabelTint(dst, lbl, nil)
-	})
-	if len(rec.calls) != 0 {
-		t.Fatalf("nil row color must be a no-op, got %d draws", len(rec.calls))
+	if swatch < body {
+		t.Fatalf("swatch drawn before the body (%d < %d) — the body would cover it", swatch, body)
 	}
 }
 

@@ -86,10 +86,10 @@ func CloseButton() *Button {
 // UI clean, so every menu and pop-up drops its × there. Desktop keeps the × as
 // a discoverable dismiss affordance alongside Esc + click-outside.
 //
-// The three top-right *toggle* menus (File, Settings, Logs) are the exception on
-// BOTH platforms: their own grid button opens AND closes them, so they carry no
-// × anywhere — see settings_overlay.go / logs_component.go / the overflow menu.
-// They simply never call this or newPopupCloseButton.
+// Every floating menu — including the top-right toggle menus (File, Settings,
+// Logs, Theme), whose grid button ALSO opens and closes them — carries the ×
+// through the shared MenuCard frame (menu_card.go), so the dismiss affordance
+// reads the same everywhere.
 func desktopCloseVisible() bool { return !Profile().UseBottomSheet }
 
 // newPopupCloseButton builds the shared pop-up close (×) button wired to

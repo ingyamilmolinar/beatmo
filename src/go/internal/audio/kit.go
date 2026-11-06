@@ -1,37 +1,25 @@
 package audio
 
 import (
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Kit is the Phase-6 "instrument set / drum kit" abstraction. A kit
 // declares which instrument id each role maps to (kick → "kick-808",
 // snare → "snare-fat", …); applying the kit reassigns every row whose
 // resolved role matches a kit entry, preserving the row's mix (volume,
-// pan, sends, EQ, insert effects). The data model lands now per the
-// "code infra, no UI" scope; the Synth-tab / Mixer surfaces follow in a
-// later round.
-//
-// InsertChain is reserved for the future kit-bus: a shared insert
-// effects chain that processes the sum of audio from rows currently
-// bound to kit members before master. The field round-trips through
-// JSON (so kits authored today survive the rollout) but the audio-graph
-// routing — extending internal/audio/send_effects.go with a third bus
-// class — is deferred.
-//
-// INERT TODAY. Until kit-bus lands, ApplyKit ignores this field and
-// the kit only rebinds row instruments. Callers populating it should
-// expect zero audible effect; the contract is "store the configuration
-// so it isn't lost across a save/load cycle." TestKit_InsertChainIsInert
-// is the regression guard.
+// EQ, insert effects). The data model lands now per the "code infra, no
+// UI" scope; the Synth-tab / Mixer surfaces follow in a later round.
 type Kit struct {
-	ID          string            `json:"id"`
-	DisplayName string            `json:"display_name"`
-	Members     map[string]string `json:"members"`                // role → instrument id
-	InsertChain []EffectSlot      `json:"insert_chain,omitempty"` // INERT — see field doc
+	ID          string                            `json:"id"`
+	DisplayName string                            `json:"display_name"`
+	Members     map[instrument.Role]instrument.ID `json:"members"` // role → instrument id
 }
 
 // KitRowBinder is the minimal contract Kit.Apply needs from the UI layer.
@@ -40,9 +28,9 @@ type Kit struct {
 // stays free of any UI-domain type dependency.
 type KitRowBinder interface {
 	RowCount() int
-	RowInstrument(idx int) string
-	RowRole(idx int) string // explicit Role field; empty means "fall back to heuristic"
-	SetRowInstrument(idx int, newInstID string)
+	RowInstrument(idx int) instrument.ID
+	RowRole(idx int) instrument.Role // explicit Role field; empty means "the instrument's own role"
+	SetRowInstrument(idx int, newInstID instrument.ID)
 }
 
 // Kit registry — process-global; mirrors the recipe registry shape so
@@ -68,8 +56,7 @@ func RegisterKit(k Kit) {
 	cp := Kit{
 		ID:          k.ID,
 		DisplayName: k.DisplayName,
-		Members:     copyStringMap(k.Members),
-		InsertChain: append([]EffectSlot(nil), k.InsertChain...),
+		Members:     maps.Clone(k.Members),
 	}
 	kitReg[k.ID] = cp
 }
@@ -101,8 +88,7 @@ func KitForID(id string) (Kit, bool) {
 	return Kit{
 		ID:          k.ID,
 		DisplayName: k.DisplayName,
-		Members:     copyStringMap(k.Members),
-		InsertChain: append([]EffectSlot(nil), k.InsertChain...),
+		Members:     maps.Clone(k.Members),
 	}, true
 }
 
@@ -117,8 +103,7 @@ func KitsForExport() []Kit {
 		out = append(out, Kit{
 			ID:          k.ID,
 			DisplayName: k.DisplayName,
-			Members:     copyStringMap(k.Members),
-			InsertChain: append([]EffectSlot(nil), k.InsertChain...),
+			Members:     maps.Clone(k.Members),
 		})
 	}
 	return out
@@ -134,7 +119,7 @@ func ResetKitsForTest() {
 
 // ApplyKit walks the binder's rows and, for each row whose role
 // resolves to a kit member, calls SetRowInstrument with the kit's
-// instrument id for that role. Row volume / pan / sends / EQ / insert
+// instrument id for that role. Row volume / EQ / insert
 // effects are untouched — only the row's instrument binding changes.
 //
 // After the walk, publishes hooks.EventKitApplied with the kit id +
@@ -145,87 +130,80 @@ func ApplyKit(k Kit, binder KitRowBinder) int {
 	if binder == nil || len(k.Members) == 0 {
 		return 0
 	}
-	rebound := 0
-	for i := 0; i < binder.RowCount(); i++ {
-		curInst := binder.RowInstrument(i)
-		role := binder.RowRole(i)
-		if role == "" {
-			role = roleHeuristic(curInst)
-		}
-		if role == "" {
-			continue
-		}
-		newInst, ok := k.Members[role]
-		if !ok || newInst == "" || newInst == curInst {
-			continue
-		}
-		binder.SetRowInstrument(i, newInst)
-		rebound++
+	plan := KitPlan(k, binder)
+	for _, i := range slices.Sorted(maps.Keys(plan)) {
+		binder.SetRowInstrument(i, plan[i])
 	}
+	rebound := len(plan)
 	hooks.PublishKind(hooks.EventKitApplied, hooks.KitPayload{
 		KitID:       k.ID,
 		DisplayName: k.DisplayName,
-		Members:     copyStringMap(k.Members),
+		Members:     maps.Clone(k.Members),
 	})
 	return rebound
 }
 
-// roleHeuristic infers a role name from an instrument id when the row
-// doesn't carry an explicit Role override. The map covers the shipped
-// instrument families; a user instrument id that doesn't match any
-// pattern returns "" so the kit walk skips it.
-//
-// Patterns are case-insensitive substring matches. Order matters: more
-// specific suffixes (open-hihat → hat) come before generic ones (snare).
-func roleHeuristic(instID string) string {
+// KitPlan is what applying k changes, without changing it: row index → the
+// kit member that row will play (rows whose role the kit does not fill, or
+// that already play its member, are absent).
+func KitPlan(k Kit, binder KitRowBinder) map[int]instrument.ID {
+	plan := map[int]instrument.ID{}
+	for i := 0; i < binder.RowCount(); i++ {
+		curInst := binder.RowInstrument(i)
+		role := binder.RowRole(i)
+		if role == instrument.RoleNone {
+			role = RoleForInstrument(curInst)
+		}
+		if role == instrument.RoleNone {
+			continue
+		}
+		if newInst, ok := k.Members[role]; ok && newInst != "" && newInst != curInst {
+			plan[i] = newInst
+		}
+	}
+	return plan
+}
+
+// RoleForInstrument returns the kit role an instrument plays: a shipped
+// instrument's own role (builtinProperties; an instance "x--N" has x's),
+// else the role its name suggests for an instrument the user named, else ""
+// (the kit walk skips it). An explicit per-row Role overrides this.
+func RoleForInstrument(instID instrument.ID) instrument.Role {
 	if instID == "" {
-		return ""
+		return instrument.RoleNone
 	}
-	lc := strings.ToLower(instID)
+	if p, ok := builtinPropertyOf(instID); ok {
+		return p.Role
+	}
+	return roleFromName(InstrumentDisplayName(instID))
+}
+
+// roleFromName infers the kit role of an instrument the user named, by
+// case-insensitive substring. Order matters: "open-hihat" must hit the hat
+// rule before any other.
+func roleFromName(name string) instrument.Role {
+	lc := strings.ToLower(name)
 	switch {
-	case strings.Contains(lc, "open-hihat"), strings.Contains(lc, "hihat"), strings.Contains(lc, "hi-hat"), strings.Contains(lc, "hat"):
-		return "hat"
+	case strings.Contains(lc, "hihat"), strings.Contains(lc, "hi-hat"), strings.Contains(lc, "hat"):
+		return instrument.RoleHat
 	case strings.Contains(lc, "kick"):
-		return "kick"
+		return instrument.RoleKick
 	case strings.Contains(lc, "snare"), strings.Contains(lc, "rimshot"), strings.Contains(lc, "sidestick"):
-		return "snare"
+		return instrument.RoleSnare
 	case strings.Contains(lc, "tom"):
-		return "tom"
+		return instrument.RoleTom
 	case strings.Contains(lc, "clap"):
-		return "clap"
+		return instrument.RoleClap
 	case strings.Contains(lc, "cowbell"):
-		return "cowbell"
+		return instrument.RoleCowbell
 	case strings.Contains(lc, "ride"):
-		return "ride"
+		return instrument.RoleRide
 	case strings.Contains(lc, "crash"):
-		return "crash"
+		return instrument.RoleCrash
 	case strings.Contains(lc, "shaker"):
-		return "shaker"
+		return instrument.RoleShaker
 	case strings.Contains(lc, "bass"):
-		return "bass"
+		return instrument.RoleBass
 	}
-	return ""
-}
-
-// RoleForInstrument is the public companion to the heuristic. Returns
-// the inferred role for an instrument id, or empty string when no
-// pattern matches. UI / JSON callers use this to populate a default
-// DrumRow.Role on row creation; explicit per-row Role overrides are
-// preferred when the user has tagged a row.
-func RoleForInstrument(instID string) string {
-	return roleHeuristic(instID)
-}
-
-// copyStringMap returns a defensive copy of a string→string map. Used
-// when handing kit data across the registry boundary so callers can't
-// mutate the registered state through the returned reference.
-func copyStringMap(m map[string]string) map[string]string {
-	if m == nil {
-		return nil
-	}
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
+	return instrument.RoleNone
 }

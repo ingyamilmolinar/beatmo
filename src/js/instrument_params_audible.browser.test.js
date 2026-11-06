@@ -23,6 +23,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -76,16 +77,24 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof setInstrumentParam === "function");
 await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 await page.evaluate(() => resetInstrumentParams('snare'));
 const baseline = await page.evaluate(() => window.__testCaptureSynthRender('snare'));
 if (!baseline) throw new Error('baseline render snapshot returned null');
 console.log(`[TEST] baseline tailRMS=${baseline.tailRMS.toFixed(6)} length=${baseline.length}`);
 
-// Change decay to a value far from identity (1.0). decay=0.3 should
-// shorten the envelope substantially → tail RMS should drop.
-await page.evaluate(() => setInstrumentParam('snare', 'decay', 0.3));
+// Change the POST decay macro to a value far from identity (1.0);
+// post_decay=0.3 shortens the envelope substantially → tail RMS should drop.
+//
+// The knob is `post_decay`, NOT `decay`: `snare` is config-first over the
+// shared modular voice (recipe synth-modular-snare), where the legacy POST
+// macro is pushed as post_decay (family_modular_push.go: out["post_decay"] =
+// elidedVal(elided, "decay", 1)). An unknown key is DROPPED by the renderer
+// rather than rejected, so spelling it `decay` here re-rendered the shipped
+// sound and produced a bit-identical buffer — which this test then reported
+// as a renderCache-invalidation bug.
+await page.evaluate(() => setInstrumentParam('snare', 'post_decay', 0.3));
 const modified = await page.evaluate(() => window.__testCaptureSynthRender('snare'));
 if (!modified) throw new Error('modified render snapshot returned null');
 console.log(`[TEST] modified tailRMS=${modified.tailRMS.toFixed(6)} length=${modified.length}`);
@@ -108,10 +117,10 @@ if (allEqual) {
 }
 if (allEqual) {
   throw new Error(
-    `BUG: setInstrumentParam('snare','decay',0.3) produced bit-identical buffer.\n` +
+    `BUG: setInstrumentParam('snare','post_decay',0.3) produced bit-identical buffer.\n` +
     `  baseline tailRMS=${baseline.tailRMS}\n  modified tailRMS=${modified.tailRMS}\n` +
     `This means the renderCache was either not invalidated, or the next render ` +
-    `did not pick up instrumentSynthParams['snare'].`,
+    `did not pick up snare's pushed block (setInstrumentBlock).`,
   );
 }
 
@@ -121,7 +130,7 @@ if (allEqual) {
 const drop = (baseline.tailRMS - modified.tailRMS) / Math.max(baseline.tailRMS, 1e-12);
 if (drop < 0.25) {
   throw new Error(
-    `decay=0.3 should reduce tail RMS by >25%; got ${(drop * 100).toFixed(1)}% drop.\n` +
+    `post_decay=0.3 should reduce tail RMS by >25%; got ${(drop * 100).toFixed(1)}% drop.\n` +
     `  baseline=${baseline.tailRMS}\n  modified=${modified.tailRMS}`,
   );
 }

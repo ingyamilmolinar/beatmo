@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestAnalyzerTapsForTab pins the dispatcher rule: which tab IDs cause
@@ -30,7 +32,7 @@ func TestAnalyzerTapsForTab(t *testing.T) {
 			continue
 		}
 		for i := range got {
-			if got[i] != c.want[i] {
+			if got[i].String() != c.want[i] {
 				t.Errorf("tab=%v taps[%d]=%q want %q", c.tab, i, got[i], c.want[i])
 			}
 		}
@@ -47,16 +49,16 @@ func TestAnalyzerTapsForTab(t *testing.T) {
 // feeds every instrument slot unconditionally, is fine. Synth/Sampler
 // read per-voice caches and need no analyzer tap.
 func TestAnalyzerInstrumentTapsForTab(t *testing.T) {
-	ids := []string{"kick-tight", "snare", "fm-bass"}
+	ids := []channel.ID{channel.Of(roster.KickTight), channel.Of(roster.Snare), channel.Of(roster.FmBass)}
 	cases := []struct {
 		tab  PanelTab
 		want []string
 	}{
-		{TabWave, []string{"main", "kick-tight", "snare", "fm-bass"}},
-		{TabSpectrum, []string{"main", "kick-tight", "snare", "fm-bass"}},
-		{TabMeters, []string{"main", "kick-tight", "snare", "fm-bass"}},
-		{TabEQ, []string{"main", "kick-tight", "snare", "fm-bass"}},
-		{TabScope, []string{"main", "kick-tight", "snare", "fm-bass"}},
+		{TabWave, []string{"main", string(roster.KickTight), string(roster.Snare), string(roster.FmBass)}},
+		{TabSpectrum, []string{"main", string(roster.KickTight), string(roster.Snare), string(roster.FmBass)}},
+		{TabMeters, []string{"main", string(roster.KickTight), string(roster.Snare), string(roster.FmBass)}},
+		{TabEQ, []string{"main", string(roster.KickTight), string(roster.Snare), string(roster.FmBass)}},
+		{TabScope, []string{"main", string(roster.KickTight), string(roster.Snare), string(roster.FmBass)}},
 		{TabSynth, nil},
 		{TabSampler, nil},
 	}
@@ -67,7 +69,7 @@ func TestAnalyzerInstrumentTapsForTab(t *testing.T) {
 			continue
 		}
 		for i := range got {
-			if got[i] != c.want[i] {
+			if got[i].String() != c.want[i] {
 				t.Errorf("tab=%v taps[%d]=%q want %q", c.tab, i, got[i], c.want[i])
 			}
 		}
@@ -79,8 +81,8 @@ func TestAnalyzerInstrumentTapsForTab(t *testing.T) {
 // for a per-instrument tab must enable each instrument's analyzer so the
 // next Draw of the Levels strip has data, with no prior channel select.
 func TestEnsureAnalyzersForTab_EnablesPerInstrument(t *testing.T) {
-	ids := []string{"tmpl-kick", "tmpl-snare"}
-	EnsureAnalyzersForTab(TabMeters, "", ids...)
+	ids := []channel.ID{channel.Of("tmpl-kick"), channel.Of("tmpl-snare")}
+	EnsureAnalyzersForTab(TabMeters, channel.ID{}, ids...)
 	for _, id := range ids {
 		an := audio.EnableChannelAnalyzer(id, 512)
 		if an == nil {
@@ -106,14 +108,14 @@ func TestEnsureAnalyzersForTab_EnablesPerInstrument(t *testing.T) {
 func TestEnsureAnalyzersForTab_EnablesMaster(t *testing.T) {
 	tabs := []PanelTab{TabWave, TabSpectrum, TabMeters, TabEQ, TabScope}
 	for _, tab := range tabs {
-		EnsureAnalyzersForTab(tab, "")
+		EnsureAnalyzersForTab(tab, channel.ID{})
 
 		// The Master analyzer must now be present in the registry — we
 		// confirm by feeding it samples through the channel processor
 		// path and reading the snapshot back. Without the dispatcher
 		// the analyzer wouldn't exist and the registry returns a zero
 		// snapshot.
-		an := audio.EnableChannelAnalyzer("main", 512)
+		an := audio.EnableChannelAnalyzer(channel.Master, 512)
 		if an == nil {
 			t.Fatalf("tab=%v: EnableChannelAnalyzer returned nil (stub build)", tab)
 		}
@@ -128,7 +130,7 @@ func TestEnsureAnalyzersForTab_EnablesMaster(t *testing.T) {
 		}
 		an.ProcessBlock(samples, blockN)
 
-		snap := audio.ChannelAnalyzerSnapshot("main")
+		snap := audio.ChannelAnalyzerSnapshot(channel.Master)
 		if snap.Peak <= 0 {
 			t.Errorf("tab=%v: master analyzer Peak=%f want >0 after dispatcher enable + signal feed",
 				tab, snap.Peak)
@@ -152,8 +154,8 @@ func TestEnsureAnalyzersForTab_SynthIsNoop(t *testing.T) {
 // channel (e.g., "kick") and the user opens an analysis tab, BOTH
 // the master and that row's analyzer should be live.
 func TestEnsureAnalyzersForTab_PerRowChannelAlsoEnabled(t *testing.T) {
-	EnsureAnalyzersForTab(TabSpectrum, "kick-test-row")
-	an := audio.EnableChannelAnalyzer("kick-test-row", 512)
+	EnsureAnalyzersForTab(TabSpectrum, channel.Of("kick-test-row"))
+	an := audio.EnableChannelAnalyzer(channel.Of("kick-test-row"), 512)
 	if an == nil {
 		t.Fatalf("EnableChannelAnalyzer for per-row id returned nil")
 	}
@@ -162,7 +164,7 @@ func TestEnsureAnalyzersForTab_PerRowChannelAlsoEnabled(t *testing.T) {
 		samples[i] = 0.3
 	}
 	an.ProcessBlock(samples, 1024)
-	if snap := audio.ChannelAnalyzerSnapshot("kick-test-row"); snap.Peak <= 0 {
+	if snap := audio.ChannelAnalyzerSnapshot(channel.Of("kick-test-row")); snap.Peak <= 0 {
 		t.Errorf("per-row analyzer Peak=%f want >0", snap.Peak)
 	}
 }

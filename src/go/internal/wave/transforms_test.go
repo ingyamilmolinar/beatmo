@@ -57,7 +57,7 @@ func TestTrimTransform_100to200ms(t *testing.T) {
 }
 
 func TestTrimTransform_ClampsOutOfBounds(t *testing.T) {
-	w := DC(1.0, 0.5, 44100) // 0.5 seconds = 22050 samples
+	w := DC(1.0, 0.5, 44100)                   // 0.5 seconds = 22050 samples
 	trimmed := TrimTransform(0, 1000).Apply(w) // endMs=1000 exceeds 500ms duration
 	if trimmed.Len() != 22050 {
 		t.Fatalf("expected 22050 samples (clamped), got %d", trimmed.Len())

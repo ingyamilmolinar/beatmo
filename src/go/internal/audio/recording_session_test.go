@@ -6,13 +6,17 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestStartStopRecording(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	instruments := []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
 	}
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
@@ -64,10 +68,10 @@ func TestStartStopRecording(t *testing.T) {
 }
 
 func TestStartRecordingDefaultFormat(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
 		// No Format specified — should default to WAV24
-		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments: []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BPM:         100,
 	}
 
@@ -82,10 +86,10 @@ func TestStartRecordingDefaultFormat(t *testing.T) {
 }
 
 func TestStartRecordingDuplicate(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
-		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments: []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BPM:         120,
 	}
 
@@ -105,7 +109,7 @@ func TestStartRecordingDuplicate(t *testing.T) {
 func TestStartRecordingInvalidFormat(t *testing.T) {
 	opts := RecordingOptions{
 		Format:      "nonexistent",
-		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments: []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BPM:         120,
 	}
 	err := StartRecording(opts)
@@ -177,11 +181,11 @@ func TestRecordingResultMetadataJSON(t *testing.T) {
 }
 
 func TestRecordingWithMaxDuration(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
 		MaxDuration: 100 * time.Millisecond,
-		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments: []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BPM:         120,
 	}
 
@@ -229,11 +233,11 @@ func TestSaveRecordingNilResult(t *testing.T) {
 }
 
 func TestStopRecordingWithCapturedData(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 
 	instruments := []InstrumentMeta{
-		{ID: "kick", Name: "Kick"},
-		{ID: "snare", Name: "Snare"},
+		{ID: channel.Of(roster.Kick), Name: "Kick"},
+		{ID: channel.Of(roster.Snare), Name: "Snare"},
 	}
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
@@ -255,7 +259,7 @@ func TestStopRecordingWithCapturedData(t *testing.T) {
 		{0.1, 0.2, 0.3, 0.4},
 		{0.5, 0.6, 0.7, 0.8},
 	}
-	slotIDs := []string{"kick", "snare"}
+	slotIDs := []channel.ID{channel.Of(roster.Kick), channel.Of(roster.Snare)}
 	workBuf := []float64{0.6, 0.8, 1.0, 0.5}
 	pipe.Tap(slotIDs, []int{0, 1}, instBufs, workBuf, 4)
 

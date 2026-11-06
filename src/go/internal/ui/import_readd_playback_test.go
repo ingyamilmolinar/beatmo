@@ -849,7 +849,7 @@ func TestImportPlaybackStaleHighlightCurrentBeatAfterReadd(t *testing.T) {
 }
 
 const beatmoProjectJSON = `{
-  "version": 1,
+  "schema_version": "0.0.1",
   "subdiv": 8,
   "bpm": 120,
   "instruments": [

@@ -1,0 +1,141 @@
+{
+  "schema_version": "0.0.1",
+  "id": "violin",
+  "name": "Violin",
+  "category": "modular",
+  "notes": "violinSeed: additive synthesis — OSC disabled, gen slots define the harmonic spectrum.\nReal violin G3 (195Hz): P2-P3 dominate (10-12x fundamental), slow attack 0.20s.\nAdditive partials at harmonic ratios; formant-bank approach doesn't work well for violin\nbecause body formants (462, 551Hz) don't align with harmonics of G3 (195Hz).\nSOLO violin (bowed saw through the BODY-RESONATOR BANK), tuned to mtg violin-d5 (Good-Sounds, D5≈590Hz,\nA=442). A bowed string is a SAWTOOTH (Helmholtz); a violin's character is its BODY. The pure-saw version\nsounded like an \"organ\"; the body bank (`body_model:1`, 22 narrow violin signature modes incl. the\n~2.6kHz bridge hill, in modular.c) drives the bowed saw through the violin body → woody body coloration\n(`body_mix` suppresses the dry as it rises so the body SHAPES the tone). A GENTLE note-SAFE high-pass\n(130Hz, sub-bass only — a higher HP killed low notes) + the body's modal de-emphasis tame the boomy\nfundamental the user flagged. Vibrato sweeps harmonics across the sharp modes; airy bow noise; 1 voice.\nNOTE: the real violin's dramatic shimmer (centroid-wobble 0.29) is mostly the PLAYER's expressive bowing\n(amplitude/brightness over the note) = performance, not static timbre — the body bank gives the body\ncoloration; full expressiveness would need bowing-dynamics modelling.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.3,
+        "amp_curve": 1,
+        "amp_decay": 0.1,
+        "amp_release": 0.2,
+        "amp_sustain": 0.9
+      },
+      "notes": "amp_attack: slower bowed onset to match ref attack ~0.21s (rendered onset was ~0.07s)"
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 1,
+        "body_model": 1,
+        "bow_dynamics": 0.25
+      },
+      "notes": "body_model: THE VIOLIN BODY — modal resonator bank = the organic body coloration\nbow_dynamics: BOWING DYNAMICS — slow random loudness+brightness motion (the bow pressure/speed) = the organic life vs a static \"organ\""
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.45,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 3100,
+        "filter_resonance": 0.9,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: centroid 2716Hz) — roll off the buzzy saw upper harmonics; LP cutoff just above\nfilter_resonance: the bridge hill (~2.5kHz) keeps the body color while taming H4+ richness.\nfilter_type: LOW-PASS: the mtg D5 ref is fundamental-dominated (Tristimulus T1=0.88,"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.08,
+        "lfo_depth": 0.025,
+        "lfo_rate": 3.6,
+        "lfo_target": 1
+      },
+      "notes": "lfo_enabled: vibrato — matched to the mtg D5 ref (a fairly STRAIGHT good-sounds note): ~3.6Hz, shallow ~±2c"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 0,
+        "unison_drift_depth": 0,
+        "unison_drift_rate": 0,
+        "unison_mix": 0.5,
+        "unison_voices": 1
+      },
+      "notes": "unison_voices: SOLO violin (one string), not a section"
+    }
+  },
+  "source": {
+    "type": "osc.bowed",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_bow_loss": 0.55,
+      "osc_bow_pos": 0.13,
+      "osc_bow_slope": 3,
+      "osc_bow_vel": 0.25
+    },
+    "notes": "osc_type: BOWED-STRING PHYSICAL MODEL (digital waveguide)"
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.5,
+        "env_fast_rate": 10,
+        "env_tail_mix": 0.85,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 2200,
+        "filt_q": 0.7,
+        "filt_type": 4,
+        "gain": 0.012,
+        "noise_offset": 0
+      },
+      "notes": "gen1_source: continuous airy bow-hair noise (high-passed so no low rumble)"
+    }
+  ]
+}

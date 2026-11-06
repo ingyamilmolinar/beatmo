@@ -1,6 +1,7 @@
 package uistate
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,7 +60,7 @@ func TestApplyOrderHitsAllSetters(t *testing.T) {
 		Camera: &CameraConfig{
 			X: ptrFloat(10), Y: ptrFloat(-3), Scale: ptrFloat(2), Center: true,
 		},
-		View:    &ViewConfig{Mode: "audio", MobileEQCollapsed: ptrBool(true)},
+		View:    &ViewConfig{Mode: ViewAudio, MobileEQCollapsed: ptrBool(true)},
 		Sidebar: &SidebarConfig{OpenNodeID: ptrInt(7)},
 	}
 	if err := apply(a, cfg); err != nil {
@@ -95,16 +96,19 @@ func TestApplyEmptyConfigCallsNothing(t *testing.T) {
 
 func TestApplyViewModeRowsAudioAndUnknown(t *testing.T) {
 	cases := []struct {
-		mode string
+		mode ViewMode
 		want []string
 	}{
-		{"rows", []string{"SetViewMode:false"}},
-		{"audio", []string{"SetViewMode:true"}},
-		{"garbage", nil},
-		{"", nil},
+		{ViewRows, []string{"SetViewMode:false"}},
+		{ViewAudio, []string{"SetViewMode:true"}},
+		{ViewUnset, nil},
+	}
+	var v ViewConfig
+	if err := json.Unmarshal([]byte(`{"mode":"garbage"}`), &v); err == nil {
+		t.Fatal("an unknown view mode decoded")
 	}
 	for _, tc := range cases {
-		t.Run(tc.mode, func(t *testing.T) {
+		t.Run(tc.mode.String(), func(t *testing.T) {
 			a := &fakeApplier{}
 			if err := apply(a, Config{View: &ViewConfig{Mode: tc.mode}}); err != nil {
 				t.Fatalf("apply: %v", err)
@@ -142,7 +146,7 @@ func TestApplyCameraPartialFields(t *testing.T) {
 func TestApplyFileEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ui-state.json")
-	body := []byte(`{"profile":"mobile","view":{"mode":"audio"},"camera":{"scale":1.5}}`)
+	body := []byte(`{"schema_version":"0.0.1","profile":"mobile","view":{"mode":"audio"},"camera":{"scale":1.5}}`)
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}

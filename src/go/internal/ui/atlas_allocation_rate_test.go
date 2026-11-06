@@ -36,6 +36,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestTimelineBarDrawDoesNotAllocPerBeat drives TimelineZone.Draw
@@ -52,7 +53,7 @@ func TestTimelineBarDrawDoesNotAllocPerBeat(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.drum.SetBPM(120)
 	buildSoakScene(t, g, 2, 4)
 
@@ -135,7 +136,7 @@ func TestPerTagAllocRateBoundedDuringPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.drum.SetBPM(120)
 	buildSoakScene(t, g, 2, 4)
 

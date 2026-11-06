@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // collectParityPitches reads the pitch the REAL scheduler computed at each
@@ -105,7 +106,7 @@ func TestRulePitchStepsPerRoundFromStart(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -150,7 +151,7 @@ func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -243,7 +244,7 @@ func TestRuleToggleOffOnGatesWithoutReanchor(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -333,7 +334,7 @@ func TestDisabledRulesAreInert(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -462,7 +463,7 @@ func TestRuleDeltaEditMidPlaybackContinuesRamp(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -553,7 +554,7 @@ func TestRuleEveryNEditMidPlaybackKeepsCycleCount(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -645,7 +646,7 @@ func TestRuleNewParamMidPlaybackAnchorsFresh(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
@@ -753,7 +754,7 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 
 	// Real play-start seam (transport button path).
 	g.drum.TriggerPlayPause()
@@ -897,7 +898,7 @@ func TestRuleSavedWhileStoppedStillRampsOnPlay(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.drum.TriggerPlayPause()
 	_ = g.Update()
 	setPlayStartForAbs(g, 0)
@@ -956,7 +957,7 @@ func TestMidPlayEditContinuityStillHolds(t *testing.T) {
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.drum.TriggerPlayPause()
 	_ = g.Update()
 	setPlayStartForAbs(g, 0)
@@ -1040,7 +1041,7 @@ func TestSeekPlayStartsRampAtSeek(t *testing.T) {
 	const seekRounds = 4
 	seekAbs := loopStart + seekRounds*loopLen
 	seekBeats := seekAbs / div
-	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {}
 	g.Seek(seekBeats)
 
 	// Real production play-start seam, starting FROM the seek position.

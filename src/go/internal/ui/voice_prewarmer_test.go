@@ -6,12 +6,15 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // newTestGameWithOrganAtPitch builds a Game whose row 0 plays the given melodic
 // instrument, with a single regular node at the given semitone pitch. Mirrors
 // buildTestGame's node-placement recipe (subdiv_safety_test.go).
-func newTestGameWithOrganAtPitch(t *testing.T, inst string, pitch int) *Game {
+func newTestGameWithOrganAtPitch(t *testing.T, inst instrument.ID, pitch int) *Game {
 	t.Helper()
 	g := buildTestGame(t)
 	// Neutralize the prewarmer BEFORE any updateBeatInfos below can fire it.
@@ -22,7 +25,16 @@ func newTestGameWithOrganAtPitch(t *testing.T, inst string, pitch int) *Game {
 	// the already-warm pitch and the tests below would observe zero warms. Tests
 	// install their own recorder via recordWarms after this; here we only want a
 	// clean cache so warmFromBeatInfos's enumeration decisions are observable.
-	g.voicePrewarmer.warmFn = func(string, float64) {}
+	g.voicePrewarmer.warmFn = func(instrument.ID, float64) {}
+	// Neutralizing OUR warmFn is not enough: globalVoiceCache is process-global
+	// and every earlier test in the package renders into it (the param-edit
+	// playback bench plays the startup demo's organ-church row for 240 steps ×
+	// 4 scenarios). Whatever it left warm makes warmPitch correctly skip, so the
+	// recorder below sees an arbitrary subset of the enumeration — that is what
+	// made these tests pass alone and fail under `make test-real`. Clear it here
+	// so the premise above ("a clean cache") is actually established. No-op
+	// under -tags test, where VoiceCached is always false anyway.
+	audio.ClearVoiceCacheForTest()
 	g.drum.Rows[0].Instrument = inst
 	g.pendingStartRow = 0
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -39,7 +51,7 @@ func newTestGameWithOrganAtPitch(t *testing.T, inst string, pitch int) *Game {
 func recordWarms(g *Game) (*sync.Mutex, map[warmKey]struct{}) {
 	var mu sync.Mutex
 	warmed := map[warmKey]struct{}{}
-	g.voicePrewarmer.warmFn = func(id string, pitch float64) {
+	g.voicePrewarmer.warmFn = func(id instrument.ID, pitch float64) {
 		mu.Lock()
 		warmed[warmKey{id: id, pitch: pitch}] = struct{}{}
 		mu.Unlock()
@@ -52,13 +64,13 @@ func recordWarms(g *Game) (*sync.Mutex, map[warmKey]struct{}) {
 // the prewarmer warmed exactly that (instrument, pitch). Under -tags test
 // audio.VoiceCached is always false, so every distinct pitch is submitted.
 func TestWarmFromBeatInfosEnumeratesNodePitches(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "organ-church", -2)
+	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 	mu, warmed := recordWarms(g)
 
 	g.updateBeatInfos() // builds beatInfosByRow, then warmFromBeatInfos()
 
 	mu.Lock()
-	_, ok := warmed[warmKey{id: "organ-church", pitch: -2.0}]
+	_, ok := warmed[warmKey{id: roster.OrganChurch, pitch: -2.0}]
 	mu.Unlock()
 	if !ok {
 		t.Fatalf("expected warm for (organ-church, -2.0); got %v", warmed)
@@ -69,8 +81,8 @@ func TestWarmFromBeatInfosEnumeratesNodePitches(t *testing.T) {
 // melodic instrument with ticks=1, a node at pitch -2 warms the 0.5st neighbors
 // (-2.5, -2.0, -1.5) so an immediate one-tick pitch nudge is a cache hit.
 func TestPitchNeighborhoodWarmedForMelodic(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "organ-church", -2)
-	g.voicePrewarmer.isMelodic = func(string) bool { return true }
+	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
+	g.voicePrewarmer.isMelodic = func(instrument.ID) bool { return true }
 	g.voicePrewarmer.ticks = 1
 	mu, warmed := recordWarms(g)
 
@@ -79,7 +91,7 @@ func TestPitchNeighborhoodWarmedForMelodic(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	for _, want := range []float64{-2.5, -2.0, -1.5} {
-		if _, ok := warmed[warmKey{id: "organ-church", pitch: want}]; !ok {
+		if _, ok := warmed[warmKey{id: roster.OrganChurch, pitch: want}]; !ok {
 			t.Errorf("melodic pitch neighbor %.1f not warmed; got %v", want, warmed)
 		}
 	}
@@ -88,8 +100,8 @@ func TestPitchNeighborhoodWarmedForMelodic(t *testing.T) {
 // TestPitchNeighborhoodSkippedForNonMelodic verifies non-melodic instruments get
 // ONLY the exact pitch (their pitch is a post-render resample — already a hit).
 func TestPitchNeighborhoodSkippedForNonMelodic(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "kick", 0)
-	g.voicePrewarmer.isMelodic = func(string) bool { return false }
+	g := newTestGameWithOrganAtPitch(t, roster.Kick, 0)
+	g.voicePrewarmer.isMelodic = func(instrument.ID) bool { return false }
 	g.voicePrewarmer.ticks = 1
 	mu, warmed := recordWarms(g)
 
@@ -97,10 +109,10 @@ func TestPitchNeighborhoodSkippedForNonMelodic(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if _, ok := warmed[warmKey{id: "kick", pitch: 0.5}]; ok {
+	if _, ok := warmed[warmKey{id: roster.Kick, pitch: 0.5}]; ok {
 		t.Errorf("non-melodic instrument should not warm pitch neighbors; got %v", warmed)
 	}
-	if _, ok := warmed[warmKey{id: "kick", pitch: 0.0}]; !ok {
+	if _, ok := warmed[warmKey{id: roster.Kick, pitch: 0.0}]; !ok {
 		t.Errorf("non-melodic instrument should still warm its exact pitch; got %v", warmed)
 	}
 }
@@ -109,7 +121,7 @@ func TestPitchNeighborhoodSkippedForNonMelodic(t *testing.T) {
 // collapses the many repeated beats of a looping melody to one warm per distinct
 // (instrument, pitch) pair — so a graph edit can't burst-flood the pool.
 func TestWarmFromBeatInfosWithinPassDedup(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "organ-church", -2)
+	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 	// Isolate dedup from pitch-neighborhood expansion: ticks defaults to the
 	// runtime profile's PredictiveWarmTicks (0 under -tags test, 1 on real
 	// desktop), which would fan the single pitch out to its ±0.5st neighbors and
@@ -118,7 +130,7 @@ func TestWarmFromBeatInfosWithinPassDedup(t *testing.T) {
 
 	var mu sync.Mutex
 	var calls int
-	g.voicePrewarmer.warmFn = func(id string, pitch float64) {
+	g.voicePrewarmer.warmFn = func(id instrument.ID, pitch float64) {
 		mu.Lock()
 		calls++
 		mu.Unlock()
@@ -140,14 +152,14 @@ func TestWarmFromBeatInfosWithinPassDedup(t *testing.T) {
 // (fired by a cache invalidation) re-submits them so a param edit does not leave
 // the next beat to cold-render.
 func TestReWarmInstrumentReplaysEnumeratedPitches(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "organ-church", -2)
+	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 	g.voicePrewarmer.warmFromBeatInfos() // record pitchesByInst
 
 	mu, warmed := recordWarms(g)
-	g.voicePrewarmer.reWarmInstrument("organ-church")
+	g.voicePrewarmer.reWarmInstrument(roster.OrganChurch)
 
 	mu.Lock()
-	_, ok := warmed[warmKey{id: "organ-church", pitch: -2.0}]
+	_, ok := warmed[warmKey{id: roster.OrganChurch, pitch: -2.0}]
 	mu.Unlock()
 	if !ok {
 		t.Fatalf("reWarmInstrument should replay (organ-church, -2.0); got %v", warmed)
@@ -158,15 +170,15 @@ func TestReWarmInstrumentReplaysEnumeratedPitches(t *testing.T) {
 // warms the exact post-effect pitch handed to scheduleSound — the coverage for
 // group-transposed/dynamic pitches beyond the enumerated window.
 func TestScheduleSoundBackstopWarmsExactPitch(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "organ-church", 0)
+	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, 0)
 	mu, warmed := recordWarms(g)
 
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular}
 	// A pitch the enumeration would not have produced (simulated group transpose).
-	g.scheduleSound(0, 0, info, "organ-church", 0.8, 7.0, 1.0, math.NaN(), true)
+	g.scheduleSound(0, 0, info, roster.OrganChurch, 0.8, 7.0, 1.0, math.NaN(), true)
 
 	mu.Lock()
-	_, ok := warmed[warmKey{id: "organ-church", pitch: 7.0}]
+	_, ok := warmed[warmKey{id: roster.OrganChurch, pitch: 7.0}]
 	mu.Unlock()
 	if !ok {
 		t.Fatalf("backstop should warm (organ-church, 7.0); got %v", warmed)

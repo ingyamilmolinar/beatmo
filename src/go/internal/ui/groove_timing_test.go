@@ -5,6 +5,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Build a simple 1-beat edge with two nodes: 0 -> 32.
@@ -23,7 +24,7 @@ func captureScheduledWhen(t *testing.T, g *Game) float64 {
 	t.Helper()
 	whenCh := make(chan float64, 1)
 	baseCh := make(chan float64, 1)
-	g.playFn = func(id string, vol float64, when ...float64) {
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {
 		if len(when) > 0 {
 			whenCh <- when[0]
 			return
@@ -60,7 +61,7 @@ func TestGrooveDelaySchedulesWithinOneSubdivision(t *testing.T) {
 	a, _ := buildEdge(g)
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.GrooveKind = "delay"
+		p.GrooveKind = model.GrooveDelay
 		p.GroovePct = 1.0
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -87,7 +88,7 @@ func TestGrooveRushClampedWithinSubdivision(t *testing.T) {
 	a, _ := buildEdge(g)
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
-		p.GrooveKind = "rush"
+		p.GrooveKind = model.GrooveRush
 		p.GroovePct = 1.0
 		g.graph.SetNodeParams(a.ID, p)
 	}
@@ -101,5 +102,52 @@ func TestGrooveRushClampedWithinSubdivision(t *testing.T) {
 	expected := -secPerSub
 	if diff := when - expected; diff < -0.003 || diff > 0.003 {
 		t.Fatalf("rush schedule mismatch: got %.4fs want %.4fs", when, expected)
+	}
+}
+
+// TestGrooveAppliesOnlyToItsOwnNode pins that a node's groove is that node's
+// alone. The scheduler used to lend the nearest grooved node's offset (within
+// two beats) to every following node that had none, so a single swung offbeat
+// delayed the next downbeat by the same amount — swing degenerated into a
+// shift of the whole phrase. Generated templates rely on this: swing, tuplets
+// and grace notes are all per-node delay/rush on otherwise straight nodes.
+func TestGrooveAppliesOnlyToItsOwnNode(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	a, b := buildEdge(g)
+	if n, ok := g.graph.GetNodeByID(a.ID); ok {
+		p := n.Params
+		p.GrooveKind = model.GrooveDelay
+		p.GroovePct = 1.0
+		g.graph.SetNodeParams(a.ID, p)
+	}
+	bpm := 120
+	g.drum.SetBPM(bpm)
+	g.SetAppliedBPMForTest(bpm)
+	secPerSub := (60.0 / float64(bpm)) / float64(g.grid.MaxDiv())
+
+	infoA := g.beatInfoAtRow(0, 0)
+	if infoA.NodeID != a.ID {
+		t.Fatalf("beat 0 resolves to node %d, want %d", infoA.NodeID, a.ID)
+	}
+	if got := g.nodeNudgeSecondsAt(0, 0, infoA); got < secPerSub-1e-9 || got > secPerSub+1e-9 {
+		t.Fatalf("grooved node nudge = %.5fs, want %.5fs", got, secPerSub)
+	}
+
+	idxB := -1
+	for idx := 1; idx < 64; idx++ {
+		if g.beatInfoAtRow(0, idx).NodeID == b.ID {
+			idxB = idx
+			break
+		}
+	}
+	if idxB < 0 {
+		t.Fatal("node b not found on row 0")
+	}
+	if got := g.nodeNudgeSecondsAt(0, idxB, g.beatInfoAtRow(0, idxB)); got != 0 {
+		t.Fatalf("ungrooved node after a grooved one was nudged by %.5fs; groove must not leak to the next node", got)
 	}
 }

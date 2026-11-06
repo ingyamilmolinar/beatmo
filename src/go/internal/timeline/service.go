@@ -32,6 +32,20 @@ func (s *Service) ArchiveLenForTest(row int) int {
 	return 0
 }
 
+// ensureSupersededLocked returns (creating if necessary) the per-row store of
+// passes abandoned by a backward seek. Caller must hold s.mu.
+func (s *Service) ensureSupersededLocked(row int) *rowArchive {
+	if s.superseded == nil {
+		s.superseded = make(map[int]*rowArchive)
+	}
+	a := s.superseded[row]
+	if a == nil {
+		a = &rowArchive{}
+		s.superseded[row] = a
+	}
+	return a
+}
+
 // ensureArchiveLocked returns (creating if necessary) the per-row cold archive.
 // Caller must hold s.mu.
 func (s *Service) ensureArchiveLocked(row int) *rowArchive {

@@ -5,13 +5,16 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestMelodicPitchRerender_DrumsByteIdentical is HARD GATE 1.
 //
 // Asserts that kick voice rendering and playback output is UNCHANGED after the
 // per-pitch re-render feature is introduced:
-//   - pitchAwareRecipe returns false for drum-kick
+//   - IsMelodicInstrument is false for the kick
 //   - the voiceCacheKey for kick has pitch=0 (not in key for non-pitch-aware)
 //   - the resample path in PlayParams is unchanged for drums
 //
@@ -19,24 +22,23 @@ import (
 // byte-identical (both take the legacy resample path, NOT the pitched render
 // path), and the cache key used does NOT include any pitch delta.
 func TestMelodicPitchRerender_DrumsByteIdentical(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("kick") })
-	ResetInstrumentParams("kick")
+	t.Cleanup(func() { ResetInstrumentParams(roster.Kick) })
+	ResetInstrumentParams(roster.Kick)
 
-	// Verify pitchAwareRecipe returns false for drums.
-	kickRecipe := RecipeForInstrument("kick")
-	if pitchAwareRecipe(kickRecipe) {
-		t.Fatalf("pitchAwareRecipe(%q) = true; want false for drum", kickRecipe)
+	// The kick is not melodic.
+	if IsMelodicInstrument(roster.Kick) {
+		t.Fatal("IsMelodicInstrument(kick) = true; want false for a drum")
 	}
 
 	// newRecipeAwareVoicePitched with a drum must fall through to the
 	// non-pitched path (legacy/resample). Get two voices at pitch=+12 and
 	// drain them — they should be byte-identical because the resampled
 	// buffer is the same cached base buffer.
-	SetInstrumentParam("kick", "decay", 0.4) // force recipe path so we hit cache
-	t.Cleanup(func() { ResetInstrumentParams("kick") })
+	SetInstrumentParam(roster.Kick, "amp_decay", 0.4) // force recipe path so we hit cache
+	t.Cleanup(func() { ResetInstrumentParams(roster.Kick) })
 
-	v1 := newRecipeAwareVoicePitched("kick", 120, 44100, 12.0)
-	v2 := newRecipeAwareVoicePitched("kick", 120, 44100, 12.0)
+	v1 := newRecipeAwareVoicePitched(roster.Kick, 44100, 12.0)
+	v2 := newRecipeAwareVoicePitched(roster.Kick, 44100, 12.0)
 	if v1 == nil || v2 == nil {
 		t.Fatal("newRecipeAwareVoicePitched returned nil for kick")
 	}
@@ -59,9 +61,8 @@ func TestMelodicPitchRerender_DrumsByteIdentical(t *testing.T) {
 	// Confirm the cache key for drum kick has pitch=0 (non-pitch-aware).
 	// This is structural: by not being pitch-aware, the code path produces
 	// a key with pitch=0 regardless of the node pitch argument.
-	recipeID := RecipeForInstrument("kick")
-	if pitchAwareRecipe(recipeID) {
-		t.Errorf("pitchAwareRecipe(%q) must be false to guarantee byte-identical drum cache keys", recipeID)
+	if IsMelodicInstrument(roster.Kick) {
+		t.Error("IsMelodicInstrument(kick) must be false to guarantee byte-identical drum cache keys")
 	}
 }
 
@@ -80,7 +81,7 @@ func TestMelodicPitchRerender_DrumsByteIdentical(t *testing.T) {
 //  4. Assert that (2) and (3) differ materially (non-zero L1 distance).
 //     If they were identical, we'd just be resampling under the hood.
 func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("violin") })
+	t.Cleanup(func() { ResetInstrumentParams(roster.Violin) })
 
 	// Force recipe path by setting a param so RecipeDefaultsCustomized or
 	// params check passes in tryRecipeVoicePitched (pitch value alone suffices
@@ -91,9 +92,9 @@ func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
 	const sr = 44100
 
 	// 1. Render violin at pitch=0.
-	v0, ok0 := tryRecipeVoicePitched("violin", 120, sr, 0)
+	v0, ok0 := tryRecipeVoicePitched(roster.Violin, sr, 0)
 	if !ok0 || v0 == nil {
-		t.Fatal("tryRecipeVoicePitched(violin, pitch=0) returned nil/false")
+		t.Fatal("tryRecipeVoicePitched(violin) returned nil/false")
 	}
 	buf0 := drainVoiceToBuffer(v0, sr)
 	if len(buf0) == 0 {
@@ -101,9 +102,9 @@ func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
 	}
 
 	// 2. Render violin at pitch=+12 (octave up, re-rendered in C).
-	v12, ok12 := tryRecipeVoicePitched("violin", 120, sr, 12)
+	v12, ok12 := tryRecipeVoicePitched(roster.Violin, sr, 12)
 	if !ok12 || v12 == nil {
-		t.Fatal("tryRecipeVoicePitched(violin, pitch=12) returned nil/false")
+		t.Fatal("tryRecipeVoicePitched(violin) returned nil/false")
 	}
 	buf12 := drainVoiceToBuffer(v12, sr)
 	if len(buf12) == 0 {
@@ -135,31 +136,31 @@ func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
 // TestPitchAwareRecipe_MelodicTrue asserts the set of melodic recipe IDs is
 // correctly classified as pitch-aware.
 func TestPitchAwareRecipe_MelodicTrue(t *testing.T) {
-	melodic := []string{
-		"synth-modular-violin",
-		"synth-modular-violin-ensemble",
-		"synth-modular-cello",
-		"synth-modular-cello-warm",
-		"synth-modular-guitar-nylon",
-		"synth-modular-guitar-nylon-bright",
-		"synth-modular-guitar-steel",
-		"synth-modular-guitar-steel-warm",
-		"synth-modular-guitar-electric",
-		"synth-modular-guitar-electric-neck",
-		"synth-modular-piano-grand",
-		"synth-modular-piano-felt",
-		"synth-modular-flute",
-		"synth-modular-flute-breathy",
-		"synth-modular-oboe",
-		"synth-modular-oboe-full",
-		"synth-modular-trumpet",
-		"synth-modular-trumpet-mellow",
-		"synth-modular-french-horn",
-		"synth-modular-french-horn-loud",
+	melodic := []instrument.ID{
+		roster.Violin,
+		roster.ViolinEnsemble,
+		roster.Cello,
+		roster.CelloWarm,
+		roster.GuitarNylon,
+		roster.GuitarNylonBright,
+		roster.GuitarSteel,
+		roster.GuitarSteelWarm,
+		roster.GuitarElectric,
+		roster.GuitarElectricNeck,
+		roster.PianoGrand,
+		roster.PianoFelt,
+		roster.Flute,
+		roster.FluteBreathy,
+		roster.Oboe,
+		roster.OboeFull,
+		roster.Trumpet,
+		roster.TrumpetMellow,
+		roster.FrenchHorn,
+		roster.FrenchHornLoud,
 	}
 	for _, id := range melodic {
-		if !pitchAwareRecipe(id) {
-			t.Errorf("pitchAwareRecipe(%q) = false; want true", id)
+		if !IsMelodicInstrument(id) {
+			t.Errorf("IsMelodicInstrument(%q) = false; want true", id)
 		}
 	}
 }
@@ -167,16 +168,16 @@ func TestPitchAwareRecipe_MelodicTrue(t *testing.T) {
 // TestPitchAwareRecipe_NonMelodicFalse asserts that drums, FM, base modular,
 // and modular-pad are NOT pitch-aware.
 func TestPitchAwareRecipe_NonMelodicFalse(t *testing.T) {
-	nonMelodic := []string{
-		"drum-kick", "drum-snare", "drum-hihat", "drum-clap", "drum-tom",
-		"drum-cowbell", "drum-sub-bass",
-		"fm-bass", "fm-bell", "fm-lead", "fm-epiano", "fm-pluck",
-		"synth-modular",
-		"synth-modular-pad",
+	nonMelodic := []instrument.ID{
+		roster.Kick, roster.Snare, roster.Hihat, roster.Clap, roster.Tom,
+		roster.Cowbell, roster.SubBass,
+		roster.FmBass, roster.FmBell, roster.FmLead, roster.FmEpiano, roster.FmPluck,
+		roster.Modular,
+		roster.ModularPad,
 	}
 	for _, id := range nonMelodic {
-		if pitchAwareRecipe(id) {
-			t.Errorf("pitchAwareRecipe(%q) = true; want false", id)
+		if IsMelodicInstrument(id) {
+			t.Errorf("IsMelodicInstrument(%q) = true; want false", id)
 		}
 	}
 }
@@ -185,14 +186,14 @@ func TestPitchAwareRecipe_NonMelodicFalse(t *testing.T) {
 // for a melodic instrument includes the rounded pitch, so different pitches
 // produce distinct cache entries.
 func TestMelodicPitchRerender_CacheKeyIncludesPitch(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("violin") })
+	t.Cleanup(func() { ResetInstrumentParams(roster.Violin) })
 
 	const sr = 44100
 	vc := newTestCache()
 
 	// Manufacture two keys at different pitches.
-	k0 := voiceCacheKey{instrumentID: "violin", bpm: 0, sampleRate: sr, paramsHash: 0, pitch: 0}
-	k12 := voiceCacheKey{instrumentID: "violin", bpm: 0, sampleRate: sr, paramsHash: 0, pitch: 12}
+	k0 := voiceCacheKey{instrumentID: roster.Violin, sampleRate: sr, paramsHash: 0, pitch: 0}
+	k12 := voiceCacheKey{instrumentID: roster.Violin, sampleRate: sr, paramsHash: 0, pitch: 12}
 
 	vc.Put(k0, []float32{1.0})
 	vc.Put(k12, []float32{2.0})

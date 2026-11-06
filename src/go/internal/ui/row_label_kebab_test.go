@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -20,7 +21,7 @@ func newKebabTestDrumView(t *testing.T) *DrumView {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -39,8 +40,8 @@ func newKebabTestDrumView(t *testing.T) *DrumView {
 	return dv
 }
 
-// TestRowKebab_StyledAsChip pins the row-menu button visual contract:
-// rounded.sm chip background at AlphaSubtle, an "overflow" icon, and at
+// TestRowKebab_StyledAsChip pins the row-menu button visual contract: the
+// neutral row-control body at rounded.control, an "overflow" icon, and at
 // least TouchMinTarget() height. The button is visible on desktop layout
 // (col 5 of the row rack); on mobile it is hidden and context menu is
 // triggered by tapping the row label instead.
@@ -58,12 +59,12 @@ func TestRowKebab_StyledAsChip(t *testing.T) {
 	if b.Icon != "overflow" {
 		t.Errorf("row-kebab Icon=%q, want 'overflow'", b.Icon)
 	}
-	cs, ok := b.Style.(ButtonStyle)
+	cs, ok := b.Style.(rowToggleVisual)
 	if !ok {
-		t.Fatalf("row-kebab Style is not ButtonStyle, got %T", b.Style)
+		t.Fatalf("row-kebab Style is not the row-control visual, got %T", b.Style)
 	}
-	if cs.Radius != RadiusSM {
-		t.Errorf("row-kebab Radius=%v, want RadiusSM (%v)", cs.Radius, RadiusSM)
+	if cs.Radius != RadiusControl {
+		t.Errorf("row-kebab Radius=%v, want RadiusControl (%v)", cs.Radius, RadiusControl)
 	}
 	kebabRect := b.Rect()
 	if kebabRect.Empty() {

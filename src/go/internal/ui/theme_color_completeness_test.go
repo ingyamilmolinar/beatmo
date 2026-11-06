@@ -61,6 +61,26 @@ func TestThemeColorsTokenized(t *testing.T) {
 		}
 	}
 
+	// Since the runtime-theme refactor the initialisers live as assignments
+	// inside rebuildThemeAliases() (re-run after ApplyTheme); walk them too.
+	for _, decl := range file.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != "rebuildThemeAliases" || fd.Body == nil {
+			continue
+		}
+		for _, st := range fd.Body.List {
+			as, ok := st.(*ast.AssignStmt)
+			if !ok || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+				continue
+			}
+			id, ok := as.Lhs[0].(*ast.Ident)
+			if !ok || !isColorLiteral(as.Rhs[0]) {
+				continue
+			}
+			declared = append(declared, id.Name)
+		}
+	}
+
 	if len(declared) == 0 {
 		t.Fatalf("AST walk found no color.RGBA/NRGBA declarations in theme.go — parser regression?")
 	}
@@ -165,36 +185,38 @@ func isColorLiteral(expr ast.Expr) bool {
 // YAML entry. Updates to this set must mirror updates to the drift test
 // — the discipline is "three places to update" by design.
 var tokenBackedColorNames = map[string]bool{
-	"colAccent":        true,
-	"colAccentBright":  true,
-	"colAccentDim":     true,
-	"colBGTop":         true,
-	"colSurface1":      true,
-	"colSurface2":      true,
-	"colSurface3":      true,
-	"colTextPrimary":   true,
-	"colTextSecondary": true,
-	"colTextDisabled":  true,
-	"colTextAccent":    true,
-	"colPlayGreen":     true,
-	"colStopRed":       true,
-	"colMuteRed":       true,
-	"colDeleteFill":    true,
-	"colDeleteBorder":  true,
-	"colEQBar":         true,
-	"colEQBarPeak":     true,
-	"colWaveTrace":     true,
-	"colVizBass":       true, // viz-bass (Phase 5 audio-panel spectrum tinting)
-	"colVizMids":       true, // viz-mids
-	"colVizTreble":     true, // viz-treble
-	"colPanelBG":       true, // surface-overlay
-	"colEQBg":          true, // viz-bg
-	"colEQCurve":       true, // viz-curve
-	"colWaveMid":       true, // viz-wave-b
-	"colRecordIdle":    true,
-	"colRecordActive":  true,
-	"colBorderSubtle":  true, // colors.border (white base)
-	"colGridHorizon":   true, // grid-horizon (sunset grid-pane backdrop)
+	"colRackSurface":      true, // DESIGN.md rack-bed
+	"colTransportSurface": true, // DESIGN.md toolbar-bed
+	"colAccent":           true,
+	"colAccentBright":     true,
+	"colAccentDim":        true,
+	"colBGTop":            true,
+	"colSurface1":         true,
+	"colSurface2":         true,
+	"colSurface3":         true,
+	"colTextPrimary":      true,
+	"colTextSecondary":    true,
+	"colTextDisabled":     true,
+	"colTextAccent":       true,
+	"colPlayGreen":        true,
+	"colStopRed":          true,
+	"colMuteRed":          true,
+	"colDeleteFill":       true,
+	"colDeleteBorder":     true,
+	"colEQBar":            true,
+	"colEQBarPeak":        true,
+	"colWaveTrace":        true,
+	"colVizBass":          true, // viz-bass (Phase 5 audio-panel spectrum tinting)
+	"colVizMids":          true, // viz-mids
+	"colVizTreble":        true, // viz-treble
+	"colPanelBG":          true, // surface-overlay
+	"colEQBg":             true, // viz-bg
+	"colEQCurve":          true, // viz-curve
+	"colWaveMid":          true, // viz-wave-b
+	"colRecordIdle":       true,
+	"colRecordActive":     true,
+	"colBorderSubtle":     true, // colors.border (white base)
+	"colGridHorizon":      true, // grid-horizon (sunset grid-pane backdrop)
 }
 
 // untokenizedAllowlist names colors that are intentionally not in DESIGN.md's
@@ -204,6 +226,43 @@ var tokenBackedColorNames = map[string]bool{
 // preference is always to lift values into DESIGN.md when a real semantic
 // role exists.
 var untokenizedAllowlist = map[string]string{
+	// ── Folded per-file derivations (theme rebuild) ──
+	"colScopeA":               "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeB":               "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeAFill":           "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeBFill":           "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeDiff":            "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeDiffFill":        "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeBg":              "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeGrid":            "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeGridMid":         "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colScopeFrozenBorder":    "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"meterLow":                "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"meterMid":                "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"meterHigh":               "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"meterBg":                 "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"meterClip":               "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colSpectrumBandEmphasis": "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colSpectrumCurveFill":    "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colSpectrumBarTop":       "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colSpectrumBarMid":       "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colSpectrumBarBase":      "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colWaveTraceFill":        "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colConceptFill":          "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colConceptStroke":        "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphLo":              "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphHi":              "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphBefore":          "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphDiff":            "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphGrid":            "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphPlotBg":          "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphGlow":            "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colGraphGlowRing":        "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
+	"colFuzzyHighlight":       "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"pillCapFillActive":       "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"pillCapBorderActive":     "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+	"pillTextActive":          "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
+
 	// Surfaces / backgrounds
 	"colBGBottom": "alias of colBGTop (gradient endpoint, currently identical) — collapse if gradient remains flat",
 
@@ -271,9 +330,8 @@ var untokenizedAllowlist = map[string]string{
 	"colEQFilterLine":         "EQ filter band line — handle color at 60/255",
 
 	// Transport pill group
-	"colTransportDivider":     "transport divider — border base at 20/255",
-	"colTransportGroupBG":     "transport pill container fill — white@10",
-	"colTransportGroupBorder": "transport pill container border — white@15",
+	"colTransportDivider": "transport divider — border base at 20/255",
+	"colTransportGroupBG": "transport pill container fill — white@10",
 
 	// Mute / solo active borders
 	"colMuteActiveBdr": "mute active button border — sibling of TokenMuteActiveFill",

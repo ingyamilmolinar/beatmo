@@ -75,11 +75,11 @@ EXPORT void ifx_distortion_process(ifx_distortion_t *d,
     d->lp_y1 = lp_y1;
 }
 
-EXPORT void ifx_distortion_reset(ifx_distortion_t *d) {
+void ifx_distortion_reset(ifx_distortion_t *d) {
     d->lp_y1 = 0;
 }
 
-EXPORT void ifx_distortion_set_param(ifx_distortion_t *d,
+void ifx_distortion_set_param(ifx_distortion_t *d,
                                       const char *name, float value) {
     if (strcmp(name, "drive") == 0) {
         d->drive_tgt = clampf(value, 1, 20);
@@ -191,7 +191,7 @@ EXPORT void ifx_delay_process(ifx_delay_t *d,
     d->mix      = mix;
 }
 
-EXPORT void ifx_delay_reset(ifx_delay_t *d) {
+void ifx_delay_reset(ifx_delay_t *d) {
     if (d->buf && d->buf_len > 0) {
         memset(d->buf, 0, (size_t)d->buf_len * sizeof(float));
     }
@@ -201,7 +201,7 @@ EXPORT void ifx_delay_reset(ifx_delay_t *d) {
     d->xfade_pos = 0;
 }
 
-EXPORT void ifx_delay_set_param(ifx_delay_t *d, const char *name, float value) {
+void ifx_delay_set_param(ifx_delay_t *d, const char *name, float value) {
     if (strcmp(name, "time") == 0) {
         float new_time = clampf(value, 10, 1000);
         float sr = (float)d->sr;
@@ -327,7 +327,7 @@ EXPORT void ifx_reverb_process(ifx_reverb_t *r,
     r->mix     = mix;
 }
 
-EXPORT void ifx_reverb_reset(ifx_reverb_t *r) {
+void ifx_reverb_reset(ifx_reverb_t *r) {
     for (int i = 0; i < 4; i++) {
         if (r->combs[i].buf && r->combs[i].length > 0) {
             memset(r->combs[i].buf, 0, (size_t)r->combs[i].length * sizeof(float));
@@ -343,7 +343,7 @@ EXPORT void ifx_reverb_reset(ifx_reverb_t *r) {
     }
 }
 
-EXPORT void ifx_reverb_set_param(ifx_reverb_t *r,
+void ifx_reverb_set_param(ifx_reverb_t *r,
                                   const char *name, float value) {
     if (strcmp(name, "room") == 0) {
         r->room_tgt = clampf(value, 0, 1);
@@ -440,7 +440,7 @@ EXPORT void ifx_chorus_process(ifx_chorus_t *c,
     c->pos   = pos;
 }
 
-EXPORT void ifx_chorus_reset(ifx_chorus_t *c) {
+void ifx_chorus_reset(ifx_chorus_t *c) {
     if (c->buf && c->buf_len > 0) {
         memset(c->buf, 0, (size_t)c->buf_len * sizeof(float));
     }
@@ -448,7 +448,7 @@ EXPORT void ifx_chorus_reset(ifx_chorus_t *c) {
     c->phase = 0;
 }
 
-EXPORT void ifx_chorus_set_param(ifx_chorus_t *c,
+void ifx_chorus_set_param(ifx_chorus_t *c,
                                   const char *name, float value) {
     if (strcmp(name, "rate") == 0) {
         c->rate_tgt = clampf(value, 0.1f, 10);
@@ -492,12 +492,12 @@ EXPORT void ifx_bitcrusher_process(ifx_bitcrusher_t *b,
     b->hold_value   = hold_value;
 }
 
-EXPORT void ifx_bitcrusher_reset(ifx_bitcrusher_t *b) {
+void ifx_bitcrusher_reset(ifx_bitcrusher_t *b) {
     b->hold_counter = 0;
     b->hold_value   = 0;
 }
 
-EXPORT void ifx_bitcrusher_set_param(ifx_bitcrusher_t *b,
+void ifx_bitcrusher_set_param(ifx_bitcrusher_t *b,
                                       const char *name, float value) {
     if (strcmp(name, "bits") == 0) {
         b->bits = clampf(value, 2, 16);
@@ -549,11 +549,11 @@ EXPORT void ifx_waveshaper_process(ifx_waveshaper_t *w,
     }
 }
 
-EXPORT void ifx_waveshaper_reset(ifx_waveshaper_t *w) {
+void ifx_waveshaper_reset(ifx_waveshaper_t *w) {
     (void)w; /* stateless */
 }
 
-EXPORT void ifx_waveshaper_set_param(ifx_waveshaper_t *w,
+void ifx_waveshaper_set_param(ifx_waveshaper_t *w,
                                       const char *name, float value) {
     if (strcmp(name, "curve") == 0) {
         w->curve = (int)(clampf(value, 0, 3) + 0.5f);
@@ -602,11 +602,11 @@ EXPORT void ifx_ringmod_process(ifx_ringmod_t *r,
     r->phase = phase;
 }
 
-EXPORT void ifx_ringmod_reset(ifx_ringmod_t *r) {
+void ifx_ringmod_reset(ifx_ringmod_t *r) {
     r->phase = 0;
 }
 
-EXPORT void ifx_ringmod_set_param(ifx_ringmod_t *r,
+void ifx_ringmod_set_param(ifx_ringmod_t *r,
                                     const char *name, float value) {
     if (strcmp(name, "frequency") == 0) {
         r->frequency = clampf(value, 20, 5000);
@@ -671,11 +671,11 @@ EXPORT void ifx_tremolo_process(ifx_tremolo_t *t,
     t->phase = phase;
 }
 
-EXPORT void ifx_tremolo_reset(ifx_tremolo_t *t) {
+void ifx_tremolo_reset(ifx_tremolo_t *t) {
     t->phase = 0;
 }
 
-EXPORT void ifx_tremolo_set_param(ifx_tremolo_t *t,
+void ifx_tremolo_set_param(ifx_tremolo_t *t,
                                     const char *name, float value) {
     if (strcmp(name, "rate") == 0) {
         t->rate = clampf(value, 0.5f, 20);
@@ -731,11 +731,11 @@ EXPORT void ifx_gate_process(ifx_gate_t *g,
     g->envelope = env;
 }
 
-EXPORT void ifx_gate_reset(ifx_gate_t *g) {
+void ifx_gate_reset(ifx_gate_t *g) {
     g->envelope = 0;
 }
 
-EXPORT void ifx_gate_set_param(ifx_gate_t *g,
+void ifx_gate_set_param(ifx_gate_t *g,
                                  const char *name, float value) {
     float sr = (float)g->sr;
     if (sr <= 0) sr = 44100;
@@ -793,11 +793,11 @@ EXPORT void ifx_limiter_process(ifx_limiter_t *l,
     l->envelope = env;
 }
 
-EXPORT void ifx_limiter_reset(ifx_limiter_t *l) {
+void ifx_limiter_reset(ifx_limiter_t *l) {
     l->envelope = 0;
 }
 
-EXPORT void ifx_limiter_set_param(ifx_limiter_t *l,
+void ifx_limiter_set_param(ifx_limiter_t *l,
                                     const char *name, float value) {
     float sr = (float)l->sr;
     if (sr <= 0) sr = 44100;
@@ -883,7 +883,7 @@ EXPORT void ifx_flanger_process(ifx_flanger_t *f,
     f->last_read = last_read;
 }
 
-EXPORT void ifx_flanger_reset(ifx_flanger_t *f) {
+void ifx_flanger_reset(ifx_flanger_t *f) {
     if (f->buf && f->buf_len > 0) {
         memset(f->buf, 0, (size_t)f->buf_len * sizeof(float));
     }
@@ -892,7 +892,7 @@ EXPORT void ifx_flanger_reset(ifx_flanger_t *f) {
     f->last_read = 0;
 }
 
-EXPORT void ifx_flanger_set_param(ifx_flanger_t *f,
+void ifx_flanger_set_param(ifx_flanger_t *f,
                                     const char *name, float value) {
     if (strcmp(name, "rate") == 0) {
         f->rate = clampf(value, 0.1f, 10);
@@ -961,14 +961,14 @@ EXPORT void ifx_phaser_process(ifx_phaser_t *p,
     p->fb_sample = fb;
 }
 
-EXPORT void ifx_phaser_reset(ifx_phaser_t *p) {
+void ifx_phaser_reset(ifx_phaser_t *p) {
     p->phase     = 0;
     p->fb_sample = 0;
     memset(p->x1, 0, sizeof(p->x1));
     memset(p->y1, 0, sizeof(p->y1));
 }
 
-EXPORT void ifx_phaser_set_param(ifx_phaser_t *p,
+void ifx_phaser_set_param(ifx_phaser_t *p,
                                    const char *name, float value) {
     if (strcmp(name, "stages") == 0) {
         p->stages = (int)clampf(value, 2, 12);
@@ -1064,14 +1064,14 @@ EXPORT void ifx_autowah_process(ifx_autowah_t *a,
     a->lp        = lp_state;
 }
 
-EXPORT void ifx_autowah_reset(ifx_autowah_t *a) {
+void ifx_autowah_reset(ifx_autowah_t *a) {
     a->env       = 0;
     a->lfo_phase = 0;
     a->bp        = 0;
     a->lp        = 0;
 }
 
-EXPORT void ifx_autowah_set_param(ifx_autowah_t *a,
+void ifx_autowah_set_param(ifx_autowah_t *a,
                                     const char *name, float value) {
     if (strcmp(name, "sensitivity") == 0) {
         a->sensitivity = clampf(value, 0, 1);
@@ -1144,11 +1144,11 @@ EXPORT void ifx_compressor_process(ifx_compressor_t *c,
     c->envelope = env;
 }
 
-EXPORT void ifx_compressor_reset(ifx_compressor_t *c) {
+void ifx_compressor_reset(ifx_compressor_t *c) {
     c->envelope = 0;
 }
 
-EXPORT void ifx_compressor_set_param(ifx_compressor_t *c,
+void ifx_compressor_set_param(ifx_compressor_t *c,
                                        const char *name, float value) {
     float sr = (float)c->sr;
     if (sr <= 0) sr = 44100;
@@ -1226,12 +1226,12 @@ EXPORT void ifx_transient_process(ifx_transient_t *t,
     t->slow_env = slow_env;
 }
 
-EXPORT void ifx_transient_reset(ifx_transient_t *t) {
+void ifx_transient_reset(ifx_transient_t *t) {
     t->fast_env = 0;
     t->slow_env = 0;
 }
 
-EXPORT void ifx_transient_set_param(ifx_transient_t *t,
+void ifx_transient_set_param(ifx_transient_t *t,
                                       const char *name, float value) {
     if (strcmp(name, "attack") == 0) {
         t->attack_gain = clampf(value, 0, 200) * 0.01f;
@@ -1345,7 +1345,7 @@ EXPORT void ifx_tape_process(ifx_tape_t *t,
     t->pos             = pos;
 }
 
-EXPORT void ifx_tape_reset(ifx_tape_t *t) {
+void ifx_tape_reset(ifx_tape_t *t) {
     t->lp_y1          = 0;
     t->wow_phase       = 0;
     t->flutter_phase   = 0;
@@ -1355,7 +1355,7 @@ EXPORT void ifx_tape_reset(ifx_tape_t *t) {
     }
 }
 
-EXPORT void ifx_tape_set_param(ifx_tape_t *t,
+void ifx_tape_set_param(ifx_tape_t *t,
                                  const char *name, float value) {
     if (strcmp(name, "drive") == 0) {
         t->drive = clampf(value, 1, 10);
@@ -1463,7 +1463,7 @@ EXPORT void ifx_pitchshift_process(ifx_pitchshift_t *p,
     p->write_pos = wpos;
 }
 
-EXPORT void ifx_pitchshift_reset(ifx_pitchshift_t *p) {
+void ifx_pitchshift_reset(ifx_pitchshift_t *p) {
     if (p->buf && p->buf_len > 0) {
         memset(p->buf, 0, (size_t)p->buf_len * sizeof(float));
     }
@@ -1472,7 +1472,7 @@ EXPORT void ifx_pitchshift_reset(ifx_pitchshift_t *p) {
     p->head_b    = p->window_samples * 0.5f;
 }
 
-EXPORT void ifx_pitchshift_set_param(ifx_pitchshift_t *p,
+void ifx_pitchshift_set_param(ifx_pitchshift_t *p,
                                        const char *name, float value) {
     if (strcmp(name, "pitch") == 0) {
         p->pitch = clampf(value, -24, 24);
@@ -1573,11 +1573,11 @@ EXPORT void ifx_filter_process(ifx_filter_t *f,
     f->y1 = y1; f->y2 = y2;
 }
 
-EXPORT void ifx_filter_reset(ifx_filter_t *f) {
+void ifx_filter_reset(ifx_filter_t *f) {
     f->x1 = f->x2 = f->y1 = f->y2 = 0;
 }
 
-EXPORT void ifx_filter_set_param(ifx_filter_t *f,
+void ifx_filter_set_param(ifx_filter_t *f,
                                   const char *name, float value) {
     if (strcmp(name, "mode") == 0) {
         f->mode = clampf(value, 0, 2);

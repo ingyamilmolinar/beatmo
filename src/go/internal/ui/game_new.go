@@ -140,6 +140,10 @@ func New(logger *game_log.Logger) *Game {
 	// labels re-measure at the new locale's widths. Stored cancel lets tests
 	// drop the listener (the production Game is a process-lifetime singleton).
 	g.i18nCancel = i18n.OnChange(g.drum.OnLocaleChanged)
+	// Runtime theme: invalidate every color-baking cache after ApplyTheme so
+	// the next frame repaints in the new palette (game_theme.go).
+	g.themeCancel = OnThemeChange(g.OnThemeChanged)
+	themeWarnf = logger.Warnf
 	// Keep the browser landscape-block overlay's text in the active language
 	// (no-op off the browser). Visibility is pure CSS (orientation media query).
 	registerLandscapeNoticeLocaleSync()
@@ -149,20 +153,31 @@ func New(logger *game_log.Logger) *Game {
 	g.gridHelpBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleSettingsOverlay)
 	g.gridHelpBtn.Icon = string(IconSettings)
 	// Folder button, one gap left of the gear: opens the file menu (Upload /
-	// Import / Export / Load Template). Both platforms. Routed through
-	// gridFileInputHandler alongside the gear.
+	// Import / Export / Load Template). Both platforms.
 	g.gridFileBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleFileMenu)
 	g.gridFileBtn.Icon = string(IconFolder)
 	// Logs button, one gap left of the folder button: opens the Logs Navigation
-	// Panel (event stream + notifications). Both platforms. Routed through
-	// gridLogsInputHandler alongside the gear/folder.
+	// Panel (event stream + notifications). Both platforms.
 	g.gridLogsBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleLogsPanel)
 	g.gridLogsBtn.Icon = string(IconLogs)
-	// Input is routed through the grid pane's inputDispatcher via
-	// gridHelpInputHandler (z=gridHelpInputZ). The button fires OnClick once per
-	// press edge; the release-time GestureTap path (handleTapInGrid) deliberately
-	// does NOT touch the gear, so no double-fire guard is needed here.
+	// Theme button, one gap left of the logs button: opens the Theme editor
+	// (runtime UI color scheme). Both platforms.
+	g.gridThemeBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleThemeOverlay)
+	g.gridThemeBtn.Icon = string(IconPalette)
+	// All four are rows of gridCornerButtons (grid_corner_buttons.go): input is
+	// routed through ONE opaque cluster handler in the grid pane's
+	// inputDispatcher (z=gridCornerButtonsInputZ). A button fires OnClick once
+	// per press edge; the cluster owns the whole gesture, so the release-time
+	// GestureTap never reaches the grid beneath (no double-fire, no stray node).
 	g.undoManager = NewUndoManager(g.undoCapture, g.undoRestore)
+	// The open circuit's instrument documents (Reset's target) are session
+	// state beside the document: an undo across a circuit open restores them.
+	g.undoManager.SetCircuitState(
+		func() any { return audio.CircuitSnapshot() },
+		func(v any) {
+			s, _ := v.(audio.CircuitState)
+			audio.RestoreCircuit(s)
+		})
 	registerUndoObserver(g.undoManager)
 	// Ensure the timeline header interprets offsets/length in beats while we
 	// track them internally in subdivision steps. Make the initial drum
@@ -197,12 +212,16 @@ func New(logger *game_log.Logger) *Game {
 	g.drum.onStructuralMutation = func(reason string) {
 		g.bumpParityGen(reason, structuralMutationOptions{})
 	}
+	g.drum.onRowRemoved = g.onDrumRowRemoved
 
 	// Subscribe to recording lifecycle hook events. Subscribers run on
 	// the hooks fan-out pool (off the UI thread); we queue notifications
 	// to be drained by Update so DrumView state is only touched on the
 	// game-thread goroutine.
-	hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
+	// The bus is process-global: keep the unsubscribe so Close releases the
+	// closure (and with it the whole Game) — a test suite that builds
+	// hundreds of Games otherwise retains every one of them.
+	g.recordStopUnsub = hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
 		p, ok := e.Payload.(audio.RecordStopPayload)
 		if !ok {
 			return
@@ -241,6 +260,16 @@ func New(logger *game_log.Logger) *Game {
 	}
 	g.audioScheduler = async.NewScheduler(timerPool)
 	g.voicePrewarmer = newVoicePrewarmer(g)
+	// Playback readiness gate: warms every voice the loaded circuit can
+	// trigger after a wholesale cache invalidation (import / sample-rate
+	// change) before Play unlocks. g.drum already exists at this point, so
+	// wireWarmupNotifications can bind the progress toast immediately.
+	g.warmup = newWarmupController(g, newWarmBackend(g))
+	g.wireWarmupNotifications()
+	// The audio lane's channels exist BEFORE the loops that select on them
+	// (audioLoop: laneWake; sequencerLoop: laneKick) — initAudioLane runs later.
+	g.laneWake = make(chan struct{}, 1)
+	g.laneKick = make(chan struct{}, 1)
 	g.bgWG.Add(2)
 	go g.audioLoop()
 	go g.bpmLoop()
@@ -320,6 +349,7 @@ func New(logger *game_log.Logger) *Game {
 	// Combined with runtimeAudioLookahead() (+30ms dynamic, 60ms cap), this
 	// eliminates the zero-tolerance scheduling that caused overdue audio.
 	g.audioLookaheadSec = RuntimeProf().AudioLookaheadSec
+	g.initAudioLane()
 
 	// Defer demo construction to the first layout/update to avoid blocking
 	// constructor time. Layout will build it once when not under tests.
@@ -328,6 +358,7 @@ func New(logger *game_log.Logger) *Game {
 	g.edgeCachePad = RuntimeProf().EdgeCachePad
 	g.gridCachePad = RuntimeProf().GridCachePad
 	g.graph.SetNodeChangedHook(func(id model.NodeID) {
+		g.laneGraphVersion.Add(1) // audio lane fingerprint (audio_lane_source.go)
 		g.cacheNode(id)
 		g.paramsDirty = true
 		if g.importing {

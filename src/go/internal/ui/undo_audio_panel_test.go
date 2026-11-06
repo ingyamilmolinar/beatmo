@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // assertOneUndoStepRoundTrip runs the shared 3-property undo assertion against a
@@ -66,7 +67,7 @@ func TestUndoEQFilterAndMuteControls(t *testing.T) {
 			if len(z.bandGainsDB) <= 3 {
 				t.Skip("eq band gains not initialised")
 			}
-			z.SetActiveChannel("main")
+			z.SetActiveChannel(channel.Master)
 
 			g.undoManager.OnExternalLoad()
 			before := g.undoCapture()
@@ -80,14 +81,14 @@ func TestUndoEQFilterAndMuteControls(t *testing.T) {
 }
 
 // firstStageEnableParam returns a "*_enabled" stage-toggle param for instID's
-// recipe whose shipped default is non-zero (so toggling it OFF produces an
-// exported synth_params delta) AND that is actually toggleable — a sole-source
+// document whose value is non-zero (so toggling it OFF changes the exported
+// instrument document) AND that is actually toggleable — a sole-source
 // generator stage (e.g. OSC on a pure-oscillator voice) is greyed out and
 // non-interactive, so toggleSynthStage no-ops on it (see StageDisableSilences).
 // Iterates in deterministic (sorted) order so the choice is stable across runs.
-// ok=false means the recipe has no toggleable stage param.
-func firstStageEnableParam(instID, recipe string) (string, bool) {
-	shipped := audio.RecipeShippedDefaults(recipe)
+// ok=false means the instrument has no toggleable stage param.
+func firstStageEnableParam(instID string) (string, bool) {
+	shipped := audio.MergedInstrumentParamsRO(instrument.ID(instID))
 	names := make([]string, 0, len(shipped))
 	for name := range shipped {
 		names = append(names, name)
@@ -97,7 +98,7 @@ func firstStageEnableParam(instID, recipe string) (string, bool) {
 		if !strings.HasSuffix(name, "_enabled") || shipped[name] == 0 {
 			continue
 		}
-		if audio.StageDisableSilences(instID, name) {
+		if audio.StageDisableSilences(instrument.ID(instID), name) {
 			continue // sole-source generator: non-interactive, cannot be toggled
 		}
 		return name, true
@@ -107,16 +108,15 @@ func firstStageEnableParam(instID, recipe string) (string, bool) {
 
 // TestUndoSynthStageToggle drives the REAL synth stage enable/disable handler
 // (toggleSynthStage — what the per-stage enable pill invokes) and proves it
-// records a single reversible undo step. Stage enables live in synth_params, so
+// records a single reversible undo step. Stage enables live in the instrument document, so
 // the snapshot can restore them.
 func TestUndoSynthStageToggle(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	instID := g.drum.Rows[0].Instrument
-	recipe := audio.RecipeForInstrument(instID)
-	param, ok := firstStageEnableParam(instID, recipe)
+	param, ok := firstStageEnableParam(string(instID))
 	if !ok {
-		t.Skipf("recipe %q has no stage-enable param", recipe)
+		t.Skipf("instrument %q has no stage-enable param", instID)
 	}
 
 	g.undoManager.OnExternalLoad()
@@ -128,62 +128,10 @@ func TestUndoSynthStageToggle(t *testing.T) {
 	assertOneUndoStepRoundTrip(t, g, "synth-stage-toggle", before, depth0)
 }
 
-// TestUndoSynthNumericEntry drives the REAL synth knob numeric-entry path: open
-// the shared value editor over a knob readout (openSynthParamEditor) and commit
-// a typed value through the production editor commit. The typed commit mutates
-// synth_params and must record a single reversible undo step.
-func TestUndoSynthNumericEntry(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	instID := g.drum.Rows[0].Instrument
-	recipe := audio.RecipeForInstrument(instID)
-
-	// Find a knob binding whose typed value produces a document change.
-	idx := -1
-	var newText string
-	for i, b := range g.drum.SynthTabBindings() {
-		def := b.def
-		if strings.HasSuffix(def.Name, "_enabled") || def.Max <= def.Min {
-			continue
-		}
-		shipped := audio.RecipeShippedDefaults(recipe)
-		cur, ok := shipped[def.Name]
-		if !ok {
-			continue
-		}
-		// Aim for a value clearly off the shipped default, inside [Min,Max].
-		target := cur + (def.Max-def.Min)*0.25
-		if target > def.Max || target <= cur {
-			target = cur - (def.Max-def.Min)*0.25
-		}
-		if target < def.Min || target == cur {
-			continue
-		}
-		idx = i
-		newText = formatParamForEntry(def, target)
-		break
-	}
-	if idx < 0 {
-		t.Skip("no editable synth param produced a document change")
-	}
-
-	g.undoManager.OnExternalLoad()
-	before := g.undoCapture()
-	depth0 := len(g.undoManager.undo)
-
-	g.drum.openSynthParamEditor(idx, instID)
-	if g.drum.paramEditor == nil || !g.drum.paramEditor.Active() {
-		t.Fatal("synth param editor did not open")
-	}
-	g.drum.paramEditor.ti.SetText(newText)
-	g.drum.paramEditor.commit()
-
-	assertOneUndoStepRoundTrip(t, g, "synth-numeric-entry", before, depth0)
-}
-
-// TestSynthControlWheelRecordsExactlyOneUndoStep proves the Task-5 wheel nudge
-// collapses a whole spin into EXACTLY ONE undo step, committed once the debounce
-// elapses, through the real production input path.
+// TestSynthControlWheelRecordsExactlyOneUndoStep proves the Task-9 ARMED wheel
+// nudge (ArmedControlEditor's value lane) collapses a whole spin into EXACTLY
+// ONE undo step, committed once the debounce elapses, through the real
+// production adapter (synthControlHitAdapter.OnWheel while armed).
 func TestSynthControlWheelRecordsExactlyOneUndoStep(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -193,39 +141,43 @@ func TestSynthControlWheelRecordsExactlyOneUndoStep(t *testing.T) {
 	img := newTrackedImage("test.knobwheel", 1280, 720)
 	defer releaseImage(img)
 	g.Draw(img)
-	k := g.drum.SynthTabControls()[idx]
+	dv := g.drum
+	instID := dv.synthTabActiveInstrument()
+	k := dv.SynthTabControls()[idx]
 	r := k.Rect()
 	if r.Empty() {
 		t.Fatalf("knob %d rect empty after draw", idx)
 	}
-	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
+
+	// Arm the control (Task 9: wheel edits require the control to be armed
+	// first — a not-armed wheel now scrolls the row instead of nudging the
+	// value).
+	dv.armSynthControl(instID, idx)
+	e := dv.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	e.SetCardRect(r)
+	h := &synthControlHitAdapter{dv: dv, idx: idx, instID: instID}
+	vx, vy := e.ValueLaneRect().Min.X+2, r.Min.Y+r.Dy()/2
+
 	g.undoManager.OnExternalLoad()
 	before := g.undoCapture()
 	depth0 := len(g.undoManager.undo)
-	wheelActive := true
-	restore := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) {
-			if wheelActive {
-				return 0, 1
-			}
-			return 0, 0
-		},
-		func() (int, int) { return 1280, 720 },
-	)
-	defer restore()
+
 	for f := 1; f <= 5; f++ {
-		g.drum.eqPanelZone.Invalidate()
-		wheelActive = true
-		g.Update()
-		wheelActive = false
+		dv.eqPanelZone.Invalidate()
+		if res := h.OnWheel(vx, vy, +1); res != InputConsumed {
+			t.Fatalf("armed wheel notch %d should be consumed, got %v", f, res)
+		}
 		g.Update()
 		if steps := len(g.undoManager.undo) - depth0; steps != 0 {
 			t.Fatalf("undo step recorded mid-spin at notch %d (got %d, want 0 until debounce)", f, steps)
 		}
+	}
+	// Settle the kinetic barrel so the value lane actually crosses detents
+	// (SHARED FACTS: ImpulseNotch only resolves into a value change via Tick).
+	for i := 0; i < 240 && e.Tick(); i++ {
 	}
 	for i := 0; i < wheelNudgeCommitFrames+4; i++ {
 		g.Update()

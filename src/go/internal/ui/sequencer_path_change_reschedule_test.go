@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Regression: when a live edit changes beat paths during playback, we may bump
@@ -34,7 +35,7 @@ func TestUpdateBeatInfos_PathChangeClampsSequencerAheadOfView(t *testing.T) {
 	g.refreshDrumRow()
 
 	g.SetPlaying(true)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	// Drive playback to abs=4 so elapsedBeats=4 and seqNextIdxs=5.
 	scheduleAbsForMuteTest(g, 4)

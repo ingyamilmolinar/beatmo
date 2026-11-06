@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestCoalescerEmitsTrailingValue verifies that a burst of N events for the
@@ -81,7 +83,7 @@ func TestCoalescerFlushAllForcesEmission(t *testing.T) {
 		mu.Unlock()
 	})
 	c.Submit(hooks.Event{Kind: hooks.EventBPMChange, Payload: float64(120)})
-	c.Submit(hooks.Event{Kind: hooks.EventEQBandChange, Payload: hooks.EQBandPayload{Channel: "kick", Band: 3, GainDB: -2}})
+	c.Submit(hooks.Event{Kind: hooks.EventEQBandChange, Payload: hooks.EQBandPayload{Channel: channel.Of(roster.Kick), Band: 3, GainDB: -2}})
 
 	c.FlushAll()
 	mu.Lock()

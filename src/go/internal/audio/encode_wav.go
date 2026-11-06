@@ -108,8 +108,7 @@ func (e *wavEncoder) Encode(w io.Writer, samples []float64, sampleRate int) erro
 func (e *wavEncoder) writeSamples16(w io.Writer, samples []float64) error {
 	buf := make([]byte, 2)
 	for _, s := range samples {
-		s = clampSample(s)
-		v := int16(s * 32767)
+		v := int16(pcmStep(s, 16))
 		binary.LittleEndian.PutUint16(buf, uint16(v))
 		if _, err := w.Write(buf); err != nil {
 			return err
@@ -121,9 +120,8 @@ func (e *wavEncoder) writeSamples16(w io.Writer, samples []float64) error {
 func (e *wavEncoder) writeSamples24(w io.Writer, samples []float64) error {
 	buf := make([]byte, 3)
 	for _, s := range samples {
-		s = clampSample(s)
 		// 24-bit signed integer: range [-8388608, 8388607]
-		v := int32(s * 8388607)
+		v := int32(pcmStep(s, 24))
 		buf[0] = byte(v)
 		buf[1] = byte(v >> 8)
 		buf[2] = byte(v >> 16)
@@ -145,6 +143,17 @@ func (e *wavEncoder) writeSamples32Float(w io.Writer, samples []float64) error {
 		}
 	}
 	return nil
+}
+
+// pcmStep is s as a signed PCM integer of the given width: ROUNDED to the
+// nearest step on the 2^(bits-1) scale every WAV reader divides by, clamped
+// to the format's range. Truncating s*(2^(bits-1)-1) toward zero put every
+// positive sample a step low -- an error correlated with the signal -- and a
+// 16-bit sample written at 24 bits did not read back as itself.
+func pcmStep(s float64, bits int) int64 {
+	full := float64(int64(1) << (bits - 1))
+	v := int64(math.Round(clampSample(s) * full))
+	return max(-int64(full), min(int64(full)-1, v))
 }
 
 func clampSample(s float64) float64 {

@@ -8,10 +8,20 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRecordButtonMobile_VisuallyDemoted verifies B12: on mobile the
-// record button has a smaller drawn rect than play/stop so the red dot
-// doesn't sit at equal visual weight with the primary transport actions.
-func TestRecordButtonMobile_VisuallyDemoted(t *testing.T) {
+// TestRecordButtonMobile_DemotedByToneNotGeometry pins the replacement for the
+// old "B12" geometric demote.
+//
+// Record used to be shrunk 8 px top and bottom on mobile so it would not sit at
+// equal visual weight with play/stop. That left two ~6 px bands of the
+// surrounding chip visible above and below it, which read on screen as a
+// horizontal line cutting across the top of its slot. The demotion is now
+// carried entirely by TONE — record's muted colRecordIdle against play's
+// saturated green — so the box can stay aligned with its siblings.
+//
+// This test asserts BOTH halves of that trade: the geometry matches, and the
+// tint still differs. Dropping either one would restore the bug or lose the
+// demotion. See DESIGN.md "Cluster alignment".
+func TestRecordButtonMobile_DemotedByToneNotGeometry(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -27,16 +37,18 @@ func TestRecordButtonMobile_VisuallyDemoted(t *testing.T) {
 	if rec.Empty() || play.Empty() {
 		t.Fatalf("rects unexpectedly empty: play=%v rec=%v", play, rec)
 	}
-	// B12 demote is HEIGHT-only: the narrow mobile transport cells (play is
-	// ~20 px wide) can't lose width without collapsing to a sliver, so record
-	// is shortened (lower visual weight) at the full cell width. Height must
-	// be strictly smaller than play; width must stay at full cell size (no
-	// sliver) — the ~6 px collapse was the reported bug.
-	if rec.Dy() >= play.Dy() {
-		t.Fatalf("record height %d should be < play height %d on mobile (B12 height-demote)", rec.Dy(), play.Dy())
+	if rec.Dy() != play.Dy() || rec.Min.Y != play.Min.Y {
+		t.Errorf("record %v must share play's vertical bounds %v — a geometric demote leaves a seam",
+			rec, play)
 	}
-	if rec.Dx() < play.Dx() {
-		t.Fatalf("record width %d collapsed below play cell width %d (sliver regression)", rec.Dx(), play.Dx())
+	// Tone still separates them: record is the idle red, play is not.
+	tz.decayAnims()
+	if tz.recordBtn.IconColor != colRecordIdle {
+		t.Errorf("record icon = %v, want colRecordIdle %v — tone is what carries the demotion now",
+			tz.recordBtn.IconColor, colRecordIdle)
+	}
+	if tz.playBtn.IconColor == tz.recordBtn.IconColor {
+		t.Error("play and record share an icon color; nothing distinguishes record's visual weight")
 	}
 }
 

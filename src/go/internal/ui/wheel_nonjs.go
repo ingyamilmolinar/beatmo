@@ -2,29 +2,16 @@
 
 package ui
 
-// wheelZoomDelta normalizes the platform wheel delta for zoom operations to
-// produce a similar feel across desktop environments.
-func wheelZoomDelta() float64 {
-	_, wy := wheel()
-	return wy
-}
+// wheel_nonjs.go — the NATIVE half of the platform wheel boundary.
+// See input_dynamics.go for the contract. This file and wheel_js.go are the
+// only places allowed to read the raw wheel; everything above consumes detents.
 
-// wheelStepsFromDelta converts a single wheel-axis delta into discrete scroll
-// steps. Desktop wheels typically report +/-1 per notch; we clamp to small
-// integers.
-func wheelStepsFromDelta(d float64) int {
-	if d > 0.5 {
-		return 1
-	}
-	if d < -0.5 {
-		return -1
-	}
-	return 0
-}
-
-// wheelScrollSteps converts the vertical wheel delta into discrete row scroll
-// steps.
-func wheelScrollSteps() int {
-	_, wy := wheel()
-	return wheelStepsFromDelta(wy)
+// wheelNotches returns this frame's wheel movement in DETENTS.
+//
+// GLFW already reports +/-1 per physical detent and ACCUMULATES every event in
+// the frame (ebiten/internal/ui/input_glfw.go: `WheelY += yoff`), so the raw
+// value is already the unit we want and the conversion is the identity.
+func wheelNotches() (x, y float64) {
+	wx, wy := wheel()
+	return wheelNotchesFromRaw(wx, WheelDeltaNotch), wheelNotchesFromRaw(wy, WheelDeltaNotch)
 }

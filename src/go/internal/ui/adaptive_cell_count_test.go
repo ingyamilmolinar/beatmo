@@ -38,7 +38,7 @@ func TestAdaptiveCellCountNarrowScreen(t *testing.T) {
 	g.drum.calcLayout() // recompute dv.cell after Length change
 
 	// The circuit has 128 nodes, but the visible Length should be clamped.
-	tlW := g.drum.timelineRect.Dx()
+	tlW := g.drum.CellGridRect().Dx()
 	mcw := MinCellWidth()
 	if tlW <= 0 {
 		t.Fatalf("timeline width is %d, expected positive", tlW)
@@ -119,7 +119,7 @@ func TestAdaptiveCellCountResizeReclamp(t *testing.T) {
 	narrowLen := dv.Length
 
 	mcw := MinCellWidth()
-	tlW := dv.timelineRect.Dx()
+	tlW := dv.CellGridRect().Dx()
 	maxNarrow := tlW / mcw
 	if maxNarrow < 1 {
 		maxNarrow = 1
@@ -154,7 +154,7 @@ func TestAdaptiveCellCountSmallScreen(t *testing.T) {
 	}
 
 	dv.SetLengthClamped(200) // should be clamped by screen-aware limit
-	tlW := dv.timelineRect.Dx()
+	tlW := dv.CellGridRect().Dx()
 	maxLen := tlW / mcw
 	if dv.Length > maxLen {
 		t.Fatalf("small screen: Length %d > max %d (tlW=%d, mcw=%d)",

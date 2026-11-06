@@ -122,7 +122,11 @@ await page.waitForTimeout(100);
 
 const vmFreshPads = await viewMode();
 
-// 1. Sampler tab.
+// 1. Sampler tab. Its segment is disabled while the master bus is the selected
+// channel (samplerViewDisabled) — a fresh page's state — so pick row 0's
+// instrument first, as a user does before opening the Sampler.
+await page.evaluate(() => { setEQChannel(rowInstrument(0)); forceDraw(); });
+await page.waitForTimeout(100);
 const vmSampler = await tapSegment(7, "Sampler");
 
 const sampHA = await page.evaluate(() => (typeof __samplerHitAreas === "function" ? __samplerHitAreas() : []));

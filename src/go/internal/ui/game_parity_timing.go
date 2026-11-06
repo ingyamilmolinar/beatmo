@@ -56,19 +56,15 @@ func init() {
 	w, f := resolveParityTimingActivation(tb.WatchDefault, tb.FatalDefault, RuntimeProf().IsBrowser, os.Getenv("PARITY_TIMING"), os.Getenv("PARITY_TIMING_FATAL"))
 	parityTimingWatchDefault = w
 	parityTimingFatalEnabled.Store(f)
-	// Dormant-under-test default: the timing gate reasons about wall-clock
-	// deltas (time.Since(PlayStart), the settle guard) and live scheduler
-	// timing. Many existing tests fast-forward simulated time by backdating
-	// PlayStart (see driveSchedulerToAbs) to make the scheduler "catch up",
-	// which produces huge SYNTHETIC Stage-A/B/D readings that have nothing to
-	// do with real audio timing. No bound value can distinguish that from a
-	// genuine breach, so under `go test` the gate stays fully OFF unless a
-	// dedicated timing test explicitly arms it (see enableParityTimingForTest
-	// in parity_test_helpers_test.go). Production desktop/browser runtimes
-	// (real wall clock) are unaffected — this only fires inside test binaries.
+	// Armed under `go test` like the logical checker: every test Game panics
+	// on a timing breach. (It used to stay dormant on the theory that tests
+	// which backdate PlayStart to fast-forward the scheduler would produce
+	// synthetic Stage-A/B/D breaches; armed across the whole ui suite —
+	// 5294 tests, run 6-way parallel on a loaded machine — none did: the only
+	// breaches were the timing tests' own injected ones.)
 	if runningUnderGoTest() {
-		parityTimingFatalEnabled.Store(false)
-		parityTimingWatchDefault = parityWatchOff
+		parityTimingFatalEnabled.Store(true)
+		parityTimingWatchDefault = parityWatchPanic
 	}
 }
 
@@ -145,7 +141,12 @@ func (g *Game) parityTimingCheck() {
 		return !br.WarnOnly
 	}
 
-	if emit(evalTimingStage("seqfire", tb.SeqFire, snap.SeqFireCount, snap.SeqFireAvg, snap.SeqFireP99, snap.SeqFireStdDev, snap.SeqFireMax, tb.MinSamples)) {
+	// Stage A is an audio stage only while the sequencer dispatches audio. With
+	// the audio lane on, notes were committed up to the horizon ahead, so a late
+	// sequencer pass moves a highlight, not a sound (one WASM frame stall put
+	// its p99 over the bound and dumped mid-playback with every audio stage
+	// clean). The lane's audio timing is Stages C and D, gated below.
+	if !g.audioLaneOn() && emit(evalTimingStage("seqfire", tb.SeqFire, snap.SeqFireCount, snap.SeqFireAvg, snap.SeqFireP99, snap.SeqFireStdDev, snap.SeqFireMax, tb.MinSamples)) {
 		return
 	}
 	if emit(evalTimingStage("bridge", tb.Bridge, snap.BridgeCount, snap.BridgeAvg, snap.BridgeP99, snap.BridgeStdDev, snap.BridgeMax, tb.MinSamples)) {

@@ -24,13 +24,7 @@ func TestAudioPanelStateRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatalf("backing store does not implement AudioPanelStore")
 	}
-	want := AudioPanelStateDoc{
-		SpectrumSlopeIdx: 2,
-		PreOverlay:       true,
-		K20View:          true,
-		ChainTapA:        3,
-		ChainTapB:        4,
-	}
+	want := AudioPanelStateDoc{SynthGraphDetails: true}
 	if err := rs.SaveAudioPanelState(want); err != nil {
 		t.Fatalf("SaveAudioPanelState: %v", err)
 	}
@@ -62,11 +56,8 @@ func TestAudioPanelStateDoc_IsDefault(t *testing.T) {
 	if !(AudioPanelStateDoc{}).IsDefault() {
 		t.Errorf("zero-value AudioPanelStateDoc should be default")
 	}
-	if (AudioPanelStateDoc{SpectrumSlopeIdx: 1}).IsDefault() {
-		t.Errorf("non-zero SpectrumSlopeIdx should NOT be default")
-	}
-	if (AudioPanelStateDoc{PreOverlay: true}).IsDefault() {
-		t.Errorf("non-zero PreOverlay should NOT be default")
+	if (AudioPanelStateDoc{SynthGraphDetails: true}).IsDefault() {
+		t.Errorf("the Synth graph's Details toggle on should NOT be default")
 	}
 }
 

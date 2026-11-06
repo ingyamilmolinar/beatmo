@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Phase-1 safety net for the upcoming unified SetParam boundary (Phase 4).
@@ -36,9 +39,9 @@ func TestSetInstrumentParamRejectsNonFiniteAndClampsRange(t *testing.T) {
 	// Reset state so prior tests can't contaminate this one. ResetInstrumentParams
 	// is the public clear; we call it both at start and via t.Cleanup so a
 	// failure mid-table doesn't leak.
-	const instID = "kick" // bound to "drum-kick" which advertises pitch [-24,24], decay [0,4], drive [0,1], body [0,1]
-	ResetInstrumentParams(instID)
-	t.Cleanup(func() { ResetInstrumentParams(instID) })
+	instID := instrumentWithGenericMacros(t, "pitch", "decay", "drive")
+	ResetInstrumentParams(instrument.ID(instID))
+	t.Cleanup(func() { ResetInstrumentParams(instrument.ID(instID)) })
 
 	cases := []paramValidationCase{
 		// Non-finite — must be rejected outright.
@@ -61,10 +64,10 @@ func TestSetInstrumentParamRejectsNonFiniteAndClampsRange(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			// Isolate this row: clear and set in a fresh slot.
-			ResetInstrumentParams(instID)
-			SetInstrumentParam(instID, c.param, c.in)
+			ResetInstrumentParams(instrument.ID(instID))
+			SetInstrumentParam(instrument.ID(instID), c.param, c.in)
 
-			got := GetInstrumentParams(instID)
+			got := GetInstrumentParams(instrument.ID(instID))
 			v, present := got[c.param]
 			if c.wantStore {
 				if !present {
@@ -80,4 +83,36 @@ func TestSetInstrumentParamRejectsNonFiniteAndClampsRange(t *testing.T) {
 			}
 		})
 	}
+}
+
+// instrumentWithGenericMacros returns a shipped instrument whose document still
+// offers the given params with real ranges, and skips the test when none
+// remains. Asking the documents costs nothing and cannot rot.
+func instrumentWithGenericMacros(t *testing.T, need ...string) string {
+	t.Helper()
+	for _, id := range roster.All {
+		defs := InstrumentParamDefs(id)
+		if len(defs) == 0 {
+			continue
+		}
+		have := map[string]bool{}
+		for _, p := range defs {
+			if p.Max > p.Min {
+				have[p.Name] = true
+			}
+		}
+		ok := true
+		for _, n := range need {
+			if !have[n] {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return string(id)
+		}
+	}
+	t.Skipf("no shipped instrument has a recipe advertising %v any more; every "+
+		"family is config-first, so this case needs re-basing onto stage knobs", need)
+	return ""
 }

@@ -7,10 +7,11 @@ import (
 
 // openSamplerKnobWheelPopup opens the mobile scroll-wheel for sampler knob idx,
 // wired to the sampler's shared knob value-model. It closes any existing popups
-// first, then opens the wheel through the portal system. Mirrors the synth tab's
-// openSynthControlWheelPopup; the sampler differs only in that its ParamDef is
-// synthesized from samplerKnobScale (it has no per-knob binding array) and every
-// sampler knob is continuous (Discrete=false).
+// first, then opens the wheel through the portal system. (The synth tab's
+// equivalent popup path was retired in Task 13 — synth controls now arm
+// inline instead.) The sampler's ParamDef is synthesized from
+// samplerKnobScale (it has no per-knob binding array) and every sampler knob
+// is continuous (Discrete=false).
 func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 	dv := p.dv
 	if idx < 0 || idx >= samplerKnobCount || idx >= len(dv.sampler.knobs) {
@@ -21,7 +22,7 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 		return
 	}
 	// Flush any pending desktop wheel-nudge commit so the popup snapshots the
-	// committed value (mirrors openSynthControlWheelPopup).
+	// committed value.
 	dv.samplerWheelNudge.flush()
 	dv.CloseAllPopups()
 
@@ -46,7 +47,6 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 		// rotary path commits at (samplerKnobHitAdapter.OnRelease).
 		OnCommit:     func() { dv.commitSamplerEdit() },
 		OnResolution: func() { dv.persistKnobStep(badge) },
-		OpenEditor:   func() { dv.openSamplerParamEditor(idx) },
 		Accent:       nil, // renderer falls back to the primary token
 	}
 	dv.samplerWheelPopup.Open(binding, anchor, dv.Bounds, dv.headerH)
@@ -55,7 +55,7 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 
 // SamplerWheelPopupRect returns the screen-space bounding rectangle of the
 // mobile sampler-knob scroll-wheel popup, or an empty rectangle when the popup
-// is nil or not open. Parity with SynthWheelPopupRect (screenshot cropping).
+// is nil or not open. Used by (*Game).SubjectRect for screenshot cropping.
 func (p *samplerPanel) SamplerWheelPopupRect() image.Rectangle {
 	dv := p.dv
 	if dv.samplerWheelPopup == nil || !dv.samplerWheelPopup.IsOpen() {

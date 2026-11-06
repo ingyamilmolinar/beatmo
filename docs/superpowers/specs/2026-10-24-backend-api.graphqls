@@ -1,0 +1,567 @@
+# Beatmo API — phase 1 GraphQL schema.
+#
+# Companion to docs/superpowers/specs/2026-10-24-p2p-groups-and-backend-design.md (revision 6).
+# Served at POST https://beatmo.io/v1/graphql. Once built, this file moves to
+# src/share/api/schema/, split by area (common, account, groups, catalog, billing; the areas add
+# their fields with `extend type Query` / `extend type Mutation`). That copy is the source of truth
+# for both the server (gqlgen, src/backend) and the client (genqlient, src/go).
+#
+# Conventions
+# - Fields are non-null unless their absence means something.
+# - Every mutation that has arguments takes one `input` and returns a `…Payload` whose nullable `error`
+#   carries an EXPECTED refusal the UI must explain (wrong password, group full). Everything else is a
+#   top-level GraphQL error with `extensions.code`: UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, BAD_INPUT,
+#   RATE_LIMITED (+ `extensions.retryAfterSeconds`), INTERNAL.
+# - Authorisation is by PERMISSION, never by role name. Each group-scoped field and mutation says the
+#   permission it needs ("Requires:"). The role -> permission table lives only in the server
+#   (src/backend/internal/authz); clients read `Group.myPermissions` to decide what to offer.
+# - No unions or interfaces in phase 1, so adding a type can never break an old generated client.
+# - The type graph is ACYCLIC (no type reaches itself through its fields), so the schema itself bounds
+#   query depth. Guard: TestSchemaHasNoCycles.
+# - Enum values equal the Postgres enum labels upper-cased (GroupRole.ADMIN <-> group_role 'admin').
+#   Guard: TestGraphQLEnumsMatchPostgres.
+
+# ---------------------------------------------------------------------------------------------------
+# Scalars
+
+"RFC 3339 timestamp in UTC."
+scalar Time
+
+"64-bit integer, encoded as a JSON number."
+scalar Int64
+
+"Standard base64 (RFC 4648 section 4, padded)."
+scalar Base64
+
+"CIDv1, raw codec (0x55), sha2-256 multihash, base32 lower case (always starts with `bafkrei`). Refused unless it parses."
+scalar CID
+
+# ---------------------------------------------------------------------------------------------------
+# Enums
+
+enum GroupRole {
+  "Everything a writer can do, plus invites, roles, removing members, unsharing anyone's object, renaming and deleting the group."
+  ADMIN
+  "Read, plus share objects and unshare their own."
+  WRITER
+  "Read only: sees the group, its members and log, fetches and decrypts its objects."
+  READER
+}
+
+"The roles an invite can grant. ADMIN is only ever given by setMemberRole."
+enum InviteRole {
+  WRITER
+  READER
+}
+
+"What a caller may do in a group. The server maps roles to these; clients never interpret roles."
+enum Permission {
+  "See the group, its members and its log; fetch its objects; read your own envelope."
+  GROUP_READ
+  "Wrap the group key for member devices that lack it (addEnvelopes)."
+  KEY_DISTRIBUTE
+  "Upload and share objects; unshare objects you shared."
+  CONTENT_WRITE
+  "Unshare anyone's object."
+  CONTENT_MODERATE
+  "Create, list and revoke invites."
+  MEMBERS_INVITE
+  "Change roles and remove members."
+  MEMBERS_MANAGE
+  "Rename and delete the group."
+  GROUP_MANAGE
+}
+
+enum Tier {
+  FREE
+  PREMIUM
+}
+
+enum ObjectKind {
+  CIRCUIT
+  INSTRUMENT
+}
+
+enum Licence {
+  CC0_1_0
+  CC_BY_4_0
+}
+
+enum LogKind {
+  SHARE
+  UNSHARE
+  DEVICE_ADDED
+}
+
+"Expected refusals, returned in a payload's `error`."
+enum ErrorCode {
+  "An input field is malformed or out of range; `field` names it."
+  INVALID_INPUT
+  "Wrong email or password. Never says which."
+  INVALID_CREDENTIALS
+  "Login before verifying; the client offers resendVerification."
+  EMAIL_NOT_VERIFIED
+  "A verification, reset, handoff or refresh token is unknown, expired, used or for another purpose."
+  TOKEN_INVALID
+  "The invite is unknown, expired, revoked or already used (one code, so codes cannot be probed)."
+  INVITE_INVALID
+  ALREADY_MEMBER
+  "The group is at its member cap."
+  GROUP_FULL
+  "The group's or the publisher's storage quota would be exceeded."
+  QUOTA_EXCEEDED
+  "The change would leave a group with members but no admin."
+  LAST_ADMIN
+  "share/publish named a CID whose bytes were not uploaded first (HTTP PUT)."
+  OBJECT_MISSING
+  "Re-authentication required (deleteAccount)."
+  REAUTH_REQUIRED
+  "Billing is not configured on this server."
+  BILLING_DISABLED
+}
+
+type UserError {
+  code: ErrorCode!
+  "English, for logs and as a fallback; the client localises by `code`."
+  message: String!
+  "The input field at fault, as a dotted path (`input.password`), when there is one."
+  field: String
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Queries
+
+type Query {
+  "The signed-in user, or null without a valid access token. Also serves as the account export."
+  me: Me
+
+  "A group the caller belongs to; null for anyone else (no existence oracle). Requires: GROUP_READ."
+  group(id: ID!): Group
+
+  "The public catalog. Pass the etag you hold: `notModified: true` means keep your copy. Anyone."
+  catalog(ifNoneMatch: String): Catalog!
+
+  "Tier limits, so the client can explain a cap before hitting it. Anyone."
+  tiers: [TierLimits!]!
+}
+
+type Me {
+  id: ID!
+  email: String!
+  displayName: String!
+  hasPassword: Boolean!
+  googleLinked: Boolean!
+  createdAt: Time!
+  tier: Tier!
+  "End of the paid period; null on FREE."
+  tierPeriodEnd: Time
+  "The device this access token was issued to."
+  currentDevice: Device!
+  devices: [Device!]!
+  memberships: [Membership!]!
+  publications: [PublicObject!]!
+  "Objects this user shared into groups (CIDs only; the content is on their devices)."
+  shares: [GroupObject!]!
+}
+
+type Device {
+  id: ID!
+  name: String!
+  "Ed25519 public key (32 bytes) that signs this device's log entries."
+  signPub: Base64!
+  "X25519 public key (32 bytes) the group key is wrapped to."
+  boxPub: Base64!
+  createdAt: Time!
+}
+
+type Membership {
+  group: Group!
+  role: GroupRole!
+  joinedAt: Time!
+}
+
+"Another user as group members see them: no email."
+type UserRef {
+  id: ID!
+  displayName: String!
+}
+
+type Group {
+  id: ID!
+  name: String!
+  createdAt: Time!
+  myRole: GroupRole!
+  myPermissions: [Permission!]!
+  members: [Member!]!
+  limits: GroupLimits!
+
+  "The group key wrapped for the CURRENT device (from the access token); null until a member device supplies it."
+  myEnvelope: Envelope
+
+  "Member devices with no envelope yet; a device holding the key wraps for them. Requires: KEY_DISTRIBUTE."
+  devicesAwaitingKey: [MemberDevice!]!
+
+  "Pending invites (not redeemed, revoked or expired). Requires: MEMBERS_INVITE; null without it."
+  invites: [Invite!]
+
+  "Entries with seq > after, in seq order, at most `first` (1..500)."
+  log(after: Int64! = 0, first: Int! = 200): LogPage!
+
+  "Objects currently shared into the group."
+  objects: [GroupObject!]!
+}
+
+type Member {
+  user: UserRef!
+  role: GroupRole!
+  joinedAt: Time!
+  roleChangedAt: Time
+  devices: [Device!]!
+}
+
+type MemberDevice {
+  user: UserRef!
+  device: Device!
+}
+
+"Limits come from the best tier among the group's admins."
+type GroupLimits {
+  tier: Tier!
+  memberCap: Int!
+  memberCount: Int!
+  storageQuotaBytes: Int64!
+  storageUsedBytes: Int64!
+}
+
+type Envelope {
+  deviceId: ID!
+  "Key epoch; always 0 until rotation (phase 2)."
+  epoch: Int!
+  "HPKE-sealed group key (RFC 9180, X25519 + HKDF-SHA256 + AES-256-GCM)."
+  sealed: Base64!
+}
+
+type Invite {
+  id: ID!
+  role: InviteRole!
+  createdBy: UserRef
+  createdAt: Time!
+  expiresAt: Time!
+}
+
+type LogPage {
+  entries: [LogEntry!]!
+  "seq of the last entry returned, or `after` when there are none: pass it as the next `after`."
+  cursor: Int64!
+  hasMore: Boolean!
+}
+
+type LogEntry {
+  "Contiguous per group, assigned by the server."
+  seq: Int64!
+  "Plaintext copy of the signed kind, so the server can enforce permissions. Clients drop an entry whose decrypted kind differs."
+  kind: LogKind!
+  "Plaintext copy of the signed object CID (null for DEVICE_ADDED). Same mismatch rule."
+  object: CID
+  author: UserRef
+  authorDeviceId: ID
+  "The entry document: signed by the author device, then encrypted with the group key."
+  entry: Base64!
+  createdAt: Time!
+}
+
+type GroupObject {
+  groupId: ID!
+  cid: CID!
+  size: Int!
+  uploader: UserRef
+  createdAt: Time!
+}
+
+type PublicObject {
+  cid: CID!
+  kind: ObjectKind!
+  title: String!
+  tags: [String!]!
+  licence: Licence!
+  size: Int!
+  publisher: UserRef
+  publishedAt: Time!
+  "https://beatmo.io/ipfs/<cid>"
+  url: String!
+}
+
+type Catalog {
+  etag: String!
+  notModified: Boolean!
+  "Null when notModified."
+  entries: [PublicObject!]
+}
+
+type TierLimits {
+  tier: Tier!
+  memberCap: Int!
+  groupStorageBytes: Int64!
+  publicStorageBytes: Int64!
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Mutations
+
+type Mutation {
+  # Accounts. Anyone; rate-limited by IP and by email.
+  "Always succeeds (never reveals whether the email exists)."
+  register(input: RegisterInput!): AcceptedPayload!
+  resendVerification(input: EmailInput!): AcceptedPayload!
+  "Verifies and signs in. Asks for the password: the pre-hijack defence."
+  verifyEmail(input: VerifyEmailInput!): SessionPayload!
+  login(input: LoginInput!): SessionPayload!
+  "Swaps a Google sign-in handoff token (plus the app-held verifier) for a session."
+  exchangeHandoff(input: HandoffInput!): SessionPayload!
+  "Rotates the refresh token. Presenting an already-rotated token deletes the session (theft signal)."
+  refreshSession(input: RefreshInput!): SessionPayload!
+  "Always succeeds."
+  forgotPassword(input: EmailInput!): AcceptedPayload!
+  "Sets the password and deletes every session of the user."
+  resetPassword(input: ResetPasswordInput!): AcceptedPayload!
+
+  # Signed in.
+  "Deletes the current session."
+  logout: AcceptedPayload!
+  "Needs the password, or for a Google-only account a session created in the last 10 minutes (else REAUTH_REQUIRED)."
+  deleteAccount(input: DeleteAccountInput!): AcceptedPayload!
+  "Deletes one of your devices; its sessions and envelopes go with it."
+  deleteDevice(input: DeviceRefInput!): AcceptedPayload!
+
+  # Groups.
+  "The caller becomes the first ADMIN."
+  createGroup(input: CreateGroupInput!): GroupPayload!
+  "Requires: GROUP_MANAGE."
+  renameGroup(input: RenameGroupInput!): GroupPayload!
+  "Requires: GROUP_MANAGE."
+  deleteGroup(input: GroupRefInput!): AcceptedPayload!
+  "Any member. LAST_ADMIN if you are the only admin and others remain; the last member leaving deletes the group."
+  leaveGroup(input: GroupRefInput!): AcceptedPayload!
+  "Requires: MEMBERS_INVITE (admins only). The code is returned once; the server keeps only its hash."
+  createInvite(input: CreateInviteInput!): InvitePayload!
+  "Requires: MEMBERS_INVITE."
+  revokeInvite(input: InviteRefInput!): AcceptedPayload!
+  "Signed in. INVITE_INVALID, ALREADY_MEMBER or GROUP_FULL."
+  redeemInvite(input: RedeemInviteInput!): GroupPayload!
+  "Requires: MEMBERS_MANAGE. LAST_ADMIN if it would demote the only admin."
+  setMemberRole(input: SetMemberRoleInput!): MemberPayload!
+  "Requires: MEMBERS_MANAGE. Removing yourself is leaveGroup."
+  removeMember(input: MemberRefInput!): AcceptedPayload!
+  "Requires: KEY_DISTRIBUTE. Stores the envelopes and appends the signed DEVICE_ADDED notice in one transaction. Only for member devices with no envelope yet; replacing one is INVALID_INPUT."
+  addEnvelopes(input: AddEnvelopesInput!): LogEntryPayload!
+  "Requires: CONTENT_WRITE. The bytes must already be uploaded (PUT /v1/groups/{id}/objects/{cid}). OBJECT_MISSING or QUOTA_EXCEEDED."
+  shareObject(input: ShareObjectInput!): LogEntryPayload!
+  "Requires: CONTENT_WRITE for an object you shared, CONTENT_MODERATE for anyone's. Deletes the blob and appends the UNSHARE entry."
+  unshareObject(input: UnshareObjectInput!): LogEntryPayload!
+
+  # Public catalog. Signed in.
+  "The bytes must already be uploaded (PUT /v1/objects/{cid}). Each publisher has their own listing of a CID; publishing the same CID again yourself is a no-op."
+  publish(input: PublishInput!): PublicObjectPayload!
+  "Deletes your listing of the CID; the blob goes with the last listing."
+  delist(input: CIDInput!): AcceptedPayload!
+
+  # Billing. Signed in. BILLING_DISABLED when Stripe is not configured.
+  "A Stripe Checkout URL for the premium subscription."
+  startCheckout: UrlPayload!
+  "A Stripe customer-portal URL (cancel, change card)."
+  openBillingPortal: UrlPayload!
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Inputs
+
+input DeviceInput {
+  name: String!
+  signPub: Base64!
+  boxPub: Base64!
+}
+
+input RegisterInput {
+  email: String!
+  "8 to 128 bytes, no composition rules."
+  password: String!
+  displayName: String!
+}
+
+input EmailInput {
+  email: String!
+}
+
+input VerifyEmailInput {
+  token: String!
+  password: String!
+  device: DeviceInput!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+  device: DeviceInput!
+}
+
+input HandoffInput {
+  handoff: String!
+  "The secret whose SHA-256 the app passed to /v1/auth/google/start as `challenge`."
+  verifier: String!
+  device: DeviceInput!
+}
+
+input RefreshInput {
+  refreshToken: String!
+}
+
+input ResetPasswordInput {
+  token: String!
+  password: String!
+}
+
+input DeleteAccountInput {
+  "Required when the account has a password."
+  password: String
+}
+
+input DeviceRefInput {
+  deviceId: ID!
+}
+
+input EnvelopeInput {
+  deviceId: ID!
+  epoch: Int! = 0
+  sealed: Base64!
+}
+
+input CreateGroupInput {
+  name: String!
+  "The new group key wrapped for each of the creator's devices."
+  envelopes: [EnvelopeInput!]!
+}
+
+input RenameGroupInput {
+  groupId: ID!
+  name: String!
+}
+
+input GroupRefInput {
+  groupId: ID!
+}
+
+input CreateInviteInput {
+  groupId: ID!
+  role: InviteRole! = WRITER
+}
+
+input InviteRefInput {
+  inviteId: ID!
+}
+
+input RedeemInviteInput {
+  "The code from the link fragment (https://beatmo.io/join#<code>) or pasted bare."
+  code: String!
+}
+
+input SetMemberRoleInput {
+  groupId: ID!
+  userId: ID!
+  role: GroupRole!
+}
+
+input MemberRefInput {
+  groupId: ID!
+  userId: ID!
+}
+
+input AddEnvelopesInput {
+  groupId: ID!
+  envelopes: [EnvelopeInput!]!
+  "The DEVICE_ADDED entry naming those devices, signed then encrypted."
+  notice: Base64!
+}
+
+input ShareObjectInput {
+  groupId: ID!
+  cid: CID!
+  "The SHARE entry, signed then encrypted. At most 16 KiB."
+  entry: Base64!
+}
+
+input UnshareObjectInput {
+  groupId: ID!
+  cid: CID!
+  "The UNSHARE entry, signed then encrypted."
+  entry: Base64!
+}
+
+input PublishInput {
+  cid: CID!
+  kind: ObjectKind!
+  title: String!
+  tags: [String!]! = []
+  licence: Licence!
+}
+
+input CIDInput {
+  cid: CID!
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Payloads
+
+type AcceptedPayload {
+  "True when `error` is null."
+  ok: Boolean!
+  error: UserError
+}
+
+type Session {
+  "JWT, 15 minutes. Send as `Authorization: Bearer <token>`."
+  accessToken: String!
+  accessTokenExpiresAt: Time!
+  "Opaque, single use (rotates on refreshSession), 30 days after last use."
+  refreshToken: String!
+  refreshTokenExpiresAt: Time!
+  me: Me!
+}
+
+type SessionPayload {
+  session: Session
+  error: UserError
+}
+
+type GroupPayload {
+  group: Group
+  error: UserError
+}
+
+type InvitePayload {
+  invite: Invite
+  "Shown once."
+  code: String
+  "https://beatmo.io/join#<code>"
+  link: String
+  error: UserError
+}
+
+type MemberPayload {
+  member: Member
+  error: UserError
+}
+
+type LogEntryPayload {
+  entry: LogEntry
+  error: UserError
+}
+
+type PublicObjectPayload {
+  object: PublicObject
+  error: UserError
+}
+
+type UrlPayload {
+  url: String
+  error: UserError
+}

@@ -30,6 +30,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -45,7 +48,7 @@ func TestStageRingsMapBoundedByUniqueIDs(t *testing.T) {
 
 	for i := 0; i < uniqueIDs; i++ {
 		id := "inst" + strconv.Itoa(i)
-		svc.PushSamples(scope.StageSynth, id, samples)
+		svc.PushSamples(scope.StageSynth, channel.Of(instrument.ID(id)), samples)
 	}
 
 	svc.stages[scope.StageSynth].mu.Lock()
@@ -83,7 +86,7 @@ func TestStageRingsMapDoesNotGrowOnRepeatedPush(t *testing.T) {
 
 	const repeats = 100_000
 	for i := 0; i < repeats; i++ {
-		svc.PushSamples(scope.StageSynth, "kick", samples)
+		svc.PushSamples(scope.StageSynth, channel.Of(roster.Kick), samples)
 	}
 
 	svc.stages[scope.StageSynth].mu.Lock()
@@ -107,11 +110,11 @@ func TestStageRingsBufCapacityBoundedByDrainCadence(t *testing.T) {
 
 	const cycles = 1000
 	for c := 0; c < cycles; c++ {
-		svc.PushSamples(scope.StageSynth, "kick", buf)
+		svc.PushSamples(scope.StageSynth, channel.Of(roster.Kick), buf)
 		_ = svc.stages[scope.StageSynth].drainAll()
 	}
 
-	rb := svc.stages[scope.StageSynth].rings["kick"]
+	rb := svc.stages[scope.StageSynth].rings[channel.Of(roster.Kick)]
 	rb.mu.Lock()
 	gotLen := len(rb.buf)
 	gotCap := cap(rb.buf)
@@ -137,18 +140,18 @@ func TestServiceMemoryFootprintConstantUnderSteadyPlayback(t *testing.T) {
 	svc := NewService(Config{SampleRate: 44100})
 	samples := make([]float64, 1024)
 
-	// 6 instruments × 6 stages × tick — matches the real-world fan-out
+	// 6 instruments × every stage × tick — matches the real-world fan-out
 	// for a 6-row drum machine.
-	ids := []string{"kick", "snare", "hat1", "hat2", "perc1", "perc2"}
+	ids := []string{string(roster.Kick), string(roster.Snare), "hat1", "hat2", "perc1", "perc2"}
 
 	// Warm-up.
 	for warm := 0; warm < 32; warm++ {
 		for _, id := range ids {
-			for st := scope.Stage(0); int(st) < 6; st++ {
-				svc.PushSamples(st, id, samples)
+			for st := scope.Stage(0); int(st) < len(svc.stages); st++ {
+				svc.PushSamples(st, channel.Of(instrument.ID(id)), samples)
 			}
 		}
-		for st := scope.Stage(0); int(st) < 6; st++ {
+		for st := scope.Stage(0); int(st) < len(svc.stages); st++ {
 			_ = svc.stages[st].drainAll()
 		}
 	}
@@ -160,11 +163,11 @@ func TestServiceMemoryFootprintConstantUnderSteadyPlayback(t *testing.T) {
 	const ticks = 20_000
 	for c := 0; c < ticks; c++ {
 		for _, id := range ids {
-			for st := scope.Stage(0); int(st) < 6; st++ {
-				svc.PushSamples(st, id, samples)
+			for st := scope.Stage(0); int(st) < len(svc.stages); st++ {
+				svc.PushSamples(st, channel.Of(instrument.ID(id)), samples)
 			}
 		}
-		for st := scope.Stage(0); int(st) < 6; st++ {
+		for st := scope.Stage(0); int(st) < len(svc.stages); st++ {
 			_ = svc.stages[st].drainAll()
 		}
 	}

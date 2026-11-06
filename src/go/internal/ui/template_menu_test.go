@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 func TestOverflowMenu_TemplatePageListsGenres(t *testing.T) {
@@ -42,11 +44,13 @@ func TestOverflowMenu_TemplatePageListsGenres(t *testing.T) {
 	if !back {
 		t.Fatalf("template page missing Back row")
 	}
+	// One per menu group, so a group silently dropped from templateGroups fails.
 	for _, want := range []string{
-		"Bach — Toccata & Fugue in D minor",
-		"Eagles — Hotel California",
-		"Miles Davis — So What",
-		"Tito Puente — Oye Como Va",
+		"Bach — Brandenburg Concerto No. 3", // Baroque
+		"Beethoven — Symphony No. 5",        // Classical
+		"Dvořák — American Quartet",         // Romantic
+		"Schubert — Erlkönig",               // Lied · Song
+		"Satie — Air du rat",                // French · Americas
 	} {
 		if !labels[want] {
 			t.Fatalf("template page missing %q (have %v)", want, labels)
@@ -62,8 +66,8 @@ func TestOverflowMenu_SelectTemplateQueuesImport(t *testing.T) {
 	dv := g.drum
 	dv.overflowPage = 1
 
-	// Click the first template entry (Bach — Toccata & Fugue).
-	const bach = "Bach — Toccata & Fugue in D minor"
+	// Click the first template entry.
+	const bach = "Bach — Brandenburg Concerto No. 3"
 	var tpl *overflowItem
 	for i := range dv.overflowItems() {
 		if dv.overflowItems()[i].label == bach {
@@ -80,15 +84,15 @@ func TestOverflowMenu_SelectTemplateQueuesImport(t *testing.T) {
 		t.Fatalf("selecting a template did not queue import data")
 	}
 	var doc struct {
-		Version     int `json:"version"`
-		Instruments []struct {
+		SchemaVersion string `json:"schema_version"`
+		Instruments   []struct {
 			ID string `json:"id"`
 		} `json:"instruments"`
 	}
 	if err := json.Unmarshal(g.pendingImportData, &doc); err != nil {
 		t.Fatalf("queued data not JSON: %v", err)
 	}
-	if doc.Version != 1 || len(doc.Instruments) == 0 {
+	if doc.SchemaVersion != schema.Version || len(doc.Instruments) == 0 {
 		t.Fatalf("queued data not a template: %+v", doc)
 	}
 	// Selecting resets the page so reopening starts at File.

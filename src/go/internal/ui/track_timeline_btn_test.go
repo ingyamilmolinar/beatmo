@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -18,7 +19,7 @@ func newDrumViewForTrackTest(t *testing.T, mobile bool) *DrumView {
 	}
 	dv := NewDrumView(image.Rect(0, 0, w, h), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), CellTypes: make([]model.NodeType, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 	dv.recalcButtons()
@@ -41,8 +42,8 @@ func TestTrackButtonInline_Mobile(t *testing.T) {
 	if r.Empty() {
 		t.Fatalf("Track button rect should be non-empty on mobile (inline chip)")
 	}
-	if r.Dx() < TouchMinTarget() || r.Dy() < TouchMinTarget() {
-		t.Fatalf("Track chip %v below touch target %d", r, TouchMinTarget())
+	if tr := trackTouchRect(t, dv); tr.Dx() < TouchMinTarget() || tr.Dy() < TouchMinTarget() {
+		t.Fatalf("Track chip touch target %v below touch target %d", tr, TouchMinTarget())
 	}
 }
 

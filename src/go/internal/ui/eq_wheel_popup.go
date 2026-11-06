@@ -64,7 +64,6 @@ func (dv *DrumView) openEQKnobWheelPopup(band int) {
 		},
 		OnCommit:     func() { dv.commitEQBand() },
 		OnResolution: func() { dv.persistKnobStep(badge) },
-		OpenEditor:   func() { z.openEQDBEditor(band) },
 		Accent:       nil,
 	}
 	dv.eqWheelPopup.Open(binding, anchor, dv.Bounds, dv.headerH)

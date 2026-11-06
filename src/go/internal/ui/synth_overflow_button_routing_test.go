@@ -7,6 +7,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -24,9 +25,9 @@ func setupNarrowSynthOverflow(t *testing.T, w, h int) (*Game, *Button) {
 	uiNode := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 	g.drum.SetMobileEQMode(true)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -58,18 +59,18 @@ func TestSynthOverflowButtonOpensSheet(t *testing.T) {
 	cy := (r.Min.Y + r.Max.Y) / 2
 
 	// Dirty a param so we can detect an accidental Reset.
-	audio.SetInstrumentParam("snare", "amp", 0.123)
+	audio.SetInstrumentParam(roster.Snare, "amp_decay", 0.123)
 
 	clickGame(g, cx, cy)
 
 	portal := g.drum.portal()
-	if portal == nil || !portal.Has("synth-overflow-sheet") {
+	if portal == nil || !portal.Has("synth-action-menu") {
 		t.Fatalf("tapping the overflow ⋯ button did not open the overflow sheet "+
 			"(portal open=%v) — the footer dispatch mis-routed it to another handler",
 			portal != nil && portal.IsOpen())
 	}
-	if amp := audio.GetInstrumentParams("snare")["amp"]; amp != 0.123 {
-		t.Fatalf("tapping the overflow ⋯ button changed amp %v→%v — it fired Reset instead of opening the menu",
+	if amp := audio.GetInstrumentParams(roster.Snare)["amp_decay"]; amp != 0.123 {
+		t.Fatalf("tapping the overflow ⋯ button changed amp_decay %v→%v — it fired Reset instead of opening the menu",
 			0.123, amp)
 	}
 }

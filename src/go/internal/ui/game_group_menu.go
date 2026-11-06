@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -28,8 +27,12 @@ type GroupMenu struct {
 	anchorX int
 	anchorY int
 	panel   image.Rectangle
-	rects   map[string]image.Rectangle
-	btns    map[string]*Button
+	rects   map[gmID]image.Rectangle
+	btns    map[gmID]*Button
+	// drag is the top-left grip handle — same contract as NodeSidebar.drag:
+	// zero value passes placement through, a drag pins the card to the grid
+	// pane, openAt/Close reset it.
+	drag PopupDragHandle
 	// Rule-section scratch state: the three independent per-param deltas plus
 	// the shared EveryN. Authoritative rule state is always read from the
 	// live group (grp.Rules — see ruleFor/rulesEnabled/sharedEveryN); this
@@ -80,8 +83,8 @@ type GroupMenu struct {
 func NewGroupMenu(g *Game) *GroupMenu {
 	return &GroupMenu{
 		game:       g,
-		rects:      map[string]image.Rectangle{},
-		btns:       map[string]*Button{},
+		rects:      map[gmID]image.Rectangle{},
+		btns:       map[gmID]*Button{},
 		ruleEveryN: 1,
 	}
 }
@@ -120,6 +123,7 @@ func (m *GroupMenu) openAt(id model.GroupID, x, y int, provisional bool) {
 	}
 	m.open = true
 	m.provisional = provisional
+	m.drag.Reset()
 	m.groupID = id
 	// Reseed the rule-section scratch from the live group's Rules (never
 	// left over from whatever group this GroupMenu instance last edited).
@@ -235,8 +239,9 @@ func (m *GroupMenu) Close() {
 	} else {
 		m.restoreIfDirty()
 	}
-	m.btns = map[string]*Button{}
-	m.rects = map[string]image.Rectangle{}
+	m.btns = map[gmID]*Button{}
+	m.rects = map[gmID]image.Rectangle{}
+	m.drag.Reset()
 	m.game.dispatcherDirty = true
 }
 
@@ -253,8 +258,9 @@ func (m *GroupMenu) ZIndex() int                  { return 210 }
 // through untouched.
 func (m *GroupMenu) HandleWheel(_, _, _ int) InputResult { return InputIgnored }
 
-// Capturing: no drag-capture state (unlike the sidebar's scroll thumb).
-func (m *GroupMenu) Capturing() bool { return false }
+// Capturing: true only while a grip drag is in flight (the menu has no
+// scrollable content, so this is its sole capture state).
+func (m *GroupMenu) Capturing() bool { return m.drag.Dragging() }
 
 // HandleInput processes mouse/touch input within the menu panel.
 func (m *GroupMenu) HandleInput(x, y int, pressed bool) InputResult {
@@ -265,6 +271,28 @@ func (m *GroupMenu) HandleInput(x, y int, pressed bool) InputResult {
 	// member count) before hit-testing, mirroring NodeSidebar.layout() being
 	// re-run at the top of its HandleInput.
 	m.layoutAt(m.anchorX, m.anchorY)
+
+	// Grip drag — highest precedence inside the card. Returning InputCaptured
+	// makes the dispatcher route every later frame straight here without
+	// re-hit-testing (input_dispatch.go), so the drag survives the cursor
+	// leaving the card.
+	gridPaneR := image.Rect(0, 0, m.game.split.GridW(m.game.winW), m.game.split.GridH(m.game.winH))
+	if m.drag.Dragging() {
+		if pressed {
+			m.drag.MoveTo(image.Pt(x, y), gridPaneR, m.game.gridTopButtonsReservedRect(),
+				image.Pt(m.panel.Dx(), m.panel.Dy()))
+			m.layoutAt(m.anchorX, m.anchorY)
+		} else {
+			m.drag.End()
+		}
+		return InputCaptured
+	}
+	if pressed {
+		if hit := m.drag.HitRect(m.panel); !hit.Empty() && image.Pt(x, y).In(hit) {
+			m.drag.Begin(image.Pt(x, y), m.panel)
+			return InputCaptured
+		}
+	}
 
 	pt := image.Pt(x, y)
 	if !pt.In(m.panel) {
@@ -279,17 +307,18 @@ func (m *GroupMenu) HandleInput(x, y int, pressed bool) InputResult {
 		return InputIgnored
 	}
 
-	order := []string{
-		"save", "close",
-		"ruleonoff", "n-", "n+", "rdpit-", "rdpit+", "rdvol-", "rdvol+", "rddur-", "rddur+",
+	order := []gmID{
+		gmSave, gmClose, gmRuleOnOff,
+		gmMinus(gmStepEveryN), gmPlus(gmStepEveryN), gmMinus(gmStepPitch), gmPlus(gmStepPitch),
+		gmMinus(gmStepVolume), gmPlus(gmStepVolume), gmMinus(gmStepDuration), gmPlus(gmStepDuration),
 	}
 	// Merge chips (task-merge-chips brief): dynamic ids, one per candidate
 	// group — appended before "delete" so the click order mirrors the visual
 	// stacking order (rule rows, then merge chips, then delete).
 	for _, cand := range m.mergeChipCandidates() {
-		order = append(order, fmt.Sprintf("mergechip:%d", cand.ID))
+		order = append(order, gmMergeChip(cand.ID))
 	}
-	order = append(order, "delete")
+	order = append(order, gmDelete)
 	for _, id := range order {
 		btn, ok := m.btns[id]
 		if !ok {
@@ -762,7 +791,7 @@ func computeGroupMenuRowSizing(maxH int, extraHalfRows, extraFullRows int) (rowH
 // adaptive stack of rows that always fits the pane, like the sidebar does.
 func (m *GroupMenu) layoutAt(x, y int) {
 	g := m.game
-	m.rects = map[string]image.Rectangle{}
+	m.rects = map[gmID]image.Rectangle{}
 
 	gridW := g.split.GridW(g.winW)
 	gridH := g.split.GridH(g.winH)
@@ -815,20 +844,38 @@ func (m *GroupMenu) layoutAt(x, y int) {
 		m.memberRectsScratch = g.groupMemberScreenRects(grp.NodeIDs, m.memberRectsScratch)
 		members = m.memberRectsScratch
 	}
-	panel := placeGroupMenu(image.Pt(x, y), image.Pt(w, h), members, reserved, gridW, gridH)
+	// While PINNED, skip auto-placement entirely rather than computing it and
+	// overriding: placeGroupMenu's member-overlap pass would otherwise re-run
+	// every frame against a result it can't affect, and a member drifting under
+	// the card must not shove it off the user's drop point.
+	gridPaneRect := image.Rect(0, 0, gridW, gridH)
+	panel := image.Rect(0, 0, w, h)
+	if !m.drag.Pinned() {
+		panel = placeGroupMenu(image.Pt(x, y), image.Pt(w, h), members, reserved, gridW, gridH)
+	}
+	panel = m.drag.Place(panel, gridPaneRect, g.gridTopButtonsReservedRect())
 	m.panel = panel
-	m.rects["panel"] = panel
+	m.rects[gmPanel] = panel
+	m.rects[gmGrip] = m.drag.GripRect(panel)
 
 	headerR := image.Rect(panel.Min.X+sidebarPad, panel.Min.Y+sidebarPad, panel.Max.X-sidebarPad, panel.Min.Y+sidebarPad+sidebarHeaderH)
-	m.rects["title"] = headerR
+	// Title starts clear of the grip glyph; Save/close keep their right-aligned
+	// header slots, so only the left edge moves.
+	titleR := headerR
+	if gr := m.rects[gmGrip]; !gr.Empty() {
+		if x := gr.Max.X + sidebarGap; x > titleR.Min.X {
+			titleR.Min.X = x
+		}
+	}
+	m.rects[gmTitle] = titleR
 	closeSize := sidebarBtnH
 	// Close × is desktop-only (shared desktopCloseVisible gate). On mobile the
-	// group menu dismisses via tap-away, so no rect is published; mk("close")
+	// group menu dismisses via tap-away, so no rect is published; mk(gmClose)
 	// below self-prunes its button, and Save reclaims the freed header space.
 	if desktopCloseVisible() {
-		m.rects["close"] = image.Rect(headerR.Max.X-closeSize, headerR.Min.Y, headerR.Max.X, headerR.Min.Y+closeSize)
+		m.rects[gmClose] = image.Rect(headerR.Max.X-closeSize, headerR.Min.Y, headerR.Max.X, headerR.Min.Y+closeSize)
 	} else {
-		delete(m.rects, "close")
+		delete(m.rects, gmClose)
 	}
 
 	// Save button: header row, immediately left of close. ALWAYS present
@@ -845,17 +892,17 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	// Save's right edge sits just left of the close × on desktop; on mobile (no
 	// close ×) it reclaims the full header width up to the right padding.
 	saveX2 := headerR.Max.X
-	if r, ok := m.rects["close"]; ok {
+	if r, ok := m.rects[gmClose]; ok {
 		saveX2 = r.Min.X - sidebarGap
 	}
 	saveX1 := saveX2 - saveW
 	if saveX1 < headerR.Min.X {
 		saveX1 = headerR.Min.X
 	}
-	m.rects["save"] = image.Rect(saveX1, headerR.Min.Y, saveX2, headerR.Min.Y+closeSize)
+	m.rects[gmSave] = image.Rect(saveX1, headerR.Min.Y, saveX2, headerR.Min.Y+closeSize)
 
 	yy := headerR.Max.Y + gap
-	rowRect := func(id string) image.Rectangle {
+	rowRect := func(id gmID) image.Rectangle {
 		r := image.Rect(panel.Min.X+sidebarPad, yy, panel.Max.X-sidebarPad, yy+rowH)
 		m.rects[id] = r
 		yy += rowH + gap
@@ -863,7 +910,7 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	}
 	// halfRowRect is a compact section-label row (see groupMenuHalfRows'
 	// doc comment) — half the height of a control row, no buttons.
-	halfRowRect := func(id string) image.Rectangle {
+	halfRowRect := func(id gmID) image.Rectangle {
 		r := image.Rect(panel.Min.X+sidebarPad, yy, panel.Max.X-sidebarPad, yy+halfH)
 		m.rects[id] = r
 		yy += halfH + gap
@@ -872,7 +919,7 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	// stepRowAt wires a −/value/+ trio into an arbitrary rect r (either a
 	// full-width row from rowRect, or a half-width split of one — see the
 	// combined delta+everyN row below).
-	stepRowAt := func(base string, r image.Rectangle) {
+	stepRowAt := func(step gmStep, r image.Rectangle) {
 		pillW := Profile().DensityValues().SidebarValuePillW
 		plusX := r.Max.X - sidebarIncBtnW
 		pillX := plusX - gap - pillW
@@ -882,35 +929,35 @@ func (m *GroupMenu) layoutAt(x, y int) {
 			incH = rowH
 		}
 		btnY := r.Min.Y + (rowH-incH)/2
-		m.rects[base+"-"] = image.Rect(minusX, btnY, minusX+sidebarIncBtnW, btnY+incH)
-		m.rects[base+"val"] = image.Rect(pillX, btnY, pillX+pillW, btnY+incH)
-		m.rects[base+"+"] = image.Rect(plusX, btnY, plusX+sidebarIncBtnW, btnY+incH)
+		m.rects[gmMinus(step)] = image.Rect(minusX, btnY, minusX+sidebarIncBtnW, btnY+incH)
+		m.rects[gmValue(step)] = image.Rect(pillX, btnY, pillX+pillW, btnY+incH)
+		m.rects[gmPlus(step)] = image.Rect(plusX, btnY, plusX+sidebarIncBtnW, btnY+incH)
 	}
-	stepRow := func(base string) image.Rectangle {
-		r := rowRect(base)
-		stepRowAt(base, r)
+	stepRow := func(step gmStep) image.Rectangle {
+		r := rowRect(gmRow(step))
+		stepRowAt(step, r)
 		return r
 	}
 
-	halfRowRect("rulelabel")
+	halfRowRect(gmRuleLabel)
 
 	// ruleonoff (left half) + the shared Every-N stepper (right half) share
 	// one row — the param cycle button that used to occupy this row's right
 	// half is gone (task-rule-anchor Part B); the freed half now hosts
 	// Every-N instead of it living combined with delta on its own row.
-	ruleR := rowRect("ruleonoff")
+	ruleR := rowRect(gmRuleOnOff)
 	halfW := (ruleR.Dx() - gap) / 2
-	m.rects["ruleonoff"] = image.Rect(ruleR.Min.X, ruleR.Min.Y, ruleR.Min.X+halfW, ruleR.Max.Y)
+	m.rects[gmRuleOnOff] = image.Rect(ruleR.Min.X, ruleR.Min.Y, ruleR.Min.X+halfW, ruleR.Max.Y)
 	nR := image.Rect(ruleR.Min.X+halfW+gap, ruleR.Min.Y, ruleR.Max.X, ruleR.Max.Y)
-	m.rects["n"] = nR
-	stepRowAt("n", nR)
+	m.rects[gmRow(gmStepEveryN)] = nR
+	stepRowAt(gmStepEveryN, nR)
 
 	// Three independent per-param delta rows, fixed order pitch/volume/
 	// duration (matches writeRules' export-order) — replacing the single
 	// param-cycle delta row.
-	stepRow("rdpit")
-	stepRow("rdvol")
-	stepRow("rddur")
+	stepRow(gmStepPitch)
+	stepRow(gmStepVolume)
+	stepRow(gmStepDuration)
 
 	// "Add to group" merge-chip section (task-merge-chips brief): one label
 	// half-row + ceil(n/mergeChipCols) chip rows, mergeChipCols chips per row
@@ -919,25 +966,25 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	// mergeChipCandidates for the candidate list and mergeInto for the tap
 	// handler wired in ensureButtons.
 	if len(mergeCandidates) > 0 {
-		halfRowRect("mergelabel")
+		halfRowRect(gmMergeLabel)
 		for i := 0; i < len(mergeCandidates); i += mergeChipCols {
 			end := i + mergeChipCols
 			if end > len(mergeCandidates) {
 				end = len(mergeCandidates)
 			}
-			row := rowRect(fmt.Sprintf("mergerow%d", i/mergeChipCols))
+			row := rowRect(gmMergeRow(i / mergeChipCols))
 			chips := mergeCandidates[i:end]
 			if len(chips) == 1 {
-				m.rects[fmt.Sprintf("mergechip:%d", chips[0].ID)] = row
+				m.rects[gmMergeChip(chips[0].ID)] = row
 				continue
 			}
 			chipHalfW := (row.Dx() - gap) / 2
-			m.rects[fmt.Sprintf("mergechip:%d", chips[0].ID)] = image.Rect(row.Min.X, row.Min.Y, row.Min.X+chipHalfW, row.Max.Y)
-			m.rects[fmt.Sprintf("mergechip:%d", chips[1].ID)] = image.Rect(row.Min.X+chipHalfW+gap, row.Min.Y, row.Max.X, row.Max.Y)
+			m.rects[gmMergeChip(chips[0].ID)] = image.Rect(row.Min.X, row.Min.Y, row.Min.X+chipHalfW, row.Max.Y)
+			m.rects[gmMergeChip(chips[1].ID)] = image.Rect(row.Min.X+chipHalfW+gap, row.Min.Y, row.Max.X, row.Max.Y)
 		}
 	}
 
-	rowRect("delete")
+	rowRect(gmDelete)
 
 	m.ensureButtons(mergeCandidates)
 }
@@ -950,7 +997,7 @@ func (m *GroupMenu) ensureButtons(mergeCandidates []model.NodeGroup) {
 	}
 	ruleOn := m.rulesEnabled()
 
-	mk := func(id, label string, icon string, onClick func()) {
+	mk := func(id gmID, label string, icon string, onClick func()) {
 		r, ok := m.rects[id]
 		if !ok || r.Empty() {
 			delete(m.btns, id)
@@ -975,13 +1022,13 @@ func (m *GroupMenu) ensureButtons(mergeCandidates []model.NodeGroup) {
 		}
 	}
 
-	mk("close", "", "close", func() { m.Close() })
-	if b := m.btns["close"]; b != nil {
+	mk(gmClose, "", "close", func() { m.Close() })
+	if b := m.btns[gmClose]; b != nil {
 		b.IconColor = closeIconColor()
 	}
 
-	mk("save", i18n.T(i18n.KeyGroupSave), "", func() { m.save() })
-	if b := m.btns["save"]; b != nil {
+	mk(gmSave, i18n.T(i18n.KeyGroupSave), "", func() { m.save() })
+	if b := m.btns[gmSave]; b != nil {
 		// Always present (task-save-always Part 1); greyed out via
 		// Button.Disabled when there are no pending edits to commit — see
 		// dirty()'s doc comment. Button.Draw/HandleInputResult already know
@@ -996,22 +1043,22 @@ func (m *GroupMenu) ensureButtons(mergeCandidates []model.NodeGroup) {
 	if ruleOn {
 		ruleToggleLabel = i18n.T(i18n.KeyGroupRuleOn)
 	}
-	mk("ruleonoff", ruleToggleLabel, "", func() { m.setRuleEnabled(!ruleOn) })
-	if b := m.btns["ruleonoff"]; b != nil {
+	mk(gmRuleOnOff, ruleToggleLabel, "", func() { m.setRuleEnabled(!ruleOn) })
+	if b := m.btns[gmRuleOnOff]; b != nil {
 		// An enabled rule reads as the standard latched amber keycap — the
 		// same "this is on" state every toggle in the app uses.
 		b.SetToggled(ruleOn)
 	}
 
-	mk("n-", "", "minus", func() { m.stepRuleEveryN(-1) })
-	mk("n+", "", "plus", func() { m.stepRuleEveryN(1) })
+	mk(gmMinus(gmStepEveryN), "", "minus", func() { m.stepRuleEveryN(-1) })
+	mk(gmPlus(gmStepEveryN), "", "plus", func() { m.stepRuleEveryN(1) })
 
-	mk("rdpit-", "", "minus", func() { m.stepRuleDelta(model.GroupParamPitch, -1) })
-	mk("rdpit+", "", "plus", func() { m.stepRuleDelta(model.GroupParamPitch, 1) })
-	mk("rdvol-", "", "minus", func() { m.stepRuleDelta(model.GroupParamVolume, -1) })
-	mk("rdvol+", "", "plus", func() { m.stepRuleDelta(model.GroupParamVolume, 1) })
-	mk("rddur-", "", "minus", func() { m.stepRuleDelta(model.GroupParamDuration, -1) })
-	mk("rddur+", "", "plus", func() { m.stepRuleDelta(model.GroupParamDuration, 1) })
+	mk(gmMinus(gmStepPitch), "", "minus", func() { m.stepRuleDelta(model.GroupParamPitch, -1) })
+	mk(gmPlus(gmStepPitch), "", "plus", func() { m.stepRuleDelta(model.GroupParamPitch, 1) })
+	mk(gmMinus(gmStepVolume), "", "minus", func() { m.stepRuleDelta(model.GroupParamVolume, -1) })
+	mk(gmPlus(gmStepVolume), "", "plus", func() { m.stepRuleDelta(model.GroupParamVolume, 1) })
+	mk(gmMinus(gmStepDuration), "", "minus", func() { m.stepRuleDelta(model.GroupParamDuration, -1) })
+	mk(gmPlus(gmStepDuration), "", "plus", func() { m.stepRuleDelta(model.GroupParamDuration, 1) })
 
 	// "Add to group" merge chips (task-merge-chips brief): one keycap per
 	// candidate group, id "mergechip:<gid>", label = the group's own Name (or
@@ -1026,7 +1073,7 @@ func (m *GroupMenu) ensureButtons(mergeCandidates []model.NodeGroup) {
 		if label == "" {
 			label = i18n.T(i18n.KeyGroupMenuTitle)
 		}
-		mk(fmt.Sprintf("mergechip:%d", cand.ID), label, "", func() { m.mergeInto(cand.ID) })
+		mk(gmMergeChip(cand.ID), label, "", func() { m.mergeInto(cand.ID) })
 	}
 	// Prune stale merge-chip buttons: a candidate that scrolled out of the
 	// cap, got merged away, or stopped qualifying (e.g. now contains every
@@ -1034,26 +1081,35 @@ func (m *GroupMenu) ensureButtons(mergeCandidates []model.NodeGroup) {
 	// deletes it) — but also delete straight out of m.btns so a dropped
 	// candidate's button/closure (capturing a stale gid) never lingers.
 	for id := range m.btns {
-		if !strings.HasPrefix(id, "mergechip:") {
-			continue
-		}
-		var gid model.GroupID
-		if _, err := fmt.Sscanf(id, "mergechip:%d", &gid); err != nil || !candSet[gid] {
+		if id.el == gmElMergeChip && !candSet[model.GroupID(id.arg)] {
 			delete(m.btns, id)
 		}
 	}
 
-	mk("delete", i18n.T(i18n.KeyGroupDelete), "", func() { m.deleteGroup() })
-	if b := m.btns["delete"]; b != nil {
+	mk(gmDelete, i18n.T(i18n.KeyGroupDelete), "", func() { m.deleteGroup() })
+	if b := m.btns[gmDelete]; b != nil {
 		b.TextColor = colError
 	}
+}
+
+// gripHovered reports whether the desktop cursor is over the drag grip.
+func (m *GroupMenu) gripHovered() bool {
+	if Profile().IsMobile() {
+		return false
+	}
+	gr := m.rects[gmGrip]
+	if gr.Empty() {
+		return false
+	}
+	mx, my := cursorPosition()
+	return image.Pt(mx, my).In(gr)
 }
 
 // drawMergeChip renders one "Add to group" candidate as a flat menu row:
 // the candidate group's identity lives in the leading swatch + hover tint
 // (never a color-filled face), matching the sidebar's membership chips and
 // the shared list-menu row language.
-func (m *GroupMenu) drawMergeChip(dst *ebiten.Image, id string, gid model.GroupID) {
+func (m *GroupMenu) drawMergeChip(dst *ebiten.Image, id gmID, gid model.GroupID) {
 	b := m.btns[id]
 	if b == nil {
 		return
@@ -1085,62 +1141,66 @@ func (m *GroupMenu) Draw(dst *ebiten.Image) {
 
 	panel := m.panel
 	drawPanelShadow(dst, panel, 6)
-	drawRoundedRect(dst, panel, colPanelBG, RadiusLG, true)
+	drawRoundedRect(dst, panel, colPanelBG, RadiusContainer, true)
 	// Standard neutral panel hairline — the group's identity moves to the
 	// title swatch + header underline (the shared identity-menu treatment),
 	// off the panel ring, so the chrome stays calm.
-	drawRoundedRect(dst, panel, colPanelBorder, RadiusLG, false)
+	drawRoundedRect(dst, panel, colPanelBorder, RadiusContainer, false)
+
+	if gr := m.rects[gmGrip]; !gr.Empty() {
+		DrawIcon(dst, IconGrip, gr, popupGripTint(m.drag.Dragging(), m.gripHovered()))
+	}
 
 	// Title: unified menu title (leading group-color swatch + section-header
 	// role — DESIGN.md "Menu anatomy") over the group's own name + live
 	// member count, truncated to fit beside the Save/close buttons. The
 	// accent hairline under the header band uses the group color, mirroring
 	// the node sidebar's instrument underline.
-	if r, ok := m.rects["title"]; ok {
+	if r, ok := m.rects[gmTitle]; ok {
 		band := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+sidebarHeaderH)
 		drawMenuHeaderBandAccent(dst, band, m.game.groupColor(m.groupID))
 		drawMenuTitle(dst, band, m.headerLine(grp), m.game.groupColor(m.groupID))
 	}
-	m.drawBtn(dst, "close")
-	m.drawBtn(dst, "save")
+	m.drawBtn(dst, gmClose)
+	m.drawBtn(dst, gmSave)
 
 	// Rule section — "Rule" is a half-row inline label above the combined
 	// on/off+everyN row. This is the menu's only editable section
 	// (task-rule-continuity Part 1 removed the "edit all members" batch
 	// steppers that used to sit above it).
-	if r, ok := m.rects["rulelabel"]; ok {
+	if r, ok := m.rects[gmRuleLabel]; ok {
 		ty := r.Min.Y + (r.Dy()-StyledTextHeight(RoleCaption))/2
 		DrawTextStyled(dst, i18n.T(i18n.KeyGroupRule), r.Min.X, ty, RoleCaption, colTextSecondary)
 	}
-	m.drawBtn(dst, "ruleonoff")
+	m.drawBtn(dst, gmRuleOnOff)
 	// Every-N is shared across every param's rule (task-rule-anchor Part B —
 	// the param cycle button that used to share this row is gone); label
 	// stays empty, the pill is self-explanatory ("every N rounds").
-	m.drawStepRow(dst, "n", "", m.everyNPillLabel(m.sharedEveryN()))
+	m.drawStepRow(dst, gmStepEveryN, "", m.everyNPillLabel(m.sharedEveryN()))
 
 	// Three independent per-param delta rows.
 	pit, _ := m.ruleFor(model.GroupParamPitch)
 	vol, _ := m.ruleFor(model.GroupParamVolume)
 	dur, _ := m.ruleFor(model.GroupParamDuration)
-	m.drawStepRow(dst, "rdpit", i18n.T(i18n.KeyGroupParamPitch), fmt.Sprintf("%+.2f", pit.Delta))
-	m.drawStepRow(dst, "rdvol", i18n.T(i18n.KeyGroupParamVolume), fmt.Sprintf("%+.2f", vol.Delta))
-	m.drawStepRow(dst, "rddur", i18n.T(i18n.KeyGroupParamDuration), fmt.Sprintf("%+.2f", dur.Delta))
+	m.drawStepRow(dst, gmStepPitch, i18n.T(i18n.KeyGroupParamPitch), fmt.Sprintf("%+.2f", pit.Delta))
+	m.drawStepRow(dst, gmStepVolume, i18n.T(i18n.KeyGroupParamVolume), fmt.Sprintf("%+.2f", vol.Delta))
+	m.drawStepRow(dst, gmStepDuration, i18n.T(i18n.KeyGroupParamDuration), fmt.Sprintf("%+.2f", dur.Delta))
 
 	// "Add to group" merge chips (task-merge-chips brief) — provisional only,
 	// only when at least one addable candidate exists (see
 	// mergeChipCandidates). Reuses KeyGroupAddTo, the same label the
 	// sidebar's "Add to group" row already carries.
 	if cands := m.mergeChipCandidates(); len(cands) > 0 {
-		if r, ok := m.rects["mergelabel"]; ok {
+		if r, ok := m.rects[gmMergeLabel]; ok {
 			ty := r.Min.Y + (r.Dy()-StyledTextHeight(RoleCaption))/2
 			DrawTextStyled(dst, i18n.T(i18n.KeyGroupAddTo), r.Min.X, ty, RoleCaption, colTextSecondary)
 		}
 		for _, cand := range cands {
-			m.drawMergeChip(dst, fmt.Sprintf("mergechip:%d", cand.ID), cand.ID)
+			m.drawMergeChip(dst, gmMergeChip(cand.ID), cand.ID)
 		}
 	}
 
-	m.drawBtn(dst, "delete")
+	m.drawBtn(dst, gmDelete)
 }
 
 // everyNPillLabelFitMargin is the slack (px) subtracted from the pill's
@@ -1159,7 +1219,7 @@ const everyNPillLabelFitMargin = 4
 func (m *GroupMenu) everyNPillLabel(n int) string {
 	label := fmt.Sprintf(i18n.T(i18n.KeyGroupEveryNShort), n)
 	pillW := 0
-	if r, ok := m.rects["nval"]; ok {
+	if r, ok := m.rects[gmValue(gmStepEveryN)]; ok {
 		pillW = r.Dx()
 	}
 	if pillW > 0 && StyledTextWidth(label, RoleBody) > pillW-everyNPillLabelFitMargin {
@@ -1175,14 +1235,14 @@ func (m *GroupMenu) everyNPillLabel(n int) string {
 // them.
 func (m *GroupMenu) headerLine(grp model.NodeGroup) string {
 	full := m.titleText() + " · " + fmt.Sprintf(i18n.T(i18n.KeyGroupMembers), len(grp.NodeIDs))
-	headerR, ok := m.rects["title"]
+	headerR, ok := m.rects[gmTitle]
 	if !ok {
 		return full
 	}
 	rightEdge := headerR.Max.X
-	if r, ok := m.rects["save"]; ok {
+	if r, ok := m.rects[gmSave]; ok {
 		rightEdge = r.Min.X
-	} else if r, ok := m.rects["close"]; ok {
+	} else if r, ok := m.rects[gmClose]; ok {
 		rightEdge = r.Min.X
 	}
 	// The leading title swatch (drawMenuTitle) takes its share of the band.
@@ -1196,19 +1256,19 @@ func (m *GroupMenu) headerLine(grp model.NodeGroup) string {
 
 // drawStepRow draws a batch/rule stepper row's left-side label (when non-
 // empty) and the −/value/+ trio.
-func (m *GroupMenu) drawStepRow(dst *ebiten.Image, base, label, value string) {
-	if r, ok := m.rects[base]; ok && label != "" {
+func (m *GroupMenu) drawStepRow(dst *ebiten.Image, step gmStep, label, value string) {
+	if r, ok := m.rects[gmRow(step)]; ok && label != "" {
 		ty := r.Min.Y + (r.Dy()-StyledTextHeight(RoleCaption))/2
 		DrawTextStyled(dst, label, r.Min.X, ty, RoleCaption, colTextSecondary)
 	}
-	m.drawBtn(dst, base+"-")
-	if r, ok := m.rects[base+"val"]; ok {
+	m.drawBtn(dst, gmMinus(step))
+	if r, ok := m.rects[gmValue(step)]; ok {
 		drawRecessedPill(dst, r, value)
 	}
-	m.drawBtn(dst, base+"+")
+	m.drawBtn(dst, gmPlus(step))
 }
 
-func (m *GroupMenu) drawBtn(dst *ebiten.Image, id string) {
+func (m *GroupMenu) drawBtn(dst *ebiten.Image, id gmID) {
 	b := m.btns[id]
 	if b == nil {
 		return

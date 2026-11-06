@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -39,12 +40,12 @@ func TestPerTabDrawCallBudget(t *testing.T) {
 	rowSnaps := make([]RowSnapshot, 0, len(g.drum.Rows))
 	for _, r := range g.drum.Rows {
 		if r != nil && r.Instrument != "" {
-			rowSnaps = append(rowSnaps, RowSnapshot{ID: r.Instrument, Name: r.Name, Snap: snap})
+			rowSnaps = append(rowSnaps, RowSnapshot{ID: channel.Of(r.Instrument), Name: r.Name, Snap: snap})
 		}
 	}
-	testAnalyzerStateOverride = SynthesizeAnalyzerState("main", "Master", snap, rowSnaps, nil, "", "", audio.SampleRate())
-	testScopeStateOverride = SynthesizeScopeState("main", scope.StageSynth, scope.StageEQ,
-		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Sends: snap, Master: snap})
+	testAnalyzerStateOverride = SynthesizeAnalyzerState(channel.Master, "Master", snap, rowSnaps, nil, channel.ID{}, "", audio.SampleRate())
+	testScopeStateOverride = SynthesizeScopeState(channel.Master, scope.StageSynth, scope.StageEQ,
+		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Master: snap})
 	t.Cleanup(func() {
 		testAnalyzerStateOverride = nil
 		testScopeStateOverride = nil
@@ -71,23 +72,33 @@ func TestPerTabDrawCallBudget(t *testing.T) {
 		t.Logf("tab=%-9s cache-hit drawCalls=%d", tc.name, n)
 	}
 
-	// Both the Chain (Scope) and Wave tabs cache their per-pixel-column trace,
-	// so an unchanged-data frame collapses to a single blit + chrome. Each
-	// once cost thousands of blits EVERY frame (Chain ~5500, Wave ~3100); on a
-	// cache hit each must now stay well under that. 1500 leaves generous room
-	// for the per-frame chrome and is far below the uncached cost.
+	// Every data tab must now stay under a flat per-frame blit budget. Each
+	// got there a different way: Chain and Wave cache their per-pixel-column
+	// trace (once ~5500 and ~3100 blits EVERY frame), and Spectrum caches its
+	// static dB-grid chrome (~832 of its 1032 blits were one drawRect per
+	// dash of 4 dashed gridlines, repainted every frame).
+	//
+	// This used to assert "a cached tab must be cheaper than the UNCACHED
+	// Spectrum tab". That ceiling is gone — Spectrum is cached too and is now
+	// one of the cheapest — so the guard is a flat budget plus a rule that no
+	// tab may quietly become an order of magnitude worse than its peers.
 	for _, tab := range []struct {
 		name string
 		tab  PanelTab
-	}{{"Chain", TabScope}, {"Wave", TabWave}} {
+	}{{"Chain", TabScope}, {"Wave", TabWave}, {"Spectrum", TabSpectrum}, {"Levels", TabMeters}} {
 		if calls[tab.tab] > 1500 {
-			t.Errorf("%s cache-hit draw=%d exceeds budget 1500 — trace cache not effective", tab.name, calls[tab.tab])
+			t.Errorf("%s draw=%d exceeds budget 1500 — a per-frame trace/chrome cache is not effective",
+				tab.name, calls[tab.tab])
 		}
-		// And a cached hit must be cheaper than the uncached Spectrum tab,
-		// which renders ~10 bars + a hi-res FFT underlay every frame.
-		if calls[tab.tab] >= calls[TabSpectrum] {
-			t.Errorf("%s cache-hit draw (%d) should be cheaper than uncached Spectrum (%d) — cache regressed",
-				tab.name, calls[tab.tab], calls[TabSpectrum])
-		}
+	}
+
+	// Spectrum specifically: its cost is framerate-INVARIANT (no ~30 Hz data
+	// gate like the Wave/Chain traces), so on a 60/120 Hz display it pays in
+	// full on every frame. It was the single worst tab at 1032 blits and the
+	// reported cause of audio lag on the single WASM thread. Keep it in the
+	// same league as the other data tabs rather than 5x above them.
+	if calls[TabSpectrum] > 2*calls[TabMeters] {
+		t.Errorf("Spectrum draw=%d is more than 2x Levels=%d — static chrome is being repainted per frame again",
+			calls[TabSpectrum], calls[TabMeters])
 	}
 }

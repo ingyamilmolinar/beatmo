@@ -1,0 +1,105 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-acoustic-heavy",
+  "name": "Heavy Acoustic Kick",
+  "category": "modular",
+  "notes": "kickAcousticHeavySeed: the acoustic kick (variant 7 modal bank + room) pushed\nheavier in the 2026-10-02 fullness pass — body saturation 0.25 → 2.05, a\nharder beater, a fuller fundamental. The user kept BOTH (\"super different and\nI like both\"), so it ships beside kick-acoustic. Roughness measured 0.002\n(the original 0.003): the creak that once forced kick_sat down to 0.25 did not\ncome back. Frozen literal, independent of acousticKickSeed.",
+  "render": {
+    "seconds": 0.65,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 54
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.acoustic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 1,
+        "kick_click": 0.98,
+        "kick_env0": 9.5,
+        "kick_env1": 22,
+        "kick_fade": 2.5,
+        "kick_h2": 0,
+        "kick_h3": 0.08,
+        "kick_h4": 0.02,
+        "kick_mode_decay": 45,
+        "kick_mode_detune": 0.03,
+        "kick_mode_gain": 0.45,
+        "kick_noise": 0,
+        "kick_pe_amt": 0.25,
+        "kick_pe_rate": 55,
+        "kick_reverb": 0.85,
+        "kick_sat": 2.05,
+        "wave": 0
+      }
+    }
+  ]
+}

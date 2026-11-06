@@ -108,26 +108,27 @@ func TestFunctional_Esc_BPMBox(t *testing.T) {
 	}
 	orig := g.drum.BPM()
 
-	// 1. Click the BPM readout to open the shared editor.
+	// 1. Click the BPM readout to open the value wheel.
 	r := box.Rect
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-	ed := g.drum.transportZone.paramEditor
-	if ed == nil || !ed.Active() {
-		t.Fatalf("clicking the BPM readout did not open the editor")
+	w := g.drum.valueWheelPopup
+	if w == nil || !w.IsOpen() {
+		t.Fatalf("clicking the BPM readout did not open the value wheel")
 	}
 
-	// 2. Type a new tempo into the editor.
-	fi.chars = []rune{'2', '4', '0'}
-	fi.frame(t, g)
-	if ed.ti.Value() == "" {
-		t.Fatalf("typed characters did not register in the BPM editor")
+	// 2. Move the tempo with the wheel (live).
+	for i := 0; i < 3; i++ {
+		fi.pressKey(t, g, ebiten.KeyArrowUp)
+	}
+	if g.drum.BPM() == orig {
+		t.Fatalf("arrow keys did not move the BPM wheel")
 	}
 
-	// 3. Press Esc — expect cancel (revert) + close.
+	// 3. Press Esc — expect cancel (restore) + close.
 	fi.pressKey(t, g, ebiten.KeyEscape)
 
-	if ed.Active() {
-		t.Fatalf("Esc did not close the BPM editor")
+	if w.IsOpen() {
+		t.Fatalf("Esc did not close the BPM wheel")
 	}
 	if g.drum.BPM() != orig {
 		t.Fatalf("Esc did not cancel the edit: BPM = %d, want original %d", g.drum.BPM(), orig)
@@ -204,29 +205,27 @@ func TestFunctional_Esc_EQdBInput(t *testing.T) {
 	}
 	orig := ez.bandGainsDB[idx]
 
-	// 1. Click the dB readout — this now opens the precision wheel popup
-	// (Task 2: EQ wheel-popup value editor); click the wheel's center box to
-	// reach the shared numeric editor (the user edits the value).
+	// 1. Click the dB readout — it opens the precision wheel popup (the only
+	// dB-entry path besides the curve; typed entry was retired).
 	r := ez.dbReadoutRect(idx)
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-	if g.drum.eqWheelPopup == nil || !g.drum.eqWheelPopup.IsOpen() {
+	w := g.drum.eqWheelPopup
+	if w == nil || !w.IsOpen() {
 		t.Fatalf("click did not open the EQ wheel popup for band %d", idx)
 	}
-	cb := g.drum.eqWheelPopup.centerH
-	fi.clickAt(t, g, (cb.Min.X+cb.Max.X)/2, (cb.Min.Y+cb.Max.Y)/2)
-	if ez.paramEditor == nil || !ez.paramEditor.Active() {
-		t.Fatalf("click on the wheel's center box did not open the dB editor for band %d — the readout must be editable", idx)
+
+	// 2. Move the gain with the wheel (live).
+	fi.pressKey(t, g, ebiten.KeyArrowUp)
+	fi.pressKey(t, g, ebiten.KeyArrowUp)
+	if ez.bandGainsDB[idx] == orig {
+		t.Fatalf("arrow keys did not move the dB wheel for band %d", idx)
 	}
 
-	// 2. Type a new dB value.
-	fi.chars = []rune{'8'}
-	fi.frame(t, g)
-
-	// 3. Press Esc — expect cancel (revert) + close.
+	// 3. Press Esc — expect cancel (restore) + close.
 	fi.pressKey(t, g, ebiten.KeyEscape)
 
-	if ez.paramEditor.Active() {
-		t.Fatalf("Esc did not close the EQ dB editor")
+	if w.IsOpen() {
+		t.Fatalf("Esc did not close the EQ dB wheel")
 	}
 	if ez.bandGainsDB[idx] != orig {
 		t.Fatalf("Esc did not cancel the dB edit: band %d = %v, want original %v", idx, ez.bandGainsDB[idx], orig)
@@ -273,9 +272,46 @@ func TestFunctional_Esc_InstrumentSearch(t *testing.T) {
 // input is focused on WASM, keyboard focus moves to the hidden soft-keyboard
 // proxy, so the canvas never receives the Esc keydown (isKeyJustPressed stays
 // false). The proxy forwards it via SignalSoftKeyboardEscape. This test focuses
-// the BPM box, types, fires ONLY the soft-keyboard signal (no canvas Esc), and
-// asserts the edit is reverted and the box closed — the exact fix.
+// a text field (the row rename box — BPM no longer has a text box, it opens the
+// value wheel), types, fires ONLY the soft-keyboard signal (no canvas Esc), and
+// asserts the edit is cancelled and the field closed — the exact fix.
 func TestFunctional_Esc_SoftKeyboardProxy(t *testing.T) {
+	g := newDesktopGame(t)
+	fi := newFakeInput(1280, 720)
+	restore := installFakeInput(fi)
+	defer restore()
+	fi.frame(t, g)
+	fi.frame(t, g)
+
+	if len(g.drum.Rows) == 0 || g.drum.rowRackZone == nil || g.drum.rowRackZone.callbacks.OnRenameOpen == nil {
+		t.Skip("no rename trigger")
+	}
+	origName := g.drum.Rows[0].Name
+	g.drum.rowRackZone.callbacks.OnRenameOpen(0)
+	fi.frame(t, g)
+	if g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
+		t.Skip("rename field did not open")
+	}
+	fi.chars = []rune{'Q', 'Q'}
+	fi.frame(t, g)
+
+	// Esc arrives ONLY through the proxy (the canvas never sees the keydown:
+	// isKeyJustPressed(Escape) stays false) — only the proxy's forwarded signal.
+	SignalSoftKeyboardEscape()
+	fi.frame(t, g)
+
+	if g.drum.renameComp.IsOpen() {
+		t.Fatal("soft-keyboard Esc signal should close the rename field")
+	}
+	if g.drum.Rows[0].Name != origName {
+		t.Fatalf("soft-keyboard Esc signal should cancel the rename: name %q, want %q", g.drum.Rows[0].Name, origName)
+	}
+}
+
+// TestFunctional_Esc_BPMBox_Commits is the positive control: Enter commits the
+// wheel's value (so the Esc test above meaningfully distinguishes cancel from
+// commit).
+func TestFunctional_Esc_BPMBox_Commits(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
 	restore := installFakeInput(fi)
@@ -290,53 +326,14 @@ func TestFunctional_Esc_SoftKeyboardProxy(t *testing.T) {
 	orig := g.drum.BPM()
 	r := box.Rect
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-	ed := g.drum.transportZone.paramEditor
-	if ed == nil || !ed.Active() {
-		t.Fatal("BPM editor not open after click")
+	if w := g.drum.valueWheelPopup; w == nil || !w.IsOpen() {
+		t.Fatal("BPM wheel not open after click")
 	}
-	ed.ti.SetText("240")
-
-	// Crucially: NO canvas Esc key is pressed (fi has no Escape in keys, so
-	// isKeyJustPressed(Escape) stays false) — only the proxy's forwarded signal.
-	SignalSoftKeyboardEscape()
-	fi.frame(t, g)
-
-	if ed.Active() {
-		t.Fatal("soft-keyboard Esc signal should close the BPM editor")
+	for i := 0; i < 3; i++ {
+		fi.pressKey(t, g, ebiten.KeyArrowUp)
 	}
-	if g.drum.BPM() != orig {
-		t.Fatalf("soft-keyboard Esc signal should revert the BPM edit to %d, got %d", orig, g.drum.BPM())
-	}
-}
-
-// TestFunctional_Esc_BPMBox_Commits is the positive control: Enter commits the
-// typed value (so we know the typing path itself works and the Esc test above
-// is meaningfully distinguishing cancel from commit).
-func TestFunctional_Esc_BPMBox_Commits(t *testing.T) {
-	g := newDesktopGame(t)
-	fi := newFakeInput(1280, 720)
-	restore := installFakeInput(fi)
-	defer restore()
-	fi.frame(t, g)
-	fi.frame(t, g)
-
-	box := g.drum.bpmBox()
-	if box == nil || box.Rect.Empty() {
-		t.Skip("no BPM box rect")
-	}
-	r := box.Rect
-	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-	ed := g.drum.transportZone.paramEditor
-	if ed == nil || !ed.Active() {
-		t.Fatal("BPM editor not open after click")
-	}
-	// Open pre-fills the editor with the current BPM. Clear it first, mirroring a
-	// user selecting-all and deleting before typing a replacement.
-	ed.ti.SetText("")
-	fi.chars = []rune{'1', '5', '5'}
-	fi.frame(t, g)
 	fi.pressKey(t, g, ebiten.KeyEnter)
-	if g.drum.BPM() != 155 {
-		t.Fatalf("Enter should commit typed BPM 155, got %d", g.drum.BPM())
+	if g.drum.BPM() != orig+3 {
+		t.Fatalf("Enter should commit the wheel's BPM %d, got %d", orig+3, g.drum.BPM())
 	}
 }

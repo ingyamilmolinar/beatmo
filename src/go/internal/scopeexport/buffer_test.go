@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -24,7 +26,7 @@ func TestBufferSnapshot_AppendsJSONL(t *testing.T) {
 	for i := range samples {
 		samples[i] = 0.5
 	}
-	s.PushSamples(scope.StageSynth, "kick", samples)
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), samples)
 
 	s.BufferSnapshot()
 	out := s.DumpBuffer()
@@ -49,7 +51,7 @@ func TestBufferSnapshot_MultipleAppends(t *testing.T) {
 	s := NewService(Config{SampleRate: 48000})
 	// Each BufferSnapshot after a new PushSamples produces a new line.
 	for i := 0; i < 3; i++ {
-		s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))
+		s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), make([]float64, 128))
 		s.BufferSnapshot()
 	}
 	out := s.DumpBuffer()
@@ -64,13 +66,13 @@ func TestBufferLenTracksAppendsAndDrain(t *testing.T) {
 	if got := s.BufferLen(); got != 0 {
 		t.Fatalf("fresh service: BufferLen=%d want 0", got)
 	}
-	s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), make([]float64, 128))
 	s.BufferSnapshot()
 	first := s.BufferLen()
 	if first == 0 {
 		t.Fatal("expected BufferLen > 0 after BufferSnapshot")
 	}
-	s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), make([]float64, 128))
 	s.BufferSnapshot()
 	if got := s.BufferLen(); got <= first {
 		t.Fatalf("expected BufferLen to grow after second snapshot: got %d (was %d)", got, first)
@@ -86,7 +88,7 @@ func TestBufferLenTracksAppendsAndDrain(t *testing.T) {
 
 func TestBufferSnapshot_DumpClearsBuffer(t *testing.T) {
 	s := NewService(Config{SampleRate: 48000})
-	s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), make([]float64, 128))
 	s.BufferSnapshot()
 	first := s.DumpBuffer()
 	if len(first) == 0 {

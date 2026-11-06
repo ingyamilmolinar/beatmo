@@ -4,6 +4,8 @@ package audio
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Phase-1 baseline benchmark for the pitch-shift cache-miss path. Today every
@@ -26,16 +28,13 @@ import (
 // on an i7-12700 the pre-Phase-6 baseline is ~30-50us/op with 0 Go allocs
 // (all allocation is C-side via malloc, invisible to Go's runtime).
 
-// renderCowbellPitch renders the cowbell recipe through the modular binding with
-// an explicit pitch override. The cowbell POST stage wires pitch (PostOrder=0), so
-// a non-zero pitch routes through the SAME shared apply_post_params pitch-scratch
-// path this bench guards — render_cowbell_p was deleted in the Phase-6 modular
-// migration, so the bench drives the post-resample via the unified engine.
+// renderCowbellPitch renders the cowbell with an explicit FINISH-stage pitch
+// override, which routes through the shared post pitch-scratch path this bench
+// guards.
 func renderCowbellPitch(buf []float32, sampleRate, samples int, pitch float64) {
-	merged := MergeRecipeDefaults("drum-cowbell", RecipeParams{"pitch": pitch})
-	spec := cymbalVariantSpecs["drum-cowbell"]
-	renderModularP(buf, sampleRate, samples,
-		cymbalRecipeToModular("drum-cowbell", merged, spec.variant, cymbalWiredFields("drum-cowbell")))
+	if out, err := RenderInstrumentWithFields(roster.Cowbell, sampleRate, samples, map[string]float64{"post_pitch": pitch}); err == nil {
+		copy(buf, out)
+	}
 }
 
 func BenchmarkPitchShiftCacheMissBaseline(b *testing.B) {

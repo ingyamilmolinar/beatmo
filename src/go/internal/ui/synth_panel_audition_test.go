@@ -3,6 +3,9 @@ package ui
 import (
 	"sync"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Helper contract: auditionInstrumentAfterDrag fires exactly one audition
@@ -25,27 +28,27 @@ func TestAuditionInstrumentAfterDrag_FiresOncePerRelease(t *testing.T) {
 	dv := &DrumView{}
 	var mu sync.Mutex
 	var calls []string
-	prev := SwapSynthAuditionFnForTest(func(id string) {
+	prev := SwapSynthAuditionFnForTest(func(id instrument.ID) {
 		mu.Lock()
-		calls = append(calls, id)
+		calls = append(calls, string(id))
 		mu.Unlock()
 	})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
 	// Each release fires exactly once. Simulate three independent drag
 	// releases on different instruments.
-	dv.auditionInstrumentAfterDrag("snare")
-	dv.auditionInstrumentAfterDrag("kick")
-	dv.auditionInstrumentAfterDrag("hihat")
+	dv.auditionInstrumentAfterDrag(roster.Snare)
+	dv.auditionInstrumentAfterDrag(roster.Kick)
+	dv.auditionInstrumentAfterDrag(roster.Hihat)
 
 	mu.Lock()
 	defer mu.Unlock()
 	if got, want := len(calls), 3; got != want {
 		t.Fatalf("audition call count = %d, want %d (calls=%v)", got, want, calls)
 	}
-	wantSeq := []string{"snare", "kick", "hihat"}
+	wantSeq := []instrument.ID{roster.Snare, roster.Kick, roster.Hihat}
 	for i, want := range wantSeq {
-		if calls[i] != want {
+		if instrument.ID(calls[i]) != want {
 			t.Errorf("call %d: got %q, want %q", i, calls[i], want)
 		}
 	}
@@ -54,7 +57,7 @@ func TestAuditionInstrumentAfterDrag_FiresOncePerRelease(t *testing.T) {
 func TestAuditionInstrumentAfterDrag_NoOpOnEmptyID(t *testing.T) {
 	dv := &DrumView{}
 	var calls int
-	prev := SwapSynthAuditionFnForTest(func(string) { calls++ })
+	prev := SwapSynthAuditionFnForTest(func(instrument.ID) { calls++ })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
 	// Empty instrument id (e.g. an unbound row) must not trigger audition —

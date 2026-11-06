@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refactor Ranking</title>
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de; --text: #1f2328; --muted: #656d76;
+    --accent: #0969da; --bar: #0969da33; --warn: #9a6700; --bad: #cf222e; --good: #1a7f37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --accent: #58a6ff; --bar: #58a6ff33; --warn: #d29922; --bad: #f85149; --good: #3fb950;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --accent: #58a6ff; --bar: #58a6ff33; --warn: #d29922; --bad: #f85149; --good: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, sans-serif; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  header h1 { font-size: 15px; margin: 0; }
+  header .meta { color: var(--muted); }
+  nav { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  nav button { background: none; border: 1px solid transparent; border-bottom: none; color: var(--muted); padding: 6px 12px; cursor: pointer; border-radius: 6px 6px 0 0; font: inherit; }
+  nav button.on { color: var(--text); border-color: var(--border); background: var(--bg); margin-bottom: -1px; }
+  main { padding: 12px 16px 40px; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  input, select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font: inherit; }
+  .totals { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .tile b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--muted); font-size: 11px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; cursor: pointer; white-space: nowrap; position: sticky; top: 0; background: var(--bg); }
+  td.n, th.n { text-align: right; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--surface); }
+  tr.detail td { background: var(--surface); }
+  .kind { font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--border); white-space: nowrap; }
+  code { font: 12px ui-monospace, monospace; word-break: break-all; }
+  .bar { position: relative; }
+  .bar i { position: absolute; left: 0; top: 2px; bottom: 2px; background: var(--bar); border-radius: 3px; }
+  .bar span { position: relative; }
+  .flag { color: var(--warn); }
+  ul { margin: 4px 0; padding-left: 18px; }
+  .muted { color: var(--muted); }
+</style>
+<header>
+  <h1>Refactor ranking</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<nav id="tabs"></nav>
+<main id="main"></main>
+<script id="model" type="application/json">__MODEL__</script>
+<script>
+(function () {
+  const R = JSON.parse(document.getElementById("model").textContent);
+  R.candidates = R.candidates || []; R.areas = R.areas || []; R.packages = R.packages || [];
+  R.types = R.types || []; R.topUnits = R.topUnits || [];
+  const $ = (t, attrs, html) => { const e = document.createElement(t); Object.assign(e, attrs || {}); if (html != null) e.innerHTML = html; return e; };
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = (v, d) => typeof v === "number" ? (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(d == null ? 2 : d)) : esc(v);
+  document.getElementById("meta").textContent = R.module + " · " + (R.configs || []).join(", ") + " · " + R.candidates.length + " candidates";
+
+  // initialDir: 1 ascending (rank), -1 descending (scores, sizes).
+  function sortable(cols, rows, render, initial, initialDir) {
+    let key = initial, dir = initialDir || -1;
+    const wrap = $("div", { className: "scroll" }), table = $("table"), thead = $("thead"), tbody = $("tbody");
+    const tr = $("tr");
+    cols.forEach(c => {
+      const th = $("th", { className: c.num ? "n" : "" }, esc(c.label));
+      th.onclick = () => { if (key === c.key) dir = -dir; else { key = c.key; dir = c.num ? -1 : 1; } draw(); };
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr); table.append(thead, tbody); wrap.appendChild(table);
+    function draw() {
+      const rs = rows().slice().sort((a, b) => { const x = a[key], y = b[key]; return (x < y ? -1 : x > y ? 1 : 0) * dir; });
+      tbody.innerHTML = "";
+      rs.slice(0, 500).forEach(r => render(r, tbody));
+    }
+    wrap.redraw = draw; draw();
+    return wrap;
+  }
+
+  const views = {
+    Candidates() {
+      const box = $("div");
+      const t = R.totals || {};
+      const tiles = [["sumCognitive", "Σ cognitive"], ["unitsOverCog30", "units > 30 cognitive"], ["cloneLoc", "redundant clone lines"],
+        ["deadLoc", "dead lines"], ["testOnlyLoc", "test-only lines"], ["filesOver1500", "files ≥ 1500 lines"], ["sloc", "SLOC"], ["units", "units"]];
+      const tot = $("div", { className: "totals" });
+      tiles.forEach(([k, l]) => tot.appendChild($("div", { className: "tile" }, "<b>" + fmt(t[k] || 0) + "</b><span>" + esc(l) + "</span>")));
+      box.appendChild(tot);
+      const tools = $("div", { className: "tools" });
+      const q = $("input", { placeholder: "filter target / area…", size: 28 });
+      const kind = $("select");
+      kind.appendChild($("option", { value: "" }, "all kinds"));
+      [...new Set(R.candidates.map(c => c.kind))].sort().forEach(k => kind.appendChild($("option", { value: k }, esc(k))));
+      const sup = $("select");
+      sup.append($("option", { value: "live" }, "hide suppressed"), $("option", { value: "all" }, "show suppressed"));
+      tools.append(q, kind, sup);
+      box.appendChild(tools);
+      const open = {};
+      const rows = () => R.candidates.map((c, i) => Object.assign({ rank: i + 1 }, c)).filter(c =>
+        (!kind.value || c.kind === kind.value) && (sup.value === "all" || !c.suppressed) &&
+        (!q.value || (c.target + " " + c.area + " " + c.location).toLowerCase().includes(q.value.toLowerCase())));
+      const max = Math.max(1, ...R.candidates.map(c => c.score));
+      const tbl = sortable([
+        { key: "rank", label: "#", num: true }, { key: "score", label: "score", num: true }, { key: "kind", label: "kind" },
+        { key: "target", label: "target" }, { key: "payoff", label: "payoff", num: true }, { key: "confidence", label: "conf", num: true },
+        { key: "risk", label: "risk", num: true }, { key: "area", label: "area" }], rows, (c, tb) => {
+        const tr = $("tr", { className: "row" });
+        tr.innerHTML = "<td class=n>" + c.rank + "</td><td class='n bar'><i style='width:" + (100 * c.score / max).toFixed(1) + "%'></i><span>" + fmt(c.score, 1) +
+          "</span></td><td><span class=kind>" + esc(c.kind) + "</span></td><td><code>" + esc(c.target) + "</code>" + (c.contested ? " <span class=flag title='agent disagrees'>⚑</span>" : "") +
+          (c.suppressed ? " <span class=muted>(suppressed)</span>" : "") + "</td><td class=n>" + fmt(c.payoff, 1) + "</td><td class=n>" + fmt(c.confidence) +
+          "</td><td class=n>" + fmt(c.risk) + "</td><td class=muted>" + esc(c.area) + "</td>";
+        tb.appendChild(tr);
+        if (open[c.id]) {
+          const d = $("tr", { className: "detail" });
+          let h = "<td></td><td colspan=7><div><code>" + esc(c.location) + "</code> · id " + esc(c.id) + "</div><ul>" +
+            (c.breakdown || []).map(l => "<li>" + esc(l) + "</li>").join("") + (c.notes || []).map(l => "<li class=muted>note: " + esc(l) + "</li>").join("") + "</ul>";
+          if (c.agent) h += "<div><b>Agent</b>: " + esc(c.agent.proposal) + " <span class=muted>(effort " + esc(c.agent.effort) + ", risk " + esc(c.agent.regression_risk) + ")</span></div>";
+          if (c.suppressed) h += "<div class=muted>Suppressed: " + esc(c.suppressed) + "</div>";
+          if (c.evidence) h += "<div class=muted><code>" + esc(JSON.stringify(c.evidence)) + "</code></div>";
+          d.innerHTML = h + "</td>";
+          tb.appendChild(d);
+        }
+        tr.onclick = () => { open[c.id] = !open[c.id]; tbl.redraw(); };
+      }, "rank", 1);
+      [q, kind, sup].forEach(el => el.oninput = el.onchange = () => tbl.redraw());
+      box.appendChild(tbl);
+      return box;
+    },
+    Modules() {
+      const box = $("div");
+      const which = $("select");
+      which.append($("option", { value: "areas" }, "areas (file-prefix groups)"), $("option", { value: "packages" }, "packages"));
+      box.appendChild($("div", { className: "tools" })).appendChild(which);
+      const holder = $("div"); box.appendChild(holder);
+      function draw() {
+        const list = R[which.value] || [];
+        const max = Math.max(1, ...list.map(a => a.compound));
+        holder.innerHTML = "";
+        holder.appendChild(sortable([
+          { key: "name", label: "area" }, { key: "compound", label: "compound", num: true }, { key: "files", label: "files", num: true },
+          { key: "lines", label: "lines", num: true }, { key: "units", label: "units", num: true }, { key: "sumCog", label: "Σ cognitive", num: true },
+          { key: "over30", label: "> 30", num: true }, { key: "gini", label: "gini", num: true }, { key: "coupling", label: "coupling", num: true },
+          { key: "cloneLoc", label: "clone lines", num: true }, { key: "deadLoc", label: "dead lines", num: true }], () => list, (a, tb) => {
+          const tr = $("tr");
+          tr.innerHTML = "<td><code>" + esc(a.name) + "</code><div class=muted>" + esc((a.topUnits || []).join(", ")) + "</div></td><td class='n bar'><i style='width:" +
+            (100 * a.compound / max).toFixed(1) + "%'></i><span>" + fmt(a.compound, 0) + "</span></td>" +
+            ["files", "lines", "units", "sumCog", "over30", "gini", "coupling", "cloneLoc", "deadLoc"].map(k => "<td class=n>" + fmt(a[k]) + "</td>").join("");
+          tb.appendChild(tr);
+        }, "compound"));
+      }
+      which.onchange = draw; draw();
+      return box;
+    },
+    Units() {
+      return sortable([
+        { key: "name", label: "unit" }, { key: "cognitive", label: "cognitive", num: true }, { key: "cyclo", label: "cyclo", num: true },
+        { key: "nesting", label: "nesting", num: true }, { key: "sloc", label: "sloc", num: true }, { key: "fanIn", label: "fan-in", num: true },
+        { key: "fanOut", label: "fan-out", num: true }, { key: "params", label: "params", num: true }, { key: "reach", label: "reach" }], () => R.topUnits, (u, tb) => {
+        const tr = $("tr");
+        tr.innerHTML = "<td><code>" + esc(u.pkg + "." + u.name) + "</code><div class=muted>" + esc(u.file + ":" + u.line) + "</div></td>" +
+          ["cognitive", "cyclo", "nesting", "sloc", "fanIn", "fanOut", "params"].map(k => "<td class=n>" + fmt(u[k]) + "</td>").join("") + "<td>" + esc(u.reach) + "</td>";
+        tb.appendChild(tr);
+      }, "cognitive");
+    },
+    Types() {
+      return sortable([
+        { key: "name", label: "type" }, { key: "methods", label: "methods", num: true }, { key: "fields", label: "fields", num: true },
+        { key: "filesSpanned", label: "files", num: true }, { key: "methodLoc", label: "method lines", num: true }], () => R.types, (t, tb) => {
+        const tr = $("tr");
+        tr.innerHTML = "<td><code>" + esc(t.pkg + "." + t.name) + "</code><div class=muted>" + (t.perFile || []).slice(0, 5).map(f =>
+          esc(f.file.split("/").pop()) + " " + f.exclusive + "/" + f.fieldsUsed).join(" · ") + "</div></td>" +
+          ["methods", "fields", "filesSpanned", "methodLoc"].map(k => "<td class=n>" + fmt(t[k]) + "</td>").join("");
+        tb.appendChild(tr);
+      }, "methods");
+    },
+  };
+  const nav = document.getElementById("tabs"), main = document.getElementById("main");
+  let current = "Candidates";
+  try { current = localStorage.getItem("refactor-rank-tab") || current; } catch (e) {}
+  function show(name) {
+    current = views[name] ? name : "Candidates";
+    try { localStorage.setItem("refactor-rank-tab", current); } catch (e) {}
+    [...nav.children].forEach(b => b.classList.toggle("on", b.textContent === current));
+    main.innerHTML = ""; main.appendChild(views[current]());
+  }
+  Object.keys(views).forEach(n => { const b = $("button", {}, n); b.onclick = () => show(n); nav.appendChild(b); });
+  show(current);
+})();
+</script>
+</html>

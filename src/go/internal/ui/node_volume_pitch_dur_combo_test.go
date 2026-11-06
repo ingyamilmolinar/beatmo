@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Repro: Changing volume on a node that also has pitch and duration set must
@@ -23,7 +24,7 @@ func TestNodeVolumeWorksWithPitchAndDuration(t *testing.T) {
 	g.graph.SetNodeParams(b.ID, model.NodeParams{Volume: 1.5, Pitch: +3, Duration: 0.75})
 
 	vols := make(chan float64, 2)
-	g.SetPlayFunc(func(_ string, v float64, _ ...float64) { vols <- v })
+	g.SetPlayFunc(func(_ instrument.ID, v float64, _ ...float64) { vols <- v })
 
 	g.SetPlaying(true)
 	scheduleAbsForMuteTest(g, 0)

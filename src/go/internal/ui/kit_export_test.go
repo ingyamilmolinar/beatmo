@@ -6,6 +6,10 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestExportSchema_Phase6FieldsAreAdditive — verifies the two new
@@ -17,11 +21,11 @@ func TestExportSchema_Phase6FieldsAreAdditive(t *testing.T) {
 	t.Cleanup(audio.ResetKitsForTest)
 	audio.ResetKitsForTest()
 
-	file := exportFile{
-		Version: 1,
-		BPM:     120,
+	file := projectFile{
+		Envelope: schema.Current(),
+		BPM:      120,
 		Instruments: []exportInstrument{
-			{Name: "Snare", ID: "snare", Kind: "builtin", Volume: 1, Color: "#FFFFFFFF"},
+			{Name: "Snare", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Color: "#FFFFFFFF"},
 		},
 	}
 	raw, err := json.Marshal(file)
@@ -39,10 +43,10 @@ func TestExportSchema_Phase6FieldsAreAdditive(t *testing.T) {
 	audio.RegisterKit(audio.Kit{
 		ID:          "kit.fixture",
 		DisplayName: "Fixture",
-		Members:     map[string]string{"snare": "snare-2"},
+		Members:     map[instrument.Role]instrument.ID{instrument.RoleSnare: roster.SnareLofi},
 	})
 	file.Kits = audio.KitsForExport()
-	file.Instruments[0].Role = "snare"
+	file.Instruments[0].Role = instrument.RoleSnare
 	raw2, err := json.Marshal(file)
 	if err != nil {
 		t.Fatalf("marshal2: %v", err)
@@ -55,7 +59,7 @@ func TestExportSchema_Phase6FieldsAreAdditive(t *testing.T) {
 	}
 
 	// Round-trip decode must preserve the kit's id/name/members.
-	var decoded exportFile
+	var decoded projectFile
 	if err := json.Unmarshal(raw2, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -66,10 +70,10 @@ func TestExportSchema_Phase6FieldsAreAdditive(t *testing.T) {
 	if gotKit.ID != "kit.fixture" || gotKit.DisplayName != "Fixture" {
 		t.Errorf("decoded kit metadata = %+v", gotKit)
 	}
-	if gotKit.Members["snare"] != "snare-2" {
+	if gotKit.Members[instrument.RoleSnare] != roster.SnareLofi {
 		t.Errorf("decoded kit members = %v", gotKit.Members)
 	}
-	if decoded.Instruments[0].Role != "snare" {
+	if decoded.Instruments[0].Role != instrument.RoleSnare {
 		t.Errorf("decoded Role = %q want snare", decoded.Instruments[0].Role)
 	}
 }

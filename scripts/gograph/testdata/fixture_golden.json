@@ -24,8 +24,8 @@
     },
     {
       "path": "example.com/fixture/foo",
-      "loc": 14,
-      "files": 2,
+      "loc": 20,
+      "files": 3,
       "types": [
         {
           "name": "Thing",
@@ -66,9 +66,21 @@
           "nesting": 3,
           "cyclo": 4,
           "callDepth": 1
+        },
+        {
+          "name": "Plat",
+          "loc": 6,
+          "nesting": 1,
+          "cyclo": 2,
+          "callDepth": 2
         }
       ],
       "memberEdges": [
+        {
+          "from": "Plat",
+          "to": "Helper",
+          "calls": 1
+        },
         {
           "from": "Thing",
           "to": "Helper",

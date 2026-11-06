@@ -11,9 +11,7 @@ Runs as a native desktop app (Go/Ebiten) or in the browser via WebAssembly + Web
 - **Logic kinds** — Probability, skip-every-N, every-N-triggers, and conditional triggers (trigger-if-prev-skipped, trigger-if-prev-triggered)
 - **42 instruments** — Percussion synthesis (snare, kick, hihat, tom, clap, cowbell, crash, ride, rimshot, shaker, sidestick), FM synth (bass, bell, lead, epiano, pluck), plus post-processed variants
 - **10-band parametric EQ** — Per-instrument and master channel, with 4th-order Linkwitz-Riley crossovers
-- **6 insert effects** — Distortion, delay, reverb, chorus, bitcrusher, filter — C block-processing with AudioWorklet on WASM
-- **Send effects** — Delay and reverb send buses with per-instrument wet/dry control
-- **Stereo panning** — Per-instrument equal-power pan law
+- **18 insert effects** — Distortion, delay, reverb, chorus, bitcrusher, filter, phaser, flanger, tremolo, gate, limiter, ring mod, waveshaper, auto-wah, compressor, transient, tape, pitch shifter — C block-processing on desktop, WebAudio node graph on WASM
 - **Dynamic compressor** — Master channel limiter (threshold -6 dB, ratio 4:1)
 - **Voice anti-pop** — Fade-in/fade-out envelopes on every voice to prevent clicks
 - **Mobile/touch support** — Gesture detection, inertial scrolling, responsive layout, portrait and landscape
@@ -39,14 +37,13 @@ Runs as a native desktop app (Go/Ebiten) or in the browser via WebAssembly + Web
     - **Per-instrument insert effects** (distortion, delay, reverb, chorus, bitcrusher, filter) with C block-processing implementations and Go test fallbacks.
     - **Stereo panning** per instrument channel (equal-power pan law).
   - `src/c` — Miniaudio glue, DSP, and reusable audio modules.
-    - `drums.c` — Percussion synthesis (snare, kick, hihat, tom, clap, cowbell, etc.)
-    - `fmsynth.c` — 4-operator FM synth (bass, bell, lead, epiano, pluck) using wavetable oscillator
+    - `modular.c` / `modular_stages.c` — The modular synth engine every instrument renders through (`render_modular_p`): generator bank (kick / tom / snare / cymbal plate / FM / analytic / Karplus-Strong voices), oscillator, FM, envelopes, filters, formant, POST stage — all driven by the `modular_params` config block
+    - `drums.c` — Shared DSP primitives (`softsat_shared` / `osc_wave_shared`), the POST-stage `apply_post_params`, and `load_audio` (native sample decode)
+    - `fmsynth.c` — the shared 4-operator FM render core (`fm_render`) used by the modular FM stage and FM voice
     - `effects.c` — Send effects (delay, reverb)
     - `insert_fx.c` — 6 insert effect types with block-based `_process(in, out, N)` API
     - `wavetable.c` — Band-limited wavetable oscillator with guard-point interpolation
     - `adsr.c` — ADSR envelope generator (linear/exponential curves)
-    - `lfo.c` — LFO module (sine, triangle, saw, square, random sample-and-hold)
-    - `pan.c` — Equal-power stereo panning
 - Browser bridge
   - `src/js/audio.js` — WebAudio implementation with reusable volume buses, channel graph, `playSoundsBatch`, and sample loader.
   - `src/js/drums.single.js` — Emscripten single‑file DSP (generated; do not edit by hand).

@@ -1,11 +1,12 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -24,9 +25,9 @@ func newSynthTabGame(t *testing.T) *Game {
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 	return g
 }
 
@@ -58,16 +59,13 @@ func TestSynthTab_LayoutPopulatesSliders(t *testing.T) {
 
 	sliders := g.drum.SynthTabSliders()
 	bindings := g.drum.SynthTabBindings()
-	// Synth-tab redesign: per-recipe wired params only. drum-snare wires
-	// pitch + decay + tone + drive (4) plus the snare family knobs;
-	// attack/color/body/brightness are no-ops on this recipe and
-	// intentionally not rendered.
-	want := len(audio.WiredParamsForRecipe("drum-snare"))
-	if want < 4 {
-		t.Fatalf("test invariant broken: drum-snare wired param count = %d, expected >= 4", want)
+	// One control per ParamDef of the instrument's document.
+	want := len(audio.InstrumentParamDefs(roster.Snare))
+	if want == 0 {
+		t.Fatal("test invariant broken: snare has no ParamDefs")
 	}
 	if len(sliders) != want {
-		t.Errorf("got %d sliders, want %d (wired params for drum-snare)", len(sliders), want)
+		t.Errorf("got %d sliders, want %d (ParamDefs of snare)", len(sliders), want)
 	}
 	if len(bindings) != want {
 		t.Errorf("got %d bindings, want %d", len(bindings), want)
@@ -75,21 +73,21 @@ func TestSynthTab_LayoutPopulatesSliders(t *testing.T) {
 }
 
 func TestSynthTab_NoSilentNoOpSlidersAcrossRecipes(t *testing.T) {
-	// Across every shipped recipe, neither attack nor color should appear
+	// Across every shipped instrument, neither attack nor color should appear
 	// in the bindings — no C renderer reads them. Locks in the Synth-tab
 	// redesign's #1 UX fix at the slider-binding layer.
 	g := newSynthTabGame(t)
-	for _, id := range audio.RecipeOrder() {
-		g.drum.Rows[0].Instrument = "test-noop-" + id
-		audio.BindInstrumentToRecipe("test-noop-"+id, id)
-		t.Cleanup(func() { audio.BindInstrumentToRecipe("test-noop-"+id, "") })
+	for _, id := range roster.All {
+		g.drum.Rows[0].Instrument = instrument.ID("test-noop-" + string(id))
+		_ = audio.InstallInstrumentDocForTest("test-noop-"+id, id)
+		t.Cleanup(func() { audio.RemoveInstrumentDocForTest("test-noop-" + id) })
 
 		g.drum.eqPanelZone.SetActiveTab(TabSynth)
 		g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 		for _, b := range g.drum.SynthTabBindings() {
 			if b.def.Name == "attack" || b.def.Name == "color" {
-				t.Errorf("recipe %q: renders silent no-op slider %q", id, b.def.Name)
+				t.Errorf("instrument %q: renders silent no-op slider %q", id, b.def.Name)
 			}
 		}
 	}
@@ -97,7 +95,7 @@ func TestSynthTab_NoSilentNoOpSlidersAcrossRecipes(t *testing.T) {
 
 func TestSynthTab_SlidersInitialiseFromManagerParams(t *testing.T) {
 	g := newSynthTabGame(t)
-	audio.SetInstrumentParam("snare", "decay", 2.0)
+	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.5)
 
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -105,51 +103,16 @@ func TestSynthTab_SlidersInitialiseFromManagerParams(t *testing.T) {
 	bindings := g.drum.SynthTabBindings()
 	sliders := g.drum.SynthTabSliders()
 	for i, b := range bindings {
-		if b.def.Name != "decay" {
+		if b.def.Name != "post_decay" {
 			continue
 		}
-		// decay range [0,4] → 2.0 ≈ 50%.
+		// Length range [0,1] → 0.5 ≈ 50%.
 		if sliders[i].Value < 0.45 || sliders[i].Value > 0.55 {
 			t.Errorf("decay slider Value=%v want ~0.5", sliders[i].Value)
 		}
 		return
 	}
 	t.Fatal("no decay slider found")
-}
-
-func TestSynthTab_ResetButtonClearsParams(t *testing.T) {
-	g := newSynthTabGame(t)
-	audio.SetInstrumentParam("snare", "decay", 0.5)
-	audio.SetInstrumentParam("snare", "drive", 0.3)
-
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-
-	btns := g.drum.SynthTabButtons()
-	if len(btns) < 1 {
-		t.Fatalf("expected at least 1 button (reset); got %d", len(btns))
-	}
-	var resetBtn *Button
-	for _, b := range btns {
-		if b != nil && b.Text == synthResetButtonTag {
-			resetBtn = b
-			break
-		}
-	}
-	if resetBtn == nil {
-		t.Fatalf("reset button not present among %d header buttons", len(btns))
-	}
-	// Reset via the shared buttonHitAdapter (the same path real input uses
-	// now that footer buttons dispatch through their own OnClick).
-	adapter := &buttonHitAdapter{btn: resetBtn}
-	cx := (resetBtn.Rect().Min.X + resetBtn.Rect().Max.X) / 2
-	cy := (resetBtn.Rect().Min.Y + resetBtn.Rect().Max.Y) / 2
-	adapter.OnPress(cx, cy)
-
-	got := audio.GetInstrumentParams("snare")
-	if len(got) != 0 {
-		t.Errorf("Reset did not clear params: got %v", got)
-	}
 }
 
 func TestSynthTab_SliderDragMutatesAudioParams(t *testing.T) {
@@ -162,7 +125,7 @@ func TestSynthTab_SliderDragMutatesAudioParams(t *testing.T) {
 	// Find the decay slider and drag it via the hit adapter.
 	var idx = -1
 	for i, b := range bindings {
-		if b.def.Name == "decay" {
+		if b.def.Name == "post_decay" {
 			idx = i
 			break
 		}
@@ -175,16 +138,16 @@ func TestSynthTab_SliderDragMutatesAudioParams(t *testing.T) {
 	// the knob's pixels-per-sweep constant, set the slider value directly
 	// — the propagate helper reads from the slider as the value store.
 	sliders[idx].Value = 0.75
-	g.drum.propagateSynthSliderValue(idx, "snare")
+	g.drum.propagateSynthSliderValue(idx, roster.Snare)
 
-	got := audio.GetInstrumentParams("snare")
-	val, ok := got["decay"]
+	got := audio.GetInstrumentParams(roster.Snare)
+	val, ok := got["post_decay"]
 	if !ok {
 		t.Fatalf("decay not present after value set: %v", got)
 	}
-	// decay range [0,4] → 75% ≈ 3.0.
-	if val < 2.5 || val > 3.5 {
-		t.Errorf("decay=%v out of expected [2.5, 3.5] for 75%% slider", val)
+	// Length range [0,1] → 75% ≈ 0.75.
+	if val < 0.7 || val > 0.8 {
+		t.Errorf("decay=%v out of expected [0.7, 0.8] for 75%% slider", val)
 	}
 }
 
@@ -205,7 +168,7 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 	// to its expanded synth height) before asserting synth-slider-0 flows
 	// through the EQ panel zone.
 	expandSynthPanelForTest(t, g)
-	selectSectionForKnobIdx(t, g, "snare", 0)
+	selectSectionForKnobIdx(t, g, roster.Snare, 0)
 	synthAreas := g.drum.eqPanelZone.HitAreas()
 	hasSlider := false
 	for _, a := range synthAreas {
@@ -225,27 +188,29 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 	// Task 8): every synth instrument shows the standardized
 	// VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE · FILTER ·
 	// FILTER ENV · FORMANT · RESONATOR · POST
-	// sequence. For drum-snare:
-	//   VOICE     = the 11 snare family/voice knobs (generator + fundamental + the
-	//               tone/noise/tail decays + mixes + attack — the knobs that ARE
-	//               the snare sound),
+	// sequence. For synth-modular-snare:
+	//   VOICE     = the 12 snare family/voice knobs (generator + fundamental + the
+	//               tone/noise/tail decays + mixes + attack + the base Pitch
+	//               voice_freq_hz the seed sets — the knobs that ARE the snare
+	//               sound),
 	//   OSC       = the 3 standardized oscillator knobs (osc_type/detune/octave),
 	//   ENSEMBLE  = the 5 unison/ensemble knobs (Voices/Detune/Mix + 2 drift)
 	//               which stack the oscillator, PLUS the 4 Phase-15 humanization
 	//               knobs (Scatter/Vibrato Rate/Vibrato Depth/Humanize) PLUS the
 	//               Phase-16 Roughness (ens_jitter) knob → 10,
-	//   FM        = the 13 standardized FM operator knobs,
+	//   (no FM: the operators belong to the FM oscillator module, and the
+	//    snare's oscillator is the sine — spec 2026-10-04 §6),
 	//   PITCH     = the 2 pitch-env knobs (pitchenv_amt/decay),
 	//   LFO       = the 4 LFO knobs (lfo_rate/depth/target/delay),
 	//   BURST     = sharpness + 4×(off, amp) = 9,
-	//   ENV       = decay (generic) + the 5 amp ADSR knobs = 6,
+	//   ENV       = the 5 amp ADSR knobs (env_enabled is the pill),
 	//   FILTER    = the 3 standardized static-filter knobs,
 	//   FILTER ENV= the 3 filter-envelope knobs (filtenv_amt/decay/attack),
 	//   FORMANT   = the 9 formant knobs (Vowel/Voice Type/Mix/Head Size/Breath/
 	//               Shine/Morph Speed/Morph To + the Phase-16 Dry Blend
 	//               (formant_dry) knob — formant_enabled is the pill),
 	//   RESONATOR = the 3 body-resonator knobs (Body Model/Body Mix/Bow Dynamics),
-	//   POST      = pitch + tone + drive (generic post) + gain = 4.
+	//   POST      = drive + pitch + gain = 3 (drive_enabled is the pill).
 	// Each stage section also carries its enable pill; VOICE/ENSEMBLE/RESONATOR
 	// carry none.
 	g := newSynthTabGame(t)
@@ -254,28 +219,27 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 
 	sections := g.drum.SynthTabSections()
 	if len(sections) != 13 {
-		t.Fatalf("got %d sections, want 13 (VOICE/OSC/ENSEMBLE/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/FILTER ENV/FORMANT/RESONATOR/POST)", len(sections))
+		t.Fatalf("got %d sections, want 13 (VOICE/OSC/ENSEMBLE/PITCH/LFO/BURST/ENVELOPE/FILTER/FILTER ENV/FORMANT/RESONATOR/POST/FINISH)", len(sections))
 	}
 	wantBySection := map[synthSectionID]int{
-		synthSectionVoice:     11,
+		synthSectionVoice:     12,
 		synthSectionOsc:       3,
 		synthSectionEnsemble:  10,
-		synthSectionFM:        13,
 		synthSectionPitch:     2,
 		synthSectionLFO:       4,
 		synthSectionBurst:     9,
-		synthSectionEnvelope:  6,
+		synthSectionEnvelope:  5,
 		synthSectionFilter:    3,
 		synthSectionFilterEnv: 3,
 		synthSectionFormant:   9,
 		synthSectionResonator: 3,
-		synthSectionPost:      4,
+		synthSectionPost:      3,
+		synthSectionFinish:    8, // resample/fade/fade speed/low boost/air/darken/crunch/limit
 	}
 	wantEnable := map[synthSectionID]string{
 		synthSectionVoice:     "",
 		synthSectionOsc:       "osc_enabled",
 		synthSectionEnsemble:  "",
-		synthSectionFM:        "fm_enabled",
 		synthSectionPitch:     "pitchenv_enabled",
 		synthSectionLFO:       "lfo_enabled",
 		synthSectionBurst:     "burst_enabled",
@@ -284,7 +248,8 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 		synthSectionFilterEnv: "filtenv_enabled",
 		synthSectionFormant:   "formant_enabled",
 		synthSectionResonator: "",
-		synthSectionPost:      "post_enabled",
+		synthSectionPost:      "drive_enabled",
+		synthSectionFinish:    "",
 	}
 	for _, s := range sections {
 		want, ok := wantBySection[s.id]
@@ -293,110 +258,52 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 			continue
 		}
 		if s.KnobCount() != want {
-			t.Errorf("section %q (drum-snare): got %d knobs, want %d", s.Label(), s.KnobCount(), want)
+			t.Errorf("section %q (synth-modular-snare): got %d knobs, want %d", s.Label(), s.KnobCount(), want)
 		}
 		if s.EnableParam() != wantEnable[s.id] {
-			t.Errorf("section %q (drum-snare): enableParam=%q want %q", s.Label(), s.EnableParam(), wantEnable[s.id])
+			t.Errorf("section %q (synth-modular-snare): enableParam=%q want %q", s.Label(), s.EnableParam(), wantEnable[s.id])
 		}
 	}
 
-	// Synth-tab redesign: sections are no longer laid out side-by-side. Every
-	// section instead appears as a chip in the pipeline strip; exactly one
-	// section (the selected stage) is expanded into the detail pane and is the
-	// only one with a non-empty rect. The equivalent per-recipe layout claim
-	// is therefore: one chip per section (in order), and exactly one non-empty
-	// section rect equal to the detail pane.
-	chips := g.drum.instEditorChips
-	if len(chips) != len(sections) {
-		t.Fatalf("got %d chips, want one per section (%d)", len(chips), len(sections))
+	// Category layer: sections are the stage MODEL (never laid out as cards).
+	// Every section is part of the pipeline strip model — ON stages as pills,
+	// OFF stages under the "+" pill — in pipeline order.
+	on, off := g.drum.synp().activePipelineStages(g.drum.synthTabActiveInstrument())
+	if got := len(on) + len(off); got != len(sections) {
+		t.Fatalf("pipeline model covers %d stages, want one per section (%d)", got, len(sections))
 	}
-	for i, c := range chips {
-		if c.id != sections[i].id {
-			t.Errorf("chip[%d] id=%v, want section order %v", i, c.id, sections[i].id)
+	prev := -1
+	for _, i := range on {
+		if i <= prev {
+			t.Errorf("strip pills out of pipeline order at section %d", i)
 		}
-		if c.rect.Empty() {
-			t.Errorf("section %q chip has empty rect — every stage must stay visible in the strip", sectionLabel(c.id))
-		}
+		prev = i
 	}
-	nonEmpty := 0
 	for _, s := range sections {
-		if s.Rect().Empty() {
-			continue
+		if !s.Rect().Empty() {
+			t.Errorf("section %q has a layout rect %v — sections are a model, cards come from the drilled view", s.Label(), s.Rect())
 		}
-		nonEmpty++
-		if s.Rect() != g.drum.instEditorDetailR {
-			t.Errorf("non-empty section %q rect %v != detail pane %v", s.Label(), s.Rect(), g.drum.instEditorDetailR)
-		}
-	}
-	if nonEmpty != 1 {
-		t.Errorf("got %d sections with non-empty rects, want exactly 1 (the selected/detail stage)", nonEmpty)
 	}
 }
 
 func TestSynthTab_EmptySectionsArePruned(t *testing.T) {
-	// Phase 8B unification: empty standardized sections are PRUNED (not shown as
-	// collapsed "not used" placeholders). A minimal plugin recipe that wires
-	// only decay + brightness + drive produces just the ENVELOPE (decay) and
-	// POST (brightness + drive) sections — no VOICE/OSC/FM/FILTER cards at all,
-	// since the recipe contributes no content to them.
-	registerCollapsedSectionTestRecipe(t)
-	g := newSynthTabGame(t)
-	g.drum.Rows[0].Instrument = "hihat"
-	audio.BindInstrumentToRecipe("hihat", collapsedTestRecipeID)
-	t.Cleanup(func() {
-		audio.BindInstrumentToRecipe("hihat", "drum-hihat")
-		audio.ResetInstrumentParams("hihat")
-	})
-
+	// Empty standardized sections are PRUNED (never shown as "not used"
+	// placeholders). The bare modular voice plays the sine oscillator and no
+	// generator layer, so the FM section (the FM oscillator's operators) has no
+	// knob to show and must be absent; every section that IS shown carries at
+	// least one knob or its enable pill.
+	g := setupModularSynthGame(t)
+	audio.SetInstrumentParam(roster.Modular, "osc_type", 0) // back to the sine oscillator
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
-	wantBySection := map[synthSectionID]int{
-		synthSectionEnvelope: 1, // decay
-		synthSectionPost:     2, // brightness + drive
-	}
-	got := map[synthSectionID]int{}
 	for _, s := range g.drum.SynthTabSections() {
-		got[s.id] = s.KnobCount()
-		if _, ok := wantBySection[s.id]; !ok {
-			t.Errorf("unexpected (non-pruned) section %q with %d knobs", s.Label(), s.KnobCount())
+		if s.id == synthSectionFM {
+			t.Errorf("FM section shown with %d knobs on a sine oscillator — it must be pruned", s.KnobCount())
 		}
-	}
-	for id, want := range wantBySection {
-		if got[id] != want {
-			t.Errorf("section %q: got %d knobs, want %d", sectionLabel(id), got[id], want)
+		if s.KnobCount() == 0 && s.EnableParam() == "" {
+			t.Errorf("section %q is empty (no knob, no pill) yet not pruned", s.Label())
 		}
-	}
-}
-
-// collapsedTestRecipeID is a runtime-registered recipe whose schema leaves
-// the PITCH section empty, standing in for the user/plugin recipes that can
-// still produce collapsed section cards.
-const collapsedTestRecipeID = "test-collapsed-section"
-
-type collapsedTestProvider struct{}
-
-func (collapsedTestProvider) Render(buf []float32, sampleRate, samples, variant int, p audio.RecipeParams) {
-	for i := 0; i < samples && i < len(buf); i++ {
-		buf[i] = 0.1
-	}
-}
-
-func registerCollapsedSectionTestRecipe(t *testing.T) {
-	t.Helper()
-	err := audio.RegisterPluginRecipe(audio.PluginRecipeOptions{
-		ID:          collapsedTestRecipeID,
-		DisplayName: "Collapsed Section Test",
-		Category:    "drum",
-		ParamDefs: []audio.ParamDef{
-			{Name: "decay", Label: "Decay", Min: 0, Max: 4, Default: 1},
-			{Name: "brightness", Label: "Brightness", Min: 0, Max: 1, Default: 0},
-			{Name: "drive", Label: "Drive", Min: 0, Max: 1, Default: 0},
-		},
-		Provider: collapsedTestProvider{},
-	})
-	if err != nil && !strings.Contains(err.Error(), "already registered") {
-		t.Fatalf("RegisterPluginRecipe: %v", err)
 	}
 }
 
@@ -411,10 +318,10 @@ func TestSynthTab_NoSynthInstrumentShowsBanner(t *testing.T) {
 	g := newSynthTabGame(t)
 	g.drum.Rows[0].Name = "Kick"
 	g.drum.Rows[0].Instrument = "kick-wav"
-	// No recipe binding → this instrument plays a sample, not the synth.
-	audio.BindInstrumentToRecipe("kick-wav", "")
-	if audio.RecipeForInstrument("kick-wav") != "" {
-		t.Fatalf("test invariant broken: kick-wav must have no recipe binding")
+	// No instrument document → this instrument plays a sample, not the synth.
+	audio.RemoveInstrumentDocForTest("kick-wav")
+	if audio.HasInstrumentDoc("kick-wav") {
+		t.Fatalf("test invariant broken: kick-wav must have no instrument document")
 	}
 
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -435,7 +342,7 @@ func TestSynthTab_NoSynthInstrumentShowsBanner(t *testing.T) {
 }
 
 // TestSynthTab_RecipeInstrumentDoesNotShowBanner is the negative control:
-// a real synth instrument (snare → drum-snare) must NOT enter the no-synth
+// a real synth instrument (snare → synth-modular-snare) must NOT enter the no-synth
 // banner state and must still render its section cards.
 func TestSynthTab_RecipeInstrumentDoesNotShowBanner(t *testing.T) {
 	g := newSynthTabGame(t)
@@ -443,7 +350,7 @@ func TestSynthTab_RecipeInstrumentDoesNotShowBanner(t *testing.T) {
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	if g.drum.SynthTabNoSynth() {
-		t.Error("synth instrument (drum-snare) must not enter the no-synth banner state")
+		t.Error("synth instrument (synth-modular-snare) must not enter the no-synth banner state")
 	}
 	if !g.drum.SynthTabBannerRect().Empty() {
 		t.Error("synth instrument must not reserve a no-synth banner rect")
@@ -459,11 +366,8 @@ func TestSynthTab_HeaderLayoutRecordsResolvedInstrument(t *testing.T) {
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	h := g.drum.SynthTabHeader()
-	if h.instLabel != "snare" {
+	if h.instLabel != roster.Snare {
 		t.Errorf("header instLabel=%q want %q", h.instLabel, "snare")
-	}
-	if h.recipeID != "drum-snare" {
-		t.Errorf("header recipeID=%q want %q", h.recipeID, "drum-snare")
 	}
 }
 
@@ -481,7 +385,7 @@ func TestSynthTab_SliderDragCoalescesIdenticalValues(t *testing.T) {
 	bindings := g.drum.SynthTabBindings()
 	var idx = -1
 	for i, b := range bindings {
-		if b.def.Name == "decay" {
+		if b.def.Name == "post_decay" {
 			idx = i
 			break
 		}
@@ -491,24 +395,24 @@ func TestSynthTab_SliderDragCoalescesIdenticalValues(t *testing.T) {
 	}
 
 	// Swap the platform callback so we can count emissions.
-	oldCb := audio.SwapPlatformInstrumentParamsChangedForTest(nil)
-	t.Cleanup(func() { audio.SwapPlatformInstrumentParamsChangedForTest(oldCb) })
+	oldCb := audio.SwapPlatformInstrumentDocChangedForTest(nil)
+	t.Cleanup(func() { audio.SwapPlatformInstrumentDocChangedForTest(oldCb) })
 
 	var fired int
-	audio.SwapPlatformInstrumentParamsChangedForTest(func(id string, p audio.RecipeParams) {
+	audio.SwapPlatformInstrumentDocChangedForTest(func(instrument.ID, instrument.Doc) {
 		fired++
 	})
 
 	// First propagation: should fire.
 	sliders[idx].Value = 0.5
-	g.drum.propagateSynthSliderValue(idx, "snare")
+	g.drum.propagateSynthSliderValue(idx, roster.Snare)
 	if fired != 1 {
 		t.Errorf("first propagation: fired=%d, want 1", fired)
 	}
 
 	// Subsequent identical propagations: should NOT fire (coalesced).
 	for i := 0; i < 10; i++ {
-		g.drum.propagateSynthSliderValue(idx, "snare")
+		g.drum.propagateSynthSliderValue(idx, roster.Snare)
 	}
 	if fired != 1 {
 		t.Errorf("after 10 identical follow-ups: fired=%d, want 1 (coalescer should suppress)", fired)
@@ -516,7 +420,7 @@ func TestSynthTab_SliderDragCoalescesIdenticalValues(t *testing.T) {
 
 	// Move the slider — should fire once.
 	sliders[idx].Value = 0.7
-	g.drum.propagateSynthSliderValue(idx, "snare")
+	g.drum.propagateSynthSliderValue(idx, roster.Snare)
 	if fired != 2 {
 		t.Errorf("after slider move: fired=%d, want 2", fired)
 	}
@@ -534,4 +438,15 @@ func TestSynthTab_NoActiveInstrumentRendersEmpty(t *testing.T) {
 	if got := len(g.drum.SynthTabSliders()); got != 0 {
 		t.Errorf("got %d sliders for empty game; want 0", got)
 	}
+}
+
+// stageDefForTest returns the real modular ParamDef for a stage param, so a
+// test fixture routes exactly as the shipped schema does.
+func stageDefForTest(t *testing.T, name string) audio.ParamDef {
+	t.Helper()
+	def, ok := audio.StageParamDefByName(name)
+	if !ok {
+		t.Fatalf("no stage ParamDef named %q", name)
+	}
+	return def
 }

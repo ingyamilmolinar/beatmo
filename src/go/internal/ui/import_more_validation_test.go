@@ -3,6 +3,10 @@ package ui
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 func TestImportClampsRowAndNodeParams(t *testing.T) {
@@ -23,27 +27,27 @@ func TestImportClampsRowAndNodeParams(t *testing.T) {
 		GroovePct  float64 `json:"groove_pct,omitempty"`
 	}
 	f := struct {
-		Version int     `json:"version"`
-		Subdiv  int     `json:"subdiv"`
-		BPM     int     `json:"bpm"`
-		Nodes   []node2 `json:"nodes"`
-		Insts   []tInst `json:"instruments"`
+		SchemaVersion string  `json:"schema_version"`
+		Subdiv        int     `json:"subdiv"`
+		BPM           int     `json:"bpm"`
+		Nodes         []node2 `json:"nodes"`
+		Insts         []tInst `json:"instruments"`
 	}{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
-		Nodes:   []node2{{ID: 1, I: 0, J: 0, Type: "regular", Volume: -5, Duration: 0, GrooveKind: "weird", GroovePct: 2}},
-		Insts:   []tInst{{Name: "Row", ID: "snare", Kind: "builtin", Volume: 9.9, Origin: 1, Color: "#FFFFFFFF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Nodes:         []node2{{ID: 1, I: 0, J: 0, Type: "regular", Volume: -5, Duration: 0, GrooveKind: "delay", GroovePct: 2}},
+		Insts:         []tInst{{Name: "Row", ID: roster.Snare, Kind: "builtin", Volume: 9.9, Origin: 1, Color: "#FFFFFFFF"}},
 	}
 	// Recompose with correct field names for instruments
 	type file struct {
-		Version     int     `json:"version"`
-		Subdiv      int     `json:"subdiv"`
-		BPM         int     `json:"bpm"`
-		Nodes       []node2 `json:"nodes"`
-		Instruments []tInst `json:"instruments"`
+		SchemaVersion string  `json:"schema_version"`
+		Subdiv        int     `json:"subdiv"`
+		BPM           int     `json:"bpm"`
+		Nodes         []node2 `json:"nodes"`
+		Instruments   []tInst `json:"instruments"`
 	}
-	data, _ := json.Marshal(file{Version: f.Version, Subdiv: f.Subdiv, BPM: f.BPM, Nodes: f.Nodes, Instruments: f.Insts})
+	data, _ := json.Marshal(file{SchemaVersion: f.SchemaVersion, Subdiv: f.Subdiv, BPM: f.BPM, Nodes: f.Nodes, Instruments: f.Insts})
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import failed: %v", err)
 	}
@@ -73,10 +77,50 @@ func TestImportClampsRowAndNodeParams(t *testing.T) {
 			// Duration should not be <=0 after import; default remains 1 (set by model.New node params default)
 			t.Fatalf("node duration invalid after import: %v", mn.Params.Duration)
 		}
-		if mn.Params.GrooveKind != "" {
-			t.Fatalf("invalid groove kind should be ignored; got %q", mn.Params.GrooveKind)
+		if mn.Params.GrooveKind != model.GrooveDelay || mn.Params.GroovePct != 1 {
+			t.Fatalf("groove = %v %v, want delay clamped to 1", mn.Params.GrooveKind, mn.Params.GroovePct)
 		}
 	} else {
 		t.Fatalf("node not found in graph")
+	}
+}
+
+// TestImportRejectsUnknownGroove: a groove has one spelling; anything else
+// rejects the file before anything resets (it used to be silently dropped).
+func TestImportRejectsUnknownGroove(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	data := []byte(`{"schema_version":"` + schema.Version + `","subdiv":32,"bpm":120,
+		"instruments":[{"name":"Row","id":"snare","kind":"builtin","volume":1,"origin":1,"color":"#FFFFFFFF"}],
+		"nodes":[{"id":1,"i":0,"j":0,"type":"regular","groove_kind":"weird","groove_pct":0.5}]}`)
+	if err := g.Import(data); err == nil {
+		t.Fatal("import accepted groove_kind \"weird\"")
+	}
+}
+
+// TestImportNeverReplacesABuiltinWithAWAV: a row naming a shipped instrument
+// with a WAV path would have registered that file under the built-in's id and
+// replaced it for the session. A built-in is a sample only through embedded
+// PCM (the Sampler's edit of it), so such a file is rejected — and so is a row
+// that carries a path but claims to be the synth.
+func TestImportNeverReplacesABuiltinWithAWAV(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	for _, inst := range []string{
+		`{"name":"Kick","id":"kick","kind":"sample","path":"/tmp/other.wav","volume":1,"origin":1,"color":"#FFFFFFFF"}`,
+		`{"name":"Kick","id":"kick--2","kind":"sample","path":"/tmp/other.wav","volume":1,"origin":1,"color":"#FFFFFFFF"}`,
+		`{"name":"Kick","id":"kick","kind":"sample","volume":1,"origin":1,"color":"#FFFFFFFF"}`,
+		`{"name":"Clap","id":"my-clap","kind":"builtin","path":"/tmp/clap.wav","volume":1,"origin":1,"color":"#FFFFFFFF"}`,
+		`{"name":"Clap","id":"my clap","kind":"builtin","volume":1,"origin":1,"color":"#FFFFFFFF"}`,
+	} {
+		data := []byte(`{"schema_version":"` + schema.Version + `","subdiv":32,"bpm":120,"instruments":[` + inst + `],
+			"nodes":[{"id":1,"i":0,"j":0,"type":"regular"}]}`)
+		if err := g.Import(data); err == nil {
+			t.Errorf("import accepted %s", inst)
+		}
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -27,7 +29,7 @@ func layoutSamplerTab(t *testing.T, g *Game) {
 
 func TestSamplerTabBuildsKnobsAndButtons(t *testing.T) {
 	g := newSamplerTabGame(t)
-	g.drum.sampler.captureFromSynth("kick") // knobs only lay out once a buffer exists
+	g.drum.sampler.captureFromSynth(roster.Kick) // knobs only lay out once a buffer exists
 	layoutSamplerTab(t, g)
 	dv := g.drum
 
@@ -39,7 +41,7 @@ func TestSamplerTabBuildsKnobsAndButtons(t *testing.T) {
 			t.Errorf("knob %d has empty rect", i)
 		}
 	}
-	for _, tag := range []string{"sampler-preview", "sampler-save", "sampler-save-as"} {
+	for _, tag := range []string{"sampler-preview", "sampler-save-as"} {
 		if dv.samplerButtonByTag(tag) == nil {
 			t.Errorf("missing button %q", tag)
 		}
@@ -60,7 +62,7 @@ func TestSamplerTabReusesKnobsAcrossLayout(t *testing.T) {
 
 func TestSamplerTabHitAreasSitAbovePanelCatchAll(t *testing.T) {
 	g := newSamplerTabGame(t)
-	g.drum.sampler.captureFromSynth("kick") // load a buffer so handles appear
+	g.drum.sampler.captureFromSynth(roster.Kick) // load a buffer so handles appear
 	layoutSamplerTab(t, g)
 
 	areas := g.drum.samplerTabHitAreas()
@@ -77,7 +79,7 @@ func TestSamplerTabHitAreasSitAbovePanelCatchAll(t *testing.T) {
 			sawHandle = true
 		case strings.HasPrefix(a.Tag, "sampler-knob"):
 			sawKnob = true
-		case a.Tag == "sampler-save":
+		case a.Tag == "sampler-save-as":
 			sawButton = true
 		}
 	}
@@ -88,7 +90,7 @@ func TestSamplerTabHitAreasSitAbovePanelCatchAll(t *testing.T) {
 
 func TestSamplerTabHitAreasFlowFromEQPanel(t *testing.T) {
 	g := newSamplerTabGame(t)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	layoutSamplerTab(t, g)
 
 	areas := g.drum.eqPanelZone.HitAreas()
@@ -97,7 +99,7 @@ func TestSamplerTabHitAreasFlowFromEQPanel(t *testing.T) {
 		switch a.Tag {
 		case "eq-panel-capture":
 			sawCatchAll = true
-		case "sampler-save":
+		case "sampler-save-as":
 			sawSampler = true
 		}
 	}
@@ -111,21 +113,21 @@ func TestSamplerTabHitAreasFlowFromEQPanel(t *testing.T) {
 
 func TestSamplerPreviewUsesPlayPath(t *testing.T) {
 	g := newSamplerTabGame(t)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 
 	var played []string
-	restore := SwapSamplerAuditionFnForTest(func(id string) { played = append(played, id) })
+	restore := SwapSamplerAuditionFnForTest(func(id instrument.ID) { played = append(played, string(id)) })
 	defer SwapSamplerAuditionFnForTest(restore)
 
 	g.drum.samplerPreview()
-	if len(played) != 1 || played[0] != samplerPreviewID {
+	if len(played) != 1 || instrument.ID(played[0]) != samplerPreviewID {
 		t.Errorf("preview played %v, want exactly [%s]", played, samplerPreviewID)
 	}
 }
 
 func TestSamplerHandleDragSetsTrim(t *testing.T) {
 	g := newSamplerTabGame(t)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	layoutSamplerTab(t, g)
 	dv := g.drum
 

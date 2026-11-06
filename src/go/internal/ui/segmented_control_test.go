@@ -80,13 +80,13 @@ func TestSegmentedControl_ActiveSegmentUsesAccent(t *testing.T) {
 	var rec drawCallRecorder
 	rec.record(t, func() { sc.Draw(dst) })
 
+	// Flat-tonal: an active segment is marked by a 2px accent BAR on its
+	// bottom edge (drawFlatSelectionBar), not by an accent-filled cap. See
+	// DESIGN.md "One selection primitive".
 	accent := color.RGBAModel.Convert(TokenAccent()).(color.RGBA)
 	accentIn := func(seg image.Rectangle) bool {
 		for _, c := range rec.calls {
-			if c.Kind != drawCallRoundedButton {
-				continue
-			}
-			if c.Color == accent && c.Rect.In(seg) {
+			if c.Color == accent && c.Rect.Dy() == flatSelectionBarPx && c.Rect.In(seg) {
 				return true
 			}
 		}
@@ -94,7 +94,7 @@ func TestSegmentedControl_ActiveSegmentUsesAccent(t *testing.T) {
 	}
 
 	if !accentIn(sc.SegmentRect(1)) {
-		t.Fatalf("active segment %v has no accent keycap cap; calls=%+v", sc.SegmentRect(1), rec.calls)
+		t.Fatalf("active segment %v has no accent selection bar; calls=%+v", sc.SegmentRect(1), rec.calls)
 	}
 	if accentIn(sc.SegmentRect(0)) {
 		t.Fatalf("inactive segment 0 should not carry an accent fill")
@@ -119,8 +119,8 @@ func TestSegmentedControl_DisabledSegmentNotAccented(t *testing.T) {
 
 	accent := color.RGBAModel.Convert(TokenAccent()).(color.RGBA)
 	for _, c := range rec.calls {
-		if c.Kind == drawCallRoundedButton && c.Color == accent && c.Rect.In(sc.SegmentRect(1)) {
-			t.Fatalf("disabled active segment must not render the amber cap; got %+v", c)
+		if c.Color == accent && c.Rect.Dy() == flatSelectionBarPx && c.Rect.In(sc.SegmentRect(1)) {
+			t.Fatalf("disabled active segment must not render the accent bar; got %+v", c)
 		}
 	}
 }

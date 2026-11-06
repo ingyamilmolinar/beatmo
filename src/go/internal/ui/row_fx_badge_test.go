@@ -58,9 +58,10 @@ func TestRowFXBadgeCountFromActiveSlots(t *testing.T) {
 	}
 }
 
-// TestFXButtonAlwaysShowsIconFx ensures the FX button keeps its identity
-// across active/inactive states — only the badge layer signals the count.
-func TestFXButtonAlwaysShowsIconFx(t *testing.T) {
+// TestFXButtonAlwaysShowsFXLetters ensures the FX button keeps its identity
+// (the "FX" letters) across active/inactive states — only the count dots
+// signal how many effects are on.
+func TestFXButtonAlwaysShowsFXLetters(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -72,8 +73,8 @@ func TestFXButtonAlwaysShowsIconFx(t *testing.T) {
 	if len(z.entries) < 1 {
 		t.Fatal("expected ≥1 row entry")
 	}
-	if got := z.entries[0].fxBtn.Icon; got != string(IconFx) {
-		t.Errorf("fxBtn.Icon = %q, want IconFx (%q) — the button must keep a consistent identity",
-			got, string(IconFx))
+	if b := z.entries[0].fxBtn; b.Text != rowFXLabel || b.Icon != "" {
+		t.Errorf("fxBtn text %q icon %q, want the %q letters — the button must keep a consistent identity",
+			b.Text, b.Icon, rowFXLabel)
 	}
 }

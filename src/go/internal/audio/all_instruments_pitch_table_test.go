@@ -5,6 +5,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestAllMelodicInstruments_PitchRangeRendersCleanly is Gap A: a table test
@@ -23,38 +26,23 @@ func TestAllMelodicInstruments_PitchRangeRendersCleanly(t *testing.T) {
 	const n = sr / 4 // 0.25 s is enough for any attack
 	pitches := []float64{-12, 0, +12}
 
-	// Collect all melodic instrument IDs (those whose recipe is pitch-aware).
+	// Collect all melodic instrument IDs (render.melodic in their documents).
 	var melodicIDs []string
-	for instID, recipeID := range builtinInstrumentRecipeBindings {
-		if pitchAwareRecipe(recipeID) {
-			melodicIDs = append(melodicIDs, instID)
+	for _, instID := range roster.All {
+		if IsMelodicInstrument(instID) {
+			melodicIDs = append(melodicIDs, string(instID))
 		}
 	}
 	if len(melodicIDs) == 0 {
-		t.Fatal("no melodic instruments found — builtinInstrumentRecipeBindings may be empty")
+		t.Fatal("no melodic instruments found")
 	}
 
 	for _, instID := range melodicIDs {
-		recipeID := RecipeForInstrument(instID)
-		if recipeID == "" {
-			t.Errorf("instrument %q has no recipe binding", instID)
-			continue
-		}
-		r := NewRecipe(recipeID)
-		if r == nil {
-			t.Errorf("NewRecipe(%q) returned nil for instrument %q", recipeID, instID)
-			continue
-		}
-		defaults := RecipeDefaultParams(recipeID)
-
 		for _, pitch := range pitches {
 			name := instID
 			p := pitch
 			t.Run(name+"/pitch"+formatPitchLabel(p), func(t *testing.T) {
-				params := cloneRecipeParams(defaults)
-				params["pitch"] = p
-				buf := make([]float32, n)
-				r.Render(buf, sr, n, 0, params)
+				buf := renderFieldsForTest(t, instrument.ID(instID), sr, n, map[string]float64{"pitch": p})
 
 				var peak float32
 				for i, v := range buf {
@@ -115,22 +103,22 @@ func floatToIntStr(f float64) string {
 // For cello at pitch=+12, the at-pitch render differs from a naive
 // resample-by-+12 of the pitch=0 buffer. Complements the existing violin test.
 func TestCelloFormantPreservedVsResample(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("cello") })
+	t.Cleanup(func() { ResetInstrumentParams(roster.Cello) })
 
 	const sr = 44100
 
-	v0, ok0 := tryRecipeVoicePitched("cello", 120, sr, 0)
+	v0, ok0 := tryRecipeVoicePitched(roster.Cello, sr, 0)
 	if !ok0 || v0 == nil {
-		t.Fatal("tryRecipeVoicePitched(cello, pitch=0) returned nil/false")
+		t.Fatal("tryRecipeVoicePitched(cello) returned nil/false")
 	}
 	buf0 := drainVoiceToBuffer(v0, sr)
 	if len(buf0) == 0 {
 		t.Fatal("empty cello pitch=0 buffer")
 	}
 
-	v12, ok12 := tryRecipeVoicePitched("cello", 120, sr, 12)
+	v12, ok12 := tryRecipeVoicePitched(roster.Cello, sr, 12)
 	if !ok12 || v12 == nil {
-		t.Fatal("tryRecipeVoicePitched(cello, pitch=12) returned nil/false")
+		t.Fatal("tryRecipeVoicePitched(cello) returned nil/false")
 	}
 	buf12 := drainVoiceToBuffer(v12, sr)
 	if len(buf12) == 0 {
@@ -182,16 +170,16 @@ func TestFiltEnvMonotonicBrightening(t *testing.T) {
 
 	renderFiltEnv := func(enabled, amt float64) []float32 {
 		p := defaultModularParams()
-		p.OscType = 1 // saw — harmonically rich
-		p.EnvEnabled = 0
-		p.FilterEnabled = 1
-		p.FilterType = 0     // LP
-		p.FilterCutoff = 800 // low so amt has room to open
-		p.FiltEnvEnabled = enabled
-		p.FiltEnvAmt = amt
-		p.FiltEnvDecay = 0.15 // fast decay so the window is meaningful
+		p.set("osc_type", 1) // saw — harmonically rich
+		p.set("env_enabled", 0)
+		p.set("filter_enabled", 1)
+		p.set("filter_type", 0)     // LP
+		p.set("filter_cutoff", 800) // low so amt has room to open
+		p.set("filtenv_enabled", enabled)
+		p.set("filtenv_amt", amt)
+		p.set("filtenv_decay", 0.15) // fast decay so the window is meaningful
 		buf := make([]float32, n)
-		renderModularP(buf, sr, n, p)
+		renderModularBlock(buf, sr, n, p)
 		return buf
 	}
 
@@ -216,13 +204,13 @@ func TestFiltEnvMonotonicBrightening(t *testing.T) {
 
 	// Identity: filtenv_enabled:0 must be byte-identical to baseline (no filtenv params set).
 	baseline := defaultModularParams()
-	baseline.OscType = 1
-	baseline.EnvEnabled = 0
-	baseline.FilterEnabled = 1
-	baseline.FilterType = 0
-	baseline.FilterCutoff = 800
+	baseline.set("osc_type", 1)
+	baseline.set("env_enabled", 0)
+	baseline.set("filter_enabled", 1)
+	baseline.set("filter_type", 0)
+	baseline.set("filter_cutoff", 800)
 	baseBuf := make([]float32, n)
-	renderModularP(baseBuf, sr, n, baseline)
+	renderModularBlock(baseBuf, sr, n, baseline)
 
 	offBuf := renderFiltEnv(0, 5.0) // enabled=0; amt should be ignored
 	for i := range offBuf {
@@ -234,7 +222,7 @@ func TestFiltEnvMonotonicBrightening(t *testing.T) {
 }
 
 // TestAllInstrumentDefaultsUnchanged is Gap D:
-// Every builtin instrument rendered with all-default recipe params must produce
+// Every shipped instrument rendered from its document must produce
 // the SAME buffer on two consecutive calls (deterministic) and must not be
 // silent. This guards against a seed change silently wiping an instrument's
 // defaults so the next render plays a different sound.
@@ -242,24 +230,16 @@ func TestAllInstrumentDefaultsUnchanged(t *testing.T) {
 	const sr = 44100
 	const n = sr / 8 // 0.125 s
 
-	for _, id := range RecipeOrder() {
+	for _, id := range roster.All {
 		recipeID := id
-		t.Run(recipeID, func(t *testing.T) {
-			r := NewRecipe(recipeID)
-			if r == nil {
-				t.Fatalf("NewRecipe(%q) returned nil", recipeID)
-			}
-			defaults := RecipeDefaultParams(recipeID)
-
-			buf1 := make([]float32, n)
-			buf2 := make([]float32, n)
-			r.Render(buf1, sr, n, 0, defaults)
-			r.Render(buf2, sr, n, 0, defaults)
+		t.Run(string(recipeID), func(t *testing.T) {
+			buf1 := renderFieldsForTest(t, recipeID, sr, n, nil)
+			buf2 := renderFieldsForTest(t, recipeID, sr, n, nil)
 
 			// Deterministic: two renders with same params must be identical.
 			for i := range buf1 {
 				if buf1[i] != buf2[i] {
-					t.Fatalf("recipe %q: non-deterministic render at sample %d (%v vs %v)",
+					t.Fatalf("%q: non-deterministic render at sample %d (%v vs %v)",
 						recipeID, i, buf1[i], buf2[i])
 				}
 			}
@@ -276,32 +256,16 @@ func TestAllInstrumentDefaultsUnchanged(t *testing.T) {
 				}
 			}
 			if peak < 1e-6 {
-				t.Errorf("recipe %q with default params rendered silence (peak %v)", recipeID, peak)
+				t.Errorf("%q rendered silence from its document (peak %v)", recipeID, peak)
 			}
 
 			// Finite.
 			for i, v := range buf1 {
 				f := float64(v)
 				if math.IsNaN(f) || math.IsInf(f, 0) {
-					t.Fatalf("recipe %q: non-finite sample at %d: %v", recipeID, i, v)
+					t.Fatalf("%q: non-finite sample at %d: %v", recipeID, i, v)
 				}
 			}
 		})
-	}
-}
-
-// TestRegistryF_EveryBindingInstrumentIDIsInBuiltinList is Gap F (complementary):
-// Every key in builtinInstrumentRecipeBindings must appear in BuiltinInstrumentIDs.
-// Catches cases where a new binding is added to the recipe map but the generated
-// instrument ID list is not regenerated.
-func TestRegistryF_EveryBindingInstrumentIDIsInBuiltinList(t *testing.T) {
-	builtinSet := make(map[string]bool, len(BuiltinInstrumentIDs))
-	for _, id := range BuiltinInstrumentIDs {
-		builtinSet[id] = true
-	}
-	for instID := range builtinInstrumentRecipeBindings {
-		if !builtinSet[instID] {
-			t.Errorf("instrument %q is in builtinInstrumentRecipeBindings but NOT in BuiltinInstrumentIDs", instID)
-		}
 	}
 }

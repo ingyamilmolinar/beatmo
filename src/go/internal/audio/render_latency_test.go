@@ -2,7 +2,11 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // TestRenderLatencyMetrics verifies the "measure-first" render counters: a first
 // trigger renders (cache miss, recorded duration); an identical second trigger is
@@ -10,7 +14,7 @@ import "testing"
 // falsifiable before optimizing it away.
 func TestRenderLatencyMetrics(t *testing.T) {
 	const (
-		id = "kick-acoustic"
+		id = roster.KickAcoustic
 		sr = 44100
 	)
 	// A live per-instrument param override forces the recipe render path (the
@@ -22,7 +26,7 @@ func TestRenderLatencyMetrics(t *testing.T) {
 	globalVoiceCache.Clear()
 	ResetRenderLatencyMetrics()
 
-	if v := newRecipeAwareVoice(id, 120, sr); v == nil {
+	if v := newRecipeAwareVoice(id, sr); v == nil {
 		t.Fatal("newRecipeAwareVoice returned nil")
 	}
 	m := GetRenderLatencyMetrics()
@@ -34,7 +38,7 @@ func TestRenderLatencyMetrics(t *testing.T) {
 	}
 
 	missesBefore := m.CacheMisses
-	if v := newRecipeAwareVoice(id, 120, sr); v == nil {
+	if v := newRecipeAwareVoice(id, sr); v == nil {
 		t.Fatal("second newRecipeAwareVoice returned nil")
 	}
 	m2 := GetRenderLatencyMetrics()

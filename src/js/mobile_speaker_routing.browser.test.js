@@ -11,7 +11,7 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled, waitForAudioReady } from "./browser_test_helpers.js";
 import { cdpTap } from "./touch_cdp_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -194,6 +194,14 @@ try {
       typeof __hasSilentAudioEl === "function"
     );
 
+    // unlockAudio() installs the silent <audio> element only when it actually
+    // has to UNLOCK (its fast path returns when the context already runs). On a
+    // real iPhone the context always starts suspended, so the first tap always
+    // installs it — Scenario 1 proves that without the autoplay bypass. Under
+    // THIS scenario's --autoplay-policy bypass the app may already have created
+    // a RUNNING context before the tap, and then there is nothing to unlock.
+    const ctxRunningBeforeTap = await page.evaluate(() => !!(window.__audioCtx && window.__audioCtx.state === "running"));
+
     // Unlock audio context via gesture.
     await page.evaluate(() => {
       document.dispatchEvent(new Event("pointerdown"));
@@ -211,6 +219,10 @@ try {
       forceDraw?.();
     });
     await page.waitForTimeout(200);
+
+    // Play is ignored while the warm-up gate is closed (the button is disabled
+    // then) — wait for it, as a user must.
+    await page.waitForFunction(() => typeof warmupProgress !== "function" || warmupProgress().ready === true, null, { timeout: 30000, polling: 100 });
 
     // Enable output capture and start playback.
     const s3 = await page.evaluate(async () => {
@@ -238,7 +250,8 @@ try {
     console.log(`  Silent audio element active: ${s3.hasSilentEl}`);
     if (s3.samples === 0) throw new Error("Scenario 3 FAIL: no samples captured");
     if (s3.rms < 0.0001) throw new Error(`Scenario 3 FAIL: no audio energy (RMS=${s3.rms})`);
-    if (!s3.hasSilentEl) throw new Error("Scenario 3 FAIL: silent audio element not created");
+    if (!s3.hasSilentEl && !ctxRunningBeforeTap) throw new Error("Scenario 3 FAIL: silent audio element not created by the unlocking tap");
+    if (!s3.hasSilentEl) console.log("  (context was already running before the tap under the autoplay bypass — nothing to unlock; Scenario 1 covers the element)");
     console.log("  PASS");
 
     await context.close();
@@ -272,8 +285,8 @@ try {
     });
     await page.waitForTimeout(200);
 
+    await waitForAudioReady(page);
     await page.evaluate(async () => {
-      await window.audioReady;
       await ensureSynthSample?.("kick");
       await ensureSynthSample?.("snare");
     });
@@ -390,8 +403,8 @@ try {
     });
     await page.waitForTimeout(200);
 
+    await waitForAudioReady(page);
     await page.evaluate(async () => {
-      await window.audioReady;
       await ensureSynthSample?.("kick");
     });
 

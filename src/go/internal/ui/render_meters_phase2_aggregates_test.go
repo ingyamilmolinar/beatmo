@@ -8,6 +8,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestLevelsAggregates_LUFSRendered: when state.Master.LUFSShortTermDB
@@ -24,7 +26,7 @@ func TestLevelsAggregates_LUFSRendered(t *testing.T) {
 		},
 	}
 	latches := NewMultiLevelsLatch()
-	latches.Get("main").Update(0, -12, -18)
+	latches.Get(channel.Master).Update(0, -12, -18)
 
 	dst := ebiten.NewImage(400, 200)
 	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), state, latches, nil)
@@ -61,19 +63,19 @@ func TestLevelsAggregates_ClipsWindowOverridesTotal(t *testing.T) {
 func TestMultiLevelsLatch_ClearWipesPersistentMarkers(t *testing.T) {
 	m := NewMultiLevelsLatch()
 	// Force a clip event on two channels.
-	m.Get("kick").Update(3, -1, -3)
-	m.Get("hat").Update(2, -1, -3)
-	if !m.Get("kick").Latched() {
+	m.Get(channel.Of(roster.Kick)).Update(3, -1, -3)
+	m.Get(channel.Of(roster.Hihat)).Update(2, -1, -3)
+	if !m.Get(channel.Of(roster.Kick)).Latched() {
 		t.Fatalf("kick should be latched after clip event")
 	}
-	if !m.Get("hat").Latched() {
+	if !m.Get(channel.Of(roster.Hihat)).Latched() {
 		t.Fatalf("hat should be latched after clip event")
 	}
 	m.Clear()
-	if m.Get("kick").Latched() {
+	if m.Get(channel.Of(roster.Kick)).Latched() {
 		t.Errorf("kick still latched after Clear()")
 	}
-	if m.Get("hat").Latched() {
+	if m.Get(channel.Of(roster.Hihat)).Latched() {
 		t.Errorf("hat still latched after Clear()")
 	}
 }

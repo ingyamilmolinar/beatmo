@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func TestSequencerSnapshotHonorsLoopStartSegment(t *testing.T) {
@@ -43,7 +44,7 @@ func TestSequencerSnapshotHonorsLoopStartSegment(t *testing.T) {
 	}
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 	g.SetPlaying(true)
 
 	// Seed counters so the next scheduled index is in the loop segment.

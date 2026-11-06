@@ -12,15 +12,16 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 const sampleRate = 44100
 
 // Spec describes one synthetic WAV to stage.
 type Spec struct {
-	ID       string
-	Name     string
-	Category string
+	ID    string
+	Name  string
+	Group string
 	// Filename, optional. Defaults to ID + ".wav".
 	Filename string
 }
@@ -49,14 +50,13 @@ func Stage(t testing.TB, specs []Spec) []audio.SoundMeta {
 			t.Fatalf("testwav: stat %s: %v", path, err)
 		}
 		out = append(out, audio.SoundMeta{
-			ID:         s.ID,
+			ID:         instrument.ID(s.ID),
 			Name:       s.Name,
-			Category:   s.Category,
+			Group:      s.Group,
 			RelPath:    name,
 			Path:       filepath.ToSlash(path),
 			Size:       info.Size(),
-			Source:     "wav",
-			Scope:      "shipped",
+			Source:     audio.SourceWAV,
 			SampleRate: sampleRate,
 			Channels:   1,
 		})

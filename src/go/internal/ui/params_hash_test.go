@@ -25,15 +25,15 @@ func TestParamsHash_StableAcrossCalls(t *testing.T) {
 	if n, ok := g.graph.GetNodeByID(b); ok {
 		p := n.Params
 		p.Pitch = 1.5
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.25
-		p.GrooveKind = "rush"
+		p.GrooveKind = model.GrooveRush
 		p.GroovePct = 0.1
 		g.graph.SetNodeParams(b, p)
 	}
 	if n, ok := g.graph.GetNodeByID(c); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(c, p)
 	}

@@ -6,9 +6,12 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/testwav"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestImportRegistersSampleInstruments verifies that a project referencing
@@ -18,22 +21,22 @@ import (
 func TestImportRegistersSampleInstruments(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	entries := testwav.Stage(t, []testwav.Spec{
-		{ID: "kick-test", Name: "Kick Test", Category: "Kick Drums (WAV)"},
-		{ID: "snare-test", Name: "Snare Test", Category: "Snares (WAV)"},
+		{ID: "kick-test", Name: "Kick Test", Group: "Kick Drums (WAV)"},
+		{ID: "snare-test", Name: "Snare Test", Group: "Snares (WAV)"},
 	})
 	withAudioCatalog(t, entries)
 
-	f := importFile{
-		Version: 1,
-		Subdiv:  8,
-		BPM:     120,
+	f := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   8,
+		BPM:      120,
 		Instruments: []exportInstrument{
-			{Name: "Kick", ID: "kick-test", Kind: "sample", Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
-			{Name: "Snare", ID: "snare-test", Kind: "sample", Volume: 1, Origin: 1, Color: "#FFFFFFFF"},
+			{Name: "Kick", ID: "kick-test", Kind: kindSample, Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
+			{Name: "Snare", ID: "snare-test", Kind: kindSample, Volume: 1, Origin: 1, Color: "#FFFFFFFF"},
 		},
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular"},
-			{ID: 1, I: 4, J: 0, Type: "regular"},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular},
+			{ID: 1, I: 4, J: 0, Type: model.NodeTypeRegular},
 		},
 	}
 	data, _ := json.Marshal(f)
@@ -62,22 +65,22 @@ func TestImportRespectsExplicitPath(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, nil)
 	entries := testwav.Stage(t, []testwav.Spec{
-		{ID: "external-clap", Name: "External Clap", Category: "Percussion (WAV)"},
+		{ID: "external-clap", Name: "External Clap", Group: "Percussion (WAV)"},
 	})
 	if len(entries) != 1 {
 		t.Fatalf("stage returned %d entries", len(entries))
 	}
 	path := entries[0].Path
 
-	f := importFile{
-		Version: 1,
-		Subdiv:  8,
-		BPM:     120,
+	f := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   8,
+		BPM:      120,
 		Instruments: []exportInstrument{
-			{Name: "Clap", ID: "external-clap", Kind: "sample", Path: path, Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
+			{Name: "Clap", ID: "external-clap", Kind: kindSample, Path: path, Volume: 1, Origin: 0, Color: "#FFFFFFFF"},
 		},
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular"},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular},
 		},
 	}
 	data, _ := json.Marshal(f)

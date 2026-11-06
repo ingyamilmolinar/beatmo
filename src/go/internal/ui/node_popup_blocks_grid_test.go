@@ -19,7 +19,7 @@ func TestNodePopupBlocksGridClicks(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	// Pick a coordinate inside the panel but outside known buttons.
 	// Use a point slightly to the left of the right-aligned +/- buttons.
 	x := panel.Min.X + 40
@@ -54,7 +54,7 @@ func TestNodePopupButtonsClickableNoGrid(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		p := mn.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(n.ID, p)
 	}
@@ -63,11 +63,11 @@ func TestNodePopupButtonsClickableNoGrid(t *testing.T) {
 	g.sidebar.Open(n)
 	// Only expand the logic section (not all) so the ln+/- buttons stay
 	// within the visible panel height on a 640x480 layout.
-	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 	beforeNodes := len(g.nodes)
 	// Click ln+ button
-	r := g.sidebar.rects["ln+"]
+	r := g.sidebar.rects[sbPlus(fieldLogicN)]
 	x2 := (r.Min.X + r.Max.X) / 2
 	y2 := (r.Min.Y + r.Max.Y) / 2
 	left2 := false

@@ -60,7 +60,7 @@ func (s *playbackSlate) applySequencerHighlight(row, idx int, info model.BeatInf
 	if !g.Playing() {
 		kind = timeline.CommitKindSeeded
 	}
-	isOn := info.NodeType == model.NodeTypeRegular || info.NodeType == model.NodeTypeMute
+	isOn := info.NodeType.Fires() || info.NodeType == model.NodeTypeMute
 	g.recordTimelineCommitKind(row, idx, isOn, info.NodeType, kind)
 }
 

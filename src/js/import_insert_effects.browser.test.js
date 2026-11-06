@@ -26,7 +26,7 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, waitForAudioReady } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -107,7 +107,7 @@ try {
     {},
     { timeout: 10000 }
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
   // Let the WASM game's heavy startup draw burst settle before we measure: it
   // runs on the same main thread as the deprecated ScriptProcessorNode capture
   // tap and, while it churns, starves the tap so it delivers all-zeros (the tap

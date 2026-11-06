@@ -2,7 +2,13 @@
 
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // These tests cover the "auto-select the sole audible instrument" QoL feature:
 // when exactly one row is audible (soloed, or all-but-one muted), the audio-panel
@@ -14,7 +20,7 @@ import "testing"
 // newAutoSelectGame builds a Game whose drum view has one row per supplied
 // instrument id (distinct, since channel id == instrument id). The active
 // channel starts at Master.
-func newAutoSelectGame(t *testing.T, instruments ...string) *Game {
+func newAutoSelectGame(t *testing.T, instruments ...instrument.ID) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -25,12 +31,11 @@ func newAutoSelectGame(t *testing.T, instruments ...string) *Game {
 	}
 	for i, inst := range instruments {
 		g.drum.Rows[i].Instrument = inst
-		g.drum.ensureRowEQ(i)
 	}
 	return g
 }
 
-func firstNonEmptyInstrument(dv *DrumView) string {
+func firstNonEmptyInstrument(dv *DrumView) instrument.ID {
 	for _, r := range dv.Rows {
 		if r != nil && r.Instrument != "" {
 			return r.Instrument
@@ -42,7 +47,7 @@ func firstNonEmptyInstrument(dv *DrumView) string {
 // assertChannelAllTabs asserts that every audio-panel tab's instrument-selection
 // observable resolves to want. The Synth tab falls back to the first non-empty
 // row when Master is selected, by design.
-func assertChannelAllTabs(t *testing.T, g *Game, want string) {
+func assertChannelAllTabs(t *testing.T, g *Game, want channel.ID) {
 	t.Helper()
 	dv := g.drum
 	if got := dv.activeEQChannel(); got != want {
@@ -51,8 +56,8 @@ func assertChannelAllTabs(t *testing.T, g *Game, want string) {
 	if got := dv.eqPanelZone.ActiveChannel(); got != want {
 		t.Errorf("Wave/Spectrum tabs: eqPanelZone.ActiveChannel() = %q, want %q", got, want)
 	}
-	wantSynth := want
-	if want == "main" || want == "" {
+	wantSynth, ok := want.Instrument()
+	if !ok {
 		wantSynth = firstNonEmptyInstrument(dv)
 	}
 	if got := dv.synthTabActiveInstrument(); got != wantSynth {
@@ -72,49 +77,49 @@ func assertChannelAllTabs(t *testing.T, g *Game, want string) {
 func assertChannelStaysMaster(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
-	if got := dv.activeEQChannel(); got != "main" {
+	if got := dv.activeEQChannel(); got != channel.Master {
 		t.Errorf("expected channel to stay Master, activeEQChannel() = %q", got)
 	}
-	if got := dv.eqPanelZone.ActiveChannel(); got != "main" {
+	if got := dv.eqPanelZone.ActiveChannel(); got != channel.Master {
 		t.Errorf("expected channel to stay Master, eqPanelZone.ActiveChannel() = %q", got)
 	}
 }
 
 // 1. Soloing a single instrument auto-selects it on every tab.
 func TestSoloAutoSelectsInstrumentAllTabs(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleSolo(1)
-	assertChannelAllTabs(t, g, "snare")
+	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 }
 
 //  2. Muting all-but-one auto-selects the remaining instrument; muting only one
 //     of three (two still audible) does not.
 func TestMuteAllButOneAutoSelects(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 
 	g.drum.toggleMute(0) // kick muted; snare+hat audible (2) -> no auto-select
 	assertChannelStaysMaster(t, g)
 
 	g.drum.toggleMute(2) // hat muted; only snare audible (1) -> auto-select snare
-	assertChannelAllTabs(t, g, "snare")
+	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 }
 
 // 3. Re-soloing a different instrument moves the selection (single-solo model).
 func TestReSoloMovesSelection(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleSolo(1)
-	assertChannelAllTabs(t, g, "snare")
+	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 	g.drum.toggleSolo(2)
-	assertChannelAllTabs(t, g, "hat")
+	assertChannelAllTabs(t, g, channel.Of(roster.Hihat))
 }
 
 //  4. Leaving the single-audible state (un-solo) reverts the selection to
 //     Master: with more than one instrument audible there is no single focus,
 //     so the selector goes back to Master.
 func TestUnSoloRevertsToMasterWhenMultipleAudible(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleSolo(1)
-	assertChannelAllTabs(t, g, "snare")
+	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 
 	g.drum.toggleSolo(1) // un-solo -> all 3 audible -> revert to Master
 	assertChannelStaysMaster(t, g)
@@ -123,7 +128,7 @@ func TestUnSoloRevertsToMasterWhenMultipleAudible(t *testing.T) {
 //  5. No instrument is auto-selected while two or more remain audible; if one
 //     was previously selected the selector reverts to Master.
 func TestNoAutoSelectWhenMultipleAudible(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleMute(0) // two still audible
 	assertChannelStaysMaster(t, g)
 }
@@ -132,10 +137,10 @@ func TestNoAutoSelectWhenMultipleAudible(t *testing.T) {
 //
 //	auto-selected instrument to Master.
 func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleMute(0) // kick muted; snare+hat audible (2) -> stays Master
 	g.drum.toggleMute(2) // hat muted; snare sole-audible -> auto-select snare
-	assertChannelAllTabs(t, g, "snare")
+	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 
 	g.drum.toggleMute(0) // un-mute kick; kick+snare audible (2) -> revert to Master
 	assertChannelStaysMaster(t, g)
@@ -145,9 +150,9 @@ func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
 //
 //	change leaves more than one instrument audible.
 func TestManualSelectionRevertsToMasterWhenMultipleAudible(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
-	g.drum.eqPanelZone.callbacks.OnChannelChange("kick") // manually focus kick
-	assertChannelAllTabs(t, g, "kick")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
+	g.drum.eqPanelZone.callbacks.OnChannelChange(channel.Of(roster.Kick)) // manually focus kick
+	assertChannelAllTabs(t, g, channel.Of(roster.Kick))
 
 	g.drum.toggleMute(2) // mute hat; kick+snare audible (2) -> revert to Master
 	assertChannelStaysMaster(t, g)
@@ -155,7 +160,7 @@ func TestManualSelectionRevertsToMasterWhenMultipleAudible(t *testing.T) {
 
 // 6. A single-row project never auto-switches away from Master.
 func TestSingleRowNoAutoSelect(t *testing.T) {
-	g := newAutoSelectGame(t, "kick")
+	g := newAutoSelectGame(t, roster.Kick)
 	g.drum.toggleSolo(0)
 	assertChannelStaysMaster(t, g)
 	g.drum.toggleMute(0)
@@ -164,7 +169,7 @@ func TestSingleRowNoAutoSelect(t *testing.T) {
 
 // 7. A sole-audible row with an empty instrument id is not auto-selected.
 func TestEmptyInstrumentNotAutoSelected(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare)
 	g.drum.Rows[1].Instrument = "" // sole-audible target has no channel id
 	g.drum.toggleSolo(1)
 	assertChannelStaysMaster(t, g)
@@ -174,13 +179,13 @@ func TestEmptyInstrumentNotAutoSelected(t *testing.T) {
 //     selecting a channel through it updates EVERY tab's observable, and
 //     resetting to Master resets them (Synth falls back to first row).
 func TestOnChannelChangeDrivesAllTabs(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 
-	g.drum.eqPanelZone.callbacks.OnChannelChange("snare")
-	assertChannelAllTabs(t, g, "snare")
+	g.drum.eqPanelZone.callbacks.OnChannelChange(channel.Of(roster.Snare))
+	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 
-	g.drum.eqPanelZone.callbacks.OnChannelChange("main")
-	assertChannelAllTabs(t, g, "main")
+	g.drum.eqPanelZone.callbacks.OnChannelChange(channel.Master)
+	assertChannelAllTabs(t, g, channel.Master)
 }
 
 //  9. Consolidation regression: the channel-cycle button and row-instrument
@@ -188,23 +193,23 @@ func TestOnChannelChangeDrivesAllTabs(t *testing.T) {
 //     Previously only the dropdown click synced z.activeChannel, so Wave/
 //     Spectrum/Synth tabs ignored these entry points.
 func TestCycleAndRenameSyncPanelChannel(t *testing.T) {
-	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 
 	g.drum.cycleEQChannel() // main -> first instrument (kick)
-	if got := g.drum.activeEQChannel(); got != "kick" {
+	if got := g.drum.activeEQChannel(); got != channel.Of(roster.Kick) {
 		t.Fatalf("cycleEQChannel: activeEQChannel() = %q, want kick", got)
 	}
-	if got := g.drum.eqPanelZone.ActiveChannel(); got != "kick" {
+	if got := g.drum.eqPanelZone.ActiveChannel(); got != channel.Of(roster.Kick) {
 		t.Errorf("cycleEQChannel: eqPanelZone.ActiveChannel() = %q, want kick (must follow)", got)
 	}
 
 	// Rename the active instrument; the panel channel must follow the new id.
-	g.drum.Rows[0].Instrument = "kick2"
-	g.drum.onRowInstrumentChanged(0, "kick", "kick2")
-	if got := g.drum.activeEQChannel(); got != "kick2" {
+	g.drum.Rows[0].Instrument = roster.KickDeep
+	g.drum.onRowInstrumentChanged(0, roster.Kick, roster.KickDeep)
+	if got := g.drum.activeEQChannel(); got != channel.Of(roster.KickDeep) {
 		t.Fatalf("rename: activeEQChannel() = %q, want kick2", got)
 	}
-	if got := g.drum.eqPanelZone.ActiveChannel(); got != "kick2" {
+	if got := g.drum.eqPanelZone.ActiveChannel(); got != channel.Of(roster.KickDeep) {
 		t.Errorf("rename: eqPanelZone.ActiveChannel() = %q, want kick2 (must follow)", got)
 	}
 }

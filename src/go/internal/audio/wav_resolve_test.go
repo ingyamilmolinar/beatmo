@@ -32,7 +32,7 @@ func TestResolveWavRefMatchedFirstSource(t *testing.T) {
 	ref := &WavRef{Sha256: sha, Sources: []WavSource{
 		{Kind: WavSourceFile, Ref: "/x.wav"},
 	}}
-	res := ResolveWavRef(ref, map[string]WavLocator{
+	res := ResolveWavRef(ref, map[WavSourceKind]WavLocator{
 		WavSourceFile: func(string) ([]byte, bool) { return data, true },
 	})
 	if res.Status != WavResolveMatched {
@@ -50,7 +50,7 @@ func TestResolveWavRefFallsThroughToSecondSource(t *testing.T) {
 		{Kind: WavSourceFile, Ref: "/missing.wav"},         // locator returns ok=false
 		{Kind: WavSourceURL, Ref: "https://host/good.wav"}, // this one has the bytes
 	}}
-	res := ResolveWavRef(ref, map[string]WavLocator{
+	res := ResolveWavRef(ref, map[WavSourceKind]WavLocator{
 		WavSourceFile: func(string) ([]byte, bool) { return nil, false },
 		WavSourceURL:  func(string) ([]byte, bool) { return data, true },
 	})
@@ -62,7 +62,7 @@ func TestResolveWavRefFallsThroughToSecondSource(t *testing.T) {
 func TestResolveWavRefMismatch(t *testing.T) {
 	want := Sha256Hex([]byte("the-right-bytes"))
 	ref := &WavRef{Sha256: want, Sources: []WavSource{{Kind: WavSourceFile, Ref: "/wrong.wav"}}}
-	res := ResolveWavRef(ref, map[string]WavLocator{
+	res := ResolveWavRef(ref, map[WavSourceKind]WavLocator{
 		WavSourceFile: func(string) ([]byte, bool) { return []byte("different-bytes"), true },
 	})
 	if res.Status != WavResolveMismatch {
@@ -73,12 +73,12 @@ func TestResolveWavRefMismatch(t *testing.T) {
 	}
 }
 
-func TestResolveWavRefMissingAndUnknownKind(t *testing.T) {
+func TestResolveWavRefMissingAndUnlocatedKind(t *testing.T) {
 	ref := &WavRef{Sha256: "x", Sources: []WavSource{
-		{Kind: "future-kind", Ref: "?"}, // no locator → skipped
+		{Kind: WavSourceURL, Ref: "?"}, // no locator on this platform → skipped
 		{Kind: WavSourceFile, Ref: "/gone.wav"},
 	}}
-	res := ResolveWavRef(ref, map[string]WavLocator{
+	res := ResolveWavRef(ref, map[WavSourceKind]WavLocator{
 		WavSourceFile: func(string) ([]byte, bool) { return nil, false },
 	})
 	if res.Status != WavResolveMissing {
@@ -86,5 +86,10 @@ func TestResolveWavRefMissingAndUnknownKind(t *testing.T) {
 	}
 	if ResolveWavRef(nil, nil).Status != WavResolveMissing {
 		t.Error("nil ref should be Missing")
+	}
+	// A kind the format does not define is a decode error, never a skipped source.
+	var src WavSource
+	if err := json.Unmarshal([]byte(`{"kind":"future-kind","ref":"?"}`), &src); err == nil {
+		t.Error("an unknown WAV source kind decoded")
 	}
 }

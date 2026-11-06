@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // Verifies that importing a simple loop populates drum preview steps.
@@ -14,15 +18,15 @@ func TestImportPopulatesDrumPreview_SimpleLoop(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Simple two-node loop at 0 and 16
-	exp := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     110,
+	exp := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      110,
 		Nodes: []exportNode{
-			{ID: 0, I: 0, J: 0, Type: "regular", Outputs: []int{1}},
-			{ID: 1, I: 16, J: 0, Type: "regular", Outputs: []int{0}},
+			{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular, Outputs: []int{1}},
+			{ID: 1, I: 16, J: 0, Type: model.NodeTypeRegular, Outputs: []int{0}},
 		},
-		Instruments: []exportInstrument{{Name: "Row", ID: "snare", Kind: "builtin", Volume: 1, Origin: 0, Color: "#FFFFFFFF"}},
+		Instruments: []exportInstrument{{Name: "Row", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 0, Color: "#FFFFFFFF"}},
 	}
 	data, _ := json.Marshal(exp)
 	if err := g.Import(data); err != nil {

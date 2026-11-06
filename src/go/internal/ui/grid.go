@@ -53,17 +53,52 @@ type Grid struct {
 	subSig uint64
 }
 
+// gridLineColorForDiv is the ONE table mapping a subdivision to its line
+// token. NewGrid, SetSubdivisions and RefreshLineColors all read it, so a
+// theme change re-resolves every line from the live tokens instead of the
+// copies the styles captured at construction (a preset pick used to leave
+// the grid lines in the previous theme's color until restart).
+func gridLineColorForDiv(div int) color.RGBA {
+	switch div {
+	case 1:
+		return colGridLine
+	case 2:
+		return colGridHalf
+	case 4:
+		return colGridQuarter
+	case 8:
+		return colGridEighth
+	case 16:
+		return colGridSixteenth
+	case 32:
+		return colGridThirtySecond
+	default:
+		return colGridLine
+	}
+}
+
+// RefreshLineColors re-reads every subdivision's line color from the live
+// theme tokens. Called from Game.OnThemeChanged; MinPx/Width are untouched.
+func (g *Grid) RefreshLineColors() {
+	if g == nil {
+		return
+	}
+	for i := range g.Subs {
+		g.Subs[i].Style.Color = gridLineColorForDiv(g.Subs[i].Div)
+	}
+}
+
 // NewGrid constructs a grid with default subdivision styles.
 func NewGrid(step float64) *Grid {
 	g := &Grid{
 		Step: step,
 		Subs: []Subdivision{
-			{Div: 1, MinPx: 0, Style: LineStyle{Color: colGridLine, Width: 1}},
-			{Div: 2, MinPx: 32, Style: LineStyle{Color: colGridHalf, Width: 1}},
-			{Div: 4, MinPx: 14, Style: LineStyle{Color: colGridQuarter, Width: 1}},
-			{Div: 8, MinPx: 10, Style: LineStyle{Color: colGridEighth, Width: 1}},
-			{Div: 16, MinPx: 10, Style: LineStyle{Color: colGridSixteenth, Width: 1}},
-			{Div: 32, MinPx: 8, Style: LineStyle{Color: colGridThirtySecond, Width: 1}},
+			{Div: 1, MinPx: 0, Style: LineStyle{Color: gridLineColorForDiv(1), Width: 1}},
+			{Div: 2, MinPx: 32, Style: LineStyle{Color: gridLineColorForDiv(2), Width: 1}},
+			{Div: 4, MinPx: 14, Style: LineStyle{Color: gridLineColorForDiv(4), Width: 1}},
+			{Div: 8, MinPx: 10, Style: LineStyle{Color: gridLineColorForDiv(8), Width: 1}},
+			{Div: 16, MinPx: 10, Style: LineStyle{Color: gridLineColorForDiv(16), Width: 1}},
+			{Div: 32, MinPx: 8, Style: LineStyle{Color: gridLineColorForDiv(32), Width: 1}},
 		},
 	}
 	g.recomputeSubSig()

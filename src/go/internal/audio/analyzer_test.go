@@ -3,6 +3,8 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 func TestAnalyzerCapturesSpectrum(t *testing.T) {
@@ -13,8 +15,8 @@ func TestAnalyzerCapturesSpectrum(t *testing.T) {
 		freq   = 440.0
 		window = 256
 	)
-	an := EnableChannelAnalyzer(id, window)
-	ch := InstrumentChannel(id)
+	an := EnableChannelAnalyzer(channel.Of(id), window)
+	ch := InstrumentChannel(channel.Of(id))
 	for i := 0; i < window; i++ {
 		x := 0.5 * math.Sin(2*math.Pi*freq*float64(i)/float64(sr))
 		ch.ProcessSample(x)

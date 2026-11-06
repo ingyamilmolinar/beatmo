@@ -3,7 +3,49 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Beatmo - Ebitengine WASM</title>
+  <title>Beatmo</title>
+  <script>
+    // FIRST thing on the page: start the game's download, then decide whether
+    // to show the landing (spec docs/superpowers/specs/2026-10-23-landing-page-design.md).
+    // "main.wasm" is stamped to the content-hashed name by the deploy
+    // (main.<sha16>.wasm, immutable), so the name doubles as the build id.
+    (function () {
+      var boot = (window.__beatmoBoot = window.__beatmoBoot || {});
+      boot.wasmFetchStart = performance.now();
+      // THE game canvas (Ebiten appends it to <body> at boot). Never take the
+      // first <canvas> on the page: while the landing is up its crystal canvas
+      // comes first, and every listener bound to "the canvas" landed on it.
+      window.__beatmoGameCanvas = function () {
+        return document.querySelector("canvas:not(#lc-crystal)");
+      };
+      var name = (window.__beatmoWasmName = "main.wasm");
+      window.__beatmoWasm = fetch("main.wasm");
+      // The landing (the tutorial demo) shows on every visit until the visitor
+      // ticks "Do not show tutorial demo again" (landing.js stores the opt-out
+      // under the same key). ?landing=1 / ?landing=0 force either way. An
+      // unstamped name means a dev / serve-lan / browser-test page: no landing
+      // unless asked, so real-input tests keep clicking the game's canvas
+      // (`make serve-landing` serves a stamped page).
+      var q = /[?&]landing=([01])/.exec(location.search), optedOut = false;
+      try { optedOut = localStorage.getItem("beatmo.landing.optOut") === "1"; } catch (_) {}
+      var deployed = /^main\.[0-9a-f]{16}\.wasm$/.test(name);
+      var show = q ? q[1] === "1" : deployed && !optedOut;
+      if (!show) return;
+      var root = document.documentElement;
+      root.setAttribute("data-landing", "");
+      // Each layout has its own recording: the portrait phone cut or the 16:9 desktop cut.
+      root.setAttribute("data-cut", matchMedia("(max-aspect-ratio: 1/1)").matches ? "phone" : "desktop");
+      // While the landing is up its keys must not reach the game: this
+      // capture listener is registered before Ebiten's, and landing.js reads
+      // the keys from here.
+      addEventListener("keydown", function (e) {
+        if (!root.hasAttribute("data-landing")) return;
+        e.stopImmediatePropagation();
+        if (window.__beatmoLandingKey) window.__beatmoLandingKey(e);
+      }, true);
+      import("./landing.js");
+    })();
+  </script>
   <style>
     html, body {
       margin: 0;
@@ -81,15 +123,167 @@
     @media screen and (orientation: landscape) and (max-width: 900px) {
       #landscape-block { display: flex; }
     }
+    /* ---- Landing (shown only when the head script set data-landing) ---- */
+    #landing { display: none; }
+    html[data-landing] #landing {
+      display: block; position: fixed; inset: 0; z-index: 50; overflow: hidden;
+      --bg: #120A1C; --s1: #1C1230; --s2: #281A40; --hi: #FDF2FF; --mid: #C9B8D6; --dim: #8A7A9C; --acc: #FFB30A;
+      background: var(--bg); color: var(--hi); touch-action: none; overscroll-behavior: none;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-user-select: none; user-select: none; transition: opacity .45s;
+    }
+    #landing.lc-out { opacity: 0; pointer-events: none; }
+    #lc-crystal { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .lc-video { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
+      width: min(58vw, 92vh * 16 / 9 * .62); aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden;
+      background: #000 url(landing/desktop.webp) center / cover; box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 40%, transparent); }
+    .lc-video video { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .lc-brand { position: absolute; left: 28px; top: 24px; padding: 14px 18px; margin: -14px -18px;
+      border-radius: 8px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
+    .lc-brand h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: .22em; }
+    .lc-brand h1 b { color: var(--acc); }
+    .lc-brand p { margin: 10px 0 0; max-width: 280px; color: var(--mid); font-size: 14px; line-height: 1.45; }
+    .lc-top { position: absolute; right: 24px; top: 20px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    #lc-play { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 4px; border: 0;
+      font: 700 15px system-ui, sans-serif; background: var(--s2); color: var(--dim); cursor: default; }
+    #lc-play.ready { background: var(--acc); color: var(--bg); cursor: pointer; animation: lc-pulse 1.2s infinite;
+      box-shadow: 0 0 24px color-mix(in srgb, var(--acc) 70%, transparent); }
+    @keyframes lc-pulse { 50% { box-shadow: 0 0 36px color-mix(in srgb, var(--acc) 90%, transparent); } }
+    #lc-optout { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    #lc-optout .lc-box { width: 12px; height: 12px; box-sizing: border-box; border: 1.5px solid var(--mid); border-radius: 2px; position: relative; flex: none; }
+    #lc-optout[aria-checked="true"] { color: var(--hi); border-color: var(--acc); }
+    #lc-optout[aria-checked="true"] .lc-box { background: var(--acc); border-color: var(--acc); }
+    #lc-optout[aria-checked="true"] .lc-box::after { content: ""; position: absolute; left: 3px; top: 0; width: 3px; height: 7px;
+      border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+    .lc-ring { width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--acc) var(--p, 8%), #ffffff22 0); }
+    #lc-play.ready .lc-ring { display: none; }
+    .lc-chip, .lc-chapters button, .lc-tips button { font: 600 12px system-ui, sans-serif; color: var(--mid); background: var(--s1);
+      border: 1px solid var(--s2); padding: 7px 11px; border-radius: 4px; cursor: pointer; }
+    #lc-cap { position: absolute; box-sizing: border-box; width: 240px; padding: 12px 14px; border-radius: 8px; opacity: 0;
+      background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      border-left: 2px solid var(--acc); transition: opacity .35s, transform .35s; transform: translateY(6px); }
+    #lc-cap.on { opacity: 1; transform: none; }
+    #lc-cap .t { font-size: 17px; font-weight: 700; }
+    #lc-cap .s { margin-top: 4px; font-size: 13px; color: var(--mid); }
+    .lc-chapters { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 6px; }
+    .lc-chapters button { position: relative; overflow: hidden; }
+    .lc-chapters button i { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--acc); width: 0; }
+    .lc-chapters button.on { color: var(--hi); border-color: var(--acc); }
+    #lc-seed { position: absolute; left: 28px; bottom: 22px; font: 11px ui-monospace, monospace; color: var(--dim); }
+    .lc-tips { position: absolute; right: 24px; bottom: 16px; display: flex; gap: 6px; }
+    .lc-tips button { font: 11px ui-monospace, monospace; padding: 5px 8px; color: var(--hi); }
+    .lc-tips kbd { color: var(--acc); font: 700 11px ui-monospace, monospace; margin-right: 5px; }
+    #lc-toast { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 4px;
+      background: var(--s1); border: 1px solid var(--acc); font: 600 13px system-ui, sans-serif; opacity: 0; transition: opacity .25s; pointer-events: none; }
+    html[data-cut="phone"] .lc-video { top: 44%; width: auto; height: min(56vh, 70vw * 844 / 390); aspect-ratio: 390 / 844;
+      background-image: url(landing/phone.webp); }
+    html[data-cut="phone"] .lc-brand { left: 16px; top: 16px; }
+    html[data-cut="phone"] .lc-brand p { display: none; }
+    html[data-cut="phone"] .lc-top { right: 16px; top: 14px; }
+    html[data-cut="phone"] #lc-cap { width: auto; text-align: center; border-left: 0; border-top: 2px solid var(--acc); padding: 8px 12px; }
+    html[data-cut="phone"] #lc-cap .t { font-size: 15px; }
+    html[data-cut="phone"] #lc-cap .s { font-size: 12px; }
+    html[data-cut="phone"] .lc-chapters { bottom: 84px; width: calc(100vw - 16px); justify-content: center; gap: 4px; }
+    /* Phone: the bottom stack is chapters · opt-out · crystal tips (the top
+       right only has room for Play and Sound above the video). */
+    html[data-cut="phone"] #lc-optout { position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; padding: 6px 10px; }
+    html[data-cut="phone"] #lc-toast { top: 40%; max-width: calc(100vw - 48px); text-align: center; }
+    html[data-cut="phone"] .lc-chapters button { padding: 6px 7px; font-size: 11px; }
+    html[data-cut="phone"] #lc-seed { display: none; }
+    html[data-cut="phone"] .lc-tips { left: 8px; right: 8px; bottom: 12px; justify-content: center; }
   </style>
 </head>
 <body>
+  <!-- Landing (spec docs/superpowers/specs/2026-10-23-landing-page-design.md).
+       Visible only when the head script set data-landing; landing.js wires it. -->
+  <div id="landing">
+    <canvas id="lc-crystal"></canvas>
+    <div class="lc-video" id="lc-frame"><video id="lc-video" muted playsinline loop preload="none" crossorigin="anonymous"></video></div>
+    <div class="lc-brand"><h1>BEAT<b>MO</b></h1><p>A drum machine you wire like a circuit. Draw paths on a grid; signals walk them; every node they reach plays.</p></div>
+    <div class="lc-top">
+      <button id="lc-play" disabled><span class="lc-ring" id="lc-ring"></span><span id="lc-play-label">Loading game…</span></button>
+      <button class="lc-chip" id="lc-sound">Tap for sound</button>
+      <button class="lc-chip" id="lc-optout" role="checkbox" aria-checked="false"><span class="lc-box"></span>Do not show tutorial demo again</button>
+    </div>
+    <div id="lc-cap"><div class="t"></div><div class="s"></div></div>
+    <div class="lc-chapters" id="lc-chapters"></div>
+    <div id="lc-seed"></div>
+    <div class="lc-tips">
+      <button data-k="r"><kbd>R</kbd><span id="lc-rule">Crystal</span></button>
+      <button data-k="-"><kbd>−</kbd>slower</button>
+      <button data-k="+"><kbd>+</kbd>faster</button>
+      <button data-k="t"><kbd>T</kbd><span id="lc-theme">Vice City</span></button>
+    </div>
+    <div id="lc-toast"></div>
+  </div>
+  <script>
+    // A landing that is not shown leaves nothing behind (as handOver removes
+    // it after Play): its hidden canvas would otherwise be the page's first.
+    if (!document.documentElement.hasAttribute("data-landing")) document.getElementById("landing").remove();
+  </script>
   <div id="loading-indicator">Loading...</div>
   <!-- Landscape-unsupported overlay (shown via the orientation media query). -->
   <div id="landscape-block" aria-hidden="true" role="alertdialog">
     <div class="lb-title">Rotate your device</div>
     <div class="lb-body">Landscape isn't supported yet — turn your phone upright to keep playing.</div>
   </div>
+  <script>
+    // ---------------------------------------------------------------------
+    // Wheel transport shim (see src/go/internal/ui/input_dynamics.go).
+    //
+    // Ebiten's JS backend does two things that break wheel handling:
+    //   1. it ASSIGNS `WheelY = -deltaY` per event, so when several wheel
+    //      events land in one frame only the last survives;
+    //   2. it DISCARDS `deltaMode`, which is the only way to tell a Chrome
+    //      notch (deltaY ~100, DOM_DELTA_PIXEL) from a Firefox notch
+    //      (deltaY ~3, DOM_DELTA_LINE) -- a ~33x difference. Ebiten even
+    //      carries an upstream "TODO: What if e.deltaMode is not
+    //      DOM_DELTA_PIXEL?" at that line.
+    //
+    // Without deltaMode, Go cannot size a wheel notch, and one browser notch
+    // scrolled a menu through its entire list.
+    //
+    // This is DUMB TRANSPORT on purpose: it accumulates raw deltas and reports
+    // deltaMode verbatim. Every conversion decision lives in Go
+    // (wheelNotchesFromRaw), per the JS Test Charter -- "logic correctness
+    // lives in Go". Do not add unit math here.
+    //
+    // Double-buffered on requestAnimationFrame: `pending` collects events as
+    // they arrive, and each animation frame promotes it to the fields Go
+    // reads. That keeps the value STABLE for the whole frame, which matters
+    // because several Go call sites read the wheel per frame (grid dispatcher,
+    // drum row fallback, tree, camera) and all must see the same movement. It
+    // also makes us independent of whether our rAF callback runs before or
+    // after Ebiten's.
+    (function () {
+      var pending = { x: 0, y: 0, mode: 0 };
+      // Fields Go reads (syscall/js: __beatmoWheel.x / .y / .mode).
+      var out = { x: 0, y: 0, mode: 0 };
+      window.__beatmoWheel = out;
+
+      window.addEventListener('wheel', function (e) {
+        // deltaMode is per-event and never changes mid-gesture in practice.
+        // If it DOES change, the pending deltas are in the old unit, so drop
+        // them rather than summing incompatible units.
+        if (e.deltaMode !== pending.mode) {
+          pending.x = 0;
+          pending.y = 0;
+          pending.mode = e.deltaMode;
+        }
+        pending.x += e.deltaX;
+        pending.y += e.deltaY;
+      }, { capture: true, passive: true });
+
+      (function promote() {
+        out.x = pending.x;
+        out.y = pending.y;
+        out.mode = pending.mode;
+        pending.x = 0;
+        pending.y = 0;
+        requestAnimationFrame(promote);
+      })();
+    })();
+  </script>
   <script>
     // Localized text is pushed from Go (single i18n source) via this setter, so
     // the overlay tracks the in-app language. English is baked in as the
@@ -297,7 +491,7 @@
 
       // Attach listener when canvas is available
       function attachFocusRectListener() {
-        const canvas = document.querySelector('canvas');
+        const canvas = window.__beatmoGameCanvas();
         if (!canvas) {
           requestAnimationFrame(attachFocusRectListener);
           return;
@@ -406,7 +600,7 @@
         // Close any existing native input
         closeActiveInput();
 
-        const canvas = document.querySelector('canvas');
+        const canvas = window.__beatmoGameCanvas();
         if (!canvas) return;
         const cr = canvas.getBoundingClientRect();
 
@@ -536,7 +730,7 @@
 
       // Attach listeners when canvas is available
       function attachMobileInputListeners() {
-        const canvas = document.querySelector('canvas');
+        const canvas = window.__beatmoGameCanvas();
         if (!canvas) {
           requestAnimationFrame(attachMobileInputListeners);
           return;
@@ -588,7 +782,7 @@
       const overlays = new Map(); // id -> HTMLInputElement
 
       function canvasOffset() {
-        const c = document.querySelector('canvas');
+        const c = window.__beatmoGameCanvas();
         if (!c) return null;
         const r = c.getBoundingClientRect();
         return { left: r.left, top: r.top };
@@ -718,7 +912,7 @@
       function logTouchEvent(type, event) {
         if (!window.BEATMO_TOUCH_DEBUG) return;
 
-        const canvas = document.querySelector('canvas');
+        const canvas = window.__beatmoGameCanvas();
         const rect = canvas ? canvas.getBoundingClientRect() : null;
 
         const touches = Array.from(event.touches || []).map(t => ({
@@ -753,7 +947,7 @@
         if (!window.BEATMO_TOUCH_DEBUG) return;
         if (event.pointerType !== 'touch') return; // Only log touch pointers
 
-        const canvas = document.querySelector('canvas');
+        const canvas = window.__beatmoGameCanvas();
         const rect = canvas ? canvas.getBoundingClientRect() : null;
 
         console.log(`[Pointer ${type}]`, {
@@ -773,7 +967,7 @@
 
       // Attach debug listeners when canvas is available
       function attachDebugListeners() {
-        const canvas = document.querySelector('canvas');
+        const canvas = window.__beatmoGameCanvas();
         if (!canvas) {
           requestAnimationFrame(attachDebugListeners);
           return;
@@ -817,10 +1011,13 @@
       };
     })();
 
-    // Prevent default touch behaviors on canvas
+    // Prevent default touch behaviors on the game's canvas. Not on the
+    // landing's crystal: a cancelled touchstart cancels the tap's click, and
+    // the landing plants a node and turns the sound on from that click
+    // (landing.js handles its own touchmove).
     ['touchstart', 'touchmove'].forEach(evt => {
       document.addEventListener(evt, e => {
-        if (e.target.tagName === 'CANVAS') e.preventDefault();
+        if (e.target.tagName === 'CANVAS' && e.target.id !== 'lc-crystal') e.preventDefault();
       }, { passive: false });
     });
   </script>
@@ -840,8 +1037,14 @@
     bootMark("scriptStart");
 
     const go = new Go(); // from wasm_exec.js
-    bootMark("wasmFetchStart");
-    const wasmReady = WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
+    // Env vars for the Go side. wasm_exec.js serializes this object into
+    // linear memory as KEY=value pairs at run(), which is exactly what Go's
+    // goenvs_unix reads — so os.Getenv works in the browser once this is
+    // populated. Without it the object stays {} and every os.Getenv returns "".
+    go.env = { ...(globalThis.__beatmoEnv || {}) };
+    // The download started in the first <head> script (window.__beatmoWasm),
+    // so it no longer waits for audio.js to load and run.
+    const wasmReady = WebAssembly.instantiateStreaming(window.__beatmoWasm || fetch("main.wasm"), go.importObject)
       .then((result) => { bootMark("wasmInstantiated"); return result; });
     Promise.all([wasmReady, window.audioReady || Promise.resolve()])
       .then(([result]) => {

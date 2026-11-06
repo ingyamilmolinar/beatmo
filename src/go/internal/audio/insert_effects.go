@@ -1,5 +1,7 @@
 package audio
 
+import "fmt"
+
 // EffectType identifies a kind of insert effect.
 type EffectType string
 
@@ -33,6 +35,37 @@ const (
 	EffectTape       EffectType = "tape"
 	EffectPitchShift EffectType = "pitchshift"
 )
+
+// EffectTypes lists every insert effect type, the closed set a file, a
+// bridge call or a document may name (TestEveryEffectTypeIsRegistered keeps
+// the registry and this list the same set).
+var EffectTypes = []EffectType{
+	EffectDistortion, EffectDelay, EffectReverb, EffectChorus, EffectBitcrusher, EffectFilter,
+	EffectPhaser, EffectFlanger, EffectTremolo, EffectGate, EffectLimiter, EffectRingMod,
+	EffectWaveshaper, EffectAutoWah, EffectCompressor, EffectTransient, EffectTape, EffectPitchShift,
+}
+
+// ParseEffectType reads an effect type named in data; an unknown name is an
+// error, never a slot that silently processes nothing.
+func ParseEffectType(s string) (EffectType, error) {
+	for _, t := range EffectTypes {
+		if string(t) == s {
+			return t, nil
+		}
+	}
+	return "", fmt.Errorf("unknown insert effect type %q", s)
+}
+
+// UnmarshalText is ParseEffectType, so a project or bundle naming an unknown
+// effect is rejected at decode.
+func (t *EffectType) UnmarshalText(b []byte) error {
+	v, err := ParseEffectType(string(b))
+	if err != nil {
+		return err
+	}
+	*t = v
+	return nil
+}
 
 // EffectSlot describes one effect in an instrument's insert chain.
 type EffectSlot struct {

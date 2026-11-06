@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // PinSource is the per-render input describing which instrument ids are
@@ -18,13 +20,13 @@ import (
 // menu's render-time order is the only consumer; nothing else cares which
 // tier an instrument lives in.
 type PinSource struct {
-	ProjectPins map[string]struct{}
-	UserStars   map[string]struct{}
+	ProjectPins map[instrument.ID]struct{}
+	UserStars   map[instrument.ID]struct{}
 }
 
 // Tier returns 0 for project pins, 1 for ★-favorited, 2 otherwise. Lower
 // values mean more-pinned. Empty / unknown ids fall through to tier 2.
-func (p PinSource) Tier(id string) int {
+func (p PinSource) Tier(id instrument.ID) int {
 	if id == "" {
 		return 2
 	}
@@ -51,7 +53,7 @@ func (p PinSource) Tier(id string) int {
 // labelFor maps id → display label; pass a closure over the menu's
 // displayLabelByID map. It is never called for tier-2 ids when pin
 // sources are empty (the early exit fires first).
-func (p PinSource) SortByTierAlpha(ids []string, labelFor func(string) string) {
+func (p PinSource) SortByTierAlpha(ids []instrument.ID, labelFor func(instrument.ID) string) {
 	if len(ids) < 2 {
 		return
 	}
@@ -78,7 +80,7 @@ func (p PinSource) SortByTierAlpha(ids []string, labelFor func(string) string) {
 // score, and score only orders items within the same tier. This is the
 // "favorites always on top of every search" ordering — use it when a search
 // query is active and matching favorites must lead the results.
-func (p PinSource) SortByTierScore(ids []string, scoreOf func(string) int, labelFor func(string) string) {
+func (p PinSource) SortByTierScore(ids []instrument.ID, scoreOf func(instrument.ID) int, labelFor func(instrument.ID) string) {
 	if len(ids) < 2 {
 		return
 	}
@@ -105,7 +107,7 @@ func (p PinSource) SortByTierScore(ids []string, scoreOf func(string) int, label
 // Implementation: a single sort.SliceStable with a (-score, tier, label)
 // comparator. scoreOf must return a comparable int; ties on score promote
 // tier; ties on tier promote alphabetical label.
-func (p PinSource) StableTierBreaker(ids []string, scoreOf func(string) int, labelFor func(string) string) {
+func (p PinSource) StableTierBreaker(ids []instrument.ID, scoreOf func(instrument.ID) int, labelFor func(instrument.ID) string) {
 	if len(ids) < 2 {
 		return
 	}
@@ -137,15 +139,15 @@ func (p PinSource) StableTierBreaker(ids []string, scoreOf func(string) int, lab
 type FavoritesStore interface {
 	// Get reports whether key is currently favorited. Unknown keys
 	// return false.
-	Get(key string) bool
+	Get(key instrument.ID) bool
 	// Set marks key as favorited (true) or removes the favorite (false).
 	// Persistence is best-effort — the in-memory mirror always reflects
 	// the call; disk/localStorage may lag by a few ms.
-	Set(key string, fav bool)
+	Set(key instrument.ID, fav bool)
 	// Keys returns the set of favorited keys in deterministic
 	// (alphabetical) order. Useful for rendering "favorites" group
 	// rows and for assertions in tests.
-	Keys() []string
+	Keys() []instrument.ID
 }
 
 // InMemoryFavoritesStore is the test fallback and the default when no
@@ -155,14 +157,14 @@ type FavoritesStore interface {
 // persistence; this struct is the in-memory mirror in isolation.
 type InMemoryFavoritesStore struct {
 	mu  sync.RWMutex
-	set map[string]struct{}
+	set map[instrument.ID]struct{}
 }
 
 // NewInMemoryFavoritesStore returns an empty store. Optional ids
 // preload the favorites — handy when constructing a store for a test
 // that needs a non-empty initial state.
-func NewInMemoryFavoritesStore(ids ...string) *InMemoryFavoritesStore {
-	s := &InMemoryFavoritesStore{set: make(map[string]struct{}, len(ids))}
+func NewInMemoryFavoritesStore(ids ...instrument.ID) *InMemoryFavoritesStore {
+	s := &InMemoryFavoritesStore{set: make(map[instrument.ID]struct{}, len(ids))}
 	for _, id := range ids {
 		if id == "" {
 			continue
@@ -172,7 +174,7 @@ func NewInMemoryFavoritesStore(ids ...string) *InMemoryFavoritesStore {
 	return s
 }
 
-func (s *InMemoryFavoritesStore) Get(key string) bool {
+func (s *InMemoryFavoritesStore) Get(key instrument.ID) bool {
 	if s == nil || key == "" {
 		return false
 	}
@@ -182,7 +184,7 @@ func (s *InMemoryFavoritesStore) Get(key string) bool {
 	return ok
 }
 
-func (s *InMemoryFavoritesStore) Set(key string, fav bool) {
+func (s *InMemoryFavoritesStore) Set(key instrument.ID, fav bool) {
 	if s == nil || key == "" {
 		return
 	}
@@ -195,13 +197,13 @@ func (s *InMemoryFavoritesStore) Set(key string, fav bool) {
 	delete(s.set, key)
 }
 
-func (s *InMemoryFavoritesStore) Keys() []string {
+func (s *InMemoryFavoritesStore) Keys() []instrument.ID {
 	if s == nil {
 		return nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]string, 0, len(s.set))
+	out := make([]instrument.ID, 0, len(s.set))
 	for k := range s.set {
 		out = append(out, k)
 	}
@@ -212,7 +214,7 @@ func (s *InMemoryFavoritesStore) Keys() []string {
 // sortStrings is a tiny helper to avoid importing "sort" just for one
 // call site — favorites lists are short so a basic insertion sort is
 // fine and keeps the file dependency-light.
-func sortStrings(s []string) {
+func sortStrings[S ~string](s []S) {
 	for i := 1; i < len(s); i++ {
 		for j := i; j > 0 && s[j-1] > s[j]; j-- {
 			s[j-1], s[j] = s[j], s[j-1]

@@ -36,7 +36,9 @@ const (
 	ZRowEQDivider = 186 // row↔EQ-boundary divider line+pill (drawn above guides)
 	ZBaseMax      = 199 // base zone range end
 	ZResize       = 200 // layout resize handler
-	ZOverlayMin   = 300 // portal overlays start at 300 + stack index
+	ZDrumToast    = 210 // mobile fallback status toast (audioTree, topmost —
+	//                      see DrumToastLayer / toastHostRect)
+	ZOverlayMin = 300 // portal overlays start at 300 + stack index
 )
 
 // DrumViewTree orchestrates the zone-based component tree. It runs a strict
@@ -45,6 +47,11 @@ const (
 // (inputHandled=true), it propagates suppress to the global flag to
 // prevent legacy code from double-dispatching.
 type DrumViewTree struct {
+	// wheelNorm converts platform detents into row steps for wheel dispatch,
+	// carrying sub-notch trackpad movement between frames. Per-tree (not
+	// shared) so one surface's leftover motion cannot bleed into another's.
+	wheelNorm *WheelNormalizer
+
 	// zones holds POINTERS, not values. zoneMap aliases the same
 	// *zoneEntry objects, and SetZoneRect mutates them in place. Storing
 	// values here (with zoneMap holding &zones[i]) was a latent bug: every
@@ -359,16 +366,6 @@ func (t *DrumViewTree) autoFocusPass() {
 		}
 	}
 
-	// Phase 2.5b: Auto-focus eq-panel zone when the shared dB editor is open.
-	if e, ok := t.zoneMap["eq-panel"]; ok {
-		if ez, ok := e.zone.(*EQPanelZone); ok {
-			if ez.paramEditor != nil && ez.paramEditor.Active() {
-				t.focusedZone = "eq-panel"
-			} else if t.focusedZone == "eq-panel" {
-				t.focusedZone = ""
-			}
-		}
-	}
 }
 
 // DispatchInput runs the input half of the frame loop: handleInput (Phase 3)
@@ -760,10 +757,24 @@ func (t *DrumViewTree) handleInput() {
 	// TestInstMenuScrollDoesNotAffectRowOffset and the instrument-menu /
 	// category scroll tests.
 	if t.allowNewPress {
-		wx, wy := wheel()
-		steps := int(wy)
-		if wx != 0 && steps == 0 {
-			steps = int(wx)
+		// DETENTS, never raw platform units (see input_dynamics.go). Reading the
+		// raw wheel here is the bug that made ONE browser notch scroll a menu
+		// through its entire list: the raw DOM deltaY (~100 in Chrome) went
+		// straight into MenuScroll.HandleWheel, which deliberately respects
+		// magnitude — one step, one row.
+		//
+		// The tree owns a WheelNormalizer (rather than using the stateless
+		// wheelScrollSteps) because menus are the surface where sub-notch
+		// trackpad accumulation matters: each glide event is a fraction of a
+		// detent, and the carry is what turns a slow two-finger drag into
+		// smooth motion instead of nothing.
+		nx, ny := wheelNotches()
+		if t.wheelNorm == nil {
+			t.wheelNorm = NewWheelNormalizer(defaultWheelDynamics())
+		}
+		steps := t.wheelNorm.Rows(ny)
+		if nx != 0 && steps == 0 {
+			steps = wheelRowsFromNotches(nx)
 		}
 		if steps != 0 {
 			hits := t.hitIndex.At(mx, my)
@@ -777,7 +788,7 @@ func (t *DrumViewTree) handleInput() {
 				// single-axis steps.
 				var res InputResult
 				if w2, ok := h.Handler.(wheel2DHandler); ok {
-					res = w2.OnWheel2D(mx, my, int(wx), int(wy))
+					res = w2.OnWheel2D(mx, my, wheelRowsFromNotches(nx), steps)
 				} else {
 					res = h.Handler.OnWheel(mx, my, steps)
 				}
@@ -827,6 +838,13 @@ func (t *DrumViewTree) CapturedTag() string {
 // Capturing returns true if a handler is currently captured.
 func (t *DrumViewTree) Capturing() bool {
 	return t.capturedHandler != nil
+}
+
+// handledInputLastFrame reports whether this subtree handled a press or a
+// wheel, or holds a drag. Read BEFORE Tick (which resets the flags), it
+// describes the previous frame.
+func (t *DrumViewTree) handledInputLastFrame() bool {
+	return t.inputHandled || t.wheelHandled || t.Capturing()
 }
 
 // ClearCapture drops any in-flight pointer capture without synthesizing a

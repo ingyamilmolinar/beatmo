@@ -5,12 +5,26 @@ package audio
 import (
 	"sync/atomic"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
+// Analyzer is a handle on one of a channel's JS analysers: which channel, and
+// which tap on it.
 type Analyzer struct {
-	id      string
+	ch      channel.ID
+	tap     analyzerTap
 	enabled bool
 }
+
+// analyzerTap is where on a channel's chain an analyser listens.
+type analyzerTap int
+
+const (
+	tapChannel analyzerTap = iota // the channel's output
+	tapPreEQ                      // before the channel EQ
+	tapSynth                      // the channel's ingress, before any FX
+)
 
 type AnalyzerSnapshot struct {
 	RMS       float64
@@ -50,12 +64,28 @@ func (a *Analyzer) SetEnabled(on bool) { a.enabled = on }
 // Enabled returns whether the analyzer is active (WASM).
 func (a *Analyzer) Enabled() bool { return a.enabled }
 
-func EnableChannelAnalyzer(id string, window int) *Analyzer {
+// EnableChannelAnalyzer creates (or reuses) the channel's AnalyserNode.
+//
+// `window` is the caller's TIME-domain ask. The browser gives a channel one
+// AnalyserNode serving both domains, and between the two it is the SPECTRUM
+// whose requirement binds — a display band holding no FFT bin renders as
+// silence (analyzer.SpectrumFFTSize) — so the node is created at
+// BridgeAnalyserFFTSize and the caller's window is passed on separately as
+// the time-domain export cap. Callers therefore get the frequency
+// resolution the tab needs without the longer waveform none of them wants.
+func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
+	if id.IsZero() {
+		return &Analyzer{} // names no channel: never "" to JS, which reads it as the master bus
+	}
 	fn := js.Global().Get("enableChannelAnalyzer")
 	if fn.Truthy() {
-		fn.Invoke(id, window)
+		waveSamples := window
+		if waveSamples <= 0 {
+			waveSamples = BridgeWaveformSamples
+		}
+		fn.Invoke(id.String(), BridgeAnalyserFFTSize, waveSamples)
 	}
-	return &Analyzer{id: id, enabled: true}
+	return &Analyzer{ch: id, tap: tapChannel, enabled: true}
 }
 
 func (a *Analyzer) ProcessSample(x float64) float64       { return x }
@@ -71,10 +101,19 @@ func (a *Analyzer) Snapshot() AnalyzerSnapshot {
 	if a == nil {
 		return AnalyzerSnapshot{}
 	}
-	return ChannelAnalyzerSnapshot(a.id)
+	switch a.tap {
+	case tapPreEQ:
+		return PreEQAnalyzerSnapshot(a.ch)
+	case tapSynth:
+		return SynthAnalyzerSnapshot(a.ch)
+	}
+	return ChannelAnalyzerSnapshot(a.ch)
 }
 
-func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func ChannelAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
+	if id.IsZero() {
+		return AnalyzerSnapshot{} // names no channel: never "" to JS, which reads it as the master bus
+	}
 	return channelSnapCache.getOrFetch(id, snapshotCacheTTL, func() AnalyzerSnapshot {
 		bridgeSnapshotCalls.Add(1)
 		fn := js.Global().Get("channelAnalyzerSnapshot")
@@ -82,7 +121,11 @@ func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
 			return AnalyzerSnapshot{}
 		}
 		var out AnalyzerSnapshot
-		val := fn.Invoke(id)
+		// Ask for the analyser's full bin count. JS groups bins LINEARLY
+		// when asked for fewer, which spends the loss where the display
+		// bands are narrowest; its implicit default of 64 put 375 Hz
+		// between bins and left every band under that empty.
+		val := fn.Invoke(id.String(), BridgeSpectrumBins)
 		if !val.Truthy() {
 			return out
 		}
@@ -104,13 +147,20 @@ func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
 // ChannelAnalyzerSnapshot performs, eliminating ~1024 js.Value
 // allocations per call. Used by the Meters tab where the renderer
 // consumes only scalars (see render_meters.go:38).
-func ChannelAnalyzerMetrics(id string) (peak, rms float64, clips int, active bool) {
+func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active bool) {
+	if id.IsZero() {
+		return 0, 0, 0, false // names no channel: never "" to JS, which reads it as the master bus
+	}
 	bridgeSnapshotCalls.Add(1)
 	fn := js.Global().Get("channelAnalyzerSnapshot")
 	if !fn.Truthy() {
 		return 0, 0, 0, false
 	}
-	val := fn.Invoke(id)
+	// bins=0 is the scalar-only contract: JS skips the frequency read, the
+	// downsample and the wave copy. Without it this "fast path" still made
+	// the browser compute a full spectrum + waveform on every call and then
+	// read two numbers off it.
+	val := fn.Invoke(id.String(), 0)
 	if !val.Truthy() {
 		return 0, 0, 0, false
 	}
@@ -128,16 +178,22 @@ func ChannelAnalyzerMetrics(id string) (peak, rms float64, clips int, active boo
 }
 
 // EnablePreEQAnalyzer creates a pre-EQ analyzer on the channel (WASM version).
-func EnablePreEQAnalyzer(id string, window int) *Analyzer {
+func EnablePreEQAnalyzer(id channel.ID, window int) *Analyzer {
+	if id.IsZero() {
+		return &Analyzer{} // names no channel: never "" to JS, which reads it as the master bus
+	}
 	fn := js.Global().Get("enablePreEQAnalyzer")
 	if fn.Truthy() {
-		fn.Invoke(id, window)
+		fn.Invoke(id.String(), window)
 	}
-	return &Analyzer{id: "preEQ:" + id}
+	return &Analyzer{ch: id, tap: tapPreEQ}
 }
 
 // PreEQAnalyzerSnapshot returns the latest pre-EQ snapshot (WASM version).
-func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func PreEQAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
+	if id.IsZero() {
+		return AnalyzerSnapshot{} // names no channel: never "" to JS, which reads it as the master bus
+	}
 	return preEQSnapCache.getOrFetch(id, snapshotCacheTTL, func() AnalyzerSnapshot {
 		bridgeSnapshotCalls.Add(1)
 		fn := js.Global().Get("preEQAnalyzerSnapshot")
@@ -145,7 +201,7 @@ func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
 			return AnalyzerSnapshot{}
 		}
 		var out AnalyzerSnapshot
-		val := fn.Invoke(id)
+		val := fn.Invoke(id.String())
 		if !val.Truthy() {
 			return out
 		}
@@ -166,18 +222,24 @@ func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
 // StageAntiPop — in WASM the per-source anti-pop GainNode envelope is already
 // applied before the signal reaches the channel ingress, so tapping ingress
 // is the correct representation for both stages.
-func EnableSynthAnalyzer(id string, window int) *Analyzer {
+func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer {
+	if id.IsZero() {
+		return &Analyzer{} // names no channel: never "" to JS, which reads it as the master bus
+	}
 	fn := js.Global().Get("enableSynthAnalyzer")
 	if fn.Truthy() {
-		fn.Invoke(id, window)
+		fn.Invoke(id.String(), window)
 	}
-	return &Analyzer{id: "synth:" + id}
+	return &Analyzer{ch: id, tap: tapSynth}
 }
 
 // SynthAnalyzerSnapshot returns the latest pre-FX channel-ingress snapshot.
 // Companion to EnableSynthAnalyzer. Returns a zero snapshot if the JS export
 // is missing (e.g., older audio.js without the bridge).
-func SynthAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func SynthAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
+	if id.IsZero() {
+		return AnalyzerSnapshot{} // names no channel: never "" to JS, which reads it as the master bus
+	}
 	return synthSnapCache.getOrFetch(id, snapshotCacheTTL, func() AnalyzerSnapshot {
 		bridgeSnapshotCalls.Add(1)
 		fn := js.Global().Get("synthAnalyzerSnapshot")
@@ -185,43 +247,7 @@ func SynthAnalyzerSnapshot(id string) AnalyzerSnapshot {
 			return AnalyzerSnapshot{}
 		}
 		var out AnalyzerSnapshot
-		val := fn.Invoke(id)
-		if !val.Truthy() {
-			return out
-		}
-		if v := val.Get("rms"); v.Truthy() {
-			out.RMS = v.Float()
-		}
-		if v := val.Get("peak"); v.Truthy() {
-			out.Peak = v.Float()
-		}
-		out.Spectrum = readSnapshotF64(val, "spectrumU8", "spectrumLen", "spectrum")
-		out.Waveform = readSnapshotF64(val, "waveU8", "waveLen", "wave")
-		return out
-	})
-}
-
-// EnableSendBusAnalyzer creates an analyser that taps the summed send-bus
-// returns (delay + reverb). The Chain panel feeds it to StageSends.
-func EnableSendBusAnalyzer(window int) *Analyzer {
-	fn := js.Global().Get("enableSendBusAnalyzer")
-	if fn.Truthy() {
-		fn.Invoke(window)
-	}
-	return &Analyzer{id: "sendBus"}
-}
-
-// SendBusAnalyzerSnapshot returns the latest send-bus (delay+reverb returns)
-// snapshot. Companion to EnableSendBusAnalyzer.
-func SendBusAnalyzerSnapshot() AnalyzerSnapshot {
-	return sendBusSnapshotCachedOrFetch(func() AnalyzerSnapshot {
-		bridgeSnapshotCalls.Add(1)
-		fn := js.Global().Get("sendBusAnalyzerSnapshot")
-		if !fn.Truthy() {
-			return AnalyzerSnapshot{}
-		}
-		var out AnalyzerSnapshot
-		val := fn.Invoke()
+		val := fn.Invoke(id.String())
 		if !val.Truthy() {
 			return out
 		}
@@ -238,7 +264,7 @@ func SendBusAnalyzerSnapshot() AnalyzerSnapshot {
 }
 
 // SetAnalyzerEnabled is a no-op on WASM (analysis runs in JS).
-func SetAnalyzerEnabled(id string, on bool) {}
+func SetAnalyzerEnabled(id channel.ID, on bool) {}
 
 func resetAnalyzers() {}
 

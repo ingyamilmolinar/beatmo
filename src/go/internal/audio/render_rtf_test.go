@@ -5,9 +5,11 @@ package audio
 import (
 	"math"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
-	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestP5_RenderRealTimeFactor is the performance gate for the one-declarative-
@@ -16,9 +18,14 @@ import (
 // switches stall the trigger path. The floor is deliberately conservative
 // (20× aggregate — dev machines measure far higher) so CI variance never
 // flakes it; override with BEATMO_RTF_MIN for local tightening. Aggregate
-// (total audio seconds / total wall seconds) rather than per-instrument so
+// (total audio seconds / total render seconds) rather than per-instrument so
 // one cold-cache outlier cannot flake the gate; the worst single instrument
 // is Logf'd for visibility.
+//
+// The render seconds are the rendering THREAD's CPU time (renderCPUSeconds),
+// not wall time: `make test-real` runs every package at once, and under that
+// load the same renders measured 19.6× wall against ~90× alone — the gate
+// was measuring the other packages.
 func TestP5_RenderRealTimeFactor(t *testing.T) {
 	minRTF := 20.0
 	if s := os.Getenv("BEATMO_RTF_MIN"); s != "" {
@@ -29,30 +36,32 @@ func TestP5_RenderRealTimeFactor(t *testing.T) {
 	Reset()
 	ResetInstruments()
 
-	var audioSec, wallSec float64
+	runtime.LockOSThread() // the renders run on this goroutine (cgo stays on its thread)
+	defer runtime.UnlockOSThread()
+	var audioSec, renderSec float64
 	worstID, worstRTF := "", math.Inf(1)
-	for _, id := range BuiltinInstrumentIDs {
-		start := time.Now()
+	for _, id := range roster.All {
+		start := renderCPUSeconds()
 		buf, sr := RenderInstrumentOneShotRaw(id)
-		el := time.Since(start).Seconds()
+		el := renderCPUSeconds() - start
 		if len(buf) == 0 || sr <= 0 {
 			t.Fatalf("%q rendered empty (len=%d sr=%d)", id, len(buf), sr)
 		}
 		aSec := float64(len(buf)) / float64(sr)
 		audioSec += aSec
-		wallSec += el
+		renderSec += el
 		if el > 0 {
 			if rtf := aSec / el; rtf < worstRTF {
-				worstRTF, worstID = rtf, id
+				worstRTF, worstID = rtf, string(id)
 			}
 		}
 	}
-	if wallSec <= 0 {
-		t.Fatal("zero wall time — clock did not advance")
+	if renderSec <= 0 {
+		t.Fatal("zero render time — clock did not advance")
 	}
-	aggregate := audioSec / wallSec
+	aggregate := audioSec / renderSec
 	t.Logf("aggregate RTF %.0fx over %d instruments (%.1fs audio in %.2fs); worst %q %.0fx",
-		aggregate, len(BuiltinInstrumentIDs), audioSec, wallSec, worstID, worstRTF)
+		aggregate, len(roster.All), audioSec, renderSec, worstID, worstRTF)
 	if aggregate < minRTF {
 		t.Errorf("aggregate render real-time factor %.1fx below floor %.0fx — the pipeline got slower", aggregate, minRTF)
 	}

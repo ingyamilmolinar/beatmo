@@ -170,6 +170,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 // 12 mobile).
 const nodeStateSlashMinPx = 10
 
+// nodeChordGlyphMinPx is the smallest node radius that draws the notehead
+// glyph; smaller chord nodes (the default zoom) get three ticks instead.
+const nodeChordGlyphMinPx = 9
+
 // drawNodeStateOverlays iterates every node and paints the state-distinct
 // treatment for Muted / Silent / Invisible nodes (regular nodes are left
 // untouched). It mirrors the base draw loop's culling + fill/border derivation
@@ -183,8 +187,8 @@ func (g *Game) drawNodeStateOverlays(dst *ebiten.Image, minX, maxX, minY, maxY f
 			continue
 		}
 		nt := nodeInfo.Type
-		if nt == model.NodeTypeRegular {
-			continue
+		if nt.Fires() && nt != model.NodeTypeChord {
+			continue // a plain regular node has no state overlay
 		}
 		if nodeIdx < len(g.nodeRadiiCache) {
 			rWorld := g.nodeRadiiCache[nodeIdx]
@@ -237,6 +241,23 @@ func (g *Game) drawNodeStateOverlay(dst *ebiten.Image, sx1, sy1, sx2, sy2 float6
 		return
 	}
 	switch nt {
+	case model.NodeTypeChord:
+		// Stacked noteheads over the body, in the border tone (the row
+		// color's light variant, so it reads on the row-colored fill).
+		if rPx >= nodeChordGlyphMinPx {
+			g := rPx * 3 / 2
+			DrawIcon(dst, IconChord, image.Rect(cx-g/2, cy-g/2, cx+g-g/2, cy+g-g/2), borderCol)
+		} else {
+			// Too small for noteheads: three crisp ticks, the same mark a
+			// chord cell carries in the drum view.
+			w := rPx
+			if w < 2 {
+				w = 2
+			}
+			for _, dy := range [3]int{-2, 0, 2} {
+				drawRect(dst, image.Rect(cx-w/2, cy+dy, cx-w/2+w, cy+dy+1), borderCol, true)
+			}
+		}
 	case model.NodeTypeMute:
 		// Desaturate the body with a translucent fill scrim, then re-edge.
 		drawRect(dst, rect, WithAlphaFromColor(fillCol, AlphaMedium), true)

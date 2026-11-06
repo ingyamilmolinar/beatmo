@@ -21,14 +21,14 @@ type sidebarUndoCase struct {
 	// wired. It runs before the undo baseline is taken.
 	prep func(t *testing.T, g *Game, node *uiNode)
 	// fire is the sidebar button id whose production OnClick is invoked.
-	fire string
+	fire sbID
 }
 
 // sidebarUndoCases enumerates EVERY document-mutating control reachable from the
 // node sidebar. Pure-UI controls (close, the logic/groove dropdown toggles, the
 // move button) are intentionally absent — they change no exported state.
 func sidebarUndoCases() []sidebarUndoCase {
-	setLogic := func(kind string, n int, p float64) func(*testing.T, *Game, *uiNode) {
+	setLogic := func(kind model.LogicKind, n int, p float64) func(*testing.T, *Game, *uiNode) {
 		return func(t *testing.T, g *Game, node *uiNode) {
 			mn, ok := g.graph.GetNodeByID(node.ID)
 			if !ok {
@@ -43,7 +43,7 @@ func sidebarUndoCases() []sidebarUndoCase {
 			g.sidebar.logicDropdownOpen = false
 		}
 	}
-	setGroove := func(kind string, pct float64) func(*testing.T, *Game, *uiNode) {
+	setGroove := func(kind model.GrooveKind, pct float64) func(*testing.T, *Game, *uiNode) {
 		return func(t *testing.T, g *Game, node *uiNode) {
 			mn, ok := g.graph.GetNodeByID(node.ID)
 			if !ok {
@@ -58,46 +58,46 @@ func sidebarUndoCases() []sidebarUndoCase {
 		}
 	}
 	return []sidebarUndoCase{
-		{name: "volume-down", fire: "vol-"},
-		{name: "volume-up", fire: "vol+"},
-		{name: "pitch-down", fire: "pit-"},
-		{name: "pitch-up", fire: "pit+"},
-		{name: "duration-down", fire: "dur-"},
-		{name: "duration-up", fire: "dur+"},
+		{name: "volume-down", fire: sbMinus(fieldVol)},
+		{name: "volume-up", fire: sbPlus(fieldVol)},
+		{name: "pitch-down", fire: sbMinus(fieldPit)},
+		{name: "pitch-up", fire: sbPlus(fieldPit)},
+		{name: "duration-down", fire: sbMinus(fieldDur)},
+		{name: "duration-up", fire: sbPlus(fieldDur)},
 		{
 			name: "logic-kind-probability",
 			prep: func(t *testing.T, g *Game, node *uiNode) { g.sidebar.logicDropdownOpen = true },
-			fire: "logic:probability",
+			fire: sbLogicOption(model.LogicProbability),
 		},
 		{
 			name: "logic-kind-every-n",
 			prep: func(t *testing.T, g *Game, node *uiNode) { g.sidebar.logicDropdownOpen = true },
-			fire: "logic:every_n_triggers",
+			fire: sbLogicOption(model.LogicEveryN),
 		},
 		{
 			name: "logic-n-down",
-			prep: setLogic("every_n_triggers", 3, 0),
-			fire: "ln-",
+			prep: setLogic(model.LogicEveryN, 3, 0),
+			fire: sbMinus(fieldLogicN),
 		},
 		{
 			name: "logic-n-up",
-			prep: setLogic("every_n_triggers", 3, 0),
-			fire: "ln+",
+			prep: setLogic(model.LogicEveryN, 3, 0),
+			fire: sbPlus(fieldLogicN),
 		},
 		{
 			name: "logic-p-down",
-			prep: setLogic("probability", 0, 0.5),
-			fire: "lp-",
+			prep: setLogic(model.LogicProbability, 0, 0.5),
+			fire: sbMinus(fieldLogicP),
 		},
 		{
 			name: "logic-p-up",
-			prep: setLogic("probability", 0, 0.5),
-			fire: "lp+",
+			prep: setLogic(model.LogicProbability, 0, 0.5),
+			fire: sbPlus(fieldLogicP),
 		},
 		{
 			name: "groove-kind-delay",
 			prep: func(t *testing.T, g *Game, node *uiNode) { g.sidebar.grooveDropdownOpen = true },
-			fire: "groove:delay",
+			fire: sbGrooveOption(model.GrooveDelay),
 		},
 		{
 			// Groove percentage only round-trips through the snapshot when a groove
@@ -105,17 +105,17 @@ func sidebarUndoCases() []sidebarUndoCase {
 			// it only alongside a non-empty groove_kind — a separate import gap). A
 			// groove percentage is only meaningful with a kind anyway, so set one.
 			name: "groove-pct-up",
-			prep: setGroove("delay", 0.3),
-			fire: "gp+",
+			prep: setGroove(model.GrooveDelay, 0.3),
+			fire: sbPlus(fieldGroovePct),
 		},
 		{
 			name: "groove-pct-down",
-			prep: setGroove("delay", 0.5),
-			fire: "gp-",
+			prep: setGroove(model.GrooveDelay, 0.5),
+			fire: sbMinus(fieldGroovePct),
 		},
 		{
 			name: "audible-toggle",
-			fire: "aud",
+			fire: sbAudible,
 		},
 	}
 }
@@ -125,7 +125,7 @@ func sidebarUndoCases() []sidebarUndoCase {
 // way Game.Update does — inside the per-frame undo bracket (game_update.go). This
 // is the real execution path: OnClick only enqueues; the mutation (and any undo
 // tap) happens during the drain.
-func (g *Game) fireSidebarControl(t *testing.T, id string) {
+func (g *Game) fireSidebarControl(t *testing.T, id sbID) {
 	t.Helper()
 	g.sidebar.layout()
 	btn, ok := g.sidebar.btns[id]

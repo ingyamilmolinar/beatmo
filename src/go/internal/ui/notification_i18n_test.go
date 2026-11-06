@@ -40,6 +40,7 @@ func TestNotificationRetranslatesOnLocaleSwitch(t *testing.T) {
 func TestUndoNotificationRetranslatesOnLocaleSwitch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)
+	warmCircuitForTest(t, g)
 	g.tryAddNode(7, 7, model.NodeTypeRegular)
 
 	i18n.SetLocale(i18n.LocaleEN)

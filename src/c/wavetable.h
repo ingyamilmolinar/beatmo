@@ -65,14 +65,6 @@ void wt_osc_set_freq(wt_osc_t *osc, double freq, int sampleRate);
  * this only when a non-zero start phase is requested. */
 void wt_osc_set_phase(wt_osc_t *osc, double phase01);
 
-/* Block render with linear interpolation. */
-void wt_osc_process(wt_osc_t *osc, float *out, int samples);
-
-/* Block render with per-sample FM (frequency modulation).
- * freq_mod[i] is added to the base frequency for sample i. */
-void wt_osc_process_fm(wt_osc_t *osc, const float *freq_mod,
-                         float *out, int samples, int sampleRate);
-
 /* Single-sample tick (inline for use in tight inner loops). */
 static inline float wt_osc_tick(wt_osc_t *osc) {
     double pos = osc->phase;

@@ -12,6 +12,9 @@ func (dv *DrumView) Update() {
 	// Advance the shared mobile tap-debounce clock once per frame, before the
 	// early-out so the window keeps ticking even with no rows.
 	dv.tapGate.advance()
+	// A dial drag whose capture was dropped without a release (Esc, a view
+	// switch) is cancelled even when the Synth tab is not rebuilt.
+	dv.healSynthDialGesture()
 
 	if len(dv.Rows) == 0 {
 		return
@@ -138,11 +141,7 @@ func (dv *DrumView) Update() {
 				dv.openNamingPortal()
 				dv.nameInput = ""
 				// Initialize naming input box for consistent UX
-				dv.nameBox = NewTextInput(dv.nameBoxRect(), BPMBoxStyle)
-				dv.nameBox.MaxLen = 32
-				dv.nameBox.InputMode = "text"
-				dv.nameBox.OnFocusGained = func() { softKeyboardShow("text") }
-				dv.nameBox.OnFocusLost = func() { softKeyboardHide() }
+				dv.nameBox = dv.newWAVNameBox(dv.nameBoxRect())
 				dv.nameBox.SetText("")
 				dv.nameBox.focused = true
 				dv.notifyInfoKey(i18n.KeyNotifSelectedWAV, importSourceName(res.path))

@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Synth-tab Preview button: plays a one-shot of the active instrument with
@@ -17,7 +19,7 @@ import (
 func TestSynthHeaderPreviewLaidOutOnWidePanel(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
-	h := synthHeaderForTest(t, image.Rect(0, 0, 1200, 200), "kick-1", "drum-kick", false)
+	h := synthHeaderForTest(t, image.Rect(0, 0, 1200, 200), "kick-1", false)
 	if h.previewRect.Empty() {
 		t.Fatal("previewRect empty on a wide desktop header")
 	}
@@ -36,7 +38,7 @@ func TestSynthHeaderPreviewLaidOutOnWidePanel(t *testing.T) {
 func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 	assertDefaultParityState(t)
 	var calls []string
-	prev := SwapSynthAuditionFnForTest(func(id string) { calls = append(calls, id) })
+	prev := SwapSynthAuditionFnForTest(func(id instrument.ID) { calls = append(calls, string(id)) })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
 	g := newSamplerTabGame(t)
@@ -45,7 +47,7 @@ func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 	if want == "" {
 		t.Fatal("test game has no active synth instrument")
 	}
-	dv.layoutSynthHeader(image.Rect(0, 0, 1200, 200), 64, want, "drum-kick", false)
+	dv.layoutSynthHeader(image.Rect(0, 0, 1200, 200), 64, want, false)
 	dv.instEditorBtns = dv.instEditorBtns[:0]
 	dv.buildSynthHeaderButtons(want)
 
@@ -59,7 +61,7 @@ func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 		t.Fatal("no Preview button in instEditorBtns")
 	}
 	preview.OnClick()
-	if len(calls) != 1 || calls[0] != want {
+	if len(calls) != 1 || instrument.ID(calls[0]) != want {
 		t.Fatalf("audition calls = %v, want exactly one for %q", calls, want)
 	}
 }

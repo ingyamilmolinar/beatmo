@@ -4,10 +4,12 @@ package ui
 
 // initJS exposes helper functions for browser-based tests.
 func (g *Game) initJS() {
+	afterJSExport = g.kickLane // bridge edits reach the audio lane before control returns to JS
 	softKeyboardInit()
 	filePickerInit()
 	g.initFilePickerActions()
 	g.initJSPlaybackPerf()
+	g.initJSAudioTap()
 	g.initJSEqWidgets()
 	g.initJSTimelinePredictor()
 	g.initJSHarness()

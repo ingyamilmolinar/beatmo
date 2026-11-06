@@ -6,6 +6,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -43,7 +44,7 @@ func newMobileSamplerWheelGame(t *testing.T) (*Game, string) {
 		t.Skipf("could not capture a sampler buffer for %q", instID)
 	}
 	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 520), instID)
-	return g, instID
+	return g, string(instID)
 }
 
 // TestSamplerMobileKnobCardWithinCell pins the VISUAL contract: on mobile every
@@ -115,8 +116,8 @@ func TestSamplerKnobPressOpensWheelOnDesktop(t *testing.T) {
 	g := samplerLayoutGame(t) // desktop 1280x720, comfortable density
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 260), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 260), roster.Kick)
 
 	img := newTrackedImage("test.samplerwheeldesktop", 1280, 720)
 	defer releaseImage(img)
@@ -195,7 +196,7 @@ func TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept(t *testing.T) {
 
 // TestSamplerWheelPopupCenterTapOpensEditor asserts a tap on the popup's center
 // value box opens the shared numeric editor (OpenEditor → openSamplerParamEditor).
-func TestSamplerWheelPopupCenterTapOpensEditor(t *testing.T) {
+func TestSamplerWheelPopupCenterTapConfirms(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
 	idx := samplerKnobGain
@@ -212,9 +213,12 @@ func TestSamplerWheelPopupCenterTapOpensEditor(t *testing.T) {
 	cx := (w.centerH.Min.X + w.centerH.Max.X) / 2
 	cy := (w.centerH.Min.Y + w.centerH.Max.Y) / 2
 	w.HandleInput(cx, cy, true)
+	w.HandleInput(cx, cy, false)
 
-	if dv.paramEditor == nil || !dv.paramEditor.Active() {
-		t.Fatal("center-box tap did not open the sampler numeric editor")
+	// Typed entry was retired: a centre click CONFIRMS (Accept + close), the
+	// uniform "click the middle to confirm" contract.
+	if w.IsOpen() {
+		t.Fatal("a centre click must confirm and close the sampler wheel")
 	}
 }
 

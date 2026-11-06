@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"encoding/binary"
+	"hash/fnv"
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -13,6 +15,13 @@ type layoutResizeZone struct {
 	handler *LayoutResizeHandler
 	rect    image.Rectangle
 	dirty   bool
+
+	// areas caches HitAreas for the geometry it was built from (areasKey):
+	// recalcButtons republishes them every frame, and recomputing every
+	// divider's segments was the largest per-frame layout cost left on WASM.
+	areas    []HitArea
+	areasKey uint64
+	haveKey  bool
 }
 
 func newLayoutResizeZone(h *LayoutResizeHandler) *layoutResizeZone {
@@ -69,6 +78,10 @@ func (z *layoutResizeZone) HitAreas() []HitArea {
 	if z.handler == nil || z.handler.dv.widgets == nil || !Profile().EnableLayoutResize {
 		return nil
 	}
+	key := z.geometryKey()
+	if z.haveKey && key == z.areasKey {
+		return z.areas
+	}
 	var areas []HitArea
 
 	// Column divider pills.
@@ -105,7 +118,53 @@ func (z *layoutResizeZone) HitAreas() []HitArea {
 		})
 	}
 
+	z.areas, z.areasKey, z.haveKey = areas, key, true
 	return areas
+}
+
+// geometryKey hashes every input the divider handle rects derive from: the
+// widget board's positions, offset, grid size and placements, the drum view
+// bounds, the audio panel's top (the EQ boundary follows it) and the handle
+// size.
+func (z *layoutResizeZone) geometryKey() uint64 {
+	dv := z.handler.dv
+	wb := dv.widgets
+	h := fnv.New64a()
+	var buf [8]byte
+	put := func(vs ...int) {
+		for _, v := range vs {
+			binary.LittleEndian.PutUint64(buf[:], uint64(int64(v)))
+			_, _ = h.Write(buf[:])
+		}
+	}
+	put(dv.Bounds.Min.X, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
+	put(dv.eqRect.Min.X, dv.eqRect.Min.Y, dv.eqRect.Max.X, dv.eqRect.Max.Y)
+	put(wb.offset.X, wb.offset.Y, len(wb.cols), len(wb.rows), SplitterHandleLen(), SplitterHandleThick())
+	put(len(wb.colPos))
+	put(wb.colPos...)
+	put(len(wb.rowPos))
+	put(wb.rowPos...)
+	// Placements are a map: combine per-entry hashes order-independently.
+	var placements uint64
+	for id, p := range wb.placements {
+		e := fnv.New64a()
+		_, _ = e.Write([]byte(id))
+		var b [8]byte
+		for _, v := range [...]int{p.Col, p.Row, p.ColSpan, p.RowSpan, boolInt(p.Visible)} {
+			binary.LittleEndian.PutUint64(b[:], uint64(int64(v)))
+			_, _ = e.Write(b[:])
+		}
+		placements += e.Sum64()
+	}
+	put(len(wb.placements), int(placements))
+	return h.Sum64()
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (z *layoutResizeZone) Draw(screen *ebiten.Image) {}

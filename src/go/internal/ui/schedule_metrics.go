@@ -121,6 +121,21 @@ type scheduleMetrics struct {
 	emitSumSqAbs float64 // sum of squares of |drift|, for stddev
 	emitAbsMax   float64
 	emitSamples  []float64 // |drift| reservoir for percentile
+
+	// sorted is Snapshot's scratch copy of one reservoir: each reservoir is
+	// sorted ONCE per Snapshot and every quantile read off it. Snapshot runs
+	// every frame (parityTimingCheck) and the audio lane keeps the lead
+	// reservoir full (~2000 observations/s under edits): a copy + sort per
+	// quantile was three sorts of 2048 samples per stage per frame.
+	sorted []float64
+
+	// rev counts mutations; Snapshot returns snap while snapRev == rev. A
+	// frame with no new observation (most of them) re-sorted every reservoir
+	// for an identical snapshot.
+	rev      uint64
+	snapRev  uint64
+	haveSnap bool
+	snap     ScheduleMetricsSnapshot
 }
 
 // Observe records a Stage C scheduling event (audio dispatch → fire).
@@ -134,6 +149,7 @@ func (m *scheduleMetrics) Observe(audioNow, when float64) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rev++
 
 	if m.startAt == 0 {
 		m.startAt = audioNow
@@ -181,6 +197,7 @@ func (m *scheduleMetrics) ObserveBridge(dtSec float64) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rev++
 	m.bridgeCount++
 	m.bridgeSum += dtSec
 	m.bridgeSumSq += dtSec * dtSec
@@ -203,6 +220,7 @@ func (m *scheduleMetrics) ObserveSeqFireLate(lateSec float64) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rev++
 	m.seqFireCount++
 	m.seqFireSum += lateSec
 	m.seqFireSumSq += lateSec * lateSec
@@ -223,6 +241,7 @@ func (m *scheduleMetrics) ObserveEmitDrift(driftSec float64) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rev++
 	a := math.Abs(driftSec)
 	m.emitCount++
 	m.emitSumSig += driftSec
@@ -253,6 +272,7 @@ func (m *scheduleMetrics) ObserveEmitDrift(driftSec float64) {
 func (m *scheduleMetrics) ResetPeaks() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rev++
 	m.maxLag = 0
 	m.bridgeMax = 0
 	m.seqFireMax = 0
@@ -263,6 +283,7 @@ func (m *scheduleMetrics) ResetPeaks() {
 func (m *scheduleMetrics) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rev++
 	m.startAt = 0
 	m.count = 0
 	m.overdue = 0
@@ -300,6 +321,9 @@ func (m *scheduleMetrics) Reset() {
 func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.haveSnap && m.snapRev == m.rev {
+		return m.snap
+	}
 
 	s := ScheduleMetricsSnapshot{
 		Count:          m.count,
@@ -337,19 +361,22 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		// crash, 2026-07-13). On-time dispatches contribute lag 0; the isolated
 		// blip belongs to MaxLag (dropout), which the emit cross-check governs.
 		s.AvgLag = m.sumLag / float64(m.count)
-		s.LeadP50 = percentileSample(m.leadSamples, 0.50)
-		s.LeadP90 = percentileSample(m.leadSamples, 0.90)
-		s.LeadP99 = percentileSample(m.leadSamples, 0.99)
-		s.LagP90 = lagPercentileAll(m.lagSamples, m.overdue, m.count, 0.90)
-		s.LagP99 = lagPercentileAll(m.lagSamples, m.overdue, m.count, 0.99)
+		lead := m.sortSamples(m.leadSamples)
+		s.LeadP50 = sortedQuantile(lead, 0.50)
+		s.LeadP90 = sortedQuantile(lead, 0.90)
+		s.LeadP99 = sortedQuantile(lead, 0.99)
+		lag := m.sortSamples(m.lagSamples)
+		s.LagP90 = lagQuantileAll(lag, m.overdue, m.count, 0.90)
+		s.LagP99 = lagQuantileAll(lag, m.overdue, m.count, 0.99)
 	}
 
 	if m.bridgeCount > 0 {
 		s.BridgeAvg = m.bridgeSum / float64(m.bridgeCount)
 		s.BridgeStdDev = stddev(m.bridgeSum, m.bridgeSumSq, m.bridgeCount)
-		s.BridgeP50 = percentileSample(m.bridgeSamples, 0.50)
-		s.BridgeP90 = percentileSample(m.bridgeSamples, 0.90)
-		s.BridgeP99 = percentileSample(m.bridgeSamples, 0.99)
+		bridge := m.sortSamples(m.bridgeSamples)
+		s.BridgeP50 = sortedQuantile(bridge, 0.50)
+		s.BridgeP90 = sortedQuantile(bridge, 0.90)
+		s.BridgeP99 = sortedQuantile(bridge, 0.99)
 	} else {
 		s.BridgeAvg = math.NaN()
 		s.BridgeStdDev = math.NaN()
@@ -361,9 +388,10 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 	if m.seqFireCount > 0 {
 		s.SeqFireAvg = m.seqFireSum / float64(m.seqFireCount)
 		s.SeqFireStdDev = stddev(m.seqFireSum, m.seqFireSumSq, m.seqFireCount)
-		s.SeqFireP50 = percentileSample(m.seqFireSamples, 0.50)
-		s.SeqFireP90 = percentileSample(m.seqFireSamples, 0.90)
-		s.SeqFireP99 = percentileSample(m.seqFireSamples, 0.99)
+		seq := m.sortSamples(m.seqFireSamples)
+		s.SeqFireP50 = sortedQuantile(seq, 0.50)
+		s.SeqFireP90 = sortedQuantile(seq, 0.90)
+		s.SeqFireP99 = sortedQuantile(seq, 0.99)
 	} else {
 		s.SeqFireAvg = math.NaN()
 		s.SeqFireStdDev = math.NaN()
@@ -375,7 +403,7 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 	if m.emitCount > 0 {
 		s.EmitAvg = m.emitSumSig / float64(m.emitCount)
 		s.EmitStdDev = stddev(m.emitSumAbs, m.emitSumSqAbs, m.emitCount)
-		s.EmitP99 = percentileSample(m.emitSamples, 0.99)
+		s.EmitP99 = sortedQuantile(m.sortSamples(m.emitSamples), 0.99)
 	} else {
 		s.EmitAvg = math.NaN()
 		s.EmitStdDev = math.NaN()
@@ -394,6 +422,7 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		s.E2EP99 = math.NaN()
 	}
 
+	m.snap, m.snapRev, m.haveSnap = s, m.rev, true
 	return s
 }
 
@@ -427,27 +456,41 @@ func pushSample(buf *[]float64, v float64) {
 // count dispatches, where the (count-overdue) on-time dispatches have lag 0
 // and the overdue tail is approximated by the lagSamples reservoir. Zero when
 // the overdue fraction is at most (1-q): the q-quantile dispatch was on-time.
-func lagPercentileAll(lagSamples []float64, overdue, count int64, q float64) float64 {
-	if count <= 0 || overdue <= 0 || len(lagSamples) == 0 {
+// sortedLag is the lag reservoir sorted ascending.
+func lagQuantileAll(sortedLag []float64, overdue, count int64, q float64) float64 {
+	if count <= 0 || overdue <= 0 || len(sortedLag) == 0 {
 		return 0
 	}
 	tail := (1 - q) * float64(count) // dispatches strictly above the quantile
 	if float64(overdue) <= tail {
 		return 0
 	}
-	return percentileSample(lagSamples, 1-tail/float64(overdue))
+	return sortedQuantile(sortedLag, 1-tail/float64(overdue))
+}
+
+// sortSamples copies a reservoir into m.sorted and sorts it (caller holds
+// m.mu). The result is valid until the next sortSamples call.
+func (m *scheduleMetrics) sortSamples(samples []float64) []float64 {
+	m.sorted = append(m.sorted[:0], samples...)
+	sort.Float64s(m.sorted)
+	return m.sorted
 }
 
 // percentileSample returns the qth percentile from a sample buffer.
 // Returns NaN if empty. Matches the browser's percentile() function.
 func percentileSample(samples []float64, q float64) float64 {
-	n := len(samples)
+	sorted := make([]float64, len(samples))
+	copy(sorted, samples)
+	sort.Float64s(sorted)
+	return sortedQuantile(sorted, q)
+}
+
+// sortedQuantile is percentileSample over an already-sorted buffer.
+func sortedQuantile(sorted []float64, q float64) float64 {
+	n := len(sorted)
 	if n == 0 {
 		return math.NaN()
 	}
-	sorted := make([]float64, n)
-	copy(sorted, samples)
-	sort.Float64s(sorted)
 	idx := int(math.Floor(q * float64(n-1)))
 	if idx < 0 {
 		idx = 0

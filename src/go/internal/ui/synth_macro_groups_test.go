@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func macroIDs(gs []macroGroup) map[string]macroGroup {
@@ -14,19 +16,16 @@ func macroIDs(gs []macroGroup) map[string]macroGroup {
 	return m
 }
 
-func groupsFor(t *testing.T, recipeID string) []macroGroup {
+func groupsFor(t *testing.T, id instrument.ID) []macroGroup {
 	t.Helper()
-	reg := audio.RecipeRegistrations()[recipeID]
-	if reg == nil {
-		t.Fatalf("no recipe registration for %q", recipeID)
-	}
-	return buildMacroGroups(reg.Params, audio.RecipeDefaultParams(recipeID))
+	defs, merged := instSchemaForTest(t, id)
+	return buildMacroGroups(defs, merged)
 }
 
 // A solo bowed string (violin): shows the universal concepts + Movement (vibrato
 // LFO on) + Body (resonator on); hides Voice (no formant) and Width (one voice).
 func TestMacroGroups_Melodic_ViolinCoreConcepts(t *testing.T) {
-	gs := groupsFor(t, "synth-modular-violin")
+	gs := groupsFor(t, roster.Violin)
 	ids := macroIDs(gs)
 	for _, want := range []string{"sound", "brightness", "attack", "length", "warmth", "movement", "body"} {
 		if _, ok := ids[want]; !ok {
@@ -41,7 +40,7 @@ func TestMacroGroups_Melodic_ViolinCoreConcepts(t *testing.T) {
 	}
 	// Every returned concept must own at least one real, present param.
 	sch := map[string]bool{}
-	for _, d := range audio.RecipeRegistrations()["synth-modular-violin"].Params {
+	for _, d := range audio.InstrumentParamDefs(roster.Violin) {
 		sch[d.Name] = true
 	}
 	for _, g := range gs {
@@ -58,7 +57,7 @@ func TestMacroGroups_Melodic_ViolinCoreConcepts(t *testing.T) {
 
 // An ensemble string stacks voices → Width + Human Feel appear.
 func TestMacroGroups_Melodic_EnsembleShowsWidth(t *testing.T) {
-	ids := macroIDs(groupsFor(t, "synth-modular-violin-ensemble"))
+	ids := macroIDs(groupsFor(t, roster.ViolinEnsemble))
 	if _, ok := ids["width"]; !ok {
 		t.Error("violin-ensemble (voices>1) should show the Width concept")
 	}
@@ -69,20 +68,59 @@ func TestMacroGroups_Melodic_EnsembleShowsWidth(t *testing.T) {
 
 // A vocal instrument (formant on) → Voice appears.
 func TestMacroGroups_Melodic_VocalShowsVoice(t *testing.T) {
-	ids := macroIDs(groupsFor(t, "synth-modular-voice-alien"))
+	ids := macroIDs(groupsFor(t, roster.VoiceAlien))
 	if _, ok := ids["voice"]; !ok {
 		t.Error("alien choir (formant on) should show the Voice concept")
 	}
 }
 
-// Percussion/kick recipes fall back to the existing stage UI (nil) in v1.
-func TestMacroGroups_Kick_ReturnsNil(t *testing.T) {
-	reg := audio.RecipeRegistrations()["synth-modular-kick-808"]
-	if reg == nil {
-		t.Skip("kick-808 recipe not registered")
+// Percussion/kick instruments get their OWN concept table (Punch/Boom/Tone/…),
+// built from the REAL modular-kick schema (post_*/voice_freq_hz/amp_*/fm_*), not
+// the legacy configurable-kick's kick_* params.
+func TestBuildMacroGroups_Percussion_Kick808(t *testing.T) {
+	defs, merged := instSchemaForTest(t, roster.Kick808)
+	groups := buildMacroGroups(defs, merged)
+	if len(groups) == 0 {
+		t.Fatal("percussion kick should now yield macro groups (was nil)")
 	}
-	if gs := buildMacroGroups(reg.Params, audio.RecipeDefaultParams("synth-modular-kick-808")); gs != nil {
-		t.Errorf("kick should return nil macro groups (fall back to stage UI); got %d groups", len(gs))
+	present := map[string]bool{}
+	for _, d := range defs {
+		present[d.Name] = true
+	}
+	ids := macroIDs(groups)
+	for _, g := range groups {
+		if len(g.Params) == 0 {
+			t.Errorf("group %q has zero params", g.ID)
+		}
+		for _, p := range g.Params {
+			if !present[p] {
+				t.Errorf("group %q param %q not in kick schema", g.ID, p)
+			}
+		}
+	}
+	for _, want := range []string{"punch", "boom", "tone", "length", "source"} {
+		if _, ok := ids[want]; !ok {
+			t.Errorf("expected percussion concept %q, got %v", want, keysOf(ids))
+		}
+	}
+	if _, ok := ids["width"]; ok {
+		t.Error("kick-808 has one voice; Width concept must be hidden")
+	}
+}
+
+// The melodic table is unaffected by the percussion branch.
+func TestBuildMacroGroups_Melodic_Unchanged(t *testing.T) {
+	ids := macroIDs(groupsFor(t, roster.Violin))
+	for _, want := range []string{"sound", "brightness", "attack", "length"} {
+		if _, ok := ids[want]; !ok {
+			t.Errorf("melodic set regressed: missing %q (got %v)", want, keysOf(ids))
+		}
+	}
+	if _, ok := ids["punch"]; ok {
+		t.Error("melodic instrument must not get the percussion Punch concept")
+	}
+	if _, ok := ids["boom"]; ok {
+		t.Error("melodic instrument must not get the percussion Boom concept")
 	}
 }
 

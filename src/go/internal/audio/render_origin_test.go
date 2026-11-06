@@ -2,14 +2,18 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // A render on the prewarm path must NOT be attributed to the dispatch
 // goroutine, and vice versa. DispatchRenders is the gate for invariant I3
 // ("audioLoop never calls recipe.Render"), so misattribution here would make
 // the whole benchmark lie.
 func TestRenderOriginAttribution(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	const pitch = 3.0
 
 	globalVoiceCache.Clear()
@@ -30,7 +34,7 @@ func TestRenderOriginAttribution(t *testing.T) {
 	ResetRenderLatencyMetrics()
 
 	// Dispatch path on a COLD voice → attributed to DispatchRenders.
-	newRecipeAwareVoicePitched(id, bpm, SampleRate(), pitch)
+	newRecipeAwareVoicePitched(id, SampleRate(), pitch)
 	m = GetRenderLatencyMetrics()
 	if m.DispatchRenders != 1 {
 		t.Fatalf("dispatch cold render: DispatchRenders=%d want 1", m.DispatchRenders)
@@ -49,7 +53,7 @@ func TestRenderOriginAttribution(t *testing.T) {
 // DispatchRenders == 0 gate would false-positive on the very knob-release
 // audition the benchmark's knob-storm scenario triggers.
 func TestNonDispatchCallersDoNotInflateDispatchRenders(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 
 	// Set a user param so the RECIPE path engages. Without one,
 	// tryRecipeVoiceOpts declines and Play falls back to legacyNewVoice, which
@@ -79,35 +83,35 @@ func TestNonDispatchCallersDoNotInflateDispatchRenders(t *testing.T) {
 	}
 }
 
-// THE LINCHPIN. PrewarmVoiceParams must produce the byte-identical cache key
+// THE LINCHPIN. PrewarmVoiceDoc must produce the byte-identical cache key
 // that dispatch later reads. If the two key computations drift, prewarm renders
 // into a slot nobody reads: the cache "works", CPU is burned, and dispatch
 // still cold-renders. Guard both directions: warm-then-dispatch must be a HIT.
-func TestPrewarmVoiceParamsKeyMatchesDispatch(t *testing.T) {
-	const id = "organ-church"
+func TestPrewarmVoiceDocKeyMatchesDispatch(t *testing.T) {
+	const id = roster.OrganChurch
 	const pitch = -2.0
 
 	globalVoiceCache.Clear()
 	ResetInstrumentParams(id)
 	t.Cleanup(func() { ResetInstrumentParams(id) })
 
-	p := churnableParam(t, id)
+	p := churnableParam(t, string(id))
 	SetInstrumentParam(id, p, 0.375)
-	params := GetInstrumentParams(id)
+	doc, _ := InstrumentDoc(id)
 
 	ResetRenderLatencyMetrics()
-	PrewarmVoiceParams(id, pitch, params)
+	PrewarmVoiceDoc(id, pitch, doc)
 	if m := GetRenderLatencyMetrics(); m.PrewarmRenders != 1 {
-		t.Fatalf("PrewarmVoiceParams did not render off-thread: PrewarmRenders=%d want 1", m.PrewarmRenders)
+		t.Fatalf("PrewarmVoiceDoc did not render off-thread: PrewarmRenders=%d want 1", m.PrewarmRenders)
 	}
 
 	// Dispatch must now HIT the warmed key.
 	ResetRenderLatencyMetrics()
-	newRecipeAwareVoicePitched(id, bpm, SampleRate(), pitch)
+	newRecipeAwareVoicePitched(id, SampleRate(), pitch)
 	m := GetRenderLatencyMetrics()
 	if m.CacheHits != 1 || m.DispatchRenders != 0 {
 		t.Fatalf("warm key != read key: dispatch got hits=%d dispatchRenders=%d "+
-			"(want hits=1 dispatchRenders=0). PrewarmVoiceParams warmed a slot "+
+			"(want hits=1 dispatchRenders=0). PrewarmVoiceDoc warmed a slot "+
 			"dispatch does not read.", m.CacheHits, m.DispatchRenders)
 	}
 }

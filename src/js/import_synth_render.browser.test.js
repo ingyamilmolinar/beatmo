@@ -4,18 +4,16 @@
 // closing the gap where param/recipe state reached the Go manager but the
 // JS-side render (the sound the browser actually plays) stayed wrong.
 //
-// 1) SEEDED-DEFAULTS MERGE (GAP B): instrumentParamsFor must MERGE the user
-//    overlay over the bootstrap-seeded preset defaults (modular-pad), not OR
-//    them. With the OR, one knob edit drops the whole seed and the elided
-//    keys render as the base modular voice (fast 5 ms attack instead of the
-//    pad's 120 ms attack).
-// 2) IMPORT ROUNDTRIP GUARD: importing a project with a synth_params delta on
-//    a seeded recipe must reproduce the pre-export render (the Go import pins
-//    the full shipped⊕delta tone — import.go; this guards the JS half).
+// 1) ONE KNOB EDIT KEEPS THE WHOLE VOICE: an edit re-pushes the instrument's
+//    complete flattened block (window.setInstrumentBlock), so the pad keeps its
+//    120 ms attack; before documents the browser merged a sparse overlay over a
+//    seeded defaults map and one edit could drop the whole seed.
+// 2) IMPORT ROUNDTRIP GUARD: importing a project whose instrument_docs carry
+//    an edited document must reproduce the pre-export render in the browser.
 //
-// COVERED-BY-GO: import/export param logic + pin-on-import semantics
-// (internal/ui/synth_render_roundtrip_test.go). JS-owned here: the
-// instrumentParamsFor merge + the rendered output of the C `_p` variant.
+// COVERED-BY-GO: import/export document logic (internal/ui/
+// synth_render_roundtrip_test.go, project_docs_test.go). JS-owned here: the
+// block push and the rendered output of the C render_modular_p.
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 
@@ -53,7 +51,7 @@ async function main() {
     if (baseRatio > 0.05) {
       throw new Error(
         `precondition: baseline ${PAD_ID} does not show the seeded slow attack (headRatio=${baseRatio}); ` +
-          `seedInstrumentDefaults bootstrap push missing?`
+          `setInstrumentBlock bootstrap push missing?`
       );
     }
 
@@ -77,10 +75,10 @@ async function main() {
     }
     await page.evaluate((id) => window.resetInstrumentParams(id), PAD_ID);
 
-    // --- Case 2: import roundtrip on the seeded recipe reproduces the render ---
+    // --- Case 2: import roundtrip of an edited document reproduces the render ---
     // modular-pad is not a default row, so build the project explicitly: the
-    // current project plus a modular-pad instrument carrying a synth_params
-    // delta (exactly what export emits for an edited pad row).
+    // current project plus a modular-pad row and its edited document (exactly
+    // what export emits for an edited pad row).
     await page.evaluate((id) => window.setInstrumentParam(id, "gain", 0.8), PAD_ID);
     const preExport = await page.evaluate((id) => window.__testCaptureSynthRender(id), PAD_ID);
     const exported = await page.evaluate((id) => {
@@ -92,9 +90,9 @@ async function main() {
         volume: 1,
         origin: proj.instruments.length,
         color: "#44A8FFFF",
-        recipe: "synth-modular-pad",
-        synth_params: { gain: 0.8 },
       });
+      proj.instrument_docs = proj.instrument_docs || {};
+      proj.instrument_docs[id] = JSON.parse(window.getInstrumentDoc(id));
       return JSON.stringify(proj);
     }, PAD_ID);
     // Diverge live state, then import the captured project back.
@@ -120,114 +118,131 @@ async function main() {
     // --- Case 2b: plain builtin delta round-trips at the render level ---
     // The everyday scenario: a drum row with edited knobs exported to
     // beatmo.json must sound identical after importing that file back.
-    const builtinTarget = await page.evaluate(() => {
+    // Any drum row on a BUILTIN recipe: the POST ops always run, so post_decay
+    // (Fade) is live wherever it audibly changes the voice — this case tests the
+    // export/import PLUMBING, which carries every param.
+    const builtinTarget = await page.evaluate(async () => {
+      // Chosen by EFFECT, not by recipe name: a row qualifies only if moving
+      // post_decay audibly changes its voice (a tail-RMS comparison on an
+      // inert knob would pass vacuously).
       const proj = JSON.parse(window.exportJSON());
       for (const inst of proj.instruments || []) {
-        const r = window.recipeForInstrument(inst.id);
-        if (r && r.startsWith("drum-")) return inst.id;
+        if (!window.getInstrumentDoc(inst.id) || window.isMelodicInstrumentJS(inst.id)) continue;
+        window.setInstrumentParam(inst.id, "post_decay", 1);
+        const a = await window.__testCaptureSynthRender(inst.id);
+        window.setInstrumentParam(inst.id, "post_decay", 0.2);
+        const b = await window.__testCaptureSynthRender(inst.id);
+        window.resetInstrumentParams(inst.id);
+        if (a && b && a.rms !== b.rms) return inst.id;
       }
       return "";
     });
-    if (!builtinTarget) throw new Error("no drum-recipe instrument in default project");
-    await page.evaluate((id) => window.setInstrumentParam(id, "decay", 3), builtinTarget);
+    if (!builtinTarget) throw new Error("no drum instrument with a post_decay knob in default project");
+    await page.evaluate((id) => window.setInstrumentParam(id, "post_decay", 1), builtinTarget);
     const builtinPre = await page.evaluate((id) => window.__testCaptureSynthRender(id), builtinTarget);
     const builtinExported = await page.evaluate(() => window.exportJSON());
-    await page.evaluate((id) => window.setInstrumentParam(id, "decay", 0.2), builtinTarget);
+    await page.evaluate((id) => window.setInstrumentParam(id, "post_decay", 0.2), builtinTarget);
+    // Precondition: the file is only proven to carry the tone if the other
+    // value actually sounds different (a tail-RMS check alone is vacuous on a
+    // kick, whose tail is silent either way).
+    const builtinOther = await page.evaluate((id) => window.__testCaptureSynthRender(id), builtinTarget);
+    const voiceFP = (r) => JSON.stringify({ rms: r.rms, peak: r.peak, head: r.head, tail: r.tail, len: r.length });
+    if (voiceFP(builtinOther) === voiceFP(builtinPre)) {
+      throw new Error(`precondition: post_decay 1 vs 0.2 render identically on ${builtinTarget}`);
+    }
     const builtinErr = await page.evaluate((txt) => window.importJSON(txt) || "", builtinExported);
     if (builtinErr) failures.push(`importJSON (builtin delta) returned error: ${builtinErr}`);
     const builtinPost = await page.evaluate((id) => window.__testCaptureSynthRender(id), builtinTarget);
     console.log(
       `[test] builtin roundtrip ${builtinTarget}: pre tailRMS=${builtinPre.tailRMS.toFixed(4)} post tailRMS=${builtinPost.tailRMS.toFixed(4)}`
     );
-    if (
-      builtinPre.tailRMS > 1e-4 &&
-      Math.abs(builtinPost.tailRMS - builtinPre.tailRMS) > 0.15 * builtinPre.tailRMS
-    ) {
+    if (voiceFP(builtinPost) !== voiceFP(builtinPre)) {
       failures.push(
-        `builtin delta did not round-trip at the render level: post tailRMS=${builtinPost.tailRMS.toFixed(4)} vs pre ${builtinPre.tailRMS.toFixed(4)}`
+        `builtin delta did not round-trip at the render level on ${builtinTarget}: ` +
+          `post rms=${builtinPost.rms} tailRMS=${builtinPost.tailRMS} vs pre rms=${builtinPre.rms} tailRMS=${builtinPre.tailRMS}`
       );
     }
     await page.evaluate((id) => window.resetInstrumentParams(id), builtinTarget);
 
-    // --- Case 3 (GAP C): a recipe rebind at import must reach the JS renderer ---
-    // Legacy gen_type>=1 projects migrate to synth-modular at import
-    // (audio.MigrateGenType). The Go binding flips, so the JS render must flip
-    // too: a migrated drum renders the sustained modular voice, not its old
-    // percussive renderer from the static RENDER table.
+    // --- Case 3 (GAP C): a document REPLACED at import must reach the JS renderer ---
+    // A project whose instrument_docs give a drum row a completely different
+    // voice (here: the bare modular voice's document) changes the Go document
+    // at import, so the pushed block — and the JS render — must change too: the
+    // drum renders the sustained modular voice, not its own percussive voice.
     const drumTarget = await page.evaluate(() => {
       const proj = JSON.parse(window.exportJSON());
       for (const inst of proj.instruments || []) {
-        const r = window.recipeForInstrument(inst.id);
-        if (r && r.startsWith("drum-")) return inst.id;
+        const owned = window.getInstrumentParams(inst.id) || {};
+        if (window.getInstrumentDoc(inst.id) && !window.isMelodicInstrumentJS(inst.id) && "post_decay" in owned) return inst.id;
       }
       return "";
     });
-    if (!drumTarget) throw new Error("no drum-recipe instrument in default project");
+    if (!drumTarget) throw new Error("no percussive builtin instrument in default project");
     const drumBaseline = await page.evaluate((id) => window.__testCaptureSynthRender(id), drumTarget);
     console.log(
       `[test] migration target=${drumTarget}: baseline peak=${drumBaseline.peak.toFixed(4)} tailRMS=${drumBaseline.tailRMS.toFixed(4)}`
     );
     const migErr = await page.evaluate((id) => {
       const proj = JSON.parse(window.exportJSON());
-      const inst = (proj.instruments || []).find((i) => i.id === id);
-      inst.synth_params = Object.assign({}, inst.synth_params, { gen_type: 2 }); // re-voiced: modular osc_type=1
+      const modular = JSON.parse(window.getInstrumentDoc("modular"));
+      modular.id = id;
+      proj.instrument_docs[id] = modular;
       return window.importJSON(JSON.stringify(proj)) || "";
     }, drumTarget);
-    if (migErr) failures.push(`importJSON (gen_type migration) returned error: ${migErr}`);
-    const migRecipe = await page.evaluate((id) => window.recipeForInstrument(id), drumTarget);
-    if (migRecipe !== "synth-modular") {
-      failures.push(`migrated recipe binding: got ${migRecipe}, want synth-modular`);
+    if (migErr) failures.push(`importJSON (document replace) returned error: ${migErr}`);
+    const migOrigin = await page.evaluate((id) => JSON.parse(window.getInstrumentDoc(id) || "{}").origin, drumTarget);
+    if (migOrigin !== "modular") {
+      failures.push(`replaced document origin: got ${migOrigin}, want modular`);
     }
     const migRender = await page.evaluate((id) => window.__testCaptureSynthRender(id), drumTarget);
     console.log(
-      `[test] migrated render: peak=${migRender.peak.toFixed(4)} tailRMS=${migRender.tailRMS.toFixed(4)} (drum baseline tailRMS=${drumBaseline.tailRMS.toFixed(4)})`
+      `[test] replaced render: peak=${migRender.peak.toFixed(4)} tailRMS=${migRender.tailRMS.toFixed(4)} (drum baseline tailRMS=${drumBaseline.tailRMS.toFixed(4)})`
     );
-    // The modular voice sustains (identity amp_sustain=0.6) where the drum
-    // decays to ~nothing — tail energy is the renderer discriminator.
+    // The modular voice sustains where the drum decays to ~nothing — tail
+    // energy is the renderer discriminator.
     if (!(migRender.tailRMS > Math.max(0.05, 5 * drumBaseline.tailRMS))) {
       failures.push(
-        `migrated instrument still renders via its old drum renderer: tailRMS=${migRender.tailRMS.toFixed(4)} ` +
+        `replaced instrument still renders its old drum voice: tailRMS=${migRender.tailRMS.toFixed(4)} ` +
           `(want > ${Math.max(0.05, 5 * drumBaseline.tailRMS).toFixed(4)} — the sustained modular voice)`
       );
     }
 
-    // --- Case 4 (GAP D): Save-customized recipe defaults must reach the JS render ---
-    // Synth-tab Save bakes the tone into the recipe's registered defaults and
-    // keeps the overlay. Clearing the overlay afterwards (Reset of the
-    // per-instrument knobs) must still render the SAVED tone — the desktop
-    // dispatch renders the customized registered defaults; pre-fix the browser
-    // reverted to shipped because the Save never pushed defaults to JS.
-    // Runs LAST: it customizes a recipe's registered defaults for the session.
+    // --- Case 4 (GAP D): a Saved library entry must reach the JS render ---
+    // Synth-tab Save writes the tone into the user library; Reset afterwards
+    // returns the project copy to that SAVED entry, and the pushed block must
+    // follow (pre-documents the browser reverted to shipped).
+    // Runs LAST: it saves into the session's user library.
     const saveTarget = await page.evaluate((skip) => {
       const proj = JSON.parse(window.exportJSON());
       for (const inst of proj.instruments || []) {
         if (inst.id === skip) continue;
-        const r = window.recipeForInstrument(inst.id);
-        if (r && r.startsWith("drum-")) return inst.id;
+        if (window.getInstrumentDoc(inst.id) && !window.isMelodicInstrumentJS(inst.id)) return inst.id;
       }
       return "";
     }, drumTarget);
-    if (!saveTarget) throw new Error("no second drum-recipe instrument for the Save case");
+    if (!saveTarget) throw new Error("no second percussive builtin instrument for the Save case");
     const saveBaseline = await page.evaluate((id) => window.__testCaptureSynthRender(id), saveTarget);
-    await page.evaluate((id) => window.setInstrumentParam(id, "decay", 4), saveTarget);
+    // Length (post_decay) below 1 shortens the voice; the capture is peak-
+    // normalised, so a shorter voice reads as LOWER whole-render RMS.
+    await page.evaluate((id) => window.setInstrumentParam(id, "post_decay", 0.15), saveTarget);
     const savedTone = await page.evaluate((id) => window.__testCaptureSynthRender(id), saveTarget);
     console.log(
-      `[test] save target=${saveTarget}: baseline tailRMS=${saveBaseline.tailRMS.toFixed(4)} decay=4 tailRMS=${savedTone.tailRMS.toFixed(4)}`
+      `[test] save target=${saveTarget}: baseline rms=${saveBaseline.rms.toFixed(4)} post_decay=0.15 rms=${savedTone.rms.toFixed(4)}`
     );
-    if (!(savedTone.tailRMS > 2 * saveBaseline.tailRMS)) {
+    if (!(savedTone.rms < 0.7 * saveBaseline.rms)) {
       throw new Error(
-        `precondition: decay=4 did not lengthen ${saveTarget}'s tail (${savedTone.tailRMS} vs ${saveBaseline.tailRMS})`
+        `precondition: post_decay=0.15 did not shorten ${saveTarget} (rms ${savedTone.rms} vs ${saveBaseline.rms})`
       );
     }
     const savedRecipe = await page.evaluate((id) => window.saveActiveRecipe(id), saveTarget);
-    if (!savedRecipe) failures.push(`saveActiveRecipe(${saveTarget}) returned empty recipe id`);
+    if (!savedRecipe) failures.push(`saveActiveRecipe(${saveTarget}) returned an empty library id`);
     await page.evaluate((id) => window.resetInstrumentParams(id), saveTarget);
     const afterReset = await page.evaluate((id) => window.__testCaptureSynthRender(id), saveTarget);
-    console.log(`[test] after Save + overlay clear: tailRMS=${afterReset.tailRMS.toFixed(4)} (saved=${savedTone.tailRMS.toFixed(4)})`);
-    if (Math.abs(afterReset.tailRMS - savedTone.tailRMS) > 0.3 * savedTone.tailRMS) {
+    console.log(`[test] after Save + Reset: rms=${afterReset.rms.toFixed(4)} (saved=${savedTone.rms.toFixed(4)}, shipped=${saveBaseline.rms.toFixed(4)})`);
+    if (Math.abs(afterReset.rms - savedTone.rms) > 0.15 * savedTone.rms) {
       failures.push(
-        `Save-customized defaults did not reach the JS render: after overlay clear tailRMS=${afterReset.tailRMS.toFixed(4)}, ` +
-          `want ≈${savedTone.tailRMS.toFixed(4)} (the saved tone, like the desktop dispatch) — got the shipped tone instead`
+        `the Saved library entry did not reach the JS render: after Reset rms=${afterReset.rms.toFixed(4)}, ` +
+          `want ≈${savedTone.rms.toFixed(4)} (the saved tone, like the desktop dispatch) — shipped is ${saveBaseline.rms.toFixed(4)}`
       );
     }
 

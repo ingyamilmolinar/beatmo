@@ -23,6 +23,7 @@ multi_row_full_grid
 context_menu_open
 instrument_menu_open
 instrument_menu_categories
+instrument_menu_favorites_empty
 color_wheel_open
 subdiv_menu_open
 master_vol_popup
@@ -46,8 +47,9 @@ eq_tab_synth
 # Synth / sampler sub-surfaces
 crop_synth_tab_master_chooser
 crop_synth_tab_detail_envelope
-crop_mobile_synth_wheel
+crop_synth_control_armed
 crop_sampler_tab_captured
+sampler_wheel_open
 
 # Mobile shell
 mobile_default

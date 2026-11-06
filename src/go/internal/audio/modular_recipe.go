@@ -3,17 +3,14 @@ package audio
 import "fmt"
 
 // ModularSynthParamDefs returns the full editable parameter set of the unified
-// modular synth voice (src/c/modular.h). Unlike the bespoke drum/FM recipes —
-// which expose only the wired subset of the generic post-process knobs — the
-// modular recipe surfaces its ENTIRE signal path: oscillator/generator, FM
+// modular synth voice (src/c/modular.h): its ENTIRE signal path — oscillator/generator, FM
 // operators, full amp ADSR, filter, and post. Discrete stages carry Enum
 // labels (the UI renders a selector); every other param is a knob.
 //
-// Defaults MUST equal ModularParamSchemaIdentity() (and therefore the C
-// mp_get NULL-fallbacks in modular.c), so an unedited modular instrument
-// renders identically whether it goes through the unparameterized
-// render_modular fast path or the parameterized recipe path. The ordering
-// mirrors modularParamSchema so the ABI index map and the UI param order agree.
+// Defaults equal modularFieldInits() — the value of a field a seed
+// does not set, which is exactly what the C engine receives (it has no
+// defaults of its own). The ordering mirrors modularParamSchema so the ABI
+// index map and the UI param order agree.
 func ModularSynthParamDefs() []ParamDef {
 	defs := []ParamDef{
 		// Oscillator stage.
@@ -98,198 +95,125 @@ func ModularSynthParamDefs() []ParamDef {
 		"pitch_env_amt": {0, 4}, "pitch_env_rate": {0, 2000}, "harm_mix": {0, 4},
 		"atk_amt": {0, 4}, "atk_rate": {0, 2000}, "sat_k": {0, 8}, "out_scale": {0, 4},
 	}
-	ident := ModularParamSchemaIdentity()
-	for _, f := range modularGenSlotFields {
-		b := genBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
-		}
+	ident := modularFieldInits()
+	for _, f := range fieldsOfBlock("gen") {
+		defs = appendGenSlotDefs(defs, f, genBounds[f.Name], ident)
+	}
+	for _, f := range fieldsOfBlock("bass") {
+		defs = appendGenSlotDefs(defs, f, genBounds[f.Name], ident)
 	}
 
 	// ── Phase-2 globals: voice-freq override + shared POST stage. Hidden until
 	// a later UI phase; defaults are the schema identities (no-op) so untouched
-	// presets render byte-identically. Order MUST mirror modularGlobalsPhase2
+	// presets render byte-identically. Order MUST mirror the "post" block of modularFields
 	// (which mirrors the C struct tail). ──
 	globalBounds := map[string][2]float64{
-		"voice_freq_hz": {0, 20000}, "post_enabled": {0, 1},
-		"post_pitch": {-24, 24}, "post_decay": {0, 4}, "post_decay_rate": {0, 64},
-		"post_body": {0, 1}, "post_brightness": {0, 1}, "post_tone": {-1, 1}, "post_drive": {0, 1},
-		"post_pitch_on": {0, 1}, "post_decay_on": {0, 1}, "post_body_on": {0, 1},
-		"post_brightness_on": {0, 1}, "post_tone_on": {0, 1}, "post_drive_on": {0, 1},
+		"voice_freq_hz": {0, 20000}, "out_clamp": {0, 4},
+		"post_pitch": {-24, 24}, "post_decay": {0, 1}, "post_decay_rate": {0.5, 64},
+		"post_body": {0, 1}, "post_brightness": {0, 1}, "post_darken": {0, 1}, "post_drive": {0, 1},
 	}
-	for _, g := range modularGlobalsPhase2 {
+	for _, g := range fieldsOfBlock("post") {
 		b := globalBounds[g.Name]
-		defs = append(defs, ParamDef{
+		d := ParamDef{
 			Name: g.Name, Label: g.Name, Group: SynthHiddenGroup,
 			Min: b[0], Max: b[1], Default: ident[g.Name],
-		})
+		}
+		// voice_freq_hz is the voice's base pitch wherever a seed declares one
+		// (sub-bass, the modular kicks, snare): a visible VOICE knob. 0 means
+		// "derive from the note", and the Synth tab hides it there.
+		if g.Name == "voice_freq_hz" {
+			d.Group, d.Label, d.Unit = VoiceFreqGroup, "Pitch", "Hz"
+		}
+		// The finishing ops + output limit: the FINISH stage on every recipe.
+		if f, ok := finishKnobs[g.Name]; ok {
+			d.Group, d.Label, d.Unit, d.Tier = FinishGroup, f.label, f.unit, f.tier
+		}
+		defs = append(defs, d)
 	}
 
 	// ── Phase-2 Task-2 KS per-slot fields (source==3): hidden until Phase 8.
-	// Appended at the very tail to mirror modularGenSlotFieldsPhase2KS (which
+	// Appended at the very tail to mirror the "ks" block of modularFields (which
 	// mirrors the C struct tail). Defaults are the schema identities (no-op). ──
 	ksBounds := map[string][2]float64{
 		"ks_sustain": {0, 1}, "ks_pluck": {0, 1}, "ks_blow": {0, 2},
 	}
-	for _, f := range modularGenSlotFieldsPhase2KS {
-		b := ksBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
-		}
+	for _, f := range fieldsOfBlock("ks") {
+		defs = appendGenSlotDefs(defs, f, ksBounds[f.Name], ident)
 	}
 
 	// ── Phase-3 kick per-slot fields (source==5): hidden until Phase 8.
-	// Appended at the new very tail to mirror modularGenSlotFieldsPhase3Kick
+	// Appended at the new very tail to mirror the "kick" block of modularFields
 	// (which mirrors the C struct tail). Defaults are the schema identities
 	// (no-op). ──
 	// Min 0 throughout so the schema-identity default (0) sits inside the
 	// bounds (these hidden defs exist for ABI completeness only; the source==5
 	// voice reads the live kick knobs, not these). Max = the engine ceiling.
 	kickBounds := map[string][2]float64{
-		"kick_variant": {0, 7}, // 5 = layered hybrid; 6 = modal (2-mode); 7 = acoustic (inharmonic modal bank)
+		"kick_variant": {0, 8}, // 5 = layered hybrid; 6 = modal (2-mode); 7 = acoustic (inharmonic modal bank); 8 = physical (tension-modulated modal drumhead)
 		"kick_h2":      {0, 2}, "kick_h3": {0, 1}, "kick_h4": {0, 1},
 		"kick_env0": {0, 40}, "kick_env1": {0, 40},
 		"kick_pe_amt": {0, 3}, "kick_pe_rate": {0, 100},
 		"kick_click": {0, 1}, "kick_noise": {0, 1},
 	}
-	// kickStageMeta = the friendly UI label (and enum for the variant selector)
-	// for each slot-1 kick knob surfaced in the visible KICK stage.
-	kickStageMeta := map[string]struct {
-		label string
-		enum  []string
-	}{
-		"kick_variant": {"Variant", []string{"Base", "Deep", "Punchy", "Lo-Fi", "Tight", "Hybrid", "Modal", "Acoustic"}},
-		"kick_h2":      {"2nd Harmonic", nil},
-		"kick_h3":      {"3rd Harmonic", nil},
-		"kick_h4":      {"4th Harmonic", nil},
-		"kick_env0":    {"Body Decay", nil},
-		"kick_env1":    {"Harmonic Decay", nil},
-		"kick_pe_amt":  {"Pitch Drop", nil},
-		"kick_pe_rate": {"Drop Speed", nil},
-		"kick_click":   {"Click", nil},
-		"kick_noise":   {"Thud", nil},
-		"kick_attack":  {"Punch", nil},
-		"kick_fade":    {"Tail", nil},
-		"kick_sat":     {"Drive", nil},
-	}
 	// kickStageMeta surfaces the SLOT-1 kick knobs as the visible KICK Synth-tab
 	// stage (group "kick"); slots 2..12 stay hidden (ABI completeness only). The
 	// kick voice lives in gen-slot 1 by convention for a modular kick instrument.
-	for _, f := range modularGenSlotFieldsPhase3Kick {
-		b := kickBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			d := ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name]}
-			if k == 1 {
-				if m, ok := kickStageMeta[f.Name]; ok {
-					d.Group, d.Label, d.Enum = "kick", m.label, m.enum
-				}
-			}
-			defs = append(defs, d)
-		}
-	}
-
-	// ── Phase-3 globals (post_order): hidden POST-stage op-order selector.
-	// Appended at the new very tail to mirror modularGlobalsPhase3 (the C struct's
-	// last field). Default 0 = the shared apply_post_params order. ──
-	p3Bounds := map[string][2]float64{
-		"post_order": {0, 1},
-	}
-	for _, g := range modularGlobalsPhase3 {
-		b := p3Bounds[g.Name]
-		defs = append(defs, ParamDef{
-			Name: g.Name, Label: g.Name, Group: SynthHiddenGroup,
-			Min: b[0], Max: b[1], Default: ident[g.Name],
-		})
+	for _, f := range fieldsOfBlock("kick") {
+		defs = appendGenSlotDefs(defs, f, kickBounds[f.Name], ident)
 	}
 
 	// ── Phase-4 tom per-slot fields (source==6): hidden until Phase 8. Appended
-	// at the new very tail to mirror modularGenSlotFieldsPhase4Tom (which mirrors
+	// at the new very tail to mirror the "tom" block of modularFields (which mirrors
 	// the C struct tail). Defaults are the schema identities (no-op). Min 0
-	// throughout so the schema-identity default (0) sits inside the bounds (these
-	// hidden defs exist for ABI completeness only; the source==6 voice reads the
-	// live tom knobs via kp_get, not these). Max = the engine ceiling. ──
+	// throughout so the schema-identity default (0) sits inside the bounds (the
+	// voice reads every field directly). Max = the engine ceiling. ──
 	tomBounds := map[string][2]float64{
 		"tom_variant": {0, 2},
 		"tom_sweep":   {0, 80}, "tom_ring": {0, 12},
 		"tom_o1": {0, 1}, "tom_o2": {0, 1},
 		"tom_stick": {0, 1}, "tom_room": {0, 1},
 	}
-	for _, f := range modularGenSlotFieldsPhase4Tom {
-		b := tomBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
-		}
+	for _, f := range fieldsOfBlock("tom") {
+		defs = appendGenSlotDefs(defs, f, tomBounds[f.Name], ident)
 	}
 
 	// ── Phase-5 snare per-slot fields (source==7 snare/rimshot/sidestick +
 	// source==8 clap): hidden until Phase 8. Appended at the new very tail to
-	// mirror modularGenSlotFieldsPhase5Snare (which mirrors the C struct tail).
+	// mirror the "snare" block of modularFields (which mirrors the C struct tail).
 	// Defaults are the schema identities (no-op). Min 0 throughout so the
-	// schema-identity default (0) sits inside the bounds (these hidden defs exist
-	// for ABI completeness only; the source==7/8 voices read the live snare knobs
-	// via kp_get, not these). Max = a representative engine ceiling. ──
+	// schema-identity default (0) sits inside the bounds (the voices read every
+	// field directly). Max = a representative engine ceiling. ──
 	snareBounds := map[string][2]float64{
-		"snare_variant": {0, 2},
+		"snare_variant": {0, 3},
 		"snare_tone2":   {0, 2000}, "snare_tune": {0, 4},
 		"snare_tone_d": {0, 200}, "snare_noise_d": {0, 300}, "snare_tail_d": {0, 100},
-		"snare_tone_m": {0, 2}, "snare_noise_m": {0, 2}, "snare_wire_m": {0, 2},
+		"snare_tone_m": {0, 3}, "snare_noise_m": {0, 2}, "snare_wire_m": {0, 2},
 		"snare_attack": {0, 200},
 	}
-	for _, f := range modularGenSlotFieldsPhase5Snare {
-		b := snareBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
-		}
+	for _, f := range fieldsOfBlock("snare") {
+		defs = appendGenSlotDefs(defs, f, snareBounds[f.Name], ident)
 	}
 
 	// ── Phase-6 cymbal per-slot fields (source==9, 6 variant branches): hidden
 	// until Phase 8. Appended at the new very tail to mirror
-	// modularGenSlotFieldsPhase6Cymbal (which mirrors the C struct tail). Defaults
+	// the "cym" block of modularFields (which mirrors the C struct tail). Defaults
 	// are the schema identities (no-op). Min 0 throughout so the schema-identity
-	// default (0) sits inside the bounds (these hidden defs exist for ABI
-	// completeness only; the source==9 voice reads the live cymbal knobs via
-	// kp_get, not these). Max = a representative engine ceiling. ──
+	// default (0) sits inside the bounds (the voice reads every field directly).
+	// Max = a representative engine ceiling. ──
 	cymBounds := map[string][2]float64{
 		"cym_variant": {0, 5},
 		"cym_tune":    {0, 2}, "cym_env_fast": {0, 400}, "cym_env_tail": {0, 120},
 		"cym_tone_m": {0, 1.5}, "cym_noise_m": {0, 1.5}, "cym_noise_d": {0, 200},
 	}
-	for _, f := range modularGenSlotFieldsPhase6Cymbal {
-		b := cymBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
-		}
+	for _, f := range fieldsOfBlock("cym") {
+		defs = appendGenSlotDefs(defs, f, cymBounds[f.Name], ident)
 	}
 
 	// ── Phase-7 FM per-slot fields (source==10, 5 variant branches): hidden until
-	// Phase 8. Appended at the new very tail to mirror modularGenSlotFieldsPhase7FM
+	// Phase 8. Appended at the new very tail to mirror the "fm" block of modularFields
 	// (which mirrors the C struct tail). Defaults are the schema identities (no-op).
 	// Min 0 throughout so the schema-identity default (0) sits inside the bounds
-	// (these hidden defs exist for ABI completeness only; the source==10 voice reads
-	// the live FM knobs via kp_get, not these). Max = a representative engine
+	// (the voice reads every field directly). Max = a representative engine
 	// ceiling. ──
 	fmBounds := map[string][2]float64{
 		"fm_variant": {0, 4},
@@ -298,28 +222,20 @@ func ModularSynthParamDefs() []ParamDef {
 		"fm_d1": {0, 8}, "fm_d2": {0, 8}, "fm_d3": {0, 8}, "fm_d4": {0, 8},
 		"fm_dec1": {0, 3}, "fm_dec2": {0, 3}, "fm_dec3": {0, 3}, "fm_dec4": {0, 3},
 	}
-	for _, f := range modularGenSlotFieldsPhase7FM {
-		b := fmBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
-		}
+	for _, f := range fieldsOfBlock("fm") {
+		defs = appendGenSlotDefs(defs, f, fmBounds[f.Name], ident)
 	}
 
 	// ── Phase-8C modulator stages (PITCH ENV / LFO / BURST — the spec-§1 gap
 	// closure): USER-FACING, appended at the new very tail to mirror
-	// modularGlobalsPhase8 (the C struct's last fields). Each stage's enable
-	// defaults DISABLED (0 — matching the schema identity and the C mp_get
-	// fallback, the byte-identity polarity for NEW stages). The NUMERIC defaults
+	// the "mod" block of modularFields (the C struct's last fields). Each stage's enable
+	// defaults DISABLED (0 — the schema identity). The NUMERIC defaults
 	// deliberately DIFFER from the schema identities: they are the audible
 	// starting points a user hears when flipping the stage on (no silent no-op
 	// toggle), and they are gated by the off-by-default enable so every
 	// pre-Phase-8C render stays byte-identical. The defaults-match invariant
 	// carves these numerics out by the same rationale. Order MUST mirror
-	// modularGlobalsPhase8. ──
+	// the "mod" block of modularFields. ──
 	defs = append(defs,
 		ParamDef{Name: "pitchenv_enabled", Label: "Pitch Env", Group: "pitchenv", Min: 0, Max: 1, Default: 0,
 			Enum: []string{"Off", "On"}},
@@ -374,26 +290,14 @@ func ModularSynthParamDefs() []ParamDef {
 	// structural shaping constants (attack-boost amount, global-fade rate,
 	// saturation pre-gain) promoted to knobs. Hidden until the KICK Synth-tab
 	// stage surfaces the slot-1 instances; appended at the new very tail to
-	// mirror modularGenSlotFieldsPhase9KickExtra (the C struct's last fields).
-	// Default 0 = the schema identity (read only at source==5; the C kp_get
-	// supplies the per-variant literal at NaN). Max = the engine ceiling. ──
+	// mirror the "kickextra" block of modularFields (the C struct's last fields).
+	// Default 0 = the schema identity (read only at source==5; a kick seed
+	// spells every one it uses). Max = the engine ceiling. ──
 	kickExtraBounds := map[string][2]float64{
 		"kick_attack": {0, 3}, "kick_fade": {0, 32}, "kick_sat": {0, 4},
 	}
-	for _, f := range modularGenSlotFieldsPhase9KickExtra {
-		b := kickExtraBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			d := ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name]}
-			if k == 1 {
-				if m, ok := kickStageMeta[f.Name]; ok {
-					d.Group, d.Label, d.Enum = "kick", m.label, m.enum
-				}
-			}
-			defs = append(defs, d)
-		}
+	for _, f := range fieldsOfBlock("kickextra") {
+		defs = appendGenSlotDefs(defs, f, kickExtraBounds[f.Name], ident)
 	}
 
 	// ── Phase-10 KICK-stage enable pill (USER-FACING). The kick voice is gated
@@ -408,45 +312,21 @@ func ModularSynthParamDefs() []ParamDef {
 	// ── Phase-11 modal-kick per-slot fields (source==5, variant 6): the coupled
 	// two-mode drumhead knobs. Slot-1 instances surface in the visible KICK stage
 	// (group "kick") via kickModeMeta; slots 2..12 stay hidden (ABI completeness).
-	// Appended at the new very tail to mirror modularGenSlotFieldsPhase11KickMode
+	// Appended at the new very tail to mirror the "kickmode" block of modularFields
 	// (the C struct's last fields). Default 0 = schema identity (read only at
-	// source==5 variant 6; the C kp_get supplies the variant-6 literal at NaN). ──
+	// source==5 variant 6; the variant-6 seeds spell them). ──
 	kickModeBounds := map[string][2]float64{
-		"kick_mode_detune": {0, 0.5}, "kick_mode_gain": {0, 2}, "kick_mode_decay": {0, 40},
+		"kick_mode_detune": {0, 0.5}, "kick_mode_gain": {0, 2}, "kick_mode_decay": {0, 60},
 	}
-	kickModeMeta := map[string]string{
-		"kick_mode_detune": "Mode Split", "kick_mode_gain": "Mode Body", "kick_mode_decay": "Mode Ring",
-	}
-	for _, f := range modularGenSlotFieldsPhase11KickMode {
-		b := kickModeBounds[f.Name]
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			d := ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name]}
-			if k == 1 {
-				if label, ok := kickModeMeta[f.Name]; ok {
-					d.Group, d.Label = "kick", label
-				}
-			}
-			defs = append(defs, d)
-		}
+	for _, f := range fieldsOfBlock("kickmode") {
+		defs = appendGenSlotDefs(defs, f, kickModeBounds[f.Name], ident)
 	}
 
 	// ── Phase-12 kick-reverb per-slot field (source==5, variant 7): the room-tail
 	// amount. Slot-1 surfaces in the visible KICK stage as "Reverb"; the rest stay
 	// hidden. Appended at the new very tail to mirror the C struct's last field. ──
-	for _, f := range modularGenSlotFieldsPhase12KickReverb {
-		for k := 1; k <= modularGenSlots; k++ {
-			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			d := ParamDef{
-				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: 0, Max: 1, Default: ident[name]}
-			if k == 1 {
-				d.Group, d.Label = "kick", "Reverb"
-			}
-			defs = append(defs, d)
-		}
+	for _, f := range fieldsOfBlock("kickreverb") {
+		defs = appendGenSlotDefs(defs, f, [2]float64{0, 1}, ident)
 	}
 	// ── Phase-13 physical-model OSC params (osc_type 11 = render_sax). Declared
 	// so they are settable config (and byte-identical at the schema-identity
@@ -463,7 +343,7 @@ func ModularSynthParamDefs() []ParamDef {
 		"osc_sax_reed_slope": "Sax Reed Stiffness", "osc_sax_reflect": "Sax Bell",
 		"osc_sax_breath": "Sax Breath", "osc_sax_loss": "Sax Brightness",
 	}
-	for _, g := range modularGlobalsPhase13Sax {
+	for _, g := range fieldsOfBlock("sax") {
 		b := saxBounds[g.Name]
 		defs = append(defs, ParamDef{
 			Name: g.Name, Label: saxLabels[g.Name], Group: "osc",
@@ -481,7 +361,7 @@ func ModularSynthParamDefs() []ParamDef {
 		"osc_bow_pos": "Bow Position", "osc_bow_slope": "Bow Pressure",
 		"osc_bow_vel": "Bow Speed", "osc_bow_loss": "Bow Brightness",
 	}
-	for _, g := range modularGlobalsPhase14Bow {
+	for _, g := range fieldsOfBlock("bow") {
 		b := bowBounds[g.Name]
 		defs = append(defs, ParamDef{
 			Name: g.Name, Label: bowLabels[g.Name], Group: "osc",
@@ -495,12 +375,12 @@ func ModularSynthParamDefs() []ParamDef {
 	// Group "unison" (joins the existing unison/drift knobs in the renamed
 	// ENSEMBLE section — no enable pill, voices==1 is the off-state). Both
 	// groups are now registered in modularStageGroups (modular_stage_params.go)
-	// so audio.IsAppendedStageName recognizes them and the UI section router
+	// so audio.IsStageParamName recognizes them and the UI section router
 	// (modularStageGroupSection) sends them to FORMANT/ENSEMBLE instead of
 	// falling through to VOICE. formant_enabled defaults 0 (off =
 	// byte-identity polarity for new stages); the numeric defaults are audible
 	// starting points gated behind the pill (same carve-out rationale as
-	// Phase-8C). Order MUST mirror modularGlobalsPhase15Voice. ──
+	// Phase-8C). Order MUST mirror the "voice" block of modularFields. ──
 	defs = append(defs,
 		ParamDef{Name: "formant_enabled", Label: "Formant", Group: "formant", Min: 0, Max: 1, Default: 0,
 			Enum: []string{"Off", "On"}},
@@ -522,11 +402,95 @@ func ModularSynthParamDefs() []ParamDef {
 	)
 	// ── Phase-16 voice-realism: ens_jitter (per-voice fast pitch roughness on
 	// the ENSEMBLE stage) + formant_dry (the FORMANT stage's dry-blend
-	// scaler). Order MUST mirror modularGlobalsPhase16VoiceRealism. ──
+	// scaler). Order MUST mirror the "voicereal" block of modularFields. ──
 	defs = append(defs,
 		ParamDef{Name: "ens_jitter", Label: "Roughness", Group: "unison", Min: 0, Max: 1, Default: 0},
 		ParamDef{Name: "formant_dry", Label: "Dry Blend", Group: "formant", Min: 0, Max: 1, Default: 1},
 	)
+	// ── Phase-17 SNARE-stage enable pill (USER-FACING), the mirror of
+	// kick_enabled. The snare voice is gated by source==7 + this toggle; the
+	// Synth-tab SNARE stage's enable pill writes it. Default 0 (off, the
+	// byte-identity polarity); a snare instrument's seed sets it to 1. Order
+	// MUST mirror the "snareenable" block of modularFields. ──
+	defs = append(defs, ParamDef{
+		Name: "snare_enabled", Label: "Snare", Group: "snare", Min: 0, Max: 1, Default: 0,
+		Enum: []string{"Off", "On"},
+	})
+
+	// ── Phase-18 cymbal modal-plate per-slot fields (source==9). Appended at
+	// the very tail to mirror the "cymmodal" block of modularFields, NOT beside
+	// the Phase-6 cymbal defs: the schema is a flat index ABI, so inserting
+	// mid-list renumbers every later field (the whole FM family). USER-FACING on
+	// slot 1 — the family-stage registry labels each and gives it a macro card.
+	// Min 0 so the identity (0 = legacy / modal default) sits inside the bounds.
+	cymModalBounds := map[string][2]float64{
+		"cym_modes": {0, 400}, "cym_mode_lo": {0, 4000}, "cym_mode_hi": {0, 20000},
+		"cym_decay_tilt": {0, 1.5}, "cym_hf_corner": {0, 20000}, "cym_beat": {0, 0.02},
+		"cym_tone_f": {0, 12000}, "cym_tone_w": {0, 3},
+		"cym_body_f": {0, 6000}, "cym_body_w": {0, 1}, "cym_body": {0, 4},
+		"cym_spark_f": {0, 20000}, "cym_spark_w": {0, 1}, "cym_spark": {0, 4},
+		"cym_wash": {0, 1}, "cym_attack": {0, 0.02},
+		"cym_rattle": {0, 4}, "cym_rattle_rate": {0, 6000}, "cym_rattle_decay": {0, 1},
+		"cym_drive_delay": {0, 0.05}, "cym_rattle_hold": {0, 5},
+	}
+	for _, f := range fieldsOfBlock("cymmodal") {
+		defs = appendGenSlotDefs(defs, f, cymModalBounds[f.Name], ident)
+	}
+
+	// ── Phase-19 physical-kick per-slot fields (source==5, variant 8). Appended
+	// at the very tail to mirror the "kickphys" block of modularFields. Slot 1
+	// surfaces in the KICK stage ("Body Hold", "Air"); identity 0 = off. ──
+	kickPhysBounds := map[string][2]float64{"kick_hold": {0, 0.3}, "kick_hiss": {0, 1}}
+	for _, f := range fieldsOfBlock("kickphys") {
+		defs = appendGenSlotDefs(defs, f, kickPhysBounds[f.Name], ident)
+	}
+
+	// ── WAV-clone stages (MODAL / STRIKE / NOISEBAND): the Synth tab's MODAL,
+	// STRIKE and NOISE stages (groups "modal" / "strike" / "noiseband"). Every
+	// knob is ABSOLUTE with the identity the clone ships (Tune 0, Stretch 0,
+	// Damping 1, Brightness 0, Partials = the row count, the law / strike at
+	// their fitted values). Table cells and row counts get no ParamDef at all
+	// — rows are never knobs — and modal_freq_mode stays hidden: it is how the
+	// rows are written (ratio vs Hz), not a sound. Order mirrors modularFields. ──
+	type cloneKnob struct {
+		label, group, unit string
+		min, max           float64
+		enum               []string
+	}
+	onOff := []string{"Off", "On"}
+	cloneKnobs := map[string]cloneKnob{
+		"modal_enabled":     {"Modes", "modal", "", 0, 1, onOff},
+		"modal_freq_mode":   {"Row Units", SynthHiddenGroup, "", 0, 1, nil},
+		"modal_tune":        {"Tune", "modal", "cents", -1200, 1200, nil},
+		"modal_stretch":     {"Stretch", "modal", "", -0.5, 0.5, nil},
+		"modal_decay_x":     {"Damping", "modal", "×", 0.05, 20, nil},
+		"modal_bright":      {"Brightness", "modal", "dB/oct", -24, 24, nil},
+		"modal_keep":        {"Partials", "modal", "", 0, 128, nil},
+		"modal_law_a":       {"Decay Rate", "modal", "Np/s", 0, 1000, nil},
+		"modal_law_p":       {"Decay Tilt", "modal", "", -2, 4, nil},
+		"modal_law_b":       {"Top Damping", "modal", "Np/s", 0, 100000, nil},
+		"strike_enabled":    {"Strike", "strike", "", 0, 1, onOff},
+		"strike_tc":         {"Contact", "strike", "s", 0, 0.05, nil},
+		"strike_hardness":   {"Hardness", "strike", "dB/oct", -24, 24, nil},
+		"strike_click":      {"Click", "strike", "", 0, 4, nil},
+		"noiseband_enabled": {"Noise", "noiseband", "", 0, 1, onOff},
+		"noiseband_level":   {"Noise Level", "noiseband", "dB", -60, 24, nil},
+	}
+	for _, block := range []string{"modal", "strike", "noiseband"} {
+		for _, f := range fieldsOfBlock(block) {
+			if f.Rows > 0 || f.Derived {
+				continue
+			}
+			k := cloneKnobs[f.Name]
+			d := ParamDef{Name: f.Name, Label: k.label, Group: k.group, Unit: k.unit,
+				Min: k.min, Max: k.max, Default: f.Init, Enum: k.enum}
+			if f.Name == "modal_keep" {
+				d.Step = 1 // a count of rows
+			}
+			defs = append(defs, d)
+		}
+	}
+
 	// P4 tiering: mark the fine-tuning knobs Advanced so each stage shows only its
 	// 3-5 character knobs by default; the rest collapse under the stage's Advanced
 	// expander. Everything unlisted stays Essential.
@@ -570,7 +534,15 @@ var advancedTierParams = map[string]bool{
 	"gen1_kick_h2": true, "gen1_kick_h3": true, "gen1_kick_h4": true,
 	"gen1_kick_pe_rate":     true,
 	"gen1_kick_mode_detune": true, "gen1_kick_mode_gain": true, "gen1_kick_mode_decay": true,
-	"gen1_kick_reverb": true,
+	"gen1_kick_reverb": true, "gen1_kick_hold": true, "gen1_kick_hiss": true,
+	// CYMBAL modal plate — Essential: Strike Tone, Shimmer, Body, Sparkle, Wash
+	// (what a player reaches for). Advanced: the plate's geometry and the hump
+	// widths/centres that fine-shape it.
+	"gen1_cym_modes": true, "gen1_cym_mode_lo": true, "gen1_cym_mode_hi": true,
+	"gen1_cym_decay_tilt": true, "gen1_cym_hf_corner": true,
+	"gen1_cym_tone_w": true, "gen1_cym_body_f": true, "gen1_cym_body_w": true,
+	"gen1_cym_spark_f": true, "gen1_cym_spark_w": true, "gen1_cym_attack": true,
+	"gen1_cym_rattle_rate": true, "gen1_cym_drive_delay": true, "gen1_cym_rattle_hold": true,
 	// Physical-model OSC params (shown in OSC only when the matching oscillator is
 	// selected — see synthOscModelParamHidden): fine reed / bowed-string shaping.
 	"osc_sax_blow": true, "osc_sax_reed_off": true, "osc_sax_reed_slope": true,
@@ -581,6 +553,9 @@ var advancedTierParams = map[string]bool{
 	"formant_morph_rate": true, "formant_morph_to": true,
 	// FORMANT/Phase-16 — Dry Blend is a fine-tuning knob (rarely touched vs Mix).
 	"formant_dry": true,
+	// MODAL — Essential: Tune, Damping, Brightness, Partials. Advanced: the
+	// stretch and the measured decay law (fitted values; rarely touched).
+	"modal_stretch": true, "modal_law_a": true, "modal_law_p": true, "modal_law_b": true,
 }
 
 // SynthHiddenGroup marks a ParamDef that exists for ABI completeness but must
@@ -588,26 +563,55 @@ var advancedTierParams = map[string]bool{
 // sectionForParam skip any def in this group.
 const SynthHiddenGroup = "hidden"
 
-// modularRecipeCategory is the Category string for modular-voice recipes. The
-// registry, the BuildBuiltinRecipeDocs param-source branch, the native renderer
-// factory, and the wired-params discipline exemptions all key off it.
-const modularRecipeCategory = "modular"
+// VoiceFreqGroup is the Group of voice_freq_hz, the voice's absolute base
+// pitch: a VOICE knob, shown only on instruments whose seed sets it.
+const VoiceFreqGroup = "voice"
 
-// modularPadSeed diverges the second shipped modular preset (synth-modular-pad
-// / the "modular-pad" instrument) from the base voice: a soft, dark, slow pad —
-// low filter cutoff, long attack + release, high sustain. Every value sits
-// inside the corresponding ParamDef [Min,Max]; ToRegistration overlays it onto
-// ModularSynthParamDefs so the registered defaults (and RecipeDefaultParams)
-// reflect the pad without forking the schema. Because these defaults differ
-// from the engine's plain render_modular built-ins, the browser must be seeded
-// with them at bootstrap (SeedInstrumentDefaultsToPlatform) — see
-// modular_defaults_seed.go.
-var modularPadSeed = RecipeParams{
-	"filter_cutoff":    1200,
-	"filter_resonance": 1.4,
-	"amp_attack":       0.12,
-	"amp_decay":        0.8,
-	"amp_sustain":      0.85,
-	"amp_release":      1.4,
-	"gain":             0.9,
+// VoiceFreqKnobMin / VoiceFreqKnobMax bound the base-pitch knob on a recipe
+// that seeds one (log curve) — see InstrumentParamDefs.
+const (
+	VoiceFreqKnobMin = 20.0
+	VoiceFreqKnobMax = 2000.0
+)
+
+// appendGenSlotDefs emits the per-slot ParamDefs for ONE gen-bank field.
+//
+// Slot 1 is surfaced as a visible Synth-tab knob when the family-stage registry
+// (modular_family_stages.go) owns the field; slots 2..12 stay hidden, existing
+// for ABI completeness only. Every gen-bank phase block funnels through here,
+// so a family's UI face is described in ONE table instead of a per-family
+// bounds map plus a per-family stage-meta map plus a bespoke emission loop.
+func appendGenSlotDefs(defs []ParamDef, f modularField, bounds [2]float64, ident RecipeParams) []ParamDef {
+	field := f.Name
+	for k := 1; k <= f.Slots; k++ {
+		name := fmt.Sprintf("gen%d_%s", k, field)
+		d := ParamDef{
+			Name: name, Label: fmt.Sprintf("G%d %s", k, field), Group: SynthHiddenGroup,
+			Min: bounds[0], Max: bounds[1], Default: ident[name],
+		}
+		if k == 1 {
+			if kn, ok := modularStageKnobs[field]; ok {
+				d.Group, d.Label, d.Enum = kn.Group, kn.Label, kn.Enum
+				d.Unit = modularStageKnobUnits[field]
+			}
+		}
+		defs = append(defs, d)
+	}
+	return defs
+}
+
+// FinishGroup is the ParamDef Group of the FINISH stage: the post ops that run
+// after the voice's own drive/gain (Resample, Length, Low Boost, Crisp, Darken,
+// Crunch) and the output limit (Limit).
+const FinishGroup = "finish"
+
+var finishKnobs = map[string]struct{ label, unit, tier string }{
+	"post_pitch":      {"Resample", "st", TierEssential},
+	"post_decay":      {"Length", "x", TierEssential},
+	"post_decay_rate": {"Fade Speed", "/s", TierAdvanced},
+	"post_body":       {"Low Boost", "", TierEssential},
+	"post_brightness": {"Crisp", "", TierEssential},
+	"post_darken":     {"Darken", "", TierEssential},
+	"post_drive":      {"Crunch", "", TierEssential},
+	"out_clamp":       {"Limit", "", TierAdvanced},
 }

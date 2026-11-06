@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
@@ -25,8 +26,6 @@ func chainStageKey(st scope.Stage) i18n.Key {
 		return i18n.KeyChainStageFX
 	case scope.StageEQ:
 		return i18n.KeyChainStageEQ
-	case scope.StageSends:
-		return i18n.KeyChainStageBus
 	case scope.StageMaster:
 		return i18n.KeyMaster
 	}
@@ -91,13 +90,11 @@ type ChainPanelZone struct {
 	portal     *OverlayPortal
 
 	// UI elements
-	stageButtons [6]*Button // one per pipeline stage (vertical column)
-	overlayBtn   *Button    // pill: overlay traces (top-right)
-	splitBtn     *Button    // pill: split A/B (top-right)
-	diffBtn      *Button    // pill: difference (top-right)
-	autoGainBtn  *Button    // auto-gain toggle (Y) — chrome row
-	fitBtn       *Button    // auto-fit toggle (X) — chrome row
-	freezeBtn    *Button    // freeze toggle
+	stageButtons [scope.NumStages]*Button // one per pipeline stage (vertical column)
+	overlayBtn   *Button                  // pill: overlay traces (top-right)
+	splitBtn     *Button                  // pill: split A/B (top-right)
+	diffBtn      *Button                  // pill: difference (top-right)
+	freezeBtn    *Button                  // freeze toggle
 
 	// segmentedRowH is the vertical space claimed by the mobile segmented
 	// OVR|SPL|DIF row (0 on desktop, where the modes are pills in the chrome
@@ -158,7 +155,7 @@ type ChainPanelZone struct {
 	// WASM-only zone-local state. On desktop these stay zero-valued because
 	// the audio.ScopeService() owns freeze + instrument selection.
 	frozenState  *scope.State // cached snapshot held while frozen
-	instrumentID string       // selected channel id, fed to snapshot calls
+	instrumentID channel.ID   // selected channel, fed to snapshot calls
 
 	// Hit areas cache (rebuilt on Layout)
 	hitAreas []HitArea
@@ -171,15 +168,22 @@ type ChainPanelZone struct {
 // callback is a no-op and the zone-local tapA field is authoritative.)
 func NewChainPanelZone(cb ChainCallbacks) *ChainPanelZone {
 	z := &ChainPanelZone{
-		needLayout: true,
-		callbacks:  cb,
-		tapA:       scope.StageSynth,
-		tapB:       -1,
-		windowMs:   20,
-		yGain:      1.0,
-		autoFit:    true,
-		showTapA:   true,
-		showTapB:   true,
+		instrumentID: channel.Master,
+		needLayout:   true,
+		callbacks:    cb,
+		tapA:         scope.StageSynth,
+		tapB:         -1,
+		windowMs:     20,
+		yGain:        1.0,
+		// Both framing axes default ON. They used to be opt-in pills, which
+		// meant the out-of-the-box Chain tab showed a correct-but-unreadable
+		// trace: a quiet tap drawn against a hardcoded 1.0 full-scale
+		// reference across a 500 ms capture window. Manual control survives
+		// (SetYGain / SetWindowMs turn the respective axis back to manual).
+		autoGain: true,
+		autoFit:  true,
+		showTapA: true,
+		showTapB: true,
 	}
 	z.initButtons()
 	if cb.OnTapAChange != nil {
@@ -198,16 +202,6 @@ func (z *ChainPanelZone) initButtons() {
 		z.stageButtons[i].SetTextKey(chainStageKey(st))
 	}
 
-	z.autoGainBtn = NewButton("AG", InstButtonStyle, func() {
-		z.SetAutoGain(!z.autoGain)
-	})
-	z.autoGainBtn.SetTextKey(i18n.KeyChainAutoGain)
-	// FIT toggles X auto-fit (frame the signal's active span). Active by
-	// default; manual zoom turns it off, this turns it back on.
-	z.fitBtn = NewButton("FIT", InstButtonStyle, func() {
-		z.SetAutoFit(!z.autoFit)
-	})
-	z.fitBtn.SetTextKey(i18n.KeyChainFit)
 	// Three separate mode pills replace the previous OVR/SPL/DIF cycle button.
 	// Clicking each sets the displayMode directly (no implicit cycle).
 	z.overlayBtn = NewButton("OVR", InstButtonStyle, func() {
@@ -222,13 +216,14 @@ func (z *ChainPanelZone) initButtons() {
 		z.displayMode = chainDiff
 	})
 	z.diffBtn.SetTextKey(i18n.KeyChainDiff)
-	// Freeze indicator is icon-only: a pause icon while live (click action is
-	// "pause") and a play icon while frozen (action "resume"), set by
-	// applyFreezeVisual (shared with the analyzer-tab freeze pill).
-	z.freezeBtn = NewButton("", InstButtonStyle, func() {
+	// Freeze is a TEXT code pill here (FRZ / LIVE), not the shared icon pill:
+	// a bare pause glyph one row under the transport bar reads as transport
+	// pause, and it was the only icon among five text codes. See
+	// newFreezeCodePill.
+	z.freezeBtn = NewButton(i18n.T(i18n.KeyChainFreeze), InstButtonStyle, func() {
 		z.SetFrozen(!z.frozen)
 	})
-	applyFreezeVisual(z.freezeBtn, z.frozen)
+	applyFreezeCodeVisual(z.freezeBtn, z.frozen)
 }
 
 // SetTapA programmatically sets the TapA stage (use -1 to clear). Fires
@@ -324,8 +319,6 @@ func (z *ChainPanelZone) DisplayMode() int { return int(z.displayMode) }
 func (z *ChainPanelZone) OverlayBtn() *Button { return z.overlayBtn }
 func (z *ChainPanelZone) SplitBtn() *Button   { return z.splitBtn }
 func (z *ChainPanelZone) DiffBtn() *Button    { return z.diffBtn }
-func (z *ChainPanelZone) AGBtn() *Button      { return z.autoGainBtn }
-func (z *ChainPanelZone) FitBtn() *Button     { return z.fitBtn }
 func (z *ChainPanelZone) FreezeBtn() *Button  { return z.freezeBtn }
 
 // TraceVisible reports whether the named trace ("A" or "B") is currently
@@ -366,7 +359,7 @@ func (z *ChainPanelZone) SetFrozen(frozen bool) {
 		_ = z.callbacks.OnFreezeToggle()
 	}
 	z.frozen = frozen
-	applyFreezeVisual(z.freezeBtn, z.frozen)
+	applyFreezeCodeVisual(z.freezeBtn, z.frozen)
 }
 
 // SetAutoGain drives the same auto-gain flow the AG-button click takes
@@ -400,7 +393,7 @@ func (z *ChainPanelZone) SetTraceVisible(label string, visible bool) {
 // and is also used by setEQChannel(id) browser tests to make
 // probeScopeState() reflect the new channel without going through a
 // click on the EQ panel's channel-cycle button.
-func (z *ChainPanelZone) SetInstrumentID(id string) {
+func (z *ChainPanelZone) SetInstrumentID(id channel.ID) {
 	z.instrumentID = id
 }
 
@@ -680,11 +673,19 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 	// row, so anchor to FIT (the leftmost remaining chrome control).
 	chromeLeft := z.overlayBtn.Rect().Min.X
 	if Profile().ChainModeSegmented {
-		chromeLeft = z.fitBtn.Rect().Min.X
+		chromeLeft = z.freezeBtn.Rect().Min.X
 	}
 	zoomX := chromeLeft - zoomW - 6
 	zoomY := z.rect.Min.Y + 4 + (18-StyledTextHeight(RoleMicro))/2
 	DrawTextStyled(dst, zoomText, zoomX, zoomY, RoleMicro, colTextSecondary)
+
+	// Explanatory strip. Everything between the stage column and the zoom
+	// readout was blank before this; the next-tap hint, the A/B legend and the
+	// active mode's plain-English gloss all go there, so the whole explanatory
+	// layer costs no layout and takes nothing from the trace area.
+	stripLeft := z.rect.Min.X + Profile().DensityValues().ChainStageColW + Profile().DensityValues().ChainContentGap + SpaceXS
+	strip := image.Rect(stripLeft, z.rect.Min.Y+4, zoomX-SpaceSM, z.rect.Min.Y+4+18)
+	drawChainHeaderStrip(dst, strip, z.tapA, z.tapB, z.displayMode)
 
 	// Mode selector — three pills. Desktop: separated, in the chrome row.
 	// Mobile: a contiguous segmented control on its own row (rects set in
@@ -693,8 +694,6 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 	drawPillTabAt(dst, z.splitBtn, z.displayMode == chainSplit)
 	drawPillTabAt(dst, z.diffBtn, z.displayMode == chainDiff)
 
-	drawPillTabAt(dst, z.fitBtn, z.autoFit)
-	drawPillTabAt(dst, z.autoGainBtn, z.autoGain)
 	drawPillTabAt(dst, z.freezeBtn, z.frozen)
 }
 
@@ -898,16 +897,6 @@ func (z *ChainPanelZone) layoutButtons() {
 	z.freezeBtn.SetRect(image.Rect(rightEdge-freezeW, y, rightEdge, y+btnH))
 	rightEdge -= freezeW + gap
 
-	// Auto-gain (Y) + auto-fit (X) toggles live IN the chrome row. They used
-	// to sit in the trace's lower-right corner where AG collided with the
-	// time-axis labels; the row keeps them out of the waveform entirely.
-	agW := audioPillWidth(z.autoGainBtn)
-	z.autoGainBtn.SetRect(image.Rect(rightEdge-agW, y, rightEdge, y+btnH))
-	rightEdge -= agW + gap
-	fitW := audioPillWidth(z.fitBtn)
-	z.fitBtn.SetRect(image.Rect(rightEdge-fitW, y, rightEdge, y+btnH))
-	rightEdge -= fitW + gap
-
 	z.segmentedRowH = 0
 	if Profile().ChainModeSegmented {
 		// Mobile / narrow layout: OVR|SPL|DIF as one always-visible
@@ -980,36 +969,6 @@ func (z *ChainPanelZone) rebuildHitAreas() {
 				Tag:     fmt.Sprintf("scope-stage-%d", i),
 			})
 		}
-	}
-
-	// Auto-gain button.
-	if ar := z.autoGainBtn.Rect(); !ar.Empty() {
-		ha := HitArea{
-			Rect:    ar,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.autoGainBtn},
-			Tag:     "scope-ag-btn",
-		}
-		if Profile().IsMobile() {
-			ha.Touch = true
-			ha.ClipRect = expandToTouchMin(ar)
-		}
-		z.hitAreas = append(z.hitAreas, ha)
-	}
-
-	// Auto-fit (FIT) button.
-	if fr := z.fitBtn.Rect(); !fr.Empty() {
-		ha := HitArea{
-			Rect:    fr,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.fitBtn},
-			Tag:     "scope-fit-btn",
-		}
-		if Profile().IsMobile() {
-			ha.Touch = true
-			ha.ClipRect = expandToTouchMin(fr)
-		}
-		z.hitAreas = append(z.hitAreas, ha)
 	}
 
 	// Three separate mode pills (overlay, split, diff). The legacy

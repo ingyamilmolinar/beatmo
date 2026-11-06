@@ -34,6 +34,7 @@ type ConfirmDialog struct {
 	confirmBtn *Button
 	cancelBtn  *Button
 	closeBtn   *Button
+	card       *MenuCard // shared frame: panel, title band, footer keycaps, close ×
 	rect       image.Rectangle
 	closed     bool
 }
@@ -123,7 +124,7 @@ func (d *ConfirmDialog) Layout(anchor, screenBounds image.Rectangle) {
 	if minW := 2*btnW + SpaceMD + 2*SpaceMD; w < minW {
 		w = minW
 	}
-	h := SpaceMD + StyledTextHeight(RoleSectionHeader) + SpaceLG + btnH + SpaceMD
+	h := menuCardTitleH + menuCardPad + SpaceSM + menuCardFooterH + menuCardPad
 	b := screenBounds
 	if !anchor.Empty() {
 		b = anchor
@@ -131,13 +132,14 @@ func (d *ConfirmDialog) Layout(anchor, screenBounds image.Rectangle) {
 	cx := (b.Min.X + b.Max.X) / 2
 	cy := (b.Min.Y + b.Max.Y) / 2
 	d.rect = image.Rect(cx-w/2, cy-h/2, cx+w/2, cy-h/2+h)
-	// Buttons: Cancel left, Confirm right, bottom row.
-	by := d.rect.Max.Y - SpaceMD - btnH
-	d.cancelBtn.SetRect(image.Rect(d.rect.Min.X+SpaceMD, by, d.rect.Min.X+SpaceMD+btnW, by+btnH))
-	d.confirmBtn.SetRect(image.Rect(d.rect.Max.X-SpaceMD-btnW, by, d.rect.Max.X-SpaceMD, by+btnH))
-	if d.closeBtn != nil {
-		d.closeBtn.SetRect(closeButtonRect(d.rect, SpaceXS))
+	// Shared MenuCard frame: title band (+ optional swatch), footer keycaps
+	// Cancel · Confirm (destructive on the right), the dialog's own close ×.
+	_ = btnH
+	if d.card == nil {
+		d.card = NewMenuCard(nil)
 	}
+	d.card.SetCloseButton(d.closeBtn)
+	d.card.Layout(d.rect, MenuCardSpec{Title: title, Swatch: d.cfg.swatch, Footer: []*Button{d.cancelBtn, d.confirmBtn}})
 }
 
 // HitAreas publishes one hit area per interactive control (confirm, cancel,
@@ -159,12 +161,10 @@ func (d *ConfirmDialog) HitAreas() []HitArea {
 		areas = append(areas, HitArea{Rect: d.closeBtn.Rect(), ZIndex: ZOverlayMin, Tag: d.cfg.id + "-close",
 			Handler: &buttonHitAdapter{btn: d.closeBtn}})
 	}
-	// Panel catch-all LAST: swallows in-panel taps that miss a button so
-	// they never fall through, but covers ONLY the panel rect — outside
-	// taps still yield len(hits)==0 → tree CloseTop → OnClose → cancel.
-	areas = append(areas, HitArea{Rect: d.rect, ZIndex: ZOverlayMin, Tag: d.cfg.id + "-panel",
-		Handler: confirmPanelHandler{}})
-	return areas
+	// Panel catch-all LAST (the card's): swallows in-panel taps that miss a
+	// button so they never fall through, but covers ONLY the panel rect —
+	// outside taps still yield len(hits)==0 → tree CloseTop → OnClose → cancel.
+	return append(areas, d.card.CatchAll(ZOverlayMin, d.cfg.id, confirmPanelHandler{}))
 }
 
 // HoverAt refreshes desktop hover for the three buttons (portalHoverer).
@@ -177,33 +177,11 @@ func (d *ConfirmDialog) HoverAt(mx, my int) {
 }
 
 func (d *ConfirmDialog) Draw(screen *ebiten.Image) {
-	if screen == nil || d.rect.Empty() {
+	if screen == nil || d.rect.Empty() || d.card == nil {
 		return
 	}
 	drawScrim(screen)
-	drawPanel(screen, d.rect)
-	headerMaxX := d.rect.Max.X - SpaceMD
-	if d.closeBtn != nil { // reserve the close-× lane only when it exists (desktop)
-		if closeMinX := closeButtonRect(d.rect, SpaceXS).Min.X - SpaceMD; closeMinX < headerMaxX {
-			headerMaxX = closeMinX
-		}
-	}
-	headerRect := image.Rect(d.rect.Min.X+SpaceMD, d.rect.Min.Y+SpaceXS, headerMaxX, d.rect.Min.Y+SpaceXS+StyledTextHeight(RoleSectionHeader))
-	// drawMenuTitle does not clip its label itself (see drawFXPanelHeader's
-	// header-band precedent), so pre-clip here to guarantee the title never
-	// runs under the close-X even at extreme widths/short panels.
-	maxTitleW := headerRect.Dx()
-	if d.cfg.swatch != nil {
-		maxTitleW -= menuTitleSwatchSz + SpaceSM // the leading swatch's share of the band
-	}
-	title := clipTextToWidthMeasure(i18n.T(d.cfg.titleKey), maxTitleW,
-		func(s string) int { return StyledTextWidth(s, RoleSectionHeader) })
-	drawMenuTitle(screen, headerRect, title, d.cfg.swatch)
-	d.cancelBtn.Draw(screen)
-	d.confirmBtn.Draw(screen)
-	if d.closeBtn != nil {
-		d.closeBtn.Draw(screen)
-	}
+	d.card.Draw(screen) // panel, clipped title (+ swatch), footer keycaps, close ×
 }
 
 // ShouldClose reports whether confirm() or cancel() has fired.

@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // ---------- FuzzyMatch tests ----------
@@ -364,12 +366,12 @@ func TestInstMenuSearchBox_FuzzyMatchResults(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick Drum", Category: ""},
-			{ID: "snare", Label: "Snare Drum", Category: ""},
-			{ID: "hihat", Label: "Hi-Hat", Category: ""},
-			{ID: "clap", Label: "Clap", Category: ""},
+			{ID: roster.Kick, Label: "Kick Drum", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare Drum", Category: audio.CatNone},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatNone},
+			{ID: roster.Clap, Label: "Clap", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -384,7 +386,7 @@ func TestInstMenuSearchBox_FuzzyMatchResults(t *testing.T) {
 
 	foundKick := false
 	for _, id := range comp.state.filteredInsts {
-		if id == "kick" {
+		if id == roster.Kick {
 			foundKick = true
 		}
 	}
@@ -394,7 +396,7 @@ func TestInstMenuSearchBox_FuzzyMatchResults(t *testing.T) {
 	}
 
 	// Verify highlights stored.
-	hl, ok := comp.state.searchHighlights["kick"]
+	hl, ok := comp.state.searchHighlights[roster.Kick]
 	if !ok || len(hl) == 0 {
 		t.Error("expected searchHighlights for 'kick' with fuzzy query 'kd'")
 	}
@@ -406,13 +408,13 @@ func TestInstMenuSearchBox_FuzzyAbbreviationMatch(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick Drum", Category: ""},
-			{ID: "snare", Label: "Snare Drum", Category: ""},
-			{ID: "hihat", Label: "Hi-Hat", Category: ""},
-			{ID: "crash", Label: "Crash Cymbal", Category: ""},
-			{ID: "ride", Label: "Ride Cymbal", Category: ""},
+			{ID: roster.Kick, Label: "Kick Drum", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare Drum", Category: audio.CatNone},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatNone},
+			{ID: roster.Crash, Label: "Crash Cymbal", Category: audio.CatNone},
+			{ID: roster.Ride, Label: "Ride Cymbal", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -422,7 +424,7 @@ func TestInstMenuSearchBox_FuzzyAbbreviationMatch(t *testing.T) {
 	comp.SetSearchText("cc")
 	found := false
 	for _, id := range comp.state.filteredInsts {
-		if id == "crash" {
+		if id == roster.Crash {
 			found = true
 		}
 	}
@@ -437,12 +439,12 @@ func TestInstMenuSearchBox_FuzzyBestMatchFirst(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
-		Categories: []string{},
+		Categories: []audio.Category{},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick Drum", Category: ""},
-			{ID: "snare", Label: "Snare Drum", Category: ""},
-			{ID: "hihat", Label: "Hi-Hat", Category: ""},
-			{ID: "clap", Label: "Clap", Category: ""},
+			{ID: roster.Kick, Label: "Kick Drum", Category: audio.CatNone},
+			{ID: roster.Snare, Label: "Snare Drum", Category: audio.CatNone},
+			{ID: roster.Hihat, Label: "Hi-Hat", Category: audio.CatNone},
+			{ID: roster.Clap, Label: "Clap", Category: audio.CatNone},
 		},
 		RowHeight: 24,
 	})
@@ -453,7 +455,7 @@ func TestInstMenuSearchBox_FuzzyBestMatchFirst(t *testing.T) {
 	if len(comp.state.filteredInsts) == 0 {
 		t.Fatal("expected results for 'cl'")
 	}
-	if comp.state.filteredInsts[0] != "clap" {
+	if comp.state.filteredInsts[0] != roster.Clap {
 		t.Errorf("expected 'clap' first for 'cl', got %q", comp.state.filteredInsts[0])
 	}
 }

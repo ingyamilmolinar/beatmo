@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.0.1",
+  "id": "ensemble-lead",
+  "name": "Ensemble Lead",
+  "category": "modular",
+  "notes": "ensembleLeadSeed: glottal-ensemble lead — born as a choir \"ahh\" attempt,\nkept as a synth per ear review 2026-07-08; cello-like sustained ensemble, 5\nhumanized glottal voices, tenor \"a\" formants, moderate singer's formant,\nsoft 100 ms attack.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.5814,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.1,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.5,
+        "amp_sustain": 0.85
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.55,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      },
+      "notes": "gain: not 0.5 — TestPhase2Native mutates gain->0.5 and needs a delta"
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 6000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "formant": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "formant_breath": 0.06,
+        "formant_dry": 1,
+        "formant_mix": 0.85,
+        "formant_morph_rate": 0,
+        "formant_morph_to": 0,
+        "formant_shift": 1,
+        "formant_sing": 0.35,
+        "formant_voice_type": 2,
+        "formant_vowel": 0
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0.8,
+        "ens_jitter": 0,
+        "ens_scatter": 10,
+        "ens_vib_depth": 8,
+        "ens_vib_rate": 5.5,
+        "unison_detune": 8,
+        "unison_drift_depth": 4,
+        "unison_drift_rate": 0.3,
+        "unison_mix": 0.7,
+        "unison_voices": 5
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 12
+    }
+  }
+}

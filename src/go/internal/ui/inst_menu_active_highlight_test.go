@@ -4,6 +4,9 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstMenuActiveHighlightFollowsSelection reproduces the "buttons stay
@@ -27,7 +30,7 @@ func TestInstMenuActiveHighlightFollowsSelection(t *testing.T) {
 			got, dv.Rows[0].Instrument)
 	}
 
-	for _, want := range []string{"snare", "tom", "kick"} {
+	for _, want := range []instrument.ID{roster.Snare, roster.Tom, roster.Kick} {
 		if !pickVisibleInstrument(t, dv, comp, want, W, H) {
 			t.Fatalf("instrument %q not visible; ids=%v", want, comp.VisibleInstIDs())
 		}

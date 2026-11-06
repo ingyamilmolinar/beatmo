@@ -6,14 +6,16 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestInstrumentMenuHasExportImport(t *testing.T) {
 	g := newInstrumentTestGame(t)
-	items := g.drum.instrumentActionMenuItems(func() {}, func() {})
+	items := g.drum.instrumentActionMenuItems(func() {})
 	labels := map[string]bool{}
 	for _, it := range items {
 		labels[it.Label] = true
@@ -21,25 +23,47 @@ func TestInstrumentMenuHasExportImport(t *testing.T) {
 	if !labels[i18n.T(i18n.KeyMenuExport)] || !labels[i18n.T(i18n.KeyMenuImport)] {
 		t.Errorf("⋯ menu missing Export/Import items: %v", labels)
 	}
-	if !labels[i18n.T(i18n.KeySaveAs)] || !labels[i18n.T(i18n.KeyReset)] {
-		t.Errorf("⋯ menu lost Save As / Reset: %v", labels)
+	if !labels[i18n.T(i18n.KeySaveAs)] || labels[i18n.T(i18n.KeyReset)] {
+		t.Errorf("⋯ menu must offer Save As and no Reset: %v", labels)
 	}
 }
 
 func TestInstrumentFileNameSanitizes(t *testing.T) {
-	if got := instrumentFileName("Warm 808 !!"); got != "warm-808.beatmo-inst.json" {
+	restore := SetDownloadClockForTest(func() time.Time {
+		return time.Date(2026, 9, 13, 14, 15, 30, 0, time.UTC)
+	})
+	defer restore()
+	if got := instrumentFileName("Warm 808 !!"); got != "warm-808-2026-09-13_141530.beatmo-inst.json" {
 		t.Errorf("filename = %q", got)
 	}
-	if got := instrumentFileName(""); got != "instrument.beatmo-inst.json" {
+	if got := instrumentFileName(""); got != "instrument-2026-09-13_141530.beatmo-inst.json" {
 		t.Errorf("empty name → %q", got)
+	}
+}
+
+// TestInstrumentExportNameNeverCollides: re-exporting the same instrument must
+// ask for a fresh name, or the browser renames the second file and spells the
+// uniquifier differently per engine (see download_name.go).
+func TestInstrumentExportNameNeverCollides(t *testing.T) {
+	now := time.Date(2026, 9, 13, 14, 15, 30, 0, time.UTC)
+	restore := SetDownloadClockForTest(func() time.Time { return now })
+	defer restore()
+	first := instrumentFileName("Snare")
+	now = now.Add(time.Second)
+	second := instrumentFileName("Snare")
+	if first == second {
+		t.Errorf("two exports of the same instrument both asked for %q", first)
+	}
+	for _, n := range []string{first, second} {
+		assertCollisionFreeName(t, n)
 	}
 }
 
 func TestExportActiveInstrumentDownloadsBundle(t *testing.T) {
 	g := newInstrumentTestGame(t)
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 	g.drum.selRow = 0
 
 	var gotName string
@@ -68,14 +92,12 @@ func TestExportActiveInstrumentDownloadsBundle(t *testing.T) {
 }
 
 func TestImportInstrumentFromFileApplies(t *testing.T) {
-	g := newInstrumentTestGame(t)
+	g := newDocsGame(t, roster.Snare)
 	dv := g.drum
 	dv.selRow = 0
 
 	// Build a valid bundle to feed the picker.
-	dv.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.4)
 	bundle, err := dv.BuildInstrumentBundle(0)
 	if err != nil {
 		t.Fatalf("build: %v", err)
@@ -95,8 +117,10 @@ func TestImportInstrumentFromFileApplies(t *testing.T) {
 	if after == before {
 		t.Errorf("row instrument unchanged after import (%q)", after)
 	}
-	if !audio.RecipeExists(after) || audio.RecipeIsBuiltin(after) {
-		t.Errorf("imported instrument %q not a registered user recipe", after)
+	if _, ok := audio.UserLibraryDoc(after); !ok || !strings.HasPrefix(string(after), "user.") {
+		t.Errorf("imported instrument %q is not a user library instrument", after)
 	}
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(after) })
+	if !audio.HasInstrumentDoc(after) {
+		t.Errorf("imported instrument %q has no project document", after)
+	}
 }

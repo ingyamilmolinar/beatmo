@@ -20,6 +20,10 @@ package userprefs
 import (
 	"encoding/json"
 	"sort"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
 // LocalStorageKey is the WebStorage key the WASM backend reads and writes.
@@ -35,14 +39,17 @@ const FileName = "prefs.json"
 // the same string.
 const PoolName = "userprefs.persist"
 
-// prefsDoc is the on-the-wire shape. RecipeOverrides carries per-recipe
-// param patches; UserRecipes carries opaque RecipeDoc bytes (the audio
-// package owns decoding — keeping the shape opaque here prevents an
-// audio↔userprefs import cycle).
+// prefsDoc is the on-the-wire shape. (The retired recipe_overrides /
+// user_recipes sections of older files are ignored and dropped on the next
+// write: instruments live in the instrument store as documents.)
+//
+// Every section is omitempty, so a document only grows once the user
+// actually changes the corresponding setting. Adding a section is one
+// field here plus one sanitizer in the prefsSnapshot⇄prefsDoc pair — there
+// is deliberately no per-section marshal wrapper.
 type prefsDoc struct {
-	Favorites       []string                      `json:"favorites,omitempty"`
-	RecipeOverrides map[string]map[string]float64 `json:"recipe_overrides,omitempty"`
-	UserRecipes     map[string]json.RawMessage    `json:"user_recipes,omitempty"`
+	schema.Envelope
+	Favorites []string `json:"favorites,omitempty"`
 	// Phase 5 audio-panel redesign (userprefs v3): tab-specific
 	// audio-panel state that should survive across sessions. omitempty
 	// so v1/v2 prefs files don't grow until the user actually changes
@@ -51,9 +58,9 @@ type prefsDoc struct {
 	AudioPanel *AudioPanelStateDoc `json:"audio_panel,omitempty"`
 	// SampleEdits carries the non-destructive Sampler-edit descriptors:
 	// instrument-id → field-name → value (bools as 0/1). Tiny flat maps,
-	// so they live in prefs.json like RecipeOverrides — NOT in the PCM
+	// so they live in prefs.json — NOT in the PCM
 	// SampleStore. The audio package owns the SampleEdit↔map conversion.
-	SampleEdits map[string]map[string]float64 `json:"sample_edits,omitempty"`
+	SampleEdits map[instrument.ID]map[string]float64 `json:"sample_edits,omitempty"`
 	// Notifications carries the persisted user-notification history
 	// (bounded, oldest..newest). omitempty so older prefs files don't grow
 	// until the user actually raises a notification.
@@ -66,6 +73,10 @@ type prefsDoc struct {
 	// default (English) upstream. omitempty so older prefs files don't grow
 	// until the user actually picks a non-default language.
 	Language string `json:"language,omitempty"`
+	// Theme carries the per-user UI color scheme + the circuit-override
+	// flag. omitempty so files don't grow until the user opens the Theme
+	// editor.
+	Theme *theme.UserDoc `json:"theme,omitempty"`
 }
 
 // notifHistoryMax bounds the persisted notification history (drop-oldest).
@@ -94,18 +105,16 @@ type NotificationHistoryStore interface {
 // when the field is nil — we pin the JSON shape here so future
 // renames don't break older save files.
 type AudioPanelStateDoc struct {
-	SpectrumSlopeIdx int  `json:"spectrum_slope_idx,omitempty"`
-	PreOverlay       bool `json:"pre_overlay,omitempty"`
-	K20View          bool `json:"k20_view,omitempty"`
-	ChainTapA        int  `json:"chain_tap_a,omitempty"`
-	ChainTapB        int  `json:"chain_tap_b,omitempty"`
+	// SynthGraphDetails: the Synth graph shows its NUMBERS readout instead of
+	// the plain WORDS one (the graph's Details toggle).
+	SynthGraphDetails bool `json:"synth_graph_details,omitempty"`
 }
 
 // IsDefault reports whether every field is at its zero value. The
 // persistence layer uses this to skip serialising the section when
 // no user override is active, keeping older prefs files small.
 func (s AudioPanelStateDoc) IsDefault() bool {
-	return s.SpectrumSlopeIdx == 0 && !s.PreOverlay && !s.K20View && s.ChainTapA == 0 && s.ChainTapB == 0
+	return !s.SynthGraphDetails
 }
 
 // Store persists a single set of favorited instrument IDs. Implementations
@@ -116,49 +125,19 @@ func (s AudioPanelStateDoc) IsDefault() bool {
 // job is queued); WaitFlushed exists for tests and clean shutdown that
 // need to know the disk is consistent.
 //
-// Both concrete backends (fileStore, localStorageStore) also implement
-// RecipeStore — callers that need the recipe surface should type-assert
-// the return value from NewBackingStore.
+// Both concrete backends (fileStore, localStorageStore) also implement the
+// sibling section surfaces below — callers type-assert the return value from
+// NewBackingStore.
 type Store interface {
-	LoadFavorites() (map[string]bool, error)
-	SaveFavorites(map[string]bool) error
+	LoadFavorites() (map[instrument.ID]bool, error)
+	SaveFavorites(map[instrument.ID]bool) error
 	WaitFlushed() error
 	Close() error
 }
 
-// RecipeStore is the sibling surface for synth-recipe persistence.
-// Implementations are the same concrete structs that satisfy Store;
-// expose this view via type assertion. All write paths funnel through the
-// same userprefs.persist pool as favorites and write the full prefs
-// document atomically.
-//
-// User-recipe payloads are opaque to userprefs — the audio package
-// marshals/unmarshals its own RecipeDoc shape into the bytes.
-type RecipeStore interface {
-	// LoadRecipeOverrides returns the recipe-id → param-name → value map
-	// currently persisted. Empty map is returned (never nil) when no
-	// overrides exist or the store is empty.
-	LoadRecipeOverrides() (map[string]map[string]float64, error)
-	// SaveRecipeOverride upserts an override for the given recipe id.
-	// Nil or empty params deletes the override (equivalent to
-	// DeleteRecipeOverride).
-	SaveRecipeOverride(recipeID string, params map[string]float64) error
-	// DeleteRecipeOverride removes any persisted override for the given
-	// recipe id. No-op if no override exists.
-	DeleteRecipeOverride(recipeID string) error
-	// LoadUserRecipes returns recipe-id → opaque doc bytes. The audio
-	// package decodes the bytes into RecipeDoc.
-	LoadUserRecipes() (map[string][]byte, error)
-	// SaveUserRecipe upserts the recipe payload for the given id.
-	SaveUserRecipe(recipeID string, doc []byte) error
-	// DeleteUserRecipe removes any persisted user recipe for the given
-	// id. No-op if not present.
-	DeleteUserRecipe(recipeID string) error
-}
-
 // AudioPanelStore is the sibling surface for audio-panel UI state
 // persistence (Phase 5 redesign). Implementations share the same
-// concrete struct that satisfies Store + RecipeStore; expose this
+// concrete struct that satisfies Store; expose this
 // view via type assertion. Save/Load are non-blocking on the
 // desktop backend and synchronous in localStorage on browser builds.
 type AudioPanelStore interface {
@@ -168,8 +147,7 @@ type AudioPanelStore interface {
 
 // SampleBlob is one persisted Sampler-tab user sample: raw little-endian
 // float32 PCM bytes plus the sample rate. The audio package owns the
-// float32↔bytes conversion (keeping userprefs audio-agnostic), exactly as
-// UserRecipes keeps RecipeDoc decoding in the audio package.
+// float32↔bytes conversion (keeping userprefs audio-agnostic).
 type SampleBlob struct {
 	SampleRate int
 	PCM        []byte
@@ -182,27 +160,26 @@ type SampleBlob struct {
 // assertion on the Store returned by NewBackingStore.
 type SampleStore interface {
 	// LoadSamples returns id → blob for every persisted sample (never nil).
-	LoadSamples() (map[string]SampleBlob, error)
+	LoadSamples() (map[instrument.ID]SampleBlob, error)
 	// SaveSample upserts the blob for id.
-	SaveSample(id string, blob SampleBlob) error
+	SaveSample(id instrument.ID, blob SampleBlob) error
 	// DeleteSample removes the persisted sample for id. No-op if absent.
-	DeleteSample(id string) error
+	DeleteSample(id instrument.ID) error
 }
 
 // SampleEditStore is the sibling surface for the non-destructive sample-edit
-// descriptors (Sampler-tab Save on a synth source). Same shape as the
-// RecipeStore override methods: instrument-id keyed flat float maps inside
-// the unified prefs document. Expose via type assertion on the Store
+// descriptors (Sampler-tab Save on a synth source): instrument-id keyed flat
+// float maps inside the unified prefs document. Expose via type assertion on the Store
 // returned by NewBackingStore.
 type SampleEditStore interface {
 	// LoadSampleEdits returns instrument-id → field → value for every
 	// persisted descriptor. Empty map (never nil) when none exist.
-	LoadSampleEdits() (map[string]map[string]float64, error)
+	LoadSampleEdits() (map[instrument.ID]map[string]float64, error)
 	// SaveSampleEdit upserts the descriptor fields for an instrument.
 	// Nil or empty fields deletes the entry.
-	SaveSampleEdit(instID string, fields map[string]float64) error
+	SaveSampleEdit(instID instrument.ID, fields map[string]float64) error
 	// DeleteSampleEdit removes the persisted descriptor. No-op if absent.
-	DeleteSampleEdit(instID string) error
+	DeleteSampleEdit(instID instrument.ID) error
 }
 
 // KnobStepStore is the sibling surface for per-param knob step-multiplier
@@ -215,6 +192,13 @@ type KnobStepStore interface {
 	LoadKnobSteps() map[string]float64
 	// SaveKnobStep upserts the chosen step for the named param.
 	SaveKnobStep(name string, step float64) error
+}
+
+// ThemeStore persists the user's UI color scheme (internal/theme.UserDoc).
+// Expose via type assertion on the Store returned by NewBackingStore.
+type ThemeStore interface {
+	LoadTheme() (theme.UserDoc, error)
+	SaveTheme(d theme.UserDoc) error
 }
 
 // LanguageStore persists the chosen UI locale. Expose via type assertion on
@@ -248,116 +232,202 @@ func NewBackingStore(opts Options) Store {
 	return newBackingStore(opts)
 }
 
-// marshalPrefs serializes the unified prefs document with deterministic
-// ordering for every section. Sorting keeps the on-disk diff stable
-// across saves with the same content (important for git-tracked prefs
-// dotfiles and snapshot tests).
-func marshalPrefsV3(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc) ([]byte, error) {
-	data, err := marshalPrefs(favs, overrides, userRecipes)
-	if err != nil {
-		return nil, err
+// prefsSnapshot is the in-memory form of a prefs document — one field per
+// section, shared by both backends (fileStore and localStorageStore) and by
+// both directions of serialization.
+//
+// It is the single currency of this package's IO: marshalPrefs takes one,
+// parsePrefs returns one. Historically each section was threaded through a
+// positional argument list that grew a new marshalPrefsV<N> wrapper every
+// time a section was added; that chain re-marshalled the whole document
+// once per section (6 marshals + 5 unmarshals for a full save) and had
+// drifted into two different error policies. Adding a section is now one
+// field here, one field on prefsDoc, and one sanitizer.
+type prefsSnapshot struct {
+	favorites     map[instrument.ID]bool
+	audioPanel    AudioPanelStateDoc
+	sampleEdits   map[instrument.ID]map[string]float64
+	notifications []NotificationRecord
+	knobSteps     map[string]float64
+	language      string
+	theme         theme.UserDoc
+}
+
+// emptyPrefsSnapshot returns fresh, non-nil, empty cache state — what a
+// missing, corrupt, or version-rejected document degrades to.
+func emptyPrefsSnapshot() prefsSnapshot {
+	return prefsSnapshot{
+		favorites:   map[instrument.ID]bool{},
+		sampleEdits: map[instrument.ID]map[string]float64{},
+		knobSteps:   map[string]float64{},
 	}
-	if audioPanel.IsDefault() {
-		return data, nil
+}
+
+// marshalPrefs serializes a snapshot to the on-the-wire document in a
+// single pass.
+//
+// Ordering is deterministic — important for a git-trackable dotfile and for
+// snapshot tests — but that falls out of the representation, not out of any
+// sequencing: encoding/json emits struct fields in declaration order and
+// sorts map keys itself. The one thing needing explicit care is the
+// favorites slice, which sanitizeFavorites sorts.
+func marshalPrefs(snap prefsSnapshot) ([]byte, error) {
+	doc := prefsDoc{
+		Envelope:      schema.Current(),
+		Favorites:     sanitizeFavorites(snap.favorites),
+		SampleEdits:   sanitizeNestedFloats(snap.sampleEdits),
+		Notifications: boundNotifications(snap.notifications),
+		KnobSteps:     sanitizeKnobSteps(snap.knobSteps),
+		Language:      snap.language,
 	}
-	// Re-marshal with audio_panel field set. Implementation choice:
-	// parse the just-marshalled bytes back to a prefsDoc, set the
-	// AudioPanel field, re-marshal. Avoids changing marshalPrefs's
-	// signature and keeps the deterministic-ordering guarantee.
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return data, nil
+	if !snap.audioPanel.IsDefault() {
+		cp := snap.audioPanel
+		doc.AudioPanel = &cp
 	}
-	cp := audioPanel
-	doc.AudioPanel = &cp
+	if !snap.theme.Doc.IsEmpty() || snap.theme.OverrideCircuits {
+		cp := snap.theme.Clone()
+		doc.Theme = &cp
+	}
 	return json.MarshalIndent(doc, "", "  ")
 }
 
-func marshalPrefs(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte) ([]byte, error) {
+// parsePrefs is the cross-platform load path, the exact inverse of
+// marshalPrefs and likewise a single pass.
+//
+// Every returned map is fresh and non-nil so callers can assume a usable
+// result. Three failure modes all degrade to empty-but-usable state with a
+// logged warning, because prefs are loaded automatically at boot and a hard
+// error would fail startup on a file this app itself wrote:
+//
+//   - empty input (no file yet)
+//   - malformed JSON
+//   - a schema_version this build cannot read
+//
+// A document with NO schema_version is a legacy pre-versioning file: it is
+// accepted with its contents intact and gets stamped on the next write.
+func parsePrefs(data []byte, logf func(string, ...any)) (prefsSnapshot, error) {
+	empty := emptyPrefsSnapshot()
+	if len(data) == 0 {
+		return empty, nil
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		if logf != nil {
+			logf("[userprefs] prefs: corrupted JSON, ignoring: %v", err)
+		}
+		return empty, nil
+	}
+	if err := doc.Validate("prefs"); err != nil {
+		if logf != nil {
+			logf("[userprefs] prefs: %v; starting from empty", err)
+		}
+		return empty, err
+	}
+	snap := prefsSnapshot{
+		favorites:     parseFavorites(doc.Favorites),
+		sampleEdits:   sanitizeNestedFloats(doc.SampleEdits),
+		notifications: boundNotifications(doc.Notifications),
+		knobSteps:     sanitizeKnobSteps(doc.KnobSteps),
+		language:      doc.Language,
+	}
+	if doc.AudioPanel != nil {
+		snap.audioPanel = *doc.AudioPanel
+	}
+	if doc.Theme != nil {
+		snap.theme = doc.Theme.Clone()
+	}
+	// sanitize* return nil for an empty section (so the field is omitted on
+	// write); the load path promises non-nil maps instead.
+	if snap.sampleEdits == nil {
+		snap.sampleEdits = map[instrument.ID]map[string]float64{}
+	}
+	if snap.knobSteps == nil {
+		snap.knobSteps = map[string]float64{}
+	}
+	return snap, nil
+}
+
+// --- section sanitizers ---------------------------------------------------
+//
+// Each owns the boundary rules for one section and is shared by both
+// directions, so a hand-edited prefs file cannot smuggle in a value that
+// the writer would have rejected. They return nil for an empty section,
+// which pairs with prefsDoc's omitempty tags.
+
+// sanitizeFavorites drops empty ids and false entries, and sorts — the one
+// piece of ordering that does not fall out of encoding/json.
+func sanitizeFavorites(favs map[instrument.ID]bool) []string {
 	ids := make([]string, 0, len(favs))
 	for id, ok := range favs {
-		if ok {
-			ids = append(ids, id)
+		if ok && id != "" {
+			ids = append(ids, string(id))
 		}
+	}
+	if len(ids) == 0 {
+		return nil
 	}
 	sort.Strings(ids)
-	var doc prefsDoc
-	doc.Favorites = ids
-	if len(overrides) > 0 {
-		doc.RecipeOverrides = make(map[string]map[string]float64, len(overrides))
-		for recipeID, params := range overrides {
-			if len(params) == 0 {
-				continue
-			}
-			cp := make(map[string]float64, len(params))
-			for k, v := range params {
-				cp[k] = v
-			}
-			doc.RecipeOverrides[recipeID] = cp
-		}
-	}
-	if len(userRecipes) > 0 {
-		doc.UserRecipes = make(map[string]json.RawMessage, len(userRecipes))
-		for recipeID, raw := range userRecipes {
-			if len(raw) == 0 {
-				continue
-			}
-			cp := make(json.RawMessage, len(raw))
-			copy(cp, raw)
-			doc.UserRecipes[recipeID] = cp
-		}
-	}
-	return json.MarshalIndent(doc, "", "  ")
+	return ids
 }
 
-// marshalPrefsV4 extends marshalPrefsV3 with the sample-edit section,
-// using the same parse-back-and-set trick so the deterministic-ordering
-// guarantee and the older sections' shapes stay untouched.
-func marshalPrefsV4(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64) ([]byte, error) {
-	data, err := marshalPrefsV3(favs, overrides, userRecipes, audioPanel)
-	if err != nil {
-		return nil, err
+// parseFavorites is the read-side inverse of sanitizeFavorites.
+func parseFavorites(ids []string) map[instrument.ID]bool {
+	favs := make(map[instrument.ID]bool, len(ids))
+	for _, s := range ids {
+		if id, err := instrument.ParseID(s); err == nil {
+			favs[id] = true
+		}
 	}
-	if len(sampleEdits) == 0 {
-		return data, nil
+	return favs
+}
+
+// sanitizeNestedFloats deep-copies an id → field → value section, dropping
+// empty ids, empty groups, and non-finite values. Non-finite values are
+// dropped at the boundary because audio.SetInstrumentParam applies the same
+// rule — keeping it here means a hand-edited file cannot poison the
+// registry with NaN/Inf. Used by SampleEdits.
+func sanitizeNestedFloats(in map[instrument.ID]map[string]float64) map[instrument.ID]map[string]float64 {
+	if len(in) == 0 {
+		return nil
 	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return data, nil
-	}
-	doc.SampleEdits = make(map[string]map[string]float64, len(sampleEdits))
-	for id, fields := range sampleEdits {
-		if len(fields) == 0 {
+	out := make(map[instrument.ID]map[string]float64, len(in))
+	for id, fields := range in {
+		if id == "" || len(fields) == 0 {
 			continue
 		}
 		cp := make(map[string]float64, len(fields))
 		for k, v := range fields {
+			if !isFiniteFloat(v) {
+				continue
+			}
 			cp[k] = v
 		}
-		doc.SampleEdits[id] = cp
+		if len(cp) > 0 {
+			out[id] = cp
+		}
 	}
-	return json.MarshalIndent(doc, "", "  ")
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
-// marshalPrefsV5 extends marshalPrefsV4 with the notification-history
-// section, using the same parse-back-and-set trick so the older sections'
-// shapes and deterministic ordering stay untouched. Notifications are
-// trimmed to the newest notifHistoryMax before writing.
-func marshalPrefsV5(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64, notifications []NotificationRecord) ([]byte, error) {
-	data, err := marshalPrefsV4(favs, overrides, userRecipes, audioPanel, sampleEdits)
-	if err != nil {
-		return nil, err
+// sanitizeKnobSteps drops empty param names and non-finite step values.
+func sanitizeKnobSteps(in map[string]float64) map[string]float64 {
+	if len(in) == 0 {
+		return nil
 	}
-	recs := boundNotifications(notifications)
-	if len(recs) == 0 {
-		return data, nil
+	out := make(map[string]float64, len(in))
+	for name, step := range in {
+		if name == "" || !isFiniteFloat(step) {
+			continue
+		}
+		out[name] = step
 	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return data, nil
+	if len(out) == 0 {
+		return nil
 	}
-	doc.Notifications = recs
-	return json.MarshalIndent(doc, "", "  ")
+	return out
 }
 
 // boundNotifications trims to the newest notifHistoryMax entries and drops
@@ -373,202 +443,14 @@ func boundNotifications(recs []NotificationRecord) []NotificationRecord {
 	if len(out) > notifHistoryMax {
 		out = out[len(out)-notifHistoryMax:]
 	}
-	return out
-}
-
-// parseNotifications extracts the notification-history section from a prefs
-// document, applying the same boundary sanitization as the writer. Empty /
-// corrupt input returns a nil slice.
-func parseNotifications(data []byte) []NotificationRecord {
-	if len(data) == 0 {
+	if len(out) == 0 {
 		return nil
 	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil
-	}
-	return boundNotifications(doc.Notifications)
-}
-
-// marshalPrefsV6 extends marshalPrefsV5 with the knob-step-rung section,
-// using the same parse-back-and-set trick so the older sections' shapes
-// and deterministic ordering stay untouched.
-func marshalPrefsV6(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64, notifications []NotificationRecord, knobSteps map[string]float64) ([]byte, error) {
-	data, err := marshalPrefsV5(favs, overrides, userRecipes, audioPanel, sampleEdits, notifications)
-	if err != nil {
-		return nil, err
-	}
-	if len(knobSteps) == 0 {
-		return data, nil
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return data, nil
-	}
-	cp := make(map[string]float64, len(knobSteps))
-	for name, step := range knobSteps {
-		if name == "" || !isFiniteFloat(step) {
-			continue
-		}
-		cp[name] = step
-	}
-	if len(cp) > 0 {
-		doc.KnobSteps = cp
-	}
-	return json.MarshalIndent(doc, "", "  ")
-}
-
-// marshalPrefsV7 extends marshalPrefsV6 with the chosen UI language.
-func marshalPrefsV7(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64, notifications []NotificationRecord, knobSteps map[string]float64, language string) ([]byte, error) {
-	data, err := marshalPrefsV6(favs, overrides, userRecipes, audioPanel, sampleEdits, notifications, knobSteps)
-	if err != nil || language == "" {
-		return data, err
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, err
-	}
-	doc.Language = language
-	return json.MarshalIndent(doc, "", "  ")
-}
-
-// parseKnobStepsFromPrefs extracts the knob-step section from a prefs
-// document. Empty / corrupt input returns a fresh empty map (never nil).
-func parseKnobStepsFromPrefs(data []byte) (map[string]float64, error) {
-	out := map[string]float64{}
-	if len(data) == 0 {
-		return out, nil
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return out, err
-	}
-	for name, step := range doc.KnobSteps {
-		if name == "" || !isFiniteFloat(step) {
-			continue
-		}
-		out[name] = step
-	}
-	return out, nil
-}
-
-// parseLanguageFromPrefs extracts the chosen UI language from a prefs
-// document. Empty / corrupt input returns "" (default English).
-func parseLanguageFromPrefs(data []byte) string {
-	if len(data) == 0 {
-		return ""
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return ""
-	}
-	return doc.Language
-}
-
-// parseSampleEdits extracts the sample-edit section from a prefs document,
-// applying the same boundary sanitization as the recipe overrides. Empty /
-// corrupt input returns a fresh empty map.
-func parseSampleEdits(data []byte) map[string]map[string]float64 {
-	out := map[string]map[string]float64{}
-	if len(data) == 0 {
-		return out
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return out
-	}
-	for id, fields := range doc.SampleEdits {
-		if id == "" || len(fields) == 0 {
-			continue
-		}
-		cp := make(map[string]float64, len(fields))
-		for k, v := range fields {
-			if !isFiniteFloat(v) {
-				continue
-			}
-			cp[k] = v
-		}
-		if len(cp) == 0 {
-			continue
-		}
-		out[id] = cp
-	}
 	return out
-}
-
-// parsePrefs is the cross-platform load path. Returns fresh, non-nil
-// cache state. Corrupt docs return empty state plus a logged warning so
-// the caller is never blocked by bad on-disk state.
-func parsePrefs(data []byte, logf func(string, ...any)) (map[string]bool, map[string]map[string]float64, map[string][]byte) {
-	emptyFavs := map[string]bool{}
-	emptyOverrides := map[string]map[string]float64{}
-	emptyUserRecipes := map[string][]byte{}
-	if len(data) == 0 {
-		return emptyFavs, emptyOverrides, emptyUserRecipes
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
-		if logf != nil {
-			logf("[USERPREFS] prefs: corrupted JSON, ignoring: %v", err)
-		}
-		return emptyFavs, emptyOverrides, emptyUserRecipes
-	}
-	favs := make(map[string]bool, len(doc.Favorites))
-	for _, id := range doc.Favorites {
-		if id == "" {
-			continue
-		}
-		favs[id] = true
-	}
-	overrides := make(map[string]map[string]float64, len(doc.RecipeOverrides))
-	for recipeID, params := range doc.RecipeOverrides {
-		if recipeID == "" || len(params) == 0 {
-			continue
-		}
-		cp := make(map[string]float64, len(params))
-		for k, v := range params {
-			// Non-finite values are silently dropped at the boundary —
-			// the audio.SetInstrumentParam path applies the same rule;
-			// keeping it here means a hand-edited prefs file can't poison
-			// the registry with NaN/Inf.
-			if !isFiniteFloat(v) {
-				continue
-			}
-			cp[k] = v
-		}
-		if len(cp) == 0 {
-			continue
-		}
-		overrides[recipeID] = cp
-	}
-	userRecipes := make(map[string][]byte, len(doc.UserRecipes))
-	for recipeID, raw := range doc.UserRecipes {
-		if recipeID == "" || len(raw) == 0 {
-			continue
-		}
-		cp := make([]byte, len(raw))
-		copy(cp, raw)
-		userRecipes[recipeID] = cp
-	}
-	return favs, overrides, userRecipes
-}
-
-// parsePrefsV3 is the v3 extension of parsePrefs: in addition to the
-// existing maps it returns the audio-panel section when present.
-func parsePrefsV3(data []byte, logf func(string, ...any)) (map[string]bool, map[string]map[string]float64, map[string][]byte, AudioPanelStateDoc) {
-	favs, overrides, userRecipes := parsePrefs(data, logf)
-	if len(data) == 0 {
-		return favs, overrides, userRecipes, AudioPanelStateDoc{}
-	}
-	var doc prefsDoc
-	if err := json.Unmarshal(data, &doc); err != nil || doc.AudioPanel == nil {
-		return favs, overrides, userRecipes, AudioPanelStateDoc{}
-	}
-	return favs, overrides, userRecipes, *doc.AudioPanel
 }
 
 // isFiniteFloat is the boundary-sanitization predicate. Lives here so
-// parsePrefs and SaveRecipeOverride apply the same rule. Avoids pulling
+// parsePrefs and SaveSampleEdit apply the same rule. Avoids pulling
 // math/Inf checks into call sites and matches the contract
 // audio.sanitizeParamValue documents.
 func isFiniteFloat(v float64) bool {

@@ -72,7 +72,7 @@ func TestUploadWAVRegistersInstrument(t *testing.T) {
 	}
 	found := false
 	for _, id := range g.drum.instOptions {
-		if id == "u" {
+		if id == wavInstrumentID("u") {
 			found = true
 			break
 		}
@@ -132,7 +132,7 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 	}
 	found := false
 	for _, id := range g.drum.instOptions {
-		if id == "a" {
+		if id == wavInstrumentID("a") {
 			found = true
 			break
 		}

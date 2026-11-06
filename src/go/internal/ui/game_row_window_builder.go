@@ -34,6 +34,7 @@ func (s *playbackSlate) buildRowWindow(rowIdx int, cfg rowWindowConfig) ([]bool,
 		PrevTypesOffset:   cfg.prevTypesOffset,
 		PrevTypes:         cfg.prevTypes,
 		FastPath:          cfg.fastPath,
+		PlayedAt:          g.playedAtFunc(rowIdx),
 	}, beatInfoAt, wantAt, commitAt, cfg.reuseSteps, cfg.reuseTypes)
 }
 

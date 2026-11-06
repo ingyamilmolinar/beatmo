@@ -1,0 +1,220 @@
+{
+  "schema_version": "0.0.1",
+  "id": "muted-trumpet",
+  "name": "Muted Trumpet",
+  "category": "modular",
+  "notes": "mutedTrumpetSeed: a harmon-muted trumpet — a pinched, nasal, buzzy brass: a\nband-passed formant lift gives the muted \"wah\" while the fundamental is held\nback, bright and thin with a fast onset.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.8139,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.02,
+        "amp_curve": 1,
+        "amp_decay": 0.08,
+        "amp_release": 0.12,
+        "amp_sustain": 0.9
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.8,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 5000,
+        "filter_resonance": 1,
+        "filter_type": 0
+      }
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 1,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.12
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.18,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_freq: H1 held back (pinched)\ngen1_freq_mode: H1 held back (pinched)\ngen1_gain: H1 held back (pinched)\ngen1_source: H1 held back (pinched)\ngen1_wave: H1 held back (pinched)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.32,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: H2\ngen2_freq_mode: H2\ngen2_gain: H2\ngen2_source: H2\ngen2_wave: H2"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.5,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: H3 peak (nasal)\ngen3_freq_mode: H3 peak (nasal)\ngen3_gain: H3 peak (nasal)\ngen3_source: H3 peak (nasal)\ngen3_wave: H3 peak (nasal)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.34,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_freq: H4\ngen4_freq_mode: H4\ngen4_gain: H4\ngen4_source: H4\ngen4_wave: H4"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5,
+        "freq_mode": 0,
+        "gain": 0.2,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_freq: H5\ngen5_freq_mode: H5\ngen5_gain: H5\ngen5_source: H5\ngen5_wave: H5"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1800,
+        "filt_q": 2.2,
+        "filt_type": 5,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.35,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 1
+      },
+      "notes": "gen6_source: the harmon \"wah\" formant — a band-passed saw lift in the pinched mid"
+    }
+  ]
+}

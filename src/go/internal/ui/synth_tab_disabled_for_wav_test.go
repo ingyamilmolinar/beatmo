@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // synthTabIndexForTest returns the index of the Synth tab within AllPanelTabs.
@@ -26,7 +27,7 @@ func synthTabIndexForTest(t *testing.T) int {
 // a WAV sample (no bound recipe) does not.
 func TestActiveInstrumentHasSynth(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 3)
-	dv.eqPanelZone.SetActiveChannel("main") // resolve to first row instrument
+	dv.eqPanelZone.SetActiveChannel(channel.Master) // resolve to first row instrument
 
 	if !dv.activeInstrumentHasSynth() {
 		t.Fatalf("demo first-row instrument %q should be a synth", dv.synthTabActiveInstrument())
@@ -34,7 +35,7 @@ func TestActiveInstrumentHasSynth(t *testing.T) {
 
 	// Turn row 0 into a WAV sample with no recipe binding.
 	dv.Rows[0].Instrument = "wav-sample-x"
-	audio.BindInstrumentToRecipe("wav-sample-x", "")
+	audio.RemoveInstrumentDocForTest("wav-sample-x")
 	t.Cleanup(func() { audio.ResetInstrumentParams("wav-sample-x") })
 
 	if dv.activeInstrumentHasSynth() {
@@ -51,17 +52,17 @@ func TestSynthTabPillDisabledForWavInstrument(t *testing.T) {
 
 	// Select the concrete instrument (not Master, which independently disables
 	// the pill) so this test isolates the WAV-vs-synth gating.
-	dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+	dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	if pill := dv.eqPanelZone.stickyBar.TabBtn(idx); pill == nil || pill.Disabled {
 		t.Fatalf("synth pill should be enabled for a synth instrument")
 	}
 
 	dv.Rows[0].Instrument = "wav-sample-y"
-	audio.BindInstrumentToRecipe("wav-sample-y", "")
+	audio.RemoveInstrumentDocForTest("wav-sample-y")
 	t.Cleanup(func() { audio.ResetInstrumentParams("wav-sample-y") })
 
-	dv.eqPanelZone.SetActiveChannel("wav-sample-y")
+	dv.eqPanelZone.SetActiveChannel(channel.Of("wav-sample-y"))
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	if pill := dv.eqPanelZone.stickyBar.TabBtn(idx); pill == nil || !pill.Disabled {
 		t.Fatalf("synth pill should be disabled for a WAV instrument")

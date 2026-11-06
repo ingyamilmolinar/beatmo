@@ -6,7 +6,10 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestProjectPins_JSONRoundTrip pins the contract that PinnedInstruments
@@ -25,18 +28,18 @@ func TestProjectPins_JSONRoundTrip(t *testing.T) {
 
 	// Seed pins on the source DrumView. SetProjectPins dedupes empty strings;
 	// the helper itself sorts on export, so the JSON will hold them sorted.
-	g.drum.SetProjectPins([]string{"kick-808", "snare-tight", "hh-shuffle"})
+	g.drum.SetProjectPins([]instrument.ID{roster.Kick808, roster.SnareFat, roster.HihatPedal})
 
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	gotSorted := append([]string(nil), f.PinnedInstruments...)
-	wantSorted := []string{"hh-shuffle", "kick-808", "snare-tight"}
+	gotSorted := append([]instrument.ID(nil), f.PinnedInstruments...)
+	wantSorted := []instrument.ID{roster.HihatPedal, roster.Kick808, roster.SnareFat}
 	if len(gotSorted) != len(wantSorted) {
 		t.Fatalf("pinned_instruments len: got %d want %d (%v)", len(gotSorted), len(wantSorted), gotSorted)
 	}
@@ -57,7 +60,7 @@ func TestProjectPins_JSONRoundTrip(t *testing.T) {
 	if len(pins) != 3 {
 		t.Fatalf("imported pin set size: got %d want 3 (%v)", len(pins), pins)
 	}
-	for _, id := range []string{"kick-808", "snare-tight", "hh-shuffle"} {
+	for _, id := range []instrument.ID{roster.Kick808, roster.SnareFat, roster.HihatPedal} {
 		if _, ok := pins[id]; !ok {
 			t.Errorf("imported pin set missing %q (full %v)", id, pins)
 		}
@@ -100,9 +103,9 @@ func TestProjectPins_BackwardCompatible(t *testing.T) {
 	// Seed with pins so we can prove import resets them when the field is
 	// absent (avoids the "pin set silently inherited from previous project"
 	// failure mode).
-	g.drum.SetProjectPins([]string{"will-be-cleared"})
+	g.drum.SetProjectPins([]instrument.ID{"will-be-cleared"})
 
-	legacy := `{"version":1,"subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`
+	legacy := `{"schema_version":"` + schema.Version + `","subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`
 	if err := g.Import([]byte(legacy)); err != nil {
 		t.Fatalf("legacy import: %v", err)
 	}
@@ -118,7 +121,7 @@ func TestProjectPins_BackwardCompatible(t *testing.T) {
 // failing PinSource.Tier lookup.
 func TestProjectPins_SetProjectPinsDedupesEmpty(t *testing.T) {
 	dv := &DrumView{}
-	dv.SetProjectPins([]string{"kick-808", "", "snare-tight", ""})
+	dv.SetProjectPins([]instrument.ID{roster.Kick808, "", roster.SnareFat, ""})
 	pins := dv.ProjectPins()
 	if len(pins) != 2 {
 		t.Fatalf("expected 2 pins after empty-string filter; got %d (%v)", len(pins), pins)

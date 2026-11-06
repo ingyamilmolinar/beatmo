@@ -36,6 +36,7 @@ type actionMenuComponent struct {
 	buttons      []*Button
 	cardRect     image.Rectangle
 	screenBounds image.Rectangle
+	nav          *MenuKeyNav
 }
 
 func newActionMenuComponent() *actionMenuComponent {
@@ -75,6 +76,11 @@ func (m *actionMenuComponent) Close() {
 	}
 	m.open = false
 	m.buttons = nil
+	if m.nav != nil {
+		// Clear the cursor so the next open starts with nothing highlighted
+		// rather than resuming on a row from a different item set.
+		m.nav.Reset()
+	}
 	if m.props.OnClose != nil {
 		m.props.OnClose()
 	}
@@ -159,8 +165,8 @@ func (m *actionMenuComponent) Draw(dst *ebiten.Image) {
 		handleW, handleH := 36, 4
 		hx := m.cardRect.Min.X + m.cardRect.Dx()/2 - handleW/2
 		hy := m.cardRect.Min.Y + 8
-		drawRoundedRect(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
-			WithAlpha(genColorBorder, genAlphaScrollbarThumb), handleH/2, true)
+		drawCapsule(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
+			WithAlpha(genColorBorder, genAlphaScrollbarThumb), true) // a drag handle is a capsule
 	} else {
 		drawPanel(dst, m.cardRect)
 	}
@@ -178,7 +184,7 @@ func (m *actionMenuComponent) drawRow(dst *ebiten.Image, btn *Button, i int) {
 	if i < len(m.props.Items) && m.props.Items[i].Destructive {
 		labelCol = colError
 	}
-	if btn.hovered || btn.pressed {
+	if btn.hovered || btn.pressed || i == m.KeyNav().Selected() {
 		state = menuItemHover
 	}
 	drawMenuRow(dst, btn, MenuRowSpec{
@@ -234,3 +240,58 @@ func (m *actionMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	}
 	return InputConsumed
 }
+
+// --- Keyboard navigation -------------------------------------------------
+//
+// This menu rendered rows and had no keyboard support at all: it was exempt
+// from the menu-keynav discipline test on the grounds that it "hosts no list
+// itself", which stopped being true once it grew props.Items. It now drives the
+// same MenuKeyNav every other list menu uses.
+
+// ClaimsKeyboard reports whether the menu owns keyboard input.
+//
+// Without this the arrows fall through to the grid's arrow-pan, so one press
+// pans the camera under an open menu and does nothing inside it.
+func (m *actionMenuComponent) ClaimsKeyboard() bool { return m != nil && m.open }
+
+// KeyNav is the menu's keyboard cursor, created on first use.
+func (m *actionMenuComponent) KeyNav() *MenuKeyNav {
+	if m.nav == nil {
+		m.nav = NewMenuKeyNav()
+	}
+	return m.nav
+}
+
+// UpdateKeyNav pumps the cursor for one frame, driven from the portal's
+// per-frame update so the arrows work wherever the pointer is.
+func (m *actionMenuComponent) UpdateKeyNav() {
+	if !m.open {
+		if m.nav != nil {
+			m.nav.Reset()
+		}
+		return
+	}
+	m.KeyNav().Update(m)
+}
+
+// --- MenuKeyNavHost ---
+
+func (m *actionMenuComponent) MenuItemCount() int { return len(m.buttons) }
+
+// Every row is an action, so all rows are selectable.
+func (m *actionMenuComponent) MenuItemSelectable(i int) bool {
+	return i >= 0 && i < len(m.buttons) && m.buttons[i] != nil && m.buttons[i].OnClick != nil
+}
+
+// MenuActivate runs row i's action — identical to clicking it, including the
+// Close the row closure already performs.
+func (m *actionMenuComponent) MenuActivate(i int) {
+	if !m.MenuItemSelectable(i) {
+		return
+	}
+	m.buttons[i].OnClick()
+}
+
+// The card is sized to its (tiny, fixed) item count and never scrolls, so
+// there is nothing to reveal.
+func (m *actionMenuComponent) MenuScrollBehavior() *ScrollBehavior { return nil }

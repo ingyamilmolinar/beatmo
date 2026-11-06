@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -36,26 +39,26 @@ func TestPushAndDrain(t *testing.T) {
 	s := NewService(Config{SampleRate: 44100})
 
 	// Push to two different instruments at two different stages.
-	s.PushSamples(scope.StageSynth, "kick", []float64{0.1, 0.2})
-	s.PushSamples(scope.StageSynth, "snare", []float64{0.3})
-	s.PushSamples(scope.StageEQ, "kick", []float64{0.4, 0.5, 0.6})
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), []float64{0.1, 0.2})
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Snare), []float64{0.3})
+	s.PushSamples(scope.StageEQ, channel.Of(roster.Kick), []float64{0.4, 0.5, 0.6})
 
 	// Drain stage 0 (Synth).
 	stage0 := s.stages[scope.StageSynth].drainAll()
 	if len(stage0) != 2 {
 		t.Fatalf("expected 2 instruments in stage 0, got %d", len(stage0))
 	}
-	if len(stage0["kick"]) != 2 {
-		t.Errorf("expected 2 kick samples in stage 0, got %d", len(stage0["kick"]))
+	if len(stage0[channel.Of(roster.Kick)]) != 2 {
+		t.Errorf("expected 2 kick samples in stage 0, got %d", len(stage0[channel.Of(roster.Kick)]))
 	}
-	if len(stage0["snare"]) != 1 {
-		t.Errorf("expected 1 snare sample in stage 0, got %d", len(stage0["snare"]))
+	if len(stage0[channel.Of(roster.Snare)]) != 1 {
+		t.Errorf("expected 1 snare sample in stage 0, got %d", len(stage0[channel.Of(roster.Snare)]))
 	}
 
 	// Drain stage 3 (EQ).
 	stage3 := s.stages[scope.StageEQ].drainAll()
-	if len(stage3["kick"]) != 3 {
-		t.Errorf("expected 3 kick samples in stage 3, got %d", len(stage3["kick"]))
+	if len(stage3[channel.Of(roster.Kick)]) != 3 {
+		t.Errorf("expected 3 kick samples in stage 3, got %d", len(stage3[channel.Of(roster.Kick)]))
 	}
 
 	// Second drain should be empty.
@@ -74,11 +77,10 @@ func TestSnapshotJSONL(t *testing.T) {
 		Interval:   50 * time.Millisecond,
 		OutputPath: path,
 		BPMFunc:    func() int { return 120 },
-		LookupMeta: func(id string) (string, string, bool) {
+		LookupMeta: func(id channel.ID) (string, string, bool) {
 			return "TestKick", "synth", true
 		},
-		ChannelVolume: func(id string) float64 { return 0.8 },
-		ChannelPan:    func(id string) float64 { return 0.0 },
+		ChannelVolume: func(id channel.ID) float64 { return 0.8 },
 		MainVolume:    func() float64 { return 1.0 },
 	})
 
@@ -87,8 +89,8 @@ func TestSnapshotJSONL(t *testing.T) {
 	for i := range samples {
 		samples[i] = float64(i%2)*0.5 - 0.25 // square-ish
 	}
-	s.PushSamples(scope.StageSynth, "kick", samples)
-	s.PushSamples(scope.StageMaster, "master", samples)
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), samples)
+	s.PushSamples(scope.StageMaster, channel.Master, samples)
 
 	// Start and let one tick fire.
 	s.Start()
@@ -133,7 +135,7 @@ func TestSnapshotJSONL(t *testing.T) {
 		t.Fatalf("expected at least 1 channel, got %d", len(snap.Channels))
 	}
 	kickCh := snap.Channels[0]
-	if kickCh.ID != "kick" {
+	if kickCh.ID != channel.Of(roster.Kick) {
 		t.Errorf("expected channel ID 'kick', got %q", kickCh.ID)
 	}
 	if kickCh.Name != "TestKick" {
@@ -153,16 +155,16 @@ func TestMultipleInstruments(t *testing.T) {
 	s := NewService(Config{SampleRate: 44100})
 
 	// Push instruments at different times.
-	s.PushSamples(scope.StageSynth, "kick", []float64{0.5})
-	s.PushSamples(scope.StageSynth, "snare", []float64{0.3})
-	s.PushSamples(scope.StageSynth, "hihat", []float64{0.1})
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Kick), []float64{0.5})
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Snare), []float64{0.3})
+	s.PushSamples(scope.StageSynth, channel.Of(roster.Hihat), []float64{0.1})
 
 	drained := s.stages[scope.StageSynth].drainAll()
 	if len(drained) != 3 {
 		t.Errorf("expected 3 instruments, got %d", len(drained))
 	}
-	for _, id := range []string{"kick", "snare", "hihat"} {
-		if _, ok := drained[id]; !ok {
+	for _, id := range []instrument.ID{roster.Kick, roster.Snare, roster.Hihat} {
+		if _, ok := drained[channel.Of(id)]; !ok {
 			t.Errorf("missing instrument %q in drained data", id)
 		}
 	}

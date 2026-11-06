@@ -133,11 +133,11 @@ func TestGridClickClosesOpenGroupMenu(t *testing.T) {
 }
 
 // TestNodeClickClosesOpenGroupMenu is the Finding 2 review follow-up:
-// TestGridClickClosesOpenGroupMenu only covers the empty-space close site
-// (the "else" branch of handleEditor's release handling). This variant
-// exercises the sibling node-hit branch: a plain click ON an existing node
-// must also close an already-open GroupMenu, and must open the node sidebar
-// (confirming we actually hit the node branch, not the empty-space one).
+// TestGridClickClosesOpenGroupMenu only covers an empty-space click. This
+// variant clicks ON an existing node: it must close the open GroupMenu and do
+// NOTHING else — the global tap-outside-a-menu rule (popup_outside_press.go):
+// the press that dismisses a pop-up owns its gesture, so it neither selects
+// the node nor opens its sidebar.
 func TestNodeClickClosesOpenGroupMenu(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -156,8 +156,8 @@ func TestNodeClickClosesOpenGroupMenu(t *testing.T) {
 	if g.groupMenu.IsOpen() {
 		t.Fatalf("plain click on a node must close the open group menu")
 	}
-	if !g.sidebar.IsOpen() {
-		t.Fatalf("plain click on a node must open the sidebar (confirms the node branch fired)")
+	if g.sidebar.IsOpen() {
+		t.Fatalf("a click that dismisses the group menu must not also open the node sidebar")
 	}
 }
 
@@ -508,8 +508,9 @@ func TestMarqueeGroupDiscardedOnCloseWithoutSave(t *testing.T) {
 }
 
 // TestMarqueeGroupDiscardedOnGridClickOutside is task-groupsave brief test 2:
-// a plain click on empty grid space discards the provisional group AND still
-// performs its normal add-node behavior.
+// a plain click on empty grid space discards the provisional group. It does
+// NOT also add a node: the global tap-outside-a-menu rule
+// (popup_outside_press.go) makes the dismissing press only close the menu.
 func TestMarqueeGroupDiscardedOnGridClickOutside(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
@@ -531,14 +532,14 @@ func TestMarqueeGroupDiscardedOnGridClickOutside(t *testing.T) {
 	if _, ok := g.graph.Group(gid); ok {
 		t.Fatalf("provisional group must be deleted on click-outside")
 	}
-	if len(g.nodes) != nodesBefore+1 {
-		t.Fatalf("plain click's normal add-node behavior must still happen, want %d nodes got %d", nodesBefore+1, len(g.nodes))
+	if len(g.nodes) != nodesBefore {
+		t.Fatalf("a click that dismisses the group menu must not also add a node, want %d nodes got %d", nodesBefore, len(g.nodes))
 	}
 }
 
 // TestMarqueeGroupDiscardedOnNodeClick is task-groupsave brief test 3: a
-// plain click ON a node discards the provisional group, closes the menu, and
-// still opens the sidebar (confirms the node-hit branch fired).
+// plain click ON a node discards the provisional group and closes the menu —
+// and only that (popup_outside_press.go): no sidebar opens.
 func TestMarqueeGroupDiscardedOnNodeClick(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
@@ -550,8 +551,8 @@ func TestMarqueeGroupDiscardedOnNodeClick(t *testing.T) {
 	if g.groupMenu.IsOpen() {
 		t.Fatalf("menu must close on node click")
 	}
-	if !g.sidebar.IsOpen() {
-		t.Fatalf("node click must still open the sidebar")
+	if g.sidebar.IsOpen() {
+		t.Fatalf("a node click that dismisses the group menu must not also open the sidebar")
 	}
 	if _, ok := g.graph.Group(gid); ok {
 		t.Fatalf("provisional group must be deleted on node-click close")

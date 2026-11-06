@@ -93,21 +93,69 @@ func stepLadder(def audio.ParamDef) []float64 {
 	return out
 }
 
-// defaultStepIndex returns the index into ladder whose step produces a
-// notch-count closest to 400, giving a nuanced but not overwhelming control.
-// The result is always a valid index into ladder.
+// defaultStepNotches is the detent count a control's STARTING resolution aims
+// for: enough to sweep the range in a couple of hundred clicks without making a
+// single click imperceptible.
+const defaultStepNotches = 200
+
+// defaultStepIndex returns the index into ladder the control should START on:
+// the ROUND DECADE rung (a pure 1×10^k — …0.01, 0.1, 1, 10, 100…) closest to
+// span/defaultStepNotches. Picking the decade rung is what makes a control's
+// default step a number a human would count by — ±1 dB, ±100 Hz, ±0.01 s —
+// rather than whatever odd rung (±0.2 dB, ±50 Hz, ±0.005 s) happened to sit
+// nearest a raw detent-count target.
+//
+// Ladders are logarithmically spaced, so "closest" is measured as a RATIO, not
+// an absolute difference: against a target of 0.36, the rung 1 (ratio 2.8) beats
+// the rung 0.1 (ratio 3.6) even though 0.1 is nearer on a number line.
+//
+// A ladder with no decade rung at all (possible only for a hand-built ladder —
+// stepLadder always walks whole 1/2/5 decades) falls back to the nearest rung by
+// the same ratio measure. The result is always a valid index into ladder.
 func defaultStepIndex(def audio.ParamDef, ladder []float64) int {
 	span := def.Max - def.Min
 	if span <= 0 || len(ladder) == 0 {
 		return 0
 	}
-	best, bestErr := 0, math.Inf(1)
+	target := span / defaultStepNotches
+	decade, decadeErr := -1, math.Inf(1)
+	nearest, nearestErr := 0, math.Inf(1)
 	for i, s := range ladder {
-		if e := math.Abs(span/s - 400); e < bestErr {
-			best, bestErr = i, e
+		e := stepRatioDistance(s, target)
+		if e < nearestErr {
+			nearest, nearestErr = i, e
+		}
+		if isDecadeStep(s) && e < decadeErr {
+			decade, decadeErr = i, e
 		}
 	}
-	return best
+	if decade >= 0 {
+		return decade
+	}
+	return nearest
+}
+
+// isDecadeStep reports whether s is a pure power of ten (mantissa 1) — the
+// "round" rungs of the 1/2/5 ladder.
+func isDecadeStep(s float64) bool {
+	if s <= 0 {
+		return false
+	}
+	l := math.Log10(s)
+	return math.Abs(l-math.Round(l)) < 1e-9
+}
+
+// stepRatioDistance measures how far apart two step sizes are on a log scale:
+// the larger over the smaller, so 1 means identical and the measure is
+// symmetric. +Inf for non-positive input.
+func stepRatioDistance(a, b float64) float64 {
+	if a <= 0 || b <= 0 {
+		return math.Inf(1)
+	}
+	if a < b {
+		a, b = b, a
+	}
+	return a / b
 }
 
 // formatStepValue formats a step size for display. When def carries a unit

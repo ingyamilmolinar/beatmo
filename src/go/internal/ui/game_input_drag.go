@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"image"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
@@ -16,7 +14,10 @@ func (g *Game) enqueueUI(fn func()) {
 
 // blocksAt reports whether any UI overlay blocks interaction at (x,y).
 func (g *Game) blocksAt(x, y int) bool {
-	if image.Pt(x, y).In(g.gridHelpButtonRect()) {
+	// The whole top-right button cluster (gear + folder + logs, plus the gaps
+	// between them and the reserved margin) — not just the gear — so a near-miss
+	// tap never creates a node between or around the buttons.
+	if g.inTopRightButtonZone(x, y) {
 		return true
 	}
 	if g.drum != nil && g.drum.BlocksAt(x, y) {
@@ -67,7 +68,16 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 // menuHit reports whether a screen-space point lies within the node sidebar
 // or the group menu.
 func (g *Game) menuHit(x, y int) bool {
-	return g.sidebar.Hit(x, y) || g.groupMenu.Hit(x, y) || image.Pt(x, y).In(g.gridHelpButtonRect())
+	return g.sidebar.Hit(x, y) || g.groupMenu.Hit(x, y) || g.inTopRightButtonZone(x, y)
+}
+
+// gridMenuDragging reports whether either grid-pane menu card is being dragged
+// by its grip. menuHit (above) is cursor-POSITION based, so once a grip drag
+// pulls the pointer off the card it stops suppressing the camera — the grid
+// would then pan under the moving menu. The camera gate consults this instead.
+func (g *Game) gridMenuDragging() bool {
+	return (g.sidebar != nil && g.sidebar.drag.Dragging()) ||
+		(g.groupMenu != nil && g.groupMenu.drag.Dragging())
 }
 
 // cursorLabelOccluded reports whether (x,y) sits over a surface that renders

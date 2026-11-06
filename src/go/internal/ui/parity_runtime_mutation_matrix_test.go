@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // runtimeMutationCase exercises a single runtime mutation while playback
@@ -42,7 +43,7 @@ func runRuntimeMutationCase(t *testing.T, c runtimeMutationCase) {
 	g.addEdge(b2, b0)
 
 	g.drum.AddRow()
-	g.drum.SetInstrument("snare")
+	g.drum.SetInstrument(roster.Snare)
 	g.drum.Rows[1].Origin = b0.ID
 	g.drum.Rows[1].Node = g.nodeByID(b0.ID)
 
@@ -86,14 +87,14 @@ func TestParityRuntimeMutationMatrix(t *testing.T) {
 			name: "instrument-change-row1",
 			mutate: func(t *testing.T, g *Game) {
 				g.drum.selRow = 1
-				g.drum.SetInstrument("hihat")
+				g.drum.SetInstrument(roster.Hihat)
 			},
 		},
 		{
 			name: "instrument-change-row0",
 			mutate: func(t *testing.T, g *Game) {
 				g.drum.selRow = 0
-				g.drum.SetInstrument("clap")
+				g.drum.SetInstrument(roster.Clap)
 			},
 		},
 		{
@@ -134,10 +135,10 @@ func TestParityRuntimeMutationMatrix(t *testing.T) {
 			name: "rapid-instrument-cycling",
 			mutate: func(t *testing.T, g *Game) {
 				g.drum.selRow = 1
-				g.drum.SetInstrument("hihat")
-				g.drum.SetInstrument("clap")
-				g.drum.SetInstrument("tom")
-				g.drum.SetInstrument("cowbell")
+				g.drum.SetInstrument(roster.Hihat)
+				g.drum.SetInstrument(roster.Clap)
+				g.drum.SetInstrument(roster.Tom)
+				g.drum.SetInstrument(roster.Cowbell)
 			},
 		},
 		{

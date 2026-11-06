@@ -9,6 +9,7 @@ import "github.com/ingyamilmolinar/beatmo/core/model"
 func (p *Predictor) SetPaths(paths [][]model.BeatInfo, isLoop []bool, loopStart []int, nodes map[model.NodeID]model.Node) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.epoch.Add(1)
 
 	n := len(paths)
 	p.beatInfosByRow = make([][]model.BeatInfo, n)
@@ -65,6 +66,8 @@ func (p *Predictor) SetPaths(paths [][]model.BeatInfo, isLoop []bool, loopStart 
 
 // resetBuffersLocked clears predictions and contexts. Caller must hold p.mu.
 func (p *Predictor) resetBuffersLocked(n int) {
+	p.epoch.Add(1)
+	p.decisions = nil
 	p.audibleByRow = make([][]bool, n)
 	p.visibleByRow = make([][]bool, n)
 	p.triggeredByRow = make([][]bool, n)

@@ -3,10 +3,10 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSynthSections_EveryGridControlLandsInVisibleSection is the family-knob
@@ -28,54 +28,57 @@ import (
 // the family generator picker is the instrument's own voice, so it belongs in
 // VOICE, which always leads the unified order.
 func TestSynthSections_WaveControlGetsVoiceCard(t *testing.T) {
-	for id, reg := range audio.RecipeRegistrations() {
+	checked := 0
+	for _, id := range roster.All {
+		schema := audio.InstrumentParamDefs(id)
+		// Only a family voice (kick, snare, FM, …) has a generator VOICE card;
+		// the pure modular voice drives its generator from osc_type in OSC.
+		if _, ok := activeFamilyStage(schema); !ok {
+			continue
+		}
 		var waveDef *audio.ParamDef
-		for _, d := range reg.Params {
-			if strings.HasSuffix(d.Name, "_wave") {
+		for _, d := range schema {
+			if d.Name == "gen1_wave" {
 				dd := d
 				waveDef = &dd
 				break
 			}
 		}
-		order := synthSectionOrderForSchema(reg.Params)
 		if waveDef == nil {
-			// No generator knob (noise/KS engines, modular voice handles its
-			// own osc_type) → no claim about VOICE here.
+			t.Errorf("instrument %q: family voice without a gen1_wave ParamDef", id)
 			continue
 		}
-		// All modular-derived recipes (synth-modular, -pad, and the orchestral
-		// synth-modular-* voices: trumpet/violin/guitar/flute/…) use the
-		// pure modular voice schema: their generator is the modular gen-bank
-		// (gen1_wave, label "G1 wave"), driven by osc_type in the OSC stage — they
-		// have no <family>_wave VOICE knob, so the VOICE-card claim doesn't apply.
-		if strings.HasPrefix(id, "synth-modular") {
-			continue
-		}
-		if got := sectionForParamDefIn(id, *waveDef); got != synthSectionVoice {
-			t.Errorf("recipe %q: %s maps to section %v, want VOICE (the generator card)", id, waveDef.Name, got)
+		checked++
+		order := synthSectionOrderForSchema(schema)
+		if got := sectionForParamDef(*waveDef); got != synthSectionVoice {
+			t.Errorf("instrument %q: %s maps to section %v, want VOICE (the generator card)", id, waveDef.Name, got)
 		}
 		if len(order) == 0 || order[0] != synthSectionVoice {
-			t.Errorf("recipe %q: section order %v does not LEAD with the VOICE generator card", id, order)
+			t.Errorf("instrument %q: section order %v does not LEAD with the VOICE generator card", id, order)
 		}
 		if waveDef.Label != "Generator" {
-			t.Errorf("recipe %q: %s label = %q, want \"Generator\"", id, waveDef.Name, waveDef.Label)
+			t.Errorf("instrument %q: %s label = %q, want \"Generator\"", id, waveDef.Name, waveDef.Label)
 		}
+	}
+	if checked == 0 {
+		t.Fatal("no family-voice instrument checked — the guard is vacuous")
 	}
 }
 
 func TestSynthSections_EveryGridControlLandsInVisibleSection(t *testing.T) {
-	for id, reg := range audio.RecipeRegistrations() {
-		order := synthSectionOrderForSchema(reg.Params)
+	for _, id := range roster.All {
+		schema := audio.InstrumentParamDefs(id)
+		order := synthSectionOrderForSchema(schema)
 		visible := map[synthSectionID]bool{}
 		for _, sec := range order {
 			visible[sec] = true
 		}
-		kickActive := schemaUsesKickStage(reg.Params)
-		for _, def := range reg.Params {
-			if !synthParamIsGridControl(def) || synthKickParamHidden(kickActive, def) {
+		vals := schemaValues(schema)
+		for _, def := range schema {
+			if !synthParamIsGridControl(def) || !audio.FlatFieldDeclared(vals, def.Name) {
 				continue
 			}
-			sec := sectionForParamDefIn(id, def)
+			sec := sectionForParamDef(def)
 			if !visible[sec] {
 				t.Errorf("recipe %q: knob %q maps to section %v which is absent from the section order %v — knob would be invisible",
 					id, def.Name, sec, order)

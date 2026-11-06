@@ -5,14 +5,16 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // SetPlayFunc overrides the audio playback function used by this game instance.
-func (g *Game) SetPlayFunc(fn func(string, float64, ...float64)) {
+func (g *Game) SetPlayFunc(fn func(instrument.ID, float64, ...float64)) {
 	// Wrap the provided function to emulate scheduling when a future timestamp
 	// is provided via 'when'. This makes timing tests (real Ebiten/audio path)
 	// observe the intended delay without requiring the actual audio backend.
-	g.playFn = func(id string, vol float64, when ...float64) {
+	g.playFn = func(id instrument.ID, vol float64, when ...float64) {
 		if g.Paused() {
 			return
 		}
@@ -27,7 +29,7 @@ func (g *Game) SetPlayFunc(fn func(string, float64, ...float64)) {
 				return
 			}
 		}
-		gain := audio.ChannelVolume(id) * audio.MainVolume()
+		gain := audio.ChannelVolume(channel.Of(id)) * audio.MainVolume()
 		fn(id, vol*gain, when...)
 	}
 }
@@ -37,7 +39,7 @@ func (g *Game) SetPlayFunc(fn func(string, float64, ...float64)) {
 // scheduler is wired (Game constructed outside New()) or if the
 // scheduler is closed during shutdown — preserves the test contract
 // that fn is eventually called.
-func (g *Game) scheduleDelayedPlay(due float64, fn func(string, float64, ...float64), id string, vol float64, when []float64) {
+func (g *Game) scheduleDelayedPlay(due float64, fn func(instrument.ID, float64, ...float64), id instrument.ID, vol float64, when []float64) {
 	deliver := func() {
 		if g.Paused() {
 			return

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -21,10 +22,10 @@ func setupWaveGame(t *testing.T) *Game {
 	rowSnaps := make([]RowSnapshot, 0, len(g.drum.Rows))
 	for _, r := range g.drum.Rows {
 		if r != nil && r.Instrument != "" {
-			rowSnaps = append(rowSnaps, RowSnapshot{ID: r.Instrument, Name: r.Name, Snap: snap})
+			rowSnaps = append(rowSnaps, RowSnapshot{ID: channel.Of(r.Instrument), Name: r.Name, Snap: snap})
 		}
 	}
-	testAnalyzerStateOverride = SynthesizeAnalyzerState("main", "Master", snap, rowSnaps, nil, "", "", audio.SampleRate())
+	testAnalyzerStateOverride = SynthesizeAnalyzerState(channel.Master, "Master", snap, rowSnaps, nil, channel.ID{}, "", audio.SampleRate())
 	t.Cleanup(func() { testAnalyzerStateOverride = nil })
 	g.drum.eqPanelZone.SetActiveTab(TabWave)
 	return g
@@ -35,10 +36,10 @@ func newWaveAnalyzerOverride(g *Game) *analyzer.State {
 	rowSnaps := make([]RowSnapshot, 0, len(g.drum.Rows))
 	for _, r := range g.drum.Rows {
 		if r != nil && r.Instrument != "" {
-			rowSnaps = append(rowSnaps, RowSnapshot{ID: r.Instrument, Name: r.Name, Snap: snap})
+			rowSnaps = append(rowSnaps, RowSnapshot{ID: channel.Of(r.Instrument), Name: r.Name, Snap: snap})
 		}
 	}
-	return SynthesizeAnalyzerState("main", "Master", snap, rowSnaps, nil, "", "", audio.SampleRate())
+	return SynthesizeAnalyzerState(channel.Master, "Master", snap, rowSnaps, nil, channel.ID{}, "", audio.SampleRate())
 }
 
 // TestWaveTraceCacheHitsAndInvalidates mirrors the Chain-tab guard: an

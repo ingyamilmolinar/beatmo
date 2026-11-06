@@ -8,6 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -32,11 +34,11 @@ func newDisabledFilterSnareGame(t *testing.T) *Game {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
-	audio.SetInstrumentParam("snare", "filter_enabled", 0)
+	audio.SetInstrumentParam(roster.Snare, "filter_enabled", 0)
 	// Open the Synth tab at production height and select the FILTER stage so its
 	// detail pane (knobs + enable pill + bypass scrim) is laid out. The
 	// per-card pill is gone in the chip-strip redesign — the enable pill lives
@@ -45,7 +47,7 @@ func newDisabledFilterSnareGame(t *testing.T) *Game {
 	layoutSynthTab(t, g)
 	g.Layout(1280, 720)
 	layoutSynthTab(t, g)
-	g.drum.setSelectedSynthSection("snare", synthSectionFilter)
+	g.drum.setSelectedSynthSection(roster.Snare, synthSectionFilter)
 	layoutSynthTab(t, g)
 	return g
 }
@@ -59,10 +61,10 @@ func newDisabledFilterSnareGame(t *testing.T) *Game {
 // tests in internal/audio.
 func TestSynthTab_DisabledStagePillStaysVisible(t *testing.T) {
 	g := newDisabledFilterSnareGame(t)
-	restore := SwapSynthAuditionFnForTest(func(string) {})
+	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
-	if synthStageEnabled("snare", "filter_enabled") {
+	if synthStageEnabled(roster.Snare, "filter_enabled") {
 		t.Fatal("precondition: filter stage should be bypassed")
 	}
 	// The pill survives the bypass — it must stay tappable to re-enable.
@@ -75,17 +77,16 @@ func TestSynthTab_DisabledStagePillStaysVisible(t *testing.T) {
 // TestSynthTab_DisabledStageScrimDrawn asserts the bypass scrim is painted
 // over the SELECTED (FILTER) stage's detail-pane knob area (below the detail
 // header band) when the stage is off, and NOT painted when the stage is on.
-// In the chip-strip redesign the scrim moved from the per-card body to the
-// detail pane: drawSynthDetailPane emits a WithAlpha(Surface1, AlphaStrong)
-// filled rounded rect spanning the pane below dv.instEditorDetailHeaderH.
+// In the category layer the scrim covers the drilled view's control grid:
+// drawSynthMacroLayer emits a WithAlpha(Surface1, AlphaStrong) filled rounded
+// rect spanning the grid's content rect.
 func TestSynthTab_DisabledStageScrimDrawn(t *testing.T) {
 	g := newDisabledFilterSnareGame(t)
 
 	scrimColor := WithAlpha(TokenSurface1(), AlphaStrong)
 	countScrims := func() int {
-		detail := g.drum.instEditorDetailR
-		// The scrim covers the knob area below the detail header band.
-		body := image.Rect(detail.Min.X, detail.Min.Y+g.drum.instEditorDetailHeaderH, detail.Max.X, detail.Max.Y)
+		// The scrim covers the drilled view's control grid (below the header row).
+		body := g.drum.instEditorMacroGrid.ContentRect()
 		n := 0
 		orig := drawRoundedRect
 		drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
@@ -105,7 +106,7 @@ func TestSynthTab_DisabledStageScrimDrawn(t *testing.T) {
 	}
 
 	// Re-enable → the scrim must disappear.
-	audio.SetInstrumentParam("snare", "filter_enabled", 1)
+	audio.SetInstrumentParam(roster.Snare, "filter_enabled", 1)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	if got := countScrims(); got != 0 {
 		t.Errorf("bypass scrim still drawn (%d) after re-enabling the FILTER stage", got)

@@ -96,10 +96,12 @@ func TestStartupHeader_LenButtonsInsideHeader_Desktop(t *testing.T) {
 	}
 }
 
-// TestStartupHeader_TrackButtonInsideHeader_Desktop asserts the track button
-// is fully inside the header band AND tall enough to be a usable click target
-// (>= TouchMinTarget()/2). Today the rect spans the full timeline area but
-// renders nearly invisibly — this guards against future shrinkage.
+// TestStartupHeader_TrackButtonInsideHeader_Desktop asserts the lock/free
+// keycap is anchored at the header top and — per the "take over the left strip
+// of the timeline" design — extends DOWN past the header band into the
+// timeline's left gutter as a chunky square, while staying within the drum
+// bounds and remaining a usable click target. Guards against shrinkage and
+// against escaping the drum surface.
 func TestStartupHeader_TrackButtonInsideHeader_Desktop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := productionDrumView(t, 1280, 720)
@@ -108,9 +110,14 @@ func TestStartupHeader_TrackButtonInsideHeader_Desktop(t *testing.T) {
 		t.Fatal("trackBtn rect is empty on desktop")
 	}
 	headerBottom := dv.Bounds.Min.Y + dv.headerH
-	if r.Min.Y < dv.Bounds.Min.Y || r.Max.Y > headerBottom {
-		t.Errorf("trackBtn outside header band: rect=%v bounds=%v headerBottom=%d",
+	// Anchored within the header band at the top…
+	if r.Min.Y < dv.Bounds.Min.Y || r.Min.Y > headerBottom {
+		t.Errorf("trackBtn top not anchored in header: rect=%v bounds=%v headerBottom=%d",
 			r, dv.Bounds, headerBottom)
+	}
+	// …extending down into the timeline but never past the drum surface.
+	if r.Max.Y > dv.Bounds.Max.Y {
+		t.Errorf("trackBtn escapes drum bounds: rect=%v bounds=%v", r, dv.Bounds)
 	}
 	minH := TouchMinTarget() / 2
 	if r.Dy() < minH {

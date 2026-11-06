@@ -141,7 +141,7 @@ try {
   await page.evaluate(() => {
     // Re-import the simple fixture to reset state
     const fix = JSON.stringify({
-      version: 1, subdiv: 8, bpm: 120,
+      schema_version: "0.0.1", subdiv: 8, bpm: 120,
       instruments: [{ name: "Kick", id: "kick", kind: "builtin", volume: 1, origin: 1, color: "#80C850FF" }],
       nodes: [
         { id: 1, i: 0, j: 0, type: "regular", outputs: [2] },
@@ -197,7 +197,7 @@ try {
   // Start with a fresh circuit
   await page.evaluate(() => {
     const fix = JSON.stringify({
-      version: 1, subdiv: 8, bpm: 120,
+      schema_version: "0.0.1", subdiv: 8, bpm: 120,
       instruments: [
         { name: "Kick", id: "kick", kind: "builtin", volume: 1, origin: 1, color: "#80C850FF" },
         { name: "Snare", id: "snare", kind: "builtin", volume: 1, origin: 5, color: "#C85050FF" },

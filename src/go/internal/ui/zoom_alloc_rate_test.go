@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestZoomDoesNotAllocPerFrame drives a continuous camera zoom across many frames
@@ -38,7 +39,7 @@ func TestZoomDoesNotAllocPerFrame(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.drum.SetBPM(120)
 	buildSoakScene(t, g, 2, 4)
 
@@ -131,7 +132,7 @@ func TestGridRebuildBlitsBoundedWhenZoomedOut(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	buildSoakScene(t, g, 2, 4)
 
 	scratch := ebiten.NewImage(1280, 720)

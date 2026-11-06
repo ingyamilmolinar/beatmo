@@ -55,7 +55,7 @@ const deviceFilter = process.env.DEVICE_FILTER || "";
 // A small valid Beatmo project. bpm is the import marker.
 function jsonFixture(bpm) {
   return Buffer.from(JSON.stringify({
-    version: 1, subdiv: 8, bpm,
+    schema_version: "0.0.1", subdiv: 8, bpm,
     instruments: [{ name: "Kick", id: "kick", kind: "builtin", volume: 1.0, origin: 0, color: "#C87850FF" }],
     nodes: [{ id: 0, i: 0, j: 0, type: "regular", inputs: [], outputs: [], volume: 1.0, pitch: 0, duration: 1.0, logic_kind: "", logic_n: 0, logic_p: 0 }],
     eq: { gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bands_hz: [[20, 100], [100, 200]] },
@@ -264,8 +264,14 @@ async function runUserActions(page, label) {
     const exported = await read("exportJSON");
     let parsed = null;
     try { parsed = JSON.parse(exported); } catch (_) {}
-    ok(parsed && parsed.version >= 1 && parsed.bpm === 123,
-      `${label} json-export: exportJSON() reflects current state (bpm=${parsed?.bpm})`);
+    // schema_version, NOT the retired integer "version": the 2026-07-27 schema
+    // versioning change moved every Beatmo document onto schema.Version and left
+    // the integer as a READ-ONLY legacy marker (projectFile.LegacyVersion,
+    // `json:"version,omitempty"`, never set by the exporter). Asserting
+    // `parsed.version >= 1` therefore read `undefined >= 1` and failed on a
+    // perfectly good export — the bpm and the round-trip below were always right.
+    ok(parsed && typeof parsed.schema_version === "string" && parsed.schema_version !== "" && parsed.bpm === 123,
+      `${label} json-export: exportJSON() reflects current state (schema_version=${parsed?.schema_version} bpm=${parsed?.bpm})`);
 
     // Real Export ACTION: tap the Export button → real downloadJSON (blob+anchor).
     // Capture the OS download where the platform surfaces it; iOS webkit /
@@ -303,19 +309,24 @@ async function runUserActions(page, label) {
   }
 
   try {
-  // ── Scenario 4: mobile NATIVE KEYBOARD (BPM) — real tap opens a real <input>,
-  //    real typing + Enter commits through the OS keyboard path. ──
+  // ── Scenario 4: mobile NATIVE KEYBOARD (text field) — real tap on the
+  //    instrument-menu search opens a real <input>; real typing reaches Go
+  //    through the OS keyboard path. (BPM no longer takes typed input — its
+  //    readout opens the BPM value wheel — so the text field is the target.) ──
   {
-    // Mirror mobile_native_input.browser.test.js: do NOT pump here. The "bpm"
-    // rect is (re)registered every natural Update frame and mobileInputClear()
-    // runs each Layout — so a forced Layout (pump) between tap and touchend races
-    // the registration and the input is never created. Let the natural rAF loop
-    // register it; re-tap to ride out dropped taps.
-    const r = await read("bpmBoxRect");
+    // Mirror mobile_native_input.browser.test.js: do NOT pump here. A live
+    // TextField's rect is (re)registered every natural Update frame and
+    // mobileInputClear() runs each Layout — so a forced Layout (pump) between tap
+    // and touchend races the registration and the input is never created. Let
+    // the natural rAF loop register it; re-tap to ride out dropped taps.
+    await read("openInstMenu", 0);
+    await page.waitForFunction(() => { const r = typeof instMenuSearchRect === "function" && instMenuSearchRect(); return r && r.w > 0; },
+      null, { timeout: 5000, polling: 50 }).catch(() => {});
+    const r = await read("instMenuSearchRect");
     const waitInput = () => page.waitForFunction(() => {
       for (const inp of document.querySelectorAll('input[style*="z-index"]')) if (inp.style.zIndex === "10000") return true;
       return false;
-    }, { timeout: 700 }).then(() => true).catch(() => false);
+    }, null, { timeout: 700 }).then(() => true).catch(() => false);
     let kbOpen = false;
     if (validRect(r)) {
       for (let i = 0; i < 6 && !kbOpen; i++) {
@@ -324,22 +335,22 @@ async function runUserActions(page, label) {
       }
     }
     if (kbOpen) {
-      // The keyboard opened — committing through it IS gating here.
+      // The keyboard opened — typing through it IS gating here.
       await page.keyboard.press("Control+a").catch(() => {});
-      await page.keyboard.type("140").catch(() => {});
-      await page.keyboard.press("Enter").catch(() => {});
-      const applied = await page.waitForFunction(() => typeof getBPM === "function" && getBPM() === 140, { timeout: 6000 }).then(() => true).catch(() => false);
-      ok(applied, `${label} native-kbd(bpm): real OS keyboard typing + Enter committed (BPM→140, got ${await read("getBPM")})`);
+      await page.keyboard.type("kick").catch(() => {});
+      const applied = await page.waitForFunction(() => typeof instMenuSearchState === "function" && instMenuSearchState()?.text === "kick", null, { timeout: 6000, polling: 50 }).then(() => true).catch(() => false);
+      ok(applied, `${label} native-kbd(text): real OS keyboard typing reached the search field (text→"kick", got ${JSON.stringify((await read("instMenuSearchState"))?.text)})`);
     } else {
       // NON-gating: the native <input> overlay opens reliably on emulation but is
       // environment-sensitive on some real devices' on-screen-keyboard handling.
       // The path is covered deterministically by mobile_native_input.browser.test.js.
-      note(`${label} native-kbd(bpm): native keyboard <input> did not open via automation here (non-gating; covered by mobile_native_input.browser.test.js)`);
+      note(`${label} native-kbd(text): native keyboard <input> did not open via automation here (non-gating; covered by mobile_native_input.browser.test.js)`);
     }
     // Dismiss any native input + on-screen keyboard so it can't overlay/block the
     // recording/audio/media scenarios below.
     await page.keyboard.press("Escape").catch(() => {});
     await page.evaluate(() => { for (const inp of document.querySelectorAll('input[style*="z-index"]')) if (inp.style.zIndex === "10000") { try { inp.blur(); inp.remove(); } catch (_) {} } }).catch(() => {});
+    await read("closeAllPopups").catch(() => {});
     await settle(200);
   }
 
@@ -459,7 +470,7 @@ try {
         page.on("pageerror", (e) => console.log(`    [PAGE ERROR] ${e.message}`));
         try {
           await page.goto(`http://localhost:${port}/`);
-          await page.waitForFunction(() => typeof fullLayoutSnapshot === "function" && typeof getBPM === "function" && typeof isNamingOpen === "function", { timeout: 30000 });
+          await page.waitForFunction(() => typeof fullLayoutSnapshot === "function" && typeof getBPM === "function" && typeof isNamingOpen === "function", null, { timeout: 30000 });
           await page.waitForTimeout(500);
           const r = await runUserActions(page, name);
           totalPass += r.pass; totalFail += r.fail; totalSkip += r.skip;

@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -24,17 +26,17 @@ func TestInstMenuInstrumentRowMatchesNodeColor(t *testing.T) {
 
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, logger)
-	dv.instOptions = []string{"kick", "snare"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare}
 	// NewDrumView seeds a default row 0; bind it to the kick instrument so the
 	// menu opens with kick as the current/active instrument.
-	dv.Rows[0].Instrument = "kick"
+	dv.Rows[0].Instrument = roster.Kick
 	dv.calcLayout()
 
 	// Recolor the node to a warm orange that deliberately differs from the
 	// kick instrument's registered default — this is the value the grid node
 	// is drawn with (game_draw_grid_pane.go reads dv.Rows[i].Color).
 	want := color.RGBA{190, 120, 60, 255}
-	def := color.RGBAModel.Convert(instColor("kick")).(color.RGBA)
+	def := color.RGBAModel.Convert(instColor(roster.Kick)).(color.RGBA)
 	if want == def {
 		t.Skip("warm fixture coincides with kick default; pick a different fixture")
 	}
@@ -84,8 +86,8 @@ func TestInstMenuInstrumentRowFollowsLiveNodeRecolor(t *testing.T) {
 
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, logger)
-	dv.instOptions = []string{"kick", "snare"}
-	dv.Rows[0].Instrument = "kick"
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare}
+	dv.Rows[0].Instrument = roster.Kick
 	dv.calcLayout()
 
 	comp := NewInstrumentMenuComponent()
@@ -96,7 +98,7 @@ func TestInstMenuInstrumentRowFollowsLiveNodeRecolor(t *testing.T) {
 
 	// Recolor the node while the menu is open.
 	want := color.RGBA{60, 190, 120, 255} // teal, distinct from any default
-	def := color.RGBAModel.Convert(instColor("kick")).(color.RGBA)
+	def := color.RGBAModel.Convert(instColor(roster.Kick)).(color.RGBA)
 	if want == def {
 		t.Skip("teal fixture coincides with kick default; pick a different fixture")
 	}

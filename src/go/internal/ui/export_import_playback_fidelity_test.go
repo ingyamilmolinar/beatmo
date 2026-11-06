@@ -7,6 +7,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // export_import_playback_fidelity_test.go — thorough verification that every
@@ -74,48 +76,6 @@ func newProjectGame(t *testing.T) (*Game, *uiNode) {
 	return g, ui
 }
 
-// TestSendEffectsConfigRoundTripsThroughProject closes the send-effects gap:
-// delay/reverb bus config must survive export→import. Configure* are global, so
-// we clobber them in between — a pass can only come from the project file.
-func TestSendEffectsConfigRoundTripsThroughProject(t *testing.T) {
-	assertDefaultParityState(t)
-	d0t, d0f, d0d := audio.SendDelayParams()
-	r0r, r0d, r0w := audio.SendReverbParams()
-	t.Cleanup(func() {
-		audio.ConfigureSendDelay(d0t, d0f, d0d)
-		audio.ConfigureSendReverb(r0r, r0d, r0w)
-	})
-
-	g, _ := newProjectGame(t)
-	audio.ConfigureSendDelay(450, 0.55, 2500)
-	audio.ConfigureSendReverb(0.8, 0.6, 0.35)
-
-	data, err := g.drum.exportBytes()
-	if err != nil {
-		t.Fatalf("export: %v", err)
-	}
-
-	// Clobber the GLOBAL send config so only the imported file can restore it.
-	audio.ConfigureSendDelay(100, 0.1, 1000)
-	audio.ConfigureSendReverb(0.1, 0.1, 0.1)
-
-	g2 := New(testLogger)
-	t.Cleanup(g2.CloseForTest)
-	g2.Layout(800, 600)
-	if err := g2.Import(data); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-
-	dt, df, dd := audio.SendDelayParams()
-	if dt != 450 || df != 0.55 || dd != 2500 {
-		t.Errorf("delay send config not restored: got (%v,%v,%v) want (450,0.55,2500)", dt, df, dd)
-	}
-	rr, rd, rw := audio.SendReverbParams()
-	if rr != 0.8 || rd != 0.6 || rw != 0.35 {
-		t.Errorf("reverb send config not restored: got (%v,%v,%v) want (0.8,0.6,0.35)", rr, rd, rw)
-	}
-}
-
 // TestEQBandMuteRoundTripsThroughProject closes the band-mute gap: a muted EQ
 // band (per-instrument and master) must survive export→import and reach the
 // audio chain.
@@ -125,10 +85,10 @@ func TestEQBandMuteRoundTripsThroughProject(t *testing.T) {
 	inst := g.drum.Rows[0].Instrument
 
 	// Per-instrument: mute band 3 (+ a gain so the channel EQ is unambiguously active).
-	g.drum.Rows[0].EQGainsDB = make([]float64, len(eqBandDefs))
-	g.drum.Rows[0].EQGainsDB[1] = 4
-	g.drum.Rows[0].EQBandMuted = make([]bool, len(eqBandDefs))
-	g.drum.Rows[0].EQBandMuted[3] = true
+	rowEQ(g.drum.Rows[0]).GainsDB = make([]float64, len(eqBandDefs))
+	rowEQ(g.drum.Rows[0]).GainsDB[1] = 4
+	rowEQ(g.drum.Rows[0]).BandMuted = make([]bool, len(eqBandDefs))
+	rowEQ(g.drum.Rows[0]).BandMuted[3] = true
 	g.drum.applyRowEQ(0)
 
 	// Master: mute band 5.
@@ -150,14 +110,14 @@ func TestEQBandMuteRoundTripsThroughProject(t *testing.T) {
 	}
 
 	row := g2.drum.Rows[0]
-	if len(row.EQBandMuted) <= 3 || !row.EQBandMuted[3] {
-		t.Errorf("per-instrument band-3 mute lost on round-trip: %+v", row.EQBandMuted)
+	if len(rowEQ(row).BandMuted) <= 3 || !rowEQ(row).BandMuted[3] {
+		t.Errorf("per-instrument band-3 mute lost on round-trip: %+v", rowEQ(row).BandMuted)
 	}
 	if len(g2.drum.eqBandMuted()) <= 5 || !g2.drum.eqBandMuted()[5] {
 		t.Errorf("master band-5 mute lost on round-trip: %+v", g2.drum.eqBandMuted())
 	}
 	// Reaches the audio chain: the per-instrument channel's band 3 is muted.
-	snap := audio.ChannelEQSnapshot(inst)
+	snap := audio.ChannelEQSnapshot(channel.Of(inst))
 	if len(snap.Bands) > 3 && !snap.Bands[3].Muted {
 		t.Errorf("imported per-instrument EQ band 3 not muted in the audio chain: %+v", snap.Bands)
 	}
@@ -186,7 +146,7 @@ func TestEditedWAVPlaybackFidelityRoundTrips(t *testing.T) {
 		StartFrac: 0.2, EndFrac: 0.85,
 		TransposeSemis: 3, DetuneCents: -15,
 		GainDB: -6, Normalize: true,
-		FadeInMs: 5, FadeOutMs: 7,
+		Fade:    true,
 		Reverse: true,
 	}
 	audio.SetSampleEdit(id, desc)
@@ -236,7 +196,7 @@ func TestEditedWAVPlaybackFidelityRoundTrips(t *testing.T) {
 
 // instDeterminants captures everything that decides how an instrument sounds.
 type instDeterminants struct {
-	recipe    string
+	origin    string
 	effective map[string]float64
 	hasEdit   bool
 	edit      audio.SampleEdit
@@ -244,26 +204,26 @@ type instDeterminants struct {
 	isSample  bool
 	fx        []audio.EffectSlot
 	eqBands   []audio.EQBand
-	pan       float64
-	delaySend float64
-	reverbSnd float64
+}
+
+// docOrigin is the library entry id's project document came from ("" = none).
+func docOrigin(id string) string {
+	d, _ := audio.InstrumentDoc(instrument.ID(id))
+	return string(d.Origin)
 }
 
 func captureInstDeterminants(id string) instDeterminants {
 	d := instDeterminants{
-		recipe:    audio.RecipeForInstrument(id),
-		effective: audio.MergeRecipeDefaults(audio.RecipeForInstrument(id), audio.GetInstrumentParams(id)),
-		fx:        audio.GetInsertEffects(id),
-		eqBands:   audio.ChannelEQSnapshot(id).Bands,
-		pan:       audio.ChannelPan(id),
-		delaySend: audio.DelaySend(id),
-		reverbSnd: audio.ReverbSend(id),
+		origin:    docOrigin(id),
+		effective: map[string]float64(audio.GetInstrumentParams(instrument.ID(id))),
+		fx:        audio.GetInsertEffects(instrument.ID(id)),
+		eqBands:   audio.ChannelEQSnapshot(channel.Of(instrument.ID(id))).Bands,
 	}
-	if e, ok := audio.SampleEditFor(id); ok {
+	if e, ok := audio.SampleEditFor(instrument.ID(id)); ok {
 		d.hasEdit = true
 		d.edit = e
 	}
-	if rec, ok := audio.UserSamplePCM(id); ok {
+	if rec, ok := audio.UserSamplePCM(instrument.ID(id)); ok {
 		d.isSample = true
 		// What actually plays: the descriptor baked onto the pristine source.
 		d.bakedPlay = audio.BakeSample(rec.PCM, rec.SampleRate, d.edit)
@@ -273,8 +233,8 @@ func captureInstDeterminants(id string) instDeterminants {
 
 func (d instDeterminants) equal(o instDeterminants, t *testing.T, label string) {
 	t.Helper()
-	if d.recipe != o.recipe {
-		t.Errorf("%s: recipe %q != %q", label, d.recipe, o.recipe)
+	if d.origin != o.origin {
+		t.Errorf("%s: instrument document origin %q != %q", label, d.origin, o.origin)
 	}
 	if !paramsApproxEqual(d.effective, o.effective, 1e-9) {
 		t.Errorf("%s: effective synth tone diverged:\n  before=%v\n  after =%v", label, d.effective, o.effective)
@@ -305,60 +265,41 @@ func (d instDeterminants) equal(o instDeterminants, t *testing.T, label string) 
 			}
 		}
 	}
-	if d.pan != o.pan || d.delaySend != o.delaySend || d.reverbSnd != o.reverbSnd {
-		t.Errorf("%s: pan/sends diverged: (%v,%v,%v) != (%v,%v,%v)", label,
-			d.pan, d.delaySend, d.reverbSnd, o.pan, o.delaySend, o.reverbSnd)
-	}
 }
 
 // TestProjectAllConfigPlaybackDeterminantsRoundTrip is the kitchen-sink test:
 // one project that sets a synth instrument AND a user-sample instrument with
-// every per-instrument knob (params/edit/FX/EQ+mute/pan/sends) plus master
-// volume/EQ and send config. It exports, RESETS every global audio store, then
+// every per-instrument knob (params/edit/FX/EQ+mute) plus master volume/EQ.
+// It exports, RESETS every global audio store, then
 // imports and asserts each instrument's full audible-determinant set is
 // unchanged — catching cross-subsystem and ordering regressions a per-feature
 // test would miss.
 func TestProjectAllConfigPlaybackDeterminantsRoundTrip(t *testing.T) {
 	assertDefaultParityState(t)
 	mv0 := audio.MainVolume()
-	d0t, d0f, d0d := audio.SendDelayParams()
-	r0r, r0d, r0w := audio.SendReverbParams()
-	t.Cleanup(func() {
-		audio.SetMainVolume(mv0)
-		audio.ConfigureSendDelay(d0t, d0f, d0d)
-		audio.ConfigureSendReverb(r0r, r0d, r0w)
-	})
+	t.Cleanup(func() { audio.SetMainVolume(mv0) })
 
 	g, n0 := newProjectGame(t)
 	dv := g.drum
 
-	// Row 0: a recipe-bound synth with the works.
+	// Row 0: a synth instrument with the works.
 	synthID := dv.Rows[0].Instrument
-	recipe := audio.RecipeForInstrument(synthID)
-	if recipe == "" {
-		t.Skipf("row0 instrument %q has no recipe binding", synthID)
+	if !audio.HasInstrumentDoc(synthID) {
+		t.Fatalf("row0 instrument %q has no instrument document", synthID)
 	}
 	audio.SetInstrumentParam(synthID, "pitch", 3)
-	if _, ok := audio.RecipeShippedDefaults(recipe)["drive"]; ok {
-		audio.SetInstrumentParam(synthID, "drive", 0.66)
-	}
+	audio.SetInstrumentParam(synthID, "post_decay", 0.66)
 	audio.SetInsertEffects(synthID, []audio.EffectSlot{
 		{Type: "distortion", Enabled: true, Params: map[string]float64{"drive": 0.5}},
 		{Type: "delay", Enabled: false, Params: map[string]float64{"time": 0.3, "feedback": 0.4}},
 	})
-	dv.Rows[0].EQGainsDB = make([]float64, len(eqBandDefs))
-	dv.Rows[0].EQGainsDB[2] = 5
-	dv.Rows[0].EQBandMuted = make([]bool, len(eqBandDefs))
-	dv.Rows[0].EQBandMuted[7] = true
-	dv.Rows[0].HPFEnabled = true
-	dv.Rows[0].HPFCutoffHz = 120
+	rowEQ(dv.Rows[0]).GainsDB = make([]float64, len(eqBandDefs))
+	rowEQ(dv.Rows[0]).GainsDB[2] = 5
+	rowEQ(dv.Rows[0]).BandMuted = make([]bool, len(eqBandDefs))
+	rowEQ(dv.Rows[0]).BandMuted[7] = true
+	rowEQ(dv.Rows[0]).HPF = true
+	rowEQ(dv.Rows[0]).HPFHz = 120
 	dv.applyRowEQ(0)
-	dv.Rows[0].Pan = -0.4
-	dv.Rows[0].DelaySend = 0.3
-	dv.Rows[0].ReverbSend = 0.6
-	audio.SetChannelPan(synthID, -0.4)
-	audio.SetDelaySend(synthID, 0.3)
-	audio.SetReverbSend(synthID, 0.6)
 
 	// Row 1: a user-sample instrument with a reverse+trim+gain descriptor.
 	dv.AddRow()
@@ -371,20 +312,16 @@ func TestProjectAllConfigPlaybackDeterminantsRoundTrip(t *testing.T) {
 	dv.Rows[1].Instrument = sampleID
 	sampleEdit := audio.SampleEdit{StartFrac: 0.2, EndFrac: 0.9, Reverse: true, GainDB: -3}
 	audio.SetSampleEdit(sampleID, sampleEdit)
-	audio.SetChannelPan(sampleID, 0.5)
-	dv.Rows[1].Pan = 0.5
 
-	// Master volume + master EQ + send config.
+	// Master volume + master EQ.
 	audio.SetMainVolume(0.6)
 	dv.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
 	dv.eqPanelZone.bandGainsDB[4] = -4
 	dv.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	dv.applyMasterEQ()
-	audio.ConfigureSendDelay(420, 0.5, 2200)
-	audio.ConfigureSendReverb(0.75, 0.55, 0.3)
 
 	// Capture the audible determinants BEFORE export.
-	beforeSynth := captureInstDeterminants(synthID)
+	beforeSynth := captureInstDeterminants(string(synthID))
 	beforeSample := captureInstDeterminants(sampleID)
 
 	data, err := dv.exportBytes()
@@ -394,19 +331,12 @@ func TestProjectAllConfigPlaybackDeterminantsRoundTrip(t *testing.T) {
 	_ = n0
 
 	// RESET every global audio store the import must repopulate.
-	audio.ResetInstrumentParams(synthID)
-	audio.BindInstrumentToRecipe(synthID, "")
+	audio.ResetInstrumentDocs()
 	audio.ClearAllInsertEffects()
-	audio.SetChannelPan(synthID, 0)
-	audio.SetDelaySend(synthID, 0)
-	audio.SetReverbSend(synthID, 0)
-	audio.ClearChannelProcessors(synthID)
+	audio.ClearChannelProcessors(channel.Of(synthID))
 	audio.PutUserSample(sampleID, []float32{0, 0, 0, 0}, 48000)
 	audio.ClearSampleEdit(sampleID)
-	audio.SetChannelPan(sampleID, 0)
 	audio.SetMainVolume(1)
-	audio.ConfigureSendDelay(100, 0.1, 1000)
-	audio.ConfigureSendReverb(0.1, 0.1, 0.1)
 
 	g2 := New(testLogger)
 	t.Cleanup(g2.CloseForTest)
@@ -416,7 +346,7 @@ func TestProjectAllConfigPlaybackDeterminantsRoundTrip(t *testing.T) {
 	}
 
 	// Every audible determinant must be unchanged.
-	captureInstDeterminants(synthID).equal(beforeSynth, t, "synth")
+	captureInstDeterminants(string(synthID)).equal(beforeSynth, t, "synth")
 	captureInstDeterminants(sampleID).equal(beforeSample, t, "sample")
 
 	if got := audio.MainVolume(); got != 0.6 {
@@ -424,13 +354,5 @@ func TestProjectAllConfigPlaybackDeterminantsRoundTrip(t *testing.T) {
 	}
 	if len(g2.drum.eqBandGainsDB()) <= 4 || g2.drum.eqBandGainsDB()[4] != -4 {
 		t.Errorf("master EQ band-4 gain not restored: %+v", g2.drum.eqBandGainsDB())
-	}
-	dt, df, dd := audio.SendDelayParams()
-	if dt != 420 || df != 0.5 || dd != 2200 {
-		t.Errorf("send delay config not restored: (%v,%v,%v)", dt, df, dd)
-	}
-	rr, rd, rw := audio.SendReverbParams()
-	if rr != 0.75 || rd != 0.55 || rw != 0.3 {
-		t.Errorf("send reverb config not restored: (%v,%v,%v)", rr, rd, rw)
 	}
 }

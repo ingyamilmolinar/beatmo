@@ -253,15 +253,7 @@ func (g *Game) initJSTimelinePredictor() {
 		row := args.Int(0)
 		idx := args.Int(1)
 		info := g.beatInfoAtRow(row, idx)
-		typ := "invisible"
-		switch info.NodeType {
-		case model.NodeTypeRegular:
-			typ = "regular"
-		case model.NodeTypeSilent:
-			typ = "silent"
-		case model.NodeTypeMute:
-			typ = "mute"
-		}
+		typ := info.NodeType.String()
 		obj := js.Global().Get("Object").New()
 		obj.Set("type", typ)
 		obj.Set("nodeId", int(info.NodeID))
@@ -382,7 +374,7 @@ func (g *Game) initJSTimelinePredictor() {
 			return js.ValueOf(false)
 		}
 		info := g.beatInfoAtRow(row, abs)
-		if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
+		if !info.NodeType.Fires() && info.NodeType != model.NodeTypeMute {
 			return js.ValueOf(false)
 		}
 		if g.engine == nil || g.engine.Predictor == nil {

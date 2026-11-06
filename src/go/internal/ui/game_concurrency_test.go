@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestScheduleSoundConcurrentMapSafety(t *testing.T) {
@@ -39,7 +40,7 @@ func TestScheduleSoundConcurrentMapSafety(t *testing.T) {
 		go func(offset float64) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				g.scheduleSound(0, j, info, "hihat", 1, 0, 1, offset, true)
+				g.scheduleSound(0, j, info, roster.Hihat, 1, 0, 1, offset, true)
 			}
 		}(float64(i) * 0.01)
 	}

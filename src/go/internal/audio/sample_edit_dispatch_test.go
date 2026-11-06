@@ -2,7 +2,12 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // Native-dispatch coverage for the non-destructive sample-edit descriptor:
 // a synth instrument with a saved Sampler edit KEEPS its recipe binding; the
@@ -13,9 +18,9 @@ import "testing"
 // renderDispatchBuffer triggers id once through the dispatcher and drains the
 // voice exactly (cVoice signals done only AFTER the last real sample, so the
 // done-sample is not part of the buffer; 4s cap mirrors RenderInstrumentOneShot).
-func renderDispatchBuffer(t *testing.T, id string) []float32 {
+func renderDispatchBuffer(t *testing.T, id instrument.ID) []float32 {
 	t.Helper()
-	v := newRecipeAwareVoice(id, 120, 44100)
+	v := newRecipeAwareVoice(id, 44100)
 	if v == nil {
 		t.Fatalf("dispatcher returned nil for %q", id)
 	}
@@ -33,19 +38,19 @@ func renderDispatchBuffer(t *testing.T, id string) []float32 {
 func TestSampleEditDispatch_DescriptorAloneTakesRecipePath(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
-		ClearSampleEdit("snare")
-		ResetInstrumentParams("snare")
+		ClearSampleEdit(roster.Snare)
+		ResetInstrumentParams(roster.Snare)
 	})
-	ResetInstrumentParams("snare")
+	ResetInstrumentParams(roster.Snare)
 	// No overlay params, defaults as shipped — but a descriptor exists, so the
 	// recipe path must be taken (the gate change). A half-trim makes the
 	// rendered buffer measurably shorter than the unedited render.
-	full := renderDispatchBuffer(t, "snare")
-	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.5})
-	if _, ok := tryRecipeVoice("snare", 120, 44100); !ok {
+	full := renderDispatchBuffer(t, roster.Snare)
+	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
+	if _, ok := tryRecipeVoice(roster.Snare, 44100); !ok {
 		t.Fatal("descriptor with empty overlay must take the recipe path")
 	}
-	half := renderDispatchBuffer(t, "snare")
+	half := renderDispatchBuffer(t, roster.Snare)
 	if len(half) >= len(full) {
 		t.Fatalf("trimmed render len=%d not shorter than full len=%d", len(half), len(full))
 	}
@@ -54,15 +59,15 @@ func TestSampleEditDispatch_DescriptorAloneTakesRecipePath(t *testing.T) {
 func TestSampleEditDispatch_TransformMatchesBakeSample(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
-		ClearSampleEdit("snare")
-		ResetInstrumentParams("snare")
+		ClearSampleEdit(roster.Snare)
+		ResetInstrumentParams(roster.Snare)
 	})
-	ResetInstrumentParams("snare")
+	ResetInstrumentParams(roster.Snare)
 
-	plain := renderDispatchBuffer(t, "snare")
+	plain := renderDispatchBuffer(t, roster.Snare)
 	edit := SampleEdit{StartFrac: 0.25, EndFrac: 0.75, GainDB: -6, Reverse: true}
-	SetSampleEdit("snare", edit)
-	edited := renderDispatchBuffer(t, "snare")
+	SetSampleEdit(roster.Snare, edit)
+	edited := renderDispatchBuffer(t, roster.Snare)
 
 	want := BakeSample(append([]float32(nil), plain...), 44100, edit)
 	if len(edited) != len(want) {
@@ -78,18 +83,18 @@ func TestSampleEditDispatch_TransformMatchesBakeSample(t *testing.T) {
 func TestSampleEditDispatch_NoDescriptorByteIdentical(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
-		ClearSampleEdit("snare")
-		ResetInstrumentParams("snare")
+		ClearSampleEdit(roster.Snare)
+		ResetInstrumentParams(roster.Snare)
 	})
-	ResetInstrumentParams("snare")
+	ResetInstrumentParams(roster.Snare)
 	// Parity-golden safety: set then clear a descriptor; the render must come
 	// back byte-identical to the never-edited output (no residue in the cache
 	// or the key).
-	before := renderDispatchBuffer(t, "snare")
-	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.5})
-	renderDispatchBuffer(t, "snare")
-	ClearSampleEdit("snare")
-	after := renderDispatchBuffer(t, "snare")
+	before := renderDispatchBuffer(t, roster.Snare)
+	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
+	renderDispatchBuffer(t, roster.Snare)
+	ClearSampleEdit(roster.Snare)
+	after := renderDispatchBuffer(t, roster.Snare)
 	if len(before) != len(after) {
 		t.Fatalf("len changed after set+clear: %d vs %d", len(before), len(after))
 	}
@@ -103,14 +108,14 @@ func TestSampleEditDispatch_NoDescriptorByteIdentical(t *testing.T) {
 func TestSampleEditDispatch_DescriptorChangeMissesCache(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
-		ClearSampleEdit("snare")
-		ResetInstrumentParams("snare")
+		ClearSampleEdit(roster.Snare)
+		ResetInstrumentParams(roster.Snare)
 	})
-	ResetInstrumentParams("snare")
-	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.5})
-	a := renderDispatchBuffer(t, "snare")
-	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.25})
-	b := renderDispatchBuffer(t, "snare")
+	ResetInstrumentParams(roster.Snare)
+	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
+	a := renderDispatchBuffer(t, roster.Snare)
+	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.25})
+	b := renderDispatchBuffer(t, roster.Snare)
 	if len(b) >= len(a) {
 		t.Fatalf("descriptor change did not re-render: len(a)=%d len(b)=%d", len(a), len(b))
 	}
@@ -134,18 +139,18 @@ func TestSampleEditDispatch_DescriptorChangeMissesCache(t *testing.T) {
 func TestSampleEditDispatch_SetDoesNotBlanketInvalidate(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
-		ClearSampleEdit("snare")
-		ResetInstrumentParams("snare")
+		ClearSampleEdit(roster.Snare)
+		ResetInstrumentParams(roster.Snare)
 	})
-	ResetInstrumentParams("snare")
-	SetInstrumentParam("snare", "decay", 0.7) // force the recipe path + cache fill
-	renderDispatchBuffer(t, "snare")
+	ResetInstrumentParams(roster.Snare)
+	SetInstrumentParam(roster.Snare, "amp_decay", 0.7) // force the recipe path + cache fill
+	renderDispatchBuffer(t, roster.Snare)
 	before, _ := VoiceCacheStatsForTest()
 	if before == 0 {
 		t.Fatal("expected at least one cached entry after a recipe render — " +
 			"without this the assertion below is vacuous")
 	}
-	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.5})
+	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
 	after, _ := VoiceCacheStatsForTest()
 	if after < before {
 		t.Fatalf("SetSampleEdit blanket-dropped cached voices (entries %d → %d). "+
@@ -157,14 +162,14 @@ func TestSampleEditDispatch_SetDoesNotBlanketInvalidate(t *testing.T) {
 func TestRenderInstrumentOneShotRawIgnoresDescriptor(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
-		ClearSampleEdit("snare")
-		ResetInstrumentParams("snare")
+		ClearSampleEdit(roster.Snare)
+		ResetInstrumentParams(roster.Snare)
 	})
-	ResetInstrumentParams("snare")
-	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.5})
+	ResetInstrumentParams(roster.Snare)
+	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
 
-	edited, _ := RenderInstrumentOneShot("snare")
-	raw, _ := RenderInstrumentOneShotRaw("snare")
+	edited, _ := RenderInstrumentOneShot(roster.Snare)
+	raw, _ := RenderInstrumentOneShotRaw(roster.Snare)
 	if len(raw) == 0 {
 		t.Fatal("raw capture returned no audio")
 	}

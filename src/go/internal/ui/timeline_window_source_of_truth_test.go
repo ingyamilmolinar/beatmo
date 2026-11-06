@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestPlayheadSingleSourceOfTruth is the architectural invariant the user
@@ -27,7 +28,7 @@ func TestPlayheadSingleSourceOfTruth(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 	g.drum.SetFollow(true)
 	g.drum.SetLength(16)
@@ -76,7 +77,7 @@ func TestTrackBeatConsumesCanonicalPlayhead(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 	g.drum.SetFollow(true)
 	g.drum.SetLength(16)

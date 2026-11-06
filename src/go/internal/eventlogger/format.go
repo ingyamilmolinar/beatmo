@@ -86,11 +86,7 @@ var formatters = map[hooks.Kind]formatter{
 	// ── Graph edits ─────────────────────────────────────────────────────
 	hooks.EventNodeAdded: func(p any) string {
 		n, _ := p.(hooks.NodeEdit)
-		typ := n.Type
-		if typ == "" {
-			typ = "regular"
-		}
-		return fmt.Sprintf("node added id=%d at (%d,%d) type=%s", n.ID, n.I, n.J, typ)
+		return fmt.Sprintf("node added id=%d at (%d,%d) type=%s", n.ID, n.I, n.J, n.Type)
 	},
 	hooks.EventNodeDeleted: func(p any) string {
 		n, _ := p.(hooks.NodeEdit)
@@ -118,6 +114,9 @@ var formatters = map[hooks.Kind]formatter{
 	},
 	hooks.EventNodeParamsChanged: func(p any) string {
 		t, _ := p.(hooks.NodeParamsPayload)
+		if t.Chord != "" {
+			return fmt.Sprintf("node id=%d chord %s", t.ID, t.Chord)
+		}
 		return fmt.Sprintf("node id=%d params updated", t.ID)
 	},
 	hooks.EventStartNodeChanged: func(p any) string {
@@ -162,7 +161,7 @@ var formatters = map[hooks.Kind]formatter{
 	// ── Drum rows ───────────────────────────────────────────────────────
 	hooks.EventRowAdded: func(p any) string {
 		r, _ := p.(hooks.RowChangePayload)
-		return fmt.Sprintf("row %d added (%s)", r.Row, fallback(r.Name, r.Instrument))
+		return fmt.Sprintf("row %d added (%s)", r.Row, fallback(r.Name, string(r.Instrument)))
 	},
 	hooks.EventRowDeleted: func(p any) string {
 		r, _ := p.(hooks.RowChangePayload)
@@ -222,10 +221,6 @@ var formatters = map[hooks.Kind]formatter{
 		r, _ := p.(hooks.RowChangePayload)
 		return fmt.Sprintf("row %d volume = %.2f", r.Row, r.Volume)
 	},
-	hooks.EventRowPan: func(p any) string {
-		r, _ := p.(hooks.RowChangePayload)
-		return fmt.Sprintf("row %d pan = %+.2f", r.Row, r.Pan)
-	},
 	hooks.EventInsertEffectMoved: func(p any) string {
 		e, _ := p.(hooks.InsertEffectPayload)
 		return fmt.Sprintf("insert FX %s moved %d → %d", e.Channel, e.FromSlot, e.ToSlot)
@@ -238,17 +233,13 @@ var formatters = map[hooks.Kind]formatter{
 		}
 		return fmt.Sprintf("insert FX %s slot=%d %s", e.Channel, e.Slot, state)
 	},
-	hooks.EventSendChanged: func(p any) string {
-		s, _ := p.(hooks.SendPayload)
-		return fmt.Sprintf("%s send %s = %.2f", s.Kind, s.Channel, s.Value)
-	},
 	hooks.EventInstrumentParamsCommitted: func(p any) string {
 		e, _ := p.(hooks.InstrumentParamPayload)
-		return fmt.Sprintf("synth params committed %s (recipe=%s)", e.Channel, fallback(e.Recipe, "?"))
+		return fmt.Sprintf("synth params committed %s (origin=%s)", e.Instrument, fallback(string(e.Origin), "?"))
 	},
 	hooks.EventInstrumentParamsReset: func(p any) string {
 		e, _ := p.(hooks.InstrumentParamPayload)
-		return fmt.Sprintf("synth params reset %s", e.Channel)
+		return fmt.Sprintf("synth params reset %s", e.Instrument)
 	},
 	hooks.EventAudioPanelStateChanged: func(p any) string {
 		s, _ := p.(hooks.AudioPanelStatePayload)
@@ -256,11 +247,7 @@ var formatters = map[hooks.Kind]formatter{
 	},
 	hooks.EventInstrumentParamChanged: func(p any) string {
 		e, _ := p.(hooks.InstrumentParamPayload)
-		recipe := e.Recipe
-		if recipe == "" {
-			recipe = "?"
-		}
-		return fmt.Sprintf("synth param %s (recipe=%s) %s = %.3f", e.Channel, recipe, e.Param, e.Value)
+		return fmt.Sprintf("synth param %s (origin=%s) %s = %.3f", e.Instrument, fallback(string(e.Origin), "?"), e.Param, e.Value)
 	},
 
 	// ── Round 2 additions ───────────────────────────────────────────────
@@ -300,11 +287,27 @@ var formatters = map[hooks.Kind]formatter{
 		l, _ := p.(hooks.LanguagePayload)
 		return fmt.Sprintf("language %s → %s", l.Old, l.New)
 	},
+	hooks.EventThemeChanged:        formatTheme,
+	hooks.EventCircuitThemeChanged: formatTheme,
+
+	hooks.EventWarmupStarted: func(p any) string {
+		w, _ := p.(hooks.WarmupPayload)
+		return fmt.Sprintf("warming %d sounds (%d already cached)", w.Total, w.Cached)
+	},
+	hooks.EventWarmupComplete: func(p any) string {
+		w, _ := p.(hooks.WarmupPayload)
+		if w.TimedOut {
+			return fmt.Sprintf("circuit ready on deadline — %d/%d sounds warm after %.0fms",
+				w.Rendered, w.Total, w.ElapsedMS)
+		}
+		return fmt.Sprintf("circuit ready — %d sounds in %.0fms (%d cached)",
+			w.Rendered, w.ElapsedMS, w.Cached)
+	},
 
 	// ── Phase 4 synth-recipe lifecycle ──────────────────────────────────
 	hooks.EventRecipeSaved: func(p any) string {
 		r, _ := p.(hooks.RecipePayload)
-		inst := r.InstrumentID
+		inst := string(r.InstrumentID)
 		if inst == "" {
 			inst = "?"
 		}
@@ -312,13 +315,13 @@ var formatters = map[hooks.Kind]formatter{
 	},
 	hooks.EventRecipeCreated: func(p any) string {
 		r, _ := p.(hooks.RecipePayload)
-		base := r.BaseRecipe
+		base := string(r.BaseRecipe)
 		if base == "" {
 			base = "?"
 		}
 		name := r.DisplayName
 		if name == "" {
-			name = r.RecipeID
+			name = string(r.RecipeID)
 		}
 		return fmt.Sprintf("recipe created %s (clone of %s)", name, base)
 	},
@@ -342,9 +345,9 @@ var formatters = map[hooks.Kind]formatter{
 		s, _ := p.(hooks.SamplePayload)
 		name := s.DisplayName
 		if name == "" {
-			name = s.SampleID
+			name = string(s.SampleID)
 		}
-		src := s.SourceID
+		src := string(s.SourceID)
 		if src == "" {
 			src = "WAV"
 		}
@@ -352,7 +355,7 @@ var formatters = map[hooks.Kind]formatter{
 	},
 	hooks.EventSampleReset: func(p any) string {
 		s, _ := p.(hooks.SamplePayload)
-		dst := s.SourceID
+		dst := string(s.SourceID)
 		if dst == "" {
 			dst = "original sample"
 		}
@@ -445,4 +448,24 @@ func fallback(primary, alt string) string {
 		return primary
 	}
 	return alt
+}
+
+// formatTheme renders a theme edit: "accent = orchid-300 (my theme)",
+// "accent reset (this circuit)", "reset all (my theme)", or the override
+// toggle. Shared by the profile- and circuit-scope kinds.
+func formatTheme(p any) string {
+	t, _ := p.(hooks.ThemePayload)
+	where := "my theme"
+	if t.Scope == hooks.ThemeScopeCircuit {
+		where = "this circuit"
+	}
+	switch {
+	case t.Override != nil:
+		return fmt.Sprintf("always use my theme = %v", *t.Override)
+	case t.Category == "":
+		return fmt.Sprintf("reset all (%s)", where)
+	case t.Swatch == "":
+		return fmt.Sprintf("%s reset (%s)", t.Category, where)
+	}
+	return fmt.Sprintf("%s = %s (%s)", t.Category, t.Swatch, where)
 }

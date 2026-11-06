@@ -51,4 +51,5 @@ func (g *Game) registerGridTree() {
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-group-menu", z: GZGroupMenu, clip: false, vis: func() bool { return g.groupMenu.IsOpen() }, draw: func(dst *ebiten.Image) { g.groupMenu.Draw(dst) }})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-cursor-label", z: GZCursorLabel, clip: false, draw: g.drawGridCursorLabel})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-help-button", z: GZGridHelpButton, clip: true, draw: g.drawGridHelpButton})
+	g.gridTree.RegisterLayer(gridLayer{id: "grid-toast", z: GZToast, clip: true, draw: g.drawGridToast})
 }

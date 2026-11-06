@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestNodeMenuVolumePercentAdjustsAudio opens the popup, clicks VOL- once
@@ -27,10 +28,10 @@ func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	g.sidebar.Open(n1)
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
-	if r := g.sidebar.rects["vol-"]; r.Empty() {
+	if r := g.sidebar.rects[sbMinus(fieldVol)]; r.Empty() {
 		t.Fatalf("vol- rect missing")
 	}
-	btn := g.sidebar.btns["vol-"]
+	btn := g.sidebar.btns[sbMinus(fieldVol)]
 	if btn == nil {
 		t.Fatalf("vol- button missing")
 	}
@@ -42,7 +43,7 @@ func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 
 	// Capture volumes when playing across the two nodes.
 	vols := make(chan float64, 2)
-	g.SetPlayFunc(func(_ string, v float64, _ ...float64) { vols <- v })
+	g.SetPlayFunc(func(_ instrument.ID, v float64, _ ...float64) { vols <- v })
 
 	g.SetPlaying(true)
 	scheduleAbsForMuteTest(g, 0)

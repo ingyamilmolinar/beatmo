@@ -101,17 +101,12 @@ func TestSynthChipSceneSelectsIntendedStage(t *testing.T) {
 				_ = g.Update()
 			}
 
-			var selLabel string
-			selCount := 0
-			for _, c := range g.drum.instEditorChips {
-				if c.selected {
-					selLabel = sectionLabel(c.id)
-					selCount++
-				}
+			inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+			tgt := g.drum.synthDrillTarget(inst)
+			if tgt.kind != drillStage {
+				t.Fatalf("scene %q: not drilled into a stage (target %+v)", tc.scene, tgt)
 			}
-			if selCount != 1 {
-				t.Fatalf("scene %q: %d chips selected, want exactly 1", tc.scene, selCount)
-			}
+			selLabel := sectionLabel(tgt.stage)
 			if selLabel != tc.wantLabel {
 				t.Errorf("scene %q: selected stage %q, want %q — SelectSynthSectionByLabel did not take (silent fallback to default)",
 					tc.scene, selLabel, tc.wantLabel)
@@ -136,9 +131,12 @@ func TestSceneCropScopeVariantsProduceDistinctState(t *testing.T) {
 				t.Errorf("scope.Frozen()=false after crop_chain_frozen Setup")
 			}
 		}},
-		{"crop_chain_auto_gain_on", func(t *testing.T, z *ChainPanelZone) {
+		{"crop_chain_default", func(t *testing.T, z *ChainPanelZone) {
+			// Auto-gain used to need a scene of its own because it was
+			// opt-in. It is the default now, so the DEFAULT scene is where
+			// it is pinned.
 			if !z.AutoGain() {
-				t.Errorf("scope.AutoGain()=false after crop_chain_auto_gain_on Setup")
+				t.Errorf("scope.AutoGain()=false in the default Chain scene")
 			}
 		}},
 		{"crop_chain_trace_a_only", func(t *testing.T, z *ChainPanelZone) {

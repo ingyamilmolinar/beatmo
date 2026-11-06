@@ -5,6 +5,8 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSongRenderInstrumentVolumeAppliedOnce guards against double-applying the
@@ -33,9 +35,9 @@ func TestSongRenderInstrumentVolumeAppliedOnce(t *testing.T) {
 
 	render := func(v float64) float64 {
 		ResetInstruments()
-		insts := []SongRenderInstrument{{ID: "kick", Volume: v}}
-		notes := []SongRenderNote{{InstID: "kick", AtSample: 0, Pitch: 0, Gain: v, DurSec: 0.2}}
-		master, _, err := RenderSongOffline(insts, notes, 120, sampleRate, sampleRate/2)
+		insts := []SongRenderInstrument{{ID: roster.Kick, Volume: v}}
+		notes := []SongRenderNote{{InstID: roster.Kick, AtSample: 0, Pitch: 0, Gain: v, DurSec: 0.2}}
+		master, _, err := RenderSongOffline(insts, notes, sampleRate, sampleRate/2)
 		if err != nil {
 			t.Fatalf("RenderSongOffline: %v", err)
 		}

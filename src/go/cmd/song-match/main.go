@@ -23,6 +23,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/songrender"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/synthmatch"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
+	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
 func main() {
@@ -77,7 +78,7 @@ func cmdTimeline(args []string) {
 
 	audio.Reset()
 	audio.ResetInstruments()
-	pcm, sr, err := audio.DecodeWAVToPCM(*file)
+	pcm, sr, err := audio.DecodeWAVAtRate(*file, wavref.Rate) // the corpus rate, never the engine's
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "decode %q: %v\n", *file, err)
 		os.Exit(1)
@@ -153,7 +154,7 @@ func writeTimelineCSV(path string, tl fingerprint.SongTimeline, cfg fingerprint.
 
 func cmdRender(args []string) {
 	fs := flag.NewFlagSet("render", flag.ExitOnError)
-	stem := fs.String("template", "", "template stem id, e.g. bach-toccata (required)")
+	stem := fs.String("template", "", "template stem id, e.g. bach-brandenburg-3 (required)")
 	outDir := fs.String("out", ".", "output directory for master.wav + <inst>.wav stems")
 	bars := fs.Int("bars", 8, "number of bars to render")
 	sr := fs.Int("sr", 44100, "sample rate")
@@ -180,7 +181,7 @@ func cmdRender(args []string) {
 	}
 	fmt.Printf("wrote %s (%d samples)\n", masterPath, len(r.Master))
 	for id, s := range r.Stems {
-		p := filepath.Join(*outDir, id+".wav")
+		p := filepath.Join(*outDir, string(id)+".wav")
 		if err := audio.ExportCaptureToWAV(s, p); err != nil {
 			fmt.Fprintf(os.Stderr, "write stem %s: %v\n", id, err)
 			os.Exit(1)
@@ -198,8 +199,8 @@ func cmdCompare(args []string) {
 	bars := fs.Int("bars", 8, "bars to render")
 	srFlag := fs.Int("sr", 44100, "sample rate")
 	tune := fs.Bool("tune", false, "run solo-passage tuning from the manifest")
-	dryRun := fs.Bool("dry-run", false, "with -tune, do not patch the seed file")
-	seedfile := fs.String("seedfile", "internal/audio/instrument_seeds.go", "seed file to patch")
+	dryRun := fs.Bool("dry-run", false, "with -tune, do not patch the instrument documents")
+	docDir := fs.String("docdir", "internal/assets/instruments", "directory of the shipped instrument documents to patch")
 	_ = fs.Parse(args)
 	if *stem == "" || *ref == "" {
 		fmt.Fprintln(os.Stderr, "song-match compare: -template and -ref are required")
@@ -232,7 +233,7 @@ func cmdCompare(args []string) {
 	audio.Reset()
 	audio.ResetInstruments()
 
-	pcm, sr, err := audio.DecodeWAVToPCM(*ref)
+	pcm, sr, err := audio.DecodeWAVAtRate(*ref, *srFlag) // the rate the template renders at below
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "decode ref: %v\n", err)
 		os.Exit(1)
@@ -293,15 +294,16 @@ func cmdCompare(args []string) {
 		for _, h := range hints {
 			fmt.Printf("  hint [seed] %s: %s\n", h.Instrument, h.Suggestion)
 			if !*dryRun {
-				if err := synthmatch.PatchSeedFile(*seedfile, songmatch.SeedVarName(h.Instrument), h.SeedDeltas); err != nil {
+				path := filepath.Join(*docDir, string(h.Instrument)+".json")
+				if err := synthmatch.PatchInstrumentDocFile(path, h.SeedDeltas); err != nil {
 					fmt.Fprintf(os.Stderr, "patch %s: %v\n", h.Instrument, err)
 					os.Exit(1)
 				}
-				fmt.Printf("  patched %s in %s\n", songmatch.SeedVarName(h.Instrument), *seedfile)
+				fmt.Printf("  patched %s — run `make asset-pack` to rebuild the embedded pack\n", path)
 			}
 		}
 		if *dryRun {
-			fmt.Println("  (dry-run: seeds not modified)")
+			fmt.Println("  (dry-run: documents not modified)")
 		}
 	}
 }

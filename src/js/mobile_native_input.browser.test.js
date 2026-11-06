@@ -7,6 +7,12 @@ import { fileURLToPath } from "url";
 import { resolveGoBinary, assertSimpleDrawMode, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 import { cdpTap } from "./touch_cdp_helpers.js";
 
+// The mobile native <input> is exercised on the instrument-menu SEARCH field
+// (TextField id "inst-search"). It used to be the BPM box, but BPM no longer
+// takes typed input — its readout opens the BPM value wheel — so the native
+// keyboard path is now only for text fields (TextField, textfield.go).
+const TARGET_ID = "inst-search";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const repoRoot = path.resolve(jsDir, "..", "..");
@@ -63,17 +69,31 @@ async function setupMobilePage() {
   await focusCdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${port}/`);
   await page.waitForFunction(() =>
-    typeof bpmBoxRect === "function" &&
+    typeof openInstMenu === "function" &&
+    typeof instMenuSearchRect === "function" &&
+    typeof instMenuSearchState === "function" &&
     typeof forceDraw === "function" &&
-    typeof getBPM === "function" &&
-    typeof rowLabelText === "function" &&
     typeof _mobileInputRegister === "function" &&
     typeof _mobileInputActive === "function"
   );
   await assertSimpleDrawMode(page, false, "mobile native input");
   await page.evaluate(() => forceDraw?.());
   await page.waitForTimeout(200);
+  await openSearchTarget(page);
   return { context, page };
+}
+
+// openSearchTarget opens the instrument menu on row 0 and waits until its
+// search field is laid out (the field the native <input> overlays).
+async function openSearchTarget(page) {
+  await page.evaluate(() => openInstMenu(0));
+  await page.waitForFunction(() => { const r = instMenuSearchRect(); return r && r.w > 0; },
+    null, { timeout: 5000, polling: 50 });
+}
+
+// targetRect returns the search field's rect.
+async function targetRect(page) {
+  return await page.evaluate(() => instMenuSearchRect?.());
 }
 
 // nativeInputPresent reports whether the mobile native <input> (z-index:10000)
@@ -99,10 +119,10 @@ function nativeInputPoll() {
   return false;
 }
 
-// tapBPMAwaitInput taps the BPM box and waits for the native input to appear,
-// re-tapping a few times if needed. The "bpm" rect is (re)registered every
-// Update() frame (recalcButtons → mobileInputRegister) and stays registered, so a
-// tap that lands creates the input synchronously inside the touchend gesture.
+// tapAwaitInput taps the search field and waits for the native input to appear,
+// re-tapping a few times if needed. A live TextField's rect is (re)registered
+// every Update() frame (syncNativeGestures) and stays registered, so a tap that
+// lands creates the input synchronously inside the touchend gesture.
 //
 // The headless flake is a DETECTION race, not a creation race: under the 4-job
 // parallel batch software-GL throttles the rAF-driven game loop, and
@@ -123,13 +143,13 @@ function nativeInputPoll() {
 // most-degraded sub-tests, so we widen the per-attempt window to 1500 ms while
 // keeping the 12 re-tap attempts (cost is paid only on the failing path).
 const DETECT_TIMEOUT_MS = 1500;
-async function tapBPMAwaitInput(page, rect) {
+async function tapAwaitInput(page, rect) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   for (let attempt = 0; attempt < 12; attempt++) {
     await cdpTap(page, cx, cy);
     try {
-      await page.waitForFunction(nativeInputPoll, { timeout: DETECT_TIMEOUT_MS, polling: 50 });
+      await page.waitForFunction(nativeInputPoll, null, { timeout: DETECT_TIMEOUT_MS, polling: 50 });
       return true;
     } catch (_) {
       // Not detected yet — let the natural loop tick, then re-tap.
@@ -139,16 +159,16 @@ async function tapBPMAwaitInput(page, rect) {
   return false;
 }
 
-// Test 1: Tap BPM box → native <input> element appears
-console.log("Test 1: Tap BPM box → native input appears");
+// Test 1: Tap the search field → native <input> element appears
+console.log("Test 1: Tap search field → native input appears");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Tap the BPM box → native input element should appear in the DOM.
-    const inputExists = await tapBPMAwaitInput(page, rect);
+    // Tap the search field → native input element should appear in the DOM.
+    const inputExists = await tapAwaitInput(page, rect);
     assert(inputExists, "Expected native input element with z-index:10000 after tap");
 
     console.log("  PASS");
@@ -165,10 +185,10 @@ console.log("Test 2: Native input is auto-focused");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     const isFocused = await page.evaluate(() => {
       const active = document.activeElement;
@@ -185,30 +205,27 @@ console.log("Test 2: Native input is auto-focused");
   }
 }
 
-// Test 3: BPM native input — type + Enter → BPM updated
-console.log("Test 3: Type BPM + Enter → BPM updated");
+// Test 3: typing into the native input reaches Go — the search query mirrors it
+console.log("Test 3: Type into native input → search query updated");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
-    // Clear the native input and type new BPM
     await page.keyboard.press("Control+a");
-    await page.keyboard.type("140");
-    await page.keyboard.press("Enter");
+    await page.keyboard.type("kick");
 
-    // Enter commits the JS native input synchronously, but Go applies the result
-    // on its next Update poll (mobileInputPollResult → SetBPM). Poll getBPM on a
-    // fixed interval (rather than the default rAF, which the throttled game loop
-    // starves) until the natural Update loop has processed it.
-    await page.waitForFunction(() => typeof getBPM === "function" && getBPM() === 140,
+    // The search field mirrors the native value on Go's next Update
+    // (TextInput.NativeLiveValue / mobileInputGetValue). Poll on a fixed
+    // interval (not rAF, which the throttled game loop starves).
+    await page.waitForFunction(() => instMenuSearchState?.()?.text === "kick", null,
       { timeout: 4000, polling: 50 });
 
-    const bpm = await page.evaluate(() => getBPM?.());
-    assert(bpm === 140, `Expected BPM=140, got ${bpm}`);
+    const text = await page.evaluate(() => instMenuSearchState?.()?.text);
+    assert(text === "kick", `Expected search text "kick", got ${JSON.stringify(text)}`);
 
     console.log("  PASS");
   } catch (e) {
@@ -219,21 +236,21 @@ console.log("Test 3: Type BPM + Enter → BPM updated");
   }
 }
 
-// Test 4: BPM native input has inputmode=numeric
-console.log("Test 4: BPM native input has inputmode=numeric");
+// Test 4: a text field's native input has inputmode=text
+console.log("Test 4: Search native input has inputmode=text");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     const mode = await page.evaluate(() => {
       const active = document.activeElement;
       return active ? active.getAttribute('inputmode') : null;
     });
-    assert(mode === "numeric", `Expected inputmode=numeric, got ${mode}`);
+    assert(mode === "text", `Expected inputmode=text, got ${mode}`);
 
     console.log("  PASS");
   } catch (e) {
@@ -252,17 +269,19 @@ console.log("Test 5: Desktop viewport → no native inputs");
   try {
     await page.goto(`http://localhost:${port}/`);
     await page.waitForFunction(() =>
-      typeof bpmBoxRect === "function" &&
+      typeof openInstMenu === "function" &&
+      typeof instMenuSearchRect === "function" &&
       typeof forceDraw === "function"
     );
     await assertSimpleDrawMode(page, false, "desktop native input");
     await page.evaluate(() => forceDraw?.());
     await page.waitForTimeout(200);
+    await openSearchTarget(page);
 
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect empty");
 
-    // Click BPM box with mouse (desktop — not touch)
+    // Click the search field with the mouse (desktop — not touch)
     await page.mouse.click(rect.x + rect.w / 2, rect.y + rect.h / 2);
     await page.waitForTimeout(200);
     await page.evaluate(() => forceDraw?.());
@@ -286,13 +305,13 @@ console.log("Test 5: Desktop viewport → no native inputs");
   }
 }
 
-// Test 6: Drag across BPM rect → does NOT trigger native input (movement threshold)
+// Test 6: Drag across the search rect → does NOT trigger native input (movement threshold)
 console.log("Test 6: Drag across rect does not trigger native input");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
     // Simulate a drag (touchstart at one point, touchend far away)
     const startX = rect.x + 2;
@@ -341,11 +360,11 @@ console.log("Test 7: Escape cancels native input");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
     // Verify input exists (retry-aware)
-    assert(await tapBPMAwaitInput(page, rect), "Expected native input before Escape");
+    assert(await tapAwaitInput(page, rect), "Expected native input before Escape");
 
     // Press Escape
     await page.keyboard.press("Escape");
@@ -355,7 +374,7 @@ console.log("Test 7: Escape cancels native input");
         if (inp.style.zIndex === '10000') return false;
       }
       return true;
-    }, { timeout: 2000, polling: 50 });
+    }, null, { timeout: 2000, polling: 50 });
 
     // Input should be removed
     const inputExists = await nativeInputPresent(page);
@@ -405,18 +424,18 @@ console.log("Test 9: Go-side mobileInputActive JS export");
 {
   const { context, page } = await setupMobilePage();
   try {
-    // Before tapping, mobileInputActive("bpm") should be false
-    const activeBefore = await page.evaluate(() => mobileInputActive?.("bpm"));
-    assert(activeBefore === false, `Expected mobileInputActive('bpm')=false before tap, got ${activeBefore}`);
+    // Before tapping, mobileInputActive(TARGET_ID) should be false
+    const activeBefore = await page.evaluate((id) => mobileInputActive?.(id), TARGET_ID);
+    assert(activeBefore === false, `Expected mobileInputActive('${TARGET_ID}')=false before tap, got ${activeBefore}`);
 
-    // Tap BPM box to create native input
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    // Tap the search field to create the native input
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     // Now mobileInputActive should be true
-    const activeAfter = await page.evaluate(() => _mobileInputActive?.("bpm"));
-    assert(activeAfter === true, `Expected _mobileInputActive('bpm')=true after tap, got ${activeAfter}`);
+    const activeAfter = await page.evaluate((id) => _mobileInputActive?.(id), TARGET_ID);
+    assert(activeAfter === true, `Expected _mobileInputActive('${TARGET_ID}')=true after tap, got ${activeAfter}`);
 
     console.log("  PASS");
   } catch (e) {
@@ -435,15 +454,15 @@ console.log("Test 9: Go-side mobileInputActive JS export");
 // <= tapMaxMovePx (10px) — a *square* envelope (~14px diagonally). The JS native-
 // input gesture handler rejected the gesture with a *circular* Euclidean test
 // (dx*dx+dy*dy > 100, i.e. distance > 10px). A (8,8) jitter (distance ~11.3px)
-// therefore opened the in-canvas editor (Go: tap) but created NO native input
+// therefore registered a tap in Go but created NO native input
 // (JS: "drag") → the soft keyboard never appeared. Playwright/CDP taps have zero
 // movement, so this gap was invisible until now. The two detectors must agree.
 console.log("Test 10: Finger-jitter tap (within Go's tap envelope) still creates native input");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
     const cx = Math.round(rect.x + rect.w / 2);
     const cy = Math.round(rect.y + rect.h / 2);
@@ -452,9 +471,9 @@ console.log("Test 10: Finger-jitter tap (within Go's tap envelope) still creates
     const jy = cy + 8;
 
     const cdp = await page.context().newCDPSession(page);
-    // Retry like tapBPMAwaitInput, with the same fixed-interval detection poll so a
-    // throttled rAF can't starve it. The "bpm" rect is (re)registered every Update
-    // frame and stays registered; re-dispatching the jitter tap covers the case
+    // Retry like tapAwaitInput, with the same fixed-interval detection poll so a
+    // throttled rAF can't starve it. The search field's rect is (re)registered
+    // every Update frame and stays registered; re-dispatching the jitter tap covers the case
     // where the first attempt raced an Update that had not yet run.
     //
     // The jitter MUST be delivered with the same clean CDP touch shape that
@@ -472,7 +491,7 @@ console.log("Test 10: Finger-jitter tap (within Go's tap envelope) still creates
     //      last known position (the jitter point), so touchStartPos->end delta is
     //      still (8,8) — both axes <= 10, the square envelope Go treats as a tap.
     //   3. Hold ~150ms like cdpTap so the throttled WASM loop reliably has the
-    //      "bpm" rect registered when the gesture lands.
+    //      search rect registered when the gesture lands.
     let inputExists = false;
     for (let attempt = 0; attempt < 12 && !inputExists; attempt++) {
       const touchId = 200 + attempt;
@@ -493,14 +512,14 @@ console.log("Test 10: Finger-jitter tap (within Go's tap envelope) still creates
         touchPoints: [],
       });
       try {
-        await page.waitForFunction(nativeInputPoll, { timeout: DETECT_TIMEOUT_MS, polling: 50 });
+        await page.waitForFunction(nativeInputPoll, null, { timeout: DETECT_TIMEOUT_MS, polling: 50 });
         inputExists = true;
       } catch (_) {
         await page.waitForTimeout(120);
       }
     }
     assert(inputExists, "Expected native input after a realistic (8,8) finger-jitter tap " +
-      "(Go treats it as a tap and opens the editor; the JS native-input handler must too)");
+      "(Go treats it as a tap; the JS native-input handler must too)");
 
     console.log("  PASS");
   } catch (e) {

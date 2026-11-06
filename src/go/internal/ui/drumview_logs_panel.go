@@ -1,5 +1,7 @@
 package ui
 
+import "image"
+
 // logsPanelID identifies the Logs Navigation Panel portal entry.
 const logsPanelID = "logs"
 
@@ -49,11 +51,6 @@ func (dv *DrumView) openLogsPanel() {
 	c := dv.ensureLogsComp()
 	c.Open()
 	c.markSeen() // opening clears the unread badge
-	p.Open(PortalEntry{
-		ID:      logsPanelID,
-		Overlay: &compPortalOverlay{comp: c, tag: logsPanelID, updateFn: c.Update},
-		Modal:   true,
-		Scrim:   true,
-		OnClose: func() { c.Close() },
-	})
+	p.Open(menuCardEntry(logsPanelID, &compPortalOverlay{comp: c, tag: logsPanelID, updateFn: c.Update},
+		image.Rectangle{}, false, func() { c.Close() }))
 }

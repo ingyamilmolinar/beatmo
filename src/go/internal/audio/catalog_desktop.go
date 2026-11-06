@@ -9,13 +9,16 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 var (
 	catalogOnce sync.Once
 	catalogMu   sync.RWMutex
 	catalog     []SoundMeta
-	catalogByID map[string]SoundMeta
+	catalogByID map[instrument.ID]SoundMeta
 )
 
 // InitDefaultCatalog scans the top-level assets directory for WAV files grouped
@@ -36,9 +39,9 @@ func AssetsRoot() string {
 // current working directory. This supports running from repo root (`make run`)
 // as well as from module subdirs (e.g. `cd src/go && go run ...`).
 func defaultAssetsRoot() string {
-	if env := os.Getenv("BEATMO_ASSETS"); env != "" {
-		if info, err := os.Stat(env); err == nil && info.IsDir() {
-			return env
+	if root := env.AssetsRoot.Get(); root != "" {
+		if info, err := os.Stat(root); err == nil && info.IsDir() {
+			return root
 		}
 	}
 	for up := 0; up <= 5; up++ {
@@ -62,7 +65,7 @@ func defaultAssetsRoot() string {
 // InitCatalogFromDir replaces the current catalog with WAV metadata discovered
 // under root. Primarily used by UI/Game startup; it may be re-run in tests.
 func InitCatalogFromDir(root string) error {
-	m := map[string]SoundMeta{}
+	m := map[instrument.ID]SoundMeta{}
 	var out []SoundMeta
 	rootAbs := root
 	if abs, err := filepath.Abs(root); err == nil {
@@ -98,7 +101,7 @@ func InitCatalogFromDir(root string) error {
 		relSlash := filepath.ToSlash(rel)
 		relTrim := strings.TrimSuffix(relSlash, filepath.Ext(relSlash))
 		cat := parts[0]
-		id := slugPath(relTrim) // include category + subpath for uniqueness
+		id := instrument.SampleID(relTrim) // category + subpath keep it unique
 		if _, exists := m[id]; exists {
 			return nil
 		}
@@ -109,14 +112,13 @@ func InitCatalogFromDir(root string) error {
 		}
 		absPath := filepath.Join(rootAbs, rel)
 		meta := SoundMeta{
-			ID:       id,
-			Name:     PrettyName(base),
-			Category: wavCategory(cat, relTrim),
-			RelPath:  relTrim,
-			Path:     filepath.ToSlash(absPath),
-			Size:     info.Size(),
-			Source:   "wav",
-			Scope:    "shipped",
+			ID:      id,
+			Name:    PrettyName(base),
+			Group:   wavCategory(cat, relTrim),
+			RelPath: relTrim,
+			Path:    filepath.ToSlash(absPath),
+			Size:    info.Size(),
+			Source:  SourceWAV,
 		}
 		m[id] = meta
 		out = append(out, meta)
@@ -130,12 +132,11 @@ func InitCatalogFromDir(root string) error {
 			continue
 		}
 		meta := SoundMeta{
-			ID:       id,
-			Name:     PrettyName(id),
-			Category: synthCategory(id),
-			RelPath:  "synth/" + id,
-			Source:   "synth",
-			Scope:    "builtin",
+			ID:      id,
+			Name:    PrettyName(string(id)),
+			Group:   synthCatalogCategory(id),
+			RelPath: "synth/" + string(id),
+			Source:  SourceSynth,
 		}
 		m[id] = meta
 		out = append(out, meta)
@@ -143,8 +144,8 @@ func InitCatalogFromDir(root string) error {
 
 	// Stable ordering: category then relative path (both lowercased).
 	slices.SortFunc(out, func(a, b SoundMeta) int {
-		if a.Category != b.Category {
-			if a.Category < b.Category {
+		if a.Group != b.Group {
+			if a.Group < b.Group {
 				return -1
 			}
 			return 1
@@ -176,26 +177,26 @@ func Catalog() []SoundMeta {
 }
 
 // CatalogLookup returns metadata for an instrument by ID, or false if not found.
-func CatalogLookup(id string) (SoundMeta, bool) {
+func CatalogLookup(id instrument.ID) (SoundMeta, bool) {
 	catalogMu.RLock()
 	defer catalogMu.RUnlock()
 	meta, ok := catalogByID[id]
 	return meta, ok
 }
 
-// CatalogCategories returns sorted distinct categories (excluding "Missing").
-func CatalogCategories() []string {
+// CatalogGroups returns the sorted distinct catalog groups (excluding "Missing").
+func CatalogGroups() []string {
 	catalogMu.RLock()
 	defer catalogMu.RUnlock()
 	seen := map[string]bool{}
 	var cats []string
 	for _, m := range catalog {
-		if m.Category == "" {
+		if m.Group == "" {
 			continue
 		}
-		if !seen[m.Category] {
-			seen[m.Category] = true
-			cats = append(cats, m.Category)
+		if !seen[m.Group] {
+			seen[m.Group] = true
+			cats = append(cats, m.Group)
 		}
 	}
 	slices.Sort(cats)
@@ -203,7 +204,7 @@ func CatalogCategories() []string {
 }
 
 // IsRegistered reports whether an instrument ID is already registered.
-func IsRegistered(id string) bool {
+func IsRegistered(id instrument.ID) bool {
 	instMu.RLock()
 	defer instMu.RUnlock()
 	_, ok := instruments[id]
@@ -212,7 +213,7 @@ func IsRegistered(id string) bool {
 
 // EnsureInstrumentLoaded registers an instrument on first use using the catalog
 // metadata. It returns an error if the ID is unknown.
-func EnsureInstrumentLoaded(id string) error {
+func EnsureInstrumentLoaded(id instrument.ID) error {
 	if id == "" || IsRegistered(id) {
 		return nil
 	}
@@ -255,65 +256,4 @@ func wavCategory(cat string, rel string) string {
 		}
 		return name + " (WAV)"
 	}
-}
-
-// synthCategory maps built-in synth IDs to grouped categories.
-func synthCategory(id string) string {
-	lower := strings.ToLower(id)
-	switch {
-	case strings.HasPrefix(lower, "rimshot"), strings.HasPrefix(lower, "sidestick"):
-		return "Snares (Synth)"
-	case strings.HasPrefix(lower, "snare"):
-		return "Snares (Synth)"
-	case strings.HasPrefix(lower, "kick"):
-		return "Kick Drums (Synth)"
-	case strings.HasPrefix(lower, "hihat"):
-		return "Hi-Hats (Synth)"
-	case strings.HasPrefix(lower, "tom"):
-		return "Toms (Synth)"
-	case strings.HasPrefix(lower, "clap"):
-		return "Claps (Synth)"
-	case strings.HasPrefix(lower, "cowbell"):
-		return "Cowbells (Synth)"
-	case strings.HasPrefix(lower, "ride"), strings.HasPrefix(lower, "crash"):
-		return "Cymbals (Synth)"
-	case strings.HasPrefix(lower, "shaker"), strings.HasPrefix(lower, "conga"):
-		return "Percussion (Synth)"
-	case strings.HasPrefix(lower, "bass"):
-		return "Bass (Synth)"
-	case strings.HasPrefix(lower, "violin"), strings.HasPrefix(lower, "viola"), strings.HasPrefix(lower, "cello"),
-		strings.HasPrefix(lower, "guitar"):
-		return "Strings (Synth)"
-	case strings.HasPrefix(lower, "piano"):
-		return "Keys (Synth)"
-	case strings.HasPrefix(lower, "flute"), strings.HasPrefix(lower, "oboe"),
-		strings.HasPrefix(lower, "trumpet"), strings.HasPrefix(lower, "french-horn"):
-		return "Winds (Synth)"
-	default:
-		return "Synth (Other)"
-	}
-}
-
-// slugReplacer is hoisted to package level to avoid re-creating it on every
-// slugPath call. The replacer is immutable and safe for concurrent use.
-var slugReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", "+", "-", ".", "-", "(", "-", ")", "-", "[", "-", "]", "-", "{", "-", "}", "-", ",", "-", "'", "-", "\"", "-", "#", "-", "$", "-", "%", "-", "@", "-", "!", "-", "^", "-", "&", "-", "*", "-", "?", "-", "|", "-", "<", "-", ">", "-", "~", "-", "`", "-")
-
-// slugPath converts a path-like string into a stable, ascii-only identifier.
-// It preserves folder structure by replacing separators with dashes.
-func slugPath(rel string) string {
-	lower := strings.ToLower(rel)
-	lower = strings.ReplaceAll(lower, "\\", "/")
-	lower = strings.TrimSuffix(lower, "/")
-	lower = strings.TrimPrefix(lower, "/")
-	slug := slugReplacer.Replace(lower)
-	// collapse repeated dashes
-	slug = strings.ReplaceAll(slug, "--", "-")
-	for strings.Contains(slug, "--") {
-		slug = strings.ReplaceAll(slug, "--", "-")
-	}
-	slug = strings.Trim(slug, "-")
-	if slug == "" {
-		return "sample"
-	}
-	return slug
 }

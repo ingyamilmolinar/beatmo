@@ -35,40 +35,33 @@ func (dv *DrumView) BuildInstrumentBundle(rowIdx int) (audio.InstrumentBundle, e
 	row := dv.Rows[rowIdx]
 	instID := row.Instrument
 
-	recipeDoc, err := audio.BuildInstrumentRecipeDoc(instID)
-	if err != nil {
-		return audio.InstrumentBundle{}, err
-	}
-
-	doc := audio.InstrumentDoc{
-		Name:   row.Name,
-		Recipe: recipeDoc,
-		Kind:   "synth",
+	doc := audio.BundleInstrument{Name: row.Name}
+	if synth, ok := audio.InstrumentDoc(instID); ok {
+		synth.Origin = ""
+		doc.Synth = &synth
 	}
 	if c := hexColor(row.Color); c != "" {
 		doc.Color = c
 	}
 
-	// Sample-edit (non-destructive) → kind "sample".
+	// Sample-edit (non-destructive).
 	if e, ok := audio.SampleEditFor(instID); ok {
 		doc.SampleEdit = e.Fields()
-		doc.Kind = "sample"
 	}
 
-	// User WAV → kind "wav" + a hash-pinned reference (NO PCM). The pin is the
+	// User WAV → a hash-pinned reference (NO PCM). The pin is the
 	// content hash of the CANONICAL WAV bytes (the stored PCM re-encoded through
 	// the recording encoder) — a deterministic, decoder-independent "file
 	// version". Sources point at where those bytes can be re-fetched.
 	if audio.IsUserSample(instID) {
-		doc.Kind = "wav"
 		if rec, ok := audio.UserSamplePCM(instID); ok {
 			if canonical, err := wavgen.EncodeWAV(rec.PCM, rec.SampleRate); err == nil {
 				sha := audio.Sha256Hex(canonical)
-				v := dv.wavRegistry().Register(instID, sha)
-				ref := &audio.WavRef{Name: instID + ".wav", Sha256: sha, Version: v.Version}
+				v := dv.wavRegistry().Register(string(instID), sha)
+				ref := &audio.WavRef{Name: string(instID) + ".wav", Sha256: sha, Version: v.Version}
 				// The sample store serves this WAV keyed by instrument id on both
 				// platforms (its PCM re-encodes to the same canonical bytes).
-				ref.Sources = append(ref.Sources, audio.WavSource{Kind: audio.WavSourceLocalStorage, Ref: instID})
+				ref.Sources = append(ref.Sources, audio.WavSource{Kind: audio.WavSourceLocalStorage, Ref: string(instID)})
 				doc.WavRef = ref
 			}
 		}
@@ -82,26 +75,26 @@ func (dv *DrumView) BuildInstrumentBundle(rowIdx int) (audio.InstrumentBundle, e
 	if eq := buildInstrumentEQ(row); eq != nil {
 		doc.EQ = eq
 	}
+	doc.Kind = doc.KindOf()
 
-	return audio.InstrumentBundle{
-		Format:      audio.InstrumentBundleFormat,
-		Version:     audio.InstrumentBundleVersion,
-		Effects:     defs,
-		Instruments: []audio.InstrumentDoc{doc},
-	}, nil
+	bundle := audio.NewInstrumentBundle()
+	bundle.Effects = defs
+	bundle.Instruments = []audio.BundleInstrument{doc}
+	return bundle, nil
 }
 
 // buildInstrumentEQ snapshots a row's EQ into a portable struct, or nil when the
 // EQ is flat and all filters are off (nothing worth carrying).
 func buildInstrumentEQ(row *DrumRow) *audio.InstrumentEQ {
-	active := row.HPFEnabled || row.LPFEnabled
-	for _, g := range row.EQGainsDB {
+	src := rowEQ(row)
+	active := src.HPF || src.LPF
+	for _, g := range src.GainsDB {
 		if math.Abs(g) > 1e-9 {
 			active = true
 			break
 		}
 	}
-	for _, m := range row.EQBandMuted {
+	for _, m := range src.BandMuted {
 		if m {
 			active = true
 			break
@@ -110,17 +103,12 @@ func buildInstrumentEQ(row *DrumRow) *audio.InstrumentEQ {
 	if !active {
 		return nil
 	}
-	eq := &audio.InstrumentEQ{
-		HPFEnabled:  row.HPFEnabled,
-		HPFCutoffHz: row.HPFCutoffHz,
-		LPFEnabled:  row.LPFEnabled,
-		LPFCutoffHz: row.LPFCutoffHz,
+	return &audio.InstrumentEQ{
+		HPFEnabled:  src.HPF,
+		HPFCutoffHz: src.HPFHz,
+		LPFEnabled:  src.LPF,
+		LPFCutoffHz: src.LPFHz,
+		GainsDB:     append([]float64(nil), src.GainsDB...),
+		BandMuted:   append([]bool(nil), src.BandMuted...),
 	}
-	if len(row.EQGainsDB) > 0 {
-		eq.GainsDB = append([]float64(nil), row.EQGainsDB...)
-	}
-	if len(row.EQBandMuted) > 0 {
-		eq.BandMuted = append([]bool(nil), row.EQBandMuted...)
-	}
-	return eq
 }

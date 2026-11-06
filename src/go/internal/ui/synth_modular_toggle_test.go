@@ -3,6 +3,9 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // synthSectionByID returns the live section for id from the current layout, or
@@ -22,7 +25,7 @@ func synthSectionByID(dv *DrumView, id synthSectionID) (synthSection, bool) {
 // panel claims its expanded height on the Layout AFTER the tab activates, so
 // the dance is: activate, resize to 1280×720, re-activate, then select +
 // re-activate. Mirrors TestSynthDetailPane_EnablePillForSelectedStage.
-func selectStageProdHeight(t *testing.T, g *Game, instID string, id synthSectionID) {
+func selectStageProdHeight(t *testing.T, g *Game, instID instrument.ID, id synthSectionID) {
 	t.Helper()
 	layoutSynthTab(t, g)
 	g.Layout(1280, 720)
@@ -36,9 +39,7 @@ func selectStageProdHeight(t *testing.T, g *Game, instID string, id synthSection
 // pill in the detail-pane header when that stage is the SELECTED one. The
 // per-card pill is gone; the single pill lives in the detail header of the
 // open stage. The VOICE section (family knobs) never grows a pill — the voice
-// IS the instrument. This holds for the modular voice (POST toggle is
-// drive_enabled) AND every migrated drum/FM instrument (POST toggle is
-// post_enabled) — the unification deliverable.
+// IS the instrument. The POST toggle is drive_enabled for every recipe.
 func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 	g := setupModularSynthGame(t)
 	want := map[synthSectionID]string{
@@ -66,25 +67,25 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 		}
 		// Select the stage at production height and assert its detail-header
 		// pill is non-empty and inside the detail pane.
-		selectStageProdHeight(t, g, "modular", id)
+		selectStageProdHeight(t, g, roster.Modular, id)
 		pill := g.drum.synthDetailEnablePillRect()
 		if pill.Empty() {
 			t.Errorf("selected stage %q (%s) has no detail enable pill", sectionLabel(id), param)
 			continue
 		}
-		if !pill.In(g.drum.instEditorDetailR) {
-			t.Errorf("section %q pill %v not inside detail pane %v", sectionLabel(id), pill, g.drum.instEditorDetailR)
+		if !pill.In(g.drum.instEditorMacroDetailR) {
+			t.Errorf("section %q pill %v not inside detail pane %v", sectionLabel(id), pill, g.drum.instEditorMacroDetailR)
 		}
 	}
 	// VOICE never shows a pill (synth-modular prunes VOICE, but guard anyway).
 	if _, ok := synthSectionByID(g.drum, synthSectionVoice); ok {
-		selectStageProdHeight(t, g, "modular", synthSectionVoice)
+		selectStageProdHeight(t, g, roster.Modular, synthSectionVoice)
 		if !g.drum.synthDetailEnablePillRect().Empty() {
 			t.Errorf("VOICE section must not show an enable pill")
 		}
 	}
 
-	// A migrated drum recipe (drum-snare) now ALSO carries per-stage enable
+	// The modular snare (synth-modular-snare) now ALSO carries per-stage enable
 	// toggles on its standardized stage sections (the unification deliverable),
 	// each surfaced via the detail-header pill when selected. The VOICE section
 	// (family knobs) carries none.
@@ -99,7 +100,7 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 		synthSectionEnvelope:  "env_enabled",
 		synthSectionFilter:    "filter_enabled",
 		synthSectionFilterEnv: "filtenv_enabled",
-		synthSectionPost:      "post_enabled",
+		synthSectionPost:      "drive_enabled",
 	}
 	for _, s := range g2.drum.SynthTabSections() {
 		if s.SectionID() == synthSectionVoice {
@@ -116,7 +117,7 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 		if _, ok := synthSectionByID(g2.drum, id); !ok {
 			continue
 		}
-		selectStageProdHeight(t, g2, "snare", id)
+		selectStageProdHeight(t, g2, roster.Snare, id)
 		if g2.drum.synthDetailEnablePillRect().Empty() {
 			t.Errorf("drum recipe selected stage %q has no detail enable pill", sectionLabel(id))
 		}
@@ -151,28 +152,28 @@ func TestSynthTab_NoiseSeedNotAGridControl(t *testing.T) {
 func TestSynthTab_EnablePillTogglesStage(t *testing.T) {
 	g := setupModularSynthGame(t)
 	// Silence the audition so the test makes no sound.
-	restore := SwapSynthAuditionFnForTest(func(string) {})
+	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
-	if !synthStageEnabled("modular", "filter_enabled") {
+	if !synthStageEnabled(roster.Modular, "filter_enabled") {
 		t.Fatal("filter stage should start enabled (default 1)")
 	}
 	// Select the FILTER stage at production height so its detail-header pill is
 	// laid out, then read it from the detail pane (the per-card pill is gone).
-	selectStageProdHeight(t, g, "modular", synthSectionFilter)
+	selectStageProdHeight(t, g, roster.Modular, synthSectionFilter)
 	pill := g.drum.synthDetailEnablePillRect()
 	if pill.Empty() {
 		t.Fatal("filter enable pill rect is empty")
 	}
 	cx, cy := (pill.Min.X+pill.Max.X)/2, (pill.Min.Y+pill.Max.Y)/2
 
-	if !g.drum.handleSynthTabInput(cx, cy, true, "modular") {
+	if !g.drum.handleSynthTabInput(cx, cy, true, roster.Modular) {
 		t.Fatal("tap on filter pill was not handled")
 	}
-	if synthStageEnabled("modular", "filter_enabled") {
+	if synthStageEnabled(roster.Modular, "filter_enabled") {
 		t.Errorf("filter stage still enabled after first tap (want bypassed)")
 	}
-	if g.drum.handleSynthTabInput(cx, cy, true, "modular"); synthStageEnabled("modular", "filter_enabled") == false {
+	if g.drum.handleSynthTabInput(cx, cy, true, roster.Modular); synthStageEnabled(roster.Modular, "filter_enabled") == false {
 		t.Errorf("filter stage still bypassed after second tap (want re-enabled)")
 	}
 }
@@ -199,7 +200,7 @@ func TestSynthTab_EnablePillHasHitArea(t *testing.T) {
 		synthSectionPost:      "synth-toggle-drive_enabled",
 	}
 	for id, wantTag := range stages {
-		selectStageProdHeight(t, g, "modular", id)
+		selectStageProdHeight(t, g, roster.Modular, id)
 		seen := map[string]bool{}
 		for _, a := range g.drum.synthTabHitAreas() {
 			if strings.HasPrefix(a.Tag, "synth-toggle-") {
@@ -223,7 +224,7 @@ func TestSynthTab_EnablePillHasHitArea(t *testing.T) {
 
 	// The essential OSC stage, when selected, is non-interactive and publishes
 	// NO synth-toggle hit area.
-	selectStageProdHeight(t, g, "modular", synthSectionOsc)
+	selectStageProdHeight(t, g, roster.Modular, synthSectionOsc)
 	for _, a := range g.drum.synthTabHitAreas() {
 		if a.Tag == "synth-toggle-osc_enabled" {
 			t.Error("essential OSC stage must not publish a synth-toggle hit area")

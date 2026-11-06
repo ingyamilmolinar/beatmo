@@ -28,7 +28,7 @@ func TestCopySelectedNodePopulatesClipboardAndEmits(t *testing.T) {
 	node, _ := g.graph.GetNodeByID(n.ID)
 	node.Params.Volume = 0.42
 	node.Params.Pitch = 7
-	node.Params.LogicKind = "probability"
+	node.Params.LogicKind = model.LogicProbability
 	node.Params.LogicP = 0.5
 	node.Params.EffectOverrides = []model.EffectOverride{{Type: "distortion", Param: "drive", Value: 0.8}}
 	g.graph.Nodes[n.ID] = node

@@ -103,7 +103,7 @@ func TestPredictorDirtyRebuildsExistingHorizon(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing node %d", nodeID)
 	}
-	node.Params.LogicKind = "skip_every_n"
+	node.Params.LogicKind = model.LogicSkipEveryN
 	node.Params.LogicN = 2
 	g.SetNodeParams(nodeID, node.Params)
 	p.UpdateNode(nodeID, node)

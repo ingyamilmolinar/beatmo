@@ -7,6 +7,10 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/env"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestStopRecording_FinalizeCompletesWithinDeadline asserts the
@@ -18,13 +22,13 @@ import (
 // promptly under normal load.
 func TestStopRecording_FinalizeCompletesWithinDeadline(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("BEATMO_RECORDINGS_DIR", dir)
+	t.Cleanup(env.RecordingsDir.SetForTest(dir))
 
 	opts := RecordingOptions{
 		Format: FormatWAV16,
 		Instruments: []InstrumentMeta{
-			{ID: "kick", Name: "Kick"},
-			{ID: "snare", Name: "Snare"},
+			{ID: channel.Of(roster.Kick), Name: "Kick"},
+			{ID: channel.Of(roster.Snare), Name: "Snare"},
 		},
 		BPM: 120,
 	}
@@ -91,10 +95,10 @@ func TestWaitRecordingFinalized_NoSessionReturnsImmediately(t *testing.T) {
 // promptly instead of blocking until finalize completes. Important for
 // shutdown handlers that have a deadline.
 func TestWaitRecordingFinalized_RespectsContextCancel(t *testing.T) {
-	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
-		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
+		Instruments: []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}},
 		BPM:         120,
 	}
 	if err := StartRecording(opts); err != nil {

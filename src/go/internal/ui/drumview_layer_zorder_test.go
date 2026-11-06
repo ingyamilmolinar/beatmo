@@ -75,6 +75,10 @@ func TestDrumViewLayerZOrder(t *testing.T) {
 		// straddles the panel top edge; keeping resize here makes the divider
 		// draggable again post-RootTree.
 		{"layout-resize", ZResize},
+		// Mobile fallback status toast — topmost so it composites over the EQ
+		// panel/view-switch/divider above when the grid pane (its primary
+		// home) isn't the surface the mobile user is looking at.
+		{"drumview-toast", ZDrumToast},
 	}
 
 	assertTreeLayers := func(name string, tree *DrumViewTree, want []expected) {

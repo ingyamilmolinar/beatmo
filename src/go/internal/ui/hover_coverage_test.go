@@ -90,7 +90,7 @@ func TestSidebarSectionHeaderHoverLift(t *testing.T) {
 	}
 	g.sidebar.Open(n)
 	g.sidebar.layout()
-	r, ok := g.sidebar.rects["sec-vol"]
+	r, ok := g.sidebar.rects[sbSectionHeader(secVol)]
 	if !ok || r.Empty() {
 		t.Fatal("sec-vol header rect missing")
 	}
@@ -100,7 +100,7 @@ func TestSidebarSectionHeaderHoverLift(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		g.sidebar.Draw(screen)
 	}
-	if lift := g.sidebar.hover.Lift("sec-vol"); lift < 0.9 {
+	if lift := g.sidebar.hover.Lift(sbSectionHeader(secVol).String()); lift < 0.9 {
 		t.Errorf("section-header hover lift = %v after 30 frames, want ~1", lift)
 	}
 
@@ -109,7 +109,7 @@ func TestSidebarSectionHeaderHoverLift(t *testing.T) {
 	for i := 0; i < 60; i++ {
 		g.sidebar.Draw(screen)
 	}
-	if lift := g.sidebar.hover.Lift("sec-vol"); lift > 0.05 {
+	if lift := g.sidebar.hover.Lift(sbSectionHeader(secVol).String()); lift > 0.05 {
 		t.Errorf("section-header hover lift = %v after leave, want ~0", lift)
 	}
 }
@@ -148,17 +148,6 @@ func TestNodeHoverGlowEases(t *testing.T) {
 	}
 	if g.hoverGlowP != 0 || g.hoverGlowNode != nil {
 		t.Errorf("node hover glow did not settle to zero (p=%v node=%v)", g.hoverGlowP, g.hoverGlowNode)
-	}
-}
-
-// TestSynthChipAdapterIsGlowTarget pins that pipeline chips participate in
-// the tree hover overlay (the compile-time assertion is the contract; the
-// nil-dv case returns the hit rect so hover works even before wiring).
-func TestSynthChipAdapterIsGlowTarget(t *testing.T) {
-	var gt glowTarget = &synthChipHitAdapter{}
-	r := image.Rect(10, 10, 60, 40)
-	if got := gt.glowRect(0, 0, r); got != r {
-		t.Errorf("chip glowRect = %v, want hit rect %v", got, r)
 	}
 }
 

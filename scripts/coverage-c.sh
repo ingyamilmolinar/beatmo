@@ -36,7 +36,7 @@ CC="${CC:-cc}"
 # Own sources = C_SRC minus miniaudio.c (third-party, excluded from coverage).
 # modular_stages.c (the unified gen-bank / family-voice DSP) joined C_SRC in
 # the modular-unification migration and is very much "DSP under test".
-OWN_SRC=(drums fmsynth effects insert_fx wavetable adsr pan noise modular modular_stages)
+OWN_SRC=(drums fmsynth insert_fx fx_host mix_dsp wavetable adsr noise modular modular_stages modal_bank)
 
 OUT="$REPO_ROOT/coverage/c"
 SUMMARY="$REPO_ROOT/coverage/c-summary.txt"
@@ -89,13 +89,17 @@ export CGO_ENABLED=1
 # C constructors (.init_array), which only run when the binary boots through
 # the libc startup path. Go's internal linker entry skips them, leaving
 # nothing registered for __gcov_dump to write.
+# The native audio suite runs ~8 min under -covermode=atomic on a loaded host;
+# the old fixed 360s killed it before __gcov_dump, reporting NO DATA for every
+# file (2026-10-02). Overridable for slower hosts.
+COVERAGE_C_TIMEOUT="${COVERAGE_C_TIMEOUT:-1500s}"
 test_rc=0
 (
     cd src/go
     "$GO" test -count=1 -ldflags '-linkmode=external' \
         -coverpkg=./internal/audio \
         -coverprofile="$REPO_ROOT/coverage/go-native.out" \
-        -covermode=atomic -timeout 360s ./internal/audio
+        -covermode=atomic -timeout "$COVERAGE_C_TIMEOUT" ./internal/audio
 ) || test_rc=$?
 
 # Optional xvfb pass picks up mixer tests that need a display; their counters
@@ -104,7 +108,7 @@ if [ "${COVERAGE_C_XVFB:-0}" = 1 ] && command -v xvfb-run >/dev/null 2>&1; then
     (
         cd src/go
         xvfb-run -a "$GO" test -count=1 -ldflags '-linkmode=external' \
-            -timeout 360s -run 'Mixer|Signal' ./internal/audio
+            -timeout "$COVERAGE_C_TIMEOUT" -run 'Mixer|Signal' ./internal/audio
     ) || echo "WARNING: xvfb mixer pass failed — coverage still collected"
 fi
 
@@ -149,8 +153,7 @@ done
 
 # Move the annotated files into $OUT, then drop annotations we don't own
 # (miniaudio + system headers picked up transitively). Our own header
-# annotations stay (synth_params.h / synth_post.h carry inline accessors
-# with real branches).
+# annotations stay (any inline helper in our headers is ours to cover).
 mv -f ./*.gcov "$OUT"/ 2>/dev/null || true
 rm -f "$OUT"/miniaudio.* "$OUT"/*'#'*.gcov 2>/dev/null || true
 

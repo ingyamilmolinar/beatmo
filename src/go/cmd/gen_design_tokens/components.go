@@ -35,20 +35,20 @@ import (
 // which runs first in main.go and produces JSON-pointer-located
 // errors before this struct is touched.
 type componentRaw struct {
-	Category         string             `yaml:"category"`
-	BackgroundColor  string             `yaml:"backgroundColor"`
-	TextColor        string             `yaml:"textColor"`
-	IconColor        string             `yaml:"iconColor"`
-	Rounded          string             `yaml:"rounded"`
-	Height           string             `yaml:"height"`
-	Typography       string             `yaml:"typography"`
-	TopEdgeHighlight *bool              `yaml:"topEdgeHighlight"`
-	Border           *borderRaw         `yaml:"border"`
-	Interaction      *interactionRaw    `yaml:"interaction"`
-	Dynamic          *anchorRaw         `yaml:"dynamic"`   // populates ComponentSpec.DynamicAnchor; resolved at runtime via spec_registry.go
-	Animation        *anchorRaw         `yaml:"animation"` // populates ComponentSpec.AnimationAnchor; resolved at runtime via spec_registry.go
-	Variants         map[string]any     `yaml:"variants"`         // reserved; not yet emitted
-	ProfileOverrides map[string]any     `yaml:"profileOverrides"` // reserved; not yet emitted
+	Category         string          `yaml:"category"`
+	BackgroundColor  string          `yaml:"backgroundColor"`
+	TextColor        string          `yaml:"textColor"`
+	IconColor        string          `yaml:"iconColor"`
+	Rounded          string          `yaml:"rounded"`
+	Height           string          `yaml:"height"`
+	Typography       string          `yaml:"typography"`
+	TopEdgeHighlight *bool           `yaml:"topEdgeHighlight"`
+	Border           *borderRaw      `yaml:"border"`
+	Interaction      *interactionRaw `yaml:"interaction"`
+	Dynamic          *anchorRaw      `yaml:"dynamic"`          // populates ComponentSpec.DynamicAnchor; resolved at runtime via spec_registry.go
+	Animation        *anchorRaw      `yaml:"animation"`        // populates ComponentSpec.AnimationAnchor; resolved at runtime via spec_registry.go
+	Variants         map[string]any  `yaml:"variants"`         // reserved; not yet emitted
+	ProfileOverrides map[string]any  `yaml:"profileOverrides"` // reserved; not yet emitted
 }
 
 type borderRaw struct {
@@ -78,24 +78,27 @@ type anchorRaw struct {
 // emitter writes out. Differs from componentRaw in that all string
 // references are now concrete values.
 type component struct {
-	ID                string // sanitised identifier ("button-secondary" → "ButtonSecondary")
-	YAMLName          string // original YAML key, for diagnostics + comments
-	Category          string
-	HasFill           bool
-	FillR, FillG, FillB uint8
-	HasBorder         bool
+	ID                        string // sanitised identifier ("button-secondary" → "ButtonSecondary")
+	YAMLName                  string // original YAML key, for diagnostics + comments
+	Category                  string
+	HasFill                   bool
+	FillR, FillG, FillB       uint8
+	FillIdent                 string // genColor* identifier of the fill token (runtime-theme rebuild)
+	HasBorder                 bool
 	BorderR, BorderG, BorderB uint8
-	BorderAlpha       string // named bucket constant ("genAlphaSubtle"); empty if no border
-	Radius            int
-	HasRadius         bool
-	Height            int
-	HasHeight         bool
-	HasIconColor      bool
-	IconR, IconG, IconB uint8
-	TopEdgeHighlight  bool
-	HasTopEdgeHighlight bool
-	Interaction       interactionResolved
-	HasInteraction    bool
+	BorderIdent               string // genColor* identifier of the border base token
+	BorderAlpha               string // named bucket constant ("genAlphaSubtle"); empty if no border
+	Radius                    int
+	HasRadius                 bool
+	Height                    int
+	HasHeight                 bool
+	HasIconColor              bool
+	IconR, IconG, IconB       uint8
+	IconIdent                 string // genColor* identifier of the icon token
+	TopEdgeHighlight          bool
+	HasTopEdgeHighlight       bool
+	Interaction               interactionResolved
+	HasInteraction            bool
 
 	// Anchor escape hatches. The DynamicAnchor names a runtime closure
 	// (typically a per-instance color function — `ColorSwatchColorFn`,
@@ -260,6 +263,8 @@ func resolveComponent(name string, raw *componentRaw, r *tokenResolver, line int
 		}
 		c.HasFill = true
 		c.FillR, c.FillG, c.FillB = rgb[0], rgb[1], rgb[2]
+		key, _, _ := parseRef(raw.BackgroundColor)
+		c.FillIdent = identForColor(key)
 	}
 
 	if raw.IconColor != "" {
@@ -269,6 +274,8 @@ func resolveComponent(name string, raw *componentRaw, r *tokenResolver, line int
 		}
 		c.HasIconColor = true
 		c.IconR, c.IconG, c.IconB = rgb[0], rgb[1], rgb[2]
+		key, _, _ := parseRef(raw.IconColor)
+		c.IconIdent = identForColor(key)
 	}
 
 	if raw.Border != nil {
@@ -278,6 +285,8 @@ func resolveComponent(name string, raw *componentRaw, r *tokenResolver, line int
 		}
 		c.HasBorder = true
 		c.BorderR, c.BorderG, c.BorderB = rgb[0], rgb[1], rgb[2]
+		key, _, _ := parseRef(raw.Border.Color)
+		c.BorderIdent = identForColor(key)
 		// Alpha is optional; omitted = opaque (255). When present, it must
 		// resolve to one of the named buckets in DESIGN.md `alpha:`. This
 		// distinguishes "translucent border at named bucket" (overlay
@@ -358,7 +367,7 @@ func resolveDelta(d *interactionDeltaRaw) interactionDeltaResolved {
 // emitComponents renders design_components.gen.go.
 func emitComponents(comps []component) ([]byte, error) {
 	tpl := template.Must(template.New("components").Funcs(template.FuncMap{
-		"id":           func(c component) string { return c.ID },
+		"id": func(c component) string { return c.ID },
 		"categoryConst": func(s string) string {
 			if s == "" {
 				return "ComponentCategory(\"\")"
@@ -398,8 +407,6 @@ const componentsTemplate = `// Code generated by cmd/gen_design_tokens. DO NOT E
 
 package ui
 
-import "image/color"
-
 // ComponentID enum — one per DESIGN.md component entry, in source order.
 const (
 {{- range $i, $c := .Components}}
@@ -412,8 +419,17 @@ const (
 	componentCount
 )
 
-// componentSpecs is the generated registry. Indexed by ComponentID.
-var componentSpecs = [componentCount]ComponentSpec{
+// componentSpecs is the generated registry, indexed by ComponentID. It is
+// BUILT from the live genColor* token variables so a runtime theme
+// (theme_runtime.go ApplyTheme) can rebuild it after overwriting them.
+var componentSpecs = buildComponentSpecs()
+
+// rebuildComponentSpecs re-derives the registry from the current token
+// variables. Called by ApplyTheme after the genColor* writes.
+func rebuildComponentSpecs() { componentSpecs = buildComponentSpecs() }
+
+func buildComponentSpecs() [componentCount]ComponentSpec {
+	return [componentCount]ComponentSpec{
 {{- range .Components}}
 	Component{{id .}}: {
 		ID:       Component{{id .}},
@@ -421,11 +437,11 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Category: {{categoryConst .Category}},
 		{{- end}}
 		{{- if .HasFill}}
-		Fill:     color.RGBA{ {{.FillR}}, {{.FillG}}, {{.FillB}}, 255 },
+		Fill:     {{.FillIdent}},
 		{{- end}}
 		{{- if .HasBorder}}
 		Border: BorderRef{
-			BaseColor: color.RGBA{ {{.BorderR}}, {{.BorderG}}, {{.BorderB}}, 255 },
+			BaseColor: {{.BorderIdent}},
 			Alpha:     {{.BorderAlpha}},
 		},
 		{{- end}}
@@ -436,7 +452,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Height: {{.Height}},
 		{{- end}}
 		{{- if .HasIconColor}}
-		IconColor:    color.RGBA{ {{.IconR}}, {{.IconG}}, {{.IconB}}, 255 },
+		IconColor:    {{.IconIdent}},
 		HasIconColor: true,
 		{{- end}}
 		{{- if .HasTopEdgeHighlight}}
@@ -463,6 +479,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		{{- end}}
 	},
 {{- end}}
+	}
 }
 
 // Spec returns the immutable ComponentSpec for the given ID. The returned

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestNodeLogicDropdown_OpenSelectAndAdjust mirrors the instrument dropdown UX:
@@ -38,12 +39,12 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 		b.HandleInputResult(x, y, false)
 	}
 	// Click logic button
-	bl := g.sidebar.rects["logic"]
+	bl := g.sidebar.rects[sbLogicSelect]
 	mx, my := (bl.Min.X+bl.Max.X)/2, (bl.Min.Y+bl.Max.Y)/2
 	if g.sidebar.btns == nil {
 		t.Fatalf("node menu buttons not initialized")
 	}
-	click("logic", g.sidebar.btns["logic"], mx, my)
+	click("logic", g.sidebar.btns[sbLogicSelect], mx, my)
 	// Apply queued UI change
 	_ = g.Update()
 	if !g.sidebar.logicDropdownOpen {
@@ -51,25 +52,25 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 	}
 	// Select Probability rule
 	g.sidebar.layout()
-	prob := g.sidebar.rects["logic:probability"]
+	prob := g.sidebar.rects[sbLogicOption(model.LogicProbability)]
 	mx, my = (prob.Min.X+prob.Max.X)/2, (prob.Min.Y+prob.Max.Y)/2
-	click("logic:probability", g.sidebar.btns["logic:probability"], mx, my)
+	click("logic:probability", g.sidebar.btns[sbLogicOption(model.LogicProbability)], mx, my)
 	_ = g.Update()
 	// Adjust probability down then up
 	g.sidebar.layout()
-	if b := g.sidebar.btns["lp-"]; b == nil {
+	if b := g.sidebar.btns[sbMinus(fieldLogicP)]; b == nil {
 		t.Fatalf("missing lp- button")
 	} else {
 		click("lp-", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
 	}
-	if b := g.sidebar.btns["lp+"]; b == nil {
+	if b := g.sidebar.btns[sbPlus(fieldLogicP)]; b == nil {
 		t.Fatalf("missing lp+ button")
 	} else {
 		click("lp+", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
 	}
 
 	// Now choose Trigger Every N and ensure N adjusters exist and affect params
-	if b := g.sidebar.btns["logic"]; b == nil {
+	if b := g.sidebar.btns[sbLogicSelect]; b == nil {
 		t.Fatalf("logic button missing on reopen")
 	} else {
 		click("logic", b, (bl.Min.X+bl.Max.X)/2, (bl.Min.Y+bl.Max.Y)/2)
@@ -77,20 +78,20 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 	_ = g.Update()
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
-	trig := g.sidebar.rects["logic:every_n_triggers"]
-	if b := g.sidebar.btns["logic:every_n_triggers"]; b == nil {
+	trig := g.sidebar.rects[sbLogicOption(model.LogicEveryN)]
+	if b := g.sidebar.btns[sbLogicOption(model.LogicEveryN)]; b == nil {
 		t.Fatalf("missing every_n_triggers item")
 	} else {
 		click("logic:every_n_triggers", b, (trig.Min.X+trig.Max.X)/2, (trig.Min.Y+trig.Max.Y)/2)
 	}
 	_ = g.Update()
 	g.sidebar.layout()
-	if b := g.sidebar.btns["ln+"]; b == nil {
+	if b := g.sidebar.btns[sbPlus(fieldLogicN)]; b == nil {
 		t.Fatalf("missing ln+ button")
 	} else {
 		click("ln+", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
 	}
-	if b := g.sidebar.btns["ln-"]; b == nil {
+	if b := g.sidebar.btns[sbMinus(fieldLogicN)]; b == nil {
 		t.Fatalf("missing ln- button")
 	} else {
 		click("ln-", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
@@ -99,12 +100,12 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 	// Quick behavioral check: set N=2 and verify only every 2nd triggers
 	if mn, ok := g.graph.GetNodeByID(r1.ID); ok {
 		p := mn.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(r1.ID, p)
 	}
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 	g.SetPlaying(true)
 	for abs := 0; abs < 24; abs++ {
 		scheduleAbsForMuteTest(g, abs)

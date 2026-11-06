@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -21,7 +22,7 @@ func TestEQControlSlidersApplyGains(t *testing.T) {
 	// Boost first band.
 	dv.eqBandGainsDB()[0] = 12
 	dv.applyEQ()
-	rec := audio.ChannelEQSnapshot("main")
+	rec := audio.ChannelEQSnapshot(channel.Master)
 	if rec.ID != "main" {
 		t.Fatalf("expected main EQ to be applied, got id=%s", rec.ID)
 	}
@@ -35,7 +36,7 @@ func TestEQControlSlidersApplyGains(t *testing.T) {
 	last := len(dv.eqBandGainsDB()) - 1
 	dv.eqBandGainsDB()[last] = -12
 	dv.applyEQ()
-	rec = audio.ChannelEQSnapshot("main")
+	rec = audio.ChannelEQSnapshot(channel.Master)
 	if rec.Bands[last].GainDB >= 0 {
 		t.Fatalf("expected last band negative gain, got %.2f", rec.Bands[last].GainDB)
 	}

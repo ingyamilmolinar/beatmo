@@ -2,7 +2,11 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // TestSaxParamsConfigurable is the TDD driver for P2 (physical-model config): the
 // sax's previously-hardcoded render_sax args (blow position, reed offset/slope,
@@ -20,12 +24,12 @@ func TestSaxParamsConfigurable(t *testing.T) {
 	// config-driven render_sax path that P2 wired. Comparing two of these isolates
 	// the PARAM from any baked→recipe path switch.
 	render := func(name string, val float64) []float32 {
-		ResetInstrumentParams("sax")
-		SetInstrumentParam("sax", "osc_enabled", 1)
-		SetInstrumentParam("sax", "osc_type", 11)
-		SetInstrumentParam("sax", name, val)
-		buf, _ := RenderInstrumentOneShotRaw("sax")
-		ResetInstrumentParams("sax")
+		ResetInstrumentParams(roster.Sax)
+		SetInstrumentParam(roster.Sax, "osc_enabled", 1)
+		SetInstrumentParam(roster.Sax, "osc_type", 11)
+		SetInstrumentParam(roster.Sax, name, val)
+		buf, _ := RenderInstrumentOneShotRaw(roster.Sax)
+		ResetInstrumentParams(roster.Sax)
 		return buf
 	}
 

@@ -1,39 +1,36 @@
 package audio
 
-import "testing"
+import (
+	"testing"
 
-// TestResetSampleToFactory_BuiltinRevertsToRecipe — a built-in instrument that
-// was converted to a sample (Sampler Save) reverts all the way to its original
-// synth: the shipped recipe is re-bound and the user sample is discarded.
-func TestResetSampleToFactory_BuiltinRevertsToRecipe(t *testing.T) {
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
+
+// TestResetSampleToFactory_BuiltinRevertsToSynth — a built-in instrument that
+// was converted to a sample (Sampler Save; or a persisted sample reloaded at
+// startup) reverts all the way to its synth: the project copy returns to its
+// library entry, the user sample is discarded and its persisted copy deleted
+// (the "reverse kick-snap won't reset after restart" bug).
+func TestResetSampleToFactory_BuiltinRevertsToSynth(t *testing.T) {
+	resetLibraryForTest(t)
 	resetUserSamplesForTest()
 	sink := &fakeSampleSink{}
 	restore := SetSampleSink(sink)
 	defer restore()
 
-	const instID, recipeID = "kick", "drum-kick"
-	orig := RecipeForInstrument(instID)
-	t.Cleanup(func() { BindInstrumentToRecipe(instID, orig) })
-
-	// Simulate the Sampler Save flow: bind recipe, record origin, save the
-	// baked sample under the same id, then clear the binding (as save() does).
-	BindInstrumentToRecipe(instID, recipeID)
-	RecordSampleOriginRecipe(instID, recipeID)
-	SaveUserSample(instID, []float32{0.3, -0.3}, 44100)
-	BindInstrumentToRecipe(instID, "")
+	const instID = roster.KickSnap
+	SetInstrumentParam(instID, "post_decay", 0.3)
+	PutUserSample(instID, []float32{0.7, -0.7, 0.7}, 44100)
 
 	prior, factory := ResetSampleToFactory(instID)
-	if !factory || prior != recipeID {
-		t.Fatalf("ResetSampleToFactory = (%q, %v), want (%q, true)", prior, factory, recipeID)
+	if !factory || prior != instID {
+		t.Fatalf("ResetSampleToFactory = (%q, %v), want (%q, true)", prior, factory, instID)
 	}
-	if got := RecipeForInstrument(instID); got != recipeID {
-		t.Errorf("after reset RecipeForInstrument(%q) = %q, want %q", instID, got, recipeID)
+	if InstrumentDocModified(instID) {
+		t.Errorf("after reset %q's document is still edited, want its library entry", instID)
 	}
 	if IsUserSample(instID) {
 		t.Errorf("after reset %q is still a user sample, want discarded", instID)
-	}
-	if SampleOriginRecipe(instID) != "" {
-		t.Errorf("after reset origin recipe record still set")
 	}
 	found := false
 	for _, d := range sink.deleted {
@@ -69,52 +66,6 @@ func TestResetSampleToFactory_UserWAVRestoresOriginal(t *testing.T) {
 	saved, ok := sink.saved[id]
 	if !ok || len(saved.PCM) != 3 || saved.PCM[0] != 0.1 {
 		t.Errorf("reset did not re-persist original via sink; saved=%+v", saved)
-	}
-}
-
-// TestResetSampleToFactory_RestartScenario_RevertsBuiltinViaFactoryTable —
-// after an app restart the session-only origin-recipe record is gone (the
-// persisted sample is reloaded via PutUserSample, which records no origin), yet
-// the recipe binding is re-applied at startup. Reset must still recognise a
-// built-in via the authoritative builtinInstrumentRecipeBindings table and
-// revert to its synth — re-binding the recipe, discarding the user sample, and
-// deleting the persisted copy so the next startup is clean. This is the
-// "reverse kick-1 won't reset after restart" bug.
-func TestResetSampleToFactory_RestartScenario_RevertsBuiltinViaFactoryTable(t *testing.T) {
-	resetUserSamplesForTest()
-	sink := &fakeSampleSink{}
-	restore := SetSampleSink(sink)
-	defer restore()
-
-	const instID, recipeID = "kick-1", "drum-kick-punchy"
-	// Simulate startup: built-in recipe bindings re-applied…
-	bindBuiltinInstrumentRecipes()
-	t.Cleanup(bindBuiltinInstrumentRecipes)
-	// …then ApplySavedSamples reloads the persisted reversed chop. This does
-	// NOT record an origin recipe and does NOT clear the binding.
-	PutUserSample(instID, []float32{0.7, -0.7, 0.7}, 44100)
-	if SampleOriginRecipe(instID) != "" {
-		t.Fatalf("precondition: origin recipe should be unrecorded after a restart-style load")
-	}
-
-	prior, factory := ResetSampleToFactory(instID)
-	if !factory || prior != recipeID {
-		t.Fatalf("ResetSampleToFactory(%q) = (%q, %v), want (%q, true) via factory table", instID, prior, factory, recipeID)
-	}
-	if got := RecipeForInstrument(instID); got != recipeID {
-		t.Errorf("after reset RecipeForInstrument(%q) = %q, want %q", instID, got, recipeID)
-	}
-	if IsUserSample(instID) {
-		t.Errorf("after reset %q is still a user sample, want discarded so startup is clean", instID)
-	}
-	found := false
-	for _, d := range sink.deleted {
-		if d == instID {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("sink.DeleteSample(%q) not called; persisted sample would survive restart. deleted=%v", instID, sink.deleted)
 	}
 }
 

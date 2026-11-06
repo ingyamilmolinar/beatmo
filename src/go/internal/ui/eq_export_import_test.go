@@ -6,7 +6,11 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 func TestExportIncludesEQ(t *testing.T) {
@@ -28,7 +32,7 @@ func TestExportIncludesEQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -45,14 +49,14 @@ func TestExportIncludesEQ(t *testing.T) {
 
 func TestImportAppliesEQ(t *testing.T) {
 	assertDefaultParityState(t)
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Instruments: []exportInstrument{{
-			Name: "Row", ID: "snare", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Row", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 		EQ: &exportEQ{
 			GainsDB: []float64{6, -3, 0},
 		},
@@ -67,7 +71,7 @@ func TestImportAppliesEQ(t *testing.T) {
 	if len(g.drum.eqBandGainsDB()) == 0 || g.drum.eqBandGainsDB()[0] != 6 {
 		t.Fatalf("eq gains not applied: %+v", g.drum.eqBandGainsDB())
 	}
-	rec := audio.ChannelEQSnapshot("main")
+	rec := audio.ChannelEQSnapshot(channel.Master)
 	if rec.ID != "main" {
 		t.Fatalf("expected main EQ applied")
 	}
@@ -93,10 +97,10 @@ func TestExportImportHPFLPF(t *testing.T) {
 	g.drum.lpfCutoffHz = 12000
 
 	// Set per-row HPF.
-	g.drum.Rows[0].HPFEnabled = true
-	g.drum.Rows[0].HPFCutoffHz = 80
-	g.drum.Rows[0].LPFEnabled = false
-	g.drum.Rows[0].LPFCutoffHz = 20000
+	rowEQ(g.drum.Rows[0]).HPF = true
+	rowEQ(g.drum.Rows[0]).HPFHz = 80
+	rowEQ(g.drum.Rows[0]).LPF = false
+	rowEQ(g.drum.Rows[0]).LPFHz = 20000
 
 	data, err := g.drum.exportBytes()
 	if err != nil {
@@ -104,7 +108,7 @@ func TestExportImportHPFLPF(t *testing.T) {
 	}
 
 	// Parse and verify master EQ.
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -151,10 +155,10 @@ func TestExportImportHPFLPF(t *testing.T) {
 		t.Fatal("no rows after import")
 	}
 	row := g2.drum.Rows[0]
-	if !row.HPFEnabled || row.HPFCutoffHz != 80 {
-		t.Errorf("imported row HPF: enabled=%v cutoff=%.0f", row.HPFEnabled, row.HPFCutoffHz)
+	if !rowEQ(row).HPF || rowEQ(row).HPFHz != 80 {
+		t.Errorf("imported row HPF: enabled=%v cutoff=%.0f", rowEQ(row).HPF, rowEQ(row).HPFHz)
 	}
-	if row.LPFEnabled {
+	if rowEQ(row).LPF {
 		t.Error("expected imported row LPF disabled")
 	}
 }
@@ -162,14 +166,14 @@ func TestExportImportHPFLPF(t *testing.T) {
 func TestImportLegacyNoFilters(t *testing.T) {
 	assertDefaultParityState(t)
 	// Old file without HPF/LPF fields should load correctly with filters disabled.
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Instruments: []exportInstrument{{
-			Name: "Row", ID: "snare", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Row", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 		EQ: &exportEQ{
 			GainsDB: []float64{3, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		},
@@ -199,17 +203,17 @@ func TestImportLegacyNoFilters(t *testing.T) {
 func TestImportSyncsEQGains(t *testing.T) {
 	assertDefaultParityState(t)
 	// Create a file with master EQ gains and per-instrument EQ gains.
-	file := exportFile{
-		Version: 1,
-		Subdiv:  32,
-		BPM:     120,
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
 		Instruments: []exportInstrument{{
-			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			Name: "Kick", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 			EQ: &exportEQ{
 				GainsDB: []float64{-12, 6, 0, 3, -6, 12, 0, 0, 0, 0},
 			},
 		}},
-		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: "regular"}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
 		EQ: &exportEQ{
 			GainsDB: []float64{12, -6, 0, 3, -3, 6, 0, 0, 0, 0},
 		},
@@ -226,7 +230,7 @@ func TestImportSyncsEQGains(t *testing.T) {
 	}
 
 	// Verify master EQ gains are synced (master is active by default).
-	if g.drum.activeEQChannel() != "main" {
+	if g.drum.activeEQChannel() != channel.Master {
 		t.Fatalf("expected main channel active, got %s", g.drum.activeEQChannel())
 	}
 	gains := g.drum.eqBandGainsDB()
@@ -247,8 +251,8 @@ func TestImportSyncsEQGains(t *testing.T) {
 	}
 
 	// Switch to the instrument channel and verify per-instrument gains.
-	g.drum.setEQActiveChannel("kick")
-	if g.drum.activeEQChannel() != "kick" {
+	g.drum.setEQActiveChannel(channel.Of(roster.Kick))
+	if g.drum.activeEQChannel() != channel.Of(roster.Kick) {
 		t.Fatalf("expected kick channel active, got %s", g.drum.activeEQChannel())
 	}
 	kickGains := g.drum.eqBandGainsDB()

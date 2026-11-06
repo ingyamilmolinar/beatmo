@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstMenuCategoryActiveTintsToCurrentInstrument verifies the instrument
@@ -20,11 +22,11 @@ func TestInstMenuCategoryActiveTintsToCurrentInstrument(t *testing.T) {
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 200, 124),
 		VertBounds:        image.Rect(0, 50, 400, 700),
-		CurrentInstrument: "kick",
-		Categories:        []string{"Kicks", "Snares"},
+		CurrentInstrument: roster.Kick,
+		Categories:        []audio.Category{audio.CatKick, audio.CatSnare},
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Kicks"},
-			{ID: "snare", Label: "Snare", Category: "Snares"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatKick},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatSnare},
 		},
 		RowHeight:       28,
 		LabelWidth:      120,
@@ -32,11 +34,11 @@ func TestInstMenuCategoryActiveTintsToCurrentInstrument(t *testing.T) {
 		ForceCategories: true,
 	})
 	comp.Open()
-	comp.state.activeCat = "Kicks"
+	comp.state.activeCat = audio.CatKick
 	comp.state.mode = InstMenuModeCategories
 	comp.rebuildMenu()
 
-	want := color.RGBAModel.Convert(instColor("kick")).(color.RGBA)
+	want := color.RGBAModel.Convert(instColor(roster.Kick)).(color.RGBA)
 	azure := color.RGBAModel.Convert(colAccent).(color.RGBA)
 	if want == azure {
 		t.Skip("kick color coincides with azure")
@@ -59,8 +61,8 @@ func TestInstMenuCategoryActiveTintsToCurrentInstrument(t *testing.T) {
 // TestInstMenuAccentIsCurrentInstrument is a direct check on the accent seam.
 func TestInstMenuAccentIsCurrentInstrument(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
-	comp.SetProps(InstrumentMenuProps{CurrentInstrument: "snare"})
-	want := color.RGBAModel.Convert(instColor("snare")).(color.RGBA)
+	comp.SetProps(InstrumentMenuProps{CurrentInstrument: roster.Snare})
+	want := color.RGBAModel.Convert(instColor(roster.Snare)).(color.RGBA)
 	got := color.RGBAModel.Convert(comp.menuAccent()).(color.RGBA)
 	if got != want {
 		t.Errorf("menuAccent() = %v, want instColor(snare) %v", got, want)

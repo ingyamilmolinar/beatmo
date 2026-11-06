@@ -66,6 +66,7 @@ func (dv *DrumView) syncNativeGestures() {
 	if dv == nil || dv.rootTree == nil {
 		return
 	}
+	dv.textFields.advance() // one tick per native projection (TextField liveness)
 	cands := dv.collectNativeRectCandidates()
 	kept := make([]NativeRect, 0, len(cands))
 	for _, c := range cands {
@@ -75,56 +76,11 @@ func (dv *DrumView) syncNativeGestures() {
 			kept = append(kept, NativeRect{Rect: c.Rect, Intent: c.Intent})
 		}
 	}
-	// Documented exception: the shared numeric ParamValueEditor (synth-param /
-	// sampler-param / eq-db-N) is NOT a portal, so it has no ownerID to gate on;
-	// it arms its own mobile <input> imperatively in ParamValueEditor.OpenValue.
-	// Because platformSyncNativeRects clears ALL mobile-input rects before
-	// re-arming, an active editor's rect must be re-added here every frame or the
-	// clear-cycle would wipe it (mobile param-entry regression). It is armed
-	// unconditionally while active (self-isolated by the Go tree as the focused
-	// editor). See TestParamEditorNativeRectArmedBySync and the discipline
-	// test's param_value_editor.go exemption.
-	kept = append(kept, dv.activeParamEditorNativeRects()...)
 	if nativeRectsEqual(kept, dv.lastNativeRects) {
 		return
 	}
 	platformSyncNativeRects(kept)
 	dv.lastNativeRects = kept
-}
-
-// activeParamEditorNativeRects returns the mobile <input> rect(s) for any
-// currently-open ParamValueEditor that owns a mobile input id (synth/sampler via
-// dv.paramEditor, EQ-dB via eqPanelZone.paramEditor). The transport (BPM) editor
-// is intentionally excluded — the BPM box is already armed by
-// nativeInputCandidates under id "bpm", and including the editor would duplicate
-// that id. Empty on desktop. This is the pragmatic exception to the tree-owned
-// projection (the editor is not a portal); it keeps the editor's rect alive
-// across the seam's clear-and-re-arm cycle.
-func (dv *DrumView) activeParamEditorNativeRects() []NativeRect {
-	if dv == nil || !Profile().IsMobile() {
-		return nil
-	}
-	editors := []*ParamValueEditor{dv.paramEditor}
-	if dv.eqPanelZone != nil {
-		editors = append(editors, dv.eqPanelZone.paramEditor)
-	}
-	var out []NativeRect
-	for _, e := range editors {
-		if e == nil || !e.active || e.mobileID == "" || e.ti == nil || e.ti.Rect.Empty() {
-			continue
-		}
-		out = append(out, NativeRect{
-			Rect: e.ti.Rect,
-			Intent: NativeIntent{
-				Channel:   NativeTextInput,
-				ID:        e.mobileID,
-				Text:      e.ti.Value(),
-				MaxLen:    e.ti.MaxLen,
-				InputMode: "numeric",
-			},
-		})
-	}
-	return out
 }
 
 func nativeRectsEqual(a, b []NativeRect) bool {
@@ -186,53 +142,23 @@ func (dv *DrumView) filePickerCandidates() []NativeRectCandidate {
 }
 
 // softKeyboardCandidates returns focusable soft-keyboard rects for DESKTOP
-// browser only (on mobile the native-input channel handles text). Mirrors the
-// former drumview_layout.go registration block, page/open-state gates intact.
+// browser only (on mobile the native-input channel handles text): every live
+// TextField (textfield.go).
 func (dv *DrumView) softKeyboardCandidates() []NativeRectCandidate {
 	if dv == nil || Profile().IsMobile() {
 		return nil
 	}
-	var out []NativeRectCandidate
-	add := func(owner, id, mode string, r image.Rectangle) {
-		if r.Empty() {
-			return
-		}
-		out = append(out, NativeRectCandidate{Owner: owner, Rect: r,
-			Intent: NativeIntent{Channel: NativeSoftKeyboard, ID: id, InputMode: mode}})
-	}
-	if dv.bpmBox() != nil {
-		add("transport", "bpm", "numeric", dv.bpmBox().Rect)
-	}
-	if dv.IsInstMenuOpen() && dv.instSearchBox != nil {
-		add("inst-menu", instSearchMobileInputID, "text", dv.instSearchRect)
-	}
-	if dv.IsOverflowMenuOpen() && dv.overflowPage == 1 && dv.templateSearchBox != nil {
-		add("overflow-menu", templateSearchMobileInputID, "text", dv.templateSearchRect)
-	}
-	if dv.IsLogsPanelOpen() && dv.logsComp != nil && dv.logsComp.searchBox != nil {
-		add("logs", logsSearchMobileInputID, "text", dv.logsComp.searchRect)
-	}
-	if dv.IsNamingOpen() && dv.nameBox != nil {
-		add("naming", "wav-name", "text", dv.nameBox.Rect)
-	}
-	if dv.renameBox != nil {
-		add("rename", "rename", "text", dv.renameBox.Rect)
-	}
-	return out
+	return dv.textFieldSoftKeyboardCandidates()
 }
 
-// nativeInputCandidates returns mobile native <input> triggers. Mirrors the
-// former drumview_layout.go mobile block: BPM direct rect, rename trigger→label
-// glue, inst-search, wav-name. Gates + open-state guards preserved.
+// nativeInputCandidates returns mobile native <input> triggers: the row
+// context menu's Rename trigger→label glue (a button, not a text box) and every
+// live TextField (textfield.go) — text boxes are never listed here by hand.
 func (dv *DrumView) nativeInputCandidates() []NativeRectCandidate {
 	if dv == nil || !Profile().IsMobile() {
 		return nil
 	}
 	var out []NativeRectCandidate
-	if dv.bpmBox() != nil && !dv.bpmBox().Rect.Empty() {
-		out = append(out, NativeRectCandidate{Owner: "transport", Rect: dv.bpmBox().Rect,
-			Intent: NativeIntent{Channel: NativeTextInput, ID: "bpm", Text: dv.bpmBox().Text, MaxLen: 4, InputMode: "numeric"}})
-	}
 	if dv.IsContextMenuOpen() && dv.contextMenuRow >= 0 &&
 		dv.contextMenuRow < len(dv.Rows) && dv.contextMenuRow < len(dv.rowLabels()) {
 		if renameBtn := dv.contextMenuRenameBtn(); renameBtn != nil {
@@ -247,21 +173,6 @@ func (dv *DrumView) nativeInputCandidates() []NativeRectCandidate {
 			}
 		}
 	}
-	if dv.IsInstMenuOpen() && dv.instSearchBox != nil && !dv.instSearchRect.Empty() {
-		out = append(out, NativeRectCandidate{Owner: "inst-menu", Rect: dv.instSearchRect,
-			Intent: NativeIntent{Channel: NativeTextInput, ID: instSearchMobileInputID, Text: dv.instSearchBox.Text, MaxLen: 40, InputMode: "text"}})
-	}
-	if dv.IsOverflowMenuOpen() && dv.overflowPage == 1 && dv.templateSearchBox != nil && !dv.templateSearchRect.Empty() {
-		out = append(out, NativeRectCandidate{Owner: "overflow-menu", Rect: dv.templateSearchRect,
-			Intent: NativeIntent{Channel: NativeTextInput, ID: templateSearchMobileInputID, Text: dv.templateSearchBox.Text, MaxLen: 40, InputMode: "text"}})
-	}
-	if dv.IsLogsPanelOpen() && dv.logsComp != nil && dv.logsComp.searchBox != nil && !dv.logsComp.searchRect.Empty() {
-		out = append(out, NativeRectCandidate{Owner: "logs", Rect: dv.logsComp.searchRect,
-			Intent: NativeIntent{Channel: NativeTextInput, ID: logsSearchMobileInputID, Text: dv.logsComp.searchBox.Text, MaxLen: 40, InputMode: "text"}})
-	}
-	if dv.IsNamingOpen() && dv.nameBox != nil && !dv.nameBox.Rect.Empty() {
-		out = append(out, NativeRectCandidate{Owner: "naming", Rect: dv.nameBox.Rect,
-			Intent: NativeIntent{Channel: NativeTextInput, ID: "wav-name", Text: dv.nameBox.Text, MaxLen: 32, InputMode: "text"}})
-	}
+	out = append(out, dv.textFieldNativeInputCandidates()...)
 	return out
 }

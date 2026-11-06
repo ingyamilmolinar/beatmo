@@ -1,0 +1,274 @@
+{
+  "schema_version": "0.0.1",
+  "id": "trumpet",
+  "name": "Trumpet",
+  "category": "modular",
+  "notes": "trumpetSeed: SUBTRACTIVE brass synthesis — the additive sine-bank version\n(12 osc_enabled=0 gen slots) \"sounded like an organ\": a static spectrum with a\nclean ~37ms onset and no evolving brightness. Real brass is a SAW (all 16+\nharmonics) shaped by an opening filter — the centroid BLOOMS on the air-onset\nthen settles, and the attack is slow (real trumpet E3 onset ≈ 0.21s).\n\nArchitecture (signal flows osc → gen bank → amp ADSR → global filter+filtenv):\n  - osc_enabled=1, osc_type=1 (SAW) — supplies the full harmonic series incl.\n    P13-P16 the 12-slot additive bank could never reach (the missing upper\n    partials were ~14 of the old 21 partial-distance and the 290Hz cMean gap).\n  - global LP filter @1450Hz + filtenv +3.4 oct / 0.26s decay — the cutoff\n    opens bright on attack then settles, so the centroid MOVES (brass bite),\n    not a flat organ. This whole-mix stage is what produces CentroidRange.\n  - gen1 = brass FORMANT: a band-pass saw @1200Hz (filt_type=5 RBJ-BP, Q≈2.5)\n    lifting the P6-P9 \"vowel\" peak the LP alone would roll off.\n  - gen2 = attack CHIFF: a high-passed noise tap, very fast decay\n    (env_fast_rate≈150) for the air-onset transient.\n  - amp_attack=0.12 — slow brass onset (no per-slot gen spike to shortcut it).\n  - unison 3 + drift + lfo_target=0 amplitude shimmer for ensemble life\n    (vibrato/pitch-LFO would disable the unison branch in the engine, so the\n    shimmer rides amplitude instead — keeps the ensemble width).\nTRUMPET — ADDITIVE brass formant. The real ref (sgossner SHTrumpet, CC0, G4≈392)\nis H3-DOMINANT (H2=1.88, H3=2.33 peak, H4=1.14) — a bright brass formant across\nH2–H4, NOT the fundamental-dominant saw the old seed produced (which read \"very\nbad\"). Same additive approach that fixed the french horn. Keeps the trumpet\nDYNAMICS: a slow crescendo + a filter-env bloom that brightens as it swells, a\nnoisy tonguing attack, and amplitude tremolo (NO pitch vibrato — straight tone).",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.7981,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.45,
+        "amp_curve": 1,
+        "amp_decay": 0.1,
+        "amp_release": 0.15,
+        "amp_sustain": 0.95
+      },
+      "notes": "amp_attack: crescendo swell"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.7,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 4000,
+        "filter_resonance": 1,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: gentle roll-off; the brass formant is set by the gen gains"
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 1.6,
+        "filtenv_attack": 0.4,
+        "filtenv_decay": 2
+      },
+      "notes": "filtenv_amt: brass bloom: cutoff rises over the crescendo (dark->bright)\nfiltenv_decay: honest ParamDef max (was 4.0, silently clamped to 2.0 in the recipe path)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.3,
+        "lfo_depth": 0.06,
+        "lfo_rate": 3.2,
+        "lfo_target": 0
+      },
+      "notes": "lfo_depth: amplitude tremolo only (real trumpet is a straight tone)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 6,
+        "env_tail_mix": 0.08,
+        "env_tail_rate": 2.5,
+        "filt_alpha": 0,
+        "filt_freq": 1500,
+        "filt_q": 0.3,
+        "filt_type": 5,
+        "gain": 0.6,
+        "noise_offset": 0
+      },
+      "notes": "gen1_source: noisy tonguing/breath attack (real 78%->12% noise)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.3,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: H1\ngen2_freq_mode: H1\ngen2_gain: H1\ngen2_source: brass formant harmonics (measured ratios, boosted ~3.5x for gen-slot attenuation): H1\ngen2_wave: H1"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.55,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: H2 (ref 1.88)\ngen3_freq_mode: H2 (ref 1.88)\ngen3_gain: H2 (ref 1.88)\ngen3_source: H2 (ref 1.88)\ngen3_wave: H2 (ref 1.88)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.68,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_freq: H3 PEAK (ref 2.33)\ngen4_freq_mode: H3 PEAK (ref 2.33)\ngen4_gain: H3 PEAK (ref 2.33)\ngen4_source: H3 PEAK (ref 2.33)\ngen4_wave: H3 PEAK (ref 2.33)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.34,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_freq: H4 (ref 1.14)\ngen5_freq_mode: H4 (ref 1.14)\ngen5_gain: H4 (ref 1.14)\ngen5_source: H4 (ref 1.14)\ngen5_wave: H4 (ref 1.14)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5,
+        "freq_mode": 0,
+        "gain": 0.2,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen6_freq: H5\ngen6_freq_mode: H5\ngen6_gain: H5\ngen6_source: H5\ngen6_wave: H5"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.13,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen7_freq: H6\ngen7_freq_mode: H6\ngen7_gain: H6\ngen7_source: H6\ngen7_wave: H6"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 7,
+        "freq_mode": 0,
+        "gain": 0.16,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen8_freq: H7\ngen8_freq_mode: H7\ngen8_gain: H7\ngen8_source: H7\ngen8_wave: H7"
+    }
+  ]
+}

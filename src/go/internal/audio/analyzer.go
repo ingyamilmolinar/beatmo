@@ -6,6 +6,8 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // Analyzer is a lightweight realtime meter + spectrum tap.
@@ -273,8 +275,8 @@ func fft(buf []complex128) {
 
 var analyzerRegistry = struct {
 	sync.RWMutex
-	m map[string]*Analyzer
-}{m: map[string]*Analyzer{}}
+	m map[channel.ID]*Analyzer
+}{m: map[channel.ID]*Analyzer{}}
 
 // EnableChannelAnalyzer wires an analyzer into a channel's processor chain and
 // returns the analyzer instance for polling.
@@ -283,7 +285,7 @@ var analyzerRegistry = struct {
 // and every audio-panel tab transition (EnsureAnalyzersForTab), so it must reuse
 // the analyzer already wired at the same window instead of appending another.
 // See analyzer_wiring.go for why stacking here is an audio-thread bug.
-func EnableChannelAnalyzer(id string, window int) *Analyzer {
+func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
 	an := wireChannelAnalyzer(id, window)
 	analyzerRegistry.Lock()
 	analyzerRegistry.m[id] = an
@@ -292,7 +294,7 @@ func EnableChannelAnalyzer(id string, window int) *Analyzer {
 }
 
 // ChannelAnalyzerSnapshot returns the latest snapshot for the channel, if any.
-func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func ChannelAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	analyzerRegistry.RLock()
 	an := analyzerRegistry.m[id]
 	analyzerRegistry.RUnlock()
@@ -304,7 +306,7 @@ func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
 
 // EnablePreEQAnalyzer creates an analyzer on the channel that taps the signal
 // after volume but before the EQ processor chain. Returns the analyzer.
-func EnablePreEQAnalyzer(id string, window int) *Analyzer {
+func EnablePreEQAnalyzer(id channel.ID, window int) *Analyzer {
 	an := NewAnalyzer(window)
 	ch := chanMgr.ensureChannel(id)
 	ch.mu.Lock()
@@ -317,7 +319,7 @@ func EnablePreEQAnalyzer(id string, window int) *Analyzer {
 }
 
 // PreEQAnalyzerSnapshot returns the latest pre-EQ snapshot for the channel.
-func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func PreEQAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	preEQAnalyzerRegistry.RLock()
 	an := preEQAnalyzerRegistry.m[id]
 	preEQAnalyzerRegistry.RUnlock()
@@ -329,8 +331,8 @@ func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
 
 var preEQAnalyzerRegistry = struct {
 	sync.RWMutex
-	m map[string]*Analyzer
-}{m: map[string]*Analyzer{}}
+	m map[channel.ID]*Analyzer
+}{m: map[channel.ID]*Analyzer{}}
 
 // EnableSynthAnalyzer is a no-op on desktop — per-stage scope data flows
 // through the real scope.Service (engine_stop.go) rather than JS-side
@@ -338,23 +340,17 @@ var preEQAnalyzerRegistry = struct {
 //
 // WASM has a real implementation in analyzer_wasm.go that wires an
 // AudioContext AnalyserNode at the channel ingress.
-func EnableSynthAnalyzer(id string, window int) *Analyzer { return nil }
+func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer { return nil }
 
 // SynthAnalyzerSnapshot is a no-op on desktop — see EnableSynthAnalyzer.
 // WASM uses the JS AnalyserNode; the UI bridge in
 // internal/ui/wasm_analyzer_bridge.go is the only caller and it's only
 // compiled for WASM.
-func SynthAnalyzerSnapshot(id string) AnalyzerSnapshot { return AnalyzerSnapshot{} }
-
-// EnableSendBusAnalyzer is a no-op on desktop — see EnableSynthAnalyzer.
-func EnableSendBusAnalyzer(window int) *Analyzer { return nil }
-
-// SendBusAnalyzerSnapshot is a no-op on desktop — see EnableSynthAnalyzer.
-func SendBusAnalyzerSnapshot() AnalyzerSnapshot { return AnalyzerSnapshot{} }
+func SynthAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot { return AnalyzerSnapshot{} }
 
 // SetAnalyzerEnabled enables or disables FFT compute for a channel's analyzers.
 // Audio pass-through is never affected; only the FFT/RMS/peak computation is gated.
-func SetAnalyzerEnabled(id string, on bool) {
+func SetAnalyzerEnabled(id channel.ID, on bool) {
 	analyzerRegistry.RLock()
 	an := analyzerRegistry.m[id]
 	analyzerRegistry.RUnlock()
@@ -371,10 +367,10 @@ func SetAnalyzerEnabled(id string, on bool) {
 
 func resetAnalyzers() {
 	analyzerRegistry.Lock()
-	analyzerRegistry.m = map[string]*Analyzer{}
+	analyzerRegistry.m = map[channel.ID]*Analyzer{}
 	analyzerRegistry.Unlock()
 	preEQAnalyzerRegistry.Lock()
-	preEQAnalyzerRegistry.m = map[string]*Analyzer{}
+	preEQAnalyzerRegistry.m = map[channel.ID]*Analyzer{}
 	preEQAnalyzerRegistry.Unlock()
 }
 
@@ -406,7 +402,7 @@ func ResetAnalyzerBridgeStats() {}
 // ChannelAnalyzerMetrics returns scalar metrics for the channel,
 // derived from the existing analyzer snapshot. Desktop has no JS bridge
 // to short-circuit, so this is just a scalar projection.
-func ChannelAnalyzerMetrics(id string) (peak, rms float64, clips int, active bool) {
+func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active bool) {
 	s := ChannelAnalyzerSnapshot(id)
 	clips = s.ClipCount
 	active = s.Peak > 0 || s.RMS > 0 || clips > 0

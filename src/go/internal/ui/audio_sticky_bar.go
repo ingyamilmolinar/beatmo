@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"image/color"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
@@ -97,21 +97,6 @@ func NewAudioStickyBar(parentZIndex int, onChannel func(), onTab func(PanelTab))
 	b.legendBtn = NewButton("?", InstButtonStyle, nil)
 	b.legendBtn.TextColor = colTextSecondary
 	return b
-}
-
-// formatSlopeLabel renders a dB/oct slope value as a pill label
-// (e.g. "0 dB/oct", "3 dB/oct", "4.5 dB/oct"). The unit is spelled out in
-// full — the previous "/o" abbreviation read as a truncated label. The pill
-// auto-sizes from TextWidth(label)+padding in Layout, so the full unit always
-// fits. Used by spectrumControls (audio_tab_controls.go).
-func formatSlopeLabel(v float64) string {
-	if v == 0 {
-		return "0 dB/oct"
-	}
-	if v == float64(int(v)) {
-		return fmt.Sprintf("%d dB/oct", int(v))
-	}
-	return fmt.Sprintf("%.1f dB/oct", v)
 }
 
 // Layout positions every button inside rect. Channel goes on the left; the
@@ -303,7 +288,7 @@ func (b *AudioStickyBar) rebuildHitAreas() {
 	}
 	addChannelBtn()
 	for i, tb := range b.tabBtns {
-		addBtn(tb, fmt.Sprintf("eq-tab-%d", i))
+		addBtn(tb, indexedTag(eqTabTags[:], "eq-tab-", i))
 	}
 	addBtn(b.legendBtn, "eq-legend-btn")
 	// Trailing per-tab action buttons: register with a touch-min expansion on
@@ -313,7 +298,7 @@ func (b *AudioStickyBar) rebuildHitAreas() {
 		if tb == nil || tb.Rect().Empty() {
 			continue
 		}
-		ha := HitArea{Rect: tb.Rect(), ZIndex: z, Handler: &buttonHitAdapter{btn: tb}, Tag: fmt.Sprintf("eq-trailing-%d", i)}
+		ha := HitArea{Rect: tb.Rect(), ZIndex: z, Handler: &buttonHitAdapter{btn: tb}, Tag: indexedTag(eqTrailingTags[:], "eq-trailing-", i)}
 		if Profile().IsMobile() {
 			ha.Touch = true
 			ha.ClipRect = expandToTouchMin(tb.Rect())
@@ -338,8 +323,8 @@ func (b *AudioStickyBar) Draw(dst *ebiten.Image, activeTab PanelTab) {
 	// pass; mobile Chain showed five gold actives at once).
 	drawPillTabAt(dst, b.channelBtn, false)
 	if r := b.channelBtn.Rect(); !r.Empty() {
-		capR := keycapCapRect(r, b.channelBtn.pressTravelPx(), false)
-		drawRoundedRect(dst, capR, WithAlpha(colAccent, genAlphaAccentTint), RadiusMD/2, false)
+		// No accent outline: flat-tonal draws no border at rest. The caret
+		// below is what signals "this opens a list".
 		const caretW = 8
 		caretR := image.Rect(r.Max.X-caretW-3, r.Min.Y+(r.Dy()-caretW)/2, r.Max.X-3, r.Min.Y+(r.Dy()-caretW)/2+caretW)
 		DrawIcon(dst, IconChevronDown, caretR, colTextAccent)
@@ -441,25 +426,22 @@ func (b *AudioStickyBar) TabBtn(i int) *Button {
 // ebitenstub backend). Boxing once at init keeps the hot path allocation-free.
 // The shell colors are the wall shade drawKeycapShell derives via
 // adjustColor(fill, -45) — pre-boxed here so the pill path never re-derives it.
+// Derived in rebuildThemeAliases (theme.go) — pre-boxed color.Color once per
+// theme apply so drawPillTabAt stays allocation-free. Active = lit lamp-amber
+// face (sunset-gold-300), pressed-IN, dark text; disabled = recessed/dim.
 var (
-	pillCapFillInactive color.Color = colSurface2
-	pillCapBorderInact  color.Color = colButtonBorder
-	pillTextInactive    color.Color = colTextSecondary
-	// Active pill = lit lamp-amber face (#FFB30A), pressed-IN (recessed), with
-	// dark text — matte retro-analogue restyle (2026-06-17). Replaces the
-	// lit-cyan raised face + cyan engage flash.
-	pillCapFillActive   color.Color = genColorSunsetGold300
-	pillCapBorderActive color.Color = genColorSunsetGold300
-	pillTextActive      color.Color = genColorBackground
-	pillShellInactive   color.Color = adjustColor(colSurface2, -45)
-	pillShellActive     color.Color = adjustColor(genColorSunsetGold300, -45)
-	// Disabled pill: recessed/dim cap + greyed label so it reads as inert
-	// (mirrors the subdiv button's DisabledButtonStyle treatment). Pre-boxed
-	// once like the rest of the palette to keep drawPillTabAt allocation-free.
-	pillCapFillDisabled color.Color = adjustColor(colSurface2, -20)
-	pillCapBorderDisab  color.Color = adjustColor(colButtonBorder, -20)
-	pillTextDisabled    color.Color = colTextDisabled
-	pillShellDisabled   color.Color = adjustColor(colSurface2, -55)
+	pillCapFillInactive color.Color
+	pillCapBorderInact  color.Color
+	pillTextInactive    color.Color
+	pillCapFillActive   color.Color
+	pillCapBorderActive color.Color
+	pillTextActive      color.Color
+	pillShellInactive   color.Color
+	pillShellActive     color.Color
+	pillCapFillDisabled color.Color
+	pillCapBorderDisab  color.Color
+	pillTextDisabled    color.Color
+	pillShellDisabled   color.Color
 )
 
 // drawPillTabAt is the file-scope free-function version of the legacy
@@ -467,7 +449,10 @@ var (
 // pills without holding a receiver reference to the zone.
 // It applies the keycap look: dark socket/wall + a travelling cap that raises
 // when active. A one-shot engage flash fires on the first off→on transition.
-func drawPillTabAt(dst *ebiten.Image, btn *Button, active bool) {
+// drawPillTabAt is a func VAR so tests can take an exact census of the pills
+// a tab renders (the drawMenuRow / drawSpectrumBarGradient precedent). The
+// audio panel's control count is a thing worth guarding, not discovering.
+var drawPillTabAt = func(dst *ebiten.Image, btn *Button, active bool) {
 	if btn == nil {
 		return
 	}
@@ -486,66 +471,68 @@ func drawPillTabAt(dst *ebiten.Image, btn *Button, active bool) {
 	}
 	btn.wasActive = active
 
-	pillRadius := RadiusMD / 2 // 4px corners
-	// Active pill sits recessed (pressed-IN), never raised — raised=false.
-	capR := keycapCapRect(r, btn.pressTravelPx(), false)
+	pillRadius := RadiusControl // every control shares one radius (DESIGN.md "Shapes")
+	// Flat-tonal pill: the body IS the full rect. No cap/socket split.
+	capR := r
 
 	// Active = lit amber face (recessed); inactive = neutral surface cap. All
 	// palette values are the pre-boxed package-level color.Color interfaces
 	// (see the var block above) so selecting a state copies an interface header
 	// rather than boxing a fresh color.RGBA on every pill, every frame.
-	capFill, borderCol, textCol, shellCol := pillCapFillInactive, pillCapBorderInact, pillTextInactive, pillShellInactive
+	capFill, textCol := pillCapFillInactive, pillTextInactive
 	switch {
 	case btn.Disabled:
-		capFill, borderCol, textCol, shellCol = pillCapFillDisabled, pillCapBorderDisab, pillTextDisabled, pillShellDisabled
+		capFill, textCol = pillCapFillDisabled, pillTextDisabled
 	case active:
-		// Dark legend on the lit-cyan face: matches button-primary textColor
-		// (DESIGN.md: textColor: "{colors.background}") — genColorBackground.
-		capFill, borderCol, textCol, shellCol = pillCapFillActive, pillCapBorderActive, pillTextActive, pillShellActive
+		// Bright legend on the accent-TINTED body (see below). The flat-tonal
+		// restyle replaced the solid amber flood, so the old dark legend would
+		// now be unreadable.
+		capFill, textCol = pillCapFillInactive, colTextPrimary
 	}
-	// Shell (dark socket/side-wall) as a cached fill-only composite — the rect
-	// is static so the (w,h,fill,border,radius) sprite stays warm. Mirrors
-	// drawKeycapShell but with the pre-derived wall shade (no per-call
-	// adjustColor box). Guards match drawKeycapShell.
-	if !r.Empty() && genGeomKeycapWallDepth != 0 {
-		drawRoundedButton(dst, r, shellCol, shellCol, pillRadius, false)
+	// Flat-tonal body: a single filled rounded rect, no shell, no bevel, no
+	// border. Selection is a tint plus a 2px accent bar — never a flood.
+	drawFlatButtonBody(dst, capR, capFill, pillRadius)
+	if active && !btn.Disabled {
+		drawRoundedRect(dst, capR, WithAlpha(colAccent, AlphaSubtle), pillRadius, true)
+		drawFlatSelectionBar(dst, capR, colAccent, selectionEdgeBottom, 1)
 	}
-	if btn.pressDepth <= 0 {
-		drawKeycapContactShadow(dst, capR, pillRadius)
-	}
-	// Cap face fill+border as a single cached composite sprite (keyed by
-	// w,h,fill,border,radius). capR's size is travel-invariant (only Y moves),
-	// so the sprite stays warm across press travel — steady-state cost is one
-	// allocation-free blit instead of two uncached drawRoundedRect primitives.
-	drawRoundedButton(dst, capR, capFill, borderCol, pillRadius, false)
-	if !btn.Disabled {
-		if active {
-			// Latched amber pill reads pressed-IN (inverted bevel).
-			drawKeycapActiveInset(dst, capR, pillRadius)
-		} else {
-			drawKeycapBevel(dst, capR, pillRadius)
-		}
-	}
-	// No-op since the matte restyle; engageAnim is still ticked above so the
-	// pill press-spring contract (TestPillKeycapEngageAndTravel) is unchanged.
-	drawKeycapEngageFlash(dst, capR, pillRadius, btn.engageAnim)
 
 	// Icon-only pills (e.g. expander) draw the glyph centered; otherwise draw
 	// the button's text label, color-coded by active/inactive state.
 	if btn.Icon != "" {
-		iconCol := btn.IconColor
+		iconCol := btn.effectiveIconColor()
 		if iconCol == nil {
 			iconCol = textCol
 		}
 		DrawIcon(dst, IconID(btn.Icon), capR, iconCol)
 		return
 	}
-	if btn.TextColor != nil {
-		textCol = btn.TextColor
+	if tc := btn.effectiveTextColor(); tc != nil {
+		textCol = tc
 	}
 	tw := StyledTextWidth(btn.Text, RoleCaption)
 	th := StyledTextHeight(RoleCaption)
 	tx := capR.Min.X + (capR.Dx()-tw)/2
 	ty := capR.Min.Y + (capR.Dy()-th)/2
 	DrawTextStyled(dst, btn.Text, tx, ty, RoleCaption, textCol)
+}
+
+// Hit-area tags by index, built once: the bar's hit areas are rebuilt on every
+// layout pass (every frame) and formatting the tags there was a Sprintf per
+// pill per frame.
+var eqTabTags, eqTrailingTags = indexedTags("eq-tab-"), indexedTags("eq-trailing-")
+
+func indexedTags(prefix string) (tags [16]string) {
+	for i := range tags {
+		tags[i] = prefix + strconv.Itoa(i)
+	}
+	return
+}
+
+// indexedTag returns prefix+i from the prebuilt table (formatted past its end).
+func indexedTag(tags []string, prefix string, i int) string {
+	if i >= 0 && i < len(tags) {
+		return tags[i]
+	}
+	return prefix + strconv.Itoa(i)
 }

@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestImportTwiceNoHang verifies that importing while the sequencer is active
@@ -29,27 +33,27 @@ func TestImportTwiceNoHang(t *testing.T) {
 		Outputs []int  `json:"outputs"`
 	}
 	type inst struct {
-		Name   string  `json:"name"`
-		ID     string  `json:"id"`
-		Kind   string  `json:"kind"`
-		Volume float64 `json:"volume"`
-		Origin int     `json:"origin"`
-		Color  string  `json:"color"`
+		Name   string        `json:"name"`
+		ID     instrument.ID `json:"id"`
+		Kind   string        `json:"kind"`
+		Volume float64       `json:"volume"`
+		Origin int           `json:"origin"`
+		Color  string        `json:"color"`
 	}
 	type file struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Instruments []inst `json:"instruments"`
-		Nodes       []node `json:"nodes"`
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Instruments   []inst `json:"instruments"`
+		Nodes         []node `json:"nodes"`
 	}
 
 	// First JSON: simple 2-node loop
 	f1 := file{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         120,
-		Instruments: []inst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Instruments:   []inst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
 		Nodes: []node{
 			{ID: 1, I: 0, J: 0, Type: "regular", Outputs: []int{2}},
 			{ID: 2, I: 32, J: 0, Type: "regular", Outputs: []int{1}},
@@ -59,10 +63,10 @@ func TestImportTwiceNoHang(t *testing.T) {
 
 	// Second JSON: different 3-node loop
 	f2 := file{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         100,
-		Instruments: []inst{{Name: "Snare", ID: "snare", Kind: "builtin", Volume: 1, Origin: 10, Color: "#00FF00FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           100,
+		Instruments:   []inst{{Name: "Snare", ID: roster.Snare, Kind: "builtin", Volume: 1, Origin: 10, Color: "#00FF00FF"}},
 		Nodes: []node{
 			{ID: 10, I: 0, J: 32, Type: "regular", Outputs: []int{11}},
 			{ID: 11, I: 32, J: 32, Type: "regular", Outputs: []int{12}},
@@ -130,26 +134,26 @@ func TestImportResetsPlayingState(t *testing.T) {
 		Outputs []int  `json:"outputs"`
 	}
 	type inst struct {
-		Name   string  `json:"name"`
-		ID     string  `json:"id"`
-		Kind   string  `json:"kind"`
-		Volume float64 `json:"volume"`
-		Origin int     `json:"origin"`
-		Color  string  `json:"color"`
+		Name   string        `json:"name"`
+		ID     instrument.ID `json:"id"`
+		Kind   string        `json:"kind"`
+		Volume float64       `json:"volume"`
+		Origin int           `json:"origin"`
+		Color  string        `json:"color"`
 	}
 	type file struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Instruments []inst `json:"instruments"`
-		Nodes       []node `json:"nodes"`
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Instruments   []inst `json:"instruments"`
+		Nodes         []node `json:"nodes"`
 	}
 
 	f := file{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         120,
-		Instruments: []inst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Instruments:   []inst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
 		Nodes: []node{
 			{ID: 1, I: 0, J: 0, Type: "regular", Outputs: []int{2}},
 			{ID: 2, I: 32, J: 0, Type: "regular", Outputs: []int{1}},
@@ -193,26 +197,26 @@ func TestImportClearsSeqPathSnap(t *testing.T) {
 		Outputs []int  `json:"outputs"`
 	}
 	type inst struct {
-		Name   string  `json:"name"`
-		ID     string  `json:"id"`
-		Kind   string  `json:"kind"`
-		Volume float64 `json:"volume"`
-		Origin int     `json:"origin"`
-		Color  string  `json:"color"`
+		Name   string        `json:"name"`
+		ID     instrument.ID `json:"id"`
+		Kind   string        `json:"kind"`
+		Volume float64       `json:"volume"`
+		Origin int           `json:"origin"`
+		Color  string        `json:"color"`
 	}
 	type file struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Instruments []inst `json:"instruments"`
-		Nodes       []node `json:"nodes"`
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Instruments   []inst `json:"instruments"`
+		Nodes         []node `json:"nodes"`
 	}
 
 	f := file{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         120,
-		Instruments: []inst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           120,
+		Instruments:   []inst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FF0000FF"}},
 		Nodes: []node{
 			{ID: 1, I: 0, J: 0, Type: "regular", Outputs: []int{2}},
 			{ID: 2, I: 32, J: 0, Type: "regular", Outputs: []int{1}},

@@ -39,6 +39,9 @@ type chainTraceKey struct {
 	windowMs float64
 	showA    bool
 	showB    bool
+	// theme is the ThemeGeneration: the cache bakes the scope background and
+	// trace colors, so a runtime theme change must re-render it.
+	theme int
 }
 
 // chainBlitOp is the reusable blit options for the cached-trace DrawImage so
@@ -65,6 +68,7 @@ func (z *ChainPanelZone) drawTracesCached(screen *ebiten.Image, cr image.Rectang
 		mode: z.displayMode, frozen: z.frozen,
 		yGain: z.yGain, autoGain: z.autoGain, autoFit: z.autoFit,
 		windowMs: z.windowMs, showA: z.showTapA, showB: z.showTapB,
+		theme: ThemeGeneration(),
 	}
 
 	dimsChanged := z.traceCache == nil ||

@@ -8,6 +8,10 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 func TestImportCollisionConfigMapping(t *testing.T) {
@@ -30,40 +34,45 @@ func TestImportCollisionConfigMapping(t *testing.T) {
 }
 
 func TestBundleUserCollisionsDetection(t *testing.T) {
-	// A builtin recipe id never collides (import re-namespaces).
-	b1 := &audio.InstrumentBundle{Instruments: []audio.InstrumentDoc{{Recipe: audio.RecipeDoc{ID: "drum-snare"}}}}
+	withPrivateInstrumentLibrary(t)
+	snare, _ := audio.ShippedDoc(roster.Snare)
+	withID := func(id instrument.ID) *instrument.Doc { d := snare.Clone(); d.ID = id; return &d }
+
+	// A shipped id never collides (import re-namespaces).
+	b1 := &audio.InstrumentBundle{Instruments: []audio.BundleInstrument{{Synth: withID(roster.Snare)}}}
 	if got := bundleUserCollisions(b1); len(got) != 0 {
-		t.Errorf("builtin flagged as collision: %+v", got)
+		t.Errorf("shipped flagged as collision: %+v", got)
 	}
-	// A registered user recipe id collides.
-	if _, err := audio.RegisterUserRecipeFromBase("user.coll.test", "X", "drum-snare", nil); err != nil {
-		t.Fatalf("register: %v", err)
+	// A saved user instrument id collides.
+	if err := audio.SaveLibraryDoc(*withID("user.coll.test")); err != nil {
+		t.Fatalf("save: %v", err)
 	}
-	t.Cleanup(func() { audio.UnregisterRecipeForTest("user.coll.test") })
-	b2 := &audio.InstrumentBundle{Instruments: []audio.InstrumentDoc{{Recipe: audio.RecipeDoc{ID: "user.coll.test"}}}}
+	b2 := &audio.InstrumentBundle{Instruments: []audio.BundleInstrument{{Synth: withID("user.coll.test")}}}
 	if got := bundleUserCollisions(b2); len(got) != 1 {
 		t.Errorf("user collision not detected: %+v", got)
 	}
 	// A fresh id doesn't collide.
-	b3 := &audio.InstrumentBundle{Instruments: []audio.InstrumentDoc{{Recipe: audio.RecipeDoc{ID: "user.brand.new"}}}}
+	b3 := &audio.InstrumentBundle{Instruments: []audio.BundleInstrument{{Synth: withID("user.brand.new")}}}
 	if got := bundleUserCollisions(b3); len(got) != 0 {
 		t.Errorf("fresh id flagged: %+v", got)
 	}
 }
 
 func TestImportDefersToDialogOnCollision(t *testing.T) {
-	g := newInstrumentTestGame(t)
+	g := newDocsGame(t, roster.Snare)
 	dv := g.drum
 	dv.selRow = 0
 
-	if _, err := audio.RegisterUserRecipeFromBase("user.defer.test", "Deferred", "drum-snare", nil); err != nil {
-		t.Fatalf("register: %v", err)
+	snare, _ := audio.ShippedDoc(roster.Snare)
+	saved := snare.Clone()
+	saved.ID, saved.Name = "user.defer.test", "Deferred"
+	if err := audio.SaveLibraryDoc(saved); err != nil {
+		t.Fatalf("save: %v", err)
 	}
-	t.Cleanup(func() { audio.UnregisterRecipeForTest("user.defer.test") })
 
 	bundle := audio.InstrumentBundle{
-		Format: audio.InstrumentBundleFormat, Version: audio.InstrumentBundleVersion,
-		Instruments: []audio.InstrumentDoc{{Name: "Deferred", Kind: "synth", Recipe: audio.RecipeDoc{ID: "user.defer.test", BaseRecipe: "drum-snare"}}},
+		Envelope: schema.Current(), Format: audio.InstrumentBundleFormat,
+		Instruments: []audio.BundleInstrument{{Name: "Deferred", Kind: audio.BundleSynth, Synth: &saved}},
 	}
 	raw, _ := json.Marshal(bundle)
 	prev := selectJSONAsyncFn

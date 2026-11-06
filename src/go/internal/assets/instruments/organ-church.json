@@ -1,0 +1,362 @@
+{
+  "schema_version": "0.0.1",
+  "id": "organ-church",
+  "name": "Church Organ",
+  "category": "modular",
+  "notes": "organChurchSeed: a happy accident — an early additive-cello tuning (dominant 2nd\nharmonic + extended upper partials + heavy unison/drift, OSC disabled) that read\nas a sustained pipe/church organ rather than a bowed cello. Kept verbatim as its\nown instrument. osc_octave:-1 retained (plays an octave below the requested pitch).",
+  "render": {
+    "seconds": 1,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.05179144526863056,
+        "amp_curve": 1,
+        "amp_decay": 0.85,
+        "amp_release": 0.34967507497621253,
+        "amp_sustain": 0.62
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.88,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 5616.350246241032,
+        "filter_resonance": 3,
+        "filter_type": 0
+      }
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 1.593822115304857,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.19947731679846067
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.3,
+        "lfo_depth": 0.04018237211705741,
+        "lfo_rate": 3.684847594572423,
+        "lfo_target": 1
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 40,
+        "unison_drift_depth": 8,
+        "unison_drift_rate": 3,
+        "unison_mix": 0.65,
+        "unison_voices": 7
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 1
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 3329.1038595643486,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.12,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.3,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.1,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.16,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5,
+        "freq_mode": 0,
+        "gain": 0.08,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.15,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 7,
+        "freq_mode": 0,
+        "gain": 0.07,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 8,
+        "freq_mode": 0,
+        "gain": 0.26,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 10,
+        "freq_mode": 0,
+        "gain": 0.22,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 13,
+        "freq_mode": 0,
+        "gain": 0.22,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 16,
+        "freq_mode": 0,
+        "gain": 0.2,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 6,
+        "env_tail_mix": 0.05,
+        "env_tail_rate": 2,
+        "filt_alpha": 0,
+        "filt_freq": 600,
+        "filt_q": 0.8,
+        "filt_type": 5,
+        "gain": 0.035,
+        "noise_offset": 0
+      }
+    }
+  ]
+}

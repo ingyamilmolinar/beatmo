@@ -24,7 +24,9 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -93,7 +95,7 @@ try {
     typeof stopOutputCapture === "function" &&
     typeof getOutputCapture === "function" &&
     typeof clearOutputCapture === "function" &&
-    typeof recipeForInstrument === "function"
+    typeof getInstrumentDoc === "function"
   );
 
   // Unlock audio context.
@@ -106,17 +108,15 @@ try {
     {},
     { timeout: 10000 },
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
-  // Sanity: there is at least one row + the snare is bound.
-  const sanity = await page.evaluate(() => {
-    const recipe = recipeForInstrument("snare");
-    return { recipe };
-  });
-  if (sanity.recipe !== "drum-snare") {
-    throw new Error(`snare is not bound to drum-snare; got '${sanity.recipe}'`);
+  // Sanity: the snare has an instrument document (the test drives "pitch",
+  // which every document carries).
+  const sanity = await page.evaluate(() => ({ doc: getInstrumentDoc("snare") }));
+  if (!sanity.doc) {
+    throw new Error("snare has no instrument document");
   }
-  console.log("[TEST] snare → drum-snare binding confirmed");
+  console.log("[TEST] snare document confirmed");
 
   const peakOf = (arr) => {
     let p = 0;
@@ -141,8 +141,10 @@ try {
     if (typeof resetInstrumentParams === "function") {
       resetInstrumentParams("snare");
     }
-    startPlay();
   });
+  // Play is ignored while the circuit warm-up gate is closed (the button is
+  // disabled then); press it the way a user can — once the gate opens.
+  await startPlaybackWhenReady(page);
   // Let the sequencer fire 5+ notes so the channel chain is fully built.
   await page.waitForTimeout(800);
 

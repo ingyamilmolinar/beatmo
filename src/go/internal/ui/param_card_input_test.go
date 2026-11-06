@@ -3,10 +3,11 @@ package ui
 import (
 	"fmt"
 	"image"
-	"math"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // param_card_input_test.go — Task 5. The synth knob card is now a UNIVERSAL
@@ -90,35 +91,70 @@ func dispatchWheelAt(t *testing.T, g *Game, x, y, steps int) {
 	g.Update()
 }
 
-// Desktop click on a card opens the value-wheel popup (was mobile-only).
-func TestParamCardClickOpensPopupOnDesktop(t *testing.T) {
+// Desktop tap on a card arms it inline (Task 13: the barrel/wheel popup that
+// used to open on tap was retired — Task 9 replaced tap→popup with tap→arm).
+// See synth_armed_input_test.go's TestTapArmsThenWheelEditsValue for the full
+// armed-model tap contract; this only pins that the card-level dispatch still
+// reaches the armed path on desktop.
+func TestParamCardClickArmsOnDesktop(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
+	inst := dv.synthTabActiveInstrument()
 	_, r := firstContinuousSynthControl(t, g)
 	pressAndReleaseAt(t, g, r.Min.X+4, r.Min.Y+4)
-	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
-		t.Fatal("desktop card tap must open the value-wheel popup")
+	if _, armed := dv.synthControlArmed(inst); !armed {
+		t.Fatal("desktop card tap must arm the control")
 	}
 }
 
-// Desktop wheel over a card nudges the value and commits ONE undo step after the
-// debounce elapses — without opening the popup.
+// Desktop wheel over the ARMED control's value lane nudges the value and
+// commits ONE undo step after the debounce elapses (Task 13: migrated off the
+// retired not-armed wheel-nudge — Task 9 made a not-armed wheel over a card
+// SCROLL the row instead, see TestNotArmedWheelScrollsRow in
+// synth_armed_input_test.go). The gesture is now: arm the control (grows the
+// card + builds the ArmedControlEditor), let the layout populate the value
+// lane's rect, then wheel over that lane through the same real-tree
+// dispatchWheelAt path used everywhere else in this file.
 func TestParamCardWheelNudgesValue(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	idx, r := firstContinuousSynthControl(t, g)
+	inst := dv.synthTabActiveInstrument()
+	idx, _ := firstContinuousSynthControl(t, g)
+
+	// Arm the control, then re-layout/re-draw once so growArmedCard grows the
+	// card and drawArmedControlCard calls ArmedControlEditor.SetCardRect with
+	// the real grown rect — only then is ValueLaneRect() populated.
+	dv.armSynthControl(inst, idx)
+	g.Update()
+	img := newTrackedImage("test.paramcardinput.armed", 1280, 720)
+	defer releaseImage(img)
+	g.Draw(img)
+
+	e := dv.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	vr := e.ValueLaneRect()
+	if vr.Empty() {
+		t.Fatal("value lane rect must be populated after arming + a layout/draw pass")
+	}
+
 	k := dv.instEditorControls[idx]
 	before := k.Value
 	undoBefore := undoDepth(g)
 
-	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
-	if k.Value == before {
-		t.Fatal("wheel notch over card did not change value")
+	vx, vy := vr.Min.X+vr.Dx()/2, vr.Min.Y+vr.Dy()/2
+	// One notch (ImpulseNotch) may not accumulate enough kinetic offset to
+	// cross a detent depending on density's SynthWheelRowH, so drive two —
+	// same margin TestTapArmsThenWheelEditsValue uses in
+	// synth_armed_input_test.go.
+	dispatchWheelAt(t, g, vx, vy, +2)
+	for i := 0; i < 240 && e.Tick(); i++ { // resolve the kinetic wheel animation
 	}
-	if dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen() {
-		t.Fatal("wheel nudge must not open the popup")
+	if k.Value == before {
+		t.Fatal("armed wheel notch over the value lane did not change value")
 	}
 	for i := 0; i < 60; i++ { // run the debounce down
 		g.Update()
@@ -131,6 +167,7 @@ func TestParamCardWheelNudgesValue(t *testing.T) {
 // Wheel over grid whitespace still scrolls the section (no value change).
 func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 	g := newModularSynthTabGame(t)
+	audio.SetInstrumentParam("ut-chip-modular", "osc_type", 4) // FM operators exist only on the FM oscillator
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
 	idx := synthIdxByParam(t, g, "fm_op1_ratio")
@@ -259,22 +296,60 @@ func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 // debounce — must still land exactly one undo step. Before the fix, the
 // debounce only ticked while SynthTabUpdate ran (TabSynth active), so a tab
 // switch mid-gesture silently dropped the latched commit.
+// armWheelPendingCommit arms the first continuous synth control, spins its value
+// lane by one gesture through the real dispatcher, resolves the kinetic
+// animation, and asserts the debounced wheel-nudge commit is still PENDING (not
+// yet an undo step). Armed-model migration of the retired not-armed wheel-nudge:
+// a not-armed wheel now scrolls the row, so a pending value commit only exists
+// once the control is armed and its value lane spun. Returns the undo depth
+// captured before the gesture, so the caller can assert the flush lands exactly
+// one step.
+func armWheelPendingCommit(t *testing.T, g *Game) int {
+	t.Helper()
+	dv := g.drum
+	inst := dv.synthTabActiveInstrument()
+	idx, _ := firstContinuousSynthControl(t, g)
+	dv.armSynthControl(inst, idx)
+	g.Update()
+	img := newTrackedImage("test.wheelflush.armed", 1280, 720)
+	defer releaseImage(img)
+	g.Draw(img)
+
+	e := dv.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	vr := e.ValueLaneRect()
+	if vr.Empty() {
+		t.Fatal("value lane rect must be populated after arming + a layout/draw pass")
+	}
+	k := dv.instEditorControls[idx]
+	before := k.Value
+	undoBefore := undoDepth(g)
+
+	vx, vy := vr.Min.X+vr.Dx()/2, vr.Min.Y+vr.Dy()/2
+	dispatchWheelAt(t, g, vx, vy, +2)
+	for i := 0; i < 240 && e.Tick(); i++ { // resolve the kinetic wheel
+	}
+	if k.Value == before {
+		t.Fatal("armed wheel notch over the value lane did not change value")
+	}
+	if got := undoDepth(g); got != undoBefore {
+		t.Fatalf("wheel-nudge commit fired before the debounce elapsed (got %d, want %d)", got, undoBefore)
+	}
+	return undoBefore
+}
+
 func TestWheelNudgeFlushesOnTabSwitchAway(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	_, r := firstContinuousSynthControl(t, g)
-	undoBefore := undoDepth(g)
-
-	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
-	if got := undoDepth(g); got != undoBefore {
-		t.Fatalf("undo step recorded before the debounce elapsed or the tab switched (got %d, want %d)", got, undoBefore)
-	}
+	undoBefore := armWheelPendingCommit(t, g)
 
 	// Switch away from Synth through the real production path (mirrors a
 	// user clicking a different sticky-bar tab pill) WITHOUT running the
 	// wheelNudgeCommitFrames worth of frames the debounce needs to
-	// self-commit.
+	// self-commit — the onLeave hook must flush the pending commit.
 	dv.eqPanelZone.SetActiveTab(TabWave)
 	for i := 0; i < 3; i++ {
 		g.Update()
@@ -298,13 +373,7 @@ func TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	_, r := firstContinuousSynthControl(t, g)
-	undoBefore := undoDepth(g)
-
-	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
-	if got := undoDepth(g); got != undoBefore {
-		t.Fatalf("undo step recorded before the debounce elapsed or the view mode switched (got %d, want %d)", got, undoBefore)
-	}
+	undoBefore := armWheelPendingCommit(t, g)
 
 	// dv.setViewMode(viewModeEQ) calls eqPanelZone.tabState.SetActiveTab(TabEQ)
 	// directly (drumview_context_menu.go), bypassing EQPanelZone.SetActiveTab.
@@ -318,79 +387,50 @@ func TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth(t *testing.T) {
 	}
 }
 
-// TestSynthControlShiftWheelIsFiner proves Shift-held wheel notches nudge a
-// continuous knob by a SMALLER amount than an unshifted notch (Task-5's
-// "fine" wheel path in nudgeKnobByWheel), and that the temporary finer step
-// never persists: the knob's normal StepMul and the step badge's active
-// rung are unchanged afterward.
-func TestSynthControlShiftWheelIsFiner(t *testing.T) {
-	// Two independent games (rather than one game hit twice) so the second
-	// trial isn't contaminated by the first commit's param propagation
-	// re-syncing the knob's Value out from under a manual reset.
-	setup := func(t *testing.T) (*Game, int, image.Rectangle) {
-		t.Helper()
-		g := newModularSynthTabGame(t)
-		expandSynthPanelForTest(t, g)
-		idx, r := firstContinuousSynthControl(t, g)
-		return g, idx, r
-	}
+// TestSynthControlResolutionLaneIsFiner (Task 9 armed-model rewrite) proves the
+// RESOLUTION lane of the armed editor moves the badge's active rung finer or
+// coarser, and that the choice PERSISTS onto the knob's StepMul (unlike the
+// old transient Shift-wheel nudge, resolution is now a deliberate, sticky
+// choice made via the left lane of the armed control — see
+// synth_barrel_bindings_test.go's badge-index pattern).
+func TestSynthControlResolutionLaneIsFiner(t *testing.T) {
+	g := newModularSynthTabGame(t)
+	expandSynthPanelForTest(t, g)
+	idx, r := firstContinuousSynthControl(t, g)
+	dv := g.drum
+	instID := dv.synthTabActiveInstrument()
 
-	gU, idxU, rU := setup(t)
-	kU := gU.drum.instEditorControls[idxU]
-	if idxU >= len(gU.drum.instEditorStepBadges) || gU.drum.instEditorStepBadges[idxU] == nil {
+	if idx >= len(dv.instEditorStepBadges) || dv.instEditorStepBadges[idx] == nil {
 		t.Fatal("filter_cutoff knob has no step badge")
 	}
-	badgeU := gU.drum.instEditorStepBadges[idxU]
-	if badgeU.idx <= 0 {
+	badge := dv.instEditorStepBadges[idx]
+	startIdx := badge.Index()
+	if startIdx <= 0 {
 		t.Skip("badge already at the finest rung — no finer rung available to test against")
 	}
-	startU := kU.Value
-	dispatchWheelAt(t, gU, rU.Min.X+4, rU.Min.Y+4, +1)
-	unshiftedDelta := kU.Value - startU
-	if unshiftedDelta == 0 {
-		t.Fatal("unshifted wheel notch did not change value")
+	stepMulBefore := dv.instEditorControls[idx].StepMul
+
+	dv.armSynthControl(instID, idx)
+	e := dv.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	e.SetCardRect(r)
+	if e.ResLaneRect().Empty() {
+		t.Fatal("resolution lane should be available for a badged (continuous) control")
 	}
 
-	gS, idxS, rS := setup(t)
-	kS := gS.drum.instEditorControls[idxS]
-	badgeS := gS.drum.instEditorStepBadges[idxS]
-	stepMulBefore := kS.StepMul
-	idxBefore := badgeS.idx
-	startS := kS.Value
-	cx, cy := rS.Min.X+4, rS.Min.Y+4
+	if !e.StepResolution(-1) {
+		t.Fatal("StepResolution(-1) should move the rung one step finer")
+	}
 
-	// One Shift-held notch, simulated via the SetInputForTest key stub.
-	gS.drum.eqPanelZone.Invalidate()
-	wheelActive := true
-	restore := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(b ebiten.MouseButton) bool { return false },
-		func(kk ebiten.Key) bool { return kk == ebiten.KeyShiftLeft },
-		func() []rune { return nil },
-		func() (float64, float64) {
-			if wheelActive {
-				return 0, 1
-			}
-			return 0, 0
-		},
-		func() (int, int) { return 1280, 720 },
-	)
-	gS.Update()
-	wheelActive = false
-	gS.Update()
-	restore()
-	shiftedDelta := kS.Value - startS
-
-	if shiftedDelta == 0 {
-		t.Fatal("shifted wheel notch did not change value")
+	if got := badge.Index(); got != startIdx-1 {
+		t.Fatalf("resolution rung should move exactly one step finer: start=%d now=%d", startIdx, got)
 	}
-	if math.Abs(shiftedDelta) >= math.Abs(unshiftedDelta) {
-		t.Fatalf("shift-held notch must be finer than an unshifted notch: unshifted=%.6f shifted=%.6f", unshiftedDelta, shiftedDelta)
+	if got := dv.instEditorControls[idx].StepMul; got == stepMulBefore {
+		t.Fatalf("k.StepMul must reflect the newly chosen finer rung: before=%.6f after=%.6f", stepMulBefore, got)
 	}
-	if kS.StepMul != stepMulBefore {
-		t.Fatalf("k.StepMul must be restored after a fine wheel nudge: before=%.6f after=%.6f", stepMulBefore, kS.StepMul)
-	}
-	if badgeS.idx != idxBefore {
-		t.Fatalf("badge rung must not persist a fine wheel nudge: before=%d after=%d", idxBefore, badgeS.idx)
+	if got := badge.Step(); got != badge.Rungs()[startIdx-1] {
+		t.Fatalf("badge.Step() should read back the finer rung's step: got=%.6f want=%.6f", got, badge.Rungs()[startIdx-1])
 	}
 }

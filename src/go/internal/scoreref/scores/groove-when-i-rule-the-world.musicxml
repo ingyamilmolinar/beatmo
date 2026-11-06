@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <work><work-title>When I Rule the World drum pattern (LIZ (prod. SOPHIE))</work-title></work>
+  <identification>
+    <creator type="composer">Traditional</creator>
+    <rights>Beatmo (CC0)</rights>
+    <encoding><software>Beatmo</software></encoding>
+  </identification>
+  <part-list>
+    <score-part id="P1">
+      <part-name>Drumset</part-name>
+      <score-instrument id="P1-I36"><instrument-name>Bass Drum 1</instrument-name></score-instrument>
+      <score-instrument id="P1-I37"><instrument-name>Side Stick</instrument-name></score-instrument>
+      <score-instrument id="P1-I38"><instrument-name>Acoustic Snare</instrument-name></score-instrument>
+      <score-instrument id="P1-I39"><instrument-name>Hand Clap</instrument-name></score-instrument>
+      <score-instrument id="P1-I42"><instrument-name>Closed Hi-Hat</instrument-name></score-instrument>
+      <score-instrument id="P1-I46"><instrument-name>Open Hi-Hat</instrument-name></score-instrument>
+      <midi-instrument id="P1-I36"><midi-channel>10</midi-channel><midi-unpitched>37</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I37"><midi-channel>10</midi-channel><midi-unpitched>38</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I38"><midi-channel>10</midi-channel><midi-unpitched>39</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I39"><midi-channel>10</midi-channel><midi-unpitched>40</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I42"><midi-channel>10</midi-channel><midi-unpitched>43</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I46"><midi-channel>10</midi-channel><midi-unpitched>47</midi-unpitched></midi-instrument>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>percussion</sign></clef></attributes>
+      <direction placement="below"><direction-type><dynamics><mf/></dynamics></direction-type></direction>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>3</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <backup><duration>16</duration></backup>
+      <note><rest/><duration>4</duration><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>8</duration><instrument id="P1-I39"/><voice>2</voice></note>
+      <note><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I39"/><voice>2</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I42"/><voice>3</voice></note>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I42"/><voice>3</voice></note>
+      <note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I42"/><voice>3</voice></note>
+      <note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I42"/><voice>3</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I46"/><voice>4</voice></note>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I46"/><voice>4</voice></note>
+      <note><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I46"/><voice>4</voice></note>
+      <note><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I46"/><voice>4</voice></note>
+    </measure>
+    <measure number="2">
+      <note><rest measure="yes"/><duration>16</duration><voice>1</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I39"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I39"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I39"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I39"/><voice>2</voice></note>
+    </measure>
+    <measure number="3">
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>8</duration><instrument id="P1-I36"/><voice>1</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I37"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I37"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I37"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I37"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I37"/><voice>2</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>8</duration><instrument id="P1-I37"/><voice>2</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I38"/><voice>3</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I38"/><voice>3</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I38"/><voice>3</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I38"/><voice>3</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I38"/><voice>3</voice></note>
+      <note dynamics="105"><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>8</duration><instrument id="P1-I38"/><voice>3</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><instrument id="P1-I39"/><voice>4</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I39"/><voice>4</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><instrument id="P1-I39"/><voice>4</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I39"/><voice>4</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I39"/><voice>4</voice></note>
+      <note dynamics="105"><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>8</duration><instrument id="P1-I39"/><voice>4</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I42"/><voice>5</voice></note>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I42"/><voice>5</voice></note>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I42"/><voice>5</voice></note>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I42"/><voice>5</voice></note>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I42"/><voice>5</voice></note>
+      <note dynamics="105"><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>8</duration><instrument id="P1-I42"/><voice>5</voice></note>
+      <backup><duration>16</duration></backup>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I46"/><voice>6</voice></note>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I46"/><voice>6</voice></note>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I46"/><voice>6</voice></note>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I46"/><voice>6</voice></note>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I46"/><voice>6</voice></note>
+      <note dynamics="105"><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>8</duration><instrument id="P1-I46"/><voice>6</voice></note>
+    </measure>
+  </part>
+</score-partwise>

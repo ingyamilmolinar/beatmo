@@ -1,5 +1,7 @@
 package audio
 
+import "github.com/ingyamilmolinar/beatmo/internal/instrument"
+
 // binding_observer.go — notification that an instrument's VOICE BINDING changed
 // (its params rotated the cache key), so an interested party can render the new
 // binding off-thread BEFORE the next trigger asks for it.
@@ -12,13 +14,13 @@ package audio
 // desktop prewarm off a platform bridge conflates two unrelated concerns.
 //
 // Set by internal/ui at startup; nil in tests that don't need it.
-var InstrumentBindingChangedObserver func(id string, params RecipeParams)
+var InstrumentBindingChangedObserver func(id instrument.ID, d instrument.Doc)
 
-// notifyInstrumentBindingChanged fires the observer if one is set. Called AFTER
-// the params-manager lock is released, so the observer may re-enter the audio
-// package safely.
-func notifyInstrumentBindingChanged(id string, params RecipeParams) {
+// notifyInstrumentBindingChanged fires the observer with the instrument's NEW
+// document. Called after the store lock is released, so the observer may
+// re-enter the audio package safely.
+func notifyInstrumentBindingChanged(id instrument.ID, d instrument.Doc) {
 	if f := InstrumentBindingChangedObserver; f != nil {
-		f(id, params)
+		f(id, d)
 	}
 }

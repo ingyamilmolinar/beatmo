@@ -49,15 +49,15 @@ func (dv *DrumView) openNavMenuPortal() {
 	if dv.tree == nil || dv.navMenuComp == nil {
 		return
 	}
-	dv.navMenuComp.SetScreenBounds(dv.Bounds)
-	dv.navMenuComp.SetAnchor(dv.beatCounterRect)
+	dv.navMenuComp.SetScreenBounds(dv.navMenuBounds())
+	dv.navMenuComp.SetAnchor(dv.navMenuAnchor())
 	dv.navMenuComp.Open()
 	dv.portal().Open(PortalEntry{
 		ID: navMenuPortalID,
 		Overlay: &compPortalOverlay{
 			comp:     dv.navMenuComp,
 			tag:      navMenuPortalID,
-			updateFn: dv.navMenuComp.Update, // tick the owned go-to editor
+			updateFn: dv.navMenuComp.Update,
 		},
 		Modal:   false,
 		Scrim:   true, // menu — backdrop dims so modality is visible
@@ -95,8 +95,12 @@ func (dv *DrumView) openJumpMenuPortal() {
 		anchor = dv.navMenuComp.Bounds()
 	}
 	dv.portal().Open(PortalEntry{
-		ID:      "jump-menu",
-		Overlay: &compPortalOverlay{comp: dv.jumpMenuComp, tag: "jump-menu"},
+		ID: "jump-menu",
+		// updateFn was missing here: without it SubdivMenuComponent.Update never
+		// ran for this instance, so the jump menu had neither fling momentum nor
+		// (now) keyboard navigation — unlike the subdiv menu, which is the same
+		// component wired correctly. Surfaced by the menu keyboard-nav tests.
+		Overlay: &compPortalOverlay{comp: dv.jumpMenuComp, tag: "jump-menu", updateFn: dv.jumpMenuComp.Update},
 		Modal:   false,
 		Scrim:   true, // menu/picker — backdrop dims so modality is visible
 		Anchor:  anchor,
@@ -170,9 +174,17 @@ func (dv *DrumView) openColorWheelPortal() {
 		anchor = dv.rowLabels()[dv.colorMenuRow].Rect()
 	}
 	dv.portal().Open(PortalEntry{
-		ID:      "color-wheel",
-		Overlay: &compPortalOverlay{comp: dv.colorWheelComp, tag: "color-wheel"},
-		Modal:   false,
+		ID: "color-wheel",
+		// updateFn pumps the keyboard cursor every frame; without it the
+		// picker claims the keyboard but never moves, so the arrows would be
+		// swallowed and do nothing (the same omission called out for the jump
+		// menu above).
+		Overlay: &compPortalOverlay{
+			comp:     dv.colorWheelComp,
+			tag:      "color-wheel",
+			updateFn: dv.colorWheelComp.UpdateKeyNav,
+		},
+		Modal: false,
 		// Scrim left off: the color picker (drumview_overlay_color_comp.go) draws
 		// its own scrim today; migrating it to the portal scrim is a later phase.
 		Anchor: anchor,
@@ -238,6 +250,9 @@ func (dv *DrumView) openOverflowMenuPortal() {
 			isOpenFn: func() bool { return dv.IsOverflowMenuOpen() },
 			rectFn:   func() image.Rectangle { return dv.overflowPopupRect() },
 			hoverFn: func(mx, my int) {
+				if dv.overflowCard != nil {
+					dv.overflowCard.HoverAt(mx, my)
+				}
 				for _, b := range dv.overflowBtns {
 					b.UpdateHover(mx, my)
 				}
@@ -281,6 +296,10 @@ func (dv *DrumView) openOverflowMenuPortal() {
 					dv.overflowMenuScroll.Tick(nil)
 				}
 				dv.updateTemplateSearch()
+				// Arrows/Enter drive the row list (see menu_keynav.go). This runs
+				// AFTER updateTemplateSearch so the cursor indexes the item list
+				// this frame's query produced, not the previous one's.
+				dv.updateOverflowKeyNav()
 			},
 			escapeFn: func() bool { return dv.handleTemplateSearchEscape() },
 			// While the menu is open its subtree (overlayTree) owns the
@@ -362,7 +381,11 @@ func (dv *DrumView) openContextMenuPortal() {
 						dv.rebuildContextMenuButtons()
 					}
 				}
+				dv.updateContextKeyNav()
 			},
+			// Arrows drive the row list while this menu is open, so the grid's
+			// arrow-pan must yield (see keyboard_focus.go).
+			claimsKeyboardFn: func() bool { return dv.IsContextMenuOpen() },
 		},
 		Modal:   false,
 		Scrim:   true, // row context menu — backdrop dims so modality is visible
@@ -480,38 +503,6 @@ func (dv *DrumView) closeVolPopupPortal() {
 	}
 }
 
-// openSynthWheelPortal opens the mobile synth-control wheel popup through the portal.
-func (p *synthPanel) openSynthWheelPortal() {
-	dv := p.dv
-
-	if dv.tree == nil || dv.synthWheelPopup == nil {
-		return
-	}
-	dv.portal().Open(PortalEntry{
-		ID:      "synth-wheel-popup",
-		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.synthWheelPopup, tag: "synth-wheel-popup"},
-		Modal:   true,
-		Scrim:   true, // synth wheel popup — backdrop dims so modality is visible
-		OnClose: func() {
-			// Persist-on-dismiss chokepoint: every dismissal funnels through
-			// OnClose (tap-outside via tree CloseTop, CloseAllPopups drain,
-			// programmatic close). Accept commits a pending edit; it no-ops when
-			// the popup is already closed — Esc's Cancel runs first, so revert
-			// is preserved, and Enter/anchor/center-box Accept first too.
-			dv.synthWheelPopup.Accept()
-		},
-	})
-}
-
-// closeSynthWheelPortal closes the synth wheel popup portal entry.
-func (p *synthPanel) closeSynthWheelPortal() {
-	dv := p.dv
-
-	if dv.tree != nil {
-		dv.portal().Close("synth-wheel-popup")
-	}
-}
-
 // openSamplerWheelPortal opens the mobile sampler-knob wheel popup through the portal.
 func (p *samplerPanel) openSamplerWheelPortal() {
 	dv := p.dv
@@ -620,8 +611,7 @@ func (dv *DrumView) openNamingPortal() {
 			drawFn: func(dst *ebiten.Image) {
 				box := dv.nameBoxRect()
 				if dv.nameBox == nil {
-					dv.nameBox = NewTextInput(box, BPMBoxStyle)
-					dv.nameBox.MaxLen = 32
+					dv.nameBox = dv.newWAVNameBox(box)
 				}
 				dv.nameBox.Rect = box
 				dv.nameBox.Draw(dst)
@@ -634,12 +624,11 @@ func (dv *DrumView) openNamingPortal() {
 					return
 				}
 				// Poll mobile native input for WAV name
-				if Profile().IsMobile() && mobileInputActive("wav-name") {
-					if val, committed, ok := mobileInputPollResult("wav-name"); ok {
+				if Profile().IsMobile() && mobileInputActive(wavNameMobileInputID) {
+					if val, committed, ok := mobileInputPollResult(wavNameMobileInputID); ok {
 						if committed {
-							id := strings.TrimSpace(val)
-							if id != "" {
-								dv.registerInstrument(id)
+							if name := strings.TrimSpace(val); name != "" {
+								dv.registerInstrument(name)
 							} else {
 								dv.pendingWAV = ""
 								dv.nameInput = ""
@@ -660,11 +649,7 @@ func (dv *DrumView) openNamingPortal() {
 				// Keep rect in sync with layout and update input
 				box := dv.nameBoxRect()
 				if dv.nameBox == nil {
-					dv.nameBox = NewTextInput(box, BPMBoxStyle)
-					dv.nameBox.MaxLen = 32
-					dv.nameBox.InputMode = "text"
-					dv.nameBox.OnFocusGained = func() { softKeyboardShow("text") }
-					dv.nameBox.OnFocusLost = func() { softKeyboardHide() }
+					dv.nameBox = dv.newWAVNameBox(box)
 					dv.nameBox.focused = true
 				}
 				dv.nameBox.Rect = box
@@ -673,17 +658,16 @@ func (dv *DrumView) openNamingPortal() {
 				}
 				dv.saveBtn.SetRect(image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+60, box.Max.Y))
 				dv.saveBtn.OnClick = func() {
-					id := strings.TrimSpace(dv.nameBox.Value())
-					dv.logger.Debugf("[drumview] save instrument pressed id=%q", id)
-					if id != "" {
-						dv.registerInstrument(id)
+					name := strings.TrimSpace(dv.nameBox.Value())
+					dv.logger.Debugf("[drumview] save instrument pressed name=%q", name)
+					if name != "" {
+						dv.registerInstrument(name)
 					}
 				}
 				dv.nameBox.Update()
 				if isKeyPressed(ebiten.KeyEnter) {
-					id := strings.TrimSpace(dv.nameBox.Value())
-					if id != "" {
-						dv.registerInstrument(id)
+					if name := strings.TrimSpace(dv.nameBox.Value()); name != "" {
+						dv.registerInstrument(name)
 					}
 				}
 				if isKeyPressed(ebiten.KeyEscape) {
@@ -720,8 +704,42 @@ func (dv *DrumView) openSamplerWheelPortal() { dv.sp().openSamplerWheelPortal() 
 
 func (dv *DrumView) closeSamplerWheelPortal() { dv.sp().closeSamplerWheelPortal() }
 
-// ── *DrumView forwarding shims (Batch B relocation onto *synthPanel) ───────
+// wavNameMobileInputID is the native-input id of the WAV-upload naming box.
+const wavNameMobileInputID = "wav-name"
 
-func (dv *DrumView) openSynthWheelPortal() { dv.synp().openSynthWheelPortal() }
+// newWAVNameBox builds the WAV-upload naming box. It has always focused the
+// soft-keyboard proxy on every platform (ProxyOnMobile).
+func (dv *DrumView) newWAVNameBox(r image.Rectangle) *TextInput {
+	f := NewTextField(dv.textFields, TextFieldSpec{ID: wavNameMobileInputID, Owner: "naming", ProxyOnMobile: true}, 32)
+	f.Rect = r
+	return f
+}
 
-func (dv *DrumView) closeSynthWheelPortal() { dv.synp().closeSynthWheelPortal() }
+// navMenuBounds is the region the navigation menu may occupy: the whole window.
+// The card hosts the go-to wheel and is taller than a short drum pane (a small
+// window, or the pane divider dragged up), so it is window-bounded like the
+// theme editor; at normal sizes it still drops below the beat counter inside
+// the drum pane. Game.drawThemeOverlaysAboveDivider repaints it when it
+// crosses the divider.
+func (dv *DrumView) navMenuBounds() image.Rectangle {
+	if dv.game != nil {
+		if w := dv.game.windowRect(); !w.Empty() {
+			return w
+		}
+	}
+	return dv.Bounds
+}
+
+// navMenuAnchor is the rect the navigation card drops from: the beat counter,
+// extended down to the bottom of the timeline ribbon it sits on, so the card
+// never covers the ribbon — that is where the go-to wheel's pending position
+// previews as a ghost.
+func (dv *DrumView) navMenuAnchor() image.Rectangle {
+	a := dv.beatCounterRect
+	if dv.timelineZone != nil {
+		if bar := dv.timelineZone.timelineBarRect; !bar.Empty() && bar.Max.Y > a.Max.Y {
+			a.Max.Y = bar.Max.Y
+		}
+	}
+	return a
+}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // Probability logic should control whether the mute clears audio, without applying
@@ -28,7 +29,7 @@ func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 	}
 	if n, ok := g.graph.GetNodeByID(mute.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.0
 		g.graph.SetNodeParams(mute.ID, p)
 	}
@@ -36,10 +37,10 @@ func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 
 	g.SetPlaying(true)
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 	inst := g.drum.Rows[0].Instrument
 	stops := 0
-	audio.SetStopHook(func(id string) {
+	audio.SetStopHook(func(id instrument.ID) {
 		if id == inst {
 			stops++
 		}
@@ -60,7 +61,7 @@ func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 	// Enable mute to trigger on next visit.
 	if n, ok := g.graph.GetNodeByID(mute.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 1.0
 		g.graph.SetNodeParams(mute.ID, p)
 	}

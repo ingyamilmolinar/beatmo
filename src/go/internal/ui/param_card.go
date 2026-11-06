@@ -65,19 +65,17 @@ func drawParamCard(dst *ebiten.Image, r image.Rectangle, name, value string, g p
 	if r.Empty() {
 		return
 	}
-	rad := RadiusMD / 2
-	capFill := TokenSurface3()
-	shell := adjustColor(capFill, -45)
-	capR := keycapCapRect(r, 0, true)
-	drawRoundedButton(dst, r, shell, shell, rad, false)
-	drawKeycapContactShadow(dst, capR, rad)
-	drawRoundedButton(dst, capR, capFill, capFill, rad, false)
-	drawKeycapBevel(dst, capR, rad)
-	rim := WithAlphaFromColor(genColorPrimary, AlphaMedium)
+	// Shared chrome serving many rect sizes (a peek-band card can be a few px
+	// tall): fit the role radius so a clipped slot never over-asks.
+	rad := fitRadius(RadiusControl, r)
+	// Flat-tonal card: one filled body, no shell/bevel/rim. The card's
+	// silhouette is the surface-3 tone step against the panel behind it.
+	// Selection is a 2px accent bar, not an outline.
+	capR := r
+	drawFlatButtonBody(dst, capR, TokenSurface3(), rad)
 	if st.Selected {
-		rim = colConceptStroke
+		drawFlatSelectionBar(dst, capR, colConceptStroke, selectionEdgeBottom, 1)
 	}
-	drawRoundedRect(dst, capR, rim, rad, false)
 
 	inner := capR.Inset(SpaceXS + 2)
 	if inner.Empty() {
@@ -121,15 +119,24 @@ func drawParamCard(dst *ebiten.Image, r image.Rectangle, name, value string, g p
 }
 
 func drawParamCardGauge(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge, dim bool) {
+	var fill color.Color = genColorPrimary
+	if dim {
+		fill = TokenTextDisabled()
+	}
+	drawGaugeStrip(dst, gr, g, fill)
+}
+
+// drawGaugeStrip is the DESIGN.md "gauge" affordance — the hairline strip on a
+// control's bottom inner edge that shows its value at rest. One renderer for
+// every valued control (synth param cards, the per-row and master volume
+// buttons); only the fill color varies (accent for params, the instrument
+// color for a row's volume).
+func drawGaugeStrip(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge, fill color.Color) {
 	if gr.Empty() {
 		return
 	}
 	track := WithAlpha(TokenSurface1(), AlphaStrong)
-	fill := genColorPrimary
-	if dim {
-		fill = TokenTextDisabled()
-	}
-	drawRoundedRect(dst, gr, track, RadiusXS, true)
+	drawCapsule(dst, gr, track, true)
 	switch g.kind {
 	case gaugeDots:
 		if g.count <= 0 {
@@ -147,7 +154,7 @@ func drawParamCardGauge(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge,
 			if i == g.idx {
 				col = fill
 			}
-			drawRoundedRect(dst, dot, col, RadiusXS, true)
+			drawCapsule(dst, dot, col, true)
 		}
 	case gaugeBipolar:
 		zx := gr.Min.X + int(g.zero*float64(gr.Dx()))
@@ -159,13 +166,16 @@ func drawParamCardGauge(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge,
 		if seg.Dx() < 2 { // always show the center detent
 			seg.Max.X = seg.Min.X + 2
 		}
-		drawRoundedRect(dst, seg, fill, RadiusXS, true)
+		drawCapsule(dst, seg, fill, true)
 	default: // gaugeFill
 		w := int(clamp01(g.frac) * float64(gr.Dx()))
 		if w < 2 && g.frac > 0 {
 			w = 2
 		}
-		drawRoundedRect(dst, image.Rect(gr.Min.X, gr.Min.Y, gr.Min.X+w, gr.Max.Y), fill, RadiusXS, true)
+		if w <= 0 {
+			return // an empty level is the track alone — no zero-width draw
+		}
+		drawCapsule(dst, image.Rect(gr.Min.X, gr.Min.Y, gr.Min.X+w, gr.Max.Y), fill, true)
 	}
 }
 

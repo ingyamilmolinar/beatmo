@@ -4,12 +4,14 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestSpecKeysExistInRecipe(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	for _, inst := range []string{"sax", "organ", "guitar-electric", "violin", "trumpet", "piano-grand"} {
+	for _, inst := range []instrument.ID{roster.Sax, roster.Organ, roster.GuitarElectric, roster.Violin, roster.Trumpet, roster.PianoGrand} {
 		spec, ok := SpecForInstrument(inst)
 		if !ok {
 			t.Fatalf("no TunableSpec for %q", inst)
@@ -23,11 +25,11 @@ func TestSpecKeysExistInRecipe(t *testing.T) {
 func TestRenderWithParams_ChangesOutput(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	base, err := RenderInstrument("sax", 0, 44100, 0.5)
+	base, err := RenderInstrument(roster.Sax, 0, 44100, 0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mod, err := RenderWithParams("sax", 0, 44100, 0.5, map[string]float64{"filter_cutoff": 400})
+	mod, err := RenderWithParams(roster.Sax, 0, 44100, 0.5, map[string]float64{"filter_cutoff": 400})
 	if err != nil {
 		t.Fatal(err)
 	}

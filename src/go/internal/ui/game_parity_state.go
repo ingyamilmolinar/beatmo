@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // ParityMismatchSnapshot returns a copy of recent scheduler-vs-UI mismatches.
@@ -47,6 +48,22 @@ func (g *Game) clearParityState() {
 	g.hlDropped = make(map[int]int64)
 	g.highlightMu.Unlock()
 	g.ClearParityMismatches()
+}
+
+// parityOnSeek retires every parity observation of the pass a seek leaves
+// behind. A seek is a transport discontinuity like Stop→Play: cells at/after a
+// backward seek's target are about to be REPLAYED, so their recorded audio
+// events, seq decisions and timing traces describe a superseded pass — and the
+// highlights they were matched against are wiped here too. Wiping only the
+// highlights (as SeekSteps used to) left "audio fired, no highlight" for every
+// replayed cell until the playhead re-passed it: the highlight_vs_audio storm
+// after each rewind / go-to. Advancing parityGen retires the old pass through
+// the same generation filter every comparison already applies — including
+// events still in flight in audioCh, which carry the generation they were
+// scheduled under. Not a structural mutation: no freeze, no grace.
+func (g *Game) parityOnSeek() {
+	g.parityGen.Add(1)
+	g.resetHighlights()
 }
 
 // clearParityStateForGenBump drops only the parity comparator buffers whose
@@ -159,7 +176,7 @@ func (g *Game) endImportDialog() {
 // recorded after a structural mutation advanced g.parityGen, and stamping the
 // current generation would desync it from its (older-generation) seq decision.
 // See soundReq.parityGen for the full rationale.
-func (g *Game) recordParityAudio(row, abs int, when float64, inst string, vol, pitch, dur float64, gen uint64, parityGen uint64) {
+func (g *Game) recordParityAudio(row, abs int, when float64, inst instrument.ID, vol, pitch, dur float64, gen uint64, parityGen uint64) {
 	if g == nil {
 		return
 	}

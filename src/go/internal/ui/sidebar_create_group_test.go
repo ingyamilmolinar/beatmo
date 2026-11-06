@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -28,9 +26,9 @@ import (
 func openSidebarGrpExpanded(t *testing.T, g *Game, id model.NodeID) {
 	t.Helper()
 	g.sidebar.Open(g.nodesByID[id])
-	clickSidebarControl(t, g, "sec-grp")
+	clickSidebarControl(t, g, sbSectionHeader(secGrp))
 	advanceFrames(g, 1)
-	if !g.sidebar.sectionOpen["grp"] {
+	if !g.sidebar.sectionOpen[secGrp] {
 		t.Fatalf("openSidebarGrpExpanded: grp section must be expanded after clicking sec-grp")
 	}
 }
@@ -50,18 +48,18 @@ func TestSidebarGroupSectionAlwaysVisible(t *testing.T) {
 	}
 	openSidebarGrpExpanded(t, g, aID)
 
-	if r, ok := g.sidebar.rects["sec-grp"]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbSectionHeader(secGrp)]; !ok || r.Empty() {
 		t.Fatalf("sec-grp must be present even with zero groups, rects=%v", g.sidebar.rects)
 	}
-	if r, ok := g.sidebar.rects["grpnew"]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupNew]; !ok || r.Empty() {
 		t.Fatalf("grpnew row must be present with zero groups, rects=%v", g.sidebar.rects)
 	}
 	for id := range g.sidebar.rects {
-		if strings.HasPrefix(id, "grpchip:") {
+		if id.el == elGroupChip {
 			t.Fatalf("zero groups must produce no chip rows, found %s", id)
 		}
 	}
-	if r, ok := g.sidebar.rects["grpadd"]; ok && !r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupAdd]; ok && !r.Empty() {
 		t.Fatalf("zero groups must produce no grpadd row, got rect=%v", r)
 	}
 }
@@ -80,7 +78,7 @@ func TestSidebarCreateNewGroupOpensProvisionalMenu(t *testing.T) {
 	openSidebarGrpExpanded(t, g, aID)
 	undoBefore := len(g.undoManager.undo)
 
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 
 	if g.sidebar.IsOpen() {
@@ -122,7 +120,7 @@ func TestSidebarCreateThenCloseLeavesNoTrace(t *testing.T) {
 	openSidebarGrpExpanded(t, g, aID)
 	undoBefore := len(g.undoManager.undo)
 
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 	if !g.groupMenu.IsOpen() {
 		t.Fatalf("setup: GroupMenu must be open")
@@ -139,7 +137,7 @@ func TestSidebarCreateThenCloseLeavesNoTrace(t *testing.T) {
 
 	// Reopen: number must still be the lowest-free (1).
 	openSidebarGrpExpanded(t, g, aID)
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 	grp, ok := g.graph.Group(g.groupMenu.GroupID())
 	if !ok || grp.Name != "Group 1" {
@@ -158,11 +156,11 @@ func TestSidebarCreateThenSaveCommits(t *testing.T) {
 	openSidebarGrpExpanded(t, g, aID)
 	undoBefore := len(g.undoManager.undo)
 
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 	gid := g.groupMenu.GroupID()
 
-	clickMenuControl(t, g, "save")
+	clickMenuControl(t, g, gmSave)
 	advanceFrames(g, 2)
 
 	if !g.groupMenu.IsOpen() {
@@ -181,7 +179,7 @@ func TestSidebarCreateThenSaveCommits(t *testing.T) {
 	}
 
 	openSidebarGrpExpanded(t, g, aID)
-	if r, ok := g.sidebar.rects[fmt.Sprintf("grpchip:%d", gid)]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupChip(gid)]; !ok || r.Empty() {
 		t.Fatalf("membership chip for the saved group must be present, rects=%v", g.sidebar.rects)
 	}
 }
@@ -197,11 +195,11 @@ func TestSidebarCreateWithExistingMembership(t *testing.T) {
 	gidA := createCommittedGroup(t, g, "A", []model.NodeID{aID, bID})
 
 	openSidebarGrpExpanded(t, g, aID)
-	if r, ok := g.sidebar.rects[fmt.Sprintf("grpchip:%d", gidA)]; !ok || r.Empty() {
+	if r, ok := g.sidebar.rects[sbGroupChip(gidA)]; !ok || r.Empty() {
 		t.Fatalf("existing membership chip must coexist with grpnew, rects=%v", g.sidebar.rects)
 	}
 
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 	gidNew := g.groupMenu.GroupID()
 	if gidNew == gidA {
@@ -212,7 +210,7 @@ func TestSidebarCreateWithExistingMembership(t *testing.T) {
 		t.Fatalf("new provisional group must contain exactly [%v], got %+v (ok=%v)", aID, grpNew, ok)
 	}
 
-	clickMenuControl(t, g, "save")
+	clickMenuControl(t, g, gmSave)
 	advanceFrames(g, 2)
 
 	memberSet := map[model.GroupID]bool{}
@@ -236,15 +234,15 @@ func TestSidebarCreateShowsMergeChips(t *testing.T) {
 	gidB := createCommittedGroup(t, g, "B", []model.NodeID{bID})
 
 	openSidebarGrpExpanded(t, g, aID)
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 	provID := g.groupMenu.GroupID()
 
-	if r, ok := g.groupMenu.rects[fmt.Sprintf("mergechip:%d", gidB)]; !ok || r.Empty() {
+	if r, ok := g.groupMenu.rects[gmMergeChip(gidB)]; !ok || r.Empty() {
 		t.Fatalf("mergechip for B must be present on the single-node provisional menu, rects=%v", g.groupMenu.rects)
 	}
 
-	clickMenuControl(t, g, fmt.Sprintf("mergechip:%d", gidB))
+	clickMenuControl(t, g, gmMergeChip(gidB))
 	advanceFrames(g, 2)
 
 	grpB, ok := g.graph.Group(gidB)
@@ -278,7 +276,7 @@ func TestSidebarCreateReusesExactSingleNodeGroup(t *testing.T) {
 	undoBefore := len(g.undoManager.undo)
 
 	openSidebarGrpExpanded(t, g, aID)
-	clickSidebarControl(t, g, "grpnew")
+	clickSidebarControl(t, g, sbGroupNew)
 	advanceFrames(g, 2)
 
 	if !g.groupMenu.IsOpen() || g.groupMenu.GroupID() != gid {

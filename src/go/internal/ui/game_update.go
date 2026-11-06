@@ -10,9 +10,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
+
+// benchJSONFormat is the machine-readable bench line consumed by
+// scripts/bench-desktop.sh (which greps stdout for "[bench_json] "). Hoisted
+// to a constant so bench_json_metrics_test.go can pin its key set — a key
+// vanishing here breaks regression tracking silently otherwise.
+const benchJSONFormat = `[bench_json] {"bpm":%d,"frames":%d,"fps":%.2f,"updateAvgMS":%.3f,"updateMaxMS":%.3f,"drawAvgMS":%.3f,"drawMaxMS":%.3f,"audioEnq":%d,"audioDeq":%d,"audioQLatAvgMS":%.3f,"audioQLatMaxMS":%.3f,"audioCallAvgMS":%.3f,"audioCallMaxMS":%.3f,"schedCount":%d,"schedOverdue":%d,"schedMinLeadMS":%s,"schedMaxLeadMS":%s,"schedAvgLeadMS":%s,"schedAvgLagMS":%s,"schedMaxLagMS":%s,"schedLagP90MS":%s,"schedLagP99MS":%s,"schedSmallLeadCount":%d,"heapAllocKB":%d,"heapSysKB":%d,"heapObjects":%d,"goroutines":%d,"gcCycles":%d,"gcForced":%d,"gcPauses":%d,"gcPauseP50MS":%.3f,"gcPauseP99MS":%.3f,"gcPauseMaxMS":%.3f,"gcHeapHighKB":%d,"parityScans":%d,"parityAvgMS":%.3f,"parityMaxMS":%.3f,"liveImages":%d,"imagesAllocatedTotal":%d,"imagesByTag":"%s","renderCacheHits":%d,"renderCacheMisses":%d,"renderDispatchRenders":%d,"renderPrewarmRenders":%d,"renderAvgMS":%.3f,"renderMaxMS":%.3f` +
+	`,"renderStalePlays":%d,"warmSetSize":%d,"warmSkippedCached":%d,"warmMS":%.3f` +
+	`,"stormScenario":%q,"stormPushes":%d}` + "\n"
 
 // benchFmtMS formats a seconds value as milliseconds for human-readable
 // log output, returning "N/A" for NaN/Inf.
@@ -75,6 +84,9 @@ func (g *Game) Update() error {
 	if g.drum != nil {
 		g.drum.logsToast.tick()
 	}
+	g.syncHeldInstruments()
+	g.checkWarmupSampleRate() // trip the gate if the observed sample rate rotated
+	g.warmup.Tick(0)          // nil-safe; enforces the readiness deadline
 	// Per-frame undo bracket: every recorded mutation produced by this frame's
 	// single user gesture (a click that adds + auto-stitches, a drag release,
 	// etc.) collapses into ONE atomic undo step. endGroup is a cheap no-op when
@@ -86,6 +98,10 @@ func (g *Game) Update() error {
 	}
 	// ── Screenshot mode ──
 	if g.screenshotReady() {
+		return ebiten.Termination
+	}
+	// ── Showcase tour: feeds this frame's scripted input before anything reads it ──
+	if g.tour != nil && g.tour.tick(g) {
 		return ebiten.Termination
 	}
 	// ── Benchmark mode lifecycle ──
@@ -102,6 +118,7 @@ func (g *Game) Update() error {
 			g.gcMetrics.reset()
 			g.schedMetrics.Reset()
 			ResetImageMetrics()
+			audio.ResetRenderLatencyMetrics() // exclude startup renders from the window
 			g.logger.Infof("[bench] Started: bpm=%d duration=%s", g.benchBPM, g.benchDuration)
 			if g.benchRecord {
 				g.startBenchRecording()
@@ -133,8 +150,8 @@ func (g *Game) Update() error {
 				s.GCCycles, s.GCForced, s.GCPauses,
 				s.GCPauseP50MS, s.GCPauseP99MS, s.GCPauseMaxMS, s.GCHeapHighKB)
 			rl := audio.GetRenderLatencyMetrics()
-			g.logger.Infof("[bench] RenderLatency: cacheHits=%d cacheMisses=%d dispatchRenders=%d prewarmRenders=%d renderAvg=%.2fms renderMax=%.2fms",
-				rl.CacheHits, rl.CacheMisses, rl.DispatchRenders, rl.PrewarmRenders,
+			g.logger.Infof("[bench] RenderLatency: cacheHits=%d cacheMisses=%d dispatchRenders=%d prewarmRenders=%d stalePlays=%d renderAvg=%.2fms renderMax=%.2fms",
+				rl.CacheHits, rl.CacheMisses, rl.DispatchRenders, rl.PrewarmRenders, rl.StalePlays,
 				float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6)
 			pAvg, pMax, pCount := g.parityScanStats()
 			g.logger.Infof("[bench] Parity: scans=%d avg=%.3fms max=%.3fms", pCount, pAvg, pMax)
@@ -146,7 +163,11 @@ func (g *Game) Update() error {
 			// DEBUG by the log-level contract (forbidden_at_info_test), so a
 			// logger call would be silently suppressed. bench-desktop.sh greps
 			// stdout for "[bench_json] " — see scripts/bench-desktop.sh.
-			fmt.Printf("[bench_json] {\"bpm\":%d,\"frames\":%d,\"fps\":%.2f,\"updateAvgMS\":%.3f,\"updateMaxMS\":%.3f,\"drawAvgMS\":%.3f,\"drawMaxMS\":%.3f,\"audioEnq\":%d,\"audioDeq\":%d,\"audioQLatAvgMS\":%.3f,\"audioQLatMaxMS\":%.3f,\"audioCallAvgMS\":%.3f,\"audioCallMaxMS\":%.3f,\"schedCount\":%d,\"schedOverdue\":%d,\"schedMinLeadMS\":%s,\"schedMaxLeadMS\":%s,\"schedAvgLeadMS\":%s,\"schedAvgLagMS\":%s,\"schedMaxLagMS\":%s,\"schedLagP90MS\":%s,\"schedLagP99MS\":%s,\"schedSmallLeadCount\":%d,\"heapAllocKB\":%d,\"heapSysKB\":%d,\"heapObjects\":%d,\"goroutines\":%d,\"gcCycles\":%d,\"gcForced\":%d,\"gcPauses\":%d,\"gcPauseP50MS\":%.3f,\"gcPauseP99MS\":%.3f,\"gcPauseMaxMS\":%.3f,\"gcHeapHighKB\":%d,\"parityScans\":%d,\"parityAvgMS\":%.3f,\"parityMaxMS\":%.3f,\"liveImages\":%d,\"imagesAllocatedTotal\":%d,\"imagesByTag\":\"%s\",\"renderCacheHits\":%d,\"renderCacheMisses\":%d,\"renderDispatchRenders\":%d,\"renderPrewarmRenders\":%d,\"renderAvgMS\":%.3f,\"renderMaxMS\":%.3f,\"stormScenario\":%q,\"stormPushes\":%d}\n",
+			warmSize, warmSkipped, warmMS := 0, 0, 0.0
+			if g.warmup != nil {
+				warmSize, warmSkipped, warmMS = g.warmup.BenchStats()
+			}
+			fmt.Printf(benchJSONFormat,
 				g.benchBPM, s.Frames, s.FPSAvg,
 				s.UpdateAvgMS, s.UpdateMaxMS,
 				s.DrawAvgMS, s.DrawMaxMS,
@@ -165,6 +186,7 @@ func (g *Game) Update() error {
 				g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot(),
 				rl.CacheHits, rl.CacheMisses, rl.DispatchRenders, rl.PrewarmRenders,
 				float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6,
+				rl.StalePlays, warmSize, warmSkipped, warmMS,
 				benchStormName(g.benchStorm), g.benchStormPushes)
 			g.SetPlaying(false)
 			g.engine.Stop()
@@ -355,13 +377,24 @@ eventsDone:
 		switch gesture.Kind {
 		case GestureTap:
 			if gesture.Y >= gridTopOffset() && g.split.InGridPane(gesture.X, gesture.Y) && !globalTouchState.RecentMultiTouch() {
-				// Grid area tap — direct handler (node create/select).
-				g.handleTapInGrid(gesture.X, gesture.Y)
+				// Grid area tap — direct handler (node create/select) — but
+				// only when the canvas owns this gesture. A control drawn over
+				// the grid that took the press edge (a top-right button, the
+				// group menu, the splitter) owns the whole gesture: the tap is
+				// reported at the LIFT point, which a drifting finger can carry
+				// off the control, and must not also act on the grid beneath.
+				if !g.inputDispatcher.GestureOwnedByHandler() {
+					g.handleTapInGrid(gesture.X, gesture.Y)
+				}
 				touchHandled = true
 			}
 			// Drum-area taps are injected above and handled via dispatcher.
 		case GestureLongPress:
-			g.handleTouchLongPress(gesture.X, gesture.Y)
+			// Same ownership rule: a long-press that began on an overlay
+			// control must not delete the node under it.
+			if !g.inputDispatcher.GestureOwnedByHandler() {
+				g.handleTouchLongPress(gesture.X, gesture.Y)
+			}
 			if g.drum != nil {
 				g.drum.CancelAllDeferredTaps()
 			}
@@ -397,6 +430,7 @@ eventsDone:
 	if g.longPressPopup {
 		g.updateLongPressPopup(mx, my, left)
 		g.leftPrev = left
+		g.inputDispatcher.SkipFrame(left)
 	} else {
 		// Set/decay splitter guard: while the drum view is capturing,
 		// keep a 3-frame cooldown that prevents the splitter from
@@ -415,20 +449,17 @@ eventsDone:
 			g.lastDispatcherSidebarOpen = sidebarOpen
 			g.lastDispatcherGroupMenuOpen = groupMenuOpen
 			g.inputDispatcher.Clear()
-			// Settings gear: registered at the TOP z (gridHelpInputZ=300) so a
-			// press inside its rect wins over the grid editor on every platform.
-			// Routing it through the dispatcher (which runs on the touch-to-mouse
-			// override coords) unifies desktop mouse, mobile touch, and mobile
-			// pointer/click — replacing the old platform-gated bespoke path.
+			// Top-right button cluster (gear / folder / logs / theme): ONE
+			// opaque handler at the TOP z (gridCornerButtonsInputZ=300), routed
+			// on the buttons' touch targets, so a press anywhere in the cluster
+			// wins over the grid on every platform (desktop mouse, mobile touch,
+			// mobile pointer/click all arrive here via the override coords).
 			if g.gridHelpBtn != nil {
-				g.inputDispatcher.Register(gridHelpInputHandler{g: g})
+				g.inputDispatcher.Register(gridCornerButtonsHandler{g: g})
 			}
-			if g.gridFileBtn != nil {
-				g.inputDispatcher.Register(gridFileInputHandler{g: g})
-			}
-			if g.gridLogsBtn != nil {
-				g.inputDispatcher.Register(gridLogsInputHandler{g: g})
-			}
+			// Tap-outside-a-menu: while any menu / pop-up is open, a grid
+			// press outside it only closes it (popup_outside_press.go).
+			g.inputDispatcher.Register(popupOutsidePressHandler{g: g})
 			// Node sidebar input flows through the grid dispatcher; it renders via the
 			// grid pane's GridTree (grid-sidebar layer, clipped to the grid pane).
 			if sidebarOpen {
@@ -444,9 +475,9 @@ eventsDone:
 			g.inputDispatcher.Sort()
 		}
 
-		// gridHelpInputHandler sets gridHelpCapturing during Dispatch when the
-		// gear consumes the press; reset it BEFORE dispatch so the flag reflects
-		// only this frame.
+		// gridCornerButtonsHandler sets gridHelpCapturing during Dispatch when a
+		// corner button consumes the press; reset it BEFORE dispatch so the flag
+		// reflects only this frame.
 		g.gridHelpCapturing = false
 
 		// Skip normal input dispatch if touch gesture was fully handled
@@ -454,6 +485,8 @@ eventsDone:
 		if !touchHandled {
 			// Single dispatch - returns true if any handler consumed
 			inputHandled = g.inputDispatcher.Dispatch(mx, my, left)
+		} else {
+			g.inputDispatcher.SkipFrame(left)
 		}
 
 		// (Removed: the legacy BPM-box focus-nudge. The BPM readout is now a
@@ -559,9 +592,8 @@ eventsDone:
 				g.notifyPredictorNode(dr.origin)
 			}
 		}
-		if dr.index < len(g.nextBeatIdxs) {
-			g.nextBeatIdxs = append(g.nextBeatIdxs[:dr.index], g.nextBeatIdxs[dr.index+1:]...)
-		}
+		// nextBeatIdxs (and every other per-row store) was already shifted
+		// synchronously by onDrumRowRemoved when the row was spliced out.
 		if dr.index < len(g.nextIdxSticky) {
 			g.nextIdxSticky = append(g.nextIdxSticky[:dr.index], g.nextIdxSticky[dr.index+1:]...)
 		}
@@ -689,7 +721,7 @@ eventsDone:
 	// tap-slop deadzone. Only a stationary tap creates a node. Blocking pan on
 	// guideAim.active here would double the slop over circuit content (aim slop +
 	// camera slop) and make panning feel dead near nodes.
-	panOK := !g.linkDrag.active && !g.marquee.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
+	panOK := !g.linkDrag.active && !g.marquee.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.gridMenuDragging() && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
 
 	// Diagnostic: log why panOK is false for grid touches on mobile.
 	// Throttled to once per 60 frames to avoid log spam.
@@ -821,7 +853,14 @@ eventsDone:
 	// drum view logic already run above
 
 	if g.drum.PlayPressed() {
-		if g.Playing() {
+		if !g.playbackReady() {
+			// Consume the press and ignore it: the progress toast already
+			// explains why, and the button renders disabled. Never queue the
+			// press — a play that fires seconds later, unprompted, is worse
+			// than one that did not fire.
+			done, total := g.warmup.Progress()
+			g.logger.Debugf("[warmup] play ignored while warming (%d/%d)", done, total)
+		} else if g.Playing() {
 			g.logger.Debugf("[game] pause pressed")
 			div := max1(g.grid.MaxDiv())
 			g.nextBeatIdxs = append([]int(nil), startNext...)
@@ -831,6 +870,7 @@ eventsDone:
 				DisplayDiv: div,
 			})
 			g.audioGen.Add(1)
+			g.resetAudioLane() // pause: cancel every lane voice not started yet
 			g.setPrimaryStep(beatsAtFrameStart)
 			for {
 				select {
@@ -907,6 +947,7 @@ eventsDone:
 		g.logger.Debugf("[game] stop pressed")
 		g.state.Stop()
 		g.audioGen.Add(1)
+		g.resetAudioLane() // stop: cancel every lane voice not started yet
 		g.setPrimaryStep(0)
 		// Ensure any paused playback visuals (pulses/highlights) are cleared even
 		// when the playing flag doesn't transition (paused -> stopped).
@@ -923,6 +964,7 @@ eventsDone:
 		for row := range g.drum.Rows {
 			g.timelineClearRow(row)
 		}
+		g.playedGraveyard = nil
 		// Reset playback-derived state so the next Play starts from a clean
 		// baseline. pathChangeBeatByRow stores elapsedBeats at the moment a
 		// mid-play edit happened; carrying that watermark across Stop makes
@@ -975,7 +1017,7 @@ eventsDone:
 			for _, row := range g.drum.Rows {
 				if row.Instrument != "" {
 					instruments = append(instruments, audio.InstrumentMeta{
-						ID:   row.Instrument,
+						ID:   channel.Of(row.Instrument),
 						Name: row.Name,
 					})
 				}

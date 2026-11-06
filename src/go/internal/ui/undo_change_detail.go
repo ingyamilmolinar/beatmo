@@ -7,8 +7,11 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
+
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // changeDetail is a concrete "param: old → new" description derived by diffing
@@ -51,7 +54,7 @@ func b2f(b bool) float64 {
 // for structural changes (node/instrument added or removed) or when nothing
 // scalar differs — the caller then falls back to the generic action label.
 func describeUndoChange(before, after []byte) (changeDetail, bool) {
-	var b, a importFile
+	var b, a projectFile
 	if json.Unmarshal(before, &b) != nil || json.Unmarshal(after, &a) != nil {
 		return changeDetail{}, false
 	}
@@ -77,6 +80,9 @@ func describeUndoChange(before, after []byte) (changeDetail, bool) {
 		f := keyFacet(keyVolumeLabel(), func(v float64) string { return volPctStr(orDefaultOne(v)) })
 		return f.detail(bmv, amv), true
 	}
+	if d, ok := diffTheme(b.Theme, a.Theme); ok {
+		return d, true
+	}
 	bn := make(map[int]exportNode, len(b.Nodes))
 	for _, n := range b.Nodes {
 		bn[n.ID] = n
@@ -88,21 +94,18 @@ func describeUndoChange(before, after []byte) (changeDetail, bool) {
 			}
 		}
 	}
-	bi := make(map[string]exportInstrument, len(b.Instruments))
+	bi := make(map[instrument.ID]exportInstrument, len(b.Instruments))
 	for _, in := range b.Instruments {
 		bi[in.ID] = in
 	}
 	for _, ai := range a.Instruments {
 		if bv, ok := bi[ai.ID]; ok {
-			if d, ok := diffInstrument(bv, ai); ok {
+			if d, ok := diffInstrument(bv, ai, b.InstrumentDocs[ai.ID].Doc, a.InstrumentDocs[ai.ID].Doc); ok {
 				return d, true
 			}
 		}
 	}
 	if d, ok := diffEQ(b.EQ, a.EQ, ""); ok {
-		return d, true
-	}
-	if d, ok := diffSendEffects(b.SendEffects, a.SendEffects); ok {
 		return d, true
 	}
 	return changeDetail{}, false
@@ -131,34 +134,25 @@ func diffNode(b, a exportNode) (changeDetail, bool) {
 		return litFacet("Groove", func(v float64) string { return fmt.Sprintf("%.0f%%", v*100) }).detail(b.GroovePct, a.GroovePct), true
 	}
 	if b.Type != a.Type {
-		return changeDetail{"Type", b.Type, a.Type}, true
+		return changeDetail{"Type", b.Type.String(), a.Type.String()}, true
 	}
 	if b.LogicKind != a.LogicKind {
-		return changeDetail{"Logic", strOrNone(b.LogicKind), strOrNone(a.LogicKind)}, true
+		return changeDetail{"Logic", strOrNone(b.LogicKind.String()), strOrNone(a.LogicKind.String())}, true
 	}
 	if b.GrooveKind != a.GrooveKind {
-		return changeDetail{"Groove", strOrNone(b.GrooveKind), strOrNone(a.GrooveKind)}, true
+		return changeDetail{"Groove", strOrNone(b.GrooveKind.String()), strOrNone(a.GrooveKind.String())}, true
 	}
 	return changeDetail{}, false
 }
 
-func diffInstrument(b, a exportInstrument) (changeDetail, bool) {
+func diffInstrument(b, a exportInstrument, bDoc, aDoc instrument.Doc) (changeDetail, bool) {
 	if b.Volume != a.Volume {
 		return keyFacet(keyVolumeLabel(), volPctStr).detail(b.Volume, a.Volume), true
 	}
-	if b.Pan != a.Pan {
-		return keyFacet(i18n.KeyParamPan, fmtPan).detail(b.Pan, a.Pan), true
-	}
-	if b.DelaySend != a.DelaySend {
-		return keyFacet(i18n.KeyParamDelaySend, fmtPct100).detail(b.DelaySend, a.DelaySend), true
-	}
-	if b.ReverbSend != a.ReverbSend {
-		return keyFacet(i18n.KeyParamReverbSend, fmtPct100).detail(b.ReverbSend, a.ReverbSend), true
-	}
-	if b.Recipe != a.Recipe {
-		return changeDetail{"Recipe", b.Recipe, a.Recipe}, true
-	}
-	if d, ok := diffFloatMap(b.SynthParams, a.SynthParams, func(k string) (paramFacet, bool) {
+	// The instrument documents, compared through their flat field view so the
+	// notification names the knob ("Cutoff: 800 Hz → 1.2 kHz").
+	reg := audio.BuiltinModuleRegistry()
+	if d, ok := diffFloatMap(instrument.OwnedFields(bDoc, reg), instrument.OwnedFields(aDoc, reg), func(k string) (paramFacet, bool) {
 		return synthParamFacet(k), true
 	}); ok {
 		return d, true
@@ -190,7 +184,7 @@ func diffSampleEdit(b, a map[string]float64) (changeDetail, bool) {
 func sampleEditIdentityFilled(m map[string]float64) map[string]float64 {
 	out := map[string]float64{
 		"start_frac": 0, "end_frac": 1, "transpose_semis": 0, "detune_cents": 0,
-		"gain_db": 0, "fade_in_ms": 0, "fade_out_ms": 0, "reverse": 0, "normalize": 0,
+		"gain_db": 0, "fade": 0, "reverse": 0, "normalize": 0,
 	}
 	for k, v := range m {
 		out[k] = v
@@ -330,58 +324,34 @@ func diffEffects(b, a []audio.EffectSlot) (changeDetail, bool) {
 	}
 	return changeDetail{}, false
 }
-
-// diffSendEffects reports the first differing global send (delay/reverb) param.
-func diffSendEffects(b, a *SendEffectsConfig) (changeDetail, bool) {
-	if b == nil && a == nil {
-		return changeDetail{}, false
-	}
-	var bb, aa SendEffectsConfig
-	if b != nil {
-		bb = *b
-	}
-	if a != nil {
-		aa = *a
-	}
-	bd, ad := sendDelay(bb.Delay), sendDelay(aa.Delay)
-	if bd.TimeMs != ad.TimeMs {
-		return litFacet("Delay · Time", fmtUnit("ms")).detail(bd.TimeMs, ad.TimeMs), true
-	}
-	if bd.Feedback != ad.Feedback {
-		return litFacet("Delay · Feedback", fmtUnit("")).detail(bd.Feedback, ad.Feedback), true
-	}
-	if bd.DampingHz != ad.DampingHz {
-		return litFacet("Delay · Damping", fmtUnit("Hz")).detail(bd.DampingHz, ad.DampingHz), true
-	}
-	br, ar := sendReverb(bb.Reverb), sendReverb(aa.Reverb)
-	if br.Room != ar.Room {
-		return litFacet("Reverb · Room", fmtPct100).detail(br.Room, ar.Room), true
-	}
-	if br.Damping != ar.Damping {
-		return litFacet("Reverb · Damping", fmtPct100).detail(br.Damping, ar.Damping), true
-	}
-	if br.Wet != ar.Wet {
-		return litFacet("Reverb · Wet", fmtPct100).detail(br.Wet, ar.Wet), true
-	}
-	return changeDetail{}, false
-}
-
-func sendDelay(d *SendDelayConfig) SendDelayConfig {
-	if d == nil {
-		return SendDelayConfig{}
-	}
-	return *d
-}
-func sendReverb(r *SendReverbConfig) SendReverbConfig {
-	if r == nil {
-		return SendReverbConfig{}
-	}
-	return *r
-}
-
 func strOrNone(s string) string {
 	if s == "" {
 		return "none"
 	}
 	return s
+}
+
+// diffTheme reports the first category whose swatch changed between two
+// circuit theme blocks ("accent: orchid-300"), "(default)" when cleared.
+func diffTheme(b, a *theme.Doc) (changeDetail, bool) {
+	get := func(d *theme.Doc, k string) string {
+		if d == nil {
+			return ""
+		}
+		return d.Categories[k]
+	}
+	for _, c := range themeCategories {
+		bv, av := get(b, c.ID), get(a, c.ID)
+		if bv == av {
+			continue
+		}
+		fmtv := func(v string) string {
+			if v == "" {
+				return c.ID + ": (default)"
+			}
+			return c.ID + ": " + v
+		}
+		return changeDetail{"Theme", fmtv(bv), fmtv(av)}, true
+	}
+	return changeDetail{}, false
 }

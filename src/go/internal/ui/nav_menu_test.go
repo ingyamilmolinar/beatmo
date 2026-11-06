@@ -5,6 +5,9 @@ package ui
 import (
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
@@ -51,7 +54,7 @@ func TestNavAndFileMenusAreSeparatePortals(t *testing.T) {
 func TestNavPrevNextJumpByAmountAndUnit(t *testing.T) {
 	g := newGameWithStart(t)
 	div := g.grid.MaxDiv()
-	g.SeekSteps(20*div, seekOriginJS)
+	g.SeekSteps(20*div, hooks.SeekJS)
 	g.drum.jumpBeats = 4
 	g.drum.jumpUnitBeats = true
 	g.drum.navPanel.cb.OnNext() // +4 beats
@@ -88,21 +91,20 @@ func TestNavAmountPickerStacksOverNavMenu(t *testing.T) {
 	}
 }
 
-// TestNavGotoBeatEditorOpensOverNavMenu: the go-to-beat editor (owned by the nav
-// menu component) must activate and stay open while the nav menu remains open.
-func TestNavGotoBeatEditorOpensOverNavMenu(t *testing.T) {
+// TestNavGotoWheelIsInlineInTheNavMenu: the go-to wheel lives INSIDE the nav
+// card (no separate editor to open) and is seated on the playhead the moment
+// the menu opens.
+func TestNavGotoWheelIsInlineInTheNavMenu(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenNavigation()
-	g.drum.navPanel.cb.OnGotoBeat()
-	ed := g.drum.navMenuComp.Editor()
-	if ed == nil || !ed.Active() {
-		t.Fatal("go-to-beat editor must be active after OnGotoBeat")
+	g.Draw(ebiten.NewImage(640, 480))
+	p := g.drum.navPanel
+	wr := p.GotoWheelRect()
+	if wr.Empty() || !wr.In(g.drum.navMenuComp.card) {
+		t.Fatalf("go-to wheel %v must sit inside the nav card %v", wr, g.drum.navMenuComp.card)
 	}
-	if !g.drum.IsNavMenuOpen() {
-		t.Fatal("nav menu must remain open while the go-to-beat editor is showing")
-	}
-	if !g.drum.navMenuComp.ClaimsKeyboard() {
-		t.Fatal("nav menu must claim the keyboard while its go-to editor is active")
+	if p.PendingSteps() != g.playheadAbsSubdiv() {
+		t.Fatalf("wheel seated at %d, playhead %d", p.PendingSteps(), g.playheadAbsSubdiv())
 	}
 }
 

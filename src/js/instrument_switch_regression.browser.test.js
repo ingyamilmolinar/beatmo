@@ -29,7 +29,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, waitForAudioReady } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -75,7 +75,7 @@ await page.waitForFunction(() => typeof window.playSoundParams === "function");
 await page.waitForFunction(() => typeof window.getRenderLatencyMetrics === "function");
 await page.waitForFunction(() => typeof window.__evictRenderCacheForTest === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 await page.mouse.click(20, 20);
 await page.waitForTimeout(200);

@@ -5,14 +5,18 @@ package audio
 import (
 	"syscall/js"
 	"unsafe"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // RegisterSamplePCM hands a raw PCM buffer to the JS WebAudio layer (which
 // builds an AudioBuffer keyed by id) and records the id as a known instrument.
 // Browser playback resolves per-instrument AudioBuffers, so a Go-side Sample
 // would never be heard — the PCM must live in JS.
-func RegisterSamplePCM(id string, pcm []float32, sr int) {
-	js.Global().Call("registerSamplePCM", id, f32ToJSBytes(pcm), sr)
+func RegisterSamplePCM(id instrument.ID, pcm []float32, sr int) {
+	bumpVoiceRev(id) // new PCM: the lane must replace this instrument's not-started notes
+	engine := SampleRate()
+	js.Global().Call("registerSamplePCM", string(id), f32ToJSBytes(pcmAtEngineRate(pcm, sr, engine)), engine)
 	instrumentsMu.Lock()
 	found := false
 	for _, x := range instruments {
@@ -31,8 +35,11 @@ func RegisterSamplePCM(id string, pcm []float32, sr int) {
 // registered for id and restore the instrument's built-in synth render, so a
 // factory Reset makes the synth audible again instead of the leftover chop. The
 // id stays in the known-instruments list (it is still a valid instrument).
-func UnregisterSamplePCM(id string) {
-	js.Global().Call("unregisterSamplePCM", id)
+func UnregisterSamplePCM(id instrument.ID) {
+	js.Global().Call("unregisterSamplePCM", string(id))
+	// The synth voice is the instrument's document: re-push its block so
+	// audio.js renders it again (it keeps no factory table of its own).
+	pushInstrumentDocByID(id)
 }
 
 // f32ToJSBytes copies pcm into a JS Uint8Array holding its little-endian byte

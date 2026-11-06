@@ -23,7 +23,6 @@ func TestFXPanelSlidersFollowInstrumentColor(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {

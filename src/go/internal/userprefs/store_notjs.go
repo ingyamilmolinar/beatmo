@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
+
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
 
@@ -18,8 +21,8 @@ import (
 // collapses into at most one queued worker job. The pool always has
 // queue depth ≤1 — there is no backpressure path under normal load.
 //
-// The pool is lazy-acquired on the first SaveFavorites / SaveRecipeOverride
-// / SaveUserRecipe call. This keeps the 1-worker budget free until the
+// The pool is lazy-acquired on the first SaveFavorites (or other section
+// save) call. This keeps the 1-worker budget free until the
 // user actually mutates state, so a session that only loads at startup
 // pays no goroutine cost.
 //
@@ -31,17 +34,15 @@ type fileStore struct {
 	poolName string
 	logf     func(format string, args ...any)
 
-	mu          sync.Mutex
-	favorites   map[string]bool               // mirrors disk + most-recent Save
-	overrides   map[string]map[string]float64 // recipe id → param name → value
-	userRecipes map[string][]byte             // recipe id → opaque RecipeDoc bytes
+	mu        sync.Mutex
+	favorites map[instrument.ID]bool // mirrors disk + most-recent Save
 	// audioPanel mirrors the on-disk Phase-5 audio-panel state.
 	// Zero-value AudioPanelStateDoc when no override is active so
 	// older prefs files don't grow without need.
 	audioPanel AudioPanelStateDoc
 	// sampleEdits mirrors the on-disk non-destructive sample-edit
 	// descriptors (instrument id → field → value).
-	sampleEdits map[string]map[string]float64
+	sampleEdits map[instrument.ID]map[string]float64
 	// notifications mirrors the on-disk bounded notification history
 	// (oldest..newest).
 	notifications []NotificationRecord
@@ -49,7 +50,9 @@ type fileStore struct {
 	knobSteps map[string]float64
 	// language mirrors the on-disk chosen UI locale ("" = default English).
 	language string
-	loaded   bool
+	// theme mirrors the on-disk user theme (empty = shipped design).
+	theme  theme.UserDoc
+	loaded bool
 
 	dirty    bool           // queued write pending (any section modified)
 	inflight bool           // true between worker submit and worker exit
@@ -122,37 +125,38 @@ func (s *fileStore) ensureLoadedLocked() error {
 	}
 	data, err := os.ReadFile(s.path)
 	if err == nil {
-		s.favorites, s.overrides, s.userRecipes, s.audioPanel = parsePrefsV3(data, s.logf)
-		s.sampleEdits = parseSampleEdits(data)
-		s.notifications = parseNotifications(data)
-		s.knobSteps, _ = parseKnobStepsFromPrefs(data)
-		s.language = parseLanguageFromPrefs(data)
-		s.loaded = true
+		// A rejected schema_version yields empty-but-usable state; the
+		// error is swallowed deliberately (parsePrefs already logged it)
+		// because prefs load at boot and must not fail startup.
+		snap, _ := parsePrefs(data, s.logf)
+		s.applySnapshotLocked(snap)
 		return nil
 	}
+	s.applySnapshotLocked(emptyPrefsSnapshot())
 	if !errors.Is(err, os.ErrNotExist) {
-		s.favorites = map[string]bool{}
-		s.overrides = map[string]map[string]float64{}
-		s.userRecipes = map[string][]byte{}
-		s.sampleEdits = map[string]map[string]float64{}
-		s.knobSteps = map[string]float64{}
-		s.loaded = true
 		return err
 	}
-	s.favorites = map[string]bool{}
-	s.overrides = map[string]map[string]float64{}
-	s.userRecipes = map[string][]byte{}
-	s.sampleEdits = map[string]map[string]float64{}
-	s.knobSteps = map[string]float64{}
-	s.loaded = true
 	return nil
 }
 
-func (s *fileStore) LoadFavorites() (map[string]bool, error) {
+// applySnapshotLocked copies a parsed snapshot into the live cache.
+// Caller must hold s.mu.
+func (s *fileStore) applySnapshotLocked(snap prefsSnapshot) {
+	s.favorites = snap.favorites
+	s.audioPanel = snap.audioPanel
+	s.sampleEdits = snap.sampleEdits
+	s.notifications = snap.notifications
+	s.knobSteps = snap.knobSteps
+	s.language = snap.language
+	s.theme = snap.theme
+	s.loaded = true
+}
+
+func (s *fileStore) LoadFavorites() (map[instrument.ID]bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureLoadedLocked(); err != nil {
-		return map[string]bool{}, err
+		return map[instrument.ID]bool{}, err
 	}
 	return cloneFavMap(s.favorites), nil
 }
@@ -162,7 +166,7 @@ func (s *fileStore) LoadFavorites() (map[string]bool, error) {
 // pool. Rapid successive saves coalesce: the worker always snapshots the
 // latest cache state under the mutex, so 100 toggles produce at most one
 // in-flight write + one queued write at any moment.
-func (s *fileStore) SaveFavorites(favs map[string]bool) error {
+func (s *fileStore) SaveFavorites(favs map[instrument.ID]bool) error {
 	snap := snapshotFavs(favs)
 	s.mu.Lock()
 	_ = s.ensureLoadedLocked()
@@ -170,95 +174,10 @@ func (s *fileStore) SaveFavorites(favs map[string]bool) error {
 	return s.queueWriteLocked()
 }
 
-// SaveRecipeOverride upserts the recipe-id → param-name → value map and
-// schedules the same write path SaveFavorites uses. Empty params removes
-// the override (parity with DeleteRecipeOverride).
-func (s *fileStore) SaveRecipeOverride(recipeID string, params map[string]float64) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	_ = s.ensureLoadedLocked()
-	if len(params) == 0 {
-		delete(s.overrides, recipeID)
-	} else {
-		cp := make(map[string]float64, len(params))
-		for k, v := range params {
-			if !isFiniteFloat(v) {
-				continue
-			}
-			cp[k] = v
-		}
-		if len(cp) == 0 {
-			delete(s.overrides, recipeID)
-		} else {
-			s.overrides[recipeID] = cp
-		}
-	}
-	return s.queueWriteLocked()
-}
-
-func (s *fileStore) DeleteRecipeOverride(recipeID string) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	_ = s.ensureLoadedLocked()
-	if _, ok := s.overrides[recipeID]; !ok {
-		s.mu.Unlock()
-		return nil
-	}
-	delete(s.overrides, recipeID)
-	return s.queueWriteLocked()
-}
-
-func (s *fileStore) LoadRecipeOverrides() (map[string]map[string]float64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.ensureLoadedLocked(); err != nil {
-		return map[string]map[string]float64{}, err
-	}
-	out := make(map[string]map[string]float64, len(s.overrides))
-	for recipeID, params := range s.overrides {
-		cp := make(map[string]float64, len(params))
-		for k, v := range params {
-			cp[k] = v
-		}
-		out[recipeID] = cp
-	}
-	return out, nil
-}
-
-func (s *fileStore) SaveUserRecipe(recipeID string, doc []byte) error {
-	if recipeID == "" || len(doc) == 0 {
-		return nil
-	}
-	s.mu.Lock()
-	_ = s.ensureLoadedLocked()
-	cp := make([]byte, len(doc))
-	copy(cp, doc)
-	s.userRecipes[recipeID] = cp
-	return s.queueWriteLocked()
-}
-
-func (s *fileStore) DeleteUserRecipe(recipeID string) error {
-	if recipeID == "" {
-		return nil
-	}
-	s.mu.Lock()
-	_ = s.ensureLoadedLocked()
-	if _, ok := s.userRecipes[recipeID]; !ok {
-		s.mu.Unlock()
-		return nil
-	}
-	delete(s.userRecipes, recipeID)
-	return s.queueWriteLocked()
-}
-
 // SaveSampleEdit upserts the descriptor fields for an instrument and
 // schedules the same write path the other sections use. Empty fields
-// delete the entry (parity with SaveRecipeOverride).
-func (s *fileStore) SaveSampleEdit(instID string, fields map[string]float64) error {
+// delete the entry.
+func (s *fileStore) SaveSampleEdit(instID instrument.ID, fields map[string]float64) error {
 	if instID == "" {
 		return nil
 	}
@@ -283,7 +202,7 @@ func (s *fileStore) SaveSampleEdit(instID string, fields map[string]float64) err
 	return s.queueWriteLocked()
 }
 
-func (s *fileStore) DeleteSampleEdit(instID string) error {
+func (s *fileStore) DeleteSampleEdit(instID instrument.ID) error {
 	if instID == "" {
 		return nil
 	}
@@ -297,33 +216,18 @@ func (s *fileStore) DeleteSampleEdit(instID string) error {
 	return s.queueWriteLocked()
 }
 
-func (s *fileStore) LoadSampleEdits() (map[string]map[string]float64, error) {
+func (s *fileStore) LoadSampleEdits() (map[instrument.ID]map[string]float64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureLoadedLocked(); err != nil {
-		return map[string]map[string]float64{}, err
+		return map[instrument.ID]map[string]float64{}, err
 	}
-	out := make(map[string]map[string]float64, len(s.sampleEdits))
+	out := make(map[instrument.ID]map[string]float64, len(s.sampleEdits))
 	for id, fields := range s.sampleEdits {
 		cp := make(map[string]float64, len(fields))
 		for k, v := range fields {
 			cp[k] = v
 		}
-		out[id] = cp
-	}
-	return out, nil
-}
-
-func (s *fileStore) LoadUserRecipes() (map[string][]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.ensureLoadedLocked(); err != nil {
-		return map[string][]byte{}, err
-	}
-	out := make(map[string][]byte, len(s.userRecipes))
-	for id, raw := range s.userRecipes {
-		cp := make([]byte, len(raw))
-		copy(cp, raw)
 		out[id] = cp
 	}
 	return out, nil
@@ -365,19 +269,6 @@ func (s *fileStore) queueWriteLocked() error {
 		return s.writeAtomic(snap)
 	}
 	return nil
-}
-
-// prefsSnapshot is the immutable state the worker writes. Distinct
-// from the live cache so the worker can drop the lock before disk I/O.
-type prefsSnapshot struct {
-	favorites     map[string]bool
-	overrides     map[string]map[string]float64
-	userRecipes   map[string][]byte
-	audioPanel    AudioPanelStateDoc
-	sampleEdits   map[string]map[string]float64
-	notifications []NotificationRecord
-	knobSteps     map[string]float64
-	language      string
 }
 
 // LoadAudioPanelState returns the persisted Phase-5 audio-panel state.
@@ -462,28 +353,30 @@ func (s *fileStore) SaveLanguage(lang string) error {
 	return s.queueWriteLocked()
 }
 
+// LoadTheme returns the persisted user theme (empty when never set).
+func (s *fileStore) LoadTheme() (theme.UserDoc, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.ensureLoadedLocked()
+	return s.theme.Clone(), nil
+}
+
+// SaveTheme upserts the user theme.
+func (s *fileStore) SaveTheme(d theme.UserDoc) error {
+	s.mu.Lock()
+	_ = s.ensureLoadedLocked()
+	s.theme = d.Clone()
+	return s.queueWriteLocked()
+}
+
 func (s *fileStore) snapshotPrefsLocked() prefsSnapshot {
-	favs := make(map[string]bool, len(s.favorites))
+	favs := make(map[instrument.ID]bool, len(s.favorites))
 	for k, v := range s.favorites {
 		if v {
 			favs[k] = true
 		}
 	}
-	overrides := make(map[string]map[string]float64, len(s.overrides))
-	for id, params := range s.overrides {
-		cp := make(map[string]float64, len(params))
-		for k, v := range params {
-			cp[k] = v
-		}
-		overrides[id] = cp
-	}
-	userRecipes := make(map[string][]byte, len(s.userRecipes))
-	for id, raw := range s.userRecipes {
-		cp := make([]byte, len(raw))
-		copy(cp, raw)
-		userRecipes[id] = cp
-	}
-	sampleEdits := make(map[string]map[string]float64, len(s.sampleEdits))
+	sampleEdits := make(map[instrument.ID]map[string]float64, len(s.sampleEdits))
 	for id, fields := range s.sampleEdits {
 		cp := make(map[string]float64, len(fields))
 		for k, v := range fields {
@@ -499,13 +392,12 @@ func (s *fileStore) snapshotPrefsLocked() prefsSnapshot {
 	}
 	return prefsSnapshot{
 		favorites:     favs,
-		overrides:     overrides,
-		userRecipes:   userRecipes,
 		audioPanel:    s.audioPanel,
 		sampleEdits:   sampleEdits,
 		notifications: notifs,
 		knobSteps:     knobSteps,
 		language:      s.language,
+		theme:         s.theme.Clone(),
 	}
 }
 
@@ -532,8 +424,8 @@ func (s *fileStore) drainPending(_ context.Context) {
 
 // snapshotFavs returns a copy of favs containing only keys whose value
 // is true. Caller can safely mutate the original map after we return.
-func snapshotFavs(favs map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(favs))
+func snapshotFavs(favs map[instrument.ID]bool) map[instrument.ID]bool {
+	out := make(map[instrument.ID]bool, len(favs))
 	for k, v := range favs {
 		if v {
 			out[k] = true
@@ -542,8 +434,8 @@ func snapshotFavs(favs map[string]bool) map[string]bool {
 	return out
 }
 
-func cloneFavMap(in map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(in))
+func cloneFavMap(in map[instrument.ID]bool) map[instrument.ID]bool {
+	out := make(map[instrument.ID]bool, len(in))
 	for k, v := range in {
 		out[k] = v
 	}
@@ -557,7 +449,7 @@ func (s *fileStore) writeAtomic(snap prefsSnapshot) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	data, err := marshalPrefsV7(snap.favorites, snap.overrides, snap.userRecipes, snap.audioPanel, snap.sampleEdits, snap.notifications, snap.knobSteps, snap.language)
+	data, err := marshalPrefs(snap)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
@@ -63,7 +64,7 @@ await assertSimpleDrawMode(page, true, "bpm");
 // Ensure a simple default path exists so playback advances.
 await page.evaluate(() => typeof ensureDefaultPath === 'function' && ensureDefaultPath());
 await clearSchedulerMismatches(page);
-await page.evaluate(() => startPlay());
+await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 await page.waitForTimeout(500);
 await page.evaluate(async () => { for (let i = 0; i < 50; i++) { incrementBPM();
     await new Promise((r) => setTimeout(r, 5));

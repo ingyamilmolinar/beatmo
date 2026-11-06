@@ -4,6 +4,8 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestLongSessionResumeBackfillBounded reproduces the user-reported bug:
@@ -33,7 +35,7 @@ func TestLongSessionResumeBackfillBounded(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	if err := g.SetSubdivisions(8); err != nil {
 		t.Fatalf("set subdivisions: %v", err)
 	}

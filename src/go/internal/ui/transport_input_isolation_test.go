@@ -58,7 +58,7 @@ func centerOf(r image.Rectangle) (int, int) {
 }
 
 // TestMobileBPMBoxTapDoesNotToggleRecord is the precise regression for the
-// reported bug: tapping the BPM box must focus it, never fire Record.
+// reported bug: tapping the BPM box must open its value wheel, never fire Record.
 func TestMobileBPMBoxTapDoesNotToggleRecord(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -82,8 +82,8 @@ func TestMobileBPMBoxTapDoesNotToggleRecord(t *testing.T) {
 	if z.stopPressed {
 		t.Errorf("tapping the BPM box fired Stop")
 	}
-	if !z.paramEditor.Active() {
-		t.Errorf("tapping the BPM box did not open the shared editor (paramEditor inactive)")
+	if dv.valueWheelPopup == nil || !dv.valueWheelPopup.IsOpen() {
+		t.Errorf("tapping the BPM box did not open the value wheel")
 	}
 }
 

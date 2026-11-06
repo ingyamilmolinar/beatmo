@@ -38,7 +38,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	if n := g.nodeAt(i, j); n != nil {
 		// If there's an invisible node here and we want a regular node,
 		// upgrade the existing node rather than blocking the placement.
-		if nodeType == model.NodeTypeRegular {
+		if nodeType.Fires() {
 			if g.pendingStartRow >= 0 {
 				row := g.pendingStartRow
 				if other, ok := g.nodeRows[n.ID]; ok && other != row {
@@ -99,7 +99,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		g.notifyPredictorNode(id)
 	}
 
-	if nodeType == model.NodeTypeRegular {
+	if nodeType.Fires() {
 		if g.pendingStartRow >= 0 {
 			row := g.pendingStartRow
 			if row >= 0 && row < len(g.drum.Rows) {
@@ -124,7 +124,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	g.nodes = append(g.nodes, n)
 	g.nodesByID[n.ID] = n
 	switch nodeType {
-	case model.NodeTypeRegular:
+	case model.NodeTypeRegular, model.NodeTypeChord:
 		g.logger.Debugf("[game] node created id=%d grid=(%d,%d)", n.ID, i, j)
 	case model.NodeTypeSilent:
 		g.logger.Debugf("[game] silent node created id=%d grid=(%d,%d)", n.ID, i, j)
@@ -134,7 +134,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		g.logger.Debugf("[game] invisible node created id=%d grid=(%d,%d)", n.ID, i, j)
 	}
 	// Select newly created regular nodes to match test expectations.
-	if nodeType == model.NodeTypeRegular && !importing {
+	if nodeType.Fires() && !importing {
 		if g.sel != nil {
 			g.sel.Selected = false
 		}
@@ -265,12 +265,13 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	g.edgesDirty = true
 
 	// Remove from graph last so Edges map is still available above.
+	removed, _ := g.graph.GetNodeByID(n.ID)
 	g.graph.RemoveNode(n.ID)
 	g.removeNodeCache(n.ID)
 	g.notifyPredictorNode(n.ID)
 	delete(g.nodesByID, n.ID)
 	g.logger.Debugf("[game] node deleted id=%d grid=(%d,%d)", n.ID, n.I, n.J)
-	emitNodeDeleted(n.ID, n.I, n.J)
+	emitNodeDeleted(n.ID, n.I, n.J, removed.Type)
 
 	// If this node was the global start, clear it.
 	if g.graph.StartNodeID == n.ID {
@@ -429,6 +430,7 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 	g.coordBadgeNode = n
 	g.coordBadgeFrame = g.frame
 
-	emitNodeMoved(n.ID, newI, newJ)
+	moved, _ := g.graph.GetNodeByID(n.ID)
+	emitNodeMoved(n.ID, newI, newJ, moved.Type)
 	return true
 }

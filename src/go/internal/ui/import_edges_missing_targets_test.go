@@ -3,6 +3,8 @@ package ui
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // Ensure missing outputs in JSON are ignored gracefully.
@@ -19,17 +21,17 @@ func TestImportIgnoresMissingEdgeTargets(t *testing.T) {
 		Outputs []int  `json:"outputs,omitempty"`
 	}
 	type file struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Nodes       []node `json:"nodes"`
-		Instruments []struct {
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Nodes         []node `json:"nodes"`
+		Instruments   []struct {
 			Name, ID, Kind, Color string
 			Volume                float64
 			Origin                int
 		} `json:"instruments"`
 	}
-	f := file{Version: 1, Subdiv: 32, BPM: 120,
+	f := file{SchemaVersion: schema.Version, Subdiv: 32, BPM: 120,
 		Instruments: []struct {
 			Name, ID, Kind, Color string
 			Volume                float64

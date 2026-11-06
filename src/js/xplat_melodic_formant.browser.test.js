@@ -37,6 +37,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { setupFullWasm } from "./real_input_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -114,6 +115,27 @@ function peakNormalize(data) {
   return out;
 }
 
+// ---- blocks from the real app ----
+
+// Every voice renders from the param block Go flattens from its instrument
+// document (there is no engine identity table), and Go decides which
+// instruments are melodic (render.melodic). Read both once from the real app.
+const CLASSIFY = ["violin", "bass-guitar", "kick", "snare"];
+let BLOCKS;
+{
+  const app = await setupFullWasm({ logLevel: "ERROR" });
+  try {
+    BLOCKS = await app.page.evaluate((ids) => Object.fromEntries(ids.map((id) => {
+      const s = window.__instrumentBlockForTest(id);
+      return [id, s && { block: Array.from(s.block), seconds: s.seconds, amp: s.amp, melodic: s.melodic }];
+    })), ["modular", ...CLASSIFY]);
+  } finally {
+    await app.cleanup();
+  }
+  const missing = Object.keys(BLOCKS).filter((id) => !BLOCKS[id]);
+  if (missing.length) throw new Error(`the app pushed no block for ${missing.join(", ")}`);
+}
+
 // ---- server + page ----
 
 const server = http.createServer((req, res) => {
@@ -150,29 +172,30 @@ page.on("console", (msg) => { if (process.env.TEST_LOG) console.log("[PAGE]", ms
 page.on("pageerror", (err) => console.error("[PAGE ERROR]", err.message));
 
 await page.goto(`http://localhost:${port}/test.html`);
-await page.waitForFunction(() => window.__ready === true, { timeout: 10000 });
+await page.waitForFunction(() => window.__ready === true, null, { timeout: 10000 });
 await page.evaluate(async () => { window.__drumsModule = await window.__drumsFactory(); });
 
 const ABI = await import("./synth_param_abi.gen.js");
 const PARAM_ABI = {
   count: ABI.MODULAR_PARAM_COUNT,
   index: ABI.MODULAR_PARAM_INDEX,
-  identity: ABI.MODULAR_PARAM_IDENTITY,
+  base: BLOCKS.modular.block,
 };
 
-// Render a modular voice with the given explicit params (everything else falls
-// back to the ABI identity). Returns a host Float32Array.
+// Render a modular voice with the given explicit params (everything else keeps
+// the bare `modular` instrument's own value). Returns a host Float32Array.
 async function renderModular(params) {
   const arr = await page.evaluate(async ({ params, abi, frames, sr }) => {
     const m = window.__drumsModule;
     if (!m) throw new Error("no shared drums module");
     const allocCount = Math.max(abi.count, 64);
-    const paramsPtr = m._malloc(allocCount * 4);
-    const pheap = m.HEAPF32.subarray(paramsPtr >> 2, (paramsPtr >> 2) + allocCount);
+    // The modular block is DOUBLE (config-only refactor Phase A).
+    const paramsPtr = m._malloc(allocCount * 8);
+    const pheap = m.HEAPF64.subarray(paramsPtr >> 3, (paramsPtr >> 3) + allocCount);
     pheap.fill(0);
     for (const [name, idx] of Object.entries(abi.index)) {
       const v = params[name];
-      pheap[idx] = (typeof v === "number" && Number.isFinite(v)) ? v : abi.identity[name];
+      pheap[idx] = (typeof v === "number" && Number.isFinite(v)) ? v : abi.base[idx];
     }
     const ptr = m._malloc(frames * 4);
     m.ccall("render_modular_p", null, ["number", "number", "number", "number"], [ptr, sr, frames, paramsPtr]);
@@ -191,8 +214,11 @@ const fail = (msg) => { console.error("FAIL:", msg); failed = true; };
 const pass = (msg) => { console.log("PASS:", msg); };
 
 // (A) Helper-seam sanity: the melodic classifier matches the desktop set.
-const helperCheck = await page.evaluate(async () => {
+const helperCheck = await page.evaluate(async (blocks) => {
   const mod = await import("./audio.js");
+  for (const [id, s] of Object.entries(blocks)) {
+    window.setInstrumentBlock(id, Float64Array.from(s.block), s.seconds, s.amp, s.melodic, s.gateTail, s.fx);
+  }
   return {
     hasHelper: typeof mod.__isMelodicInstrument === "function",
     violin: mod.__isMelodicInstrument ? mod.__isMelodicInstrument("violin") : null,
@@ -200,7 +226,7 @@ const helperCheck = await page.evaluate(async () => {
     kick: mod.__isMelodicInstrument ? mod.__isMelodicInstrument("kick") : null,
     snare: mod.__isMelodicInstrument ? mod.__isMelodicInstrument("snare") : null,
   };
-}).catch((e) => ({ err: String(e) }));
+}, BLOCKS).catch((e) => ({ err: String(e) }));
 
 if (helperCheck.err) {
   fail(`could not import audio.js / helper: ${helperCheck.err}`);

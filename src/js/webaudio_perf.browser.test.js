@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
@@ -76,7 +77,7 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   await page.evaluate(() => buildPerfRect(2, 1));
   await page.evaluate(() => setBPM(120));
   await clearSchedulerMismatches(page);
-  await page.evaluate(() => startPlay());
+  await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 
   await page.evaluate(() => resetPerfStats?.());
   const initial = await page.evaluate(() => perfStats());

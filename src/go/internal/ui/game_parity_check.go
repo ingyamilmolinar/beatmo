@@ -10,7 +10,7 @@ func (g *Game) parityExpected(row, idx int, info model.BeatInfo) bool {
 		return false
 	}
 	switch info.NodeType {
-	case model.NodeTypeRegular:
+	case model.NodeTypeRegular, model.NodeTypeChord:
 		return g.engine.Predictor.AudibleAt(row, idx) // audio truth
 	case model.NodeTypeMute:
 		return g.engine.Predictor.TriggeredAt(row, idx)

@@ -91,6 +91,7 @@ func TestParityDetectsViewVsTruthForMuteNode(t *testing.T) {
 	g.seqNextIdxs = []int{0}
 
 	g.ClearParityMismatches()
+	g.state.SetPaused(true) // production scans a paused transport, never a stopped one
 	g.parityScan("test-mute-view-vs-truth")
 
 	found := false

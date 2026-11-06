@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSynthMobileHeaderRelocatedAtAllDensities — Approach B: on mobile the
@@ -25,12 +27,11 @@ func TestSynthMobileHeaderRelocatedAtAllDensities(t *testing.T) {
 		dv := &DrumView{}
 		btnH := Profile().DensityValues().SynthHeaderButtonH
 		headerH := 2*SpaceSM + TextHeight() + SpaceSM + btnH
-		dv.layoutSynthHeader(image.Rect(0, 0, 360, 200), headerH, "kick-1", "drum-kick", true)
+		dv.layoutSynthHeader(image.Rect(0, 0, 360, 200), headerH, roster.KickSnap, true)
 		h := dv.instEditorHeader
 
 		for name, r := range map[string]image.Rectangle{
-			"preview": h.previewRect, "save": h.saveRect,
-			"save-as": h.saveAsRect, "reset": h.resetRect, "caption": h.captionRect,
+			"preview": h.previewRect, "save-as": h.saveAsRect,
 		} {
 			if !r.Empty() {
 				t.Errorf("density=%v: in-panel %q rect %v is non-empty (must be relocated off-panel on mobile)", d, name, r)
@@ -121,8 +122,8 @@ func TestLevelsReadoutTooltipSurfacesValues(t *testing.T) {
 	state := &analyzer.State{
 		Master: analyzer.ChannelMetrics{PeakDB: -7.3, ClipCount: 12},
 		Instruments: []analyzer.InstrumentMetrics{
-			{ID: "kick", Name: "Kick", PeakDB: -3},
-			{ID: "snare", Name: "Snare", PeakDB: -10},
+			{ID: channel.Of(roster.Kick), Name: "Kick", PeakDB: -3},
+			{ID: channel.Of(roster.Snare), Name: "Snare", PeakDB: -10},
 		},
 	}
 	// Force the icon-row cascade by setting up rects directly — the

@@ -97,17 +97,46 @@ func TestPickerHourMinuteWrap(t *testing.T) {
 	defer restore()
 	p := newLogsDateTimePicker(func(logsPickTarget, logsTimeSel) {})
 	p.openAt(pickAt, logsTimeSel{}, image.Rectangle{}, image.Rect(0, 0, 800, 600))
-	p.incHour() // 23 -> 0
+	p.hourWheel.StepValue(+1) // 23 -> 0
 	if p.sel.Hour() != 0 {
-		t.Fatalf("incHour wrap: %d want 0", p.sel.Hour())
+		t.Fatalf("hour wheel wrap: %d want 0", p.sel.Hour())
 	}
-	p.decHour() // 0 -> 23
+	p.hourWheel.StepValue(-1) // 0 -> 23
 	if p.sel.Hour() != 23 {
-		t.Fatalf("decHour wrap: %d want 23", p.sel.Hour())
+		t.Fatalf("hour wheel wrap back: %d want 23", p.sel.Hour())
 	}
-	p.incMinute() // 59 -> 0
+	p.minuteWheel.StepValue(+1) // 59 -> 0
 	if p.sel.Minute() != 0 {
-		t.Fatalf("incMinute wrap: %d want 0", p.sel.Minute())
+		t.Fatalf("minute wheel wrap: %d want 0", p.sel.Minute())
+	}
+}
+
+// The HH and MM wheels scroll through the picker's own input path (the logs
+// panel hands it pointer + wheel events), and Set commits what they show.
+func TestPickerTimeWheelsDriveTheSelection(t *testing.T) {
+	restore := setLogsNow(t, time.Date(2026, 7, 20, 10, 30, 0, 0, time.Local))
+	defer restore()
+	var got logsTimeSel
+	p := newLogsDateTimePicker(func(_ logsPickTarget, s logsTimeSel) { got = s })
+	p.openAt(pickAt, logsTimeSel{set: true, t: logsNowFn()}, image.Rect(10, 10, 60, 30), image.Rect(0, 0, 800, 600))
+	p.layout()
+	hx, hy := center(p.hourWheel.valRect)
+	for i := 0; i < 2*wheelStepEventsPerNotch; i++ {
+		p.HandleWheel(hx, hy, 1) // scroll DOWN = value up
+	}
+	if p.sel.Hour() != 12 {
+		t.Fatalf("two notches on the hour wheel: %d want 12", p.sel.Hour())
+	}
+	mx, my := center(p.minuteWheel.valRect)
+	for i := 0; i < wheelStepEventsPerNotch; i++ {
+		p.HandleWheel(mx, my, -1)
+	}
+	if p.sel.Minute() != 29 {
+		t.Fatalf("one notch up on the minute wheel: %d want 29", p.sel.Minute())
+	}
+	p.commitSet()
+	if !got.set || got.t.Hour() != 12 || got.t.Minute() != 29 {
+		t.Fatalf("Set committed %+v, want 12:29", got)
 	}
 }
 
@@ -156,5 +185,32 @@ func TestIconCalendarDispatch(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	if !drawIconByID(dst, IconCalendar, image.Rect(0, 0, 24, 24), color.NRGBA{255, 255, 255, 255}) {
 		t.Fatal("drawIconByID false for IconCalendar")
+	}
+}
+
+// A finger DRAG on a time wheel goes through the tree's hit handler: the press
+// must capture (or the tree never delivers OnDrag), and the drag moves the
+// value one detent per notch like every other wheel.
+func TestPickerTimeWheelDragThroughTheHitHandler(t *testing.T) {
+	restore := setLogsNow(t, time.Date(2026, 7, 20, 10, 30, 0, 0, time.Local))
+	defer restore()
+	p := newLogsDateTimePicker(func(logsPickTarget, logsTimeSel) {})
+	p.openAt(pickAt, logsTimeSel{set: true, t: logsNowFn()}, image.Rect(10, 10, 60, 30), image.Rect(0, 0, 800, 600))
+	p.layout()
+	h := &compHitHandler{comp: p}
+	x := (p.hourWheel.valRect.Min.X + p.hourWheel.valRect.Max.X) / 2
+	y := p.hourWheel.valRect.Min.Y + 4
+	if res := h.OnPress(x, y); res != InputCaptured {
+		t.Fatalf("a press on the hour wheel must capture the gesture, got %v", res)
+	}
+	gap := p.hourWheel.tickGap()
+	h.OnDrag(x, y+gap)   // finger DOWN one notch = value UP
+	h.OnDrag(x, y+2*gap) // two notches
+	h.OnRelease(x, y+2*gap)
+	if p.sel.Hour() != 12 {
+		t.Fatalf("dragging the hour wheel down two notches: %d want 12", p.sel.Hour())
+	}
+	if p.Capturing() {
+		t.Fatal("release ends the capture")
 	}
 }

@@ -6,6 +6,10 @@ import (
 	"image"
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // --- sliderGroupHitAdapter unit tests ---
@@ -256,7 +260,7 @@ func TestScrollableDropdownHandler_ThumbDrag(t *testing.T) {
 func TestCloseChannelDropdown_ClosesOpenDropdown(t *testing.T) {
 	assertDefaultParityState(t)
 
-	rows := []*DrumRow{{Name: "Kick", Instrument: "kick"}}
+	rows := []*DrumRow{{Name: "Kick", Instrument: roster.Kick}}
 	z, _ := newTestEQPanelZone(rows)
 	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
 
@@ -312,16 +316,16 @@ func TestWaveformTabToggle(t *testing.T) {
 
 func TestActiveChannel_DefaultsToMain(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
-	if ch := z.ActiveChannel(); ch != "main" {
+	if ch := z.ActiveChannel(); ch != channel.Master {
 		t.Errorf("expected 'main', got %q", ch)
 	}
 }
 
-func TestActiveChannel_EmptyStringReturnsMain(t *testing.T) {
+func TestSetActiveChannel_NoChannelIsIgnored(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
-	z.activeChannel = ""
-	if ch := z.ActiveChannel(); ch != "main" {
-		t.Errorf("expected 'main' for empty activeChannel, got %q", ch)
+	z.SetActiveChannel(channel.ID{})
+	if ch := z.ActiveChannel(); ch != channel.Master {
+		t.Errorf("SetActiveChannel(no channel) moved the panel to %q", ch)
 	}
 }
 
@@ -415,7 +419,7 @@ func TestEQ_HPFHandleDrag(t *testing.T) {
 	if result != InputCaptured {
 		t.Fatalf("expected InputCaptured on HPF handle, got %d", result)
 	}
-	if z.curveDragFilter != "hpf" {
+	if z.curveDragFilter != hooks.FilterHPF {
 		t.Fatalf("expected curveDragFilter='hpf', got %q", z.curveDragFilter)
 	}
 
@@ -434,84 +438,12 @@ func TestEQ_HPFHandleDrag(t *testing.T) {
 
 	// Release.
 	adapter.OnRelease(newX, hy)
-	if z.curveDragFilter != "" {
+	if z.curveDragFilter != hooks.FilterNone {
 		t.Error("expected curveDragFilter cleared after release")
 	}
 	if log.applyCount == 0 {
 		t.Error("expected OnApplyEQ fired on release")
 	}
-}
-
-// TestEQ_DBInputCommit verifies that opening the shared dB editor for a band,
-// typing "6.0", and committing applies the value via OnGainChange + OnApplyEQ.
-func TestEQ_DBInputCommit(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	// Open the shared editor over band 4, type a new value, commit (Enter/blur).
-	z.openEQDBEditor(4)
-	z.paramEditor.ti.SetText("6.0")
-	z.paramEditor.commit()
-
-	if z.bandGainsDB[4] != 6.0 {
-		t.Errorf("expected gain=6.0, got %v", z.bandGainsDB[4])
-	}
-	if z.paramEditor.Active() {
-		t.Error("expected dB editor closed after commit")
-	}
-	if len(log.gainChanges) == 0 || log.gainChanges[len(log.gainChanges)-1].db != 6.0 {
-		t.Error("expected OnGainChange(4, 6.0)")
-	}
-	if log.applyCount == 0 {
-		t.Error("expected OnApplyEQ fired after commit")
-	}
-	_ = tree
-}
-
-// TestEQ_DBInputEscapeReverts verifies that opening the shared dB editor,
-// typing a new value, and cancelling (Escape) reverts to the previous value
-// without firing gain/apply callbacks.
-func TestEQ_DBInputEscapeReverts(t *testing.T) {
-	assertDefaultParityState(t)
-
-	z, log := newTestEQPanelZone(nil)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	// Pre-set gain for band 5 to 3.0.
-	z.bandGainsDB[5] = 3.0
-
-	z.openEQDBEditor(5)
-	z.paramEditor.ti.SetText("10.0") // user typed this
-	z.paramEditor.cancel()
-
-	// Gain should remain at the pre-edit value; readout derives live from it.
-	if z.bandGainsDB[5] != 3.0 {
-		t.Errorf("expected gain reverted to 3.0, got %v", z.bandGainsDB[5])
-	}
-	if formatDB(z.bandGainsDB[5]) != "+3.0" {
-		t.Errorf("expected readout '+3.0', got %q", formatDB(z.bandGainsDB[5]))
-	}
-	if z.paramEditor.Active() {
-		t.Error("expected dB editor closed after Escape")
-	}
-	// Escape should NOT fire OnGainChange or OnApplyEQ.
-	if len(log.gainChanges) != 0 {
-		t.Error("expected no OnGainChange on Escape")
-	}
-	if log.applyCount != 0 {
-		t.Error("expected no OnApplyEQ on Escape")
-	}
-	_ = tree
 }
 
 // TestEQ_ChannelDropdownSelectSwitches verifies that opening the channel dropdown,
@@ -522,8 +454,8 @@ func TestEQ_ChannelDropdownSelectSwitches(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
 	rows := []*DrumRow{
-		{Name: "Kick", Instrument: "kick"},
-		{Name: "Snare", Instrument: "snare"},
+		{Name: "Kick", Instrument: roster.Kick},
+		{Name: "Snare", Instrument: roster.Snare},
 	}
 	z, log := newTestEQPanelZone(rows)
 	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
@@ -557,7 +489,7 @@ func TestEQ_ChannelDropdownSelectSwitches(t *testing.T) {
 	if len(log.channelChanges) == 0 {
 		t.Fatal("expected OnChannelChange callback after selecting Kick")
 	}
-	if log.channelChanges[len(log.channelChanges)-1] != "kick" {
+	if log.channelChanges[len(log.channelChanges)-1] != channel.Of(roster.Kick) {
 		t.Errorf("expected OnChannelChange('kick'), got %q", log.channelChanges[len(log.channelChanges)-1])
 	}
 
@@ -565,7 +497,7 @@ func TestEQ_ChannelDropdownSelectSwitches(t *testing.T) {
 	if z.channelOpen {
 		t.Error("expected dropdown closed after selection")
 	}
-	if z.activeChannel != "kick" {
+	if z.activeChannel != channel.Of(roster.Kick) {
 		t.Errorf("expected activeChannel='kick', got %q", z.activeChannel)
 	}
 	if z.stickyBar.ChannelBtn().Text != "Kick" {

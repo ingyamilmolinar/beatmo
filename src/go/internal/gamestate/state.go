@@ -186,6 +186,25 @@ func (s *State) DtOfStep(idx, div, bpm int) float64 {
 	return (float64(idx)/float64(div) - s.beatBase) * 60.0 / float64(bpm)
 }
 
+// StepAtAudioTime is the inverse of AudioTimeOfStep on the audio clock: the
+// floor subdivision whose ideal start is ≤ t. ok is false without an audio
+// anchor — the audio lane schedules on the audio clock and has no wall-clock
+// fallback.
+func (s *State) StepAtAudioTime(t float64, bpm, div int) (int, bool) {
+	if s.audioStart <= 0 || bpm <= 0 {
+		return 0, false
+	}
+	if div <= 0 {
+		div = 1
+	}
+	beats := s.beatBase + (t-s.audioStart)*float64(bpm)/60.0
+	return int(math.Floor(beats*float64(div) + 1e-9)), true
+}
+
+// AnchorKey exposes the clock anchor for change detection (the audio lane's
+// fingerprint): every re-anchor — play, seek, BPM change — changes it.
+func (s *State) AnchorKey() (beatBase, audioStart float64) { return s.beatBase, s.audioStart }
+
 // AudioTimeOfStep is DtOfStep expressed on the audio clock — the ideal audio
 // time to schedule subdivision idx.
 func (s *State) AudioTimeOfStep(idx, div, bpm int) float64 {

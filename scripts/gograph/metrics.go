@@ -2,17 +2,25 @@ package main
 
 import (
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ingyamilmolinar/beatmo/scripts/gograph/rank"
 )
 
-// AnalyzeMetrics walks every non-test .go file under root, groups declarations
-// by package import path (module + relative dir), and computes LOC, nesting
-// depth, and cyclomatic complexity. It does no type checking.
-func AnalyzeMetrics(root, module string) (map[string]*Package, error) {
+// AnalyzeMetrics walks every non-test .go file under cfg.Root that the
+// configured build (GOOS + tags) would compile, groups declarations by package
+// import path (module + relative dir), and computes LOC, nesting depth, and
+// cyclomatic complexity. It does no type checking. Honouring build constraints
+// keeps build-tag variants of one function (x_js.go / x_notjs.go) from being
+// merged into a single, double-counted entry.
+func AnalyzeMetrics(cfg Config) (map[string]*Package, error) {
+	root, module := cfg.Root, cfg.Module
+	bctx := buildContext(cfg)
 	fset := token.NewFileSet()
 	pkgs := map[string]*Package{}
 
@@ -28,6 +36,9 @@ func AnalyzeMetrics(root, module string) (map[string]*Package, error) {
 			return nil
 		}
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if ok, merr := bctx.MatchFile(filepath.Dir(path), filepath.Base(path)); merr != nil || !ok {
 			return nil
 		}
 		file, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
@@ -139,6 +150,23 @@ func collectFile(fset *token.FileSet, file *ast.File, p *Package) {
 	}
 }
 
+// buildContext is the go/build context matching the call-resolution config.
+func buildContext(cfg Config) build.Context {
+	ctx := build.Default
+	ctx.GOOS = orDefault(cfg.GOOS, "linux")
+	ctx.GOARCH = "amd64"
+	ctx.CgoEnabled = true
+	if ctx.GOOS == "js" {
+		ctx.GOARCH = "wasm"
+		ctx.CgoEnabled = false
+	}
+	ctx.BuildTags = nil
+	if cfg.Tags != "" {
+		ctx.BuildTags = strings.Split(cfg.Tags, ",")
+	}
+	return ctx
+}
+
 func typeKind(e ast.Expr) string {
 	switch e.(type) {
 	case *ast.StructType:
@@ -175,90 +203,15 @@ func locOf(fset *token.FileSet, n ast.Node) int {
 }
 
 // bodyNest returns the deepest control-flow nesting inside a function body.
-func bodyNest(fn *ast.FuncDecl) int {
-	if fn.Body == nil {
-		return 0
-	}
-	return maxNest(fn.Body.List)
-}
+func bodyNest(fn *ast.FuncDecl) int { return rank.MaxNesting(fn.Body) }
 
-func maxNest(stmts []ast.Stmt) int {
-	best := 0
-	for _, s := range stmts {
-		if d := stmtNest(s); d > best {
-			best = d
-		}
-	}
-	return best
-}
-
-func stmtNest(s ast.Stmt) int {
-	switch n := s.(type) {
-	case *ast.BlockStmt:
-		return maxNest(n.List)
-	case *ast.IfStmt:
-		d := 1 + maxNest(n.Body.List)
-		if n.Else != nil {
-			var ed int
-			if b, ok := n.Else.(*ast.BlockStmt); ok {
-				ed = 1 + maxNest(b.List)
-			} else {
-				ed = stmtNest(n.Else) // else-if chain
-			}
-			if ed > d {
-				d = ed
-			}
-		}
-		return d
-	case *ast.ForStmt:
-		return 1 + maxNest(n.Body.List)
-	case *ast.RangeStmt:
-		return 1 + maxNest(n.Body.List)
-	case *ast.SwitchStmt:
-		return 1 + caseNest(n.Body)
-	case *ast.TypeSwitchStmt:
-		return 1 + caseNest(n.Body)
-	case *ast.SelectStmt:
-		return 1 + caseNest(n.Body)
-	case *ast.LabeledStmt:
-		return stmtNest(n.Stmt)
-	default:
-		return 0
-	}
-}
-
-func caseNest(body *ast.BlockStmt) int {
-	best := 0
-	for _, c := range body.List {
-		var inner []ast.Stmt
-		switch cc := c.(type) {
-		case *ast.CaseClause:
-			inner = cc.Body
-		case *ast.CommClause:
-			inner = cc.Body
-		}
-		if d := maxNest(inner); d > best {
-			best = d
-		}
-	}
-	return best
-}
-
-// cyclomatic is McCabe complexity: 1 + branch/loop/case/&&/|| count.
+// cyclomatic is McCabe complexity. Function literals are excluded: they are
+// their own units in the ranking, and nesting already skipped them.
 func cyclomatic(fn *ast.FuncDecl) int {
-	cc := 1
-	ast.Inspect(fn, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.CaseClause, *ast.CommClause:
-			cc++
-		case *ast.BinaryExpr:
-			if x.Op == token.LAND || x.Op == token.LOR {
-				cc++
-			}
-		}
-		return true
-	})
-	return cc
+	if fn.Body == nil {
+		return 1
+	}
+	return rank.Cyclomatic(fn.Body)
 }
 
 func contains(xs []string, s string) bool {

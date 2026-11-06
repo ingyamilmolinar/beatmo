@@ -222,12 +222,14 @@ func TestControlsStayBoundedAfterWaveGrow(t *testing.T) {
 	}
 }
 
-// TestAddRowButtonAnchoredToRackBottom asserts the addRow button is
-// anchored to the bottom of the rack column — independent of row count
-// or scroll offset. (Previously this test asserted "follows last row",
-// which made the button a moving target; see footer_button_anchor_test.go
-// for the cross-row-count invariant.)
-func TestAddRowButtonAnchoredToRackBottom(t *testing.T) {
+// TestAddRowButtonSitsUnderTheRows asserts the add-row ghost row sits one
+// slot under the last visible row, inside the rack width. History: this test
+// once asserted "follows last row", then flipped to "pinned to the rack
+// bottom" to avoid a moving target; the bottom pin opened an empty strip
+// between the rows and a floating "+" whenever the rack was taller than its
+// rows, so the ghost row follows the rows again (DESIGN.md "Row control" →
+// Add row). Past saturation it stops moving (footer_button_anchor_test.go).
+func TestAddRowButtonSitsUnderTheRows(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1100, 520)
 	dv.widgets.ResizeAxis("row", 1, -260)
@@ -240,16 +242,15 @@ func TestAddRowButtonAnchoredToRackBottom(t *testing.T) {
 		t.Fatalf("rack rect empty")
 	}
 	rh := dv.rowHeight()
-	// Anchor reference is the rack ZONE rect (z.rect after the
-	// rowsBottom() clamp in drumview_layout.go) — NOT the raw
-	// widgetRects[WidgetRack] which extends to dv.Bounds.Max.Y. The
-	// addRow's top edge sits at `zoneRect.Max.Y - rh + SpaceXS`.
-	zoneRect := dv.rowRackZone.rect
-	expected := zoneRect.Max.Y - rh + SpaceXS
+	last := dv.rowLabels()[len(dv.Rows)-1].Rect()
+	if last.Empty() {
+		t.Fatalf("precondition: the last row should be visible in this rack")
+	}
+	expected := last.Min.Y + rh
 	got := dv.addRowBtn().Rect().Min.Y
 	if got != expected {
-		t.Fatalf("addRowBtn must be anchored to rack zone bottom: got Y=%d expected=%d (zoneRect.Max.Y=%d rh=%d)",
-			got, expected, zoneRect.Max.Y, rh)
+		t.Fatalf("addRowBtn must sit one slot under the last row: got Y=%d expected=%d (last row %v rh=%d)",
+			got, expected, last, rh)
 	}
 	if dv.addRowBtn().Rect().Min.X < rack.Min.X || dv.addRowBtn().Rect().Max.X > rack.Max.X {
 		t.Fatalf("add button must stay within rack width: btn=%v rack=%v", dv.addRowBtn().Rect(), rack)

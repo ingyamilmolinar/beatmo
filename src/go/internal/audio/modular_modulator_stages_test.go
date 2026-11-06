@@ -2,7 +2,11 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // modular_modulator_stages_test.go covers the Phase-8C modulator stages
 // (PITCH ENV / LFO / BURST) promised by the unification spec §1 and delivered
@@ -30,14 +34,14 @@ const modStageSamples = modStageSR / 2 // 0.5 s
 // modIdentityVoice returns the identity modular voice params (the same values
 // the NULL fast path uses): sine osc, default ADSR/filter, all stages at their
 // engine defaults.
-func modIdentityVoice() ModularParams {
-	return recipeParamsToModular(RecipeParams(ModularParamSchemaIdentity()))
+func modIdentityVoice() modularBlock {
+	return initBlockForTest(nil)
 }
 
-func renderModularFor(t *testing.T, p ModularParams) []float32 {
+func renderModularFor(t *testing.T, p modularBlock) []float32 {
 	t.Helper()
 	buf := make([]float32, modStageSamples)
-	renderModularP(buf, modStageSR, modStageSamples, p)
+	renderModularBlock(buf, modStageSR, modStageSamples, p)
 	return buf
 }
 
@@ -66,30 +70,30 @@ func TestPitchEnvDisabledIsExactBypass(t *testing.T) {
 	base := modIdentityVoice()
 	got := renderModularFor(t, base)
 
-	withKnobs := base
-	withKnobs.PitchEnvAmt = 12
-	withKnobs.PitchEnvDecay = 0.08
+	withKnobs := base.clone()
+	withKnobs.set("pitchenv_amt", 12)
+	withKnobs.set("pitchenv_decay", 0.08)
 	// PitchEnvEnabled stays 0 (the identity): knobs set, stage off.
 	assertSameBytes(t, "pitchenv knobs with stage off", got, renderModularFor(t, withKnobs))
 }
 
 func TestPitchEnvEnabledChangesOscRender(t *testing.T) {
 	base := modIdentityVoice()
-	on := base
-	on.PitchEnvEnabled = 1
-	on.PitchEnvAmt = 12
-	on.PitchEnvDecay = 0.08
+	on := base.clone()
+	on.set("pitchenv_enabled", 1)
+	on.set("pitchenv_amt", 12)
+	on.set("pitchenv_decay", 0.08)
 	assertDiffers(t, "pitchenv on (wavetable osc)", renderModularFor(t, base), renderModularFor(t, on))
 }
 
 func TestPitchEnvEnabledChangesFMRender(t *testing.T) {
 	base := modIdentityVoice()
-	base.OscType = 4 // FM core
-	base.FMOp1Level = 1
-	on := base
-	on.PitchEnvEnabled = 1
-	on.PitchEnvAmt = 12
-	on.PitchEnvDecay = 0.08
+	base.set("osc_type", 4) // FM core
+	base.set("fm_op1_level", 1)
+	on := base.clone()
+	on.set("pitchenv_enabled", 1)
+	on.set("pitchenv_amt", 12)
+	on.set("pitchenv_decay", 0.08)
 	assertDiffers(t, "pitchenv on (FM core)", renderModularFor(t, base), renderModularFor(t, on))
 }
 
@@ -99,32 +103,26 @@ func TestLFODisabledIsExactBypass(t *testing.T) {
 	base := modIdentityVoice()
 	got := renderModularFor(t, base)
 
-	withKnobs := base
-	withKnobs.LfoRate = 8
-	withKnobs.LfoDepth = 0.5
+	withKnobs := base.clone()
+	withKnobs.set("lfo_rate", 8)
+	withKnobs.set("lfo_depth", 0.5)
 	assertSameBytes(t, "lfo knobs with stage off", got, renderModularFor(t, withKnobs))
 }
 
 func TestLFOEnabledChangesRender(t *testing.T) {
 	base := modIdentityVoice()
-	on := base
-	on.LfoEnabled = 1
-	on.LfoRate = 8
-	on.LfoDepth = 0.5
+	on := base.clone()
+	on.set("lfo_enabled", 1)
+	on.set("lfo_rate", 8)
+	on.set("lfo_depth", 0.5)
 	assertDiffers(t, "lfo on", renderModularFor(t, base), renderModularFor(t, on))
 }
 
 // TestLFOShapesMigratedFamilyVoice proves the LFO is a real post-mix stage on a
 // migrated drum (the gen-slot kick voice), not just the legacy osc path.
 func TestLFOShapesMigratedFamilyVoice(t *testing.T) {
-	r := NewRecipe("drum-kick")
-	if r == nil {
-		t.Fatal("NewRecipe(drum-kick) returned nil")
-	}
-	base := make([]float32, modStageSamples)
-	r.Render(base, modStageSR, modStageSamples, 0, nil)
-	on := make([]float32, modStageSamples)
-	r.Render(on, modStageSR, modStageSamples, 0, RecipeParams{
+	base := renderFieldsForTest(t, roster.Kick, modStageSR, modStageSamples, nil)
+	on := renderFieldsForTest(t, roster.Kick, modStageSR, modStageSamples, map[string]float64{
 		"lfo_enabled": 1, "lfo_rate": 8, "lfo_depth": 0.5,
 	})
 	assertDiffers(t, "lfo on migrated kick", base, on)
@@ -136,34 +134,28 @@ func TestBurstDisabledIsExactBypass(t *testing.T) {
 	base := modIdentityVoice()
 	got := renderModularFor(t, base)
 
-	withKnobs := base
-	withKnobs.BurstSharp = 40
-	withKnobs.Burst1Amp = 1
-	withKnobs.Burst2Off = 0.03
-	withKnobs.Burst2Amp = 0.6
+	withKnobs := base.clone()
+	withKnobs.set("burst_sharp", 40)
+	withKnobs.set("burst1_amp", 1)
+	withKnobs.set("burst2_off", 0.03)
+	withKnobs.set("burst2_amp", 0.6)
 	assertSameBytes(t, "burst knobs with stage off", got, renderModularFor(t, withKnobs))
 }
 
 func TestBurstEnabledChangesRender(t *testing.T) {
 	base := modIdentityVoice()
-	on := base
-	on.BurstEnabled = 1
-	on.BurstSharp = 40
-	on.Burst1Amp = 1
-	on.Burst2Off = 0.03
-	on.Burst2Amp = 0.6
+	on := base.clone()
+	on.set("burst_enabled", 1)
+	on.set("burst_sharp", 40)
+	on.set("burst1_amp", 1)
+	on.set("burst2_off", 0.03)
+	on.set("burst2_amp", 0.6)
 	assertDiffers(t, "burst on", renderModularFor(t, base), renderModularFor(t, on))
 }
 
 func TestBurstShapesMigratedFamilyVoice(t *testing.T) {
-	r := NewRecipe("drum-snare")
-	if r == nil {
-		t.Fatal("NewRecipe(drum-snare) returned nil")
-	}
-	base := make([]float32, modStageSamples)
-	r.Render(base, modStageSR, modStageSamples, 0, nil)
-	on := make([]float32, modStageSamples)
-	r.Render(on, modStageSR, modStageSamples, 0, RecipeParams{
+	base := renderFieldsForTest(t, roster.Snare, modStageSR, modStageSamples, nil)
+	on := renderFieldsForTest(t, roster.Snare, modStageSR, modStageSamples, map[string]float64{
 		"burst_enabled": 1, "burst_sharp": 40, "burst1_amp": 1,
 		"burst2_off": 0.03, "burst2_amp": 0.6,
 	})
@@ -179,6 +171,6 @@ func TestBurstShapesMigratedFamilyVoice(t *testing.T) {
 func TestModulatorStagesIdentityIsByteNeutral(t *testing.T) {
 	viaIdentity := renderModularFor(t, modIdentityVoice())
 	null := make([]float32, modStageSamples)
-	renderModular(null, modStageSR, modStageSamples)
+	renderModularBlock(null, modStageSR, modStageSamples, initBlockForTest(nil))
 	assertSameBytes(t, "identity vs NULL fast path", viaIdentity, null)
 }

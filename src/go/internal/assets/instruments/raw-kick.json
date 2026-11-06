@@ -1,0 +1,105 @@
+{
+  "schema_version": "0.0.1",
+  "id": "raw-kick",
+  "name": "Raw Kick",
+  "category": "modular",
+  "notes": "rawKickSeed: a RAW / HEAVY / BRUTAL sibling of zgump-kick — literally CLONED\nfrom zgumpKickSeed's config (cloneSeed) and pushed toward the reference's\ngrittier natural character (which the clean zgump tuning smoothed out). Same\nMODAL variant-6 DSP; the overrides add broadband grit texture (kick_noise↑),\nsaturation drive (kick_sat↑), a heavier sub (lower voice_freq + stronger,\nlonger resonant mode) and a harder attack (kick_click/kick_attack↑).\nzgump-kick stays untouched; this is its rawer clone. Tuned in the harness.\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nfade 4→2.5, click 0.50→0.18, pe_rate 45→53, env0 11→24.5 (the first\nthree inherited from zgumpKickBaseSeed before), sat 2.5→2.8",
+  "render": {
+    "seconds": 0.35,
+    "amplitude": 0.6775,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 70
+      },
+      "notes": "voice_freq_hz: lower/heavier than zgump's 78"
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.modal",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 1.5,
+        "kick_click": 0.18,
+        "kick_env0": 24.5,
+        "kick_env1": 20,
+        "kick_fade": 2.5,
+        "kick_h2": 0.3,
+        "kick_h3": 0.12,
+        "kick_mode_decay": 2.2,
+        "kick_mode_detune": 0.12,
+        "kick_mode_gain": 1.7,
+        "kick_noise": 0.3,
+        "kick_pe_amt": 2,
+        "kick_pe_rate": 53,
+        "kick_sat": 2.8,
+        "wave": 0
+      },
+      "notes": "gen1_kick_click: harder attack transient (brutal)\ngen1_kick_h2: more harmonic edge\ngen1_kick_mode_decay: longer resonant ring = heavier tail\ngen1_kick_mode_gain: heavier body\ngen1_kick_noise: broadband grit (raw / organic)\ngen1_kick_sat: strong distortion drive (raw)"
+    }
+  ]
+}

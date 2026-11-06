@@ -3,6 +3,8 @@ package audio
 import (
 	"sync"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // snapshotCacheTTL caps the per-channel analyzer snapshot refresh rate.
@@ -29,7 +31,7 @@ const snapshotCacheTTL = 33 * time.Millisecond
 // in practice.
 type snapshotCache struct {
 	mu      sync.Mutex
-	entries map[string]*snapshotCacheEntry
+	entries map[channel.ID]*snapshotCacheEntry
 }
 
 type snapshotCacheEntry struct {
@@ -38,12 +40,12 @@ type snapshotCacheEntry struct {
 }
 
 func newSnapshotCache() *snapshotCache {
-	return &snapshotCache{entries: make(map[string]*snapshotCacheEntry)}
+	return &snapshotCache{entries: make(map[channel.ID]*snapshotCacheEntry)}
 }
 
 // getOrFetch returns the cached snapshot for id if it is within ttl,
 // otherwise invokes fetch and caches the result.
-func (c *snapshotCache) getOrFetch(id string, ttl time.Duration, fetch func() AnalyzerSnapshot) AnalyzerSnapshot {
+func (c *snapshotCache) getOrFetch(id channel.ID, ttl time.Duration, fetch func() AnalyzerSnapshot) AnalyzerSnapshot {
 	c.mu.Lock()
 	entry, ok := c.entries[id]
 	if !ok {
@@ -76,7 +78,7 @@ func (c *snapshotCache) getOrFetch(id string, ttl time.Duration, fetch func() An
 // circuit load.
 func (c *snapshotCache) clear() {
 	c.mu.Lock()
-	c.entries = make(map[string]*snapshotCacheEntry)
+	c.entries = make(map[channel.ID]*snapshotCacheEntry)
 	c.mu.Unlock()
 }
 

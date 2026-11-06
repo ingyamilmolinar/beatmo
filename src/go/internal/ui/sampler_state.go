@@ -1,13 +1,12 @@
 package ui
 
 import (
-	"fmt"
 	"hash/crc32"
 	"image"
 	"math"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
-	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // samplerSource identifies where the sampler's working buffer came from.
@@ -35,7 +34,6 @@ const (
 	samplerDetuneRange    = 100.0 // +/- cents at knob extremes
 	samplerGainMinDB      = -24.0
 	samplerGainMaxDB      = 6.0
-	samplerFadeMs         = 5.0 // fade length applied when the Fade toggle is on
 )
 
 // samplerState is the canonical model for the Sampler tab. The UI knobs and
@@ -44,7 +42,7 @@ const (
 // its logic) so the edit/capture/save behavior is testable without a DrumView.
 type samplerState struct {
 	source        samplerSource
-	captureID     string // instrument id the buffer was captured from / Save overrides
+	captureID     instrument.ID // instrument id the buffer was captured from / Save overrides
 	raw           []float32
 	rawSampleRate int
 
@@ -156,7 +154,7 @@ func (s *samplerState) waveFloat64() []float64 {
 			if sr <= 0 {
 				sr = audio.SampleRate()
 			}
-			audio.ApplyFades(s.dispF32, sr, samplerFadeMs, samplerFadeMs)
+			audio.ApplyFades(s.dispF32, sr, audio.SampleFadeMs)
 		}
 		src = s.dispF32
 	}
@@ -341,10 +339,6 @@ func (s *samplerState) edit() audio.SampleEdit {
 	if lo > hi {
 		lo, hi = hi, lo
 	}
-	fade := 0.0
-	if s.fadeOn {
-		fade = samplerFadeMs
-	}
 	// Reverse is intentionally NOT set here: reverseBuffer already flipped the
 	// working buffer in place, so the kept region (and thus the bake) is reversed
 	// at the source. Setting Reverse here too would double-reverse and cancel it.
@@ -354,8 +348,7 @@ func (s *samplerState) edit() audio.SampleEdit {
 		TransposeSemis: s.transposeSemis,
 		DetuneCents:    s.detuneCents,
 		GainDB:         float32(s.gainDB),
-		FadeInMs:       fade,
-		FadeOutMs:      fade,
+		Fade:           s.fadeOn,
 		Normalize:      s.normalize,
 	}
 }
@@ -402,20 +395,11 @@ func (s *samplerState) loadEditDescriptor(e audio.SampleEdit) {
 	s.detuneCents = e.DetuneCents
 	s.gainDB = float64(e.GainDB)
 	s.normalize = e.Normalize
-	s.fadeOn = e.FadeInMs > 0 || e.FadeOutMs > 0
+	s.fadeOn = e.Fade
 	if e.Reverse && !s.reverse {
 		s.reverseBuffer() // flips raw for display AND sets s.reverse
 	}
 }
-
-// samplerEditPersistFn persists a just-saved sample-edit descriptor through
-// the registered SampleEditSaveSink (sampler_edit_sink.go); a nil sink makes
-// it a no-op so the in-memory flow works without a store.
-var samplerEditPersistFn = persistSampleEdit
-
-// samplerEditDeleteFn removes the persisted descriptor on Reset, mirroring
-// samplerEditPersistFn.
-var samplerEditDeleteFn = deletePersistedSampleEdit
 
 // samplerCaptureFn renders an instrument's one-shot PCM. Defaults to the
 // platform audio.RenderInstrumentOneShot; swappable in tests so the
@@ -430,7 +414,7 @@ var samplerRawCaptureFn = audio.RenderInstrumentOneShotRaw
 
 // SwapSamplerRawCaptureFnForTest installs a test fake for the raw synth-capture
 // renderer and returns the previous value, mirroring SwapSamplerCaptureFnForTest.
-func SwapSamplerRawCaptureFnForTest(fn func(string) ([]float32, int)) func(string) ([]float32, int) {
+func SwapSamplerRawCaptureFnForTest(fn func(instrument.ID) ([]float32, int)) func(instrument.ID) ([]float32, int) {
 	prev := samplerRawCaptureFn
 	if fn != nil {
 		samplerRawCaptureFn = fn
@@ -440,7 +424,7 @@ func SwapSamplerRawCaptureFnForTest(fn func(string) ([]float32, int)) func(strin
 
 // SwapSamplerCaptureFnForTest installs a test fake for the synth-capture
 // renderer and returns the previous value.
-func SwapSamplerCaptureFnForTest(fn func(string) ([]float32, int)) func(string) ([]float32, int) {
+func SwapSamplerCaptureFnForTest(fn func(instrument.ID) ([]float32, int)) func(instrument.ID) ([]float32, int) {
 	prev := samplerCaptureFn
 	if fn != nil {
 		samplerCaptureFn = fn
@@ -453,7 +437,7 @@ func SwapSamplerCaptureFnForTest(fn func(string) ([]float32, int)) func(string) 
 // renderer returns no audio (e.g. the browser synth hasn't rendered yet) the
 // buffer is left empty and a status message is set so the UI can explain the
 // no-op instead of silently doing nothing.
-func (s *samplerState) captureFromSynth(id string) {
+func (s *samplerState) captureFromSynth(id instrument.ID) {
 	pcm, sr := samplerCaptureFn(id)
 	if len(pcm) == 0 {
 		s.status = "Couldn't capture — play the sound once, then try again"
@@ -472,7 +456,7 @@ func (s *samplerState) captureFromSynth(id string) {
 // instruments arrive as a freshly-rendered one-shot (src=synth), user samples
 // (WAV-loaded or previously saved) arrive straight from the canonical PCM store
 // (src=WAV). captureID is set so a follow-up Save overrides this instrument.
-func (s *samplerState) loadFromInstrument(id string, pcm []float32, sr int, src samplerSource) {
+func (s *samplerState) loadFromInstrument(id instrument.ID, pcm []float32, sr int, src samplerSource) {
 	s.raw = pcm
 	s.rawSampleRate = sr
 	s.captureID = id
@@ -559,64 +543,8 @@ func (s *samplerState) bake() ([]float32, int) {
 	return audio.BakeSample(s.raw, sr, s.edit()), sr
 }
 
-// save overrides the captured instrument in place (same id), mirroring the
-// Synth tab's "Save". No-op without a capture id.
-//
-// BOTH sources — NON-DESTRUCTIVE: the edit is stored as a per-instrument
-// descriptor (audio.SetSampleEdit) and is ALREADY live by the time Save is
-// pressed (commitSamplerEdit applied it per gesture). Save's job is durability,
-// not application:
-//
-//   - SYNTH source: persist the descriptor; the recipe binding is KEPT so the
-//     synth stays the source of truth and the dispatcher re-applies the edit to
-//     the fresh recipe render at trigger time. Baking PCM here (the old behavior)
-//     silently converted the instrument into a dead sample.
-//   - WAV / user-sample source: persist the descriptor AND the pristine source
-//     PCM (PersistUserSample) so the chop reproduces across sessions. Playback is
-//     already driven live by reapplyUserSampleEdit; we do NOT bake destructively,
-//     so the edit stays reversible and the pristine remains the source of truth.
-func (s *samplerState) save() {
-	if s.captureID == "" || !s.hasBuffer() {
-		return
-	}
-	audio.SetSampleEdit(s.captureID, s.editDescriptor())
-	samplerEditPersistFn(s.captureID)
-	frames := 0
-	if rec, ok := audio.UserSamplePCM(s.captureID); ok {
-		audio.PersistUserSample(s.captureID)
-		frames = len(rec.PCM)
-	}
-	hooks.PublishKind(hooks.EventSampleSaved, hooks.SamplePayload{
-		SampleID: s.captureID,
-		SourceID: s.captureID,
-		Frames:   frames,
-	})
-}
-
-// saveAs bakes the current edit and registers it as a brand-new instrument,
-// returning its id. The new instrument becomes the capture target so a
-// follow-up Save overrides it. No-op (returns "") without a buffer.
-func (s *samplerState) saveAs(displayName string) string {
-	if !s.hasBuffer() {
-		return ""
-	}
-	baked, sr := s.bake()
-	id := samplerUserID(displayName, s.captureID)
-	source := s.captureID
-	audio.SaveUserSample(id, baked, sr)
-	hooks.PublishKind(hooks.EventSampleCreated, hooks.SamplePayload{
-		SampleID:    id,
-		SourceID:    source,
-		DisplayName: displayName,
-		Frames:      len(baked),
-	})
-	s.captureID = id
-	return id
-}
-
-// samplerUserID derives a stable user-sample instrument id from the display
-// name and source id, so re-saving the same name is idempotent.
-func samplerUserID(displayName, base string) string {
-	sum := crc32.ChecksumIEEE([]byte(displayName + "|" + base))
-	return fmt.Sprintf("user.sample.%08x", sum)
+// userSampleID derives a user-sample id from a display name and a seed that
+// tells same-named samples of different origins apart.
+func userSampleID(displayName, seed string) instrument.ID {
+	return instrument.UserSampleID(crc32.ChecksumIEEE([]byte(displayName + "|" + seed)))
 }

@@ -5,6 +5,9 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // The Synth and Sampler tabs edit a single instrument's recipe / sample and
@@ -36,14 +39,14 @@ func tabPillForTest(b *AudioStickyBar, tab PanelTab) *Button {
 // the active channel.
 func instrumentRowsForTest() []*DrumRow {
 	return []*DrumRow{
-		{Instrument: "kick", Name: "Kick"},
-		{Instrument: "snare", Name: "Snare"},
+		{Instrument: roster.Kick, Name: "Kick"},
+		{Instrument: roster.Snare, Name: "Snare"},
 	}
 }
 
 func TestInstrumentTabsDisabledWhenMasterSelected(t *testing.T) {
 	z, _ := newTestEQPanelZone(instrumentRowsForTest())
-	z.SetActiveChannel("main") // Master
+	z.SetActiveChannel(channel.Master) // Master
 	z.Layout(image.Rect(0, 400, 600, 580))
 
 	synth := tabPillForTest(z.stickyBar, TabSynth)
@@ -61,7 +64,7 @@ func TestInstrumentTabsDisabledWhenMasterSelected(t *testing.T) {
 
 func TestInstrumentTabsEnabledWhenInstrumentSelected(t *testing.T) {
 	z, _ := newTestEQPanelZone(instrumentRowsForTest())
-	z.SetActiveChannel("kick") // a concrete instrument
+	z.SetActiveChannel(channel.Of(roster.Kick)) // a concrete instrument
 	z.Layout(image.Rect(0, 400, 600, 580))
 
 	synth := tabPillForTest(z.stickyBar, TabSynth)
@@ -79,7 +82,7 @@ func TestInstrumentTabsEnabledWhenInstrumentSelected(t *testing.T) {
 
 func TestOnTabClickRefusesInstrumentTabsUnderMaster(t *testing.T) {
 	z, _ := newTestEQPanelZone(instrumentRowsForTest())
-	z.SetActiveChannel("main")
+	z.SetActiveChannel(channel.Master)
 
 	// Invoking the pill's click callback directly exercises the onTab closure
 	// (bypassing the Disabled-pill hit adapter) — the closure itself must gate
@@ -98,7 +101,7 @@ func TestOnTabClickRefusesInstrumentTabsUnderMaster(t *testing.T) {
 	}
 
 	// With an instrument selected the same click switches into the tab.
-	z.SetActiveChannel("kick")
+	z.SetActiveChannel(channel.Of(roster.Kick))
 	if pill := tabPillForTest(z.stickyBar, TabSynth); pill != nil && pill.OnClick != nil {
 		pill.OnClick()
 	}
@@ -114,7 +117,7 @@ func TestMobileInstrumentViewsDisabledWhenMasterSelected(t *testing.T) {
 	g := newSynthTabGame(t) // Rows[0].Instrument == "snare"
 	dv := g.drum
 
-	dv.eqPanelZone.SetActiveChannel("main")
+	dv.eqPanelZone.SetActiveChannel(channel.Master)
 	if !dv.samplerViewDisabled() {
 		t.Error("Sampler view should be disabled under Master")
 	}
@@ -122,7 +125,7 @@ func TestMobileInstrumentViewsDisabledWhenMasterSelected(t *testing.T) {
 		t.Error("Synth view should be disabled under Master")
 	}
 
-	dv.eqPanelZone.SetActiveChannel("snare")
+	dv.eqPanelZone.SetActiveChannel(channel.Of(roster.Snare))
 	if dv.samplerViewDisabled() {
 		t.Error("Sampler view should be enabled once an instrument is selected")
 	}

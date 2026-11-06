@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -21,7 +22,7 @@ func newMobileTestDV(t *testing.T) *DrumView {
 	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}

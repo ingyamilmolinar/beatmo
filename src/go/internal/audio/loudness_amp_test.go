@@ -1,21 +1,27 @@
 package audio
 
-import "testing"
+import (
+	"testing"
 
-func TestConfigForInstrumentUsesLoudnessAmp(t *testing.T) {
-	// Pick any instrument that has a generated loudness amplitude.
-	var id string
-	var want float32
-	for k, v := range instrumentLoudnessAmp {
-		id, want = k, v
-		break
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
+
+// Every shipped instrument's playback amplitude comes from its document's
+// render.amplitude (loudness already folded in) — there is no table.
+func TestConfigForInstrumentUsesTheDocumentAmplitude(t *testing.T) {
+	ids := roster.All
+	if len(ids) == 0 {
+		t.Fatal("no shipped instruments")
 	}
-	if id == "" {
-		t.Fatal("instrumentLoudnessAmp is empty — run `make measure-loudness`")
-	}
-	got := ConfigForInstrument(id).Amplitude
-	if got != want {
-		t.Errorf("ConfigForInstrument(%q).Amplitude = %v, want loudness amp %v", id, got, want)
+	for _, id := range ids {
+		d, _ := ShippedDoc(id)
+		if d.Render.Amplitude <= 0 {
+			t.Errorf("%s: document amplitude %v — it would render silent", id, d.Render.Amplitude)
+			continue
+		}
+		if got, want := ConfigForInstrument(id).Amplitude, float32(d.Render.Amplitude); got != want {
+			t.Errorf("ConfigForInstrument(%q).Amplitude = %v, want the document's %v", id, got, want)
+		}
 	}
 }
 

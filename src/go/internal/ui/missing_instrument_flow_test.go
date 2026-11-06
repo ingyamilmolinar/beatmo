@@ -4,7 +4,12 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // Full flow: import missing instrument -> menu includes id -> switch to available ->
@@ -18,10 +23,10 @@ func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
 	// Ensure baseline instruments are present
 	dv.refreshInstruments()
 	// Import config referencing missing instrument "myst"
-	exp := exportFile{
-		Version: 1, Subdiv: 32, BPM: 120,
-		Nodes:       []exportNode{{ID: 0, I: 0, J: 0, Type: "regular"}},
-		Instruments: []exportInstrument{{Name: "Myst", ID: "myst", Kind: "builtin", Volume: 1, Origin: 0, Color: "#FFFFFFFF"}},
+	exp := projectFile{
+		Envelope: schema.Current(), Subdiv: 32, BPM: 120,
+		Nodes:       []exportNode{{ID: 0, I: 0, J: 0, Type: model.NodeTypeRegular}},
+		Instruments: []exportInstrument{{Name: "Myst", ID: "myst", Kind: kindBuiltin, Volume: 1, Origin: 0, Color: "#FFFFFFFF"}},
 	}
 	data, _ := json.Marshal(exp)
 	if err := g.Import(data); err != nil {
@@ -42,8 +47,8 @@ func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
 		t.Fatalf("myst not present in instOptions")
 	}
 	// Switch to an available instrument
-	dv.SetInstrument("snare")
-	if !dv.IsInstrumentAvailable("snare") {
+	dv.SetInstrument(roster.Snare)
+	if !dv.IsInstrumentAvailable(roster.Snare) {
 		t.Fatalf("snare not available")
 	}
 	// The missing id should remain in the menu
@@ -72,7 +77,7 @@ func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
 	}
 	// Playback should no longer be suppressed after registering the instrument.
 	played := make(chan struct{}, 1)
-	g.SetPlayFunc(func(string, float64, ...float64) { played <- struct{}{} })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { played <- struct{}{} })
 	info := g.beatInfoAtRow(0, 0)
 	if info.NodeType == 0 {
 		g.highlightBeat(0, 0, info, 10)

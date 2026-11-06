@@ -7,8 +7,8 @@
 #define EXPORT
 #endif
 
-EXPORT void adsr_init(adsr_t *env, int sr,
-                       float attack, float decay, float sustain, float release,
+void adsr_init(adsr_t *env, int sr,
+                       double attack, double decay, double sustain, double release,
                        int exponential) {
     env->sr            = sr;
     env->attack_sec    = attack;
@@ -23,9 +23,9 @@ EXPORT void adsr_init(adsr_t *env, int sr,
     env->exp_coeff     = 0;
 }
 
-EXPORT void adsr_trigger(adsr_t *env) {
+void adsr_trigger(adsr_t *env) {
     env->stage = ADSR_ATTACK;
-    float attack_samples = env->attack_sec * (float)env->sr;
+    double attack_samples = env->attack_sec * (double)env->sr;
     if (env->exponential) {
         /* Exponential attack: aim ABOVE 1.0 so the asymptotic curve actually
          * crosses the value>=1.0 threshold and transitions to DECAY. Aiming at
@@ -41,11 +41,11 @@ EXPORT void adsr_trigger(adsr_t *env) {
     }
 }
 
-EXPORT void adsr_release(adsr_t *env) {
+void adsr_release(adsr_t *env) {
     if (env->stage == ADSR_IDLE) return;
     env->stage = ADSR_RELEASE;
     env->target = 0;
-    float release_samples = env->release_sec * (float)env->sr;
+    double release_samples = env->release_sec * (double)env->sr;
     if (env->exponential) {
         env->rate = (release_samples > 0) ? 3.0f / release_samples : 1.0f;
     } else {
@@ -53,14 +53,3 @@ EXPORT void adsr_release(adsr_t *env) {
     }
 }
 
-EXPORT void adsr_reset(adsr_t *env) {
-    env->stage = ADSR_IDLE;
-    env->value = 0;
-    env->rate  = 0;
-}
-
-EXPORT void adsr_process(adsr_t *env, float *out, int samples) {
-    for (int i = 0; i < samples; i++) {
-        out[i] = adsr_tick(env);
-    }
-}

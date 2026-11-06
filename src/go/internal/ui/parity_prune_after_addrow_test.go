@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestParityPruneRunsAfterAddRow proves a regression-class bug: after
@@ -44,7 +45,7 @@ func TestParityPruneRunsAfterAddRow(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
 	g.parityWatch = parityWatchLog
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	if err := g.SetSubdivisions(16); err != nil {
 		t.Fatalf("set subdiv 16: %v", err)

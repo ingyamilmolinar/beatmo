@@ -46,7 +46,6 @@ func TestFXPanelParamRowsClearedAfterRemoval(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
@@ -57,7 +56,6 @@ func TestFXPanelParamRowsClearedAfterRemoval(t *testing.T) {
 
 	// Remove via the audio API + rebuild (mirrors the remove button's OnClick).
 	audio.RemoveInsertEffect(instID, 0)
-	dv.syncFXToRow(0)
 	dv.buildFXPanel()
 
 	if got := len(audio.GetInsertEffects(instID)); got != 0 {
@@ -82,7 +80,6 @@ func TestFXPanelReverbOnlyDerivesFromLiveChain(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
@@ -131,13 +128,11 @@ func TestFXPanelSwapEffectTypeUpdatesRows(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
 
 	// Swap distortion -> delay by removing then adding.
 	audio.RemoveInsertEffect(instID, 0)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
-	dv.syncFXToRow(0)
 	dv.buildFXPanel()
 
 	delayParams := map[string]bool{}
@@ -175,7 +170,6 @@ func TestFXParamSummaryDerivesFromLiveChain(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
 	// Mutate a param to a recognizable value.
 	audio.SetInsertEffectParam(instID, 0, "room", 0.9)
-	dv.syncFXToRow(0)
 
 	effects := audio.GetInsertEffects(instID)
 	summary := fxParamSummary(effects[0])

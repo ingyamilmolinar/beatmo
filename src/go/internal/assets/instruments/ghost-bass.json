@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.0.1",
+  "id": "ghost-bass",
+  "name": "Ghost Bass",
+  "category": "modular",
+  "notes": "ghostBassSeed: solo glottal bass synth — born as a \"voice-bass\" solo singer\nattempt, kept as a synth (Bass) per ear review 2026-07-08; glottal an octave\ndown, bass \"o\" vowel, restrained ±30¢ vibrato, low 2.4 kHz singer's formant.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.4871,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.09,
+        "amp_curve": 1,
+        "amp_decay": 0.25,
+        "amp_release": 0.45,
+        "amp_sustain": 0.9
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.6,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 5000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "formant": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "formant_breath": 0.05,
+        "formant_dry": 1,
+        "formant_mix": 0.9,
+        "formant_morph_rate": 0,
+        "formant_morph_to": 0,
+        "formant_shift": 1,
+        "formant_sing": 0.3,
+        "formant_voice_type": 3,
+        "formant_vowel": 3
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.35,
+        "lfo_depth": 0.3,
+        "lfo_rate": 5,
+        "lfo_target": 1
+      }
+    },
+    "pitch_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "pitchenv_amt": -0.4,
+        "pitchenv_decay": 0.1
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 0,
+        "unison_drift_depth": 0,
+        "unison_drift_rate": 0,
+        "unison_mix": 0.5,
+        "unison_voices": 1
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 12
+    }
+  }
+}

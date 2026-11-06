@@ -12,6 +12,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // soakScenario describes a long-session workload to measure heap growth against.
@@ -152,7 +154,7 @@ func runSoakHeapBound(
 	// Belt-and-suspenders: respect parityWatchLog even though New() reads
 	// parityWatchDefault at construction time.
 	g.parityWatch = parityWatchLog
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	// Subdiv 16 + BPM 240 picks an absolute index advance rate comparable to
 	// the production WASM crash (which logged play→OOM in ~14 s).
@@ -178,11 +180,11 @@ func runSoakHeapBound(
 		// to the manager in synth_recipe.go and cleanly drops the entries
 		// at test teardown.
 		if len(g.drum.Rows) > 0 && g.drum.Rows[0].Instrument != "" {
-			audio.BindInstrumentToRecipe(g.drum.Rows[0].Instrument, "drum-snare")
+			_ = audio.InstallInstrumentDocForTest(g.drum.Rows[0].Instrument, roster.Snare)
 			t.Cleanup(func() { audio.ResetInstrumentParams(g.drum.Rows[0].Instrument) })
 		}
 		if len(g.drum.Rows) > 1 && g.drum.Rows[1].Instrument != "" {
-			audio.BindInstrumentToRecipe(g.drum.Rows[1].Instrument, "drum-kick")
+			_ = audio.InstallInstrumentDocForTest(g.drum.Rows[1].Instrument, roster.Kick)
 			t.Cleanup(func() { audio.ResetInstrumentParams(g.drum.Rows[1].Instrument) })
 		}
 		g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -488,7 +490,7 @@ func toggleSoakSynthParamChurn(g *Game, f int) {
 	decay := 0.25 + 0.75*math.Sin(float64(f)/41.0)
 	if id := g.drum.Rows[0].Instrument; id != "" {
 		audio.SetInstrumentParam(id, "pitch", pitch)
-		audio.SetInstrumentParam(id, "decay", decay)
+		audio.SetInstrumentParam(id, "amp_decay", decay)
 	}
 	if len(g.drum.Rows) > 1 {
 		if id := g.drum.Rows[1].Instrument; id != "" {
@@ -636,15 +638,16 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 			entries, voiceCacheEntriesBound, totalBytes/1024))
 	}
 
-	// Instrument params manager size. Every Set/SetInstrumentParam adds
-	// an entry for a new instrument id; only ResetInstrumentParams drops
-	// one. The shipped catalog has ~25 ids — anything above 64 means
-	// SetInstrumentParam is being called with synthesized or stale ids
-	// faster than ResetInstrumentParams catches up.
+	// Modified project documents. Every SetInstrumentParam on an unedited
+	// instrument makes its copy differ from its library entry; only
+	// ResetInstrumentParams brings it back. The shipped catalog has ~25 ids
+	// in play — anything above 64 means SetInstrumentParam is being called
+	// with synthesized or stale ids faster than ResetInstrumentParams
+	// catches up.
 	const paramsMgrBound = 64
-	if n := audio.InstrumentParamsMgrLenForTest(); n > paramsMgrBound {
+	if n := audio.ModifiedInstrumentDocCountForTest(); n > paramsMgrBound {
 		fails = append(fails, fmt.Sprintf(
-			"instrumentParamsMgr.params size=%d (bound=%d) — "+
+			"modified instrument documents=%d (bound=%d) — "+
 				"SetInstrumentParam ids are accumulating; ResetInstrumentParams "+
 				"is not draining them",
 			n, paramsMgrBound))
@@ -788,7 +791,7 @@ func dumpSoakDiagnostics(
 		// state that drove the per-component bound decisions above.
 		vcEntries, vcBytes := audio.VoiceCacheStatsForTest()
 		t.Logf("voice_cache entries=%d totalBytes=%dKB", vcEntries, vcBytes/1024)
-		t.Logf("instrumentParamsMgr.params=%d", audio.InstrumentParamsMgrLenForTest())
+		t.Logf("modified instrument documents=%d", audio.ModifiedInstrumentDocCountForTest())
 		bridgeCalls, bridgeReads := audio.AnalyzerBridgeStats()
 		t.Logf("analyzer bridge calls=%d reads=%d", bridgeCalls, bridgeReads)
 

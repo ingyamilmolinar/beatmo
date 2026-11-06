@@ -9,7 +9,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Draw renders the mobile wheel popup as a textured analogue thumbwheel: a title
@@ -23,6 +22,13 @@ func (w *MobileWheelPopup) Draw(dst *ebiten.Image) {
 
 	drawPanel(dst, w.rect)
 	w.drawTitle(dst)
+	w.DrawBody(dst)
+}
+
+// DrawBody renders the wheel itself (no panel, no title): the textured
+// thumbwheel cylinder, the value rows, the centre grip and the resolution
+// ladder. Inline hosts draw it on their own surface.
+func (w *ValueWheel) DrawBody(dst *ebiten.Image) {
 	w.drawCylinder(dst)  // textured rolling-wheel surface behind the rows
 	w.drawSlotBezel(dst) // recessed-slot framing (top/bottom inner shadow)
 	w.drawBarrel(dst)    // distinct value rows above/below center
@@ -90,6 +96,29 @@ func (w *MobileWheelPopup) drawTitleDivider(dst *ebiten.Image) {
 // wheelCylinderCache holds the static thumbwheel surface keyed by (w<<16|h).
 var wheelCylinderCache = map[int]*ebiten.Image{}
 
+// wheelSpriteThemeGen is the ThemeGeneration the wheel sprite caches were
+// baked under. Both sprites bake surface tones, and they are package-level (a
+// theme change reaches no Game cache here), so they are dropped whenever the
+// theme moves — before, a wheel popup kept the boot theme's surfaces forever.
+var wheelSpriteThemeGen int
+
+// syncWheelSpriteTheme drops both wheel sprite caches after a theme change.
+func syncWheelSpriteTheme() {
+	tg := ThemeGeneration()
+	if tg == wheelSpriteThemeGen {
+		return
+	}
+	wheelSpriteThemeGen = tg
+	for k, img := range wheelCylinderCache {
+		releaseImage(img)
+		delete(wheelCylinderCache, k)
+	}
+	for k, img := range wheelGripCache {
+		releaseImage(img)
+		delete(wheelGripCache, k)
+	}
+}
+
 const wheelRidgeStep = 7 // nominal px between ridges at the wheel's mid-line
 
 // wheelCylinderSprite rasterizes the analogue thumbwheel face once per size: a
@@ -104,6 +133,7 @@ func wheelCylinderSprite(w, h int) *ebiten.Image {
 	if h < 2 {
 		h = 2
 	}
+	syncWheelSpriteTheme()
 	key := w<<16 | h
 	if spr, ok := wheelCylinderCache[key]; ok {
 		return spr
@@ -145,7 +175,7 @@ func wheelCylinderSprite(w, h int) *ebiten.Image {
 }
 
 // drawCylinder blits the cached thumbwheel surface into the barrel column.
-func (w *MobileWheelPopup) drawCylinder(dst *ebiten.Image) {
+func (w *ValueWheel) drawCylinder(dst *ebiten.Image) {
 	vr := w.valRect
 	if vr.Empty() {
 		return
@@ -164,7 +194,7 @@ func (w *MobileWheelPopup) drawCylinder(dst *ebiten.Image) {
 // drawBarrel walks DISTINCT value rows outward from the center — upward shows
 // larger values, downward smaller — so adjacent rows never show the same
 // formatted label even when the resolution is finer than the label precision.
-func (w *MobileWheelPopup) drawBarrel(dst *ebiten.Image) {
+func (w *ValueWheel) drawBarrel(dst *ebiten.Image) {
 	vr := w.valRect
 	if vr.Empty() {
 		return
@@ -178,43 +208,16 @@ func (w *MobileWheelPopup) drawBarrel(dst *ebiten.Image) {
 
 // walkRows draws up to maxRows distinct labels in one direction. screenDir is the
 // Y direction (-1 up, +1 down); valueDir is the value direction (+1 larger, -1
-// smaller). For enums each index is already distinct; for continuous params the
-// value is advanced by StepMul until the formatted label actually changes.
-func (w *MobileWheelPopup) walkRows(dst *ebiten.Image, centerY, gap, maxRows, screenDir, valueDir int) {
-	def := w.binding.Def
-	k := w.binding.Knob
-	if k == nil {
+// smaller). The labels come from the model's distinct-row walk (WheelModel.RowLabel),
+// so a click on a row lands exactly on the value it shows.
+func (w *ValueWheel) walkRows(dst *ebiten.Image, centerY, gap, maxRows, screenDir, valueDir int) {
+	m := w.model()
+	if m == nil {
 		return
 	}
-	if len(def.Enum) > 0 {
-		cur := enumIndex(k.Value, len(def.Enum))
-		for r := 1; r <= maxRows; r++ {
-			idx := cur + valueDir*r
-			if idx < 0 || idx >= len(def.Enum) {
-				return
-			}
-			w.drawRow(dst, def.Enum[idx], centerY+screenDir*r*gap, r, maxRows)
-		}
-		return
-	}
-	span := def.Max - def.Min
-	step := w.valueStep()
-	prev := formatSynthParamValueStep(def, def.Min+k.Value*span, step)
-	val := def.Min + k.Value*span
 	for r := 1; r <= maxRows; r++ {
-		lbl := ""
-		for guard := 0; guard < 4096; guard++ {
-			val += float64(valueDir) * step
-			if val < def.Min || val > def.Max {
-				return
-			}
-			cand := formatSynthParamValueStep(def, val, step)
-			if cand != prev {
-				prev, lbl = cand, cand
-				break
-			}
-		}
-		if lbl == "" {
+		lbl, ok := m.RowLabel(valueDir * r)
+		if !ok {
 			return
 		}
 		w.drawRow(dst, lbl, centerY+screenDir*r*gap, r, maxRows)
@@ -223,7 +226,7 @@ func (w *MobileWheelPopup) walkRows(dst *ebiten.Image, centerY, gap, maxRows, sc
 
 // drawRow draws one value label centered at y, plus a short engraved gradation
 // tick at the left margin, fading by distance from center.
-func (w *MobileWheelPopup) drawRow(dst *ebiten.Image, label string, y, row, maxRows int) {
+func (w *ValueWheel) drawRow(dst *ebiten.Image, label string, y, row, maxRows int) {
 	vr := w.valRect
 	if y < vr.Min.Y+StyledTextHeight(RoleBody)/2 || y > vr.Max.Y-StyledTextHeight(RoleBody)/2 {
 		return
@@ -238,7 +241,7 @@ func (w *MobileWheelPopup) drawRow(dst *ebiten.Image, label string, y, row, maxR
 
 // drawEdgeFade overlays panel-colored gradients at the top and bottom of the
 // barrel so rows dissolve into the panel — reinforcing the cylinder curve.
-func (w *MobileWheelPopup) drawEdgeFade(dst *ebiten.Image) {
+func (w *ValueWheel) drawEdgeFade(dst *ebiten.Image) {
 	vr := w.valRect
 	if vr.Empty() {
 		return
@@ -258,7 +261,7 @@ const wheelRailW = 7
 // drawSlotBezel sinks the barrel into a recessed slot: a dark inner-shadow band
 // at the top edge and a thin lit lip at the bottom (light from above), so the
 // rolling wheel reads as mounted in a panel cutout.
-func (w *MobileWheelPopup) drawSlotBezel(dst *ebiten.Image) {
+func (w *ValueWheel) drawSlotBezel(dst *ebiten.Image) {
 	vr := w.valRect
 	if vr.Empty() {
 		return
@@ -279,7 +282,7 @@ func (w *MobileWheelPopup) drawSlotBezel(dst *ebiten.Image) {
 // drawSlotRails draws the two machined side rails that flank the wheel, each with
 // a thin accent-lit inner edge — the analog pitch-wheel's side-LED glow, colored
 // by the active row's accent.
-func (w *MobileWheelPopup) drawSlotRails(dst *ebiten.Image) {
+func (w *ValueWheel) drawSlotRails(dst *ebiten.Image) {
 	vr := w.valRect
 	if vr.Empty() {
 		return
@@ -314,6 +317,7 @@ func wheelGripSprite(wpx, hpx int) *ebiten.Image {
 	if hpx < 2 {
 		hpx = 2
 	}
+	syncWheelSpriteTheme()
 	key := wpx<<16 | hpx
 	if spr, ok := wheelGripCache[key]; ok {
 		return spr
@@ -338,13 +342,13 @@ func wheelGripSprite(wpx, hpx int) *ebiten.Image {
 // drawThumbGrip renders the pitch-wheel thumb grip (the "main button"): a raised
 // ribbed matte-rubber pad with a contact shadow, a central accent detent notch,
 // and the live value as an embossed legend printed on the rubber.
-func (w *MobileWheelPopup) drawThumbGrip(dst *ebiten.Image) {
+func (w *ValueWheel) drawThumbGrip(dst *ebiten.Image) {
 	// Inset the pad to sit BETWEEN the side rails, like a thumb grip in its slot.
 	r := image.Rect(w.centerH.Min.X+wheelRailW, w.centerH.Min.Y, w.centerH.Max.X-wheelRailW, w.centerH.Max.Y)
 	if r.Empty() {
 		return
 	}
-	rad := RadiusXS
+	rad := fitRadius(RadiusControl, r)
 	accent := w.resolveAccent()
 	// Raised pad: a 2px contact shadow below sells the protrusion from the slot.
 	socket := image.Rect(r.Min.X, r.Min.Y+2, r.Max.X, r.Max.Y+2)
@@ -355,7 +359,7 @@ func (w *MobileWheelPopup) drawThumbGrip(dst *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(r.Min.X+1), float64(r.Min.Y+1))
 	dst.DrawImage(spr, op)
-	// Hover brighten: cursor-over feedback for the tap-to-numeric-editor grip
+	// Hover brighten: cursor-over feedback for the click-to-confirm grip
 	// (portal input handlers only fire on press edges — see HoverAt).
 	if w.hoverCenter {
 		drawRoundedRect(dst, r, WithAlpha(colTextPrimary, AlphaFaint), rad, true)
@@ -386,18 +390,18 @@ func (w *MobileWheelPopup) drawThumbGrip(dst *ebiten.Image) {
 // Tapping a pill jumps straight to it; scrolling/dragging still steps rung-by-
 // rung. rungRects() is the single source of truth for the pill geometry so the
 // hit-test and the draw stay in lockstep.
-func (w *MobileWheelPopup) drawResStrip(dst *ebiten.Image) {
-	if w.resRect.Empty() || w.binding.Badge == nil {
+func (w *ValueWheel) drawResStrip(dst *ebiten.Image) {
+	m := w.model()
+	if w.resRect.Empty() || m == nil || !m.HasLadder() {
 		return
 	}
 	r := w.resRect
-	drawRoundedRect(dst, r, TokenSurface2(), RadiusMD, true)
-	drawRoundedRect(dst, r, WithAlphaFromColor(TokenBorderSubtle(), AlphaMedium), RadiusMD, false)
-	b := w.binding.Badge
+	drawRoundedRect(dst, r, TokenSurface2(), RadiusContainer, true)
+	drawRoundedRect(dst, r, WithAlphaFromColor(TokenBorderSubtle(), AlphaMedium), RadiusContainer, false)
 	accent := w.resolveAccent()
 	for i, rr := range w.rungRects() {
-		lbl := formatStepValue(w.binding.Def, b.Rungs()[i])
-		active := i == b.Index()
+		lbl := m.LadderLabel(i)
+		active := i == m.LadderIndex()
 		switch {
 		case active:
 			drawRoundedRect(dst, rr, WithAlphaFromColor(accent, AlphaMedium), RadiusXS, true)
@@ -420,7 +424,7 @@ func (w *MobileWheelPopup) drawResStrip(dst *ebiten.Image) {
 	}
 }
 
-func (w *MobileWheelPopup) tickGap() int {
+func (w *ValueWheel) tickGap() int {
 	gap := Profile().DensityValues().MobileWheelTickGap
 	if gap <= 0 {
 		gap = 34
@@ -431,7 +435,7 @@ func (w *MobileWheelPopup) tickGap() int {
 // resolveAccent returns the accent fill for the selection lane. When the binding
 // provides a non-nil Accent color, that color is used; otherwise the primary
 // token is returned. No raw color literals.
-func (w *MobileWheelPopup) resolveAccent() color.Color {
+func (w *ValueWheel) resolveAccent() color.Color {
 	if w.binding.Accent != nil {
 		if c := w.binding.Accent(); c != nil {
 			return c
@@ -443,69 +447,13 @@ func (w *MobileWheelPopup) resolveAccent() color.Color {
 // liveValueLabel returns the formatted current value string for the selection
 // lane, rendered at the active step resolution so a fine resolution (e.g.
 // x0.005) keeps changing the displayed number after a single-step nudge.
-func (w *MobileWheelPopup) liveValueLabel() string {
-	return formatKnobDisplayStep(w.binding.Def, w.binding.Knob.Value, w.valueStep())
+func (w *ValueWheel) liveValueLabel() string {
+	if m := w.model(); m != nil {
+		return m.CenterLabel()
+	}
+	return ""
 }
 
-// valueStep returns the active step in real param units — the knob's StepMul,
-// falling back to span/200 when unset. Shared by the center readout and the
-// barrel row walk so both render at the same resolution.
-func (w *MobileWheelPopup) valueStep() float64 {
-	return knobStepResolution(w.binding.Knob, w.binding.Def)
-}
-
-// enumIndex maps a normalized [0,1] value to a clamped enum index.
-func enumIndex(norm float64, n int) int {
-	if n <= 0 {
-		return 0
-	}
-	idx := int(math.Round(norm * float64(n-1)))
-	if idx < 0 {
-		return 0
-	}
-	if idx >= n {
-		return n - 1
-	}
-	return idx
-}
-
-// formatKnobDisplay formats a normalized knob value for display: the enum label
-// for discrete params, otherwise the unit-aware numeric label at natural
-// precision. Shared by the inline mobile value pill.
-func formatKnobDisplay(def audio.ParamDef, norm float64) string {
-	return formatKnobDisplayStep(def, norm, math.Inf(1))
-}
-
-// formatKnobDisplayStep is the resolution-aware sibling of formatKnobDisplay: it
-// renders the numeric value with the decimals the active `step` (real param
-// units) requires. An infinite step reproduces formatKnobDisplay.
-func formatKnobDisplayStep(def audio.ParamDef, norm, step float64) string {
-	if len(def.Enum) > 0 {
-		return def.Enum[enumIndex(norm, len(def.Enum))]
-	}
-	return formatSynthParamValueStep(def, def.Min+norm*(def.Max-def.Min), step)
-}
-
-// knobStepResolution returns a knob's active step in real param units — its
-// StepMul, falling back to span/200 when unset — matching the wheel's value
-// step. Shared so the inline pill and the wheel center render at one resolution.
-func knobStepResolution(k *Knob, def audio.ParamDef) float64 {
-	if k == nil {
-		return 0
-	}
-	step := k.StepMul
-	if step <= 0 {
-		step = (def.Max - def.Min) / 200
-	}
-	return step
-}
-
-// knobPillLabel formats a knob's current value for the inline mobile pill/button
-// at the knob's active step resolution, so a fine resolution shows the extra
-// decimals the user dialed in (matching the wheel center). Enum-aware.
-func knobPillLabel(k *Knob, def audio.ParamDef) string {
-	if k == nil {
-		return formatKnobDisplay(def, 0)
-	}
-	return formatKnobDisplayStep(def, k.Value, knobStepResolution(k, def))
-}
+// The knob value-formatting helpers (enumIndex, formatKnobDisplay,
+// formatKnobDisplayStep, knobStepResolution, knobPillLabel) live in
+// knob_format.go — they are view-independent and outlive this popup.

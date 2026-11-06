@@ -8,17 +8,19 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // Meter bridge colors — sourced from DESIGN.md `viz-meter-*` tokens.
 // To change a hue, edit DESIGN.md and run `make gen-design-tokens`.
 var (
-	meterLow  = genColorVizMeterLow
-	meterMid  = genColorVizMeterMid
-	meterHigh = genColorVizMeterHigh
-	meterBg   = genColorVizMeterBg
-	meterClip = genColorVizMeterClip
+	// Derived in rebuildThemeAliases (theme.go).
+	meterLow  color.RGBA
+	meterMid  color.RGBA
+	meterHigh color.RGBA
+	meterBg   color.RGBA
+	meterClip color.RGBA
 )
 
 const (
@@ -43,12 +45,12 @@ const (
 // hold + clip-latch state for every instrument + master. Phase 2 of the
 // audio-panel redesign.
 type MultiLevelsLatch struct {
-	byID map[string]*LevelsLatch
+	byID map[channel.ID]*LevelsLatch
 }
 
 // NewMultiLevelsLatch returns an initialised map.
 func NewMultiLevelsLatch() *MultiLevelsLatch {
-	return &MultiLevelsLatch{byID: map[string]*LevelsLatch{}}
+	return &MultiLevelsLatch{byID: map[channel.ID]*LevelsLatch{}}
 }
 
 // Clear resets every per-channel latch so the persistent "!" markers
@@ -86,9 +88,9 @@ func (m *MultiLevelsLatch) Reset() {
 }
 
 // Get returns the latch for id, creating a fresh one on first reference.
-func (m *MultiLevelsLatch) Get(id string) *LevelsLatch {
+func (m *MultiLevelsLatch) Get(id channel.ID) *LevelsLatch {
 	if m.byID == nil {
-		m.byID = map[string]*LevelsLatch{}
+		m.byID = map[channel.ID]*LevelsLatch{}
 	}
 	if l, ok := m.byID[id]; ok {
 		return l
@@ -442,14 +444,14 @@ func meterColorAlpha(db float64, alpha uint8) color.NRGBA {
 // When state has no instruments (only master), falls back to the
 // single-channel drawLevelsDetail so the layout stays meaningful for
 // boot-time idle states.
-func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) {
+func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) {
 	drawRect(dst, rect, colButtonBorder, false)
 	if state == nil {
 		return
 	}
 
 	if len(state.Instruments) == 0 {
-		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, "main"))
+		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, channel.Master))
 		return
 	}
 
@@ -473,7 +475,7 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 
 	contentH := rect.Dy() - headerH - footerH
 	if contentH < 24 {
-		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, "main"))
+		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, channel.Master))
 		return
 	}
 
@@ -494,13 +496,13 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	}
 	if nInst == 0 {
 		// Nothing audible among instruments — fall back to master-only detail.
-		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, "main"))
+		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, channel.Master))
 		return
 	}
 	totalWeights := nInst + 2 // master = 2 weights
 	stripSpace := stripsRect.Dx() - (nInst)*stripGap - masterStripPad
 	if stripSpace < totalWeights {
-		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, "main"))
+		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, channel.Master))
 		return
 	}
 	weightPx := stripSpace / totalWeights
@@ -537,7 +539,7 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 		drawLevelsChannelStrip(dst,
 			image.Rect(x, stripsRect.Min.Y, x+masterW, stripsRect.Max.Y),
 			i18n.T(i18n.KeyMaster), state.Master.PeakDB, state.Master.RMSDB, state.Master.ClipCount,
-			latchOrNil(latches, "main"))
+			latchOrNil(latches, channel.Master))
 	}
 
 	// Phase 4 audio-panel redesign: three readout modes.
@@ -590,7 +592,7 @@ type LevelsAggregate struct {
 
 // instrumentVisibleInAgg reports whether an instrument id is included in the
 // Levels aggregate readouts. nil visibleIDs means "include all" (idle/legacy).
-func instrumentVisibleInAgg(visibleIDs map[string]bool, id string) bool {
+func instrumentVisibleInAgg(visibleIDs map[channel.ID]bool, id channel.ID) bool {
 	return visibleIDs == nil || visibleIDs[id]
 }
 
@@ -660,10 +662,10 @@ func levelsReadoutLayout(panelDx int) (readoutColMode, int) {
 // levelsAggregatesValues computes the headroom / clips / loudest readouts
 // for the icon-row. Pure function — used by both the renderer and the
 // tooltip layer to keep their formatted strings in sync.
-func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) LevelsAggregate {
+func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) LevelsAggregate {
 	masterPeak := state.Master.PeakDB
 	if latches != nil {
-		if l, ok := latches.byID["main"]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > masterPeak {
+		if l, ok := latches.byID[channel.Master]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > masterPeak {
 			masterPeak = l.PeakHoldDB
 		}
 	}
@@ -733,7 +735,7 @@ func levelsAggregateIconRects(rect image.Rectangle) (hdr, clp, lou image.Rectang
 // is too narrow for the full-text column but wide enough to surface
 // the per-icon values inline. Each icon's tap target meets the
 // density's MinTarget at Spacious.
-func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) {
+func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) {
 	if rect.Dx() < 20 || rect.Dy() < 40 {
 		return
 	}
@@ -849,7 +851,7 @@ func formatClipShort(n int) string {
 }
 
 // latchOrNil returns the latch for id, or nil if latches is nil.
-func latchOrNil(m *MultiLevelsLatch, id string) *LevelsLatch {
+func latchOrNil(m *MultiLevelsLatch, id channel.ID) *LevelsLatch {
 	if m == nil {
 		return nil
 	}
@@ -874,7 +876,7 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 	footerH := microH*2 + 2
 
 	// Header label centered — truncated to the strip width so a long
-	// instrument name (e.g. "fm-epiano-1") never bleeds into the
+	// instrument name (e.g. "fm-epiano-drive") never bleeds into the
 	// neighboring strip's label.
 	capW := func(s string) int { return StyledTextWidth(s, RoleCaption) }
 	label = clipTextToWidthMeasure(label, rect.Dx()-2, capW)
@@ -1081,7 +1083,7 @@ func levelsAggregateColumnRows(rect image.Rectangle) []levelsAggRow {
 // answers "how much room do I have left before it gets ugly?" in one
 // glance. Row positions come from levelsAggregateColumnRows — a
 // sequential flow that never overlaps; rows that don't fit are dropped.
-func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) {
+func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) {
 	if rect.Dx() < 60 || rect.Dy() < 60 {
 		return
 	}
@@ -1096,7 +1098,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	// Compute headroom: -peak of master (use held value if available).
 	masterPeak := state.Master.PeakDB
 	if latches != nil {
-		if l, ok := latches.byID["main"]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > masterPeak {
+		if l, ok := latches.byID[channel.Master]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > masterPeak {
 			masterPeak = l.PeakHoldDB
 		}
 	}
@@ -1204,8 +1206,8 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		DrawTextStyled(dst, i18n.T(i18n.KeyCapLoudest), rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
 	if r, ok := rowAt(aggRowLoudestValue); ok {
-		// "kick-1 · -3 dB" — name plus its peak in dB. The pre-fix
-		// "kick-1 (-3)" suffix was cryptic (an unlabeled number).
+		// "kick · -3 dB" — name plus its peak in dB. The pre-fix
+		// "kick (-3)" suffix was cryptic (an unlabeled number).
 		loudTxt := fmt.Sprintf("%s · %s dB", loudestName, formatMeterDB(loudestPeak))
 		loudTxt = clipTextToWidthMeasure(loudTxt, rect.Dx(),
 			func(s string) int { return StyledTextWidth(s, r.Role) })

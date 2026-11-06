@@ -3,6 +3,9 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // SetInsertEffects is the entry point project IMPORT uses — unlike
@@ -14,13 +17,13 @@ import (
 func TestSetInsertEffectsChainProcessesAudio(t *testing.T) {
 	resetChains(t)
 	id := "import-process"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	const sr = 44100
 	input := sineSamples(440, sr, sr/4)
 	dry := processThrough(ch, input)
 
-	SetInsertEffects(id, []EffectSlot{
+	SetInsertEffects(instrument.ID(id), []EffectSlot{
 		{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 18, "mix": 1}},
 	})
 	wet := processThrough(ch, input)
@@ -43,13 +46,13 @@ func TestSetInsertEffectsChainProcessesAudio(t *testing.T) {
 func TestSetInsertEffectsDisabledSlotIsBypassed(t *testing.T) {
 	resetChains(t)
 	id := "import-bypass"
-	ch := InstrumentChannel(id)
+	ch := InstrumentChannel(channel.Of(instrument.ID(id)))
 
 	const sr = 44100
 	input := sineSamples(440, sr, sr/4)
 	dry := processThrough(ch, input)
 
-	SetInsertEffects(id, []EffectSlot{
+	SetInsertEffects(instrument.ID(id), []EffectSlot{
 		{Type: EffectDistortion, Enabled: false, Params: map[string]float64{"drive": 18, "mix": 1}},
 	})
 	bypassed := processThrough(ch, input)

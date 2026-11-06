@@ -18,16 +18,16 @@ import (
 	"testing"
 )
 
-// TestAnalyzeFile_RefReportsCorrectF0AndVibrato decodes the violin D5 reference
-// WAV at its native sample rate and checks that F0 is plausibly ~591 Hz
+// TestAnalyzeFile_RefReportsCorrectF0AndVibrato decodes a generated D5 note
+// with vibrato (generatedD5Path) and checks that F0 is plausibly ~587 Hz
 // (D5 ≈ 587.3 Hz) and that the Vibrato sub-struct is populated.
 func TestAnalyzeFile_RefReportsCorrectF0AndVibrato(t *testing.T) {
-	fp, err := analyzeFile(violinRefPath(t), analyzeOpts{})
+	fp, err := analyzeFile(generatedD5Path(t), analyzeOpts{})
 	if err != nil {
-		t.Skipf("ref unavailable: %v", err)
+		t.Fatalf("analyzeFile: %v", err)
 	}
 	if fp.F0Hz < 575 || fp.F0Hz > 605 {
-		t.Fatalf("F0=%.1f, want ~591", fp.F0Hz)
+		t.Fatalf("F0=%.1f, want ~587", fp.F0Hz)
 	}
 	if fp.Vibrato == nil {
 		t.Fatal("Vibrato nil")
@@ -37,9 +37,9 @@ func TestAnalyzeFile_RefReportsCorrectF0AndVibrato(t *testing.T) {
 // TestPrintFP_IncludesNewMetricSections verifies that printFP emits sections for
 // Vibrato, SpectralEnv (Bridge), and Coupling when those sub-structs are present.
 func TestPrintFP_IncludesNewMetricSections(t *testing.T) {
-	fp, err := analyzeFile(violinRefPath(t), analyzeOpts{})
+	fp, err := analyzeFile(generatedD5Path(t), analyzeOpts{})
 	if err != nil {
-		t.Skipf("ref unavailable: %v", err)
+		t.Fatalf("analyzeFile: %v", err)
 	}
 	var sb strings.Builder
 	printFP(&sb, &fp)
@@ -63,9 +63,9 @@ func TestAnalyzeFile_SilentOrMissingFileErrors(t *testing.T) {
 // TestAnalyzeFile_LabelDefault verifies that when no Label is set in opts,
 // analyzeFile uses the file path as the fingerprint label.
 func TestAnalyzeFile_LabelDefault(t *testing.T) {
-	fp, err := analyzeFile(violinRefPath(t), analyzeOpts{})
+	fp, err := analyzeFile(generatedD5Path(t), analyzeOpts{})
 	if err != nil {
-		t.Skipf("ref unavailable: %v", err)
+		t.Fatalf("analyzeFile: %v", err)
 	}
 	if fp.Label == "" {
 		t.Fatal("expected non-empty label, got empty")
@@ -74,9 +74,9 @@ func TestAnalyzeFile_LabelDefault(t *testing.T) {
 
 // TestAnalyzeFile_LabelOverride verifies that a custom Label in opts is used.
 func TestAnalyzeFile_LabelOverride(t *testing.T) {
-	fp, err := analyzeFile(violinRefPath(t), analyzeOpts{Label: "my-violin"})
+	fp, err := analyzeFile(generatedD5Path(t), analyzeOpts{Label: "my-violin"})
 	if err != nil {
-		t.Skipf("ref unavailable: %v", err)
+		t.Fatalf("analyzeFile: %v", err)
 	}
 	if fp.Label != "my-violin" {
 		t.Fatalf("expected label %q, got %q", "my-violin", fp.Label)
@@ -86,9 +86,9 @@ func TestAnalyzeFile_LabelOverride(t *testing.T) {
 // TestPrintFP_NewMetricSectionsAbsentWhenNil verifies that printFP does not
 // panic and does not emit metric-section headers when the pointer fields are nil.
 func TestPrintFP_NewMetricSectionsAbsentWhenNil(t *testing.T) {
-	fp, err := analyzeFile(violinRefPath(t), analyzeOpts{})
+	fp, err := analyzeFile(generatedD5Path(t), analyzeOpts{})
 	if err != nil {
-		t.Skipf("ref unavailable: %v", err)
+		t.Fatalf("analyzeFile: %v", err)
 	}
 
 	// Set all five new pointer fields to nil to test the "absent" path.

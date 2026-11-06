@@ -18,7 +18,7 @@ func RuntimeStatsSnapshot(audio AudioCounters) map[string]any {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	stats := map[string]any{
-		"goroutines":   runtime.NumGoroutine(),
+		"goroutines":    runtime.NumGoroutine(),
 		"heap_alloc_kb": ms.Alloc / 1024,
 		"heap_sys_kb":   ms.HeapSys / 1024,
 		"heap_objects":  ms.HeapObjects,

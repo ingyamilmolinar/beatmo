@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // A long instrument list must stay fully inside the menu panel and rely on
@@ -22,14 +25,14 @@ func TestInstrumentMenuLongListStaysInsidePanel(t *testing.T) {
 	var insts []InstrumentOption
 	for i := 0; i < 25; i++ {
 		id := fmt.Sprintf("kick-%02d", i)
-		insts = append(insts, InstrumentOption{ID: id, Label: id, Category: "Kicks"})
+		insts = append(insts, InstrumentOption{ID: instrument.ID(id), Label: id, Category: audio.CatKick})
 	}
 	vertBounds := image.Rect(0, 50, 300, 500)
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        vertBounds,
 		CurrentInstrument: "kick-00",
-		Categories:        []string{"Kicks"},
+		Categories:        []audio.Category{audio.CatKick},
 		Instruments:       insts,
 		RowHeight:         24,
 	})

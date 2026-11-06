@@ -13,6 +13,18 @@ import (
 // Game instance is fully constructed. Game.initJS will override these with the
 // real implementations once New() runs.
 func init() {
+	// `?devtools=0` previews the production UI in a developer WASM (a release
+	// WASM has the developer surfaces off already). Read before ui.New builds
+	// the tab strip and the bottom nav from the available-tab lists.
+	if loc := js.Global().Get("location"); loc.Truthy() {
+		if q := loc.Get("search"); q.Truthy() {
+			if params := js.Global().Get("URLSearchParams"); params.Truthy() {
+				if params.New(q).Call("get", "devtools").String() == "0" {
+					SetDevToolsForcedOff(true)
+				}
+			}
+		}
+	}
 	if !js.Global().Get("startPlay").Truthy() {
 		js.Global().Set("startPlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} { return nil }))
 	}
@@ -29,16 +41,20 @@ func init() {
 		SetNotificationHistoryStore(NewPersistedNotificationHistory(ns))
 	}
 
-	// Instrument data (user recipes + per-recipe overrides) lives in its OWN
-	// decoupled store — its own localStorage key, separate from beatmo.prefs —
-	// so instruments can be shared/imported without touching favorites/UI state.
-	// The parity gate is flipped on here (production bootstrap only) so test
-	// binaries leave shipped defaults intact. InstrumentStore satisfies both
-	// audio.UserRecipeSource (load) and ui.RecipeSaveSink (save).
+	// The user's instrument LIBRARY (saved instrument documents, spec
+	// 2026-10-04 §6) lives in its OWN localStorage key, separate from
+	// beatmo.prefs. Loaded before the first project ResetInstruments so saved
+	// instruments are playable and listed (and pushed to audio.js by
+	// initJSSynthRecipe's PushAllInstrumentDocsToPlatform).
 	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
-	audio.SetUseUserRecipeOverrides(true)
-	_ = audio.ApplyUserRecipeOverrides(instStore)
-	SetRecipeSink(instStore)
+	audio.SetInstrumentLibrarySink(instStore)
+	// Sampler edits saved before versioning join their instrument's first
+	// version (read once, never written again).
+	oldEdits, _ := prefsStore.(audio.SampleEditSource)
+	if err := audio.LoadUserInstrumentLibrary(instStore, oldEdits); err != nil {
+		println("WARN [instruments]", err.Error())
+	}
+	audio.ResetInstruments()
 
 	// Sampler tab: cross-session user-sample persistence (IndexedDB on
 	// browser). Mirrors the recipe wiring above. ApplySavedSamples re-registers
@@ -51,17 +67,11 @@ func init() {
 		audio.ApplySavedSamples(adapter)
 	}
 
-	// Non-destructive sample-edit descriptors: rehydration runs through
-	// audio.SetSampleEdit, which fires platformSampleEditChanged → JS
-	// updateSampleEdit, so the browser render cache reflects the saved edits
-	// from the first play.
-	if se, ok := prefsStore.(userprefs.SampleEditStore); ok {
-		SetSampleEditSink(se)
-		audio.ApplySavedSampleEdits(se)
-	}
-
 	// Knob step-rung persistence: remember each param's chosen step badge
 	// rung across reloads. Keyed by param name (global, not per-instrument).
+	if ap, ok := prefsStore.(userprefs.AudioPanelStore); ok {
+		SetAudioPanelStateSink(ap)
+	}
 	if ks, ok := prefsStore.(userprefs.KnobStepStore); ok {
 		SetKnobStepSink(ks)
 	}

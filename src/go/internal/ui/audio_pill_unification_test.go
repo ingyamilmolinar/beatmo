@@ -71,7 +71,7 @@ func TestChainPillsUnified(t *testing.T) {
 	h := audioPillHeight()
 	cz := NewChainPanelZone(ChainCallbacks{})
 	cz.Layout(image.Rect(0, 300, 600, 600))
-	for _, b := range []*Button{cz.OverlayBtn(), cz.SplitBtn(), cz.DiffBtn(), cz.AGBtn(), cz.FitBtn(), cz.FreezeBtn()} {
+	for _, b := range []*Button{cz.OverlayBtn(), cz.SplitBtn(), cz.DiffBtn(), cz.FreezeBtn()} {
 		if b == nil {
 			continue
 		}

@@ -114,8 +114,8 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 	vis := dv.visibleRows()
 	rowBase := dv.Bounds.Min.Y + dv.headerH
-	startX := dv.timelineRect.Min.X
-	totalW := dv.timelineRect.Dx()
+	startX := dv.cellGridRect.Min.X
+	totalW := dv.cellGridRect.Dx()
 	rh := dv.rowHeight()
 	if totalW <= 0 || rh <= 0 {
 		return
@@ -158,7 +158,7 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 				if cellType == model.NodeTypeMute {
 					fillCol = colMuteCell
 				}
-				DrumCellUI.Draw(dst, rect, on, false, fillCol)
+				drawDrumCellTyped(dst, rect, on, fillCol, cellType)
 				cells++
 			}
 		} else {

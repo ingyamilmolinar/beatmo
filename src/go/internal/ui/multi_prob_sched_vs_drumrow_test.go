@@ -31,31 +31,31 @@ func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	// Probabilities on A, C, E; Every/skip on B, D; F regular
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.33
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(B.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(C.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.5
 		g.graph.SetNodeParams(C.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(D.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(D.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(E.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.25
 		g.graph.SetNodeParams(E.ID, p)
 	}

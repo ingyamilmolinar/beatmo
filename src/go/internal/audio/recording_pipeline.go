@@ -5,11 +5,13 @@ package audio
 import (
 	"errors"
 	"fmt"
-	"log"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // pipeline is the lock-free, allocation-free recording pipeline that owns
@@ -49,7 +51,7 @@ type pipeline struct {
 	blockPool chan *captureBlock
 
 	// Per-channel state, indexed by instrument ID. Read-only after start.
-	channels map[string]*channelState
+	channels map[channel.ID]*channelState
 	masterCh *channelState
 
 	// Worker shutdown.
@@ -137,7 +139,7 @@ func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 		format:     cfg.Format,
 		startTime:  time.Now(),
 		blockPool:  make(chan *captureBlock, cfg.PoolSize),
-		channels:   make(map[string]*channelState, len(cfg.Instruments)+1),
+		channels:   make(map[channel.ID]*channelState, len(cfg.Instruments)+1),
 	}
 	if cfg.MaxDuration > 0 {
 		p.maxSamples = int64(cfg.MaxDuration.Seconds() * float64(cfg.SampleRate))
@@ -149,13 +151,13 @@ func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 	}
 
 	// Open writers + spawn workers for master and each instrument.
-	masterPath := filepath.Join(cfg.OutputDir, "master"+ext)
+	masterPath := filepath.Join(cfg.OutputDir, RecordingMasterID+ext)
 	masterWriter, err := newStreamWavWriter(masterPath, cfg.Format, cfg.SampleRate)
 	if err != nil {
 		return nil, fmt.Errorf("open master writer: %w", err)
 	}
 	p.masterCh = &channelState{
-		id:     "master",
+		id:     RecordingMasterID,
 		name:   "Master",
 		send:   make(chan *captureBlock, cfg.QueueDepth),
 		writer: masterWriter,
@@ -165,7 +167,7 @@ func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 	go p.runChannelWorker(p.masterCh)
 
 	for _, inst := range cfg.Instruments {
-		path := filepath.Join(cfg.OutputDir, inst.ID+ext)
+		path := filepath.Join(cfg.OutputDir, inst.ID.String()+ext)
 		w, err := newStreamWavWriter(path, cfg.Format, cfg.SampleRate)
 		if err != nil {
 			// Best-effort cleanup of writers we already opened.
@@ -173,7 +175,7 @@ func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 			return nil, fmt.Errorf("open writer %s: %w", inst.ID, err)
 		}
 		ch := &channelState{
-			id:     inst.ID,
+			id:     inst.ID.String(),
 			name:   inst.Name,
 			send:   make(chan *captureBlock, cfg.QueueDepth),
 			writer: w,
@@ -203,7 +205,7 @@ func (p *pipeline) shutdownEarly() {
 // processBlock) and MUST NOT block, allocate, or take a mutex on the
 // caller's behalf. instBufs[slot] holds float64 samples per active
 // instrument; workBuf holds the final mixed master samples.
-func (p *pipeline) Tap(slotIDs []string, activeSlots []int, instBufs [][]float64, workBuf []float64, blockLen int) {
+func (p *pipeline) Tap(slotIDs []channel.ID, activeSlots []int, instBufs [][]float64, workBuf []float64, blockLen int) {
 	if p.stopping.Load() || p.done.Load() {
 		return
 	}
@@ -309,7 +311,7 @@ func (p *pipeline) runChannelWorker(ch *channelState) {
 			continue
 		}
 		if err := ch.writer.WriteSamplesFloat32(blk.samples); err != nil {
-			log.Printf("[REC] %s write: %v", ch.id, err)
+			log.Errorf("[record] %s write: %v", ch.id, err)
 		} else {
 			ch.count.Add(int64(len(blk.samples)))
 		}

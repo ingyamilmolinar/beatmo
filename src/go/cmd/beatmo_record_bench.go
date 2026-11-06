@@ -217,7 +217,7 @@ func runSynthParamChurn(hz int, logger *game_log.Logger, stop <-chan struct{}, w
 			decay := 0.25 + 0.75*math.Sin(elapsed*1.7)
 			for _, id := range audio.Instruments() {
 				audio.SetInstrumentParam(id, "pitch", pitch)
-				audio.SetInstrumentParam(id, "decay", decay)
+				audio.SetInstrumentParam(id, "amp_decay", decay)
 			}
 		}
 	}

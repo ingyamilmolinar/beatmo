@@ -33,19 +33,17 @@ func captureDrawRects(t *testing.T, fn func()) ([]image.Rectangle, []color.Color
 // indicatorIconRect is a stand-in icon rect used by helper tests.
 func indicatorIconRect() image.Rectangle { return image.Rect(20, 30, 60, 70) } // 40x40 icon
 
-// findIndicatorRoundedRects filters captureRoundedRectCalls results to
-// the filled rounded-rect calls that correspond to the indicator rail/fill:
-// they sit at or below iconR.Max.Y, within icon's X span, and are thin (<=6px).
+// findIndicatorRoundedRects filters captureRoundedRectCalls results to the
+// filled rounded-rect calls that form the level gauge (track + fill): thin
+// (<=6px) strips at or below iconR.Max.Y. The gauge spans the BUTTON's bottom
+// inner edge (volumeGaugeRect), not the icon's footprint.
 func findIndicatorRoundedRects(calls []roundedDraw, iconR image.Rectangle) []roundedDraw {
 	var found []roundedDraw
 	for _, c := range calls {
 		if !c.Filled {
 			continue
 		}
-		if c.Rect.Min.Y >= iconR.Max.Y &&
-			c.Rect.Max.X <= iconR.Max.X+1 &&
-			c.Rect.Min.X >= iconR.Min.X-1 &&
-			c.Rect.Dy() <= 6 {
+		if c.Rect.Min.Y >= iconR.Max.Y && c.Rect.Dy() <= 6 {
 			found = append(found, c)
 		}
 	}
@@ -65,9 +63,9 @@ func TestSliderLevelIndicator_OffStateDrawsTrackOnly(t *testing.T) {
 	if countFilled(got) != 1 {
 		t.Fatalf("off-state indicator: want 1 filled rounded rect (track only), got %d (%v)", countFilled(got), got)
 	}
-	// Track should span full icon width.
-	if got[0].Rect.Dx() != iconR.Dx() {
-		t.Errorf("off-state track width: want %d, got %d", iconR.Dx(), got[0].Rect.Dx())
+	// Track spans the gauge strip on the button's bottom inner edge.
+	if want := volumeGaugeRect(btnR).Dx(); got[0].Rect.Dx() != want {
+		t.Errorf("off-state track width: want %d, got %d", want, got[0].Rect.Dx())
 	}
 }
 
@@ -114,12 +112,12 @@ func TestSliderLevelIndicator_HalfValueDrawsHalfFill(t *testing.T) {
 	if countFilled(got) < 2 {
 		t.Fatalf("half-value indicator: want >=2 filled rounded rects, got %d", countFilled(got))
 	}
-	// The fill (second filled) should be roughly half the icon width.
-	// Find the narrowest filled rect that is less than full width (the fill).
-	want := iconR.Dx() / 2
+	// The fill (second filled) should be roughly half the gauge width.
+	gw := volumeGaugeRect(btnR).Dx()
+	want := gw / 2
 	var fillW int
 	for _, c := range got {
-		if c.Rect.Dx() < iconR.Dx() {
+		if c.Rect.Dx() < gw {
 			fillW = c.Rect.Dx()
 		}
 	}
@@ -177,11 +175,11 @@ func TestSliderLevelIndicator_NRGBAFillUsesIconColor(t *testing.T) {
 	if countFilled(got) < 2 {
 		t.Fatalf("NRGBA fill: want rail+fill (>=2 filled), got %d", countFilled(got))
 	}
-	// The fill is the narrowest filled rect (< full icon width); its color must
-	// be the converted icon color, not the cyan fallback genColorPrimary.
+	// The fill is the narrowest filled rect (< full gauge width); its color
+	// must be the converted icon color, not the fallback genColorPrimary.
 	var fillCol color.Color
 	for _, c := range got {
-		if c.Rect.Dx() < iconR.Dx() {
+		if c.Rect.Dx() < volumeGaugeRect(btnR).Dx() {
 			fillCol = c.Color
 		}
 	}
@@ -193,7 +191,9 @@ func TestSliderLevelIndicator_NRGBAFillUsesIconColor(t *testing.T) {
 	if gr == cr && gg == cg && gb == cb {
 		t.Fatalf("NRGBA fill: fell back to cyan genColorPrimary instead of the row color")
 	}
-	if gr != wantR || gg != wantG || gb != wantB {
+	// Compare at 8 bits: the gauge passes the NRGBA through unconverted, so
+	// the 16-bit premultiplied values differ by sub-8-bit rounding only.
+	if gr>>8 != wantR>>8 || gg>>8 != wantG>>8 || gb>>8 != wantB>>8 {
 		t.Errorf("NRGBA fill: color mismatch: want (%d,%d,%d), got (%d,%d,%d)",
 			wantR>>8, wantG>>8, wantB>>8, gr>>8, gg>>8, gb>>8)
 	}
@@ -214,8 +214,8 @@ func TestSliderLevelIndicator_ClampsValueAbove1(t *testing.T) {
 	}
 	// The fill must not exceed icon width.
 	for _, c := range got {
-		if c.Rect.Dx() > iconR.Dx() {
-			t.Errorf("clamp above-1: fill width %d exceeds icon width %d", c.Rect.Dx(), iconR.Dx())
+		if gw := volumeGaugeRect(btnR).Dx(); c.Rect.Dx() > gw {
+			t.Errorf("clamp above-1: fill width %d exceeds gauge width %d", c.Rect.Dx(), gw)
 		}
 	}
 }
@@ -351,16 +351,16 @@ func TestVolumeButton_RowAndMasterRenderIdentically_TightLayout(t *testing.T) {
 	}
 }
 
-func TestSliderLevelIndicator_TooSmallIconIsNoop(t *testing.T) {
+func TestSliderLevelIndicator_TooNarrowButtonIsNoop(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
-	tinyR := image.Rect(0, 0, 3, 3)
+	narrow := image.Rect(0, 0, indicatorMinWidth-1, 40)
 
 	calls := captureRoundedRectCalls(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(0, 0, 100, 100), tinyR, 0.7, colTextPrimary, false)
+		drawSliderLevelIndicator(dst, narrow, image.Rect(0, 5, 6, 20), 0.7, colTextPrimary, false)
 	})
 	if countFilled(calls) != 0 {
-		t.Fatalf("tiny-icon indicator should be no-op, got %d filled rounded rects", countFilled(calls))
+		t.Fatalf("too-narrow button indicator should be no-op, got %d filled rounded rects", countFilled(calls))
 	}
 }
 

@@ -360,3 +360,61 @@ func (o *SliderPopupOverlay) HandleInput(x, y int, pressed bool) InputResult {
 func (o *SliderPopupOverlay) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed // prevent scroll-through
 }
+
+// ── keyboard editing (KeyboardKeyClaimant, see keyboard_key_claim.go) ────────
+
+// sliderPopupKeyStep / sliderPopupKeyStepFine are the normalized value deltas
+// one arrow press applies (≈2% of full range, ≈0.5% with Shift). Left/Right are
+// NOT claimed: the popup has a single axis, so the horizontal arrows stay with
+// the grid's pan.
+const (
+	sliderPopupKeyStep     = 0.02
+	sliderPopupKeyStepFine = 0.005
+)
+
+// ClaimedKeys implements KeyboardKeyClaimant: Up/Down while open.
+func (sp *SliderPopup) ClaimedKeys() []ebiten.Key {
+	if sp == nil || !sp.open {
+		return nil
+	}
+	return valueStepKeys()
+}
+
+// HandleClaimedKeys implements KeyboardKeyClaimant. One key acts per frame, so
+// the arrow-key alias spellings real Ebiten collapses cannot double-fire.
+func (sp *SliderPopup) HandleClaimedKeys() bool {
+	if sp == nil || !sp.open {
+		return false
+	}
+	switch {
+	case anyKeyJustPressed(keysStepUp...):
+		return sp.StepValue(+1)
+	case anyKeyJustPressed(keysStepDown...):
+		return sp.StepValue(-1)
+	}
+	return false
+}
+
+// StepValue nudges the value one keyboard step in dir (+1/-1), clamped to
+// [0,1]. Shift applies the fine step. Each press is a complete gesture, so it
+// commits through the SAME OnRelease hook the drag releases at — one undo step
+// per press, never a silent live-only edit.
+func (sp *SliderPopup) StepValue(dir int) bool {
+	if sp == nil || dir == 0 || sp.config.GetValue == nil || sp.config.SetValue == nil {
+		return false
+	}
+	step := sliderPopupKeyStep
+	if isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight) {
+		step = sliderPopupKeyStepFine
+	}
+	cur := sp.config.GetValue()
+	next := clampF64(cur+float64(sign(dir))*step, 0, 1)
+	if next == cur {
+		return false // already at an end stop
+	}
+	sp.config.SetValue(next)
+	if sp.config.OnRelease != nil {
+		sp.config.OnRelease()
+	}
+	return true
+}

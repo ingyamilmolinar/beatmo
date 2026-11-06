@@ -4,8 +4,9 @@ package audio
 
 import (
 	"fmt"
-	"log"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // SaveRecording triggers the browser download for the most recent
@@ -34,7 +35,7 @@ func SaveRecording(result *RecordingResult) (string, error) {
 		pendingDownload.Store(handle)
 		return "", fmt.Errorf("download trigger failed")
 	}
-	log.Printf("[RECORDING] Triggered download: %s (%d bytes)", handle.Filename, handle.Size)
+	log.Debugf("[record] triggered download: %s (%d bytes)", handle.Filename, handle.Size)
 	return handle.Filename, nil
 }
 
@@ -44,7 +45,7 @@ func SaveRecording(result *RecordingResult) (string, error) {
 func triggerRecordingDownload(blobURL, filename string) bool {
 	fn := js.Global().Get("recordingTriggerDownload")
 	if !fn.Truthy() {
-		log.Println("[RECORDING] recordingTriggerDownload not available")
+		log.Warnf("[record] recordingTriggerDownload not available")
 		return false
 	}
 	v := fn.Invoke(blobURL, filename)

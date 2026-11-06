@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstMenuBackHeldNoSpuriousDeferredTap reproduces the desktop back-button
@@ -283,8 +284,8 @@ func TestInstMenuOpenClearsDeferredTapState(t *testing.T) {
 		LabelWidth:    100,
 		ControlsWidth: 100,
 		Instruments: []InstrumentOption{
-			{ID: "kick", Label: "Kick"},
-			{ID: "snare", Label: "Snare"},
+			{ID: roster.Kick, Label: "Kick"},
+			{ID: roster.Snare, Label: "Snare"},
 		},
 	})
 
@@ -442,7 +443,7 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 	t.Run("subdiv_menu", func(t *testing.T) {
 		dv := NewDrumView(image.Rect(0, 0, W, H), nil, testLogger)
 		dv.Rows = []*DrumRow{{
-			Name: "Kick", Instrument: "kick",
+			Name: "Kick", Instrument: roster.Kick,
 			Steps: make([]bool, 8), Volume: 1.0,
 		}}
 		dv.Length = 8

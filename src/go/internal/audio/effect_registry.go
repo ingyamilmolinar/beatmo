@@ -54,7 +54,7 @@ func EffectTypeOrder() []EffectType {
 
 // applyDefaultFX processes a float32 buffer through a chain of insert effects.
 // Creates temporary processors, processes the buffer, then discards them.
-// Used by CVariantInstrument.DefaultFX during voice rendering (cached).
+// Used to apply a document's FX chain during voice rendering (cached).
 func applyDefaultFX(buf []float32, sampleRate int, slots []EffectSlot) {
 	if len(slots) == 0 {
 		return
@@ -65,7 +65,29 @@ func applyDefaultFX(buf []float32, sampleRate int, slots []EffectSlot) {
 			procs = append(procs, NewEffectProcessor(s, sampleRate))
 		}
 	}
-	if len(procs) == 0 {
+	if len(procs) == 0 || len(buf) == 0 {
+		return
+	}
+	blocks := make([]BlockProcessor, 0, len(procs))
+	for _, p := range procs {
+		if b, ok := p.(BlockProcessor); ok {
+			blocks = append(blocks, b)
+		}
+	}
+	if len(blocks) == len(procs) {
+		// One cgo call per effect per voice instead of one per sample: the
+		// call overhead cost more than most effects' own work (~6 % of every
+		// `refs match` render). The C loops carry their state sample by
+		// sample and float32 -> float64 -> float32 is exact, so the voice is
+		// identical bit for bit (TestDocumentFXBlockMatchesPerSample). Voices
+		// render concurrently, so the scratch buffer is the voice's own (the
+		// mixer's blockBufPool is single-threaded).
+		src, dst := buf, make([]float32, len(buf))
+		for _, b := range blocks {
+			b.ProcessBlockBuf(src, dst, len(buf))
+			src, dst = dst, src
+		}
+		copy(buf, src) // no-op when the chain ended back in buf
 		return
 	}
 	for i, x := range buf {

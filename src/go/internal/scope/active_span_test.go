@@ -40,7 +40,7 @@ func TestActiveSpan(t *testing.T) {
 	})
 
 	t.Run("padding expands the span and clamps to bounds", func(t *testing.T) {
-		buf := build(1000, 500, 510) // span 10
+		buf := build(1000, 500, 510)      // span 10
 		s, e := ActiveSpan(buf, 0.5, 1.0) // pad = 1.0 * 10 = 10 each side
 		if s != 490 || e != 520 {
 			t.Errorf("padded ActiveSpan=%d,%d want 490,520", s, e)

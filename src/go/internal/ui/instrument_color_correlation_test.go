@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestInstrumentColorCorrelationAcrossSurfaces is the end-to-end guard for the
@@ -61,12 +63,18 @@ func TestInstrumentColorCorrelationAcrossSurfaces(t *testing.T) {
 			if lum(rowToggleFillRGBA(tc.col, roleSolo, true)) <= base {
 				t.Error("solo-on fill must be a BRIGHTER shade of the instrument color")
 			}
-			if a := rowToggleFillRGBA(tc.col, roleMute, false).A; a >= 200 {
-				t.Errorf("off fill must be a dim low-alpha tint, got alpha %d", a)
+			// Identity at rest lives in the label's swatch, NOT the idle chips:
+			// every off toggle and the kebab wear the neutral row-control body
+			// whatever the instrument color (DESIGN.md "Per-instrument control
+			// shading").
+			neutral := rowShadeToRGBA(InstButtonStyle.fill())
+			for _, role := range []rowToggleRole{roleMute, roleSolo, roleFX} {
+				if got := rowToggleFillRGBA(tc.col, role, false); got != neutral {
+					t.Errorf("role %d off fill = %v, want the neutral row-control body %v", role, got, neutral)
+				}
 			}
-			// Kebab chip border derives from the instrument color.
-			if kb := rowKebabStyle(tc.col); !instrumentDerived(kb.Border, tc.col) {
-				t.Errorf("kebab border %v is not derived from instrument color %v", kb.Border, tc.col)
+			if kb := rowKebabStyle(tc.col); kb.Fill != neutral {
+				t.Errorf("kebab fill %v, want the neutral row-control body %v", kb.Fill, neutral)
 			}
 
 			// --- DrumView menu seams ---
@@ -102,7 +110,7 @@ func TestInstrumentColorCorrelationAcrossSurfaces(t *testing.T) {
 // chrome accent tracks the currently-selected instrument's color, and each
 // distinct instrument yields a distinct accent.
 func TestInstrumentColorCorrelationInstrumentPicker(t *testing.T) {
-	for _, id := range []string{"kick", "snare"} {
+	for _, id := range []instrument.ID{roster.Kick, roster.Snare} {
 		comp := NewInstrumentMenuComponent()
 		comp.SetProps(InstrumentMenuProps{CurrentInstrument: id})
 		want := color.RGBAModel.Convert(instColor(id)).(color.RGBA)

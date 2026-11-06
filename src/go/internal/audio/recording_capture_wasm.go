@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/async"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // recordingDownloadHandle is what we hand to SaveRecording so it can
@@ -149,7 +150,7 @@ func platformStartCapture(opts RecordingOptions) error {
 
 	ids := js.Global().Get("Array").New(len(opts.Instruments))
 	for i, inst := range opts.Instruments {
-		ids.SetIndex(i, js.ValueOf(inst.ID))
+		ids.SetIndex(i, js.ValueOf(inst.ID.String()))
 	}
 
 	jsOpts := map[string]any{
@@ -398,7 +399,7 @@ func init() {
 		// so the package-level variable's signature stays stable for
 		// non-WASM callers that may set their own stub.
 	}
-	platformRecordingStop = func() (map[string][]float64, []float64, int) {
+	platformRecordingStop = func() (map[channel.ID][]float64, []float64, int) {
 		// Intentional no-op: the new platformFinalizeCapture path replaces
 		// this. Returning empty preserves the old contract.
 		return nil, nil, 0

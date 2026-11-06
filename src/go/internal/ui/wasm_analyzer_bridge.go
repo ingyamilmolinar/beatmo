@@ -5,6 +5,7 @@ package ui
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -21,10 +22,10 @@ import (
 // SnapshotToChannelMetrics path's per-channel FFT/Freq slice allocation +
 // the State struct + InstrumentMetrics slice — the dominant per-Draw
 // allocator after the snapshot-level cache landed.
-func BuildAnalyzerStateFromSnapshots(activeID string, rows []*DrumRow, sampleRate int) *analyzer.State {
+func BuildAnalyzerStateFromSnapshots(activeID channel.ID, rows []*DrumRow, sampleRate int) *analyzer.State {
 	fp := rowsFingerprint(rows)
 	return cachedAnalyzerState(activeID, fp, sampleRate, func() *analyzer.State {
-		return buildAnalyzerStateFromSnapshotsImpl(activeID, rows, sampleRate, audio.ChannelAnalyzerSnapshot)
+		return buildAnalyzerStateFromSnapshotsImpl(activeID, rows, sampleRate, audio.ChannelAnalyzerSnapshot, audio.ChannelAnalyzerMetrics)
 	})
 }
 
@@ -56,19 +57,20 @@ func BuildAnalyzerMetricsOnly(rows []*DrumRow) *analyzer.State {
 // the cache pin removes the rest of the per-Draw work (State struct +
 // TapData struct construction) and the underlying snapshot-level JS
 // bridge calls.
-func BuildScopeStateFromSnapshots(instID string, tapA, tapB scope.Stage) *scope.State {
+func BuildScopeStateFromSnapshots(instID channel.ID, tapA, tapB scope.Stage) *scope.State {
 	id := instID
-	if id == "" {
-		id = "main"
-	}
 	return cachedScopeState(id, tapA, tapB, func() *scope.State {
 		snaps := ScopeStageSnapshots{
 			Synth:  audio.SynthAnalyzerSnapshot(id),
 			PreEQ:  audio.PreEQAnalyzerSnapshot(id),
 			PostEQ: audio.ChannelAnalyzerSnapshot(id),
-			Sends:  audio.SendBusAnalyzerSnapshot(),
-			Master: audio.ChannelAnalyzerSnapshot("main"),
+			Master: audio.ChannelAnalyzerSnapshot(channel.Master),
 		}
 		return SynthesizeScopeState(id, tapA, tapB, snaps)
 	})
 }
+
+// SetSceneScopeState is the WASM counterpart of the stub's scene hook. The
+// browser build reads real analyzer snapshots, so a scene has nothing to
+// inject; kept so scene_catalog.go compiles for both platforms.
+func SetSceneScopeState(*scope.State) {}

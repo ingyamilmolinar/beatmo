@@ -86,7 +86,6 @@ func TestFXPanelCloseResetsState(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	// Open panel to populate state.
 	dv.openFXPanel(0)
@@ -132,7 +131,6 @@ func TestFXPanelBuildWithEffects(t *testing.T) {
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
-	dv.syncFXToRow(0)
 
 	dv.openFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -232,7 +230,6 @@ func TestFXPanelBuildMobile(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -304,44 +301,6 @@ func TestFXShowParamsMobile(t *testing.T) {
 	if dv.fxShowParams(0, false) {
 		t.Error("mobile: fxShowParams(0, false) should return false even when expanded")
 	}
-}
-
-// --- 5. syncFXToRow ---
-
-func TestSyncFXToRow(t *testing.T) {
-	dv := newTestDV(t)
-	if len(dv.Rows) == 0 {
-		t.Skip("no rows")
-	}
-
-	instID := dv.Rows[0].Instrument
-
-	// Add effects via audio API.
-	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-
-	// Before sync, dv.Rows[0].Effects should be empty.
-	if len(dv.Rows[0].Effects) != 0 {
-		t.Errorf("expected 0 effects before sync, got %d", len(dv.Rows[0].Effects))
-	}
-
-	// Sync.
-	dv.syncFXToRow(0)
-
-	// After sync, should match audio state.
-	if len(dv.Rows[0].Effects) != 2 {
-		t.Fatalf("expected 2 effects after sync, got %d", len(dv.Rows[0].Effects))
-	}
-	if dv.Rows[0].Effects[0].Type != audio.EffectDistortion {
-		t.Errorf("expected first effect Distortion, got %s", dv.Rows[0].Effects[0].Type)
-	}
-	if dv.Rows[0].Effects[1].Type != audio.EffectReverb {
-		t.Errorf("expected second effect Reverb, got %s", dv.Rows[0].Effects[1].Type)
-	}
-
-	// syncFXToRow with invalid row should not panic.
-	dv.syncFXToRow(-1)
-	dv.syncFXToRow(len(dv.Rows) + 10)
 }
 
 // --- 6. fxParamLabel formatting ---
@@ -431,7 +390,6 @@ func TestFXPanelCapturingState(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 
@@ -478,7 +436,6 @@ func TestFXPanelInputClickOutsideCloses(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -565,7 +522,6 @@ func TestPropagateFXSliderValue(t *testing.T) {
 
 	instID := dv.Rows[0].Instrument
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
-	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
 	if len(dv.fxPanelSliders) == 0 || len(dv.fxSliderBindings) == 0 {
@@ -602,7 +558,6 @@ func TestFXPanelMoveButtons(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-	dv.syncFXToRow(0)
 
 	dv.openFXPanel(0)
 	if !dv.IsFXPanelOpen() {
@@ -669,7 +624,6 @@ func TestFXPanelWheelScroll(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
 	audio.AddInsertEffect(instID, audio.EffectReverb, nil)
-	dv.syncFXToRow(0)
 
 	dv.openFXPanel(0)
 

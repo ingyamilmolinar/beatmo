@@ -1,0 +1,74 @@
+# Module values no shipped document's render moves with (TestDeclaredModuleValuesAreLive).
+# One per line: "<type>.<value> <reason>" or "<type>.* <reason>" for an unused type.
+# Every entry is live in SOME context (the C reads it); no shipped instrument
+# happens to use that context. A declaration mistake is fixed in
+# module_decls.go instead of listed here.
+
+# ── types no shipped instrument plays yet ──
+burst.* no shipped instrument enables the burst gate (clap voices burst in C)
+osc.noise.* no shipped instrument uses the noise oscillator (noise comes from gen.noise layers)
+osc.brass.* no shipped instrument plays the brass waveguide yet
+osc.reed.* no shipped instrument plays the reed waveguide yet
+osc.flute.* no shipped instrument plays the air-jet waveguide yet
+osc.sax.* no shipped instrument plays the saxofony waveguide yet
+modal.* no shipped instrument is a WAV clone yet (liveness: TestModalStagesAreLive)
+strike.* no shipped instrument is a WAV clone yet (liveness: TestModalStagesAreLive)
+noiseband.* no shipped instrument is a WAV clone yet (liveness: TestModalStagesAreLive)
+
+# ── FINISH ──
+finish.post_decay_rate read only when post_decay < 1 (a fade); every shipped instrument leaves Length at 1
+
+# ── FM oscillator: bass-fm, piano-rhodes and music-box (algorithm 0) set op2 depth
+#    1.3–3, yet op2 never reaches their output — they render as pure carriers.
+#    A tuning finding, reported to the user 2026-10-04; not changed (no sound changes). ──
+osc.fm.fm_enabled carrier-only switch; inert while every modulator depth is 0 or the patch already equals it
+osc.fm.fm_algorithm routing; the shipped patches' active operators give the same result under every algorithm
+osc.fm.fm_op2_ratio inert under the shipped patches (algorithm 0 never routes op2 to the carrier there)
+osc.fm.fm_op3_ratio live once operator 3 has level or depth; shipped patches use 2 operators
+osc.fm.fm_op4_ratio live once operator 4 has level or depth; shipped patches use 2 operators
+osc.fm.fm_op2_depth inert under the shipped patches (algorithm 0 never routes op2 to the carrier there)
+osc.fm.fm_op3_depth live once operator 3 is routed; shipped patches use 2 operators
+osc.fm.fm_op4_depth live once operator 4 is routed; shipped patches use 2 operators
+osc.fm.fm_op3_level live once operator 3 is routed; shipped patches use 2 operators
+osc.fm.fm_op4_level live once operator 4 is routed; shipped patches use 2 operators
+
+# ── generator-bank layers ──
+gen.wavetable.env_tail_rate read only when env_tail_mix > 0; shipped wavetable layers use a single decay
+gen.wavetable.filt_alpha read only by the 1-pole filter types (filt_type 1/2); shipped layers use none or RBJ
+gen.wavetable.phase_mode non-zero start phase; shipped layers start at phase 0
+gen.wavetable.phase read only when phase_mode > 0
+gen.noise.filt_alpha read only by the 1-pole filter types (filt_type 1/2); shipped noise taps use RBJ
+gen.noise.noise_offset selects a bus draw; inert while noise_draws = 1
+ks.atk_rate read only when atk_amt > 0; the shipped Karplus-Strong layer has no attack boost
+fm.fm_r4 the FM-family presets route operator 4 only in algorithms no shipped preset uses
+fm.fm_d1 operator 1's outgoing depth is unused by the shipped presets' algorithms
+fm.fm_d4 operator 4's outgoing depth is unused by the shipped presets' algorithms
+fm.fm_dec4 operator 4 is silent in the shipped presets' algorithms
+
+# ── cymbal plate (modal) ──
+cym.hihat.cym_noise_d sizzle decay; inert while cym_noise_m is 0 on the shipped hi-hats
+cym.hihat.cym_body_f body hump centre; inert while cym_body is 0
+cym.hihat.cym_body_w body hump width; inert while cym_body is 0
+cym.hihat.cym_spark_f sparkle hump centre; inert while cym_spark is 0
+cym.hihat.cym_spark_w sparkle hump width; inert while cym_spark is 0
+cym.open.cym_noise_d sizzle decay; inert while cym_noise_m is 0 on the shipped open hi-hat
+cym.open.cym_body_f body hump centre; inert while cym_body is 0
+cym.open.cym_body_w body hump width; inert while cym_body is 0
+cym.open.cym_spark_f sparkle hump centre; inert while cym_spark is 0
+cym.open.cym_spark_w sparkle hump width; inert while cym_spark is 0
+cym.ride.cym_noise_d sizzle decay; inert while cym_noise_m is 0 on the shipped ride
+cym.crash.cym_mode_lo plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_mode_hi plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_decay_tilt plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_hf_corner plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_beat plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_tone_f plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_tone_w plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_body_f plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_body_w plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_body plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_spark_f plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_spark_w plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_spark plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_wash plate value; the shipped crash plays its partial voice (cym_modes < 1)
+cym.crash.cym_attack plate value; the shipped crash plays its partial voice (cym_modes < 1)

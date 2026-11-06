@@ -62,25 +62,45 @@ async function setupMobilePage() {
   await focusCdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${port}/`);
   await page.waitForFunction(() =>
-    typeof bpmBoxRect === "function" &&
+    typeof openInstMenu === "function" &&
+    typeof instMenuSearchRect === "function" &&
+    typeof instMenuSearchState === "function" &&
     typeof forceDraw === "function" &&
-    typeof kbProxyFocused === "function" &&
-    typeof getBPM === "function"
+    typeof kbProxyFocused === "function"
   );
   await assertSimpleDrawMode(page, false, "mobile text input");
   await page.evaluate(() => forceDraw?.());
   await page.waitForTimeout(200);
+  await openSearchTarget(page);
   return { context, page };
 }
 
-// tapBPMAwaitInput taps the BPM box and waits for the mobile native <input>
-// (z-index:10000) to appear, re-tapping a few times if needed. The "bpm" rect is
-// (re)registered every Update() frame (recalcButtons), but under headless
-// software-GL — especially in the parallel test batch — the rAF Update loop is
-// throttled, so the first tap's touchend can fire before any Update has
-// registered "bpm", and the JS gesture handler then creates no input. Re-tapping
-// after a short window lets the natural loop tick and register "bpm"; once
-// registered it stays registered. We deliberately do NOT force manual Update
+// The text field under test is the instrument-menu SEARCH box (TextField
+// "inst-search"). It used to be the BPM box, but BPM no longer takes typed
+// input — its readout opens the BPM value wheel.
+async function openSearchTarget(page) {
+  await page.evaluate(() => openInstMenu(0));
+  await page.waitForFunction(() => { const r = instMenuSearchRect(); return r && r.w > 0; },
+    null, { timeout: 5000, polling: 50 });
+}
+
+async function targetRect(page) {
+  return await page.evaluate(() => instMenuSearchRect?.());
+}
+
+// searchText reads what Go holds in the search box.
+async function searchText(page) {
+  return await page.evaluate(() => instMenuSearchState?.()?.text);
+}
+
+// tapAwaitInput taps the search field and waits for the mobile native <input>
+// (z-index:10000) to appear, re-tapping a few times if needed. A live
+// TextField's rect is (re)registered every Update() frame (syncNativeGestures),
+// but under headless software-GL — especially in the parallel test batch — the
+// rAF Update loop is throttled, so the first tap's touchend can fire before any
+// Update has registered it, and the JS gesture handler then creates no input.
+// Re-tapping after a short window lets the natural loop tick and register it;
+// once registered it stays registered. We deliberately do NOT force manual Update
 // ticks (forceGameTick), which can stall the WASM run loop. Returns true if the
 // input appeared.
 //
@@ -94,7 +114,7 @@ async function setupMobilePage() {
 // attempts. This mirrors mobile_native_input.browser.test.js EXACTLY — keep the
 // two helpers in lockstep; the polling:50 fix must live in both or whichever file
 // keeps the rAF default flakes alone in the batch.
-async function tapBPMAwaitInput(page, rect) {
+async function tapAwaitInput(page, rect) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   for (let attempt = 0; attempt < 12; attempt++) {
@@ -106,7 +126,7 @@ async function tapBPMAwaitInput(page, rect) {
           if (inp.style.zIndex === '10000') return true;
         }
         return false;
-      }, { timeout: 1500, polling: 50 });
+      }, null, { timeout: 1500, polling: 50 });
       return true;
     } catch (_) {
       // Registration not ready yet — let the rAF loop tick, then re-tap.
@@ -116,17 +136,17 @@ async function tapBPMAwaitInput(page, rect) {
   return false;
 }
 
-// Test 1: BPM soft keyboard focus — native input appears with inputmode=numeric
-console.log("Test 1: BPM soft keyboard — native input focused with inputmode=numeric");
+// Test 1: text field soft keyboard — native input appears with inputmode=text
+console.log("Test 1: Search soft keyboard — native input focused with inputmode=text");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Tap the BPM box (retry-aware: native input creation races the throttled
-    // rAF Update loop that registers the "bpm" rect).
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    // Tap the search field (retry-aware: native input creation races the
+    // throttled rAF Update loop that registers its rect).
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     // On mobile, the native input system creates a real <input> overlay
     // instead of focusing the hidden proxy. Check that the native input
@@ -140,7 +160,7 @@ console.log("Test 1: BPM soft keyboard — native input focused with inputmode=n
       return { focused: kbProxyFocused?.() === true, inputmode: kbProxyInputMode?.() };
     });
     assert(nativeInputInfo.focused === true, `Expected input focused, got ${nativeInputInfo.focused}`);
-    assert(nativeInputInfo.inputmode === "numeric", `Expected inputmode=numeric, got ${nativeInputInfo.inputmode}`);
+    assert(nativeInputInfo.inputmode === "text", `Expected inputmode=text, got ${nativeInputInfo.inputmode}`);
 
     console.log("  PASS");
   } catch (e) {
@@ -155,11 +175,11 @@ console.log("Test 2: Keyboard dismiss on blur");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Focus BPM box (retry-aware native input creation).
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    // Focus the search field (retry-aware native input creation).
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     // Check that either native input or proxy is focused
     let focused = await page.evaluate(() => {
@@ -169,7 +189,7 @@ console.log("Test 2: Keyboard dismiss on blur");
     });
     assert(focused === true, "Expected focused after tap");
 
-    // Tap outside the BPM box to blur (native input commits on blur)
+    // Tap outside the search field to blur (native input commits on blur)
     await cdpTap(page, 10, 10);
     await page.waitForTimeout(300);
     await page.evaluate(() => forceDraw?.());
@@ -193,34 +213,27 @@ console.log("Test 2: Keyboard dismiss on blur");
   }
 }
 
-// Test 3: Type into BPM box via page.keyboard
-console.log("Test 3: Type BPM value via keyboard");
+// Test 3: Type into the search field via page.keyboard
+console.log("Test 3: Type into the search field via keyboard");
 {
   const { context, page } = await setupMobilePage();
   try {
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Focus BPM box (retry-aware: a single tap races the throttled rAF Update
-    // loop that registers the "bpm" rect under the parallel batch + software-GL,
-    // so the native input may not appear and the typed keys go nowhere — the BPM
-    // would then stay at its default. Mirrors Tests 1 & 2.)
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    // Focus the field (retry-aware: a single tap races the throttled rAF
+    // Update loop that registers its rect; the typed keys would go nowhere).
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
     await page.evaluate(() => forceDraw?.());
 
-    // Type "150" into the proxy input and press Enter
-    await page.keyboard.type("150");
+    await page.keyboard.type("snare");
     await page.waitForTimeout(100);
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(200);
-    // Let a few frames process
-    for (let i = 0; i < 5; i++) {
-      await page.evaluate(() => forceDraw?.());
-      await page.waitForTimeout(50);
-    }
+    await page.waitForFunction(() => instMenuSearchState?.()?.text === "snare", null,
+      { timeout: 4000, polling: 50 }).catch(() => {});
 
-    const bpm = await page.evaluate(() => getBPM?.());
-    assert(bpm === 150, `Expected BPM=150 after typing, got ${bpm}`);
+    const text = await searchText(page);
+    assert(text === "snare", `Expected search text "snare" after typing, got ${JSON.stringify(text)}`);
     console.log("  PASS");
   } catch (e) {
     console.log(`  FAIL: ${e.message}`);
@@ -353,44 +366,46 @@ console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)
       try {
         await page.goto(`http://localhost:${port}/`);
         await page.waitForFunction(() =>
-          typeof bpmBoxRect === "function" &&
-          typeof forceDraw === "function" &&
-          typeof getBPM === "function"
+          typeof openInstMenu === "function" &&
+          typeof instMenuSearchRect === "function" &&
+          typeof instMenuSearchState === "function" &&
+          typeof forceDraw === "function"
         );
         await assertSimpleDrawMode(page, false, "desktop text input");
         await page.evaluate(() => forceDraw?.());
         await page.waitForTimeout(300);
+        await openSearchTarget(page);
 
-        const rect = await page.evaluate(() => bpmBoxRect?.());
-        assert(rect && rect.w > 0, "bpmBoxRect empty");
+        const rect = await targetRect(page);
+        assert(rect && rect.w > 0, "instMenuSearchRect empty");
         const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
-        const target = 96;
 
-        // Open + edit end-to-end, retrying the whole cycle until the commit lands.
-        // A quick mouse.click can be missed by the throttled headless rAF loop, so
-        // hold the OPENING press ~400ms. But the KEY PRESSES are NORMAL/short —
-        // that is exactly the input that Safari dropped, and what must now work.
-        let committed = false;
-        for (let attempt = 0; attempt < 6 && !committed; attempt++) {
+        // Focus + edit end-to-end, retrying the whole cycle until it lands. A
+        // quick mouse.click can be missed by the throttled headless rAF loop, so
+        // hold the FOCUSING press ~400ms. The KEY PRESSES are NORMAL/short — that
+        // is exactly the input that Safari dropped, and what must now work.
+        let edited = false;
+        for (let attempt = 0; attempt < 6 && !edited; attempt++) {
           await page.mouse.move(cx, cy);
           await page.mouse.down();
           await page.waitForTimeout(420);
           await page.mouse.up();
           await page.waitForTimeout(150);
 
-          // Clear the prefill with NORMAL short Backspaces (the dead key on Safari).
-          for (let i = 0; i < 5; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
-          await page.keyboard.type(String(target));
+          // Clear whatever is there with NORMAL short Backspaces (the dead key
+          // on Safari), type a word plus a stray letter, delete the stray.
+          for (let i = 0; i < 8; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
+          await page.keyboard.type("kickx");
           await page.waitForTimeout(120);
-          await page.keyboard.press("Enter");
+          await page.keyboard.press("Backspace");
           await page.waitForTimeout(200);
           for (let i = 0; i < 5; i++) { await page.evaluate(() => forceDraw?.()); await page.waitForTimeout(40); }
 
-          if ((await page.evaluate(() => getBPM?.())) === target) committed = true;
+          if ((await page.evaluate(() => instMenuSearchState?.()?.text)) === "kick") edited = true;
         }
 
-        assert(committed,
-          `Safari hardware keyboard could not clear+retype+commit BPM=${target} — ` +
+        assert(edited,
+          `Safari hardware keyboard could not type + Backspace in a text field — ` +
           `Backspace on the empty proxy was dropped (beforeinput doesn't fire on empty <input> in WebKit)`);
         console.log("  PASS");
       } finally {
@@ -418,7 +433,7 @@ console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)
 // sets hasTouch:true (maxTouchPoints>0) but interacts with page.mouse, so it
 // reproduces the exact failing combination. Runs on chromium (the shared browser),
 // which exhibited the bug.
-console.log("Test 7b: Mobile-layout + touch-capable device + MOUSE edits BPM");
+console.log("Test 7b: Mobile-layout + touch-capable device + MOUSE edits a text field");
 {
   // Narrow viewport => mobile LAYOUT; hasTouch:true => touch-CAPABLE device.
   const context = await browser.newContext({ viewport: { width: 414, height: 896 }, hasTouch: true });
@@ -426,35 +441,34 @@ console.log("Test 7b: Mobile-layout + touch-capable device + MOUSE edits BPM");
   try {
     await page.goto(`http://localhost:${port}/`);
     await page.waitForFunction(() =>
-      typeof bpmBoxRect === "function" && typeof forceDraw === "function" && typeof getBPM === "function"
+      typeof openInstMenu === "function" && typeof instMenuSearchRect === "function" &&
+      typeof instMenuSearchState === "function" && typeof forceDraw === "function"
     );
     await assertSimpleDrawMode(page, false, "mobile-layout mouse");
     await page.evaluate(() => forceDraw?.());
     await page.waitForTimeout(300);
+    await openSearchTarget(page);
 
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect empty");
     const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
-    const target = 77;
 
-    // Open with a MOUSE (hold so the throttled rAF loop sees it) + NORMAL keys.
-    let committed = false;
-    for (let attempt = 0; attempt < 6 && !committed; attempt++) {
+    // Focus with a MOUSE (hold so the throttled rAF loop sees it) + NORMAL keys.
+    let edited = false;
+    for (let attempt = 0; attempt < 6 && !edited; attempt++) {
       await page.mouse.move(cx, cy);
       await page.mouse.down();
       await page.waitForTimeout(420);
       await page.mouse.up();
       await page.waitForTimeout(150);
-      for (let i = 0; i < 5; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
-      await page.keyboard.type(String(target));
-      await page.waitForTimeout(120);
-      await page.keyboard.press("Enter");
+      for (let i = 0; i < 8; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
+      await page.keyboard.type("hat");
       await page.waitForTimeout(200);
       for (let i = 0; i < 5; i++) { await page.evaluate(() => forceDraw?.()); await page.waitForTimeout(40); }
-      if ((await page.evaluate(() => getBPM?.())) === target) committed = true;
+      if ((await page.evaluate(() => instMenuSearchState?.()?.text)) === "hat") edited = true;
     }
-    assert(committed,
-      `mobile-layout + touch-capable + MOUSE: hardware keyboard could not edit BPM to ${target} — ` +
+    assert(edited,
+      `mobile-layout + touch-capable + MOUSE: hardware keyboard could not edit the search field — ` +
       `the mobile native-<input> path was taken but no touchend created the input (should use the keyboard path)`);
     console.log("  PASS");
   } catch (e) {
@@ -478,20 +492,20 @@ console.log("Test 8: Text input gesture system present");
     );
     assert(hasFuncs, "Expected focus-rect and mobile native input functions");
 
-    // After WASM starts and forceDraw, tapping the BPM box area should create
+    // After WASM starts and forceDraw, tapping the search field should create
     // a native input (on mobile, the native input system handles text inputs).
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Tap the BPM box — the native input system creates a real <input>
+    // Tap the search field — the native input system creates a real <input>
     // (retry-aware: creation races the throttled rAF Update loop).
-    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
+    assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     const nativeActive = await page.evaluate(() => {
       const active = document.activeElement;
       return active && active.tagName === 'INPUT' && active.style.zIndex === '10000';
     });
-    assert(nativeActive, `Expected native input focused after cdpTap on BPM box`);
+    assert(nativeActive, `Expected native input focused after cdpTap on the search field`);
 
     console.log("  PASS");
   } catch (e) {
@@ -511,15 +525,15 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
     const dpr = await page.evaluate(() => window.devicePixelRatio);
     assert(dpr >= 2, `Expected DPR >= 2 for iPhone emulation, got ${dpr}`);
 
-    // Get BPM box rect (registered in game coordinates = CSS pixels)
-    const rect = await page.evaluate(() => bpmBoxRect?.());
-    assert(rect && rect.w > 0, "bpmBoxRect returned empty");
+    // Get the search field rect (registered in game coordinates = CSS pixels)
+    const rect = await targetRect(page);
+    assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
     // Verify rect coords are in game coordinate range (not DPR-scaled).
     // Game Layout returns CSS viewport dims (390x844 for iPhone 12).
     // If rects were DPR-scaled, they'd be 3x larger (>1170).
-    assert(rect.x < 500, `BPM rect x=${rect.x} looks DPR-scaled (expected < 500 for CSS coords)`);
-    assert(rect.y < 900, `BPM rect y=${rect.y} looks DPR-scaled (expected < 900 for CSS coords)`);
+    assert(rect.x < 500, `search rect x=${rect.x} looks DPR-scaled (expected < 500 for CSS coords)`);
+    assert(rect.y < 900, `search rect y=${rect.y} looks DPR-scaled (expected < 900 for CSS coords)`);
 
     // Instrument the touchend handler to capture computed touch coordinates.
     await page.evaluate(() => {
@@ -544,9 +558,9 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
     const tapX = rect.x + rect.w / 2;
     const tapY = rect.y + rect.h / 2;
     // Retry-aware tap: native input creation races the throttled rAF Update loop
-    // that registers the "bpm" rect. The touchend listener above captures the
+    // that registers the field's rect. The touchend listener above captures the
     // coordinates of the (final) tap, which are identical on every attempt.
-    assert(await tapBPMAwaitInput(page, rect), `Expected native input after cdpTap at DPR=${dpr}`);
+    assert(await tapAwaitInput(page, rect), `Expected native input after cdpTap at DPR=${dpr}`);
 
     // Verify the native input was created (hit test worked with CSS coords)
     const nativeActive = await page.evaluate(() => {

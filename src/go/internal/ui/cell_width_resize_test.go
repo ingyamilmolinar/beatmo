@@ -23,7 +23,7 @@ func TestCellWidthFillsTimeline(t *testing.T) {
 
 	nSteps := len(dv.Rows[0].Steps)
 	cellTotal := dv.cell * nSteps
-	tlW := dv.timelineRect.Dx()
+	tlW := dv.CellGridRect().Dx()
 
 	if tlW <= 0 {
 		t.Fatalf("timelineRect width should be positive, got %d", tlW)
@@ -58,7 +58,7 @@ func TestCellWidthAfterResize(t *testing.T) {
 	}
 
 	// Check narrow layout fills
-	narrowTLW := dv.timelineRect.Dx()
+	narrowTLW := dv.CellGridRect().Dx()
 	narrowGap := narrowTLW - dv.cell*nSteps
 	if narrowGap < 0 {
 		narrowGap = -narrowGap
@@ -75,7 +75,7 @@ func TestCellWidthAfterResize(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	wideTLW := dv.timelineRect.Dx()
+	wideTLW := dv.CellGridRect().Dx()
 	wideGap := wideTLW - dv.cell*nSteps
 	if wideGap < 0 {
 		wideGap = -wideGap

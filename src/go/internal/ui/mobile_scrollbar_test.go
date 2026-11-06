@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -59,7 +60,7 @@ func TestScrollbarThumbMinHeightMobile(t *testing.T) {
 	for len(dv.Rows) < 50 {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",
-			Instrument: "kick",
+			Instrument: roster.Kick,
 			Steps:      make([]bool, 8),
 			CellTypes:  make([]model.NodeType, 8),
 			Volume:     1,

@@ -1,5 +1,7 @@
 package audio
 
+import "github.com/ingyamilmolinar/beatmo/internal/instrument"
+
 // Voice pre-warming on instrument switch.
 //
 // When a row is switched to a different synth instrument mid-playback, the new
@@ -20,7 +22,7 @@ package audio
 // WarmInstrument is a package var (not a plain func) so UI tests can observe
 // the call — SetInstrument invokes it at every instrument change. Production
 // dispatches to the platform implementation.
-var WarmInstrument = func(id string, pitches []int) {
+var WarmInstrument = func(id instrument.ID, pitches []int) {
 	if id == "" || len(pitches) == 0 {
 		return
 	}

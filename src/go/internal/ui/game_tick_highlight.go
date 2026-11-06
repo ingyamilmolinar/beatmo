@@ -64,7 +64,7 @@ func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duratio
 			}
 		}
 	}
-	if !triggered && info.NodeType == model.NodeTypeRegular && !hasState {
+	if !triggered && info.NodeType.Fires() && !hasState {
 		triggered = true
 	}
 	if !triggered {
@@ -89,8 +89,8 @@ func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duratio
 		return
 	}
 	g.highlightSet(makeBeatKey(row, idx), encodeHighlight(g.frame+duration, isMute))
-	if g.highlightHook != nil && (info.NodeType == model.NodeTypeRegular || isMute) {
-		if !g.timingTestMode || info.NodeType != model.NodeTypeRegular {
+	if g.highlightHook != nil && (info.NodeType.Fires() || isMute) {
+		if !g.timingTestMode || !info.NodeType.Fires() {
 			// Fire hook only once per row/index across frames.
 			if row >= len(g.lastHLIdxByRow) {
 				g.lastHLIdxByRow = make([]int, len(g.drum.Rows))
@@ -109,7 +109,7 @@ func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duratio
 		g.nodeAnimSet(info.NodeID, 1)
 		return
 	}
-	if info.NodeType != model.NodeTypeRegular {
+	if !info.NodeType.Fires() {
 		return
 	}
 	if row >= len(g.drum.Rows) {
@@ -137,7 +137,7 @@ func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duratio
 		return
 	}
 	// Decide audible via the engine predictor (single source of truth).
-	audible := (info.NodeType == model.NodeTypeRegular)
+	audible := (info.NodeType.Fires())
 	if g.engine != nil && g.engine.Predictor != nil {
 		g.engine.Predictor.Ensure(idx + 1)
 		audible = g.engine.Predictor.AudibleAt(row, idx)

@@ -3,6 +3,10 @@ package audio
 import (
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestSnapshotCache_TTLHonored asserts the per-channel snapshot cache
@@ -29,7 +33,7 @@ func TestSnapshotCache_TTLHonored(t *testing.T) {
 	}
 
 	// First call: cold cache, must fetch.
-	if got := c.getOrFetch("kick", time.Hour, fetch); got.RMS != 0.42 {
+	if got := c.getOrFetch(channel.Of(roster.Kick), time.Hour, fetch); got.RMS != 0.42 {
 		t.Fatalf("first fetch returned RMS=%v, want 0.42", got.RMS)
 	}
 	if fetches != 1 {
@@ -38,7 +42,7 @@ func TestSnapshotCache_TTLHonored(t *testing.T) {
 
 	// Many calls within TTL: must hit cache.
 	for i := 0; i < 100; i++ {
-		_ = c.getOrFetch("kick", time.Hour, fetch)
+		_ = c.getOrFetch(channel.Of(roster.Kick), time.Hour, fetch)
 	}
 	if fetches != 1 {
 		t.Fatalf("expected fetch count to stay at 1 within TTL, got %d "+
@@ -46,7 +50,7 @@ func TestSnapshotCache_TTLHonored(t *testing.T) {
 	}
 
 	// Different id: must fetch independently.
-	_ = c.getOrFetch("snare", time.Hour, fetch)
+	_ = c.getOrFetch(channel.Of(roster.Snare), time.Hour, fetch)
 	if fetches != 2 {
 		t.Fatalf("expected separate fetch for new id, got fetches=%d", fetches)
 	}
@@ -54,9 +58,9 @@ func TestSnapshotCache_TTLHonored(t *testing.T) {
 	// Tiny TTL: subsequent call must refetch.
 	c2 := newSnapshotCache()
 	fetches = 0
-	_ = c2.getOrFetch("kick", time.Nanosecond, fetch)
+	_ = c2.getOrFetch(channel.Of(roster.Kick), time.Nanosecond, fetch)
 	time.Sleep(time.Millisecond) // ensure TTL elapses
-	_ = c2.getOrFetch("kick", time.Nanosecond, fetch)
+	_ = c2.getOrFetch(channel.Of(roster.Kick), time.Nanosecond, fetch)
 	if fetches != 2 {
 		t.Fatalf("expected refetch after TTL elapsed, got fetches=%d", fetches)
 	}
@@ -80,7 +84,7 @@ func TestSnapshotCache_HitAllocBudget(t *testing.T) {
 	}
 
 	// Prime the cache.
-	_ = c.getOrFetch("kick", time.Hour, fetch)
+	_ = c.getOrFetch(channel.Of(roster.Kick), time.Hour, fetch)
 	if fetchCount != 1 {
 		t.Fatalf("setup: expected 1 fetch, got %d", fetchCount)
 	}
@@ -89,7 +93,7 @@ func TestSnapshotCache_HitAllocBudget(t *testing.T) {
 	// value, which is small and stack-allocatable.
 	const budget = 0.0
 	allocs := testing.AllocsPerRun(1000, func() {
-		_ = c.getOrFetch("kick", time.Hour, fetch)
+		_ = c.getOrFetch(channel.Of(roster.Kick), time.Hour, fetch)
 	})
 	if allocs > budget {
 		t.Fatalf("snapshot cache hit allocs/call = %.1f exceeds budget %.0f "+
@@ -163,7 +167,7 @@ func TestSnapshotCache_BoundedAtDrawRate(t *testing.T) {
 	start := time.Now()
 	for d := 0; d < totalDraws; d++ {
 		for _, id := range ids {
-			_ = c.getOrFetch(id, ttl, fetch)
+			_ = c.getOrFetch(channel.Of(instrument.ID(id)), ttl, fetch)
 		}
 		// Throttle the inner loop so wall-clock advances ~consistently.
 		time.Sleep(time.Second / drawsPerSec)

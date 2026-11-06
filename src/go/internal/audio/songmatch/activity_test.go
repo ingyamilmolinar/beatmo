@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -35,7 +37,7 @@ func TestInstrumentActivity_TracksDisjointStems(t *testing.T) {
 	// Two stems with disjoint band energy: low (120 Hz) and high (4000 Hz).
 	low := wave.Sine(120, 0.9, 1.0, sr).Samples
 	high := wave.Sine(4000, 0.9, 1.0, sr).Samples
-	stems := map[string][]float64{"bass": low, "lead": high}
+	stems := map[instrument.ID][]float64{roster.BassGuitar: low, roster.LeadSupersaw: high}
 	// Build the real timeline from a low+high mix so both templates are present.
 	mix := make([]float64, len(low))
 	for i := range mix {
@@ -43,7 +45,7 @@ func TestInstrumentActivity_TracksDisjointStems(t *testing.T) {
 	}
 	tl := fingerprint.SongTimelineOf(wave.Wave{Samples: mix, SampleRate: sr}, cfg)
 	ids, act := InstrumentActivity(tl, stems, sr, cfg)
-	if len(ids) != 2 || ids[0] != "bass" || ids[1] != "lead" {
+	if len(ids) != 2 || ids[0] != roster.BassGuitar || ids[1] != roster.LeadSupersaw {
 		t.Fatalf("ids=%v want sorted [bass lead]", ids)
 	}
 	if len(act) == 0 {

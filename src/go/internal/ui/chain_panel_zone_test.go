@@ -8,6 +8,8 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
@@ -266,11 +268,23 @@ func TestChainFreezeToggle(t *testing.T) {
 	if !z.frozen {
 		t.Fatal("expected frozen after toggle")
 	}
-	if z.freezeBtn.Icon != string(IconPlay) {
-		t.Errorf("expected play icon when frozen, got Icon=%q", z.freezeBtn.Icon)
+	// The Chain freeze pill is a TEXT code (FRZ / LIVE), not the shared
+	// icon pill the other analyzer tabs use: a bare pause glyph sitting one
+	// row under the transport bar read as transport pause, and it was the only
+	// icon among five text codes (OVR / SPL / DIF / FIT / AG). Frozen shows
+	// LIVE because that names what the tap will do next.
+	if z.freezeBtn.Icon != "" {
+		t.Errorf("expected no icon on the text freeze pill, got Icon=%q", z.freezeBtn.Icon)
 	}
-	if z.freezeBtn.Text != "" {
-		t.Errorf("expected empty text (icon-only), got %q", z.freezeBtn.Text)
+	if z.freezeBtn.Text != i18n.T(i18n.KeyChainLive) {
+		t.Errorf("expected %q when frozen, got %q", i18n.T(i18n.KeyChainLive), z.freezeBtn.Text)
+	}
+
+	// And back: un-freezing must return the pill to FRZ.
+	z.SetFrozen(false)
+	applyFreezeCodeVisual(z.freezeBtn, z.frozen)
+	if z.freezeBtn.Text != i18n.T(i18n.KeyChainFreeze) {
+		t.Errorf("expected %q when live, got %q", i18n.T(i18n.KeyChainFreeze), z.freezeBtn.Text)
 	}
 }
 
@@ -303,8 +317,8 @@ func TestChainHitAreasIncludeAllButtons(t *testing.T) {
 		t.Error("Scope panel must not register a 'scope-inst-btn' hit area")
 	}
 
-	// Verify all 6 stage buttons have hit areas.
-	for i := 0; i < 6; i++ {
+	// Verify every stage button has a hit area.
+	for i := 0; i < scope.NumStages; i++ {
 		tag := fmt.Sprintf("scope-stage-%d", i)
 		if !tags[tag] {
 			t.Errorf("missing hit area for stage button %d (tag %q)", i, tag)
@@ -447,27 +461,31 @@ func TestChainDoubleClickReset(t *testing.T) {
 	}
 }
 
-// TestChainAutoGainToggle verifies the AG button toggles autoGain and resets yGain.
-func TestChainAutoGainToggle(t *testing.T) {
+// TestChainAutoGainAPIContract — auto-gain lost its pill (it is on by
+// default now: framing the signal is not an opt-in). The API it was wired to
+// is still the one manual zoom and the scene catalog use, and enabling it
+// must still drop whatever manual zoom it overrides.
+func TestChainAutoGainAPIContract(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
 
-	if z.autoGain {
-		t.Fatal("expected autoGain=false by default")
+	if !z.AutoGain() {
+		t.Fatal("expected autoGain=true by default")
 	}
 
+	z.SetAutoGain(false)
 	z.yGain = 4.0
-	z.autoGainBtn.OnClick()
-	if !z.autoGain {
-		t.Fatal("expected autoGain=true after toggle")
+	z.SetAutoGain(true)
+	if !z.AutoGain() {
+		t.Fatal("expected autoGain=true after SetAutoGain(true)")
 	}
 	if z.yGain != 1.0 {
 		t.Errorf("expected yGain reset to 1.0 on AG enable, got %f", z.yGain)
 	}
 
-	z.autoGainBtn.OnClick()
-	if z.autoGain {
-		t.Fatal("expected autoGain=false after second toggle")
+	z.SetAutoGain(false)
+	if z.AutoGain() {
+		t.Fatal("expected autoGain=false after SetAutoGain(false)")
 	}
 }
 
@@ -564,22 +582,27 @@ func TestChainTraceFillNilNoExtra(t *testing.T) {
 	}
 }
 
-// TestChainHitAreasIncludeAGButton verifies the AG button has a hit area.
-func TestChainHitAreasIncludeAGButton(t *testing.T) {
+// TestChainHitAreasCoverEveryPill — the AG and FIT tags are gone with their
+// pills; what remains must still be reachable. A pill drawn without a hit
+// area is a dead control, which is the failure this test class exists for.
+func TestChainHitAreasCoverEveryPill(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 1000, 300))
 
-	areas := z.HitAreas()
-	found := false
-	for _, a := range areas {
-		if a.Tag == "scope-ag-btn" {
-			found = true
-			break
+	tags := map[string]bool{}
+	for _, a := range z.HitAreas() {
+		tags[a.Tag] = true
+	}
+	for _, want := range []string{"scope-overlay-btn", "scope-split-btn", "scope-diff-btn", "scope-freeze-btn"} {
+		if !tags[want] {
+			t.Errorf("missing hit area with tag %q (have %v)", want, tags)
 		}
 	}
-	if !found {
-		t.Error("missing hit area with tag 'scope-ag-btn'")
+	for _, gone := range []string{"scope-ag-btn", "scope-fit-btn"} {
+		if tags[gone] {
+			t.Errorf("hit area %q outlived its pill", gone)
+		}
 	}
 }
 
@@ -848,7 +871,7 @@ func TestChainZoomHandlerStubMethods(t *testing.T) {
 
 // --- Task A3 tests: vertical stage thumbnails + 3 separate mode pills ---
 
-// TestChainStageThumbnailsVertical verifies the new stage column lays the 6
+// TestChainStageThumbnailsVertical verifies the new stage column lays the
 // stage thumbnails out vertically: every Min.X is approximately the same and
 // Y values strictly increase down the column.
 func TestChainStageThumbnailsVertical(t *testing.T) {

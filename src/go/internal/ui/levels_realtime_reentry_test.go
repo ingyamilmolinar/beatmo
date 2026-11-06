@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 // newLevelsReentryZone builds an EQPanelZone whose analyzer state is driven
@@ -29,7 +30,7 @@ func newLevelsReentryZone(t *testing.T) (z *EQPanelZone, draw func(), setLoud fu
 	cb := EQCallbacks{
 		ActiveRows: func() []*DrumRow { return nil },
 		AnalyzerState: func() *analyzer.State {
-			m := analyzer.ChannelMetrics{ID: "master", Name: "Master"}
+			m := analyzer.ChannelMetrics{ID: channel.Master, Name: "Master"}
 			if loud {
 				m.PeakDB, m.RMSDB, m.Active = -3, -9, true
 			} else {
@@ -67,7 +68,7 @@ func TestLevelsTab_ReflectsLiveSilenceOnReentry(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		draw()
 	}
-	if got := z.levelsLatches.Get("main").PeakHoldDB; got < -10 {
+	if got := z.levelsLatches.Get(channel.Master).PeakHoldDB; got < -10 {
 		t.Fatalf("setup: expected a loud master peak-hold (>= -10 dB), got %v dB", got)
 	}
 
@@ -83,7 +84,7 @@ func TestLevelsTab_ReflectsLiveSilenceOnReentry(t *testing.T) {
 	z.SetActiveTab(TabMeters)
 	draw()
 
-	if got := z.levelsLatches.Get("main").PeakHoldDB; got > analyzerDBFloor+1 {
+	if got := z.levelsLatches.Get(channel.Master).PeakHoldDB; got > analyzerDBFloor+1 {
 		t.Fatalf("Levels meter stale after return: master PeakHoldDB=%v dB, want ~%v dB (live silence)", got, analyzerDBFloor)
 	}
 }
@@ -114,7 +115,7 @@ func TestLevelsTab_ReflectsLiveLevelOnReentryWhileLouder(t *testing.T) {
 	z.SetActiveTab(TabMeters)
 	draw()
 
-	if got := z.levelsLatches.Get("main").PeakHoldDB; got < -10 {
+	if got := z.levelsLatches.Get(channel.Master).PeakHoldDB; got < -10 {
 		t.Fatalf("Levels meter did not track live loud level after return: master PeakHoldDB=%v dB, want ~-3 dB", got)
 	}
 }
@@ -141,7 +142,7 @@ func TestLevelsTab_PeakHoldBallisticsSurviveContinuousViewing(t *testing.T) {
 
 	// The peak-hold should still be pinned well above the silence floor
 	// (sticky hold), proving the latch was NOT reset on these frames.
-	if got := z.levelsLatches.Get("main").PeakHoldDB; got <= analyzerDBFloor+1 {
+	if got := z.levelsLatches.Get(channel.Master).PeakHoldDB; got <= analyzerDBFloor+1 {
 		t.Fatalf("peak-hold ballistics lost during continuous viewing: PeakHoldDB=%v dB, want held near -3 dB", got)
 	}
 }

@@ -47,7 +47,7 @@ func buildCostCircuit(t *testing.T, n int, profile string) costCircuit {
 	}
 	graph.StartNodeID = ids[0]
 
-	set := func(idx int, kind string, ln int, lp float64) {
+	set := func(idx int, kind model.LogicKind, ln int, lp float64) {
 		node, ok := graph.GetNodeByID(ids[idx])
 		if !ok {
 			t.Fatalf("node %d missing", idx)
@@ -60,11 +60,11 @@ func buildCostCircuit(t *testing.T, n int, profile string) costCircuit {
 	case "static": // no logic — cheapest per-cell re-walk
 	case "every_n":
 		for k := 1; k < n; k += 2 {
-			set(k, "every_n_triggers", 2, 0)
+			set(k, model.LogicEveryN, 2, 0)
 		}
 	case "prev_chain": // O(<=64) backward walk per cell — the expensive kind
 		for k := 1; k < n; k++ {
-			set(k, "trigger_if_prev_triggered", 0, 0)
+			set(k, model.LogicIfPrevTriggered, 0, 0)
 		}
 	default:
 		t.Fatalf("unknown profile %q", profile)

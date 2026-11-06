@@ -5,6 +5,10 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestPassThroughResetAndSetParamAreNoOps pins the documented "no-op
@@ -84,8 +88,8 @@ func TestWaveshaperResetIsSafe(t *testing.T) {
 // surface whatever SetChannelEQ just wrote for the named channel.
 func TestChannelEQSnapshotReflectsSetChannelEQ(t *testing.T) {
 	ResetInstruments()
-	SetChannelEQ("main", 48000, EQBand{Kind: EQPeaking, Freq: 150, Q: 1.0, GainDB: 3})
-	got := ChannelEQSnapshot("main")
+	SetChannelEQ(channel.Master, 48000, EQBand{Kind: EQPeaking, Freq: 150, Q: 1.0, GainDB: 3})
+	got := ChannelEQSnapshot(channel.Master)
 	if got.ID != "main" {
 		t.Errorf("ChannelEQSnapshot(\"main\").ID = %q, want %q", got.ID, "main")
 	}
@@ -129,58 +133,48 @@ func TestGetPutF64BufReusesCapacity(t *testing.T) {
 	putF64Buf([]float64{})
 }
 
-// TestSwapPlatformInstrumentParamsChangedForTest exercises the test seam
-// used by internal/ui tests to intercept WASM bridge calls. The function
-// returns the previous callback so callers can chain or restore.
-func TestSwapPlatformInstrumentParamsChangedForTest(t *testing.T) {
-	var captured RecipeParams
-	var capturedID string
+// TestSwapPlatformInstrumentDocChangedForTest exercises the test seam
+// internal/ui tests use to count document pushes. It returns the previous hook
+// so callers can chain or restore.
+func TestSwapPlatformInstrumentDocChangedForTest(t *testing.T) {
+	resetLibraryForTest(t)
+	var capturedID instrument.ID
 	hits := 0
-	prev := SwapPlatformInstrumentParamsChangedForTest(func(id string, p RecipeParams) {
-		captured = p
+	prev := SwapPlatformInstrumentDocChangedForTest(func(id instrument.ID, d instrument.Doc) {
 		capturedID = id
 		hits++
 	})
-	t.Cleanup(func() { SwapPlatformInstrumentParamsChangedForTest(prev) })
+	t.Cleanup(func() { SwapPlatformInstrumentDocChangedForTest(prev) })
 
-	platformInstrumentParamsChanged("kick", RecipeParams{"attack": 0.1})
-	if hits != 1 {
-		t.Errorf("hook invoked %d times, want 1", hits)
+	SetInstrumentParam(roster.Kick, "post_decay", 0.4)
+	if hits != 1 || capturedID != roster.Kick {
+		t.Errorf("hook invoked %d times (id %q), want once for kick", hits, capturedID)
 	}
-	if capturedID != "kick" {
-		t.Errorf("captured id = %q, want kick", capturedID)
-	}
-	if v, ok := captured["attack"]; !ok || v != 0.1 {
-		t.Errorf("captured params = %+v, want attack=0.1", captured)
-	}
-
-	// Passing nil to Swap must leave the active hook untouched but still
-	// return whatever the active hook currently is.
-	cur := SwapPlatformInstrumentParamsChangedForTest(nil)
-	if cur == nil {
-		t.Error("SwapPlatformInstrumentParamsChangedForTest(nil) returned nil; should return the previous hook")
+	// Passing nil leaves the active hook untouched but returns it.
+	if cur := SwapPlatformInstrumentDocChangedForTest(nil); cur == nil {
+		t.Error("SwapPlatformInstrumentDocChangedForTest(nil) returned nil; should return the active hook")
 	}
 }
 
-// TestInstrumentParamsMgrLenForTest covers the soak-test seam: a fresh
+// TestModifiedInstrumentDocCountForTest covers the soak-test seam: a fresh
 // manager reports 0; each SetInstrumentParam grows the map by one
 // distinct id; ResetInstrumentParam drops one entry.
-func TestInstrumentParamsMgrLenForTest(t *testing.T) {
+func TestModifiedInstrumentDocCountForTest(t *testing.T) {
 	ResetInstrumentParams("any-id-clears-on-reset")
-	startLen := InstrumentParamsMgrLenForTest()
+	startLen := ModifiedInstrumentDocCountForTest()
 
-	SetInstrumentParam("kick", "attack", 0.1)
-	SetInstrumentParam("snare", "decay", 0.2)
-	got := InstrumentParamsMgrLenForTest()
+	SetInstrumentParam(roster.Kick, "amp_attack", 0.1)
+	SetInstrumentParam(roster.Snare, "amp_decay", 0.2)
+	got := ModifiedInstrumentDocCountForTest()
 	// Either start+2 OR start+0 if SetInstrumentParam is a no-op under
 	// the test build (some platforms route writes through a stub). The
 	// invariant we want to lock is "len is non-negative and stable".
 	if got < startLen {
-		t.Errorf("InstrumentParamsMgrLenForTest shrank from %d to %d after writes", startLen, got)
+		t.Errorf("ModifiedInstrumentDocCountForTest shrank from %d to %d after writes", startLen, got)
 	}
 
-	ResetInstrumentParams("kick")
-	if afterReset := InstrumentParamsMgrLenForTest(); afterReset > got {
-		t.Errorf("InstrumentParamsMgrLenForTest grew after ResetInstrumentParams: %d -> %d", got, afterReset)
+	ResetInstrumentParams(roster.Kick)
+	if afterReset := ModifiedInstrumentDocCountForTest(); afterReset > got {
+		t.Errorf("ModifiedInstrumentDocCountForTest grew after ResetInstrumentParams: %d -> %d", got, afterReset)
 	}
 }

@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // makeInstMenuWithFiltered constructs a configured component with N
@@ -18,16 +21,16 @@ func makeInstMenuWithFiltered(t *testing.T, n int) *InstrumentMenuComponent {
 	insts := make([]InstrumentOption, n)
 	for i := 0; i < n; i++ {
 		insts[i] = InstrumentOption{
-			ID:       "id-" + itoaPad(i),
+			ID:       instrument.ID("id-" + itoaPad(i)),
 			Label:    "Item " + itoaPad(i),
-			Category: "Drums",
+			Category: audio.CatPercussion,
 		}
 	}
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:      image.Rect(0, 0, 200, 24),
 		VertBounds:      image.Rect(0, 0, 400, 800),
 		RowHeight:       24,
-		Categories:      []string{"Drums"},
+		Categories:      []audio.Category{audio.CatPercussion},
 		Instruments:     insts,
 		ForceCategories: false,
 	})
@@ -41,8 +44,8 @@ func TestInstMenuComp_BreadcrumbStripClickPopsToCategories(t *testing.T) {
 		AnchorRect:      image.Rect(0, 0, 200, 24),
 		VertBounds:      image.Rect(0, 0, 400, 800),
 		RowHeight:       24,
-		Categories:      []string{"Drums", "Synths"},
-		Instruments:     []InstrumentOption{{ID: "kick", Label: "Kick", Category: "Drums"}},
+		Categories:      []audio.Category{audio.CatPercussion, audio.CatLead},
+		Instruments:     []InstrumentOption{{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion}},
 		ForceCategories: true,
 	})
 	comp.Open()
@@ -51,7 +54,7 @@ func TestInstMenuComp_BreadcrumbStripClickPopsToCategories(t *testing.T) {
 	}
 	// Drill into Drums.
 	comp.state.mode = InstMenuModeInstruments
-	comp.state.activeCat = "Drums"
+	comp.state.activeCat = audio.CatPercussion
 	comp.rebuildMenu()
 	path := comp.BreadcrumbPath()
 	if len(path) != 2 {
@@ -127,24 +130,36 @@ func pressKey(comp *InstrumentMenuComponent, ks *keyState, k ebiten.Key) {
 func TestInstMenuComp_KeyboardArrowAdvancesSelection(t *testing.T) {
 	ks := installInputStub(t)
 	comp := makeInstMenuWithFiltered(t, 10)
-	if comp.selectedIdx != 0 {
-		t.Fatalf("initial selectedIdx = %d, want 0", comp.selectedIdx)
+	// A freshly opened menu highlights NOTHING: lighting a row on open would
+	// imply a default the user never chose, and Enter would then fire it.
+	// (Before the shared-MenuKeyNav refactor this menu opened on row 0.)
+	nav := comp.MenuKeyNavForTest()
+	if nav.Selected() != MenuKeyNavNoSelection {
+		t.Fatalf("initial selection = %d, want %d (nothing highlighted)",
+			nav.Selected(), MenuKeyNavNoSelection)
 	}
 	pressKey(comp, ks, ebiten.KeyDown)
-	if comp.selectedIdx != 1 {
-		t.Fatalf("after Down: selectedIdx = %d, want 1", comp.selectedIdx)
+	if nav.Selected() != 0 {
+		t.Fatalf("after Down: selection = %d, want 0", nav.Selected())
 	}
 	pressKey(comp, ks, ebiten.KeyDown)
-	if comp.selectedIdx != 2 {
-		t.Fatalf("after second Down: selectedIdx = %d, want 2", comp.selectedIdx)
+	if nav.Selected() != 1 {
+		t.Fatalf("after second Down: selection = %d, want 1", nav.Selected())
 	}
 	pressKey(comp, ks, ebiten.KeyUp)
-	if comp.selectedIdx != 1 {
-		t.Fatalf("after Up: selectedIdx = %d, want 1", comp.selectedIdx)
+	if nav.Selected() != 0 {
+		t.Fatalf("after Up: selection = %d, want 0", nav.Selected())
 	}
 }
 
-func TestInstMenuComp_KeyboardEnterSelectsAndCloses(t *testing.T) {
+// TestInstMenuComp_KeyboardEnterPreviewsThenSecondEnterCloses pins the
+// preview/confirm rule at the component level.
+//
+// This test used to assert that ONE Enter both selected and closed, which made
+// the keyboard mean something different from a click (a click previews and
+// leaves the menu open). Enter now previews like a click, and the second Enter
+// on the same row is the confirm.
+func TestInstMenuComp_KeyboardEnterPreviewsThenSecondEnterCloses(t *testing.T) {
 	ks := installInputStub(t)
 	called := 0
 	got := ""
@@ -153,22 +168,39 @@ func TestInstMenuComp_KeyboardEnterSelectsAndCloses(t *testing.T) {
 		AnchorRect:  image.Rect(0, 0, 200, 24),
 		VertBounds:  image.Rect(0, 0, 400, 800),
 		RowHeight:   24,
-		Instruments: []InstrumentOption{{ID: "kick", Label: "Kick"}, {ID: "snare", Label: "Snare"}},
-		OnSelect:    func(id string) { called++; got = id },
+		Instruments: []InstrumentOption{{ID: roster.Kick, Label: "Kick"}, {ID: roster.Snare, Label: "Snare"}},
+		OnSelect:    func(id instrument.ID) { called++; got = string(id) },
 	})
 	comp.Open()
-	comp.selectedIdx = 1
+	comp.MenuKeyNavForTest().BindHost(comp)
+	comp.MenuKeyNavForTest().SetSelected(1)
+
 	ks.press(ebiten.KeyEnter)
 	comp.Update()
 	ks.release(ebiten.KeyEnter)
+	comp.Update()
+
 	if called != 1 {
 		t.Fatalf("Enter must invoke OnSelect; called=%d", called)
 	}
 	if got != "snare" {
 		t.Fatalf("Enter selected id=%q, want snare", got)
 	}
+	if !comp.IsOpen() {
+		t.Fatalf("the FIRST Enter closed the menu; it must preview and stay open")
+	}
+
+	ks.press(ebiten.KeyEnter)
+	comp.Update()
+	ks.release(ebiten.KeyEnter)
+	comp.Update()
+
 	if comp.IsOpen() {
-		t.Fatalf("menu should close after Enter")
+		t.Fatalf("the SECOND Enter on the same row must confirm and close")
+	}
+	if called != 1 {
+		t.Fatalf("the confirming Enter re-fired OnSelect (called=%d, want 1); "+
+			"confirming an already-applied instrument must not re-apply it", called)
 	}
 }
 
@@ -238,11 +270,11 @@ func TestInstMenuComp_KeyboardNavSkippedOnMobile(t *testing.T) {
 	}
 	ks := installInputStub(t)
 	comp := makeInstMenuWithFiltered(t, 5)
-	before := comp.selectedIdx
+	before := comp.MenuKeyNavForTest().Selected()
 	ks.press(ebiten.KeyDown)
 	comp.Update()
 	ks.release(ebiten.KeyDown)
-	if comp.selectedIdx != before {
-		t.Fatalf("mobile path: keyboard should not move selection; before=%d after=%d", before, comp.selectedIdx)
+	if got := comp.MenuKeyNavForTest().Selected(); got != before {
+		t.Fatalf("mobile path: keyboard should not move selection; before=%d after=%d", before, got)
 	}
 }

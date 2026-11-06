@@ -37,7 +37,7 @@ func TestSliderDrawUsesRoundedThumb(t *testing.T) {
 	calls := captureRoundedRectCalls(t, func() { s.Draw(dst) })
 	foundThumb := false
 	for _, c := range calls {
-		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Radius == c.Rect.Dx()/2 && c.Rect.Dx() >= 8 {
+		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Radius == radiusCapsule && c.Rect.Dx() >= 8 {
 			foundThumb = true
 		}
 	}

@@ -3,6 +3,9 @@ package ui
 import (
 	"sync"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestOverduePanicFixed_OrganAtMinus2WarmedBeforeDispatch is the functional
@@ -11,11 +14,11 @@ import (
 // sequencer would dispatch it — so dispatch is a cache hit and no beat lands
 // overdue. Drives the real graph->updateBeatInfos->enumeration path.
 func TestOverduePanicFixed_OrganAtMinus2WarmedBeforeDispatch(t *testing.T) {
-	g := newTestGameWithOrganAtPitch(t, "organ-church", -2)
+	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 
 	var mu sync.Mutex
 	warmed := map[warmKey]struct{}{}
-	g.voicePrewarmer.warmFn = func(id string, pitch float64) {
+	g.voicePrewarmer.warmFn = func(id instrument.ID, pitch float64) {
 		mu.Lock()
 		warmed[warmKey{id: id, pitch: pitch}] = struct{}{}
 		mu.Unlock()
@@ -24,7 +27,7 @@ func TestOverduePanicFixed_OrganAtMinus2WarmedBeforeDispatch(t *testing.T) {
 	g.updateBeatInfos()
 
 	mu.Lock()
-	_, ok := warmed[warmKey{id: "organ-church", pitch: -2.0}]
+	_, ok := warmed[warmKey{id: roster.OrganChurch, pitch: -2.0}]
 	mu.Unlock()
 	if !ok {
 		t.Fatalf("crash pitch -2 was not pre-warmed before dispatch; got %v", warmed)

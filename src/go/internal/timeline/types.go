@@ -75,8 +75,18 @@ type Service struct {
 	// → archive in valueLocked, so historical scroll-back resolves to the
 	// archive after entries age past immutablesPerRowMax.
 	archives map[int]*rowArchive
+	// superseded retains the passes a backward seek abandoned (RewindTo):
+	// commits at/after the seek point that are about to be replayed, possibly
+	// under an edited circuit. Kept (full-history rule) but NEVER consulted by
+	// valueLocked — answering live lookups from them made the abandoned pass
+	// read as immutable history for cells not yet played in this pass (the
+	// row window, the played-snapshot freeze and parity all read through it).
+	superseded map[int]*rowArchive
 	// archiveMaxEntries bounds each row's archive size. <= 0 means unbounded.
 	archiveMaxEntries int
+	// played is the immutable record of what the grid showed for each cell as
+	// the playhead passed it (see played.go). Keyed by row.
+	played map[int]*playedLog
 }
 
 type rowState struct {

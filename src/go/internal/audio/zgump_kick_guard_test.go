@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/soundview"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -20,7 +23,7 @@ import (
 // would be "watering down" the reference. Bounds carry margin so honest tuning
 // tweaks pass; only a character change trips them.
 func TestZgumpKickIsOrganicModalKick(t *testing.T) {
-	buf, sr := RenderInstrumentOneShotRaw("zgump-kick")
+	buf, sr := kickGuardRender(t, roster.ZgumpKick)
 	if len(buf) == 0 {
 		t.Fatal("zgump-kick playback produced no samples")
 	}
@@ -91,11 +94,41 @@ func TestZgumpKickIsOrganicModalKick(t *testing.T) {
 	}
 }
 
+// kickFingerprintRate is the rate the kick fingerprint's thresholds were
+// calibrated at. Its 15 ms band windows read a different sub/low split at
+// 48 kHz for the SAME sound (kick-acoustic <60 Hz 0.391 → 0.429 while a 1 Hz
+// DFT of the voice and soundview.CompareNotes say nothing moved), so the
+// guards analyse a 44.1 kHz render.
+const kickFingerprintRate = 44100
+
+// kickGuardRender renders a shipped kick for the fingerprint guards at
+// kickFingerprintRate — after proving the engine-rate render (what both
+// platforms play) is not audibly different from it, so the pinned analysis
+// rate can never hide a change in what is heard.
+func kickGuardRender(t *testing.T, id instrument.ID) ([]float32, int) {
+	t.Helper()
+	played, engineSR := RenderInstrumentOneShotRaw(id)
+	pinSampleRate(t, kickFingerprintRate)
+	buf, sr := RenderInstrumentOneShotRaw(id)
+	if engineSR != sr {
+		a := ResampleToRate(played, engineSR, sr)
+		n := min(len(a), len(buf))
+		x, y := make([]float64, n), make([]float64, n)
+		for i := range n {
+			x[i], y[i] = float64(buf[i]), float64(a[i])
+		}
+		if ch := soundview.CompareNotes(x, y, sr); ch.Audible() {
+			t.Fatalf("%s at %d Hz sounds different from %d Hz (%+v): the guard's analysis rate would hide it", id, engineSR, sr, ch)
+		}
+	}
+	return buf, sr
+}
+
 // kickFP renders a shipped instrument and returns its peak-normalized kick
 // fingerprint (shared by the 808 + acoustic guards).
-func kickFP(t *testing.T, id string) fingerprint.KickFingerprint {
+func kickFP(t *testing.T, id instrument.ID) fingerprint.KickFingerprint {
 	t.Helper()
-	buf, sr := RenderInstrumentOneShotRaw(id)
+	buf, sr := kickGuardRender(t, id)
 	if len(buf) == 0 {
 		t.Fatalf("%s produced no samples", id)
 	}
@@ -121,7 +154,7 @@ func kickFP(t *testing.T, id string) fingerprint.KickFingerprint {
 // fundamental. Loose bounds (ear-tunable) but enough to catch a regression back
 // to the old barely-dropping ~89%-sub version.
 func TestKick808IsDeepSubKick(t *testing.T) {
-	fp := kickFP(t, "kick-808")
+	fp := kickFP(t, roster.Kick808)
 	// Sub-heavy: the two lowest bands carry the bulk; <60 Hz is substantial.
 	if fp.BandAvg[0]+fp.BandAvg[1] < 0.70 {
 		t.Fatalf("kick-808 low-end (<120 Hz)=%.2f, want >= 0.70 (a sub boom)", fp.BandAvg[0]+fp.BandAvg[1])
@@ -148,7 +181,7 @@ func TestKick808IsDeepSubKick(t *testing.T) {
 // 60-120 Hz DOMINANT (NOT a sub boom) and a SHARP beater transient (high crest).
 // This is the anti-"boomy/un-acoustic" net (the old seed sat ~50% sub, crest ~5.7).
 func TestKickAcousticIsTightOrganicKick(t *testing.T) {
-	fp := kickFP(t, "kick-acoustic")
+	fp := kickFP(t, roster.KickAcoustic)
 	// 60-120 Hz dominates (not a sub kick). Threshold calibrated to the
 	// fingerprint's per-window BandAvg (≈0.5 here), not the whole-signal integral.
 	if fp.BandAvg[1] <= fp.BandAvg[0] || fp.BandAvg[1] <= fp.BandAvg[2] || fp.BandAvg[1] < 0.42 {
@@ -207,8 +240,8 @@ func TestKickAcousticIsTightOrganicKick(t *testing.T) {
 // measurably MORE grit than the clean zgump-kick. Bounds carry margin so ear-
 // tuning the raw character doesn't trip it.
 func TestRawKickIsGrittyHeavyKick(t *testing.T) {
-	analyze := func(id string) fingerprint.KickFingerprint {
-		buf, sr := RenderInstrumentOneShotRaw(id)
+	analyze := func(id instrument.ID) fingerprint.KickFingerprint {
+		buf, sr := kickGuardRender(t, id)
 		if len(buf) == 0 {
 			t.Fatalf("%s produced no samples", id)
 		}
@@ -228,8 +261,8 @@ func TestRawKickIsGrittyHeavyKick(t *testing.T) {
 		}
 		return fingerprint.KickAnalyze(wave.Wave{Samples: x, SampleRate: sr})
 	}
-	raw := analyze("raw-kick")
-	zg := analyze("zgump-kick")
+	raw := analyze(roster.RawKick)
+	zg := analyze(roster.ZgumpKick)
 
 	// 1. Still a kick: the fundamental band dominates.
 	if raw.BandAvg[1] <= raw.BandAvg[0] || raw.BandAvg[1] <= raw.BandAvg[2] {
@@ -246,9 +279,12 @@ func TestRawKickIsGrittyHeavyKick(t *testing.T) {
 	if raw.PitchStartHz < raw.PitchSettleHz*1.3 {
 		t.Fatalf("raw-kick glide too shallow: start=%.0f settle=%.0f", raw.PitchStartHz, raw.PitchSettleHz)
 	}
-	// 4. Punchy but bounded (a thump/hit, not a pure click or a drone).
-	if raw.Crest < 2.8 || raw.Crest > 4.8 {
-		t.Fatalf("raw-kick crest = %.2f, want [2.8,4.8]", raw.Crest)
+	// 4. Punchy but bounded (a thump/hit, not a pure click or a drone). The floor
+	// was 2.8 until the 2026-10-02 fullness retune (user A/B at equal peak): a
+	// louder kick under a fixed peak IS a lower crest (2.36). A drone sits near
+	// sqrt(2) ≈ 1.4, so 2.2 still separates a hit from a sustained tone.
+	if raw.Crest < 2.2 || raw.Crest > 4.8 {
+		t.Fatalf("raw-kick crest = %.2f, want [2.2,4.8]", raw.Crest)
 	}
 	// 5. No high air (a heavy kick, not a bright/tss one).
 	if raw.BandAvg[6] > 0.05 {

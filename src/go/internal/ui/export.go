@@ -11,68 +11,23 @@ import (
 	"io"
 	"math"
 	"sort"
-	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/enum"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Export schema
-type exportFile struct {
-	Version int `json:"version"`
-	Subdiv  int `json:"subdiv,omitempty"`
-	BPM     int `json:"bpm"`
-	// MasterVolume is a POINTER so a genuine 0 (silence) survives the
-	// round-trip: with a plain float64+omitempty, master=0 was dropped on
-	// export and restored as the legacy 1.0 default on import — a muted
-	// project came back at FULL volume. nil = field absent (legacy files,
-	// which imported at 1.0 long before the fresh-session default moved to
-	// 0.5 — that fallback must stay for their sake). Export now always
-	// writes the current value so new files are self-describing.
-	MasterVolume *float64           `json:"master_volume,omitempty"` // 0-1; nil = legacy file (imports as 1.0)
-	Instruments  []exportInstrument `json:"instruments"`
-	Nodes        []exportNode       `json:"nodes"`
-	EQ           *exportEQ          `json:"eq,omitempty"`
-	SendEffects  *SendEffectsConfig `json:"send_effects,omitempty"`
-	// PinnedInstruments holds project-scope instrument pins (tier 0 in the
-	// menu's PinSource). Distinct from per-user favorites which live in
-	// userprefs and never touch this file. omitempty keeps v1 projects with
-	// no pins byte-identical to pre-PR exports; old loaders ignore the field.
-	PinnedInstruments []string `json:"pinned_instruments,omitempty"`
-	// Phase 6 (kit infra): every kit registered in the audio package at
-	// export time. Additive — old loaders silently ignore the field, and
-	// re-importing a project that didn't carry kits leaves the
-	// in-process kit registry untouched. Kit-bus audio routing is
-	// future work; the InsertChain field on each kit round-trips through
-	// JSON so kits authored today survive the rollout.
-	Kits []audio.Kit `json:"kits,omitempty"`
-	// Groups carries node groups (batch pitch/volume/duration rules across a
-	// set of nodes). Additive + omitempty: legacy files without groups stay
-	// byte-identical. Invisible nodes are never exported, so group members
-	// are filtered to exported node ids; a group left empty after filtering
-	// is dropped.
-	Groups []exportGroup `json:"groups,omitempty"`
-}
-
 type exportInstrument struct {
-	Name       string             `json:"name"`
-	ID         string             `json:"id"`
-	Kind       string             `json:"kind"` // builtin|sample
-	Volume     float64            `json:"volume"`
-	Origin     int                `json:"origin"`
-	Color      string             `json:"color"`                 // #RRGGBBAA
-	Path       string             `json:"path,omitempty"`        // local cache path or object URL for custom samples
-	EQ         *exportEQ          `json:"eq,omitempty"`          // per-instrument EQ settings
-	Effects    []audio.EffectSlot `json:"effects,omitempty"`     // per-instrument insert effect chain
-	Pan        float64            `json:"pan,omitempty"`         // stereo pan: -1 (left) to +1 (right)
-	DelaySend  float64            `json:"delay_send,omitempty"`  // delay send amount (0-1)
-	ReverbSend float64            `json:"reverb_send,omitempty"` // reverb send amount (0-1)
-	// Phase 3 synth-recipe fields. Recipe is the SynthRecipe id the
-	// instrument resolves through (e.g. "drum-snare"); empty for samples
-	// or instruments without a binding. SynthParams is the per-instrument
-	// override map; absent when the user has not edited any knobs.
-	Recipe      string             `json:"recipe,omitempty"`
-	SynthParams map[string]float64 `json:"synth_params,omitempty"`
+	Name    string             `json:"name"`
+	ID      instrument.ID      `json:"id"`
+	Kind    instrumentKind     `json:"kind"`
+	Volume  float64            `json:"volume"`
+	Origin  int                `json:"origin"`
+	Color   string             `json:"color"`             // #RRGGBBAA
+	Path    string             `json:"path,omitempty"`    // local cache path or object URL for custom samples
+	EQ      *exportEQ          `json:"eq,omitempty"`      // per-instrument EQ settings
+	Effects []audio.EffectSlot `json:"effects,omitempty"` // per-instrument insert effect chain
 	// SampleEdit carries the non-destructive Sampler edit applied to the
 	// recipe render at trigger time (audio.SampleEdit as a flat field map,
 	// bools 0/1). Additive + omitempty: present only when the user saved a
@@ -82,7 +37,7 @@ type exportInstrument struct {
 	// Phase 6: explicit kit-role tag (kick/snare/hat/…). Empty means
 	// kit application falls back to the audio.RoleForInstrument
 	// heuristic. Additive — old files have no Role and migrate cleanly.
-	Role string `json:"role,omitempty"`
+	Role instrument.Role `json:"role,omitempty"`
 	// PCM carries the embedded baked sample for Sampler-tab instruments
 	// (synth-capture or WAV-load). Additive + omitempty: old loaders ignore
 	// it; when present it supersedes Path (the sound travels inside the
@@ -120,8 +75,7 @@ func encodeSamplePCM(rec audio.SampleRecord) *exportSamplePCM {
 
 // decodeSamplePCM reverses encodeSamplePCM. Returns ok=false for a nil/empty or
 // malformed payload so import can fall back to the path/catalog strategies.
-// Gzipped payloads (current encoder) carry the 0x1f 0x8b magic; a payload
-// without it is treated as legacy raw little-endian float32 bytes.
+// The payload is gzip (0x1f 0x8b magic) over little-endian float32 bytes.
 func decodeSamplePCM(p *exportSamplePCM) ([]float32, int, bool) {
 	if p == nil || p.DataB64 == "" || p.Frames <= 0 {
 		return nil, 0, false
@@ -130,15 +84,16 @@ func decodeSamplePCM(p *exportSamplePCM) ([]float32, int, bool) {
 	if err != nil {
 		return nil, 0, false
 	}
-	if len(raw) >= 2 && raw[0] == 0x1f && raw[1] == 0x8b {
-		zr, err := gzip.NewReader(bytes.NewReader(raw))
-		if err != nil {
-			return nil, 0, false
-		}
-		defer zr.Close()
-		if raw, err = io.ReadAll(zr); err != nil {
-			return nil, 0, false
-		}
+	if len(raw) < 2 || raw[0] != 0x1f || raw[1] != 0x8b {
+		return nil, 0, false
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, 0, false
+	}
+	defer zr.Close()
+	if raw, err = io.ReadAll(zr); err != nil {
+		return nil, 0, false
 	}
 	if len(raw) < p.Frames*4 {
 		return nil, 0, false
@@ -152,12 +107,12 @@ func decodeSamplePCM(p *exportSamplePCM) ([]float32, int, bool) {
 
 // exportGroupRule mirrors model.GroupRule for JSON persistence.
 type exportGroupRule struct {
-	Param     string  `json:"param"`
-	Delta     float64 `json:"delta"`
-	EveryN    int     `json:"every_n"`
-	Min       float64 `json:"min,omitempty"`
-	Max       float64 `json:"max,omitempty"`
-	AnchorIdx int     `json:"anchor_idx,omitempty"`
+	Param     model.GroupParam `json:"param"`
+	Delta     float64          `json:"delta"`
+	EveryN    int              `json:"every_n"`
+	Min       float64          `json:"min,omitempty"`
+	Max       float64          `json:"max,omitempty"`
+	AnchorIdx int              `json:"anchor_idx,omitempty"`
 }
 
 // exportGroup mirrors model.NodeGroup for JSON persistence.
@@ -167,7 +122,7 @@ type exportGroupRule struct {
 // file written before this field existed) from "explicitly false" (a
 // disabled group with configured deltas, saved by this task's new
 // semantics) after JSON decode — both would leave the Go field at its zero
-// value. importFile.go's backward-compat rule (RulesEnabled = len(rules)>0
+// value. import.go's backward-compat rule (RulesEnabled = len(rules)>0
 // when the key was never present) depends on that distinction. Export always
 // sets a non-nil pointer, so every document this build writes carries the
 // flag explicitly (omitempty on a pointer only omits a nil pointer, never
@@ -182,90 +137,43 @@ type exportGroup struct {
 }
 
 type exportNode struct {
-	ID      int    `json:"id"`
-	I       int    `json:"i"`
-	J       int    `json:"j"`
-	Type    string `json:"type"` // regular|invisible|silent|mute
-	Inputs  []int  `json:"inputs,omitempty"`
-	Outputs []int  `json:"outputs,omitempty"`
+	ID      int            `json:"id"`
+	I       int            `json:"i"`
+	J       int            `json:"j"`
+	Type    model.NodeType `json:"type"`
+	Inputs  []int          `json:"inputs,omitempty"`
+	Outputs []int          `json:"outputs,omitempty"`
 	// Optional per-node parameters. Omitted when at defaults.
 	Volume   float64 `json:"volume,omitempty"`
 	Pitch    float64 `json:"pitch,omitempty"`
 	Duration float64 `json:"duration,omitempty"`
 	// Node logic fields.
-	LogicKind string  `json:"logic_kind,omitempty"`
-	LogicN    int     `json:"logic_n,omitempty"`
-	LogicP    float64 `json:"logic_p,omitempty"`
-	// Groove: per-node rule (none|delay|rush) and percentage (0..1)
-	GrooveKind string  `json:"groove_kind,omitempty"`
-	GroovePct  float64 `json:"groove_pct,omitempty"`
+	LogicKind model.LogicKind `json:"logic_kind,omitempty"`
+	LogicN    int             `json:"logic_n,omitempty"`
+	LogicP    float64         `json:"logic_p,omitempty"`
+	// Groove: per-node delay/rush and percentage (0..1)
+	GrooveKind model.GrooveKind `json:"groove_kind,omitempty"`
+	GroovePct  float64          `json:"groove_pct,omitempty"`
 	// Per-node effect overrides (V1: model-only, no UI)
 	EffectOverrides []model.EffectOverride `json:"effect_overrides,omitempty"`
-	// Per-node synth override map (canonical synth-param shape).
-	SynthOverrides map[string]float64 `json:"synth_overrides,omitempty"`
-	// Legacy v1 individual synth fields — read-only on import for backward
-	// compatibility with files written before the synth_overrides map.
-	// Export never writes these (writeNode emits SynthOverrides); import
-	// folds any non-zero value into the same NodeParams slots.
-	LegacySynthDecay      float64 `json:"synth_decay,omitempty"`
-	LegacySynthTone       float64 `json:"synth_tone,omitempty"`
-	LegacySynthAttack     float64 `json:"synth_attack,omitempty"`
-	LegacySynthDrive      float64 `json:"synth_drive,omitempty"`
-	LegacySynthBody       float64 `json:"synth_body,omitempty"`
-	LegacySynthColor      float64 `json:"synth_color,omitempty"`
-	LegacySynthBrightness float64 `json:"synth_brightness,omitempty"`
+	// Chord spec (docs/superpowers/specs/2026-10-09-chord-nodes-design.md).
+	// Written whenever the node carries one, for ANY type: a chord collapsed
+	// to a single note keeps its spec, and undo replays this file.
+	Chord *exportChord `json:"chord,omitempty"`
 }
 
-// legacySynthOverrides folds the legacy v1 individual synth_* node fields
-// into the canonical override-map shape. Returns nil when no legacy field
-// is set so callers can cheaply skip the merge.
-func (n exportNode) legacySynthOverrides() map[string]float64 {
-	out := map[string]float64{}
-	if n.LegacySynthDecay != 0 {
-		out["decay"] = n.LegacySynthDecay
-	}
-	if n.LegacySynthTone != 0 {
-		out["tone"] = n.LegacySynthTone
-	}
-	if n.LegacySynthAttack != 0 {
-		out["attack"] = n.LegacySynthAttack
-	}
-	if n.LegacySynthDrive != 0 {
-		out["drive"] = n.LegacySynthDrive
-	}
-	if n.LegacySynthBody != 0 {
-		out["body"] = n.LegacySynthBody
-	}
-	if n.LegacySynthColor != 0 {
-		out["color"] = n.LegacySynthColor
-	}
-	if n.LegacySynthBrightness != 0 {
-		out["brightness"] = n.LegacySynthBrightness
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+// exportChord is a node's model.ChordSpec on disk.
+type exportChord struct {
+	Quality   string `json:"quality"`
+	Inversion int    `json:"inversion,omitempty"`
+	Spread    int    `json:"spread,omitempty"`
 }
 
-// SendEffectsConfig encodes global send effect parameters. Optional; absent for legacy files.
-type SendEffectsConfig struct {
-	Delay  *SendDelayConfig  `json:"delay,omitempty"`
-	Reverb *SendReverbConfig `json:"reverb,omitempty"`
-}
-
-// SendDelayConfig encodes delay send bus parameters.
-type SendDelayConfig struct {
-	TimeMs    float64 `json:"time_ms"`
-	Feedback  float64 `json:"feedback"`
-	DampingHz float64 `json:"damping_hz"`
-}
-
-// SendReverbConfig encodes reverb send bus parameters.
-type SendReverbConfig struct {
-	Room    float64 `json:"room"`
-	Damping float64 `json:"damping"`
-	Wet     float64 `json:"wet"`
+func (c *exportChord) spec() model.ChordSpec {
+	if c == nil {
+		return model.ChordSpec{}
+	}
+	return model.ChordSpec{Quality: c.Quality, Inversion: c.Inversion, Spread: c.Spread}
 }
 
 // exportEQ encodes the master EQ settings. Optional; absent for legacy files.
@@ -279,83 +187,26 @@ type exportEQ struct {
 	LPFCutoffHz float64      `json:"lpf_cutoff_hz,omitempty"` // LPF cutoff frequency
 }
 
-// kindForID determines the instrument kind by checking catalog metadata.
-// WAV-based and embedded samples return "sample", synthesized instruments return "builtin".
-func kindForID(id string) string {
-	// Legacy "sample-" prefix check for backwards compatibility
-	if strings.HasPrefix(id, "sample-") {
-		return "sample"
-	}
-	// Look up in catalog to check Source field
-	if meta, ok := audio.CatalogLookup(id); ok {
-		switch meta.Source {
-		case "wav", "embedded":
-			return "sample"
-		}
-	}
-	return "builtin"
+// instrumentKind says how a project row's instrument is made: the synth
+// (its document) or a sample (embedded PCM, a WAV path, or a catalog WAV the
+// reading machine may or may not have). Derived on export, checked on import.
+type instrumentKind int
+
+const (
+	kindBuiltin instrumentKind = iota // the synth plays the instrument's document
+	kindSample                        // embedded PCM or a WAV file
+)
+
+var instrumentKindNames = enum.Names[instrumentKind]{Kind: "instrument kind", Names: []string{"builtin", "sample"}}
+
+func (k instrumentKind) String() string               { return enum.String(instrumentKindNames, k) }
+func (k instrumentKind) MarshalText() ([]byte, error) { return enum.Marshal(instrumentKindNames, k) }
+func (k *instrumentKind) UnmarshalText(b []byte) error {
+	return enum.Unmarshal(instrumentKindNames, b, k)
 }
 
-// synthOverridesFromNodeParams collects the 7 individual NodeParams.Synth*
-// fields into a map for emission as the v1+synth "synth_overrides" JSON
-// shape. Zero values are omitted so a node with all-default params yields
-// an empty map (and the json:"omitempty" tag drops the key entirely).
-func synthOverridesFromNodeParams(p model.NodeParams) map[string]float64 {
-	out := map[string]float64{}
-	if p.SynthDecay != 0 {
-		out["decay"] = p.SynthDecay
-	}
-	if p.SynthTone != 0 {
-		out["tone"] = p.SynthTone
-	}
-	if p.SynthAttack != 0 {
-		out["attack"] = p.SynthAttack
-	}
-	if p.SynthDrive != 0 {
-		out["drive"] = p.SynthDrive
-	}
-	if p.SynthBody != 0 {
-		out["body"] = p.SynthBody
-	}
-	if p.SynthColor != 0 {
-		out["color"] = p.SynthColor
-	}
-	if p.SynthBrightness != 0 {
-		out["brightness"] = p.SynthBrightness
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-// applySynthOverridesToNodeParams writes back a SynthOverrides map onto
-// NodeParams. Used by the import path so both the v1 legacy shape (7
-// individual fields) and the v1+synth shape (single map) populate the same
-// in-memory slots.
-func applySynthOverridesToNodeParams(p *model.NodeParams, over map[string]float64) {
-	if v, ok := over["decay"]; ok {
-		p.SynthDecay = v
-	}
-	if v, ok := over["tone"]; ok {
-		p.SynthTone = v
-	}
-	if v, ok := over["attack"]; ok {
-		p.SynthAttack = v
-	}
-	if v, ok := over["drive"]; ok {
-		p.SynthDrive = v
-	}
-	if v, ok := over["body"]; ok {
-		p.SynthBody = v
-	}
-	if v, ok := over["color"]; ok {
-		p.SynthColor = v
-	}
-	if v, ok := over["brightness"]; ok {
-		p.SynthBrightness = v
-	}
-}
+// carriesSample reports whether the row carries its sound itself.
+func (ei exportInstrument) carriesSample() bool { return ei.PCM != nil || ei.Path != "" }
 
 func hexColor(c color.Color) string {
 	r, g, b, a := c.RGBA()
@@ -370,7 +221,7 @@ func (dv *DrumView) Export() error {
 	if err != nil {
 		return err
 	}
-	name := "beatmo-export.json"
+	name := stampedFileName("beatmo-export", ".json")
 	if err := saveJSON(name, data); err != nil {
 		dv.logger.Errorf("[drumview] export failed: %v", err)
 		return err
@@ -412,14 +263,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		if n.Type == model.NodeTypeInvisible {
 			continue
 		}
-		typ := "regular"
-		switch n.Type {
-		case model.NodeTypeSilent:
-			typ = "silent"
-		case model.NodeTypeMute:
-			typ = "mute"
-		}
-		en := exportNode{ID: id, I: n.I, J: n.J, Type: typ}
+		en := exportNode{ID: id, I: n.I, J: n.J, Type: n.Type}
 		if v := in[id]; len(v) > 0 {
 			sort.Ints(v)
 			en.Inputs = v
@@ -440,7 +284,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 				en.Duration = p.Duration
 			}
 			// New logic fields
-			if p.LogicKind != "" {
+			if p.LogicKind != model.LogicNone {
 				en.LogicKind = p.LogicKind
 				if p.LogicN > 0 {
 					en.LogicN = p.LogicN
@@ -449,7 +293,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 					en.LogicP = p.LogicP
 				}
 			}
-			if p.GrooveKind != "" {
+			if p.GrooveKind != model.GrooveNone {
 				en.GrooveKind = p.GrooveKind
 			}
 			if p.GroovePct != 0 {
@@ -458,13 +302,8 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 			if len(p.EffectOverrides) > 0 {
 				en.EffectOverrides = p.EffectOverrides
 			}
-			// Phase 3: emit SynthOverrides as a single map; never write the
-			// legacy individual fields. Old loaders that look for synth_decay
-			// etc. simply see them absent and treat the node as "no synth
-			// override", which is the same observable result as the legacy
-			// "field is zero" semantics.
-			if over := synthOverridesFromNodeParams(p); len(over) > 0 {
-				en.SynthOverrides = over
+			if c := model.NormalizeChord(p.Chord); !c.IsZero() {
+				en.Chord = &exportChord{Quality: c.Quality, Inversion: c.Inversion, Spread: c.Spread}
 			}
 		}
 		nodes = append(nodes, en)
@@ -489,19 +328,18 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		}
 		for _, r := range grp.Rules {
 			eg.Rules = append(eg.Rules, exportGroupRule{
-				Param: string(r.Param), Delta: r.Delta, EveryN: r.EveryN, Min: r.Min, Max: r.Max,
+				Param: r.Param, Delta: r.Delta, EveryN: r.EveryN, Min: r.Min, Max: r.Max,
 				AnchorIdx: r.AnchorIdx,
 			})
 		}
 		groups = append(groups, eg)
 	}
 	insts := make([]exportInstrument, 0, len(dv.Rows))
+	var docs map[instrument.ID]projectDoc
 	for _, r := range dv.Rows {
-		kind := kindForID(r.Instrument)
 		ei := exportInstrument{
 			Name:   audio.InstrumentDisplayName(r.Instrument),
 			ID:     r.Instrument,
-			Kind:   kind,
 			Volume: r.Volume,
 			Origin: int(r.Origin),
 			Color:  hexColor(r.Color),
@@ -510,103 +348,65 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		if dv.samplePath != nil {
 			if p, ok := dv.samplePath[r.Instrument]; ok && p != "" {
 				ei.Path = p
-				// Custom uploads are samples even if kindForID says builtin
-				ei.Kind = "sample"
 			}
 		}
-		// For catalog-based samples without a custom path, try catalog lookup
-		if ei.Path == "" && (kind == "sample" || ei.Kind == "sample") {
-			if meta, ok := audio.CatalogLookup(r.Instrument); ok && meta.Path != "" {
+		// A catalog WAV without a custom path carries the catalog's path.
+		if ei.Path == "" {
+			if meta, ok := audio.CatalogLookup(r.Instrument); ok && meta.Source == audio.SourceWAV && meta.Path != "" {
 				ei.Path = meta.Path
 			}
 		}
 		// Sampler-created instruments embed their baked PCM directly; this
 		// supersedes any path so the sound travels inside the project file.
 		if rec, ok := audio.UserSamplePCM(r.Instrument); ok && len(rec.PCM) > 0 {
-			ei.Kind = "sample"
 			ei.Path = ""
 			ei.PCM = encodeSamplePCM(rec)
 		}
-		// Export pan and send levels when non-default.
-		if r.Pan != 0 {
-			ei.Pan = r.Pan
-		}
-		if r.DelaySend != 0 {
-			ei.DelaySend = r.DelaySend
-		}
-		if r.ReverbSend != 0 {
-			ei.ReverbSend = r.ReverbSend
+		ei.Kind = kindBuiltin
+		if meta, ok := audio.CatalogLookup(r.Instrument); ei.carriesSample() || (ok && meta.Source == audio.SourceWAV) {
+			ei.Kind = kindSample
 		}
 		// Export per-instrument EQ if any band is non-zero, muted, or filters enabled
+		req := rowEQ(r)
 		hasNonZeroGain := false
-		for _, g := range r.EQGainsDB {
+		for _, g := range req.GainsDB {
 			if g != 0 {
 				hasNonZeroGain = true
 				break
 			}
 		}
 		hasMutedBand := false
-		for _, m := range r.EQBandMuted {
+		for _, m := range req.BandMuted {
 			if m {
 				hasMutedBand = true
 				break
 			}
 		}
-		hasFilters := r.HPFEnabled || r.LPFEnabled
-		// Export per-instrument insert effects if any. Read the AUDIO layer,
-		// not r.Effects: the FX panel's param slider writes only to the audio
-		// chain (propagateFXSliderValue → audio.SetInsertEffectParam, no row
-		// re-sync), so the row copy can hold pre-edit values. The audio layer
-		// is what the mixer renders — it is the tone the file must reproduce.
+		hasFilters := req.HPF || req.LPF
+		// The instrument's insert effects, as the mixer renders them.
 		if fx := audio.GetInsertEffects(r.Instrument); len(fx) > 0 {
 			ei.Effects = fx
 		}
 		if hasNonZeroGain || hasMutedBand || hasFilters {
 			eq := exportEQ{}
-			eq.GainsDB = append(eq.GainsDB, r.EQGainsDB...)
+			eq.GainsDB = append(eq.GainsDB, req.GainsDB...)
 			for _, b := range eqBandDefs {
 				eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
 			}
 			if hasMutedBand {
-				eq.BandMuted = append(eq.BandMuted, r.EQBandMuted...)
+				eq.BandMuted = append(eq.BandMuted, req.BandMuted...)
 			}
-			eq.HPFEnabled = r.HPFEnabled
-			eq.HPFCutoffHz = r.HPFCutoffHz
-			eq.LPFEnabled = r.LPFEnabled
-			eq.LPFCutoffHz = r.LPFCutoffHz
+			eq.HPFEnabled, eq.HPFCutoffHz = req.HPF, req.HPFHz
+			eq.LPFEnabled, eq.LPFCutoffHz = req.LPF, req.LPFHz
 			ei.EQ = &eq
 		}
-		// Phase 3 synth-recipe metadata: the recipe binding + the instrument's
-		// effective synth tone. Recipe is included even when no params have been
-		// set so a reload preserves the binding.
-		//
-		// SynthParams captures the EFFECTIVE tone as a delta from the recipe's
-		// SHIPPED defaults — not just the per-instrument overlay. A Synth-tab
-		// "Save" bakes the tone into the recipe's registered defaults (persisted
-		// in userprefs, not the project); after an app restart the overlay is
-		// empty while the recipe default stays customized, so exporting the raw
-		// overlay would silently drop the Saved tone. Folding the recipe-default
-		// delta into SynthParams makes the project self-describing: importing it
-		// onto a shipped-default recipe (fresh instance / other machine) applies
-		// the delta as an overlay and reproduces the exact sound. For an
-		// uncustomized recipe the delta equals the raw overlay, so default
-		// projects stay byte-identical.
-		if recipe := audio.RecipeForInstrument(r.Instrument); recipe != "" {
-			ei.Recipe = recipe
-			effective := audio.MergeRecipeDefaults(recipe, audio.GetInstrumentParams(r.Instrument))
-			shipped := audio.RecipeShippedDefaults(recipe)
-			delta := map[string]float64{}
-			for k, v := range effective {
-				if s, ok := shipped[k]; !ok || math.Abs(v-s) > 1e-9 {
-					delta[k] = v
-				}
+		// The instrument's document (everything its synth voice depends on)
+		// travels in the file's instrument_docs map, keyed by instrument id.
+		if d, ok := audio.InstrumentDoc(r.Instrument); ok {
+			if docs == nil {
+				docs = map[instrument.ID]projectDoc{}
 			}
-			if len(delta) > 0 {
-				ei.SynthParams = delta
-			}
-		} else if params := audio.GetInstrumentParams(r.Instrument); len(params) > 0 {
-			// No recipe binding: fall back to the raw overlay.
-			ei.SynthParams = params
+			docs[r.Instrument] = projectDoc{Doc: d}
 		}
 		// Non-destructive Sampler edit: travels with the project so the saved
 		// chop reproduces on import while the recipe binding above keeps the
@@ -616,12 +416,24 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		}
 		// Phase 6: per-row explicit kit role tag. Omitted when empty so
 		// pre-Phase-6 projects stay byte-identical to their old export.
-		if r.Role != "" {
+		if r.Role != instrument.RoleNone {
 			ei.Role = r.Role
 		}
 		insts = append(insts, ei)
 	}
-	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes, Groups: groups}
+	file := newProjectFile()
+	file.Subdiv = currentMaxDiv()
+	file.BPM = dv.BPM()
+	file.Instruments = insts
+	file.Nodes = nodes
+	file.Groups = groups
+	// Circuit theme (the circuit's OWN scheme, never the user's effective
+	// theme); omitted when the circuit sets nothing.
+	if g := dv.game; g != nil && !g.circuitTheme.IsEmpty() {
+		cp := g.circuitTheme.Clone()
+		file.Theme = &cp
+	}
+	file.InstrumentDocs = docs
 	// Phase 6: embed every registered kit. KitsForExport returns a
 	// defensive copy; the field stays omitempty so projects with no
 	// kits round-trip identically to the pre-Phase-6 shape.
@@ -640,15 +452,23 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	mv := audio.MainVolume()
 	file.MasterVolume = &mv
 	// Export master EQ if any band has non-zero gain, is muted, or filters enabled.
+	//
+	// masterEQBandState, NOT eqBandGainsDB: the latter is the audio panel's
+	// working copy of whatever channel is on screen. Reading it here meant the
+	// file's master EQ was decided by the channel pill — select any instrument
+	// and the project exported that instrument's curve as the master, or
+	// (a flat instrument) dropped the master EQ block entirely. One click,
+	// silent data loss. Guard: TestMasterEQSurvivesExportImportWithAnInstrumentChannelSelected.
+	masterGains, masterMuted := dv.masterEQBandState()
 	masterHasNonZeroGain := false
-	for _, g := range dv.eqBandGainsDB() {
+	for _, g := range masterGains {
 		if g != 0 {
 			masterHasNonZeroGain = true
 			break
 		}
 	}
 	masterHasMutedBand := false
-	for _, m := range dv.eqBandMuted() {
+	for _, m := range masterMuted {
 		if m {
 			masterHasMutedBand = true
 			break
@@ -657,33 +477,18 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	masterHasFilters := dv.hpfEnabled || dv.lpfEnabled
 	if masterHasNonZeroGain || masterHasMutedBand || masterHasFilters {
 		eq := exportEQ{}
-		eq.GainsDB = append(eq.GainsDB, dv.eqBandGainsDB()...)
+		eq.GainsDB = append(eq.GainsDB, masterGains...)
 		for _, b := range eqBandDefs {
 			eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
 		}
 		if masterHasMutedBand {
-			eq.BandMuted = append(eq.BandMuted, dv.eqBandMuted()...)
+			eq.BandMuted = append(eq.BandMuted, masterMuted...)
 		}
 		eq.HPFEnabled = dv.hpfEnabled
 		eq.HPFCutoffHz = dv.hpfCutoffHz
 		eq.LPFEnabled = dv.lpfEnabled
 		eq.LPFCutoffHz = dv.lpfCutoffHz
 		file.EQ = &eq
-	}
-	// Export send effects configuration.
-	dlyTime, dlyFb, dlyDamp := audio.SendDelayParams()
-	revRoom, revDamp, revWet := audio.SendReverbParams()
-	file.SendEffects = &SendEffectsConfig{
-		Delay: &SendDelayConfig{
-			TimeMs:    dlyTime,
-			Feedback:  dlyFb,
-			DampingHz: dlyDamp,
-		},
-		Reverb: &SendReverbConfig{
-			Room:    revRoom,
-			Damping: revDamp,
-			Wet:     revWet,
-		},
 	}
 	return json.MarshalIndent(file, "", "  ")
 }

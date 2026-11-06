@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -152,7 +153,7 @@ func TestAudioPanelInput_AliveAfterPadsToTab_AllTabs(t *testing.T) {
 			// segment is enabled and the Pads->tab tap can take effect.
 			if tc.mode == viewModeSynth || tc.mode == viewModeSampler {
 				if len(dv.Rows) > 0 {
-					dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+					dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 				}
 			}
 

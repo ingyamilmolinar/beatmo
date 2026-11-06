@@ -55,6 +55,7 @@ func (g *Game) ruleAnchorIdxNow() int {
 // node-param-change hook in game_new.go).
 func (g *Game) onGroupsChanged() {
 	g.refreshGroupIndex()
+	g.laneGraphVersion.Add(1) // group rules change note params: re-fingerprint the audio lane
 	if g.importing {
 		return
 	}
@@ -64,7 +65,12 @@ func (g *Game) onGroupsChanged() {
 		}
 	}
 	if g.Playing() {
-		g.audioGen.Add(1)
+		// Lane mode reconciles group-rule changes through laneGraphVersion
+		// (bumped above); a transport-generation bump would cancel-all and
+		// re-commit, doubling a note inside the cancel guard.
+		if !g.audioLaneOn() {
+			g.audioGen.Add(1)
+		}
 		g.bumpParityGen("group-rule-change", structuralMutationOptions{
 			SkipPathsDirty:     true,
 			SkipPathChangeMark: true,

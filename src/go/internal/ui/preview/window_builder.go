@@ -9,6 +9,25 @@ type BeatInfoAtFunc func(abs int) model.BeatInfo
 type WantAtFunc func(abs int, bi model.BeatInfo) bool
 type CommitAtFunc func(abs int) (val bool, typ model.NodeType, kind timeline.CommitKind, ok bool)
 
+// PlayedAtFunc returns the frozen played snapshot for abs: what the grid showed
+// for the cell as the playhead passed it (timeline.Service.Played).
+type PlayedAtFunc func(abs int) (val bool, typ model.NodeType, ok bool)
+
+// CrossingCell is what a cell shows at the moment the playhead passes it, and
+// therefore what gets frozen into the played snapshot: an immutable
+// Playback/Import commit when one exists, otherwise the live prediction on the
+// live path. It is evaluated ONCE per cell, at the crossing — afterwards the
+// cell renders from the snapshot and this is never consulted again for it.
+func CrossingCell(abs int, beatInfoAt BeatInfoAtFunc, wantAt WantAtFunc, commitAt CommitAtFunc) (bool, model.NodeType) {
+	if commitAt != nil {
+		if val, typ, kind, ok := commitAt(abs); ok && (kind == timeline.CommitKindPlayback || kind == timeline.CommitKindImport) {
+			return val, typ
+		}
+	}
+	bi := beatInfoAt(abs)
+	return wantAt(abs, bi), bi.NodeType
+}
+
 type Config struct {
 	Offset int
 	Length int
@@ -37,11 +56,18 @@ type Config struct {
 
 	// FastPath disables heavier preservation work for perf harnesses.
 	FastPath bool
+
+	// PlayedAt, when set, is the immutable played snapshot. A past cell that
+	// has one renders it verbatim — it outranks commits, the live predictor,
+	// the live path and the previous window. The remaining precedence rules
+	// below only ever apply to past cells the snapshot has not reached.
+	PlayedAt PlayedAtFunc
 }
 
 // BuildRowWindow returns the row's rendered Steps and CellTypes for the given
 // window. It enforces a single precedence table:
 //
+//  0. The played snapshot (what the cell showed as the playhead passed it).
 //  1. Immutable timeline commits (Playback/Import) for true past.
 //  2. Prior window snapshot (freeze mask) for past cells when stationary.
 //  3. Predictor/live preview for everything else.
@@ -94,10 +120,19 @@ func BuildRowWindow(cfg Config, beatInfoAt BeatInfoAtFunc, wantAt WantAtFunc, co
 
 	for i := 0; i < cfg.Length; i++ {
 		abs := cfg.Offset + i
+		inPast := pastBoundExclusive > 0 && abs < pastBoundExclusive
+
+		// A played cell never touches live state — not even to look.
+		if inPast && cfg.PlayedAt != nil {
+			if val, typ, ok := cfg.PlayedAt(abs); ok {
+				steps[i] = val
+				types[i] = typ
+				continue
+			}
+		}
+
 		bi := beatInfoAt(abs)
 		want := wantAt(abs, bi)
-
-		inPast := pastBoundExclusive > 0 && abs < pastBoundExclusive
 
 		val, typ, kind, ok := false, model.NodeTypeInvisible, timeline.CommitKindPlayback, false
 		if inPast && commitAt != nil {

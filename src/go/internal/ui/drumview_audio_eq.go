@@ -4,6 +4,9 @@ import (
 	"math"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // sliderToGainDB maps EQ slider value (0..1) to gain in dB.
@@ -27,13 +30,9 @@ func gainDBToSlider(g float64) float64 {
 	return v
 }
 
-// activeEQChannel returns the current EQ channel ID, defaulting to "main".
-func (dv *DrumView) activeEQChannel() string {
-	if dv.eqActiveChannel == "" {
-		return "main"
-	}
-	return dv.eqActiveChannel
-}
+// activeEQChannel returns the current EQ channel (channel.Master from
+// construction on; never zero).
+func (dv *DrumView) activeEQChannel() channel.ID { return dv.eqActiveChannel }
 
 func (dv *DrumView) analyzerSnapshot() audio.AnalyzerSnapshot {
 	if dv.eqTestSnapshot != nil {
@@ -55,93 +54,65 @@ func (dv *DrumView) preEQAnalyzerSnapshot() audio.AnalyzerSnapshot {
 
 // applyMasterEQ applies the master channel EQ from dv.eqBandGainsDB().
 func (dv *DrumView) applyMasterEQ() {
-	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
+	// masterEQBandState, NOT eqBandGainsDB: the latter is the panel's working
+	// copy of the channel currently on screen, so with an instrument selected
+	// this pushed that instrument's curve onto the MASTER bus.
+	mGains, mMuted := dv.masterEQBandState()
+	if len(mGains) != len(eqBandDefs) {
 		return
 	}
-	bands := dv.buildFullEQBands(dv.eqBandGainsDB(), dv.eqBandMuted(), dv.hpfEnabled, dv.hpfCutoffHz, dv.lpfEnabled, dv.lpfCutoffHz)
+	bands := dv.buildFullEQBands(mGains, mMuted, dv.hpfEnabled, dv.hpfCutoffHz, dv.lpfEnabled, dv.lpfCutoffHz)
 	// Persist for tests/exports and push to audio engine.
 	dv.eqApplied = bands
-	audio.SetChannelEQ("main", audio.SampleRate(), bands...)
+	audio.SetChannelEQ(channel.Master, audio.SampleRate(), bands...)
 	// Ensure analyzers stay in the chain so waveform/spectrum remain live.
-	_ = audio.EnableChannelAnalyzer("main", 512)
-	_ = audio.EnablePreEQAnalyzer("main", 512)
-	_ = audio.EnableSynthAnalyzer("main", 512)
+	_ = audio.EnableChannelAnalyzer(channel.Master, 512)
+	_ = audio.EnablePreEQAnalyzer(channel.Master, 512)
+	_ = audio.EnableSynthAnalyzer(channel.Master, 512)
 	dv.eqCurveDirty = true
 	if dv.eqPanelZone != nil {
 		dv.eqPanelZone.curveDirty = true
 	}
 }
 
-// applyRowEQ applies EQ for a specific instrument row.
+// applyRowEQ pushes the row's instrument EQ (rowEQ) to its channel: the
+// compiled chain, or none when flat — a unity biquad chain is not a no-op, it
+// differs from an absent one in the last bits, and a project that carries no
+// `eq` block must import to a channel with NO EQ processor (export → import
+// bit-exact). audio.ApplyEQSettings re-wires the channel's analyzers, which
+// live in the same processor list.
 func (dv *DrumView) applyRowEQ(row int) {
-	if row < 0 || row >= len(dv.Rows) {
+	if row < 0 || row >= len(dv.Rows) || dv.Rows[row].Instrument == "" {
 		return
 	}
-	r := dv.Rows[row]
-	if len(r.EQGainsDB) != len(eqBandDefs) {
-		return
-	}
-	hpfHz := r.HPFCutoffHz
-	if hpfHz <= 0 {
-		hpfHz = 20
-	}
-	lpfHz := r.LPFCutoffHz
-	if lpfHz <= 0 {
-		lpfHz = 20000
-	}
-	bands := dv.buildFullEQBands(r.EQGainsDB, r.EQBandMuted, r.HPFEnabled, hpfHz, r.LPFEnabled, lpfHz)
-	channelID := r.Instrument
-	audio.SetChannelEQ(channelID, audio.SampleRate(), bands...)
-	_ = audio.EnableChannelAnalyzer(channelID, 512)
-	_ = audio.EnablePreEQAnalyzer(channelID, 512)
-	_ = audio.EnableSynthAnalyzer(channelID, 512)
+	audio.ApplyEQSettings(dv.Rows[row].Instrument)
 	dv.eqCurveDirty = true
 	if dv.eqPanelZone != nil {
 		dv.eqPanelZone.curveDirty = true
 	}
 }
 
-// buildEQBands constructs audio.EQBand slice from gains and muted arrays.
-// Uses geometric mean for center frequency and constant Q=1.414 for 1-octave ISO bands.
-func (dv *DrumView) buildEQBands(gains []float64, muted []bool) []audio.EQBand {
-	bands := make([]audio.EQBand, 0, len(eqBandDefs))
-	for i, def := range eqBandDefs {
-		kind := audio.EQPeaking
-		if i == 0 {
-			kind = audio.EQLowShelf
-		}
-		if i == len(eqBandDefs)-1 {
-			kind = audio.EQHighShelf
-		}
-		center := math.Sqrt(def.loHz * def.hiHz) // geometric mean
-		q := 1.414                               // standard Q for 1-octave graphic EQ bands
-		gain := 0.0
-		if i < len(gains) {
-			gain = gains[i]
-		}
-		isMuted := i < len(muted) && muted[i]
-		bands = append(bands, audio.EQBand{
-			Kind:   kind,
-			Freq:   center,
-			Q:      q,
-			GainDB: gain,
-			Muted:  isMuted,
-		})
+// clearRowEQ flattens the row's instrument EQ and applies it (no EQ
+// processor at all).
+func (dv *DrumView) clearRowEQ(row int) {
+	if row < 0 || row >= len(dv.Rows) || dv.Rows[row].Instrument == "" {
+		return
 	}
-	return bands
+	*rowEQ(dv.Rows[row]) = *audio.NewEQSettings()
+	dv.applyRowEQ(row)
 }
 
 // applyEQ applies EQ to the currently active channel. For backwards
 // compatibility, this function is called from existing code paths.
 func (dv *DrumView) applyEQ() {
 	ch := dv.activeEQChannel()
-	if ch == "main" {
+	if ch == channel.Master {
 		dv.applyMasterEQ()
 		return
 	}
 	// Find the row with this instrument ID
 	for i, r := range dv.Rows {
-		if r.Instrument == ch {
+		if channel.Of(r.Instrument) == ch {
 			dv.applyRowEQ(i)
 			return
 		}
@@ -151,8 +122,11 @@ func (dv *DrumView) applyEQ() {
 }
 
 // setEQActiveChannel switches the EQ view to the specified channel.
-// Pass "main" for master or an instrument ID for per-row EQ.
-func (dv *DrumView) setEQActiveChannel(id string) {
+// Pass channel.Master or an instrument's channel for per-row EQ.
+func (dv *DrumView) setEQActiveChannel(id channel.ID) {
+	if id.IsZero() {
+		return // names no channel
+	}
 	prev := dv.activeEQChannel()
 	channelChanged := prev != id
 
@@ -168,25 +142,26 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 
 	// Keep the panel zone's channel in lockstep so Wave/Spectrum (resolveChannel)
 	// and the Synth tab (synthTabActiveInstrument reads ActiveChannel()) follow
-	// every programmatic channel change, not just dropdown clicks. Normalize the
-	// empty id to "main" to match the dropdown click handler.
+	// every programmatic channel change, not just dropdown clicks.
 	if dv.eqPanelZone != nil {
-		norm := id
-		if norm == "" {
-			norm = "main"
-		}
-		dv.eqPanelZone.activeChannel = norm
+		// Through the zone's single writer, never the field: it re-baselines
+		// the Spectrum readout, and the anchor only rises, so a switch that
+		// skips it measures the new channel against the OLD one's loudest
+		// moment. This path carries every PROGRAMMATIC switch — the
+		// auto-focus when a mute leaves one audible row, renames, import,
+		// the JS bridge — which is most of them.
+		dv.eqPanelZone.setActiveChannelID(id)
 	}
 
 	// Update button text
 	if dv.eqChannelBtn() != nil {
-		if id == "" || id == "main" {
+		if id.IsMaster() {
 			dv.eqChannelBtn().Text = "Master"
 		} else {
 			// Find row name for this instrument
-			label := id
+			label := id.String()
 			for _, r := range dv.Rows {
-				if r.Instrument == id {
+				if channel.Of(r.Instrument) == id {
 					label = r.Name
 					break
 				}
@@ -213,7 +188,7 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 		if dv.eqPanelZone != nil {
 			dv.eqPanelZone.SyncBandState(gains, muted)
 		}
-	} else if id == "" || id == "main" {
+	} else if id.IsMaster() {
 		// Same master channel: the zone IS the authoritative store. The dB
 		// readouts derive live from bandGainsDB, so an external write into the
 		// shared backing array shows up on the next Draw with no sync needed.
@@ -265,14 +240,17 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 // id (Chain tab on WASM/test where ScopeService is nil). The channel dropdown's
 // OnChannelChange callback, the WASM setEQChannel bridge, and the solo/mute
 // auto-select all route through here so the dropdown stays the single source of
-// truth. Pass "main" (or "") for Master or an instrument id for a per-row channel.
-func (dv *DrumView) selectAudioChannel(id string) {
+// truth. Pass channel.Master or an instrument's channel; the zero ID is ignored.
+func (dv *DrumView) selectAudioChannel(id channel.ID) {
+	if id.IsZero() {
+		return
+	}
 	dv.setEQActiveChannel(id)
 	// Set the analyzer detail channel so Wave/Spectrum tabs show the selected
 	// instrument's data (nil under -tags test / WASM).
 	if svc := audio.AnalyzerService(); svc != nil {
-		if id == "main" || id == "" {
-			svc.SetDetailChannel("")
+		if id.IsMaster() {
+			svc.SetDetailChannel(channel.ID{}) // no per-row detail: Master is the state's own
 		} else {
 			svc.SetDetailChannel(id)
 		}
@@ -293,24 +271,20 @@ func (dv *DrumView) selectAudioChannel(id string) {
 // saveZoneBandState copies the zone's current working bandGainsDB/bandMuted
 // back to the appropriate backing store (masterGainsDB for "main", or the
 // matching DrumRow for per-instrument channels).
-func (dv *DrumView) saveZoneBandState(ch string) {
+func (dv *DrumView) saveZoneBandState(ch channel.ID) {
 	if dv.eqPanelZone == nil {
 		return
 	}
 	z := dv.eqPanelZone
-	if ch == "" || ch == "main" {
+	if ch.IsMaster() {
 		dv.ensureMasterBandState()
 		copy(dv.masterGainsDB, z.bandGainsDB)
 		copy(dv.masterMuted, z.bandMuted)
 	} else {
-		for j, r := range dv.Rows {
-			if r.Instrument == ch {
-				dv.ensureRowEQ(j)
-				dv.ensureRowEQMuted(j)
-				copy(r.EQGainsDB, z.bandGainsDB)
-				copy(r.EQBandMuted, z.bandMuted)
-				break
-			}
+		if inst, ok := ch.Instrument(); ok {
+			eq := audio.EQSettingsOf(inst)
+			copy(eq.GainsDB, z.bandGainsDB)
+			copy(eq.BandMuted, z.bandMuted)
 		}
 	}
 }
@@ -318,23 +292,57 @@ func (dv *DrumView) saveZoneBandState(ch string) {
 // loadChannelBandState returns the gains and muted slices for the given
 // channel from the backing store. Returns fresh copies for "main" so
 // SyncBandState doesn't alias the master store.
-func (dv *DrumView) loadChannelBandState(id string) (gains []float64, muted []bool) {
-	if id == "" || id == "main" {
+func (dv *DrumView) loadChannelBandState(id channel.ID) (gains []float64, muted []bool) {
+	if id.IsMaster() {
 		dv.ensureMasterBandState()
 		gains = dv.masterGainsDB
 		muted = dv.masterMuted
 	} else {
-		for j, r := range dv.Rows {
-			if r.Instrument == id {
-				dv.ensureRowEQ(j)
-				dv.ensureRowEQMuted(j)
-				gains = r.EQGainsDB
-				muted = r.EQBandMuted
-				break
-			}
+		if inst, ok := id.Instrument(); ok {
+			eq := audio.EQSettingsOf(inst)
+			gains, muted = eq.GainsDB, eq.BandMuted
 		}
 	}
 	return
+}
+
+// masterEQBandState returns the MASTER channel's authoritative band gains and
+// mute flags.
+//
+// dv.eqBandGainsDB() is NOT that: it is `eqPanelZone.bandGainsDB`, the panel's
+// working copy of whatever channel is currently on screen. Reading it as "the
+// master EQ" silently substitutes the selected instrument's curve the moment
+// the user clicks the channel pill — which is how a project exported `"eq":
+// null` (and how applyMasterEQ pushed an instrument's curve onto the master
+// bus) after a single click that changed nothing about the master.
+//
+// The split follows setEQActiveChannel's own rule: while Master is displayed
+// the zone IS the store (live edits land there and are flushed to masterGainsDB
+// by saveZoneBandState on the next channel switch); otherwise the zone belongs
+// to an instrument and dv.masterGainsDB/masterMuted are authoritative.
+//
+// The returned slices alias the backing store — callers may read them or write
+// through them, but must not retain them across a channel switch.
+func (dv *DrumView) masterEQBandState() (gains []float64, muted []bool) {
+	if ch := dv.activeEQChannel(); ch.IsMaster() {
+		return dv.eqBandGainsDB(), dv.eqBandMuted()
+	}
+	dv.ensureMasterBandState()
+	return dv.masterGainsDB, dv.masterMuted
+}
+
+// setMasterEQBandState writes the master channel's band gains and mute flags to
+// whichever store is authoritative right now (see masterEQBandState), keeping
+// the zone working copy in step when Master is the channel on screen so the
+// curve and dB readouts update without a re-select.
+func (dv *DrumView) setMasterEQBandState(gains []float64, muted []bool) {
+	dv.ensureMasterBandState()
+	copy(dv.masterGainsDB, gains)
+	copy(dv.masterMuted, muted)
+	if ch := dv.activeEQChannel(); ch.IsMaster() {
+		copy(dv.eqBandGainsDB(), gains)
+		copy(dv.eqBandMuted(), muted)
+	}
 }
 
 // ensureMasterBandState initializes masterGainsDB and masterMuted if needed,
@@ -360,144 +368,91 @@ func (dv *DrumView) ensureMasterBandState() {
 func (dv *DrumView) cycleEQChannel() {
 	current := dv.activeEQChannel()
 
-	if current == "main" && len(dv.Rows) > 0 {
+	if current == channel.Master && len(dv.Rows) > 0 {
 		// Switch to first instrument
-		dv.setEQActiveChannel(dv.Rows[0].Instrument)
+		dv.setEQActiveChannel(channel.Of(dv.Rows[0].Instrument))
 		return
 	}
 
 	// Find current position and advance
 	for i, r := range dv.Rows {
-		if r.Instrument == current {
+		if channel.Of(r.Instrument) == current {
 			if i+1 < len(dv.Rows) {
-				dv.setEQActiveChannel(dv.Rows[i+1].Instrument)
+				dv.setEQActiveChannel(channel.Of(dv.Rows[i+1].Instrument))
 			} else {
-				dv.setEQActiveChannel("main")
+				dv.setEQActiveChannel(channel.Master)
 			}
 			return
 		}
 	}
 
 	// Default to main if current not found
-	dv.setEQActiveChannel("main")
+	dv.setEQActiveChannel(channel.Master)
 }
 
-// ensureRowEQ initializes EQ gains for a row if not already set.
-func (dv *DrumView) ensureRowEQ(row int) {
-	if row < 0 || row >= len(dv.Rows) {
-		return
+// activeEQ is the EQ settings of the active instrument channel, or nil when
+// the master (whose filters live on the DrumView) is on screen.
+func (dv *DrumView) activeEQ() *audio.EQSettings {
+	if inst, ok := dv.activeEQChannel().Instrument(); ok {
+		return audio.EQSettingsOf(inst)
 	}
-	r := dv.Rows[row]
-	if len(r.EQGainsDB) != len(eqBandDefs) {
-		r.EQGainsDB = make([]float64, len(eqBandDefs))
-	}
-}
-
-// ensureRowEQMuted initializes EQ mute state for a row if not already set.
-func (dv *DrumView) ensureRowEQMuted(row int) {
-	if row < 0 || row >= len(dv.Rows) {
-		return
-	}
-	r := dv.Rows[row]
-	if len(r.EQBandMuted) != len(eqBandDefs) {
-		r.EQBandMuted = make([]bool, len(eqBandDefs))
-	}
+	return nil
 }
 
 // activeHPFEnabled returns whether HPF is enabled for the active channel.
 func (dv *DrumView) activeHPFEnabled() bool {
-	ch := dv.activeEQChannel()
-	if ch == "main" {
-		return dv.hpfEnabled
+	if eq := dv.activeEQ(); eq != nil {
+		return eq.HPF
 	}
-	for _, r := range dv.Rows {
-		if r.Instrument == ch {
-			return r.HPFEnabled
-		}
-	}
-	return false
+	return dv.hpfEnabled
 }
 
 // activeHPFCutoffHz returns the HPF cutoff for the active channel.
 func (dv *DrumView) activeHPFCutoffHz() float64 {
-	ch := dv.activeEQChannel()
-	if ch == "main" {
-		return dv.hpfCutoffHz
-	}
-	for _, r := range dv.Rows {
-		if r.Instrument == ch {
-			if r.HPFCutoffHz <= 0 {
-				return 20
-			}
-			return r.HPFCutoffHz
+	if eq := dv.activeEQ(); eq != nil {
+		if eq.HPFHz <= 0 {
+			return audio.EQHPFDefaultHz
 		}
+		return eq.HPFHz
 	}
-	return 20
+	return dv.hpfCutoffHz
 }
 
 // activeLPFEnabled returns whether LPF is enabled for the active channel.
 func (dv *DrumView) activeLPFEnabled() bool {
-	ch := dv.activeEQChannel()
-	if ch == "main" {
-		return dv.lpfEnabled
+	if eq := dv.activeEQ(); eq != nil {
+		return eq.LPF
 	}
-	for _, r := range dv.Rows {
-		if r.Instrument == ch {
-			return r.LPFEnabled
-		}
-	}
-	return false
+	return dv.lpfEnabled
 }
 
 // activeLPFCutoffHz returns the LPF cutoff for the active channel.
 func (dv *DrumView) activeLPFCutoffHz() float64 {
-	ch := dv.activeEQChannel()
-	if ch == "main" {
-		return dv.lpfCutoffHz
-	}
-	for _, r := range dv.Rows {
-		if r.Instrument == ch {
-			if r.LPFCutoffHz <= 0 {
-				return 20000
-			}
-			return r.LPFCutoffHz
+	if eq := dv.activeEQ(); eq != nil {
+		if eq.LPFHz <= 0 {
+			return audio.EQLPFDefaultHz
 		}
+		return eq.LPFHz
 	}
-	return 20000
+	return dv.lpfCutoffHz
 }
 
 // setActiveHPF sets the HPF state for the active channel.
 func (dv *DrumView) setActiveHPF(enabled bool, cutoffHz float64) {
-	ch := dv.activeEQChannel()
-	if ch == "main" {
-		dv.hpfEnabled = enabled
-		dv.hpfCutoffHz = cutoffHz
-	} else {
-		for _, r := range dv.Rows {
-			if r.Instrument == ch {
-				r.HPFEnabled = enabled
-				r.HPFCutoffHz = cutoffHz
-				break
-			}
-		}
+	if eq := dv.activeEQ(); eq != nil {
+		eq.HPF, eq.HPFHz = enabled, cutoffHz
+		return
 	}
+	dv.hpfEnabled, dv.hpfCutoffHz = enabled, cutoffHz
 }
 
 // setActiveLPF sets the LPF state for the active channel.
 func (dv *DrumView) setActiveLPF(enabled bool, cutoffHz float64) {
-	ch := dv.activeEQChannel()
-	if ch == "main" {
-		dv.lpfEnabled = enabled
-		dv.lpfCutoffHz = cutoffHz
-	} else {
-		for _, r := range dv.Rows {
-			if r.Instrument == ch {
-				r.LPFEnabled = enabled
-				r.LPFCutoffHz = cutoffHz
-				break
-			}
-		}
+	if eq := dv.activeEQ(); eq != nil {
+		eq.LPF, eq.LPFHz = enabled, cutoffHz
+		return
 	}
+	dv.lpfEnabled, dv.lpfCutoffHz = enabled, cutoffHz
 }
 
 // toggleHPF toggles the high-pass filter for the active channel.
@@ -506,7 +461,7 @@ func (dv *DrumView) toggleHPF() {
 	dv.setActiveHPF(enabled, dv.activeHPFCutoffHz())
 	dv.applyEQ()
 	dv.eqCurveDirty = true
-	dv.commitEQFilter("hpf")
+	dv.commitEQFilter(hooks.FilterHPF)
 }
 
 // toggleLPF toggles the low-pass filter for the active channel.
@@ -515,19 +470,14 @@ func (dv *DrumView) toggleLPF() {
 	dv.setActiveLPF(enabled, dv.activeLPFCutoffHz())
 	dv.applyEQ()
 	dv.eqCurveDirty = true
-	dv.commitEQFilter("lpf")
+	dv.commitEQFilter(hooks.FilterLPF)
 }
 
-// buildFullEQBands constructs the full EQ band chain including HPF and LPF filters.
+// buildFullEQBands compiles an EQ (the master's, or one drawn) into its band
+// chain, exactly as an instrument's settings compile (audio.EQSettings.Bands).
 func (dv *DrumView) buildFullEQBands(gains []float64, muted []bool, hpfOn bool, hpfHz float64, lpfOn bool, lpfHz float64) []audio.EQBand {
-	bands := dv.buildEQBands(gains, muted)
-	if hpfOn && hpfHz > 20 {
-		bands = append([]audio.EQBand{{Kind: audio.EQHighpass, Freq: hpfHz, Q: 0.707}}, bands...)
-	}
-	if lpfOn && lpfHz < 20000 {
-		bands = append(bands, audio.EQBand{Kind: audio.EQLowpass, Freq: lpfHz, Q: 0.707})
-	}
-	return bands
+	s := audio.EQSettings{GainsDB: gains, BandMuted: muted, HPF: hpfOn, HPFHz: hpfHz, LPF: lpfOn, LPFHz: lpfHz}
+	return s.Bands()
 }
 
 // syncFilterButtonStyles updates the HPF/LPF button appearance for the active channel.
@@ -553,7 +503,7 @@ func (dv *DrumView) syncFilterButtonStyles() {
 func (dv *DrumView) toggleEQBandMute(band int) {
 	ch := dv.activeEQChannel()
 	changed := false
-	if ch == "main" {
+	if ch == channel.Master {
 		if band >= 0 && band < len(dv.eqBandMuted()) {
 			dv.eqBandMuted()[band] = !dv.eqBandMuted()[band]
 			dv.applyMasterEQ()
@@ -562,18 +512,14 @@ func (dv *DrumView) toggleEQBandMute(band int) {
 		}
 	} else {
 		// Per-instrument EQ
-		for j, r := range dv.Rows {
-			if r.Instrument == ch {
-				dv.ensureRowEQ(j)
-				dv.ensureRowEQMuted(j)
-				if band >= 0 && band < len(r.EQBandMuted) {
-					r.EQBandMuted[band] = !r.EQBandMuted[band]
-					dv.applyRowEQ(j)
-					dv.logger.Debugf("[drumview] EQ band %d mute toggled for %s: %v", band, ch, r.EQBandMuted[band])
-					changed = true
-				}
-				break
+		if eq := dv.activeEQ(); eq != nil && band >= 0 && band < len(eq.BandMuted) {
+			eq.BandMuted[band] = !eq.BandMuted[band]
+			if inst, ok := ch.Instrument(); ok {
+				audio.ApplyEQSettings(inst)
 			}
+			dv.eqCurveDirty = true
+			dv.logger.Debugf("[drumview] EQ band %d mute toggled for %s: %v", band, ch, eq.BandMuted[band])
+			changed = true
 		}
 	}
 	if changed {
@@ -583,16 +529,32 @@ func (dv *DrumView) toggleEQBandMute(band int) {
 
 // onRowInstrumentChanged is the single notification point for "row[r]'s
 // instrument id changed from oldID to newID". Callers must invoke this
+// onAudibleSetChanged is the sync notification for "which rows are audible
+// just changed" — a mute or a solo. Direct call, not hooks.Bus: the EQ panel
+// must observe it before the next Draw, and a worker-pool handler cannot
+// promise that (CLAUDE.md, Event Notification).
+//
+// Every mute/solo path must call this. A mute that skips it leaves the
+// Spectrum tab describing a row that is no longer in the mix, for the length
+// of the banner dwell and the peak-hold.
+//
+// Reachable from Game.Update under seqMu, so it must not re-acquire it.
+func (dv *DrumView) onAudibleSetChanged() {
+	if dv.eqPanelZone != nil {
+		dv.eqPanelZone.InvalidateSpectrumReadout()
+	}
+}
+
 // after the row's Instrument and Name fields are updated. It runs
 // synchronously on the UI goroutine, so the EQ panel observes the new
 // value before the next Draw. Subscribers added here must not re-acquire
 // seqMu (this is reachable from Game.Update under that lock).
-func (dv *DrumView) onRowInstrumentChanged(row int, oldID, newID string) {
+func (dv *DrumView) onRowInstrumentChanged(row int, oldID, newID instrument.ID) {
 	if oldID == newID {
 		return
 	}
-	if dv.eqActiveChannel == oldID && oldID != "" {
-		dv.setEQActiveChannel(newID)
+	if dv.eqActiveChannel == channel.Of(oldID) && oldID != "" {
+		dv.setEQActiveChannel(channel.Of(newID))
 		if dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen() {
 			dv.eqPanelZone.CloseChannelDropdown()
 		}

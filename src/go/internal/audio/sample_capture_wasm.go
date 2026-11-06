@@ -5,6 +5,8 @@ package audio
 import (
 	"syscall/js"
 	"unsafe"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // RenderInstrumentOneShot captures the active instrument's rendered one-shot on
@@ -12,7 +14,7 @@ import (
 // so capture goes through the captureInstrumentPCM JS bridge, which returns the
 // rendered Float32Array (as a Uint8Array view) plus its sample rate, or a falsy
 // value when no render is available yet.
-func RenderInstrumentOneShot(id string) ([]float32, int) {
+func RenderInstrumentOneShot(id instrument.ID) ([]float32, int) {
 	return captureInstrumentPCMOpts(id, false)
 }
 
@@ -20,17 +22,17 @@ func RenderInstrumentOneShot(id string) ([]float32, int) {
 // descriptor (the JS bridge skips its applySampleEdit step when raw is set).
 // The Sampler editor loads through this so it shows the UN-edited source
 // waveform and overlays the saved trim/pitch/gain itself.
-func RenderInstrumentOneShotRaw(id string) ([]float32, int) {
+func RenderInstrumentOneShotRaw(id instrument.ID) ([]float32, int) {
 	return captureInstrumentPCMOpts(id, true)
 }
 
-func captureInstrumentPCMOpts(id string, raw bool) ([]float32, int) {
+func captureInstrumentPCMOpts(id instrument.ID, raw bool) ([]float32, int) {
 	sr := SampleRate()
 	fn := js.Global().Get("captureInstrumentPCM")
 	if !fn.Truthy() {
 		return nil, sr
 	}
-	res := fn.Invoke(id, raw)
+	res := fn.Invoke(string(id), raw)
 	if !res.Truthy() {
 		return nil, sr
 	}

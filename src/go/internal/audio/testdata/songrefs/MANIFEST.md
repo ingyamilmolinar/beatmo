@@ -1,24 +1,22 @@
-# Reference WAVs — CC0 Classical Music Recordings
+# Reference WAVs — SUPERSEDED
 
-**License**: Creative Commons Zero (CC0) / Public Domain
+**This directory and file are superseded.** Song-tier ("Tier-I") reference
+provenance now lives entirely in `internal/wavref/catalogue.json`, and the
+audio itself fetches into `$BEATMO_WAV_REFS` (never committed — full
+recordings are tens of MB) via:
 
-Reference audio files for song-match testing and orchestral instrument evaluation.
-All recordings sourced from CC0 repositories (Musopen, IMSLP, etc.).
-
-## Format
-
-**Required format**: 16-bit PCM WAV (mono or stereo, any sample rate).
-
-If a source offers only lossy-compressed audio (MP3, AAC, etc.), the row is
-documented below but the WAV will not be downloaded. Users may supply these
-locally if needed (manual placement in this directory).
-
-Regenerate via:
 ```
-bash scripts/fetch_song_refs.sh
+make fetch-refs TIER=song
 ```
 
-## File table
+Coverage — which templates have a song reference and which don't — is
+reported by:
 
-| file | title | source | license | sha256 |
-|------|-------|--------|---------|--------|
+```
+make refs-doctor
+```
+
+`scripts/fetch_song_refs.sh` (the tool that used to regenerate this file) has
+been deleted; `musopen.org` started returning HTTP 403 behind Cloudflare, so
+it no longer worked. This file is kept only as a pointer for anyone who finds
+it via an old link — do not add new rows here.

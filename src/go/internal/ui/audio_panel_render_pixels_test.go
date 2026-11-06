@@ -10,6 +10,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -110,6 +111,15 @@ func barRectsInsideMeter(rects []drawnRect, inside image.Rectangle) int {
 		if r.Rect.Min.X <= inside.Min.X && r.Rect.Max.X >= inside.Max.X {
 			continue
 		}
+		// Flat-tonal chrome (2026-07-25) marks a selected control with a gold
+		// bar exactly flatSelectionBarPx tall (drawFlatSelectionBar). Since
+		// meterLow aliases the accent gold, discriminate by geometry: a
+		// selection bar is always exactly 2px tall, while a meter bar / LED
+		// segment is taller. Without this, an active pill inside the Levels
+		// surface reads as meter data on an empty snapshot.
+		if r.Rect.Dy() == flatSelectionBarPx {
+			continue
+		}
 		count++
 	}
 	return count
@@ -171,18 +181,18 @@ func drawWithSnapshot(t *testing.T, g *Game, subject Subject, snap audio.Analyze
 	rowSnaps := make([]RowSnapshot, 0, len(g.drum.Rows))
 	for _, r := range g.drum.Rows {
 		if r != nil && r.Instrument != "" {
-			rowSnaps = append(rowSnaps, RowSnapshot{ID: r.Instrument, Name: r.Name, Snap: snap})
+			rowSnaps = append(rowSnaps, RowSnapshot{ID: channel.Of(r.Instrument), Name: r.Name, Snap: snap})
 		}
 	}
-	st := SynthesizeAnalyzerState("main", "Master", snap, rowSnaps, nil, "", "", audio.SampleRate())
+	st := SynthesizeAnalyzerState(channel.Master, "Master", snap, rowSnaps, nil, channel.ID{}, "", audio.SampleRate())
 	testAnalyzerStateOverride = st
 
 	// Scope path: synthesize with both taps fed from the same snapshot so
 	// the rendered traces are visible. Same snap goes into every per-stage
 	// slot — the renderer just needs Active=true for whichever (TapA,TapB)
 	// stage pair is exercised.
-	testScopeStateOverride = SynthesizeScopeState("main", scope.StageSynth, scope.StageEQ,
-		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Sends: snap, Master: snap})
+	testScopeStateOverride = SynthesizeScopeState(channel.Master, scope.StageSynth, scope.StageEQ,
+		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Master: snap})
 
 	t.Cleanup(func() {
 		testAnalyzerStateOverride = nil

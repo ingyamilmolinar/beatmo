@@ -9,34 +9,9 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
-
-// TestChainTriggerMarker_PaintsLine: the trigger marker must paint a
-// vertical line at ~10% of the trace area's width. We verify via the
-// shared drawRect interceptor.
-func TestChainTriggerMarker_PaintsLine(t *testing.T) {
-	dst := ebiten.NewImage(400, 100)
-	rect := image.Rect(0, 0, 400, 80)
-	rects := collectFilledRects(t, func() {
-		drawChainTriggerMarker(dst, rect)
-	})
-	if len(rects) == 0 {
-		t.Fatalf("expected trigger marker rects, got 0")
-	}
-	wantX := rect.Min.X + rect.Dx()/10
-	var seen bool
-	for _, r := range rects {
-		// Tolerance ±2 px so a small geometric refactor doesn't break us.
-		if r.Rect.Min.X >= wantX-2 && r.Rect.Min.X <= wantX+2 {
-			seen = true
-			break
-		}
-	}
-	if !seen {
-		t.Errorf("expected a rect near x=%d (10%% mark), got rects=%v", wantX, rects)
-	}
-}
 
 // TestChainStageMiniWaveform_NoSamplesIsNoop: empty samples slice
 // must not draw anything.
@@ -126,7 +101,7 @@ func TestChainInsertFXCountForActiveRow_ReadsAudioLayer(t *testing.T) {
 	state := &scope.State{
 		TapA: scope.TapData{
 			Stage:  scope.StageInsertFX,
-			InstID: id,
+			InstID: channel.Of(id),
 			Active: true,
 		},
 	}

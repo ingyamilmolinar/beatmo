@@ -100,7 +100,7 @@ try {
     typeof ensureDefaultPath === "function" &&
     typeof nodeRect === "function" &&
     typeof camOffset === "function" &&
-    typeof camScale === "function",
+    typeof camScale === "function", null,
     { timeout: 15000 }
   );
 } catch (e) {

@@ -5,38 +5,30 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 // TestTemplates_AllInstrumentsRegistered guards against templates referencing an
 // instrument id that isn't a real built-in — such an id renders RED/absent in the
 // UI (the "bass" vs real-id bug). Every instrument id in every template MUST
-// resolve to a built-in in audio.BuiltinInstrumentIDs (the single source of truth
+// resolve to a built-in in roster.All (the single source of truth
 // for registered instruments, generated from engine_instruments.go).
 //
 // Instance variants are valid: gen-showcase auto-suffixes a duplicated id within
-// a template (e.g. two organ voices → "organ" + "organ-2") so each voice carries
-// its own display name, and audio.EnsureInstanceInstrument promotes the "-1"/"-2"
+// a template (e.g. two organ voices → "organ" + "organ--2") so each voice carries
+// its own display name, and audio.EnsureInstanceInstrument promotes the "--N"
 // variant at import time to render IDENTICALLY to its registered base. Such an id
-// is valid iff its base (with the instance suffix stripped) is registered — this
-// mirrors audio.instanceBaseID, the canonical strip.
+// is valid iff its base (with the instance suffix stripped) is registered —
+// resolved via instrument.ID.Base, the canonical strip, so this test cannot
+// go stale the way its old inline copy of the strip logic did.
 func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
-	registered := make(map[string]bool, len(audio.BuiltinInstrumentIDs))
-	for _, id := range audio.BuiltinInstrumentIDs {
-		registered[id] = true
-	}
-	// instanceBaseStrip mirrors audio.instanceBaseID (unexported): strip a
-	// trailing "-1"/"-2" instance suffix so the variant resolves to its base.
-	instanceBaseStrip := func(id string) string {
-		if len(id) > 2 && (strings.HasSuffix(id, "-1") || strings.HasSuffix(id, "-2")) {
-			return id[:len(id)-2]
-		}
-		return id
-	}
 	for _, tp := range Templates() {
 		var doc struct {
 			Instruments []struct {
-				ID string `json:"id"`
+				ID instrument.ID `json:"id"`
 			} `json:"instruments"`
 		}
 		if err := json.Unmarshal(tp.Bytes, &doc); err != nil {
@@ -46,9 +38,9 @@ func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 			t.Errorf("template %q has no instruments", tp.Genre)
 		}
 		for _, in := range doc.Instruments {
-			if !registered[in.ID] && !registered[instanceBaseStrip(in.ID)] {
+			if !roster.Has(in.ID.Base()) {
 				t.Errorf("template %q references UNREGISTERED instrument %q (renders RED). "+
-					"Use a real id from audio.BuiltinInstrumentIDs (e.g. bass → bass-guitar/sub-bass/fm-bass)",
+					"Use a real id from roster.All (e.g. bass → bass-guitar/sub-bass/fm-bass)",
 					tp.Genre, in.ID)
 			}
 		}
@@ -58,20 +50,37 @@ func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 // The 15 built-in templates are authoritative JSON project files, each recreating
 // the instrumental signature of one genre-defining masterpiece. All are generated
 // by cmd/gen-showcase (regenerate via `go run ./cmd/gen-showcase`). These guards
-// validate the embedded files directly, the same way the startup demo is validated
-// — see internal/ui startup_demo_* tests for the import/quality coverage.
+// validate the embedded files directly; internal/ui's template_import_test.go
+// covers importing them.
 
 func TestTemplates_OrderedAndNonEmpty(t *testing.T) {
 	tpls := Templates()
 	wantGenres := []string{
-		"bach-toccata", "vivaldi-spring", "mozart-k545", "bach-prelude-c", "bach-flute-allemande", "asturias",
-		"bach-cello-prelude", "pachelbel-violin", "marcello-oboe", "cielito-trumpet", "handel-water-horn",
-		"felt-prelude", "sax-blues", "steel-folk", "electric-riff", "clav-funk", "bass-groove", "conga-tumbao",
-		"jobim-ipanema", "miles-so-what", "bbking-thrill-is-gone",
-		"wonder-superstition", "chic-good-times",
-		"eagles-hotel-california", "marley-exodus", "toto-africa",
-		"dre-g-thang", "blackbox-ride-on-time", "gaynor-survive",
-		"puente-oye-como-va", "salsa-vivir", "bachata-obsesion",
+		"funky-drummer", "impeach-the-president", "superstition-groove", "hook-and-sling",
+		"look-ka-py-py", "synthetic-substitution", "haitian-divorce", "palm-grease",
+		"expensive-shit", "jazz-swing",
+		"we-will-rock-you-stomp", "rosanna-shuffle", "in-the-air-tonight", "levee-breaks-rock",
+		"immigrant-song", "hit-me-with-your-rhythm-stick", "dirty-love", "rock-lobster",
+		"peek-a-boo", "scentless-apprentice", "iron-man",
+		"dig-it", "achtung", "down-in-it", "being-boiled", "1000-knives", "raised-by-snakes",
+		"problemes-damour", "e-mc2", "blue-monday-synthpop",
+		"planet-rock-electro", "needle-to-the-groove", "egypt-egypt", "buffalo-gals", "clear",
+		"you-got-me", "trap-808",
+		"on-and-on", "can-you-feel-it", "no-way-back", "french-kiss",
+		"dominatrix-sleeps-tonight", "voodoo-ray", "north-american-scum", "da-funk-house",
+		"uk-garage-2step", "tetris-techno",
+		"amen-break-jungle", "flim", "xtal", "idioteque", "when-i-rule-the-world",
+		"reggaeton-dembow", "baile-funk", "dancehall-riddim", "salsa-clave", "cumbia",
+		"merengue", "vallenato",
+		"bach-brandenburg-3", "bach-brandenburg-4", "bach-kyrie-bwv232",
+		"beethoven-fifth", "beethoven-ode-to-joy", "haydn-london", "schubert-fifth",
+		"haydn-quartet-op76", "mozart-quartet-k387", "beethoven-quartet-op18",
+		"brahms-first-finale", "dvorak-american", "borodin-quartet-2",
+		"beach-gaelic", "boulanger-printemps",
+		"schubert-erlkonig", "schubert-ave-maria", "schubert-standchen",
+		"clara-schumann-op13-1", "hensel-italien",
+		"faure-apres-un-reve", "satie-air-du-rat",
+		"liliuokalani-aloha-oe", "gonzaga-espanha-e-brasil",
 	}
 	if len(tpls) != len(wantGenres) {
 		t.Fatalf("got %d templates, want %d", len(tpls), len(wantGenres))
@@ -87,14 +96,17 @@ func TestTemplates_OrderedAndNonEmpty(t *testing.T) {
 			t.Fatalf("template %q has no bytes", tp.Genre)
 		}
 		var doc struct {
-			Version int `json:"version"`
-			BPM     int `json:"bpm"`
+			SchemaVersion string `json:"schema_version"`
+			BPM           int    `json:"bpm"`
 		}
 		if err := json.Unmarshal(tp.Bytes, &doc); err != nil {
 			t.Fatalf("template %q bytes not JSON: %v", tp.Genre, err)
 		}
-		if doc.Version != 1 {
-			t.Fatalf("template %q version=%d want 1", tp.Genre, doc.Version)
+		// Templates are generated by cmd/gen-showcase, so they must carry
+		// the CURRENT schema version — not merely a readable one. A stale
+		// stamp here means the templates were not regenerated after a bump.
+		if doc.SchemaVersion != schema.Version {
+			t.Fatalf("template %q schema_version=%q want %q (regenerate: go run ./cmd/gen-showcase)", tp.Genre, doc.SchemaVersion, schema.Version)
 		}
 		// BPM is derived from the JSON, so it must equal the file's bpm field.
 		if tp.BPM != doc.BPM {
@@ -110,38 +122,89 @@ func TestTemplates_OrderedAndNonEmpty(t *testing.T) {
 // the menu names the original each template recreates.
 func TestTemplates_DisplayNamed(t *testing.T) {
 	want := map[string]string{
-		"bach-toccata":            "Bach — Toccata & Fugue in D minor",
-		"vivaldi-spring":          "Vivaldi — Spring",
-		"mozart-k545":             "Mozart — Sonata K545",
-		"bach-prelude-c":          "Bach — Prelude in C (BWV 846)",
-		"bach-flute-allemande":    "Bach — Flute Partita Allemande (BWV 1013)",
-		"asturias":                "Albéniz — Asturias (Leyenda)",
-		"bach-cello-prelude":      "Bach — Cello Suite 1 Prelude (BWV 1007)",
-		"pachelbel-violin":        "Pachelbel — Canon in D — Violin",
-		"marcello-oboe":           "Marcello — Oboe Concerto in D minor, Adagio",
-		"cielito-trumpet":         "Cielito Lindo (Mendoza, 1882) — Mariachi Trumpet",
-		"handel-water-horn":       "Handel — Water Music, Bourrée — French Horn",
-		"felt-prelude":            "Felt Piano — Bach Prelude (soft)",
-		"sax-blues":               "Blues Line — Alto Sax",
-		"steel-folk":              "Folk Fingerpick — Steel Guitar",
-		"electric-riff":           "Pentatonic Riff — Electric Guitar",
-		"clav-funk":               "Funk Riff — Guitar",
-		"bass-groove":             "Bass Groove — Synth Bass",
-		"conga-tumbao":            "Tumbao — Congas",
-		"jobim-ipanema":           "Jobim — The Girl from Ipanema",
-		"miles-so-what":           "Miles Davis — So What",
-		"bbking-thrill-is-gone":   "B.B. King — The Thrill Is Gone",
-		"wonder-superstition":     "Stevie Wonder — Superstition",
-		"chic-good-times":         "Chic — Good Times",
-		"eagles-hotel-california": "Eagles — Hotel California",
-		"marley-exodus":           "Bob Marley — Exodus",
-		"toto-africa":             "Toto — Africa",
-		"dre-g-thang":             "Dr. Dre — Nuthin' but a 'G' Thang",
-		"blackbox-ride-on-time":   "Black Box — Ride On Time",
-		"gaynor-survive":          "Gloria Gaynor — I Will Survive",
-		"puente-oye-como-va":      "Tito Puente — Oye Como Va",
-		"salsa-vivir":             "Salsa — Vivir Mi Vida",
-		"bachata-obsesion":        "Bachata — Obsesión",
+		"funky-drummer":                 "James Brown — Funky Drummer",
+		"impeach-the-president":         "The Honey Drippers — Impeach the President",
+		"superstition-groove":           "Stevie Wonder — Superstition",
+		"amen-break-jungle":             "The Winstons — Amen, Brother",
+		"planet-rock-electro":           "Afrika Bambaataa — Planet Rock",
+		"blue-monday-synthpop":          "New Order — Blue Monday",
+		"da-funk-house":                 "Daft Punk — Da Funk",
+		"uk-garage-2step":               "UK garage — 2-step beat",
+		"trap-808":                      "Trap — 808 hats & rolls",
+		"tetris-techno":                 "Tetris — Korobeiniki",
+		"we-will-rock-you-stomp":        "Queen — We Will Rock You",
+		"rosanna-shuffle":               "Toto — Rosanna",
+		"in-the-air-tonight":            "Phil Collins — In the Air Tonight",
+		"levee-breaks-rock":             "Led Zeppelin — When the Levee Breaks",
+		"jazz-swing":                    "Jazz swing — ride & walking bass",
+		"reggaeton-dembow":              "Reggaeton — dembow beat",
+		"baile-funk":                    "Baile funk — tamborzão",
+		"dancehall-riddim":              "Dancehall — riddim",
+		"salsa-clave":                   "Salsa — son clave 2-3",
+		"cumbia":                        "Cumbia — guacharaca & llamador",
+		"merengue":                      "Merengue — güira & tambora",
+		"vallenato":                     "Vallenato — caja & guacharaca",
+		"hook-and-sling":                "Eddie Bo — Hook and Sling",
+		"look-ka-py-py":                 "The Meters — Look-Ka Py Py",
+		"synthetic-substitution":        "Melvin Bliss — Synthetic Substitution",
+		"haitian-divorce":               "Steely Dan — Haitian Divorce",
+		"palm-grease":                   "Herbie Hancock — Palm Grease",
+		"expensive-shit":                "Fela Kuti — Expensive Shit",
+		"immigrant-song":                "Led Zeppelin — Immigrant Song",
+		"hit-me-with-your-rhythm-stick": "Ian Dury & the Blockheads — Hit Me with Your Rhythm Stick",
+		"dirty-love":                    "Frank Zappa — Dirty Love",
+		"rock-lobster":                  "The B-52's — Rock Lobster",
+		"peek-a-boo":                    "Devo — Peek-a-Boo!",
+		"scentless-apprentice":          "Nirvana — Scentless Apprentice",
+		"iron-man":                      "Black Sabbath — Iron Man",
+		"dig-it":                        "Skinny Puppy — Dig It",
+		"achtung":                       "Laibach — Achtung",
+		"down-in-it":                    "Nine Inch Nails — Down in It",
+		"being-boiled":                  "The Human League — Being Boiled",
+		"1000-knives":                   "Yellow Magic Orchestra — 1000 Knives",
+		"raised-by-snakes":              "Telex — Raised by Snakes",
+		"problemes-damour":              "Alexander Robotnick — Problèmes d'amour",
+		"e-mc2":                         "Giorgio Moroder — E=MC²",
+		"needle-to-the-groove":          "Mantronix — Needle to the Groove",
+		"egypt-egypt":                   "Egyptian Lover — Egypt, Egypt",
+		"buffalo-gals":                  "Malcolm McLaren — Buffalo Gals",
+		"clear":                         "Cybotron — Clear",
+		"you-got-me":                    "The Roots — You Got Me",
+		"on-and-on":                     "Jesse Saunders — On and On",
+		"can-you-feel-it":               "Mr. Fingers — Can You Feel It",
+		"no-way-back":                   "Adonis — No Way Back",
+		"french-kiss":                   "Lil Louis — French Kiss",
+		"dominatrix-sleeps-tonight":     "The Dominatrix — The Dominatrix Sleeps Tonight",
+		"voodoo-ray":                    "A Guy Called Gerald — Voodoo Ray",
+		"north-american-scum":           "LCD Soundsystem — North American Scum",
+		"flim":                          "Aphex Twin — Flim",
+		"xtal":                          "Aphex Twin — Xtal",
+		"idioteque":                     "Radiohead — Idioteque",
+		"when-i-rule-the-world":         "LIZ (prod. SOPHIE) — When I Rule the World",
+		"bach-brandenburg-3":            "Bach — Brandenburg Concerto No. 3",
+		"bach-brandenburg-4":            "Bach — Brandenburg Concerto No. 4",
+		"bach-kyrie-bwv232":             "Bach — Mass in B minor, Kyrie",
+		"beethoven-fifth":               "Beethoven — Symphony No. 5",
+		"beethoven-ode-to-joy":          "Beethoven — Ode to Joy",
+		"haydn-london":                  "Haydn — Symphony No. 104 (London)",
+		"schubert-fifth":                "Schubert — Symphony No. 5",
+		"haydn-quartet-op76":            "Haydn — String Quartet Op. 76 No. 1",
+		"mozart-quartet-k387":           "Mozart — String Quartet K. 387",
+		"beethoven-quartet-op18":        "Beethoven — String Quartet Op. 18 No. 1",
+		"brahms-first-finale":           "Brahms — Symphony No. 1, Finale",
+		"dvorak-american":               "Dvořák — American Quartet",
+		"borodin-quartet-2":             "Borodin — String Quartet No. 2",
+		"beach-gaelic":                  "Amy Beach — Gaelic Symphony",
+		"boulanger-printemps":           "Lili Boulanger — D'un matin de printemps",
+		"schubert-erlkonig":             "Schubert — Erlkönig",
+		"schubert-ave-maria":            "Schubert — Ave Maria",
+		"schubert-standchen":            "Schubert — Ständchen",
+		"clara-schumann-op13-1":         "Clara Schumann — Ich stand in dunklen Träumen",
+		"hensel-italien":                "Fanny Hensel — Italien",
+		"faure-apres-un-reve":           "Fauré — Après un rêve",
+		"satie-air-du-rat":              "Satie — Air du rat",
+		"liliuokalani-aloha-oe":         "Liliʻuokalani — Aloha ʻOe",
+		"gonzaga-espanha-e-brasil":      "Chiquinha Gonzaga — Espanha e Brasil",
 	}
 	for _, tp := range Templates() {
 		if got := tp.Display; got != want[tp.Genre] {
@@ -188,53 +251,21 @@ func TestTemplates_DirectoryHasNoOrphans(t *testing.T) {
 	}
 }
 
-// BPMs must stay in each song's authentic band (a template with a wildly wrong
-// tempo would play unrecognizably). Bands are deliberately wide; the exact value
-// is whatever the shipped JSON carries.
-func TestTemplates_BPMInGenreBand(t *testing.T) {
-	band := map[string]struct{ lo, hi int }{
-		"bach-toccata":            {60, 90},
-		"vivaldi-spring":          {95, 125},
-		"mozart-k545":             {105, 135},
-		"bach-prelude-c":          {55, 80},
-		"bach-flute-allemande":    {75, 100},
-		"asturias":                {95, 130},
-		"bach-cello-prelude":      {55, 80},
-		"pachelbel-violin":        {55, 80},
-		"marcello-oboe":           {45, 70},
-		"cielito-trumpet":         {150, 180},
-		"handel-water-horn":       {100, 135},
-		"felt-prelude":            {50, 75},
-		"sax-blues":               {80, 115},
-		"steel-folk":              {75, 110},
-		"electric-riff":           {100, 140},
-		"clav-funk":               {85, 125},
-		"bass-groove":             {90, 130},
-		"conga-tumbao":            {80, 120},
-		"jobim-ipanema":           {115, 140},
-		"miles-so-what":           {120, 150},
-		"bbking-thrill-is-gone":   {80, 110},
-		"wonder-superstition":     {90, 115},
-		"chic-good-times":         {105, 125},
-		"eagles-hotel-california": {65, 90},
-		// Exodus: MIDI tempo meta (bitmidi 18775) + songbpm.com both say ~132;
-		// the old 98 was unsourced (2026-07 enrichment dossier).
-		"marley-exodus": {125, 140},
-		"toto-africa":             {85, 105},
-		"dre-g-thang":             {80, 100},
-		"blackbox-ride-on-time":   {115, 130},
-		"gaynor-survive":          {110, 125},
-		"puente-oye-como-va":      {110, 135},
-		"salsa-vivir":             {95, 120},
-		"bachata-obsesion":        {120, 145},
-	}
+// TestTemplates_BPMIsMusicallyPlausible replaces the old per-song BPM band
+// table. That table was hand-researched prose: it could disagree with the
+// shipped file and it duplicated a fact the score already states. Tempo is now
+// derived from each score's own metronome mark and checked against it by
+// cmd/gen-showcase's TestTemplateTempoComesFromScore, so all that is left to
+// assert here is that the derived value is a tempo a human could play.
+func TestTemplates_BPMIsMusicallyPlausible(t *testing.T) {
+	const (
+		slowest = 30  // slower than any notated Largo
+		fastest = 300 // faster than any notated Prestissimo
+	)
 	for _, tp := range Templates() {
-		b, ok := band[tp.Genre]
-		if !ok {
-			t.Fatalf("%s: no expected BPM band — add one", tp.Genre)
-		}
-		if tp.BPM < b.lo || tp.BPM > b.hi {
-			t.Errorf("%s: BPM=%d outside genre band [%d,%d]", tp.Genre, tp.BPM, b.lo, b.hi)
+		if tp.BPM < slowest || tp.BPM > fastest {
+			t.Errorf("%s: BPM=%d outside the plausible range [%d,%d] — the score's "+
+				"metronome mark is probably being misread", tp.Genre, tp.BPM, slowest, fastest)
 		}
 	}
 }

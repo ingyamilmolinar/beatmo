@@ -42,8 +42,8 @@ func TestRowsLayerInvalidatesOnLengthChange(t *testing.T) {
 	if g.drum.rowsLayerLength != g.drum.Length {
 		t.Fatalf("rowsLayerLength=%d should track dv.Length=%d after build", g.drum.rowsLayerLength, g.drum.Length)
 	}
-	if g.drum.rowsLayerRowWidth != g.drum.timelineRect.Dx() {
-		t.Fatalf("rowsLayerRowWidth=%d should track timelineRect.Dx()=%d after build", g.drum.rowsLayerRowWidth, g.drum.timelineRect.Dx())
+	if g.drum.rowsLayerRowWidth != g.drum.cellGridRect.Dx() {
+		t.Fatalf("rowsLayerRowWidth=%d should track cellGridRect.Dx()=%d after build", g.drum.rowsLayerRowWidth, g.drum.cellGridRect.Dx())
 	}
 
 	// Sanity: an unchanged second draw reuses the layer.
@@ -90,23 +90,23 @@ func TestRowsLayerInvalidatesOnTimelineWidthChange(t *testing.T) {
 	if gen0 == 0 {
 		t.Fatalf("expected rowsLayer to be built on first draw")
 	}
-	originalWidth := g.drum.timelineRect.Dx()
+	originalWidth := g.drum.cellGridRect.Dx()
 	if originalWidth <= 200 {
-		t.Fatalf("test requires timelineRect.Dx() > 200, got %d", originalWidth)
+		t.Fatalf("test requires cellGridRect.Dx() > 200, got %d", originalWidth)
 	}
 
 	// Shrink the timeline rect's right edge by 200px without touching Bounds
 	// or Min.X. This simulates right-side controls expanding into the timeline
 	// area mid-session — the exact scenario that bypassed the old canReuse
 	// check, since baseX (= timelineRect.Min.X - Bounds.Min.X) stays put.
-	g.drum.timelineRect.Max.X -= 200
+	g.drum.cellGridRect.Max.X -= 200
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if g.drum.rowsLayerGen == gen0 {
-		t.Fatalf("expected rowsLayer rebuild after timelineRect.Dx() shrank from %d to %d; gen unchanged at %d",
-			originalWidth, g.drum.timelineRect.Dx(), gen0)
+		t.Fatalf("expected rowsLayer rebuild after cellGridRect.Dx() shrank from %d to %d; gen unchanged at %d",
+			originalWidth, g.drum.cellGridRect.Dx(), gen0)
 	}
-	if g.drum.rowsLayerRowWidth != g.drum.timelineRect.Dx() {
-		t.Fatalf("rowsLayerRowWidth=%d should equal new timelineRect.Dx()=%d after rebuild",
-			g.drum.rowsLayerRowWidth, g.drum.timelineRect.Dx())
+	if g.drum.rowsLayerRowWidth != g.drum.cellGridRect.Dx() {
+		t.Fatalf("rowsLayerRowWidth=%d should equal new cellGridRect.Dx()=%d after rebuild",
+			g.drum.rowsLayerRowWidth, g.drum.cellGridRect.Dx())
 	}
 }

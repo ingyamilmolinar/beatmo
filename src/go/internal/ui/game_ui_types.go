@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 /* ───────────────────────── data types ───────────────────────── */
@@ -64,13 +65,16 @@ type pulse struct {
 const maxAudioGenRows = 256
 
 type soundReq struct {
-	id      string
+	id      instrument.ID
 	vol     float64
 	pitch   float64
 	dur     float64
 	when    float64
 	hasWhen bool
-	enqAt   time.Time
+	// grid is the predictor's trigger time (ctx seconds, groove applied, no
+	// lookahead) for sequencer beats; 0 for fire-and-forget sounds.
+	grid  float64
+	enqAt time.Time
 	// gen is the GLOBAL transport generation (Stop/Pause/seek) at enqueue time.
 	// The audioLoop drops the req if it no longer matches g.audioGen.
 	gen uint64

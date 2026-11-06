@@ -1,0 +1,111 @@
+{
+  "schema_version": "0.0.1",
+  "id": "sub-bass-drive",
+  "name": "Sub Bass Drive",
+  "category": "modular",
+  "notes": "subBassSeed: the analytic dual-oscillator sub bass (gen source 4) as a plain\nconfig seed — formerly the legacy drum-sub-bass recipe + bass translation\nlayer; values are exactly what that binding sent, keyed against the modular\ndefaults (bit-identical render, locked by TestSynthGoldenByteIdentity).",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.5119,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 45
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "bass.analytic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "atk_amt": 0.2,
+        "atk_rate": 60,
+        "env_fast_rate": 2,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "harm_mix": 0.08,
+        "out_scale": 0.95,
+        "phase": 1.5707963267948966,
+        "pitch_env_amt": 0.15,
+        "pitch_env_rate": 40,
+        "sat_k": 1.2,
+        "wave": 0
+      }
+    }
+  ],
+  "fx": [
+    {
+      "type": "fx.distortion",
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 2,
+        "mix": 1,
+        "tone": 8000
+      }
+    }
+  ]
+}

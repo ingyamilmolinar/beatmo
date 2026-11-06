@@ -129,3 +129,24 @@ func TestControlGridPeek_WindowStableAcrossScroll(t *testing.T) {
 		t.Fatalf("visRows changed across scroll: was %d, now %d", top, g.visRows)
 	}
 }
+
+// SetPeekBand(false) gives the stolen row back: the same overflowing grid shows
+// both rows and reserves no band (so no fade paints over a visible row either).
+// The Synth root opts out — on a phone its band cost the second dial card.
+func TestControlGridPeek_OptOutKeepsEveryFullRow(t *testing.T) {
+	g := NewControlGrid(DefaultScrollbarStyle)
+	g.SetMaxCols(1)
+	g.SetPeekBand(false)
+	g.Layout(image.Rect(0, 100, 60, 140), 10, 40, 20, 0, 0)
+	if g.visRows != 2 || g.PeekH() != 0 {
+		t.Fatalf("opted out: visRows=%d peekH=%d, want 2 and 0", g.visRows, g.PeekH())
+	}
+	if !g.HasScroll() {
+		t.Fatal("opting out of the band must not hide the overflow")
+	}
+	g.SetPeekBand(true)
+	g.Layout(image.Rect(0, 100, 60, 140), 10, 40, 20, 0, 0)
+	if g.visRows != 1 || g.PeekH() != 8 {
+		t.Fatalf("opted back in: visRows=%d peekH=%d, want 1 and 8", g.visRows, g.PeekH())
+	}
+}

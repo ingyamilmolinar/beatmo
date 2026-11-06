@@ -8,19 +8,38 @@ import (
 	"sync/atomic"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
 
 type Voice interface{}
 
-type Instrument interface{ NewVoice(int, int) Voice }
+type Instrument interface{ NewVoice(int) Voice }
 
-var insts = []string{"snare", "kick", "hihat", "tom", "clap"}
+var insts = []instrument.ID{roster.Snare, roster.Kick, roster.Hihat, roster.Tom, roster.Clap}
 
-// SampleRate returns the audio output sample rate (stub returns 44100 for tests).
+// testSampleRate backs the stub SampleRate(). Defaults to 44100 to match the
+// pre-existing hardcoded stub value; mutate only via SetSampleRateForTest so
+// every test gets a restore closure instead of leaking the override.
+var testSampleRate int32 = 44100
+
+// SampleRate returns the audio output sample rate (stub returns 44100 by
+// default for tests; overridable via SetSampleRateForTest).
 func SampleRate() int {
-	return 44100
+	return int(atomic.LoadInt32(&testSampleRate))
+}
+
+// SetSampleRateForTest overrides the stub sample rate for the duration of a
+// test and returns a restore closure. Test-only (guarded by the `test` build
+// tag) — never mutate this without a restore, or the override leaks into
+// unrelated tests run later in the same process.
+func SetSampleRateForTest(sr int) func() {
+	prev := atomic.LoadInt32(&testSampleRate)
+	atomic.StoreInt32(&testSampleRate, int32(sr))
+	return func() { atomic.StoreInt32(&testSampleRate, prev) }
 }
 
 // EmitReport identifies a voice's first-emitted block. Exported so the UI
@@ -39,7 +58,7 @@ func DeviceClockSnapshot() (int64, float64, bool) { return 0, 0, false }
 // DrainEmitReports is a no-op stub under -tags test: always empty.
 func DrainEmitReports(dst []EmitReport) int { return 0 }
 
-func registerStub(id string) {
+func registerStub(id instrument.ID) {
 	for _, existing := range insts {
 		if existing == id {
 			return
@@ -47,16 +66,15 @@ func registerStub(id string) {
 	}
 	insts = append(insts, id)
 	bumpInstrumentsVersion()
-	InstrumentChannel(id)
 }
 
-func Register(id string, inst Instrument) {
+func Register(id instrument.ID, inst Instrument) {
 	registerStub(id)
 }
 
 // Unregister removes a runtime-registered instrument id from the stub set (the
 // inverse of Register). No-op if absent.
-func Unregister(id string) {
+func Unregister(id instrument.ID) {
 	found := false
 	out := insts[:0]
 	for _, existing := range insts {
@@ -72,12 +90,12 @@ func Unregister(id string) {
 	}
 }
 
-func RegisterAudio(id, path string) error {
+func RegisterAudio(id instrument.ID, path string) error {
 	registerStub(id)
 	return nil
 }
 
-func RegisterWAV(id, path string) error {
+func RegisterWAV(id instrument.ID, path string) error {
 	registerStub(id)
 	return nil
 }
@@ -88,33 +106,33 @@ func SelectWAV() (string, error) { return "dummy.wav", nil }
 // Records the trigger timestamp so tests can verify the UI's trigger-
 // pulse pipeline (Phase 4 audio-panel redesign) without instantiating
 // a real oto context.
-func Play(id string, when ...float64) { RecordVoiceTrigger(id) }
+func Play(id instrument.ID, when ...float64) { RecordVoiceTrigger(id) }
 
 // PlayVol is a stub used during tests for volume-controlled playback.
-func PlayVol(id string, vol float64, when ...float64) { RecordVoiceTrigger(id) }
+func PlayVol(id instrument.ID, vol float64, when ...float64) { RecordVoiceTrigger(id) }
 
 // PlayParams is a stub used during tests to accept extended playback params.
-func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
+func PlayParams(id instrument.ID, vol, pitch, dur float64, when ...float64) {
 	RecordVoiceTrigger(id)
 }
 
 // PlayParamsAt is a stub used during tests to avoid varargs allocation.
-func PlayParamsAt(id string, vol, pitch, dur, when float64) {
+func PlayParamsAt(id instrument.ID, vol, pitch, dur, when float64) {
 	RecordVoiceTrigger(id)
 }
 
 // SampleSeconds is a stub for tests.
-func SampleSeconds(id string) float64 { return 0 }
+func SampleSeconds(id instrument.ID) float64 { return 0 }
 
-var stopHook func(string)
+var stopHook func(instrument.ID)
 
-func Stop(id string) {
+func Stop(id instrument.ID) {
 	if stopHook != nil {
 		stopHook(id)
 	}
 }
 
-func SetStopHook(fn func(string)) { stopHook = fn }
+func SetStopHook(fn func(instrument.ID)) { stopHook = fn }
 
 // nowOverride allows tests to inject a deterministic audio clock.
 var nowOverride func() float64
@@ -170,77 +188,16 @@ func BPMFuncForTest() func(int) {
 }
 
 // Instruments returns placeholder instrument IDs during tests.
-func Instruments() []string { return insts }
+func Instruments() []instrument.ID { return insts }
 
 func ResetInstruments() {
-	insts = append([]string(nil), BuiltinInstrumentIDs...)
+	ResetInstrumentDocs()
+	insts = append(append([]instrument.ID(nil), roster.All...), userOnlyLibraryIDs()...)
 	bumpInstrumentsVersion()
 	ResetCatalogForTest(nil)
 	ClearAllInsertEffects()
-	resetInstrumentChannels(insts)
+	resetInstrumentChannels()
 	clearInstrumentDisplayNames()
-	bindBuiltinInstrumentRecipes()
-}
-
-// Send effect stubs for tests.
-var stubSendLevels = map[string][2]float64{} // [delay, reverb]
-
-func SetDelaySend(id string, amount float64) {
-	if amount < 0 {
-		amount = 0
-	}
-	if amount > 1 {
-		amount = 1
-	}
-	v := stubSendLevels[id]
-	v[0] = amount
-	stubSendLevels[id] = v
-}
-
-func DelaySend(id string) float64 {
-	return stubSendLevels[id][0]
-}
-
-func SetReverbSend(id string, amount float64) {
-	if amount < 0 {
-		amount = 0
-	}
-	if amount > 1 {
-		amount = 1
-	}
-	v := stubSendLevels[id]
-	v[1] = amount
-	stubSendLevels[id] = v
-}
-
-func ReverbSend(id string) float64 {
-	return stubSendLevels[id][1]
-}
-
-// ConfigureSendDelay is a no-op in test builds.
-func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
-	stubSendDelayParams = [3]float64{timeMs, feedback, dampingHz}
-}
-
-// ConfigureSendReverb is a no-op in test builds.
-func ConfigureSendReverb(room, damping, wet float64) {
-	stubSendReverbParams = [3]float64{room, damping, wet}
-}
-
-// stubSendDelayParams stores the last configured delay parameters for test queries.
-var stubSendDelayParams = [3]float64{300, 0.3, 3000}
-
-// stubSendReverbParams stores the last configured reverb parameters for test queries.
-var stubSendReverbParams = [3]float64{0.7, 0.4, 0.3}
-
-// SendDelayParams returns the current delay send configuration (test stub).
-func SendDelayParams() (float64, float64, float64) {
-	return stubSendDelayParams[0], stubSendDelayParams[1], stubSendDelayParams[2]
-}
-
-// SendReverbParams returns the current reverb send configuration (test stub).
-func SendReverbParams() (float64, float64, float64) {
-	return stubSendReverbParams[0], stubSendReverbParams[1], stubSendReverbParams[2]
 }
 
 // EQ / analyzer stubs for tests.
@@ -414,26 +371,6 @@ func (s *silenceProcessor) ProcessBlockBuf(in, out []float32, samples int) {
 	for i := 0; i < samples; i++ {
 		out[i] = 0
 	}
-}
-
-// multibandBandDef defines frequency boundaries for a single band in the multiband processor.
-type multibandBandDef struct {
-	loHz float64
-	hiHz float64
-}
-
-// defaultBandDefs matches the 10-band ISO standard EQ definitions used in the UI.
-var defaultBandDefs = []multibandBandDef{
-	{loHz: 22, hiHz: 44},       // 31 Hz
-	{loHz: 44, hiHz: 88},       // 62 Hz
-	{loHz: 88, hiHz: 177},      // 125 Hz
-	{loHz: 177, hiHz: 354},     // 250 Hz
-	{loHz: 354, hiHz: 707},     // 500 Hz
-	{loHz: 707, hiHz: 1414},    // 1 kHz
-	{loHz: 1414, hiHz: 2828},   // 2 kHz
-	{loHz: 2828, hiHz: 5657},   // 4 kHz
-	{loHz: 5657, hiHz: 11314},  // 8 kHz
-	{loHz: 11314, hiHz: 20000}, // 16 kHz
 }
 
 // biquad and makeBiquad are defined in biquad.go (shared across all build tags).
@@ -625,12 +562,14 @@ func NewShelfEQ(sampleRate int, low bool, freq, q, gainDB float64) Processor {
 	return NewEQProcessor(sampleRate, EQBand{Kind: kind, Freq: freq, Q: q, GainDB: gainDB})
 }
 
-func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
-	recordChannelEQ(id, eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)})
-	RebuildChannelWithEQ(id, NewEQProcessor(sampleRate, bands...))
+func SetChannelEQ(id channel.ID, sampleRate int, bands ...EQBand) {
+	channelEQWrites.Add(1)
+	proc := NewEQProcessor(sampleRate, bands...)
+	recordChannelEQ(id, eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...), proc: proc})
+	RebuildChannelWithEQ(id, proc)
 }
 
-func ClearChannelProcessors(id string) {
+func ClearChannelProcessors(id channel.ID) {
 	recordChannelEQ(id, eqRecord{})
 	RebuildChannelWithEQ(id, nil)
 }
@@ -658,14 +597,14 @@ func ResetAnalyzerBridgeStats() {}
 // snapshot. In test builds we route through ChannelAnalyzerSnapshot so
 // existing fixtures keep working; the WASM build uses a dedicated path
 // that skips the per-element JS array readback.
-func ChannelAnalyzerMetrics(id string) (peak, rms float64, clips int, active bool) {
+func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active bool) {
 	s := ChannelAnalyzerSnapshot(id)
 	clips = s.ClipCount
 	active = s.Peak > 0 || s.RMS > 0 || clips > 0
 	return s.Peak, s.RMS, clips, active
 }
 
-var analyzerRegistryStub = map[string]*Analyzer{}
+var analyzerRegistryStub = map[channel.ID]*Analyzer{}
 
 // eqRecord, lastSetEQ, LastSetEQ — moved to eq_state.go so the test build
 // and the native build share one implementation. Phase 5 of the synthesis
@@ -677,10 +616,9 @@ var analyzerRegistryStub = map[string]*Analyzer{}
 // channel needs synth + preEQ + channel analysers, mirroring "main").
 var (
 	analyserEnableMu         sync.Mutex
-	channelAnalyzerEnableCnt = map[string]int{}
-	preEQAnalyzerEnableCnt   = map[string]int{}
-	synthAnalyzerEnableCnt   = map[string]int{}
-	sendBusAnalyzerEnableCnt int
+	channelAnalyzerEnableCnt = map[channel.ID]int{}
+	preEQAnalyzerEnableCnt   = map[channel.ID]int{}
+	synthAnalyzerEnableCnt   = map[channel.ID]int{}
 )
 
 // ResetAnalyserEnableCounts zeroes every analyser-enable counter. Tests call
@@ -697,12 +635,11 @@ func ResetAnalyserEnableCounts() {
 	for k := range synthAnalyzerEnableCnt {
 		delete(synthAnalyzerEnableCnt, k)
 	}
-	sendBusAnalyzerEnableCnt = 0
 }
 
 // ChannelAnalyzerEnableCount returns how many times EnableChannelAnalyzer
 // has been called for id since the last reset.
-func ChannelAnalyzerEnableCount(id string) int {
+func ChannelAnalyzerEnableCount(id channel.ID) int {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
 	return channelAnalyzerEnableCnt[id]
@@ -710,7 +647,7 @@ func ChannelAnalyzerEnableCount(id string) int {
 
 // PreEQAnalyzerEnableCount returns how many times EnablePreEQAnalyzer has
 // been called for id since the last reset.
-func PreEQAnalyzerEnableCount(id string) int {
+func PreEQAnalyzerEnableCount(id channel.ID) int {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
 	return preEQAnalyzerEnableCnt[id]
@@ -718,7 +655,7 @@ func PreEQAnalyzerEnableCount(id string) int {
 
 // SynthAnalyzerEnableCount returns how many times EnableSynthAnalyzer has
 // been called for id since the last reset.
-func SynthAnalyzerEnableCount(id string) int {
+func SynthAnalyzerEnableCount(id channel.ID) int {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
 	return synthAnalyzerEnableCnt[id]
@@ -729,7 +666,7 @@ func SynthAnalyzerEnableCount(id string) int {
 // existing analyzer instead of stacking another onto the chain. The enable
 // COUNTER still increments on every call — tests assert on how many times the
 // UI asked, which is independent of how many analyzers end up wired.
-func EnableChannelAnalyzer(id string, window int) *Analyzer {
+func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
 	analyserEnableMu.Lock()
 	channelAnalyzerEnableCnt[id]++
 	analyserEnableMu.Unlock()
@@ -738,17 +675,17 @@ func EnableChannelAnalyzer(id string, window int) *Analyzer {
 	return an
 }
 
-func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func ChannelAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	if an, ok := analyzerRegistryStub[id]; ok {
 		return an.snapshot()
 	}
 	return AnalyzerSnapshot{}
 }
 
-var preEQAnalyzerRegistryStub = map[string]*Analyzer{}
+var preEQAnalyzerRegistryStub = map[channel.ID]*Analyzer{}
 
 // EnablePreEQAnalyzer creates a pre-EQ analyzer on the channel (stub version).
-func EnablePreEQAnalyzer(id string, window int) *Analyzer {
+func EnablePreEQAnalyzer(id channel.ID, window int) *Analyzer {
 	analyserEnableMu.Lock()
 	preEQAnalyzerEnableCnt[id]++
 	analyserEnableMu.Unlock()
@@ -762,7 +699,7 @@ func EnablePreEQAnalyzer(id string, window int) *Analyzer {
 }
 
 // PreEQAnalyzerSnapshot returns the latest pre-EQ snapshot (stub version).
-func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
+func PreEQAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	if an, ok := preEQAnalyzerRegistryStub[id]; ok {
 		return an.snapshot()
 	}
@@ -773,7 +710,7 @@ func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
 // no real per-stage analyser nodes). Returns nil to mirror the WASM signature.
 // The call is still counted so the Chn-tab contract test
 // (chain_tab_per_instrument_test.go) can assert it was invoked for the right id.
-func EnableSynthAnalyzer(id string, window int) *Analyzer {
+func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer {
 	analyserEnableMu.Lock()
 	synthAnalyzerEnableCnt[id]++
 	analyserEnableMu.Unlock()
@@ -781,16 +718,10 @@ func EnableSynthAnalyzer(id string, window int) *Analyzer {
 }
 
 // SynthAnalyzerSnapshot is a no-op under -tags test.
-func SynthAnalyzerSnapshot(id string) AnalyzerSnapshot { return AnalyzerSnapshot{} }
-
-// EnableSendBusAnalyzer is a no-op under -tags test.
-func EnableSendBusAnalyzer(window int) *Analyzer { return nil }
-
-// SendBusAnalyzerSnapshot is a no-op under -tags test.
-func SendBusAnalyzerSnapshot() AnalyzerSnapshot { return AnalyzerSnapshot{} }
+func SynthAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot { return AnalyzerSnapshot{} }
 
 // SetAnalyzerEnabled enables or disables FFT compute for a channel's analyzers (stub).
-func SetAnalyzerEnabled(id string, on bool) {
+func SetAnalyzerEnabled(id channel.ID, on bool) {
 	if an, ok := analyzerRegistryStub[id]; ok {
 		an.SetEnabled(on)
 	}
@@ -800,8 +731,8 @@ func SetAnalyzerEnabled(id string, on bool) {
 }
 
 func resetAnalyzers() {
-	analyzerRegistryStub = map[string]*Analyzer{}
-	preEQAnalyzerRegistryStub = map[string]*Analyzer{}
+	analyzerRegistryStub = map[channel.ID]*Analyzer{}
+	preEQAnalyzerRegistryStub = map[channel.ID]*Analyzer{}
 }
 
 // ResetAllChannelAnalyzers zeros the retained frame of every wired channel and

@@ -16,7 +16,7 @@ func TestLogicButtonAlignedAndTextNotOverlap(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		p := mn.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(n.ID, p)
 	}
 	g.sel = n
@@ -25,8 +25,8 @@ func TestLogicButtonAlignedAndTextNotOverlap(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
 
-	rLogic := g.sidebar.rects["logic"]
-	panel := g.sidebar.rects["panel"]
+	rLogic := g.sidebar.rects[sbLogicSelect]
+	panel := g.sidebar.rects[sbPanel]
 	// Logic button is now full-width within the panel. Verify it spans the
 	// panel content area (padded edges).
 	if rLogic.Min.X != panel.Min.X+sidebarPad {
@@ -36,7 +36,7 @@ func TestLogicButtonAlignedAndTextNotOverlap(t *testing.T) {
 		t.Fatalf("logic button should end at panel right-pad: logic.Max.X=%d expected=%d", rLogic.Max.X, panel.Max.X-sidebarPad)
 	}
 	// Logic button should be below the volume buttons
-	rVolMinus := g.sidebar.rects["vol-"]
+	rVolMinus := g.sidebar.rects[sbMinus(fieldVol)]
 	if rLogic.Min.Y <= rVolMinus.Max.Y {
 		t.Fatalf("logic button should be below volume buttons: logic.Min.Y=%d vol-.Max.Y=%d", rLogic.Min.Y, rVolMinus.Max.Y)
 	}
@@ -57,11 +57,11 @@ func TestLogicDropdownInlinePanel(t *testing.T) {
 	// Open logic menu — dropdown items should appear inline
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.layout()
-	panel2 := g.sidebar.rects["panel"]
+	panel2 := g.sidebar.rects[sbPanel]
 	// All logic items must be horizontally within the panel
 	found := false
 	for id, r := range g.sidebar.rects {
-		if len(id) > 6 && id[:6] == "logic:" {
+		if id.el == elLogicOption {
 			if r.Min.X < panel2.Min.X || r.Max.X > panel2.Max.X {
 				t.Fatalf("logic item outside panel horizontally: %s rect=%v panel=%v", id, r, panel2)
 			}
@@ -88,11 +88,11 @@ func TestGrooveDropdownInlinePanel(t *testing.T) {
 	// Open groove menu — dropdown items should appear inline
 	g.sidebar.grooveDropdownOpen = true
 	g.sidebar.layout()
-	panel2 := g.sidebar.rects["panel"]
+	panel2 := g.sidebar.rects[sbPanel]
 	// All groove items must be horizontally within the panel
 	found := false
 	for id, r := range g.sidebar.rects {
-		if len(id) > 7 && id[:7] == "groove:" {
+		if id.el == elGrooveOption {
 			if r.Min.X < panel2.Min.X || r.Max.X > panel2.Max.X {
 				t.Fatalf("groove item outside panel horizontally: %s rect=%v panel=%v", id, r, panel2)
 			}
@@ -120,12 +120,12 @@ func TestSidebarSectionToggleNoFlicker(t *testing.T) {
 	g.sidebar.layout()
 
 	// Volume section should start closed
-	if g.sidebar.sectionOpen["vol"] {
+	if g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should start closed")
 	}
 
 	// Find the section header rect
-	secRect := g.sidebar.rects["sec-vol"]
+	secRect := g.sidebar.rects[sbSectionHeader(secVol)]
 	if secRect.Empty() {
 		t.Fatal("sec-vol rect should exist")
 	}
@@ -136,13 +136,13 @@ func TestSidebarSectionToggleNoFlicker(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		g.sidebar.HandleInput(cx, cy, true)
 	}
-	if g.sidebar.sectionOpen["vol"] {
+	if g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should stay closed during held press (deferred tap)")
 	}
 
 	// Release → deferred tap fires → section toggles to open
 	g.sidebar.HandleInput(cx, cy, false)
-	if !g.sidebar.sectionOpen["vol"] {
+	if !g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should be open after tap (press+release)")
 	}
 
@@ -150,7 +150,7 @@ func TestSidebarSectionToggleNoFlicker(t *testing.T) {
 	g.sidebar.HandleInput(cx, cy, true)
 	g.sidebar.HandleInput(cx, cy, false)
 
-	if g.sidebar.sectionOpen["vol"] {
+	if g.sidebar.sectionOpen[secVol] {
 		t.Fatal("vol section should be closed after second tap")
 	}
 }
@@ -270,7 +270,7 @@ func TestSidebarScrollUsesScrollBehavior(t *testing.T) {
 	}
 
 	// View should be within the sidebar panel
-	panel := g.sidebar.rects["panel"]
+	panel := g.sidebar.rects[sbPanel]
 	if !image.Pt(view.Min.X, view.Min.Y).In(panel) {
 		t.Fatalf("scroll view min should be within panel: view=%v panel=%v", view, panel)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // --- RowRackZone test helpers ---
@@ -84,7 +85,7 @@ func newTestRowRackZone(rows []*DrumRow) (*RowRackZone, *rowRackTestCallbackLog)
 			// no-op in isolated zone tests
 		},
 		Rows:              func() []*DrumRow { return rows },
-		IsInstrumentAvail: func(id string) bool { return true },
+		IsInstrumentAvail: func(id instrument.ID) bool { return true },
 		RowHeight:         func() int { return TouchRowHeight() },
 		DeleteConfirm:     func() (int, int64) { return -1, 0 },
 		RenameRow:         func() int { return -1 },
@@ -109,7 +110,7 @@ func makeTestRows(n int) []*DrumRow {
 	for i := range rows {
 		rows[i] = &DrumRow{
 			Name:       "Row " + string(rune('A'+i)),
-			Instrument: "inst" + string(rune('a'+i)),
+			Instrument: instrument.ID("inst" + string(rune('a'+i))),
 			Steps:      make([]bool, 8),
 			Color:      color.RGBA{200, 100, uint8(50 * i), 255},
 			Volume:     1.0,

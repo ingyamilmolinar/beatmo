@@ -4,6 +4,9 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // sineSamples generates n samples of a sine wave at the given frequency and sample rate.
@@ -74,7 +77,7 @@ func TestServiceInstrumentMetrics(t *testing.T) {
 	cfg.WindowSize = 2048
 
 	svc := NewService(cfg)
-	svc.RegisterInstrument(0, "kick", "Kick")
+	svc.RegisterInstrument(0, channel.Of(roster.Kick), "Kick")
 	go svc.Run()
 	defer svc.Stop()
 
@@ -83,7 +86,7 @@ func TestServiceInstrumentMetrics(t *testing.T) {
 
 	st := pollState(svc, 1*time.Second, func(s *State) bool {
 		for _, inst := range s.Instruments {
-			if inst.ID == "kick" && inst.PeakDB > -100 {
+			if inst.ID == channel.Of(roster.Kick) && inst.PeakDB > -100 {
 				return true
 			}
 		}
@@ -96,7 +99,7 @@ func TestServiceInstrumentMetrics(t *testing.T) {
 
 	found := false
 	for _, inst := range st.Instruments {
-		if inst.ID == "kick" {
+		if inst.ID == channel.Of(roster.Kick) {
 			found = true
 			if inst.Name != "Kick" {
 				t.Errorf("instrument Name = %q, want %q", inst.Name, "Kick")
@@ -153,16 +156,16 @@ func TestServiceCaptureTrigger(t *testing.T) {
 	for i := range capBuf {
 		capBuf[i] = 0.5
 	}
-	svc.NotifyTrigger("snare", capBuf)
+	svc.NotifyTrigger(channel.Of(roster.Snare), capBuf)
 
 	st := pollState(svc, 1*time.Second, func(s *State) bool {
-		return s.Capture != nil && s.Capture.InstID == "snare"
+		return s.Capture != nil && s.Capture.InstID == channel.Of(roster.Snare)
 	})
 
 	if st == nil || st.Capture == nil {
 		t.Fatal("capture never appeared in state")
 	}
-	if st.Capture.InstID != "snare" {
+	if st.Capture.InstID != channel.Of(roster.Snare) {
 		t.Errorf("Capture.InstID = %q, want %q", st.Capture.InstID, "snare")
 	}
 	if len(st.Capture.Wave.Samples) != 512 {
@@ -190,10 +193,10 @@ func TestServiceFreeze(t *testing.T) {
 	svc.PushMasterBuf(sineSamples(cfg.WindowSize, 440, cfg.SampleRate))
 
 	// Trigger first capture.
-	svc.NotifyTrigger("first", make([]float32, 64))
+	svc.NotifyTrigger(channel.Of("first"), make([]float32, 64))
 
 	st := pollState(svc, 1*time.Second, func(s *State) bool {
-		return s.Capture != nil && s.Capture.InstID == "first"
+		return s.Capture != nil && s.Capture.InstID == channel.Of("first")
 	})
 	if st == nil || st.Capture == nil {
 		t.Fatal("first capture never appeared")
@@ -203,7 +206,7 @@ func TestServiceFreeze(t *testing.T) {
 	svc.Freeze()
 
 	// Trigger second capture.
-	svc.NotifyTrigger("second", make([]float32, 64))
+	svc.NotifyTrigger(channel.Of("second"), make([]float32, 64))
 
 	// Push more data so the ticker processes.
 	svc.PushMasterBuf(sineSamples(cfg.WindowSize, 440, cfg.SampleRate))
@@ -215,22 +218,22 @@ func TestServiceFreeze(t *testing.T) {
 	if st == nil || st.Capture == nil {
 		t.Fatal("state or capture is nil after freeze")
 	}
-	if st.Capture.InstID != "first" {
+	if st.Capture.InstID != channel.Of("first") {
 		t.Errorf("Capture.InstID = %q after freeze, want %q", st.Capture.InstID, "first")
 	}
 
 	// Unfreeze — now second trigger (or a new one) should be picked up.
 	svc.Unfreeze()
-	svc.NotifyTrigger("third", make([]float32, 64))
+	svc.NotifyTrigger(channel.Of("third"), make([]float32, 64))
 	svc.PushMasterBuf(sineSamples(cfg.WindowSize, 440, cfg.SampleRate))
 
 	st = pollState(svc, 1*time.Second, func(s *State) bool {
-		return s.Capture != nil && s.Capture.InstID == "third"
+		return s.Capture != nil && s.Capture.InstID == channel.Of("third")
 	})
 	if st == nil || st.Capture == nil {
 		t.Fatal("capture never updated after unfreeze")
 	}
-	if st.Capture.InstID != "third" {
+	if st.Capture.InstID != channel.Of("third") {
 		t.Errorf("Capture.InstID = %q after unfreeze, want %q", st.Capture.InstID, "third")
 	}
 }
@@ -242,8 +245,8 @@ func TestServiceDetailChannel(t *testing.T) {
 	cfg.FFTSize = 1024
 
 	svc := NewService(cfg)
-	svc.RegisterInstrument(0, "hihat", "HiHat")
-	svc.SetDetailChannel("hihat")
+	svc.RegisterInstrument(0, channel.Of(roster.Hihat), "HiHat")
+	svc.SetDetailChannel(channel.Of(roster.Hihat))
 	go svc.Run()
 	defer svc.Stop()
 
@@ -259,7 +262,7 @@ func TestServiceDetailChannel(t *testing.T) {
 	if st == nil || st.Detail == nil {
 		t.Fatal("detail channel never appeared in state")
 	}
-	if st.Detail.ID != "hihat" {
+	if st.Detail.ID != channel.Of(roster.Hihat) {
 		t.Errorf("Detail.ID = %q, want %q", st.Detail.ID, "hihat")
 	}
 	if len(st.Detail.FFTBins) == 0 {

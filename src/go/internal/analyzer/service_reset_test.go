@@ -3,6 +3,8 @@ package analyzer
 import (
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -30,7 +32,7 @@ func TestServiceResetClearsPublishedStateAndCapture(t *testing.T) {
 		loud[i] = 0.5
 	}
 	s.PushMasterBuf(loud)
-	s.NotifyTrigger("kick", []float32{0.5, 0.5, 0.5, 0.5})
+	s.NotifyTrigger(channel.Of(roster.Kick), []float32{0.5, 0.5, 0.5, 0.5})
 
 	st1 := s.processTick(masterBuf, instBuf, peakRMS, masterFFT, envelope)
 	s.state.Store(st1)

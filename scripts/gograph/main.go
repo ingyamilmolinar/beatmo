@@ -8,6 +8,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "rank" {
+		if err := runRank(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "gograph rank:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	cfg := Config{}
 	flag.StringVar(&cfg.Root, "root", "../../src/go", "module source root")
 	flag.StringVar(&cfg.Module, "module", "github.com/ingyamilmolinar/beatmo", "module import path")

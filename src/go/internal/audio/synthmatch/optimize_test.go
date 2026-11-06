@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestMatch_RecoversPerturbedParams(t *testing.T) {
@@ -11,11 +12,11 @@ func TestMatch_RecoversPerturbedParams(t *testing.T) {
 	audio.ResetInstruments()
 	sr := 44100
 	// Ground truth = sax rendered with a known cutoff; treat as the "reference".
-	ref, err := RenderWithParams("sax", 0, sr, 1.2, map[string]float64{"filter_cutoff": 1500})
+	ref, err := RenderWithParams(roster.Sax, 0, sr, 1.2, map[string]float64{"filter_cutoff": 1500})
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Match("sax", ref, 90, 1)
+	res, err := Match(roster.Sax, ref, 90, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,11 +52,11 @@ func TestMatch_RecoversPerturbedParams(t *testing.T) {
 func TestMatch_UsesReferenceDuration(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	ref, err := RenderWithParams("violin", 0, 44100, 1.0, nil)
+	ref, err := RenderWithParams(roster.Violin, 0, 44100, 1.0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Match("violin", ref, 40, 0)
+	res, err := Match(roster.Violin, ref, 40, 0)
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -67,12 +68,12 @@ func TestMatch_UsesReferenceDuration(t *testing.T) {
 func TestMatch_Deterministic(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	ref, _ := RenderInstrument("violin", 0, 44100, 1.0)
+	ref, _ := RenderInstrument(roster.Violin, 0, 44100, 1.0)
 	// Budget kept modest: each eval renders + fingerprints (~1.5 s), and this
 	// test only needs enough steps to exercise the seeded restart path twice
 	// and compare — not full convergence.
-	a, _ := Match("violin", ref, 60, 1)
-	b, _ := Match("violin", ref, 60, 1)
+	a, _ := Match(roster.Violin, ref, 60, 1)
+	b, _ := Match(roster.Violin, ref, 60, 1)
 	if a.BestLoss != b.BestLoss {
 		t.Errorf("non-deterministic: %.6f vs %.6f", a.BestLoss, b.BestLoss)
 	}

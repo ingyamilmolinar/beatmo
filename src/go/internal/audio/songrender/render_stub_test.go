@@ -11,7 +11,7 @@ import (
 func TestRenderStub_MasterEqualsSumOfStems(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	r, err := Render("bach-toccata", 2, 44100)
+	r, err := Render("bach-brandenburg-3", 2, 44100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,8 +51,8 @@ func TestRenderStub_MasterEqualsSumOfStems(t *testing.T) {
 func TestRenderStub_Deterministic(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	a, _ := Render("bach-toccata", 1, 44100)
-	b, _ := Render("bach-toccata", 1, 44100)
+	a, _ := Render("bach-brandenburg-3", 1, 44100)
+	b, _ := Render("bach-brandenburg-3", 1, 44100)
 	if len(a.Master) != len(b.Master) {
 		t.Fatalf("len differ %d vs %d", len(a.Master), len(b.Master))
 	}

@@ -3,6 +3,9 @@ package ui
 import (
 	"sync/atomic"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // While the user performs heavy UI operations (resizing, layout, etc.),
@@ -19,11 +22,11 @@ func TestAudioDecoupledDuringHeavyUIOperations(t *testing.T) {
 	// Capture play callbacks.
 	const total = 80
 	var played atomic.Int32
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { played.Add(1) })
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { played.Add(1) })
 
 	// Queue sounds while hammering Update with layout churn.
 	for i := 0; i < total; i++ {
-		g.queueSoundParams("snare", 1, 0, 1)
+		g.queueSoundParams(roster.Snare, 1, 0, 1)
 		pressLenInc(t, g.drum)
 		_ = g.Update()
 		pressLenDec(t, g.drum)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // The cents value unit reads "ct" (centésimas) in Spanish, "c" in English.
@@ -85,8 +86,8 @@ func TestSamplerCaptionsFitFullFontDesktop(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
 	i18n.SetLocale(i18n.LocaleES)
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), roster.Kick)
 	assertSamplerCaptionsFit(t, g.drum)
 }
 

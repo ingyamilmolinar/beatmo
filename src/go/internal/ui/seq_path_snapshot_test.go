@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 func TestSequencerUsesPathSnapshotIsolation(t *testing.T) {
@@ -26,7 +27,7 @@ func TestSequencerUsesPathSnapshotIsolation(t *testing.T) {
 	g.updateBeatInfos()
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	scheduleAbsForMuteTest(g, 0)
 	if plays == 0 {
@@ -73,7 +74,7 @@ func TestSequencerPathSnapshotUpdatesOnBeatInfoChange(t *testing.T) {
 	g.updateBeatInfos()
 
 	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) { plays++ })
 
 	// Pretend the sequencer already advanced past abs=0 so we only evaluate abs=1.
 	g.seqNextIdxs = []int{1}

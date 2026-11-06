@@ -3,6 +3,8 @@ package ui
 import (
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // This file is the TDD repro + regression suite for C1 (final whole-branch
@@ -132,7 +134,7 @@ func TestParityTimingLiveEditLatchedSpikeClearedByEdit(t *testing.T) {
 // invoking it, rather than calling schedMetrics.ResetPeaks() directly.
 func TestParityTimingBPMReanchorClearsLatchedSpike(t *testing.T) {
 	g := newTestGameForParity(t)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	// Build a real circuit and warm up seqNextIdxs/nextBeatIdxs/seqPathSnap
 	// via the same real, Update()-driven path
@@ -251,7 +253,7 @@ func TestParityTimingGraceSuppressesStageAObservation(t *testing.T) {
 	g := newTestGameForParity(t)
 	restore := SetParityGraceForceForTest(true)
 	t.Cleanup(restore)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	const rows = 4
 	loadStressCircuitForTest(t, g, rows, 240)

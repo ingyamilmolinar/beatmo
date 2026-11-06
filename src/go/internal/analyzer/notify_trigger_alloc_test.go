@@ -2,6 +2,9 @@ package analyzer
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestNotifyTrigger_AllocBudget pins the per-call allocation count for
@@ -35,12 +38,12 @@ func TestNotifyTrigger_AllocBudget(t *testing.T) {
 	// Warm up — first call may pay one-time init costs (atomic.Pointer
 	// type assertion table, etc.).
 	for i := 0; i < 5; i++ {
-		svc.NotifyTrigger("snare", rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)
 	}
 
 	const budget = 1.0 // exactly the pendingCap struct alloc
 	allocs := testing.AllocsPerRun(1000, func() {
-		svc.NotifyTrigger("snare", rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)
 	})
 	if allocs > budget {
 		t.Fatalf("NotifyTrigger allocs/call = %.1f exceeds budget %.0f — "+
@@ -71,7 +74,7 @@ func TestNotifyTrigger_DroppedTriggerNoExtraAlloc(t *testing.T) {
 
 	// Warm up.
 	for i := 0; i < 5; i++ {
-		svc.NotifyTrigger("snare", rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)
 	}
 
 	// Drive 4 consecutive triggers without ever consuming via processTick.
@@ -79,10 +82,10 @@ func TestNotifyTrigger_DroppedTriggerNoExtraAlloc(t *testing.T) {
 	// allocate a buffer beyond the pendingCap struct.
 	const budget = 1.0
 	allocs := testing.AllocsPerRun(1000, func() {
-		svc.NotifyTrigger("snare", rawBuf)
-		svc.NotifyTrigger("kick", rawBuf)
-		svc.NotifyTrigger("hihat", rawBuf)
-		svc.NotifyTrigger("clap", rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Kick), rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Hihat), rawBuf)
+		svc.NotifyTrigger(channel.Of(roster.Clap), rawBuf)
 	})
 	perCall := allocs / 4
 	if perCall > budget {

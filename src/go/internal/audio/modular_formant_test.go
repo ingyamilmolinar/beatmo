@@ -9,14 +9,14 @@ import (
 
 // renderModularSeed renders a seeded voice through the same recipe path the
 // modular goldens use: the RecipeParams seed is overlaid on the schema
-// identity (recipeParamsToModular fills any absent key from
-// ModularParamSchemaIdentity()), then rendered via renderModularP.
+// identity (newModularBlock fills any absent key from
+// modularFieldInits()), then rendered via renderModularBlock.
 func renderModularSeed(t *testing.T, seed RecipeParams, secs float64) []float32 {
 	t.Helper()
 	const sr = 48000
 	n := int(secs * sr)
 	buf := make([]float32, n)
-	renderModularP(buf, sr, n, recipeParamsToModular(seed))
+	renderModularBlock(buf, sr, n, initBlockForTest(seed))
 	return buf
 }
 

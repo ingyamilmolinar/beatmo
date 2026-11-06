@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // stubKitBinder is the minimal KitRowBinder for unit testing ApplyKit
@@ -13,33 +15,35 @@ import (
 // assertion.
 type stubKitBinder struct {
 	mu    sync.Mutex
-	insts []string
-	roles []string
-	swaps map[int]string // row → newInst
+	insts []instrument.ID
+	roles []instrument.Role
+	swaps map[int]instrument.ID // row → newInst
 }
 
-func newStubKitBinder(pairs ...string) *stubKitBinder {
-	// pairs are flat: inst1, role1, inst2, role2, …
-	s := &stubKitBinder{swaps: map[int]string{}}
-	for i := 0; i < len(pairs); i += 2 {
-		s.insts = append(s.insts, pairs[i])
-		role := ""
-		if i+1 < len(pairs) {
-			role = pairs[i+1]
-		}
-		s.roles = append(s.roles, role)
+// stubRow is one binder row: its instrument and its explicit role ("" =
+// derive it from the instrument).
+type stubRow struct {
+	inst instrument.ID
+	role instrument.Role
+}
+
+func newStubKitBinder(rows ...stubRow) *stubKitBinder {
+	s := &stubKitBinder{swaps: map[int]instrument.ID{}}
+	for _, r := range rows {
+		s.insts = append(s.insts, r.inst)
+		s.roles = append(s.roles, r.role)
 	}
 	return s
 }
 
-func (s *stubKitBinder) RowCount() int                { return len(s.insts) }
-func (s *stubKitBinder) RowInstrument(idx int) string { return s.insts[idx] }
-func (s *stubKitBinder) RowRole(idx int) string       { return s.roles[idx] }
-func (s *stubKitBinder) SetRowInstrument(idx int, newID string) {
+func (s *stubKitBinder) RowCount() int                       { return len(s.insts) }
+func (s *stubKitBinder) RowInstrument(idx int) instrument.ID { return s.insts[idx] }
+func (s *stubKitBinder) RowRole(idx int) instrument.Role     { return s.roles[idx] }
+func (s *stubKitBinder) SetRowInstrument(idx int, id instrument.ID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.insts[idx] = newID
-	s.swaps[idx] = newID
+	s.insts[idx] = id
+	s.swaps[idx] = id
 }
 
 func captureKitEvents(t *testing.T) func() []hooks.Event {
@@ -80,31 +84,31 @@ func waitForKitApplied(t *testing.T, events func() []hooks.Event) hooks.Event {
 func TestApplyKit_RebindsByExplicitRole(t *testing.T) {
 	events := captureKitEvents(t)
 	binder := newStubKitBinder(
-		"snare", "snare",
-		"kick", "kick",
-		"clap", "", // empty role → heuristic falls back to "clap"
+		stubRow{roster.Snare, instrument.RoleSnare},
+		stubRow{roster.Kick, instrument.RoleKick},
+		stubRow{roster.Clap, instrument.RoleNone}, // empty role → heuristic falls back to "clap"
 	)
 	kit := Kit{
 		ID:          "kit.b",
 		DisplayName: "Kit B",
-		Members: map[string]string{
-			"snare": "snare-2",
-			"kick":  "kick-deep",
-			"hat":   "hihat-pedal", // no row carries the "hat" role
+		Members: map[instrument.Role]instrument.ID{
+			instrument.RoleSnare: roster.SnareLofi,
+			instrument.RoleKick:  roster.KickDeep,
+			instrument.RoleHat:   roster.HihatPedal, // no row carries the "hat" role
 		},
 	}
 	got := ApplyKit(kit, binder)
 	if got != 2 {
 		t.Errorf("rebound count = %d, want 2 (snare+kick rebind; clap row resolves to role 'clap' which is not in the kit)", got)
 	}
-	if binder.insts[0] != "snare-2" {
-		t.Errorf("row 0 inst = %q want snare-2", binder.insts[0])
+	if binder.insts[0] != roster.SnareLofi {
+		t.Errorf("row 0 inst = %q want %q", binder.insts[0], roster.SnareLofi)
 	}
-	if binder.insts[1] != "kick-deep" {
-		t.Errorf("row 1 inst = %q want kick-deep", binder.insts[1])
+	if binder.insts[1] != roster.KickDeep {
+		t.Errorf("row 1 inst = %q want %q", binder.insts[1], roster.KickDeep)
 	}
-	if binder.insts[2] != "clap" {
-		t.Errorf("row 2 inst = %q want clap (heuristic role 'clap'; not in kit Members, untouched)", binder.insts[2])
+	if binder.insts[2] != roster.Clap {
+		t.Errorf("row 2 inst = %q want %q (role 'clap' is not in kit Members, untouched)", binder.insts[2], roster.Clap)
 	}
 
 	e := waitForKitApplied(t, events)
@@ -120,25 +124,25 @@ func TestApplyKit_RebindsByExplicitRole(t *testing.T) {
 // crash / shaker / bass).
 func TestApplyKit_HeuristicWhenRoleEmpty(t *testing.T) {
 	binder := newStubKitBinder(
-		"snare-2", "",
-		"kick-deep", "",
-		"open-hihat", "",
-		"tom-low", "",
+		stubRow{roster.SnareLofi, instrument.RoleNone},
+		stubRow{roster.KickDeep, instrument.RoleNone},
+		stubRow{"user.open-hihat.a1b2c3", instrument.RoleNone},
+		stubRow{"user.tom-low.a1b2c3", instrument.RoleNone},
 	)
 	kit := Kit{
 		ID: "kit.electronic",
-		Members: map[string]string{
-			"snare": "rimshot",
-			"kick":  "kick-tight",
-			"hat":   "shaker",
-			"tom":   "tom-high",
+		Members: map[instrument.Role]instrument.ID{
+			instrument.RoleSnare: roster.Rimshot,
+			instrument.RoleKick:  roster.KickTight,
+			instrument.RoleHat:   roster.Shaker,
+			instrument.RoleTom:   roster.TomHighDrive,
 		},
 	}
 	rebound := ApplyKit(kit, binder)
 	if rebound != 4 {
 		t.Fatalf("rebound = %d want 4", rebound)
 	}
-	want := []string{"rimshot", "kick-tight", "shaker", "tom-high"}
+	want := []instrument.ID{roster.Rimshot, roster.KickTight, roster.Shaker, roster.TomHighDrive}
 	for i, w := range want {
 		if binder.insts[i] != w {
 			t.Errorf("row %d = %q want %q", i, binder.insts[i], w)
@@ -150,10 +154,10 @@ func TestApplyKit_HeuristicWhenRoleEmpty(t *testing.T) {
 // the row's existing instrument doesn't count as a rebind (avoids a
 // spurious onRowInstrumentChanged + hook for a no-op swap).
 func TestApplyKit_NoOpWhenMemberMatchesCurrent(t *testing.T) {
-	binder := newStubKitBinder("snare", "snare", "kick", "kick")
+	binder := newStubKitBinder(stubRow{roster.Snare, instrument.RoleSnare}, stubRow{roster.Kick, instrument.RoleKick})
 	kit := Kit{
 		ID:      "kit.same",
-		Members: map[string]string{"snare": "snare", "kick": "kick-deep"},
+		Members: map[instrument.Role]instrument.ID{instrument.RoleSnare: roster.Snare, instrument.RoleKick: roster.KickDeep},
 	}
 	if got := ApplyKit(kit, binder); got != 1 {
 		t.Errorf("rebound = %d want 1 (only kick changes; snare is no-op)", got)
@@ -166,10 +170,10 @@ func TestApplyKit_NoOpWhenMemberMatchesCurrent(t *testing.T) {
 // TestApplyKit_EmptyMembersAndNilBinder — defensive: ApplyKit with an
 // empty kit or nil binder is a no-op (no panic, no hook).
 func TestApplyKit_EmptyMembersAndNilBinder(t *testing.T) {
-	if got := ApplyKit(Kit{}, newStubKitBinder("snare", "snare")); got != 0 {
+	if got := ApplyKit(Kit{}, newStubKitBinder(stubRow{roster.Snare, instrument.RoleSnare})); got != 0 {
 		t.Errorf("empty Members rebound %d rows", got)
 	}
-	if got := ApplyKit(Kit{ID: "x", Members: map[string]string{"snare": "snare-2"}}, nil); got != 0 {
+	if got := ApplyKit(Kit{ID: "x", Members: map[instrument.Role]instrument.ID{instrument.RoleSnare: roster.SnareLofi}}, nil); got != 0 {
 		t.Errorf("nil binder rebound %d rows", got)
 	}
 }
@@ -181,8 +185,8 @@ func TestKitRegistry_RoundTripsAndOrders(t *testing.T) {
 	t.Cleanup(ResetKitsForTest)
 	ResetKitsForTest()
 
-	a := Kit{ID: "a", DisplayName: "Kit A", Members: map[string]string{"snare": "snare"}}
-	b := Kit{ID: "b", DisplayName: "Kit B", Members: map[string]string{"kick": "kick-deep"}}
+	a := Kit{ID: "a", DisplayName: "Kit A", Members: map[instrument.Role]instrument.ID{instrument.RoleSnare: roster.Snare}}
+	b := Kit{ID: "b", DisplayName: "Kit B", Members: map[instrument.Role]instrument.ID{instrument.RoleKick: roster.KickDeep}}
 	RegisterKit(a)
 	RegisterKit(b)
 
@@ -197,9 +201,9 @@ func TestKitRegistry_RoundTripsAndOrders(t *testing.T) {
 	}
 
 	// Replace a → preserves order.
-	RegisterKit(Kit{ID: "a", DisplayName: "Kit A v2", Members: map[string]string{"snare": "rimshot"}})
+	RegisterKit(Kit{ID: "a", DisplayName: "Kit A v2", Members: map[instrument.Role]instrument.ID{instrument.RoleSnare: roster.Rimshot}})
 	all = KitsForExport()
-	if all[0].DisplayName != "Kit A v2" || all[0].Members["snare"] != "rimshot" {
+	if all[0].DisplayName != "Kit A v2" || all[0].Members[instrument.RoleSnare] != roster.Rimshot {
 		t.Errorf("re-register did not update: %+v", all[0])
 	}
 
@@ -210,89 +214,23 @@ func TestKitRegistry_RoundTripsAndOrders(t *testing.T) {
 	}
 }
 
-// TestKit_InsertChainIsInert documents and pins the Phase-6 deferral
-// of kit-bus audio routing. ApplyKit must ignore Kit.InsertChain — the
-// field exists to preserve user configuration across save/load cycles
-// (and to keep the JSON wire format stable for when kit-bus lands)
-// but the audio graph is not extended yet. A regression that wired
-// InsertChain into the mixer without the explicit kit-bus implementation
-// would break this test.
-//
-// What we can verify cheaply in a unit test:
-//  1. ApplyKit returns normally with a non-empty InsertChain (no panic
-//     from a half-written routing patch).
-//  2. The InsertChain round-trips through KitsForExport unchanged so
-//     pre-emptively authored kits survive the rollout.
-//  3. ApplyKit's rebind behaviour is unaffected by the presence of an
-//     InsertChain — the rows are still rebound by role.
-//
-// When kit-bus ships, this test must be updated (or replaced by a kit
-// signal-path test) — failing to update it should make the regression
-// visible.
-func TestKit_InsertChainIsInert(t *testing.T) {
-	t.Cleanup(ResetKitsForTest)
-	ResetKitsForTest()
-
-	kit := Kit{
-		ID:          "kit.with-fx",
-		DisplayName: "Kit With FX",
-		Members:     map[string]string{"snare": "snare-2", "kick": "kick-deep"},
-		InsertChain: []EffectSlot{
-			{Type: EffectCompressor, Enabled: true, Params: map[string]float64{"threshold_db": -10}},
-			{Type: EffectLimiter, Enabled: true, Params: map[string]float64{"ceiling_db": -1}},
-		},
-	}
-	RegisterKit(kit)
-
-	// (1) ApplyKit returns normally + rebinds rows as if InsertChain
-	// were absent.
-	binder := newStubKitBinder("snare", "snare", "kick", "kick")
-	rebound := ApplyKit(kit, binder)
-	if rebound != 2 {
-		t.Errorf("rebound = %d, want 2 (InsertChain must not affect row rebind logic)", rebound)
-	}
-	if binder.insts[0] != "snare-2" || binder.insts[1] != "kick-deep" {
-		t.Errorf("rows not rebound: %+v", binder.insts)
-	}
-
-	// (2) InsertChain round-trips through the registry unchanged.
-	got, ok := KitForID("kit.with-fx")
-	if !ok {
-		t.Fatalf("KitForID lost the kit")
-	}
-	if len(got.InsertChain) != 2 || got.InsertChain[0].Type != EffectCompressor || got.InsertChain[1].Type != EffectLimiter {
-		t.Errorf("InsertChain not preserved through registry: %+v", got.InsertChain)
-	}
-	if got.InsertChain[0].Params["threshold_db"] != -10 {
-		t.Errorf("InsertChain param lost: %+v", got.InsertChain[0].Params)
-	}
-
-	// (3) KitsForExport also returns the chain intact (project save path).
-	all := KitsForExport()
-	if len(all) != 1 || len(all[0].InsertChain) != 2 {
-		t.Errorf("KitsForExport dropped InsertChain: %+v", all)
-	}
-}
-
-// TestRoleHeuristic_Patterns — every shipped instrument family resolves
-// to its intended role; unknown ids return "".
-func TestRoleHeuristic_Patterns(t *testing.T) {
-	cases := []struct{ id, role string }{
-		{"kick", "kick"}, {"kick-deep", "kick"}, {"kick-1", "kick"},
-		{"snare", "snare"}, {"snare-2", "snare"}, {"rimshot", "snare"}, {"sidestick", "snare"},
-		{"hihat", "hat"}, {"open-hihat", "hat"}, {"hihat-pedal", "hat"},
-		{"tom", "tom"}, {"tom-high", "tom"}, {"tom-low", "tom"},
-		{"clap", "clap"}, {"clap-tight", "clap"},
-		{"cowbell", "cowbell"},
-		{"ride", "ride"}, {"crash", "crash"}, {"shaker", "shaker"},
-		{"bass-guitar", "bass"}, {"sub-bass", "bass"}, {"fm-bass", "bass"},
-		{"unknown-thing", ""}, {"", ""},
+// TestRoleFromName_Patterns — the name rules that classify an instrument the
+// user named (a shipped one reads builtinProperties); a name no rule
+// recognises has no role.
+func TestRoleFromName_Patterns(t *testing.T) {
+	cases := []struct {
+		name string
+		role instrument.Role
+	}{
+		{"My Kick", instrument.RoleKick}, {"snare_take2", instrument.RoleSnare}, {"rimshot loop", instrument.RoleSnare},
+		{"sidestick", instrument.RoleSnare}, {"open-hihat", instrument.RoleHat}, {"Hi-Hat 3", instrument.RoleHat},
+		{"floor tom", instrument.RoleTom}, {"clap stack", instrument.RoleClap}, {"cowbell", instrument.RoleCowbell},
+		{"ride bell", instrument.RoleRide}, {"crash 18", instrument.RoleCrash}, {"shaker", instrument.RoleShaker},
+		{"bass line", instrument.RoleBass}, {"pad", instrument.RoleNone}, {"", instrument.RoleNone},
 	}
 	for _, c := range cases {
-		t.Run(c.id, func(t *testing.T) {
-			if got := RoleForInstrument(c.id); got != c.role {
-				t.Errorf("RoleForInstrument(%q) = %q want %q", c.id, got, c.role)
-			}
-		})
+		if got := roleFromName(c.name); got != c.role {
+			t.Errorf("roleFromName(%q) = %q want %q", c.name, got, c.role)
+		}
 	}
 }

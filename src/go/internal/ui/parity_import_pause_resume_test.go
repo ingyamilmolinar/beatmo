@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
 
 // Regression: import the real project, play, pause, resume, and keep playing
 // without triggering parity panics.
@@ -9,7 +13,7 @@ func TestImportPauseResumeParityStable(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.parityWatch = parityWatchPanic
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
 	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {

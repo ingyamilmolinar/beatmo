@@ -1,0 +1,187 @@
+{
+  "schema_version": "0.0.1",
+  "id": "piano-felt",
+  "name": "Piano Felt",
+  "category": "modular",
+  "notes": "pianoFeltSeed: felt-damped piano — darker filter, softer attack, fewer partials.\nCLEAN felt-damped piano — a darker, softer sibling of pianoGrandSeed: the same\nclean struck-string approach (sine + gentle decaying partials + slight string\ndetune; NO hammer-noise gen, NO phantom sub-octave) but a duller filter, a\nsofter strike, and weaker upper partials (the felt over the hammers mutes the\nhighs). Pure note, no background hiss.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.6218,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.008,
+        "amp_curve": 1,
+        "amp_decay": 0.9,
+        "amp_release": 0.3,
+        "amp_sustain": 0
+      },
+      "notes": "amp_attack: softer felt strike\namp_curve: exponential struck decay"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 1.5,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 4000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: duller, felt-damped tone (darker than the grand)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 4,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.38,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_env_fast_rate: H2\ngen1_freq: H2\ngen1_freq_mode: H2\ngen1_gain: H2\ngen1_source: STRETCHED partials (stiff-string inharmonicity — the anti-electronic fix),\nbut weaker/darker upper partials than the grand (felt mutes the highs). H2\ngen1_wave: H2"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 6,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3.0087,
+        "freq_mode": 0,
+        "gain": 0.16,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_env_fast_rate: H3 +5c\ngen2_freq: H3 +5c\ngen2_freq_mode: H3 +5c\ngen2_gain: H3 +5c\ngen2_source: H3 +5c\ngen2_wave: H3 +5c"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 8,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4.0347,
+        "freq_mode": 0,
+        "gain": 0.1,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_env_fast_rate: H4 +15c\ngen3_freq: H4 +15c\ngen3_freq_mode: H4 +15c\ngen3_gain: H4 +15c\ngen3_source: H4 +15c\ngen3_wave: H4 +15c"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 10,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5.0813,
+        "freq_mode": 0,
+        "gain": 0.05,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_env_fast_rate: H5 +28c\ngen4_freq: H5 +28c\ngen4_freq_mode: H5 +28c\ngen4_gain: H5 +28c\ngen4_source: H5 +28c\ngen4_wave: H5 +28c"
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 55,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1800,
+        "filt_q": 0.4,
+        "filt_type": 5,
+        "gain": 0.14,
+        "noise_offset": 0
+      },
+      "notes": "gen5_source: soft felt-hammer thunk — quieter + darker than the grand"
+    }
+  ]
+}

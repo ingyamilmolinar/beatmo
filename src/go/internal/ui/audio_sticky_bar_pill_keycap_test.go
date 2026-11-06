@@ -38,7 +38,9 @@ func TestPillKeycapEngageAndTravel(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		drawPillTabAt(dst, b, true)
 	}
-	if px := b.pressTravelPx(); px < genGeomKeycapWallDepth-1 {
-		t.Fatalf("held pill travel = %dpx, want ~%d", px, genGeomKeycapWallDepth)
+	// The flat-tonal restyle retired cap travel; the press SPRING remains as
+	// the settle-to-silence contract, so assert depth rather than pixels.
+	if b.pressDepth < 0.9 {
+		t.Fatalf("held pill press depth = %v, want ~1", b.pressDepth)
 	}
 }

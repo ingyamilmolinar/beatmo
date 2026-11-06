@@ -2,7 +2,12 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // voice_binding_invariant_test.go pins the Voice Binding contract from
 // docs/superpowers/specs/2026-07-15-realtime-param-edit-audio-model-design.md:
@@ -17,13 +22,13 @@ import "testing"
 
 // I1 — once a voice is scheduled, nothing can alter its samples.
 func TestI1_InFlightVoiceIsImmutableAcrossParamEdit(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	const pitch = 2.0
 	globalVoiceCache.Clear()
 	ResetInstrumentParams(id)
 	t.Cleanup(func() { ResetInstrumentParams(id) })
 
-	v := newRecipeAwareVoicePitched(id, bpm, SampleRate(), pitch)
+	v := newRecipeAwareVoicePitched(id, SampleRate(), pitch)
 	cv, ok := v.(*cVoice)
 	if !ok {
 		t.Fatalf("expected *cVoice, got %T", v)
@@ -35,7 +40,7 @@ func TestI1_InFlightVoiceIsImmutableAcrossParamEdit(t *testing.T) {
 
 	// Storm the params while the voice is "in flight".
 	for i := 0; i < 50; i++ {
-		SetInstrumentParam(id, churnableParam(t, id), float64(i)/50.0)
+		SetInstrumentParam(id, churnableParam(t, string(id)), float64(i)/50.0)
 	}
 
 	if len(cv.buf) != len(before) {
@@ -52,21 +57,21 @@ func TestI1_InFlightVoiceIsImmutableAcrossParamEdit(t *testing.T) {
 // I2 — an edit is visible to the NEXT trigger, and N edits compose latest-wins
 // into ONE binding.
 func TestI2_EditAppliesToNextTriggerAndComposes(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	const pitch = 2.0
 	globalVoiceCache.Clear()
 	ResetInstrumentParams(id)
 	t.Cleanup(func() { ResetInstrumentParams(id) })
 
-	p := churnableParam(t, id)
+	p := churnableParam(t, string(id))
 
-	k0, ok := pitchedVoiceKey(id, bpm, SampleRate(), pitch)
+	k0, ok := pitchedVoiceKey(id, SampleRate(), pitch)
 	if !ok {
 		t.Fatal("pitchedVoiceKey failed for a melodic instrument")
 	}
 
 	SetInstrumentParam(id, p, 0.25)
-	k1, _ := pitchedVoiceKey(id, bpm, SampleRate(), pitch)
+	k1, _ := pitchedVoiceKey(id, SampleRate(), pitch)
 	if k1 == k0 {
 		t.Fatal("a param edit did not rotate the binding — the next trigger would read stale audio")
 	}
@@ -74,12 +79,12 @@ func TestI2_EditAppliesToNextTriggerAndComposes(t *testing.T) {
 	// Latest-wins: setting the same param again lands on ONE binding, and
 	// returning to the original value returns to the original binding.
 	SetInstrumentParam(id, p, 0.75)
-	k2, _ := pitchedVoiceKey(id, bpm, SampleRate(), pitch)
+	k2, _ := pitchedVoiceKey(id, SampleRate(), pitch)
 	if k2 == k1 {
 		t.Fatal("second edit did not rotate the binding")
 	}
 	SetInstrumentParam(id, p, 0.25)
-	k3, _ := pitchedVoiceKey(id, bpm, SampleRate(), pitch)
+	k3, _ := pitchedVoiceKey(id, SampleRate(), pitch)
 	if k3 != k1 {
 		t.Fatal("binding is not a pure function of the composed param state " +
 			"(same value must yield the same binding)")
@@ -88,55 +93,64 @@ func TestI2_EditAppliesToNextTriggerAndComposes(t *testing.T) {
 
 // I4 — an edit to instrument A cannot change instrument B's binding.
 func TestI4_EditIsolatedToItsInstrument(t *testing.T) {
-	const a = "organ-church"
-	const b = "snare"
+	const a = roster.OrganChurch
+	const b = roster.Snare
 	ResetInstrumentParams(a)
 	ResetInstrumentParams(b)
 	t.Cleanup(func() { ResetInstrumentParams(a); ResetInstrumentParams(b) })
 
-	bBefore := hashRecipeParams(MergeRecipeDefaults(RecipeForInstrument(b), GetInstrumentParams(b)))
-	aBefore := hashRecipeParams(MergeRecipeDefaults(RecipeForInstrument(a), GetInstrumentParams(a)))
+	bBefore := docHashForTest(string(b))
+	aBefore := docHashForTest(string(a))
 
 	// NOTE: the churn value MUST vary per iteration. SetInstrumentParam coalesces
-	// same-value writes (synth_recipe.go:243-249 -> recordParamCoalesced) and
+	// same-value writes (SetInstrumentParam's no-op-on-identical-value skip) and
 	// rejects non-finite values, so a constant here would silently make every
 	// iteration a no-op and re-vacuum this test.
 	for i := 0; i < 20; i++ {
-		SetInstrumentParam(a, churnableParam(t, a), float64(i)/20.0)
+		SetInstrumentParam(a, churnableParam(t, string(a)), float64(i)/20.0)
 	}
 
-	// Vacuity guard: prove A's edits actually landed. B's params live in a
-	// separate inner map (instrumentParamsMgr.params is map[string]RecipeParams),
-	// so "B unchanged" is guaranteed by the data structure and would pass even if
+	// Vacuity guard: prove A's edits actually landed. B's document is a
+	// separate entry of the project store, so "B unchanged" is guaranteed by
+	// the data structure and would pass even if
 	// SetInstrumentParam were a complete no-op. Without this, the test proves nothing.
-	aAfter := hashRecipeParams(MergeRecipeDefaults(RecipeForInstrument(a), GetInstrumentParams(a)))
+	aAfter := docHashForTest(string(a))
 	if aAfter == aBefore {
 		t.Fatal("A's binding did not change — the edits never landed, so the " +
 			"'B unchanged' assertion below is vacuous")
 	}
 
-	bAfter := hashRecipeParams(MergeRecipeDefaults(RecipeForInstrument(b), GetInstrumentParams(b)))
+	bAfter := docHashForTest(string(b))
 	if bAfter != bBefore {
 		t.Fatalf("editing %q changed %q's binding (%x -> %x)", a, b, bBefore, bAfter)
 	}
 }
 
-// churnableParam returns a deterministic real param of id's recipe, excluding
-// the special-cased "pitch".
+// churnableParam returns a deterministic continuous knob of id's document
+// (the alphabetically first one it owns), excluding the special-cased "pitch".
 func churnableParam(t *testing.T, id string) string {
 	t.Helper()
-	merged := MergeRecipeDefaults(RecipeForInstrument(id), nil)
+	owned := GetInstrumentParams(instrument.ID(id))
 	best := ""
-	for k := range merged {
-		if k == "pitch" {
+	for _, d := range InstrumentParamDefs(instrument.ID(id)) {
+		if d.Name == "pitch" || len(d.Enum) > 0 || d.Max <= d.Min || d.Group == SynthHiddenGroup {
 			continue
 		}
-		if best == "" || k < best {
-			best = k
+		if _, ok := owned[d.Name]; !ok {
+			continue
+		}
+		if best == "" || d.Name < best {
+			best = d.Name
 		}
 	}
 	if best == "" {
-		t.Fatalf("instrument %q has no editable recipe params", id)
+		t.Fatalf("instrument %q has no editable knob", id)
 	}
 	return best
+}
+
+// docHashForTest identifies id's current sound: its document's block hash.
+func docHashForTest(id string) uint64 {
+	_, h, _, _ := docBlockForDispatch(instrument.ID(id))
+	return h
 }

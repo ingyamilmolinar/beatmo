@@ -1,0 +1,3728 @@
+{
+  "schema_version": "0.0.1",
+  "format": "beatmo.scoreref-catalogue",
+  "scores": [
+    {
+      "id": "bach-brandenburg-3",
+      "file": "bach-brandenburg-3.mxl",
+      "sha256": "750e8897580a243732415b3d452bf42872b2a52d739007efeb6108f7904b0c8f",
+      "templates": [
+        "bach-brandenburg-3"
+      ],
+      "work": {
+        "title": "Brandenburg Concerto No. 3, first movement",
+        "composer": "Johann Sebastian Bach",
+        "catalog": "BWV 1048",
+        "first_publication_year": 1850,
+        "composer_death_year": 1750
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Bach%2C_Johann_Sebastian/Brandenburg_Concerto_No.3%2C_BWV.1048/1/Bach_BWV.1048_1.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "bach-brandenburg-4",
+      "file": "bach-brandenburg-4.mxl",
+      "sha256": "caaea72f821ba33825e0adac509992e9d2cfd10e23b6b7be8ffbed67ba2aae3e",
+      "templates": [
+        "bach-brandenburg-4"
+      ],
+      "work": {
+        "title": "Brandenburg Concerto No. 4, first movement",
+        "composer": "Johann Sebastian Bach",
+        "catalog": "BWV 1049",
+        "first_publication_year": 1850,
+        "composer_death_year": 1750
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Bach%2C_Johann_Sebastian/Brandenburg_Concerto_No.4%2C_BWV.1049/1/Bach_BWV.1049_1.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "bach-kyrie-bwv232",
+      "file": "bach-kyrie-bwv232.mxl",
+      "sha256": "636c663bba43c03435234d568c12828d571ed6f8a05cf70d55574d2b9a9039b0",
+      "templates": [
+        "bach-kyrie-bwv232"
+      ],
+      "work": {
+        "title": "Mass in B minor, Kyrie",
+        "composer": "Johann Sebastian Bach",
+        "catalog": "BWV 232",
+        "first_publication_year": 1845,
+        "composer_death_year": 1750
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Bach%2C_Johann_Sebastian/B_Minor_Mass%2C_BWV.232/01/Bach_BWV.232_01.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beach-gaelic",
+      "file": "beach-gaelic.mxl",
+      "sha256": "3cf6433108e1c0601763f66e659e0525f716cfb1059bba37671779f43cbd7abf",
+      "templates": [
+        "beach-gaelic"
+      ],
+      "work": {
+        "title": "Gaelic Symphony, first movement",
+        "composer": "Amy Beach",
+        "catalog": "Op. 32",
+        "first_publication_year": 1897,
+        "composer_death_year": 1944
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Beach%2C_Amy/Symphony_in_E_minor_%28Gaelic%29%2C_Op.32/1/Beach_Op.32_1.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beethoven-fifth",
+      "file": "beethoven-fifth.mxl",
+      "sha256": "62b72bb1ab6ea50f6ed6ba4be990164722f720b85b7148e033f754a8b34906e2",
+      "templates": [
+        "beethoven-fifth"
+      ],
+      "work": {
+        "title": "Symphony No. 5, first movement",
+        "composer": "Ludwig van Beethoven",
+        "catalog": "Op. 67",
+        "first_publication_year": 1809,
+        "composer_death_year": 1827
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Beethoven%2C_Ludwig_van/Symphony_No.5%2C_Op.67/1/Beethoven_Op.67_1.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beethoven-ode-to-joy",
+      "file": "beethoven-ode-to-joy.mxl",
+      "sha256": "42ee9e7ec4f863b84f6b3ec62c377f18e0ba80fec49affbf0edc94cc0ccd3fe7",
+      "templates": [
+        "beethoven-ode-to-joy"
+      ],
+      "work": {
+        "title": "Symphony No. 9, fourth movement",
+        "composer": "Ludwig van Beethoven",
+        "catalog": "Op. 125",
+        "first_publication_year": 1826,
+        "composer_death_year": 1827
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Beethoven%2C_Ludwig_van/Symphony_No.9%2C_Op.125/4/Beethoven_Op.125_4.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beethoven-quartet-op18",
+      "file": "beethoven-quartet-op18.mxl",
+      "sha256": "4d826dc1397e8346e164be0b4492ede834b6827fb2c087e601a247bde0ea17ac",
+      "templates": [
+        "beethoven-quartet-op18"
+      ],
+      "work": {
+        "title": "String Quartet No. 1, Op. 18 No. 1",
+        "composer": "Ludwig van Beethoven",
+        "catalog": "Op. 18/1",
+        "first_publication_year": 1801,
+        "composer_death_year": 1827
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/StringQuartets",
+        "url": "https://raw.githubusercontent.com/OpenScore/StringQuartets/main/scores/Beethoven%2C_Ludwig_van/String_Quartet_No.1%2C_Op.18_No.1/sq8071278.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore String Quartets — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by ashmoggs from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/04755"
+      }
+    },
+    {
+      "id": "borodin-quartet-2",
+      "file": "borodin-quartet-2.mxl",
+      "sha256": "4e4ed43ab0989842e62a372dd113dd5488e59f49535bb1e3a8455b790adc6826",
+      "templates": [
+        "borodin-quartet-2"
+      ],
+      "work": {
+        "title": "String Quartet No. 2",
+        "composer": "Alexander Borodin",
+        "catalog": "",
+        "first_publication_year": 1888,
+        "composer_death_year": 1887
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/StringQuartets",
+        "url": "https://raw.githubusercontent.com/OpenScore/StringQuartets/main/scores/Borodin%2C_Alexander/String_Quartet_No.2/sq10675759.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore String Quartets — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by markpearse from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/644692"
+      }
+    },
+    {
+      "id": "boulanger-printemps",
+      "file": "boulanger-printemps.mxl",
+      "sha256": "5d9991aaf8030647a20c06d85fff056a6a7774a75d1a98ef1c0cd14add17d655",
+      "templates": [
+        "boulanger-printemps"
+      ],
+      "work": {
+        "title": "D'un matin de printemps",
+        "composer": "Lili Boulanger",
+        "catalog": "",
+        "first_publication_year": 1918,
+        "composer_death_year": 1918
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Boulanger%2C_Lili/D%27un_matin_de_printemps/D%27un_matin_de_printemps.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "brahms-first-finale",
+      "file": "brahms-first-finale.mxl",
+      "sha256": "aabe18fb068c6f87e1f73815383da181df194082177bdd75c49f425d436762fb",
+      "templates": [
+        "brahms-first-finale"
+      ],
+      "work": {
+        "title": "Symphony No. 1, fourth movement",
+        "composer": "Johannes Brahms",
+        "catalog": "Op. 68",
+        "first_publication_year": 1877,
+        "composer_death_year": 1897
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Brahms%2C_Johannes/Symphony_No.1%2C_Op.68/4/Brahms_Op.68_4.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "clara-schumann-op13-1",
+      "file": "clara-schumann-op13-1.mxl",
+      "sha256": "439ba7b1b5cc4b6d82918032a0347446e794b0c8f226ac9369f1afb653e7b30c",
+      "templates": [
+        "clara-schumann-op13-1"
+      ],
+      "work": {
+        "title": "Ich stand in dunklen Träumen, Op. 13 No. 1",
+        "composer": "Clara Schumann",
+        "catalog": "Op. 13/1",
+        "first_publication_year": 1844,
+        "composer_death_year": 1896,
+        "lyricist": "Heinrich Heine",
+        "lyricist_death_year": 1856
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Schumann%2C_Clara/6_Lieder%2C_Op.13/1_Ich_stand_in_dunklen_Tr%C3%A4umen/lc5133602.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "dvorak-american",
+      "file": "dvorak-american.mxl",
+      "sha256": "43d011444059c64c1b7607d28f3ef847419cfe06ad6608b94b1e524b00173461",
+      "templates": [
+        "dvorak-american"
+      ],
+      "work": {
+        "title": "String Quartet No. 12 (American)",
+        "composer": "Antonín Dvořák",
+        "catalog": "Op. 96",
+        "first_publication_year": 1894,
+        "composer_death_year": 1904
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/StringQuartets",
+        "url": "https://raw.githubusercontent.com/OpenScore/StringQuartets/main/scores/Dvo%C5%99%C3%A1k%2C_Anton%C3%ADn/String_Quartet_No.12%2C_Op.96_%28%E2%80%9CAmerican%E2%80%9D%29/sq8885439.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore String Quartets — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by flutemouse from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/96276"
+      }
+    },
+    {
+      "id": "faure-apres-un-reve",
+      "file": "faure-apres-un-reve.mxl",
+      "sha256": "c2cb268e1163d3959d0bf2f3befc47bf1e895b0dc7fa94f4983d6052bd6e1ef1",
+      "templates": [
+        "faure-apres-un-reve"
+      ],
+      "work": {
+        "title": "Après un rêve, Op. 7 No. 1",
+        "composer": "Gabriel Fauré",
+        "catalog": "Op. 7/1",
+        "first_publication_year": 1878,
+        "composer_death_year": 1924,
+        "lyricist": "Romain Bussine",
+        "lyricist_death_year": 1899
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Faur%C3%A9%2C_Gabriel/3_Songs%2C_Op.7/1_Apr%C3%A8s_un_r%C3%AAve/lc6810863.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by ashmoggs from IMSLP #24047 Source: https://imslp.org/wiki/Special:ReverseLookup/24047"
+      }
+    },
+    {
+      "id": "gonzaga-espanha-e-brasil",
+      "file": "gonzaga-espanha-e-brasil.mxl",
+      "sha256": "c2ddecbc0c439b973d1240e99b936b9d0f2919193161463952322d7c5069ca80",
+      "templates": [
+        "gonzaga-espanha-e-brasil"
+      ],
+      "work": {
+        "title": "Espanha e Brasil",
+        "composer": "Chiquinha Gonzaga",
+        "catalog": "",
+        "first_publication_year": 1889,
+        "composer_death_year": 1935,
+        "lyricist": "José do Patrocínio Filho",
+        "lyricist_death_year": 1929
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Gonzaga%2C_Chiquinha/_/Espanha_e_Brasil/lc6610246.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed from IMSLP #606047. Source: https://imslp.org/wiki/Special:ReverseLookup/606047"
+      }
+    },
+    {
+      "id": "haydn-london",
+      "file": "haydn-london.mxl",
+      "sha256": "987d10452403c25de41c600c4eace6544fa54c289b5b513b8f21d234ca64bbe5",
+      "templates": [
+        "haydn-london"
+      ],
+      "work": {
+        "title": "Symphony No. 104 (London), first movement",
+        "composer": "Joseph Haydn",
+        "catalog": "Hob. I:104",
+        "first_publication_year": 1795,
+        "composer_death_year": 1809
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Haydn%2C_Franz/Symphony_No.104/1/Haydn_104_1.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "haydn-quartet-op76",
+      "file": "haydn-quartet-op76.mxl",
+      "sha256": "b280250c1abd8fd3379a1ef5679c457f3bec291a317a1abc16dce83460e5e3d0",
+      "templates": [
+        "haydn-quartet-op76"
+      ],
+      "work": {
+        "title": "String Quartet in G major, Op. 76 No. 1",
+        "composer": "Joseph Haydn",
+        "catalog": "Hob. III:75",
+        "first_publication_year": 1799,
+        "composer_death_year": 1809
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/StringQuartets",
+        "url": "https://raw.githubusercontent.com/OpenScore/StringQuartets/main/scores/Haydn%2C_Joseph/String_Quartet_in_G_major%2C_Hob.III75%2C_Op.76_No.1/sq15049456.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore String Quartets — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by xaclin and NinjaMonkKaze and mozbadel from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/28077"
+      }
+    },
+    {
+      "id": "hensel-italien",
+      "file": "hensel-italien.mxl",
+      "sha256": "43a2c61fadf8f7207c81dac182756e5767d2b990a4e7787e2afc29445c669b71",
+      "templates": [
+        "hensel-italien"
+      ],
+      "work": {
+        "title": "Italien",
+        "composer": "Fanny Hensel",
+        "catalog": "",
+        "first_publication_year": 1827,
+        "composer_death_year": 1847,
+        "lyricist": "Franz Grillparzer",
+        "lyricist_death_year": 1872
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Hensel%2C_Fanny/3_Songs/2_Italien/lc6022185.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Originally published as Felix Mendelssohn Op.8, No.3. Transcribed by Justin M. Bornais from IMSLP #28641. Source: https://imslp.org/wiki/3_Songs_(Hensel,_Fanny)"
+      }
+    },
+    {
+      "id": "liliuokalani-aloha-oe",
+      "file": "liliuokalani-aloha-oe.mxl",
+      "sha256": "b195ae477a10cbaee281d9b728cac001ae1d50fe4527078ccae14092eee4936c",
+      "templates": [
+        "liliuokalani-aloha-oe"
+      ],
+      "work": {
+        "title": "Aloha ʻOe",
+        "composer": "Queen Liliʻuokalani",
+        "catalog": "",
+        "first_publication_year": 1884,
+        "composer_death_year": 1917,
+        "lyricist": "Liliʻuokalani",
+        "lyricist_death_year": 1917
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Liliuokalani%2C_Queen_of_the_Hawaiian_Islands/_/Aloha_Oe/lc6650166.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed from IMSLP #26121. Source: https://imslp.org/wiki/Special:ReverseLookup/26121"
+      }
+    },
+    {
+      "id": "mozart-quartet-k387",
+      "file": "mozart-quartet-k387.mxl",
+      "sha256": "0061967f36eadce546c810458d1167aaf769ed8ad2ae10aa3969bf238d6a84b5",
+      "templates": [
+        "mozart-quartet-k387"
+      ],
+      "work": {
+        "title": "String Quartet No. 14 in G major",
+        "composer": "Wolfgang Amadeus Mozart",
+        "catalog": "K. 387",
+        "first_publication_year": 1785,
+        "composer_death_year": 1791
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/StringQuartets",
+        "url": "https://raw.githubusercontent.com/OpenScore/StringQuartets/main/scores/Mozart%2C_Wolfgang_Amadeus/String_Quartet_No.14_in_G_major%2C_K.387_%28Op._10%2C_No._1%29/sq7103818.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore String Quartets — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by ashmoggs and flutemouse from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/64136"
+      }
+    },
+    {
+      "id": "satie-air-du-rat",
+      "file": "satie-air-du-rat.mxl",
+      "sha256": "d55ebe27f201005fcc5b28c51841c092812610843f7c334b65990d695af44ca9",
+      "templates": [
+        "satie-air-du-rat"
+      ],
+      "work": {
+        "title": "Air du rat, from Ludions",
+        "composer": "Erik Satie",
+        "catalog": "",
+        "first_publication_year": 1923,
+        "composer_death_year": 1925,
+        "lyricist": "Léon-Paul Fargue",
+        "lyricist_death_year": 1947
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Satie%2C_Erik/Ludions/1_Air_du_rat/lc6994116.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/16888"
+      }
+    },
+    {
+      "id": "schubert-ave-maria",
+      "file": "schubert-ave-maria.mxl",
+      "sha256": "7929829d7f4134eea7abfc89de2ac4665534f62a247f56bc202a80ab734b0e3b",
+      "templates": [
+        "schubert-ave-maria"
+      ],
+      "work": {
+        "title": "Ellens Gesang III (Ave Maria)",
+        "composer": "Franz Schubert",
+        "catalog": "D. 839",
+        "first_publication_year": 1826,
+        "composer_death_year": 1828,
+        "lyricist": "Sir Walter Scott",
+        "lyricist_death_year": 1832
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Schubert%2C_Franz/Op.52/6_Ellens_Gesang_III%2C_D.839_%28Ave_Maria%29/lc6389103.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by Mark Gotham from IMSLP #16400. Source: https://imslp.org/wiki/Ave_Maria,_D.839_(Schubert,_Franz)"
+      }
+    },
+    {
+      "id": "schubert-erlkonig",
+      "file": "schubert-erlkonig.mxl",
+      "sha256": "717c79503465a4babc61bc85907e9c78e86df7ed981972980dd3eaf0989ad190",
+      "templates": [
+        "schubert-erlkonig"
+      ],
+      "work": {
+        "title": "Der Erlkönig",
+        "composer": "Franz Schubert",
+        "catalog": "D. 328",
+        "first_publication_year": 1821,
+        "composer_death_year": 1828,
+        "lyricist": "Johann Wolfgang von Goethe",
+        "lyricist_death_year": 1832
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Schubert%2C_Franz/_/Der_Erlk%C3%B6nig%2C_D.328/lc29062370.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed from the IMSLP file(s) at https://imslp.org/wiki/Special:ReverseLookup/15041"
+      }
+    },
+    {
+      "id": "schubert-fifth",
+      "file": "schubert-fifth.mxl",
+      "sha256": "2ad27c0a35c1371f9f7c33d6e79af3794c3778a74634674835cecb1fed6770a1",
+      "templates": [
+        "schubert-fifth"
+      ],
+      "work": {
+        "title": "Symphony No. 5, first movement",
+        "composer": "Franz Schubert",
+        "catalog": "D. 485",
+        "first_publication_year": 1885,
+        "composer_death_year": 1828
+      },
+      "source": {
+        "provider": "github",
+        "repo": "MarkGotham/Hauptstimme",
+        "url": "https://raw.githubusercontent.com/MarkGotham/Hauptstimme/main/data/Schubert%2C_Franz/Symphony_No.5%2C_D.485/1/Schubert_D.485_1.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Orchestra (Hauptstimme) — scores CC0 1.0 Universal",
+        "embedded_rights": "Score: CC0 1.0 Universal; Annotations: CC-By-SA",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "schubert-standchen",
+      "file": "schubert-standchen.mxl",
+      "sha256": "11f8bd4edfd11dc303d4b46d480cf110cb7015af303abf0d3848c40984c202a1",
+      "templates": [
+        "schubert-standchen"
+      ],
+      "work": {
+        "title": "Ständchen, from Schwanengesang",
+        "composer": "Franz Schubert",
+        "catalog": "D. 957/4",
+        "first_publication_year": 1829,
+        "composer_death_year": 1828,
+        "lyricist": "Ludwig Rellstab",
+        "lyricist_death_year": 1860
+      },
+      "source": {
+        "provider": "github",
+        "repo": "OpenScore/Lieder",
+        "url": "https://raw.githubusercontent.com/OpenScore/Lieder/main/scores/Schubert%2C_Franz/Schwanengesang%2C_D.957/4_St%C3%A4ndchen/lc5004835.mxl",
+        "license": "CC0-1.0",
+        "attribution": "OpenScore Lieder — CC0 1.0 Universal",
+        "embedded_rights": "OpenScore (CC0)",
+        "source_edition": "Transcribed by pental from IMSLP #60828. Source: https://imslp.org/wiki/Schwanengesang,_D.957_(Schubert,_Franz)"
+      }
+    },
+    {
+      "id": "groove-jazz-swing",
+      "file": "groove-jazz-swing.musicxml",
+      "sha256": "9d2a12ca683313c9855bdccfd0bf9788e476f7aa46a30f5264d6472cd84ab092",
+      "format": "musicxml",
+      "templates": [
+        "jazz-swing"
+      ],
+      "work": {
+        "title": "Swing ride pattern (spang-a-lang) with hi-hat on two and four",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Swing_(jazz_performance_style)"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-jazz-swing.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-trap",
+      "file": "groove-trap.musicxml",
+      "sha256": "f7dc837b5dee6fbe939af52063c91c5e39dbdf4e465451d4342a55073f77ca31",
+      "format": "musicxml",
+      "templates": [
+        "trap-808"
+      ],
+      "work": {
+        "title": "Trap half-time beat with hi-hat rolls",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Trap_music"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-trap.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-reggaeton",
+      "file": "groove-reggaeton.musicxml",
+      "sha256": "94e9910c15b277be74ef9fc55cae173b1d9c97715b18699d076c5eb504a4a90a",
+      "format": "musicxml",
+      "templates": [
+        "reggaeton-dembow"
+      ],
+      "work": {
+        "title": "Tresillo (habanera) on kick and snare, the reggaeton pattern",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Tresillo_(rhythm)"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-reggaeton.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-merengue",
+      "file": "groove-merengue.musicxml",
+      "sha256": "c21f6ac3cbbbd890baeac123eb23bd05c348ed67ed2b1f25848c2eaedaed4a7f",
+      "format": "musicxml",
+      "templates": [
+        "merengue"
+      ],
+      "work": {
+        "title": "Merengue güira and tambora",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Merengue_music"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-merengue.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-salsa",
+      "file": "groove-salsa.musicxml",
+      "sha256": "40a17ff049ad634bd710928b905cec6a7359552379c041f7835a8fb545fb9d60",
+      "format": "musicxml",
+      "templates": [
+        "salsa-clave"
+      ],
+      "work": {
+        "title": "Son clave 2-3 with cáscara and conga tumbao",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Clave_(rhythm)"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-salsa.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-vallenato",
+      "file": "groove-vallenato.musicxml",
+      "sha256": "51d58b6caa286734884ea7e38f24c2cdc1a95bd564c162c8f900382ebbaec29d",
+      "format": "musicxml",
+      "templates": [
+        "vallenato"
+      ],
+      "work": {
+        "title": "Vallenato caja and guacharaca",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Vallenato"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-vallenato.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-cumbia",
+      "file": "groove-cumbia.musicxml",
+      "sha256": "798cabd9ee2f5da5bf7cddccef4399e2e07ed3d32fa29b8b74cee7109e936c2b",
+      "format": "musicxml",
+      "templates": [
+        "cumbia"
+      ],
+      "work": {
+        "title": "Cumbia guacharaca and llamador",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Cumbia"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-cumbia.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-techno",
+      "file": "groove-techno.musicxml",
+      "sha256": "c5bf7ec542cb2088aa425f779aec1f203fe6e3da15c3ea73975f1a5327dfa209",
+      "format": "musicxml",
+      "templates": [
+        "tetris-techno"
+      ],
+      "work": {
+        "title": "Techno four-on-the-floor with sixteenth hi-hats",
+        "composer": "Traditional",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Four_on_the_floor_(music)"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-techno.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — rhythmic idioms encoded by the Beatmo project, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-funky-drummer",
+      "file": "groove-funky-drummer.musicxml",
+      "sha256": "b41aee0f71d8a974bf2267a8faa346bc36be0ed86baf15f7e7bacb18ab8eb25b",
+      "format": "musicxml",
+      "templates": [
+        "funky-drummer"
+      ],
+      "work": {
+        "title": "Funky Drummer break (James Brown, drums Clyde Stubblefield, 1970)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/clyde-stubblefield-funky-drummer/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-funky-drummer.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/clyde-stubblefield-funky-drummer/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-impeach-the-president",
+      "file": "groove-impeach-the-president.musicxml",
+      "sha256": "4b03b369986501ebfe616ecc802447219490ee12850b493c2e5c930491f1b26b",
+      "format": "musicxml",
+      "templates": [
+        "impeach-the-president"
+      ],
+      "work": {
+        "title": "Impeach the President break (The Honey Drippers, 1973)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/impeach-the-president/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-impeach-the-president.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/impeach-the-president/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-superstition",
+      "file": "groove-superstition.musicxml",
+      "sha256": "015b2777f3400a544b33b45acc0a911ba48eb6e97cba63b4f7965cb947686fec",
+      "format": "musicxml",
+      "templates": [
+        "superstition-groove"
+      ],
+      "work": {
+        "title": "Superstition groove (Stevie Wonder, 1972)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/stevie-wonder-superstition/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-superstition.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/stevie-wonder-superstition/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-amen-break",
+      "file": "groove-amen-break.musicxml",
+      "sha256": "4f7ae64ba15c09d485edb00a84bc41d1cf2c38b6509e543bbf201545e5f33eef",
+      "format": "musicxml",
+      "templates": [
+        "amen-break-jungle"
+      ],
+      "work": {
+        "title": "Amen break (The Winstons, drums Gregory Coleman, 1969)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/amen-break/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-amen-break.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/amen-break/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-planet-rock",
+      "file": "groove-planet-rock.musicxml",
+      "sha256": "6427ee4f90047dac1003494d7c19edc4aa352035420f6f7bc960e2fc9348cd43",
+      "format": "musicxml",
+      "templates": [
+        "planet-rock-electro"
+      ],
+      "work": {
+        "title": "Planet Rock TR-808 pattern (Afrika Bambaataa & the Soul Sonic Force, 1982)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/afrika-bambaataa-planet-rock/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-planet-rock.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/afrika-bambaataa-planet-rock/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-blue-monday",
+      "file": "groove-blue-monday.musicxml",
+      "sha256": "27f0a76b57ec7fcc99f7bf6d3d0ce81a61f85c4ac2c370877552662c1ed5f592",
+      "format": "musicxml",
+      "templates": [
+        "blue-monday-synthpop"
+      ],
+      "work": {
+        "title": "Blue Monday drum-machine pattern (New Order, 1983)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/new-order-blue-monday-1983-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-blue-monday.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/new-order-blue-monday-1983-drum-pattern/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-da-funk",
+      "file": "groove-da-funk.musicxml",
+      "sha256": "0b140863cabc26d3eee2ae6cff15fbd8461e6b8cf9d0e9a26ae8e58c3d9d7f4f",
+      "format": "musicxml",
+      "templates": [
+        "da-funk-house"
+      ],
+      "work": {
+        "title": "Da Funk pattern (Daft Punk, 1995)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/daft-punk-da-funk/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-da-funk.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/daft-punk-da-funk/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-uk-garage",
+      "file": "groove-uk-garage.musicxml",
+      "sha256": "f7361e660cd0fef444dcaafc7d8f134a73d955433eeaf41878b31ef76c4b668d",
+      "format": "musicxml",
+      "templates": [
+        "uk-garage-2step"
+      ],
+      "work": {
+        "title": "UK garage 2-step",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/pocket-operations-uk-garage/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-uk-garage.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/pocket-operations-uk-garage/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-we-will-rock-you",
+      "file": "groove-we-will-rock-you.musicxml",
+      "sha256": "82b1b903e0e3dae3e26f26ef05b09a395001c3aac95e36d93ad6bbfb07df18f5",
+      "format": "musicxml",
+      "templates": [
+        "we-will-rock-you-stomp"
+      ],
+      "work": {
+        "title": "We Will Rock You stomp-stomp-clap (Queen, 1977)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/queen-we-will-rock-you/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-we-will-rock-you.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/queen-we-will-rock-you/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-rosanna-shuffle",
+      "file": "groove-rosanna-shuffle.musicxml",
+      "sha256": "d5f6c284a78abc85e151a21a18589203bcba794dede1875d6c85703d7df8f54a",
+      "format": "musicxml",
+      "templates": [
+        "rosanna-shuffle"
+      ],
+      "work": {
+        "title": "Rosanna half-time shuffle (Toto, drums Jeff Porcaro, 1982)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/rosanna-shuffle/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-rosanna-shuffle.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/rosanna-shuffle/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-in-the-air-tonight",
+      "file": "groove-in-the-air-tonight.musicxml",
+      "sha256": "309143f69c9cc7d5122819156163091ed20bcb1b70cafaa2c0db61ddd2ae87a4",
+      "format": "musicxml",
+      "templates": [
+        "in-the-air-tonight"
+      ],
+      "work": {
+        "title": "In the Air Tonight groove (Phil Collins, 1981)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/phil-collins-in-the-air-tonight/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-in-the-air-tonight.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/phil-collins-in-the-air-tonight/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-levee-breaks",
+      "file": "groove-levee-breaks.musicxml",
+      "sha256": "8f502f07fd34e1441bfb9bb5e8d085330d2e623d24e4f74ed7cccd4d4dc86f05",
+      "format": "musicxml",
+      "templates": [
+        "levee-breaks-rock"
+      ],
+      "work": {
+        "title": "When the Levee Breaks beat (Led Zeppelin, drums John Bonham, 1971)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/when-the-levee-breaks/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-levee-breaks.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/when-the-levee-breaks/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-baile-funk",
+      "file": "groove-baile-funk.musicxml",
+      "sha256": "c80b653953275eacc147fd0b926250f5bb2fff79a32d2851e9bb6d9cd905e173",
+      "format": "musicxml",
+      "templates": [
+        "baile-funk"
+      ],
+      "work": {
+        "title": "Baile funk (funk carioca) beat",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/baile-funk/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-baile-funk.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/baile-funk/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-dancehall",
+      "file": "groove-dancehall.musicxml",
+      "sha256": "b6503b3859f76b0d341e5ad74edb23b8708662085e7c3529dfc8a47f20db59f7",
+      "format": "musicxml",
+      "templates": [
+        "dancehall-riddim"
+      ],
+      "work": {
+        "title": "Dancehall riddim",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/dancehall/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-dancehall.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/dancehall/",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-arena-y-sal",
+      "file": "beatmo-arena-y-sal.musicxml",
+      "sha256": "e3f57ddff7b95d869d8dd0a86e8c483958728d5c3c76eadf80f63c834054d462",
+      "format": "musicxml",
+      "templates": [
+        "cumbia"
+      ],
+      "work": {
+        "title": "Arena y Sal",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-arena-y-sal.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-blue-lantern",
+      "file": "beatmo-blue-lantern.musicxml",
+      "sha256": "07c2ecaf0edf9f2b5aa99f006a86a15b0af0fbd8cde1a63157f5d9ad801c5fb2",
+      "format": "musicxml",
+      "templates": [
+        "jazz-swing"
+      ],
+      "work": {
+        "title": "Blue Lantern",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-blue-lantern.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-brisa",
+      "file": "beatmo-brisa.musicxml",
+      "sha256": "09259373cdb9b34a8adf294f7688d8173ada4de7ad793694539dd87a99cfd3ad",
+      "format": "musicxml",
+      "templates": [
+        "merengue"
+      ],
+      "work": {
+        "title": "Brisa",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-brisa.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-brownstone",
+      "file": "beatmo-brownstone.musicxml",
+      "sha256": "8be5f76a6b64d6022c8464ccd83345d561d6e58c9ad7fbab80c6c50f9c156bfd",
+      "format": "musicxml",
+      "templates": [
+        "impeach-the-president"
+      ],
+      "work": {
+        "title": "Brownstone",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-brownstone.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-chrome-strut",
+      "file": "beatmo-chrome-strut.musicxml",
+      "sha256": "576c996b97a74fc3c83694c5874807c962809e160f8724b65e5ecf71801ad5b6",
+      "format": "musicxml",
+      "templates": [
+        "da-funk-house"
+      ],
+      "work": {
+        "title": "Chrome Strut",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-chrome-strut.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-cold-coffee",
+      "file": "beatmo-cold-coffee.musicxml",
+      "sha256": "8bb556dd8955532c772838c57161a1a62702332225d1b1c18d3ebcd1dc2f94ca",
+      "format": "musicxml",
+      "templates": [
+        "funky-drummer"
+      ],
+      "work": {
+        "title": "Cold Coffee",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-cold-coffee.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-cold-signal",
+      "file": "beatmo-cold-signal.musicxml",
+      "sha256": "1e911055355764d0746d17ece3336447531b2f37706d25390418ec541f3a8a30",
+      "format": "musicxml",
+      "templates": [
+        "blue-monday-synthpop"
+      ],
+      "work": {
+        "title": "Cold Signal",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-cold-signal.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-copper-wire",
+      "file": "beatmo-copper-wire.musicxml",
+      "sha256": "083edb0eaf03188e99de9194f364bfb179612a708dfb3a4eeacc277e7f17646f",
+      "format": "musicxml",
+      "templates": [
+        "superstition-groove"
+      ],
+      "work": {
+        "title": "Copper Wire",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-copper-wire.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-coral-bay",
+      "file": "beatmo-coral-bay.musicxml",
+      "sha256": "63da00250e807d6bf623ba3657d7bf8538d15a29f0f15e0878fb7f386c94f917",
+      "format": "musicxml",
+      "templates": [
+        "dancehall-riddim"
+      ],
+      "work": {
+        "title": "Coral Bay",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-coral-bay.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-harbor-lights",
+      "file": "beatmo-harbor-lights.musicxml",
+      "sha256": "e99778c134de08cfc54a315de809984342e4ab475e770c6a8e63db1f0458cabe",
+      "format": "musicxml",
+      "templates": [
+        "rosanna-shuffle"
+      ],
+      "work": {
+        "title": "Harbor Lights",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-harbor-lights.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-iron-river",
+      "file": "beatmo-iron-river.musicxml",
+      "sha256": "d6e62cd71edfd9f47cdde54291bb981b17160c3159f8b73fc45f9cf3df5c546d",
+      "format": "musicxml",
+      "templates": [
+        "levee-breaks-rock"
+      ],
+      "work": {
+        "title": "Iron River",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-iron-river.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-late-train",
+      "file": "beatmo-late-train.musicxml",
+      "sha256": "0a3277bb3a187719456c03bdb2ee5b852c12a1f75cf1c4e32eb432ef065bab92",
+      "format": "musicxml",
+      "templates": [
+        "uk-garage-2step"
+      ],
+      "work": {
+        "title": "Late Train",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-late-train.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-luna-llena",
+      "file": "beatmo-luna-llena.musicxml",
+      "sha256": "223b2e000129f595a82f6036e94e050c62d49f9be96c945dede0c50f974604bf",
+      "format": "musicxml",
+      "templates": [
+        "reggaeton-dembow"
+      ],
+      "work": {
+        "title": "Luna Llena",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-luna-llena.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-malecon",
+      "file": "beatmo-malecon.musicxml",
+      "sha256": "ec2ad93bf695471bcc60dcad68252ea7d116725b161f6dba1cb1fe0093fb6a97",
+      "format": "musicxml",
+      "templates": [
+        "salsa-clave"
+      ],
+      "work": {
+        "title": "Malecón",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-malecon.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-marble-floors",
+      "file": "beatmo-marble-floors.musicxml",
+      "sha256": "b3e9d89157ed0df90a644e37c9f72877cfb2294456a4a1ca1144943dea95bdb7",
+      "format": "musicxml",
+      "templates": [
+        "trap-808"
+      ],
+      "work": {
+        "title": "Marble Floors",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-marble-floors.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-midnight-radar",
+      "file": "beatmo-midnight-radar.musicxml",
+      "sha256": "8bf552d054d991cdacc4929ff6fe128bab94216093a6f3201131e1589a24f0a3",
+      "format": "musicxml",
+      "templates": [
+        "in-the-air-tonight"
+      ],
+      "work": {
+        "title": "Midnight Radar",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-midnight-radar.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-morro-azul",
+      "file": "beatmo-morro-azul.musicxml",
+      "sha256": "4396b20376f5f7da8a1d5969ed03f91d6dc62f25035276e1fca231013360eea3",
+      "format": "musicxml",
+      "templates": [
+        "baile-funk"
+      ],
+      "work": {
+        "title": "Morro Azul",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-morro-azul.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-night-bus",
+      "file": "beatmo-night-bus.musicxml",
+      "sha256": "087fac8ac7959ae54114524c3917a0338dbc42b5e87eba860c297088d14a0b44",
+      "format": "musicxml",
+      "templates": [
+        "amen-break-jungle"
+      ],
+      "work": {
+        "title": "Night Bus",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-night-bus.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-sabana",
+      "file": "beatmo-sabana.musicxml",
+      "sha256": "0415aaaf2c1afce0656477e369dc6c1c67de745f096e7f5467feed2a87025bac",
+      "format": "musicxml",
+      "templates": [
+        "vallenato"
+      ],
+      "work": {
+        "title": "Sabana",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-sabana.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-satellite-kids",
+      "file": "beatmo-satellite-kids.musicxml",
+      "sha256": "12cd50094766de6578b1dd6e25651bb151109615c7df3fb664388415f21feb7d",
+      "format": "musicxml",
+      "templates": [
+        "planet-rock-electro"
+      ],
+      "work": {
+        "title": "Satellite Kids",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-satellite-kids.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-stadium-lights",
+      "file": "beatmo-stadium-lights.musicxml",
+      "sha256": "45671c71f35d1e6bf9a502a645af60b2857bf6032562dfa9c8e362167d2a29f6",
+      "format": "musicxml",
+      "templates": [
+        "we-will-rock-you-stomp"
+      ],
+      "work": {
+        "title": "Stadium Lights",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-stadium-lights.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "trad-korobeiniki",
+      "file": "trad-korobeiniki.musicxml",
+      "sha256": "0c5d06df8a435d59cca509e130c276f1992cf6d798eb0aefb7e1f7d9e339c627",
+      "format": "musicxml",
+      "templates": [
+        "tetris-techno"
+      ],
+      "work": {
+        "title": "Korobeiniki",
+        "composer": "Traditional (Russian folk song)",
+        "catalog": "",
+        "first_publication_year": 1898,
+        "composer_death_year": 0,
+        "traditional": true,
+        "reference": "https://en.wikipedia.org/wiki/Korobeiniki"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/trad-korobeiniki.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — transcribed from the public-domain sheet at https://commons.wikimedia.org/wiki/File:Korobeiniki.jpg",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": "Wikimedia Commons, File:Korobeiniki.jpg (public domain): \"Korobeiniki — Russische Volksweise\""
+      }
+    },
+    {
+      "id": "groove-hook-and-sling",
+      "file": "groove-hook-and-sling.musicxml",
+      "sha256": "fbd6a679c4a76470cd0feca4eedc0b2b5e7a5231d70a7f10f4a3bf1e5c3f26bb",
+      "format": "musicxml",
+      "templates": [
+        "hook-and-sling"
+      ],
+      "work": {
+        "title": "Hook and Sling drum pattern (Eddie Bo)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/james-black-hook-and-sling/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-hook-and-sling.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/james-black-hook-and-sling/ (bars 1-4)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-crescent-city",
+      "file": "beatmo-crescent-city.musicxml",
+      "sha256": "b62c528539223838f739a302c259622d1d961a8139f1575169bd20ad6dbe6392",
+      "format": "musicxml",
+      "templates": [
+        "hook-and-sling"
+      ],
+      "work": {
+        "title": "Crescent City Strut",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-crescent-city.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-look-ka-py-py",
+      "file": "groove-look-ka-py-py.musicxml",
+      "sha256": "9af4ddc43851c5dd5f126b7de1d0c3341a8404de98ffa64c3fd43e7f789ff817",
+      "format": "musicxml",
+      "templates": [
+        "look-ka-py-py"
+      ],
+      "work": {
+        "title": "Look-Ka Py Py drum pattern (The Meters)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/zigaboo-modeliste-look-ka-py-py/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-look-ka-py-py.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/zigaboo-modeliste-look-ka-py-py/ (bars 1-2)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-second-line",
+      "file": "beatmo-second-line.musicxml",
+      "sha256": "24ca11f4d105618fa78d9b452630e06c6fb848aa2ae417c4c5bb50e966d41eb6",
+      "format": "musicxml",
+      "templates": [
+        "look-ka-py-py"
+      ],
+      "work": {
+        "title": "Second Line Shuffle",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-second-line.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-synthetic-substitution",
+      "file": "groove-synthetic-substitution.musicxml",
+      "sha256": "38c0fa4fe3c7380bc8213c12b1796a1dd9eb90a6b0648195680f148b1ae18fa1",
+      "format": "musicxml",
+      "templates": [
+        "synthetic-substitution"
+      ],
+      "work": {
+        "title": "Synthetic Substitution drum pattern (Melvin Bliss)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/bernard-purdie-synthetic-substitution/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-synthetic-substitution.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/bernard-purdie-synthetic-substitution/ (bars 1-2)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-velvet-sample",
+      "file": "beatmo-velvet-sample.musicxml",
+      "sha256": "d838cb5bbe7d48f05d6e0c63200264ba7cfae8498a5063b03444bc0f983a2bf3",
+      "format": "musicxml",
+      "templates": [
+        "synthetic-substitution"
+      ],
+      "work": {
+        "title": "Velvet Sample",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-velvet-sample.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-haitian-divorce",
+      "file": "groove-haitian-divorce.musicxml",
+      "sha256": "c44e82a0090735376dd6fb64847ea1c50ce7b90a00ee591f368b11f53454b10b",
+      "format": "musicxml",
+      "templates": [
+        "haitian-divorce"
+      ],
+      "work": {
+        "title": "Haitian Divorce drum pattern (Steely Dan)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/bernard-purdie-haitian-divorce/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-haitian-divorce.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/bernard-purdie-haitian-divorce/ (bars 1-2)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-island-letter",
+      "file": "beatmo-island-letter.musicxml",
+      "sha256": "1228ab828b399c88757a2946518384166461019ff678da09872d0493ef2c1128",
+      "format": "musicxml",
+      "templates": [
+        "haitian-divorce"
+      ],
+      "work": {
+        "title": "Island Letter",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-island-letter.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-palm-grease",
+      "file": "groove-palm-grease.musicxml",
+      "sha256": "ecda37c6437ca29bcd1fe242ce969aea4ef8e84243889e34d6d78662d61dc99e",
+      "format": "musicxml",
+      "templates": [
+        "palm-grease"
+      ],
+      "work": {
+        "title": "Palm Grease drum pattern (Herbie Hancock)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/mike-clark-palm-grease/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-palm-grease.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/mike-clark-palm-grease/ (bars 1-2)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-thrust",
+      "file": "beatmo-thrust.musicxml",
+      "sha256": "41029f790b60efd0644aabc5bfe722f9f68d63ca6e2332d49b722534afe7ee27",
+      "format": "musicxml",
+      "templates": [
+        "palm-grease"
+      ],
+      "work": {
+        "title": "Thrust Pocket",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-thrust.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-expensive-shit",
+      "file": "groove-expensive-shit.musicxml",
+      "sha256": "37dc5eb02a7d414320b195799d737719b4acc07129e72c3376c807930b00cf16",
+      "format": "musicxml",
+      "templates": [
+        "expensive-shit"
+      ],
+      "work": {
+        "title": "Expensive Shit drum pattern (Fela Kuti)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/tony-allen-expensive-shit/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-expensive-shit.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/tony-allen-expensive-shit/ (bars 1-2)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-shrine",
+      "file": "beatmo-shrine.musicxml",
+      "sha256": "4f234134b139181b5ac98429b43c0b1edfef6dbcfd587311fec6e5789d938a73",
+      "format": "musicxml",
+      "templates": [
+        "expensive-shit"
+      ],
+      "work": {
+        "title": "Shrine Vamp",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-shrine.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-immigrant-song",
+      "file": "groove-immigrant-song.musicxml",
+      "sha256": "9b253bf08553e58f97c804cf7262cf298ea5143584d04a89a199295258d71619",
+      "format": "musicxml",
+      "templates": [
+        "immigrant-song"
+      ],
+      "work": {
+        "title": "Immigrant Song drum pattern (Led Zeppelin)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/led-zeppelin-immigrant-song/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-immigrant-song.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/led-zeppelin-immigrant-song/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-north-sea",
+      "file": "beatmo-north-sea.musicxml",
+      "sha256": "3e11769bd4ddecaa5d56f1c0e2bf0a8a2ad47843cbe06e79581a0ae0c1a808cd",
+      "format": "musicxml",
+      "templates": [
+        "immigrant-song"
+      ],
+      "work": {
+        "title": "North Sea",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-north-sea.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-hit-me-with-your-rhythm-stick",
+      "file": "groove-hit-me-with-your-rhythm-stick.musicxml",
+      "sha256": "cd7e30acb66f8d47814004574d32b04360a1777d4db481b1617821b888ca6ce0",
+      "format": "musicxml",
+      "templates": [
+        "hit-me-with-your-rhythm-stick"
+      ],
+      "work": {
+        "title": "Hit Me with Your Rhythm Stick drum pattern (Ian Dury & the Blockheads)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/ian-dury-hit-me-with-your-rhythm-stick/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-hit-me-with-your-rhythm-stick.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/ian-dury-hit-me-with-your-rhythm-stick/ (bars 2-9)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-stagger-lee",
+      "file": "beatmo-stagger-lee.musicxml",
+      "sha256": "7e3d568aa48a783cf983242013aeba366ab125245eac071448a10cdcba70e2eb",
+      "format": "musicxml",
+      "templates": [
+        "hit-me-with-your-rhythm-stick"
+      ],
+      "work": {
+        "title": "Stagger",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-stagger-lee.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-dirty-love",
+      "file": "groove-dirty-love.musicxml",
+      "sha256": "09422d8dc8b57cc09e6d98b2c7025fbc482a7428dcbf1369aa47b34c952e9ab2",
+      "format": "musicxml",
+      "templates": [
+        "dirty-love"
+      ],
+      "work": {
+        "title": "Dirty Love drum pattern (Frank Zappa)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/frank-zappa-dirty-love/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-dirty-love.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/frank-zappa-dirty-love/ (bars 8-15)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-crooked-hall",
+      "file": "beatmo-crooked-hall.musicxml",
+      "sha256": "c397b3b3afc2c1eaa943d95cc49aa35691b5164ae10d49cc99ceadb2f5a91bb6",
+      "format": "musicxml",
+      "templates": [
+        "dirty-love"
+      ],
+      "work": {
+        "title": "Crooked Hall",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-crooked-hall.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-rock-lobster",
+      "file": "groove-rock-lobster.musicxml",
+      "sha256": "3e14991806bf7caa8bd8026fabadcca14ebbc6d7864d96f7bdea558589f0f448",
+      "format": "musicxml",
+      "templates": [
+        "rock-lobster"
+      ],
+      "work": {
+        "title": "Rock Lobster drum pattern (The B-52's)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/the-b-52s-rock-lobster/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-rock-lobster.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/the-b-52s-rock-lobster/ (bars 3-6)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-tide-pool",
+      "file": "beatmo-tide-pool.musicxml",
+      "sha256": "16eac4c688db7b4d00a28fe67aaf8d587e928ad7e68ce7018883dc8d6d18af60",
+      "format": "musicxml",
+      "templates": [
+        "rock-lobster"
+      ],
+      "work": {
+        "title": "Tide Pool",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-tide-pool.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-peek-a-boo",
+      "file": "groove-peek-a-boo.musicxml",
+      "sha256": "2fddbc31dc3e30d46958ce409ac8c6a4ee60e8c025f57d7f253dfec032a39cce",
+      "format": "musicxml",
+      "templates": [
+        "peek-a-boo"
+      ],
+      "work": {
+        "title": "Peek-a-Boo! drum pattern (Devo)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/devo-peek-a-boo-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-peek-a-boo.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/devo-peek-a-boo-drum-pattern/ (bars 5-12)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-yes-man",
+      "file": "beatmo-yes-man.musicxml",
+      "sha256": "dd3e84ca82db77d630335b0e089ae6ebbe8049034dde86a2e91d5b899ceaea26",
+      "format": "musicxml",
+      "templates": [
+        "peek-a-boo"
+      ],
+      "work": {
+        "title": "Yes Man",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-yes-man.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-scentless-apprentice",
+      "file": "groove-scentless-apprentice.musicxml",
+      "sha256": "c6de44d0cfcc147b802515c109eb8c033fdaae00f1dba19d8f62fb1652eb0e07",
+      "format": "musicxml",
+      "templates": [
+        "scentless-apprentice"
+      ],
+      "work": {
+        "title": "Scentless Apprentice drum pattern (Nirvana)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/nirvana-scentless-apprentice/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-scentless-apprentice.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/nirvana-scentless-apprentice/ (bars 1-4)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-perfume-factory",
+      "file": "beatmo-perfume-factory.musicxml",
+      "sha256": "53ab2fee53e142d6744b095478b5ab041f7727582416e6257c167a6d9a732212",
+      "format": "musicxml",
+      "templates": [
+        "scentless-apprentice"
+      ],
+      "work": {
+        "title": "Perfume Factory",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-perfume-factory.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-iron-man",
+      "file": "groove-iron-man.musicxml",
+      "sha256": "580eedc57d48d98050bb3c5c324ba83d83784edb230fa3b9a80dab55f67f4d2b",
+      "format": "musicxml",
+      "templates": [
+        "iron-man"
+      ],
+      "work": {
+        "title": "Iron Man drum pattern (Black Sabbath)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/black-sabbath-iron-man/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-iron-man.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/black-sabbath-iron-man/ (bars 3-10)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-cast-iron",
+      "file": "beatmo-cast-iron.musicxml",
+      "sha256": "0ea6d1b227a448ce585c3eff67cdd5655286f536e2be038eafd1caaa3731dc37",
+      "format": "musicxml",
+      "templates": [
+        "iron-man"
+      ],
+      "work": {
+        "title": "Cast Iron",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-cast-iron.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-dig-it",
+      "file": "groove-dig-it.musicxml",
+      "sha256": "24d89abee886e85416c729fd9eeab070196ffa98c0213423d43d0423e0f6930f",
+      "format": "musicxml",
+      "templates": [
+        "dig-it"
+      ],
+      "work": {
+        "title": "Dig It drum pattern (Skinny Puppy)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/skinny-puppy-dig-it-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-dig-it.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/skinny-puppy-dig-it-drum-pattern/ (bars 1-2)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-rust-belt",
+      "file": "beatmo-rust-belt.musicxml",
+      "sha256": "8b9b9d5c31afc1fc1673cf18facc08a28d3a50a91fe4183fda6d6f961f9a3539",
+      "format": "musicxml",
+      "templates": [
+        "dig-it"
+      ],
+      "work": {
+        "title": "Rust Belt",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-rust-belt.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-achtung",
+      "file": "groove-achtung.musicxml",
+      "sha256": "9e727bb391c803e1214b8236700bca906b5e33a888121f438b57a8c90c3cc9c5",
+      "format": "musicxml",
+      "templates": [
+        "achtung"
+      ],
+      "work": {
+        "title": "Achtung drum pattern (Laibach)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/laibach-achtung-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-achtung.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/laibach-achtung-drum-pattern/ (bars 9-16)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-parade-ground",
+      "file": "beatmo-parade-ground.musicxml",
+      "sha256": "3b04da3de0c956aaf1079e08dadbd8ebb26364189678669ae0d4ea2d3beb5a05",
+      "format": "musicxml",
+      "templates": [
+        "achtung"
+      ],
+      "work": {
+        "title": "Parade Ground",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-parade-ground.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-down-in-it",
+      "file": "groove-down-in-it.musicxml",
+      "sha256": "4b52d2b3ac8a5ed45291ac92eb6b19d4ccfdb8976e96cdced364225b4f5b9064",
+      "format": "musicxml",
+      "templates": [
+        "down-in-it"
+      ],
+      "work": {
+        "title": "Down in It drum pattern (Nine Inch Nails)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/nine-inch-nails-down-in-it/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-down-in-it.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/nine-inch-nails-down-in-it/ (bars 1-4)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-static-room",
+      "file": "beatmo-static-room.musicxml",
+      "sha256": "e7561fd81cc36b9c1ea391a689eae774554d5a1224d1fa8277aee382c9505304",
+      "format": "musicxml",
+      "templates": [
+        "down-in-it"
+      ],
+      "work": {
+        "title": "Static Room",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-static-room.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-being-boiled",
+      "file": "groove-being-boiled.musicxml",
+      "sha256": "fdd98f2a3277cf6ad1e4ef1f01b68be54afca438eac02712550aba1b1edcb94f",
+      "format": "musicxml",
+      "templates": [
+        "being-boiled"
+      ],
+      "work": {
+        "title": "Being Boiled drum pattern (The Human League)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/human-league-being-boiled/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-being-boiled.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/human-league-being-boiled/ (bars 1-1)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-boiling-point",
+      "file": "beatmo-boiling-point.musicxml",
+      "sha256": "9fa3ce9cd8085731084f1275c4ef8c0d20f55bdfb6b38c54daf22646467b5351",
+      "format": "musicxml",
+      "templates": [
+        "being-boiled"
+      ],
+      "work": {
+        "title": "Boiling Point",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-boiling-point.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-1000-knives",
+      "file": "groove-1000-knives.musicxml",
+      "sha256": "2830e6e50ac4dc47517349cb81dab6e16ca4cc397adf1a0f18df3edfd82de28c",
+      "format": "musicxml",
+      "templates": [
+        "1000-knives"
+      ],
+      "work": {
+        "title": "1000 Knives drum pattern (Yellow Magic Orchestra)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/yellow-magic-orchestra-1000-knives/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-1000-knives.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/yellow-magic-orchestra-1000-knives/ (bars 1-1)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-paper-lantern",
+      "file": "beatmo-paper-lantern.musicxml",
+      "sha256": "54f5ec100b03d20590eabab31e5ae9321eeea94c6e2060297be82d7322436e40",
+      "format": "musicxml",
+      "templates": [
+        "1000-knives"
+      ],
+      "work": {
+        "title": "Paper Lantern",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-paper-lantern.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-raised-by-snakes",
+      "file": "groove-raised-by-snakes.musicxml",
+      "sha256": "9088318051cde6a62a23423467922c00e91167a2b0a1d8948dc9f0bf96a8d407",
+      "format": "musicxml",
+      "templates": [
+        "raised-by-snakes"
+      ],
+      "work": {
+        "title": "Raised by Snakes drum pattern (Telex)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/telex-raised-by-snakes-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-raised-by-snakes.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/telex-raised-by-snakes-drum-pattern/ (bars 3-10)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-snake-oil",
+      "file": "beatmo-snake-oil.musicxml",
+      "sha256": "26edd1ea514ca39f0bf860ee1d39196da1d473ab684f67c4dfe19db8ed710367",
+      "format": "musicxml",
+      "templates": [
+        "raised-by-snakes"
+      ],
+      "work": {
+        "title": "Snake Oil",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-snake-oil.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-problemes-damour",
+      "file": "groove-problemes-damour.musicxml",
+      "sha256": "f3ddebccd7cfb7c551324bfb197028f076bc5ae80d913ed7e873367120ad96f3",
+      "format": "musicxml",
+      "templates": [
+        "problemes-damour"
+      ],
+      "work": {
+        "title": "Problèmes d'amour drum pattern (Alexander Robotnick)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/alexander-robotnick-problemes-damour-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-problemes-damour.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/alexander-robotnick-problemes-damour-drum-pattern/ (bars 2-9)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-love-letters",
+      "file": "beatmo-love-letters.musicxml",
+      "sha256": "6018a81bda199d153997bf4390b7ecea9e96e00e5b29d2eaed9a67f52ff0eee1",
+      "format": "musicxml",
+      "templates": [
+        "problemes-damour"
+      ],
+      "work": {
+        "title": "Love Letters",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-love-letters.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-e-mc2",
+      "file": "groove-e-mc2.musicxml",
+      "sha256": "694fb42d68510dc60b6adbea3d3ac542447aca2d04f56e2d6b416b71a360dd6f",
+      "format": "musicxml",
+      "templates": [
+        "e-mc2"
+      ],
+      "work": {
+        "title": "E=MC² drum pattern (Giorgio Moroder)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/giorgio-moroder-emc%c2%b2-rare-version-drum-cover/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-e-mc2.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/giorgio-moroder-emc%c2%b2-rare-version-drum-cover/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-relativity",
+      "file": "beatmo-relativity.musicxml",
+      "sha256": "689c0bd4d209ada66feb400765314b800e727b6255d4d7ebbbfae189c042918c",
+      "format": "musicxml",
+      "templates": [
+        "e-mc2"
+      ],
+      "work": {
+        "title": "Relativity",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-relativity.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-needle-to-the-groove",
+      "file": "groove-needle-to-the-groove.musicxml",
+      "sha256": "9f97e0782427bdab8a245cce4a0189204622a6565f9604bab8a6ad9ce1a855d5",
+      "format": "musicxml",
+      "templates": [
+        "needle-to-the-groove"
+      ],
+      "work": {
+        "title": "Needle to the Groove drum pattern (Mantronix)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/mantronix-needle-to-the-groove/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-needle-to-the-groove.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/mantronix-needle-to-the-groove/ (bars 1-1)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-cut-and-paste",
+      "file": "beatmo-cut-and-paste.musicxml",
+      "sha256": "62653d198f889b65f5c2b90d6cb6cd96db11291eaea620a749566fa5bdbfd3f4",
+      "format": "musicxml",
+      "templates": [
+        "needle-to-the-groove"
+      ],
+      "work": {
+        "title": "Cut and Paste",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-cut-and-paste.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-egypt-egypt",
+      "file": "groove-egypt-egypt.musicxml",
+      "sha256": "9e4691cd16e121408de33ad245dccbeb4bb56740143c7ad5cfcb643cd32af0e3",
+      "format": "musicxml",
+      "templates": [
+        "egypt-egypt"
+      ],
+      "work": {
+        "title": "Egypt, Egypt drum pattern (Egyptian Lover)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/egyptian-lover-egypt-egypt/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-egypt-egypt.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/egyptian-lover-egypt-egypt/ (bars 1-1)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-pyramid-scheme",
+      "file": "beatmo-pyramid-scheme.musicxml",
+      "sha256": "c9e062f00c78d5581b53bdc87b5f61dbfd6ac1ecb6af69f75d83a335f6221040",
+      "format": "musicxml",
+      "templates": [
+        "egypt-egypt"
+      ],
+      "work": {
+        "title": "Pyramid Scheme",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-pyramid-scheme.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-buffalo-gals",
+      "file": "groove-buffalo-gals.musicxml",
+      "sha256": "4088077ebd8cc892c53286086cfca13a0a21fdf6d199089473c795b469d556f0",
+      "format": "musicxml",
+      "templates": [
+        "buffalo-gals"
+      ],
+      "work": {
+        "title": "Buffalo Gals drum pattern (Malcolm McLaren)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/malcolm-mclaren-buffalo-gals-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-buffalo-gals.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/malcolm-mclaren-buffalo-gals-drum-pattern/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-square-dance",
+      "file": "beatmo-square-dance.musicxml",
+      "sha256": "deb79034a5ce829974655789d117f057ce6646effe6f23af574b9d7c85b994c0",
+      "format": "musicxml",
+      "templates": [
+        "buffalo-gals"
+      ],
+      "work": {
+        "title": "Square Dance",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-square-dance.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-clear",
+      "file": "groove-clear.musicxml",
+      "sha256": "05496ca58671b99a3651801b7c65434a080dad1acfd4925ee7ded06dc4633315",
+      "format": "musicxml",
+      "templates": [
+        "clear"
+      ],
+      "work": {
+        "title": "Clear drum pattern (Cybotron)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/cybotron-clear-2/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-clear.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/cybotron-clear-2/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-glass-city",
+      "file": "beatmo-glass-city.musicxml",
+      "sha256": "e65b0685cda238b914831dce2c37c427f6d60ce477968a332968336f233e1cb7",
+      "format": "musicxml",
+      "templates": [
+        "clear"
+      ],
+      "work": {
+        "title": "Glass City",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-glass-city.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-you-got-me",
+      "file": "groove-you-got-me.musicxml",
+      "sha256": "edf34806edaed881833a0a5859519372f78571ad628210f42bca19b9c4973e91",
+      "format": "musicxml",
+      "templates": [
+        "you-got-me"
+      ],
+      "work": {
+        "title": "You Got Me drum pattern (The Roots)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/the-roots-you-got-me/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-you-got-me.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/the-roots-you-got-me/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-late-pass",
+      "file": "beatmo-late-pass.musicxml",
+      "sha256": "d620c297ae5231313fe9e0c2ba30b73c16587ee0f00fa28039ef4998de5fd16e",
+      "format": "musicxml",
+      "templates": [
+        "you-got-me"
+      ],
+      "work": {
+        "title": "Late Pass",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-late-pass.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-on-and-on",
+      "file": "groove-on-and-on.musicxml",
+      "sha256": "9df59605289e5055d815e2ebf54a551a9558a91c3583a31846e0faaeefe1d2b8",
+      "format": "musicxml",
+      "templates": [
+        "on-and-on"
+      ],
+      "work": {
+        "title": "On and On drum pattern (Jesse Saunders)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/jesse-saunders-on-and-on-5a/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-on-and-on.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/jesse-saunders-on-and-on-5a/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-first-record",
+      "file": "beatmo-first-record.musicxml",
+      "sha256": "d6245cca4259085b943a6d6a57906aeab3442a214be17692f55ff8a0866edb43",
+      "format": "musicxml",
+      "templates": [
+        "on-and-on"
+      ],
+      "work": {
+        "title": "First Record",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-first-record.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-can-you-feel-it",
+      "file": "groove-can-you-feel-it.musicxml",
+      "sha256": "3116744021d3a8744013f45d01242282a83825861ecc32e885e677b3a9986627",
+      "format": "musicxml",
+      "templates": [
+        "can-you-feel-it"
+      ],
+      "work": {
+        "title": "Can You Feel It drum pattern (Mr. Fingers)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/can-you-feel-it-mr-fingers-1986-pt1/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-can-you-feel-it.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/can-you-feel-it-mr-fingers-1986-pt1/ (bars 9-16)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-deep-end",
+      "file": "beatmo-deep-end.musicxml",
+      "sha256": "40b9653c18002ff84029b8a058f0331f5274ddd5fc16fd2b339d4b21e39c8775",
+      "format": "musicxml",
+      "templates": [
+        "can-you-feel-it"
+      ],
+      "work": {
+        "title": "Deep End",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-deep-end.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-no-way-back",
+      "file": "groove-no-way-back.musicxml",
+      "sha256": "693a14eb08b28dabe4f71eebdb86071e401772bae100b180defe5a48a46fe6ca",
+      "format": "musicxml",
+      "templates": [
+        "no-way-back"
+      ],
+      "work": {
+        "title": "No Way Back drum pattern (Adonis)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/adonis-no-way-back-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-no-way-back.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/adonis-no-way-back-drum-pattern/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-no-exit",
+      "file": "beatmo-no-exit.musicxml",
+      "sha256": "46680f4ec570c0e4d7c11fd6c896c84c1011bc3b70b1583052d267115b5b32ac",
+      "format": "musicxml",
+      "templates": [
+        "no-way-back"
+      ],
+      "work": {
+        "title": "No Exit",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-no-exit.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-french-kiss",
+      "file": "groove-french-kiss.musicxml",
+      "sha256": "3830376460ba37b17907180ac74bceb5f688b0c14fd77d4aa43a367c77d98ba9",
+      "format": "musicxml",
+      "templates": [
+        "french-kiss"
+      ],
+      "work": {
+        "title": "French Kiss drum pattern (Lil Louis)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/lil-louis-french-kiss/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-french-kiss.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/lil-louis-french-kiss/ (bars 1-1)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-sixteen-minutes",
+      "file": "beatmo-sixteen-minutes.musicxml",
+      "sha256": "aefd09bfed46418f8c4905a86b1455d8ffea0291c2e43353ce4dce17771c0fd4",
+      "format": "musicxml",
+      "templates": [
+        "french-kiss"
+      ],
+      "work": {
+        "title": "Sixteen Minutes",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-sixteen-minutes.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-dominatrix-sleeps-tonight",
+      "file": "groove-dominatrix-sleeps-tonight.musicxml",
+      "sha256": "35a8e8df67d547d80e7cbc13a3058a148641cf7f941b3ea97614c315ca4f7363",
+      "format": "musicxml",
+      "templates": [
+        "dominatrix-sleeps-tonight"
+      ],
+      "work": {
+        "title": "The Dominatrix Sleeps Tonight drum pattern (The Dominatrix)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/dominatrix-the-dominatrix-sleeps-tonight-drum-pattern/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-dominatrix-sleeps-tonight.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/dominatrix-the-dominatrix-sleeps-tonight-drum-pattern/ (bars 9-16)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-chrome-heart",
+      "file": "beatmo-chrome-heart.musicxml",
+      "sha256": "e61317db1d78f870bea33151b63baf978b9b0987887e98d12b05f33772e60082",
+      "format": "musicxml",
+      "templates": [
+        "dominatrix-sleeps-tonight"
+      ],
+      "work": {
+        "title": "Chrome Heart",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-chrome-heart.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-voodoo-ray",
+      "file": "groove-voodoo-ray.musicxml",
+      "sha256": "6f1024a4a3c5f0f9535963455f1a70445c22bbf5ffbf4fee790805f7c0bb08f2",
+      "format": "musicxml",
+      "templates": [
+        "voodoo-ray"
+      ],
+      "work": {
+        "title": "Voodoo Ray drum pattern (A Guy Called Gerald)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/a-guy-called-gerald-voodoo-ray-drum-pattern-extra/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-voodoo-ray.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/a-guy-called-gerald-voodoo-ray-drum-pattern-extra/ (bars 4-7)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-black-magic",
+      "file": "beatmo-black-magic.musicxml",
+      "sha256": "9e3394d51cf4254f41b10a40a4e4de8fe8b7772313f86e585ad71cdc869a9658",
+      "format": "musicxml",
+      "templates": [
+        "voodoo-ray"
+      ],
+      "work": {
+        "title": "Black Magic",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-black-magic.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-north-american-scum",
+      "file": "groove-north-american-scum.musicxml",
+      "sha256": "715a38dbee8effe011997868151517221d42cfadcc91c87f05927e5e9ad7e122",
+      "format": "musicxml",
+      "templates": [
+        "north-american-scum"
+      ],
+      "work": {
+        "title": "North American Scum drum pattern (LCD Soundsystem)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/north-american-scum-by-lcd-soundsystem/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-north-american-scum.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/north-american-scum-by-lcd-soundsystem/ (bars 2-5)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-scum-city",
+      "file": "beatmo-scum-city.musicxml",
+      "sha256": "0d972e9f06df3f2dab28d7427364a38769d6e716eed9e5a6b1c456171a039148",
+      "format": "musicxml",
+      "templates": [
+        "north-american-scum"
+      ],
+      "work": {
+        "title": "Scum City",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-scum-city.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-flim",
+      "file": "groove-flim.musicxml",
+      "sha256": "92bfb10a785f49bdbbcce18fd920136adee4228fd89d82936bfc1ddf1321cd07",
+      "format": "musicxml",
+      "templates": [
+        "flim"
+      ],
+      "work": {
+        "title": "Flim drum pattern (Aphex Twin)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/aphex-twin-flim/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-flim.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/aphex-twin-flim/ (bars 1-8)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-film-grain",
+      "file": "beatmo-film-grain.musicxml",
+      "sha256": "3deeb3d195a68c863a67517932fd682df5902b920470f6a8645b9f04bc30408c",
+      "format": "musicxml",
+      "templates": [
+        "flim"
+      ],
+      "work": {
+        "title": "Film Grain",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-film-grain.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-xtal",
+      "file": "groove-xtal.musicxml",
+      "sha256": "de004897553f51d63dabc3658a5d2343358255fb00304e86a75dd93b249b07db",
+      "format": "musicxml",
+      "templates": [
+        "xtal"
+      ],
+      "work": {
+        "title": "Xtal drum pattern (Aphex Twin)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/apex-twin-xtal/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-xtal.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/apex-twin-xtal/ (bars 3-4)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-quartz",
+      "file": "beatmo-quartz.musicxml",
+      "sha256": "b8e58791d44d30e650757f7255a4e86486218cb79971ee00466d08c0af93b917",
+      "format": "musicxml",
+      "templates": [
+        "xtal"
+      ],
+      "work": {
+        "title": "Quartz",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-quartz.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-idioteque",
+      "file": "groove-idioteque.musicxml",
+      "sha256": "f3713f5789c2de4e77f8fe216b7c5155644d02380cb7e36fb25185adcb44f56d",
+      "format": "musicxml",
+      "templates": [
+        "idioteque"
+      ],
+      "work": {
+        "title": "Idioteque drum pattern (Radiohead)",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/idioteque-radiohead/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-idioteque.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/idioteque-radiohead/ (bars 1-3)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-bunker",
+      "file": "beatmo-bunker.musicxml",
+      "sha256": "50440f73e47facaf636c65f5ef9d7458237ed382eb58ffdc9911913b979742a5",
+      "format": "musicxml",
+      "templates": [
+        "idioteque"
+      ],
+      "work": {
+        "title": "Bunker",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-bunker.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "groove-when-i-rule-the-world",
+      "file": "groove-when-i-rule-the-world.musicxml",
+      "sha256": "1d54506d709fac28eb8c5984e2e93219abd413efdb5f1d84b67079888dbfe922",
+      "format": "musicxml",
+      "templates": [
+        "when-i-rule-the-world"
+      ],
+      "work": {
+        "title": "When I Rule the World drum pattern (LIZ (prod. SOPHIE))",
+        "composer": "Rhythm pattern",
+        "catalog": "",
+        "first_publication_year": 0,
+        "composer_death_year": 0,
+        "rhythm": true,
+        "reference": "https://drum-patterns.com/when-i-rule-the-world-liz-prod-sophie/"
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/groove-when-i-rule-the-world.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — drum pattern encoded from the step transcription at https://drum-patterns.com/when-i-rule-the-world-liz-prod-sophie/ (bars 1-3)",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    },
+    {
+      "id": "beatmo-crown-glass",
+      "file": "beatmo-crown-glass.musicxml",
+      "sha256": "6c9fdbd0b9e0b3ca718d70f03e77898c91f7e8a2d695139328f95b0447f01efb",
+      "format": "musicxml",
+      "templates": [
+        "when-i-rule-the-world"
+      ],
+      "work": {
+        "title": "Crown Glass",
+        "composer": "Beatmo",
+        "catalog": "",
+        "first_publication_year": 2026,
+        "composer_death_year": 0,
+        "original": true
+      },
+      "source": {
+        "provider": "beatmo",
+        "repo": "ingyamilmolinar/beatmo",
+        "url": "https://github.com/ingyamilmolinar/beatmo/blob/main/src/go/internal/scoreref/scores/beatmo-crown-glass.musicxml",
+        "license": "CC0-1.0",
+        "attribution": "Beatmo — original composition, CC0 1.0 Universal",
+        "embedded_rights": "Beatmo (CC0)",
+        "source_edition": ""
+      }
+    }
+  ]
+}

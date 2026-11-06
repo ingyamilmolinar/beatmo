@@ -3,26 +3,29 @@ package ui
 import (
 	"reflect"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestInMemoryFavoritesStoreSetGet(t *testing.T) {
 	s := NewInMemoryFavoritesStore()
-	if s.Get("kick") {
+	if s.Get(roster.Kick) {
 		t.Fatalf("empty store should report false for unknown key")
 	}
-	s.Set("kick", true)
-	if !s.Get("kick") {
+	s.Set(roster.Kick, true)
+	if !s.Get(roster.Kick) {
 		t.Fatalf("after Set(true), Get should report true")
 	}
-	s.Set("kick", false)
-	if s.Get("kick") {
+	s.Set(roster.Kick, false)
+	if s.Get(roster.Kick) {
 		t.Fatalf("after Set(false), Get should report false")
 	}
 }
 
 func TestInMemoryFavoritesStorePreloaded(t *testing.T) {
-	s := NewInMemoryFavoritesStore("kick", "snare", "")
-	if !s.Get("kick") || !s.Get("snare") {
+	s := NewInMemoryFavoritesStore(roster.Kick, roster.Snare, "")
+	if !s.Get(roster.Kick) || !s.Get(roster.Snare) {
 		t.Fatalf("preloaded ids must be set")
 	}
 	if s.Get("") {
@@ -33,7 +36,7 @@ func TestInMemoryFavoritesStorePreloaded(t *testing.T) {
 func TestInMemoryFavoritesStoreKeysSorted(t *testing.T) {
 	s := NewInMemoryFavoritesStore("zeta", "alpha", "mike")
 	got := s.Keys()
-	want := []string{"alpha", "mike", "zeta"}
+	want := []instrument.ID{"alpha", "mike", "zeta"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("keys not sorted: got %v want %v", got, want)
 	}
@@ -50,10 +53,10 @@ func TestInMemoryFavoritesStoreEmptyKeyIgnored(t *testing.T) {
 func TestInMemoryFavoritesStoreNilSafe(t *testing.T) {
 	var s *InMemoryFavoritesStore // nil
 	// Should not panic, should report sane defaults.
-	if s.Get("kick") {
+	if s.Get(roster.Kick) {
 		t.Fatalf("nil store Get should report false")
 	}
-	s.Set("kick", true) // must not panic
+	s.Set(roster.Kick, true) // must not panic
 	if keys := s.Keys(); keys != nil && len(keys) != 0 {
 		t.Fatalf("nil store Keys should be nil/empty, got %v", keys)
 	}
@@ -107,18 +110,18 @@ func TestFavoritesGlobalDefaultIsUsable(t *testing.T) {
 // estate, and project pins are the more specific signal.
 func TestPinSource_Tier(t *testing.T) {
 	src := PinSource{
-		ProjectPins: map[string]struct{}{"kick-808": {}, "shared-id": {}},
-		UserStars:   map[string]struct{}{"snare-tight": {}, "shared-id": {}},
+		ProjectPins: map[instrument.ID]struct{}{roster.Kick808: {}, "shared-id": {}},
+		UserStars:   map[instrument.ID]struct{}{roster.SnareFat: {}, "shared-id": {}},
 	}
 	cases := []struct {
-		id   string
+		id   instrument.ID
 		want int
 	}{
-		{"kick-808", 0},    // project only
-		{"shared-id", 0},   // both → project wins
-		{"snare-tight", 1}, // user star only
-		{"unrelated", 2},   // none
-		{"", 2},            // empty id → tier 2 (won't match anything)
+		{roster.Kick808, 0},  // project only
+		{"shared-id", 0},     // both → project wins
+		{roster.SnareFat, 1}, // user star only
+		{"unrelated", 2},     // none
+		{"", 2},              // empty id → tier 2 (won't match anything)
 	}
 	for _, tc := range cases {
 		if got := src.Tier(tc.id); got != tc.want {
@@ -134,10 +137,10 @@ func TestPinSource_Tier(t *testing.T) {
 // specific items.
 func TestSortByTierAlpha(t *testing.T) {
 	src := PinSource{
-		ProjectPins: map[string]struct{}{"zeta-pin": {}, "alpha-pin": {}},
-		UserStars:   map[string]struct{}{"yankee": {}, "bravo": {}},
+		ProjectPins: map[instrument.ID]struct{}{"zeta-pin": {}, "alpha-pin": {}},
+		UserStars:   map[instrument.ID]struct{}{"yankee": {}, "bravo": {}},
 	}
-	labels := map[string]string{
+	labels := map[instrument.ID]string{
 		"zeta-pin":  "Zeta Pin",
 		"alpha-pin": "Alpha Pin",
 		"yankee":    "Yankee",
@@ -145,12 +148,12 @@ func TestSortByTierAlpha(t *testing.T) {
 		"mike":      "Mike",
 		"charlie":   "Charlie",
 	}
-	labelFor := func(id string) string { return labels[id] }
-	ids := []string{"zeta-pin", "yankee", "mike", "charlie", "alpha-pin", "bravo"}
+	labelFor := func(id instrument.ID) string { return labels[id] }
+	ids := []instrument.ID{"zeta-pin", "yankee", "mike", "charlie", "alpha-pin", "bravo"}
 	src.SortByTierAlpha(ids, labelFor)
 	// Pinned tiers (0, 1) are alpha-sorted; tier 2 keeps input order so the
 	// catalog's curated ordering is preserved for unpinned items.
-	want := []string{"alpha-pin", "zeta-pin", "bravo", "yankee", "mike", "charlie"}
+	want := []instrument.ID{"alpha-pin", "zeta-pin", "bravo", "yankee", "mike", "charlie"}
 	for i := range want {
 		if ids[i] != want[i] {
 			t.Errorf("SortByTierAlpha[%d]: got %q want %q (full %v)", i, ids[i], want[i], ids)
@@ -162,9 +165,9 @@ func TestSortByTierAlpha(t *testing.T) {
 // nil and single-element slices (a common sort.Slice edge case).
 func TestSortByTierAlpha_TrivialInputs(t *testing.T) {
 	src := PinSource{}
-	src.SortByTierAlpha(nil, func(string) string { return "" })
-	one := []string{"only"}
-	src.SortByTierAlpha(one, func(string) string { return "x" })
+	src.SortByTierAlpha(nil, func(instrument.ID) string { return "" })
+	one := []instrument.ID{"only"}
+	src.SortByTierAlpha(one, func(instrument.ID) string { return "x" })
 	if len(one) != 1 || one[0] != "only" {
 		t.Errorf("single-element slice mutated: %v", one)
 	}
@@ -177,27 +180,27 @@ func TestSortByTierAlpha_TrivialInputs(t *testing.T) {
 // shouldn't drown out the obvious match.
 func TestStableTierBreaker_FuzzyWinsThenTier(t *testing.T) {
 	src := PinSource{
-		ProjectPins: map[string]struct{}{"unrelated-pin": {}},
-		UserStars:   map[string]struct{}{},
+		ProjectPins: map[instrument.ID]struct{}{"unrelated-pin": {}},
+		UserStars:   map[instrument.ID]struct{}{},
 	}
-	scores := map[string]int{
+	scores := map[instrument.ID]int{
 		"strong-match":  100,
 		"unrelated-pin": 5,
 		"weak-match":    5,
 	}
-	labels := map[string]string{
+	labels := map[instrument.ID]string{
 		"strong-match":  "Strong Match",
 		"unrelated-pin": "Unrelated Pin",
 		"weak-match":    "Weak Match",
 	}
-	scoreOf := func(id string) int { return scores[id] }
-	labelFor := func(id string) string { return labels[id] }
+	scoreOf := func(id instrument.ID) int { return scores[id] }
+	labelFor := func(id instrument.ID) string { return labels[id] }
 
-	ids := []string{"unrelated-pin", "weak-match", "strong-match"}
+	ids := []instrument.ID{"unrelated-pin", "weak-match", "strong-match"}
 	src.StableTierBreaker(ids, scoreOf, labelFor)
 	// Strong match wins on score; within the tied score-5 pair the project
 	// pin (tier 0) precedes the unranked weak-match (tier 2).
-	want := []string{"strong-match", "unrelated-pin", "weak-match"}
+	want := []instrument.ID{"strong-match", "unrelated-pin", "weak-match"}
 	for i := range want {
 		if ids[i] != want[i] {
 			t.Errorf("StableTierBreaker[%d]: got %q want %q (full %v)", i, ids[i], want[i], ids)
@@ -211,13 +214,13 @@ func TestStableTierBreaker_FuzzyWinsThenTier(t *testing.T) {
 // ordering for the matched group.
 func TestStableTierBreaker_AlphaWithinTier(t *testing.T) {
 	src := PinSource{}
-	scores := map[string]int{"zeta": 10, "alpha": 10, "mike": 10}
-	labels := map[string]string{"zeta": "Zeta", "alpha": "Alpha", "mike": "Mike"}
-	ids := []string{"zeta", "mike", "alpha"}
+	scores := map[instrument.ID]int{"zeta": 10, "alpha": 10, "mike": 10}
+	labels := map[instrument.ID]string{"zeta": "Zeta", "alpha": "Alpha", "mike": "Mike"}
+	ids := []instrument.ID{"zeta", "mike", "alpha"}
 	src.StableTierBreaker(ids,
-		func(id string) int { return scores[id] },
-		func(id string) string { return labels[id] })
-	want := []string{"alpha", "mike", "zeta"}
+		func(id instrument.ID) int { return scores[id] },
+		func(id instrument.ID) string { return labels[id] })
+	want := []instrument.ID{"alpha", "mike", "zeta"}
 	for i := range want {
 		if ids[i] != want[i] {
 			t.Errorf("StableTierBreaker[%d]: got %q want %q (full %v)", i, ids[i], want[i], ids)

@@ -1,0 +1,265 @@
+{
+  "schema_version": "0.0.1",
+  "id": "cello-warm",
+  "name": "Cello Warm",
+  "category": "modular",
+  "notes": "celloWarmSeed: warm cello — same additive approach but emphasis on P2-P4 warmth,\nslower attack, deeper vibrato. osc_octave:-1 retained.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.8477,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.16,
+        "amp_curve": 1,
+        "amp_decay": 0.12,
+        "amp_release": 0.5,
+        "amp_sustain": 0.92
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 1800,
+        "filter_resonance": 1,
+        "filter_type": 0
+      }
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 1.3,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.25
+      },
+      "notes": "filtenv_enabled: filter envelope: gentle warm bow attack"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.3,
+        "lfo_depth": 0.11,
+        "lfo_rate": 4.6,
+        "lfo_target": 1
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 40,
+        "unison_drift_depth": 8,
+        "unison_drift_rate": 3,
+        "unison_mix": 0.65,
+        "unison_voices": 7
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 1
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.025,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_source: P1 fundamental — very weak"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.095,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_source: P2 (3.41x) — slightly emphasized for warmth"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.278,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_source: P3 (11.10x — dominant)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.083,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_source: P4 (3.32x)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5,
+        "freq_mode": 0,
+        "gain": 0.083,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_source: P5 (3.33x)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.045,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen6_source: P6 (2.08x) — slightly lower for warmth"
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 5,
+        "env_tail_mix": 0.18,
+        "env_tail_rate": 2,
+        "filt_alpha": 0,
+        "filt_freq": 800,
+        "filt_q": 2,
+        "filt_type": 5,
+        "gain": 0.015,
+        "noise_offset": 0
+      },
+      "notes": "gen7_source: bow noise tap — lower BP for warm cello"
+    }
+  ]
+}

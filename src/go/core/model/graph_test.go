@@ -238,29 +238,25 @@ func TestAddNodeDefaultsAndRemoveClearsEdges(t *testing.T) {
 	}
 }
 
-func TestSetNodeParamsNormalizesLogic(t *testing.T) {
+func TestSetNodeParamsAppliesLogic(t *testing.T) {
 	g := NewGraph(testLogger)
 	n0 := g.AddNode(0, 0, NodeTypeRegular)
 	n1 := g.AddNode(1, 0, NodeTypeRegular)
 
 	// skip_every_n with explicit N is applied as-is.
-	g.SetNodeParams(n0, NodeParams{LogicKind: "skip_every_n", LogicN: 3})
+	g.SetNodeParams(n0, NodeParams{LogicKind: LogicSkipEveryN, LogicN: 3})
 	n, _ := g.GetNodeByID(n0)
-	if n.Params.LogicKind != "skip_every_n" {
+	if n.Params.LogicKind != LogicSkipEveryN {
 		t.Fatalf("expected skip_every_n, got %q", n.Params.LogicKind)
 	}
 	if n.Params.LogicN != 3 {
 		t.Fatalf("expected logic N=3, got %d", n.Params.LogicN)
 	}
 
-	// Aliases should normalize to their canonical kind.
-	g.SetNodeParams(n1, NodeParams{LogicKind: " Prev_Fired "})
+	g.SetNodeParams(n1, NodeParams{LogicKind: LogicIfPrevTriggered})
 	n, _ = g.GetNodeByID(n1)
-	if n.Params.LogicKind != "trigger_if_prev_triggered" {
-		t.Fatalf("expected normalized logic kind, got %q", n.Params.LogicKind)
-	}
-	if n.Params.LogicN != 0 {
-		t.Fatalf("expected logic N unchanged, got %d", n.Params.LogicN)
+	if n.Params.LogicKind != LogicIfPrevTriggered || n.Params.LogicN != 0 {
+		t.Fatalf("logic = %v N=%d", n.Params.LogicKind, n.Params.LogicN)
 	}
 }
 
@@ -324,7 +320,7 @@ func TestMoveNode(t *testing.T) {
 	}
 }
 
-func TestSetNodeParamsCopiesSynthAndOverrides(t *testing.T) {
+func TestSetNodeParamsCopiesOverrides(t *testing.T) {
 	g := NewGraph(testLogger)
 	n0 := g.AddNode(0, 0, NodeTypeRegular)
 
@@ -336,13 +332,6 @@ func TestSetNodeParamsCopiesSynthAndOverrides(t *testing.T) {
 		Volume:          0.7,
 		Pitch:           2,
 		Duration:        1.5,
-		SynthDecay:      0.5,
-		SynthTone:       -0.3,
-		SynthAttack:     0.1,
-		SynthDrive:      0.6,
-		SynthBody:       0.4,
-		SynthColor:      -0.5,
-		SynthBrightness: 0.9,
 		EffectOverrides: overrides,
 	}
 	g.SetNodeParams(n0, p)
@@ -350,27 +339,6 @@ func TestSetNodeParamsCopiesSynthAndOverrides(t *testing.T) {
 	n, ok := g.GetNodeByID(n0)
 	if !ok {
 		t.Fatal("node not found")
-	}
-	if n.Params.SynthDecay != 0.5 {
-		t.Errorf("SynthDecay: got %f want 0.5", n.Params.SynthDecay)
-	}
-	if n.Params.SynthTone != -0.3 {
-		t.Errorf("SynthTone: got %f want -0.3", n.Params.SynthTone)
-	}
-	if n.Params.SynthAttack != 0.1 {
-		t.Errorf("SynthAttack: got %f want 0.1", n.Params.SynthAttack)
-	}
-	if n.Params.SynthDrive != 0.6 {
-		t.Errorf("SynthDrive: got %f want 0.6", n.Params.SynthDrive)
-	}
-	if n.Params.SynthBody != 0.4 {
-		t.Errorf("SynthBody: got %f want 0.4", n.Params.SynthBody)
-	}
-	if n.Params.SynthColor != -0.5 {
-		t.Errorf("SynthColor: got %f want -0.5", n.Params.SynthColor)
-	}
-	if n.Params.SynthBrightness != 0.9 {
-		t.Errorf("SynthBrightness: got %f want 0.9", n.Params.SynthBrightness)
 	}
 	if len(n.Params.EffectOverrides) != 2 {
 		t.Fatalf("EffectOverrides: got %d want 2", len(n.Params.EffectOverrides))

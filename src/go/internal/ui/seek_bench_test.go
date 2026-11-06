@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // buildSeekBenchGame builds a game with a single row driven by an N-node loop,
@@ -15,7 +17,7 @@ import (
 func buildSeekBenchGame(b *testing.B, loopNodes, playBeats int) *Game {
 	b.Helper()
 	g := New(testLogger)
-	g.SetPlayFunc(func(string, float64, ...float64) {})
+	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 	g.drum.SetFollow(true)
 	g.drum.SetLength(16)
@@ -57,9 +59,9 @@ func benchSeekAlternating(b *testing.B, beat int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if i&1 == 0 {
-			g.SeekSteps(beat*div, seekOriginRibbon) // forward
+			g.SeekSteps(beat*div, hooks.SeekRibbon) // forward
 		} else {
-			g.SeekSteps(0, seekOriginRibbon) // backward to origin
+			g.SeekSteps(0, hooks.SeekRibbon) // backward to origin
 		}
 	}
 }
@@ -83,7 +85,7 @@ func BenchmarkSeekForwardWalk(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		g.SeekSteps(((i%128)*4)*div, seekOriginTransport)
+		g.SeekSteps(((i%128)*4)*div, hooks.SeekTransport)
 	}
 }
 
@@ -96,7 +98,7 @@ func BenchmarkSeekBackwardWalk(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		g.SeekSteps(((127-(i%128))*4)*div, seekOriginTransport)
+		g.SeekSteps(((127-(i%128))*4)*div, hooks.SeekTransport)
 	}
 }
 

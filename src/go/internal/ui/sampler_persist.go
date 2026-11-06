@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
@@ -26,7 +27,7 @@ func NewSamplePersistAdapter(store userprefs.SampleStore) *samplePersistAdapter 
 }
 
 // SaveSample implements audio.SampleSink.
-func (a *samplePersistAdapter) SaveSample(id string, pcm []float32, sr int) {
+func (a *samplePersistAdapter) SaveSample(id instrument.ID, pcm []float32, sr int) {
 	if a == nil || a.store == nil {
 		return
 	}
@@ -34,7 +35,7 @@ func (a *samplePersistAdapter) SaveSample(id string, pcm []float32, sr int) {
 }
 
 // DeleteSample implements audio.SampleSink.
-func (a *samplePersistAdapter) DeleteSample(id string) {
+func (a *samplePersistAdapter) DeleteSample(id instrument.ID) {
 	if a == nil || a.store == nil {
 		return
 	}
@@ -42,8 +43,8 @@ func (a *samplePersistAdapter) DeleteSample(id string) {
 }
 
 // LoadSamples implements audio.SampleSource.
-func (a *samplePersistAdapter) LoadSamples() map[string]audio.SampleRecord {
-	out := map[string]audio.SampleRecord{}
+func (a *samplePersistAdapter) LoadSamples() map[instrument.ID]audio.SampleRecord {
+	out := map[instrument.ID]audio.SampleRecord{}
 	if a == nil || a.store == nil {
 		return out
 	}

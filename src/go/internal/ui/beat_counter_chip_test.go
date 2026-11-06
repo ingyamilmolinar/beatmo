@@ -59,23 +59,26 @@ func beatCounterKeycapCap(t *testing.T, z *TimelineZone, dst *ebiten.Image, beat
 	t.Helper()
 	restFill := color.RGBAModel.Convert(TransportMiscStyle.Fill).(color.RGBA)
 	hoverFill := color.RGBAModel.Convert(adjustColor(TransportMiscStyle.Fill, 12)).(color.RGBA)
+	// Flat-tonal (2026-07-25): the counter's body is painted by
+	// drawFlatPanelButton -> drawFlatButtonBody -> drawRoundedRect(filled),
+	// not by the drawRoundedButton fill+border composite. Intercept the
+	// primitive the flat path actually uses.
 	var caps []image.Rectangle
-	orig := drawRoundedButton
-	drawRoundedButton = func(d *ebiten.Image, r image.Rectangle, fill, border color.Color, radius int, pressed bool) {
-		if f, ok := color.RGBAModel.Convert(fill).(color.RGBA); ok {
+	orig := drawRoundedRect
+	drawRoundedRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
+		if f, ok := color.RGBAModel.Convert(c).(color.RGBA); ok && filled {
 			if (f == restFill || f == hoverFill) && r.In(beatRect) && !r.Empty() {
 				caps = append(caps, r)
 			}
 		}
-		orig(d, r, fill, border, radius, pressed)
+		orig(d, r, c, radius, filled)
 	}
-	t.Cleanup(func() { drawRoundedButton = orig })
+	t.Cleanup(func() { drawRoundedRect = orig })
 	z.drawBeatCounter(dst, 0)
 	if len(caps) == 0 {
 		return image.Rectangle{}, false
 	}
-	// The cap face is the widest such rounded button (the shell uses a darker
-	// derived shade, so it won't match the fill).
+	// The body is the widest such filled rounded rect.
 	best := caps[0]
 	for _, c := range caps[1:] {
 		if c.Dx() > best.Dx() {

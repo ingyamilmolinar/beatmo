@@ -25,6 +25,7 @@
  */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
+import { waitForAudioReady } from "./browser_test_helpers.js";
 
 if (!buildMainWasm({ logLevel: "INFO" })) throw new Error("go build main.wasm failed");
 const server = await createServer();
@@ -41,11 +42,11 @@ const fail = (m) => { failed = true; console.error("[FAIL] " + m); };
 
 try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
-  await page.waitForFunction(() => typeof setInstrumentParam === "function" && typeof window.registerSamplePCM === "function" && typeof window.playSound === "function", { timeout: 30000 });
-  await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
+  await page.waitForFunction(() => typeof setInstrumentParam === "function" && typeof window.registerSamplePCM === "function" && typeof window.playSound === "function", null, { timeout: 30000 });
+  await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 30000 });
   await page.mouse.click(200, 200);
-  await page.evaluate(async () => { try { await window.audioReady; } catch (_) {} });
-  await page.waitForFunction(() => window.__audioCtx ? window.__audioCtx.state === "running" : true, { timeout: 10000 }).catch(() => {});
+  await waitForAudioReady(page, { allowReject: true });
+  await page.waitForFunction(() => window.__audioCtx ? window.__audioCtx.state === "running" : true, null, { timeout: 10000 }).catch(() => {});
 
   const INST = "snare";
 
@@ -86,7 +87,7 @@ try {
 
     const before = await peakOf();
     // Change the generator param on the SAMPLE instrument (the user gesture).
-    setInstrumentParam(id, "decay", 2);
+    setInstrumentParam(id, "amp_decay", 2);
     await sleep(50);
     const after = await peakOf();
     // And a second param to be thorough.
@@ -116,9 +117,10 @@ try {
       return d && d.length ? `${d.length}:${d[100]}:${d[1000]}` : String(d);
     };
     const sigBefore = sig();
-    // Param edits arrive via the same bridge handler; with no RENDER_DEFAULTS
-    // for this id the PCM must survive untouched.
-    window.updateInstrumentParams(id, JSON.stringify({ drive: 0.5, decay: 4 }));
+    // A block push for an id a registered PCM overrides must leave the PCM
+    // untouched (setInstrumentBlock's sample guard).
+    const s = window.__instrumentBlockForTest("kick");
+    window.setInstrumentBlock(id, s.block, s.seconds, s.amp, s.melodic, s.gateTail, s.fx);
     await sleep(50);
     const sigAfter = sig();
     return { sigBefore, sigAfter, intact: sigBefore === sigAfter && sigBefore !== "undefined" };

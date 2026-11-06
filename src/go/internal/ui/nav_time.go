@@ -3,31 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 )
-
-// parseClock parses "M:SS" or a bare seconds count into seconds. Seconds field
-// must be 0..59.
-func parseClock(s string) (float64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, false
-	}
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		m, err1 := strconv.Atoi(strings.TrimSpace(s[:i]))
-		sec, err2 := strconv.Atoi(strings.TrimSpace(s[i+1:]))
-		if err1 != nil || err2 != nil || m < 0 || sec < 0 || sec > 59 {
-			return 0, false
-		}
-		return float64(m*60 + sec), true
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil || v < 0 {
-		return 0, false
-	}
-	return float64(v), true
-}
 
 // timeToSteps returns the absolute subdivision index of the closest beat AT OR
 // AFTER `seconds`, clamped to [0, maxSteps].
@@ -61,15 +37,11 @@ func formatClock(sec int) string {
 	return fmt.Sprintf("%d:%02d", sec/60, sec%60)
 }
 
-// formatBeatTime renders "Beat <b> · <m:ss>" for a position readout.
-func formatBeatTime(steps, div, bpm int) string {
-	if div <= 0 {
-		div = 1
-	}
-	if bpm <= 0 {
-		bpm = 120
-	}
-	beat := steps / div
-	sec := int(math.Round(float64(beat) * 60.0 / float64(bpm)))
-	return fmt.Sprintf("Beat %d · %d:%02d", beat, sec/60, sec%60)
+// formatBeatTime renders "Beat <b> · <m:ss>" for a position readout. It takes
+// the resolved PlayheadPos rather than raw clock quantities so it cannot invent
+// its own beat/second derivation — the beat counter renders the same two fields
+// through formatBeatReadout (which drops the "Beat" label on mobile's narrow
+// band), so the two readouts always agree on the numbers.
+func formatBeatTime(p PlayheadPos) string {
+	return fmt.Sprintf("Beat %d · %s", p.DisplayBeat, formatElapsedTime(p.Seconds))
 }

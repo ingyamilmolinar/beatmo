@@ -16,11 +16,9 @@ var audioTranslatableWant = map[Key]struct{ en, es string }{
 	"levels.peak":  {"PEAK", "PICO"},
 	"levels.clips": {"CLIPS", "RECORTES"},
 	"levels.clear": {"CLR", "BORR"},
-	// Chain display modes (OVR/SPL/AG/FIT translate; DIF is identical both).
-	"chain.overlay":   {"OVR", "SUP"},
-	"chain.split":     {"SPL", "DIV"},
-	"chain.auto_gain": {"AG", "GA"},
-	"chain.fit":       {"FIT", "AJU"},
+	// Chain display modes (OVR/SPL translate; DIF is identical in both).
+	"chain.overlay": {"OVR", "SUP"},
+	"chain.split":   {"SPL", "DIV"},
 	// Sampler knob group labels.
 	"sampler.group.trim":  {"TRIM", "RECORTE"},
 	"sampler.group.tune":  {"TUNE", "AFINACIÓN"},
@@ -47,7 +45,6 @@ var audioKeptWant = map[Key]string{
 	"chain.stage.antipop": "AntiPop",
 	"chain.stage.fx":      "FX",
 	"chain.stage.eq":      "EQ",
-	"chain.stage.bus":     "Bus",
 }
 
 func TestAudioSamplerKeysTranslated(t *testing.T) {

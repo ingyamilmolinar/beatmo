@@ -79,7 +79,10 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 	dragging := false
 	debugGeom := (os.Getenv("DEBUG_GEOM") == "1")
 	if allowPan {
-		if _, wheelY := wheel(); wheelY != 0 {
+		// Detents, not raw platform units — see input_dynamics.go. Reading the
+		// raw wheel here made browser zoom ~50x too fast (one notch is ~100 in
+		// DOM_DELTA_PIXEL but +/-1 on native GLFW).
+		if _, wheelY := wheelNotches(); wheelY != 0 {
 			mx, my := cursorPosition()
 			wx := (float64(mx) - c.OffsetX) / c.Scale
 			// Account for the transport bar offset in screen space

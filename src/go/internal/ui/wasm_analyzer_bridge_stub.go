@@ -4,6 +4,7 @@ package ui
 
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -22,7 +23,7 @@ var testScopeStateOverride *scope.State
 // the real analyzer service instead. Returns nil so the callback's nil-fallback
 // pattern keeps the desktop code path unchanged. Tests may inject a
 // pre-built state via testAnalyzerStateOverride.
-func BuildAnalyzerStateFromSnapshots(activeID string, rows []*DrumRow, sampleRate int) *analyzer.State {
+func BuildAnalyzerStateFromSnapshots(activeID channel.ID, rows []*DrumRow, sampleRate int) *analyzer.State {
 	return testAnalyzerStateOverride
 }
 
@@ -36,6 +37,13 @@ func BuildAnalyzerMetricsOnly(rows []*DrumRow) *analyzer.State {
 
 // BuildScopeStateFromSnapshots is a no-op on non-WASM builds — desktop uses the
 // real scope service instead. Tests may inject via testScopeStateOverride.
-func BuildScopeStateFromSnapshots(instID string, tapA, tapB scope.Stage) *scope.State {
+func BuildScopeStateFromSnapshots(instID channel.ID, tapA, tapB scope.Stage) *scope.State {
 	return testScopeStateOverride
 }
+
+// SetSceneScopeState lets a screenshot scene put a synthetic trace on the
+// Chain tab. Desktop never stands up the scope service in the screenshot
+// binary (ScopeService() is nil), so without this every Chain capture shows
+// an empty scope — which is exactly how the trigger marker came to be the
+// only mark in the viewport and got mistaken for a stray object.
+func SetSceneScopeState(s *scope.State) { testScopeStateOverride = s }

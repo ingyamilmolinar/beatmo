@@ -55,7 +55,7 @@ func TestSynthParamABIGenFileIsCurrent(t *testing.T) {
 	if string(got) != string(want) {
 		t.Fatalf(`synth_param_abi.gen.js is stale.
 Regenerate with:
-  cd src/go && go run ./cmd/gen-synth-abi > ../js/synth_param_abi.gen.js
+  cd src/go && go run ./cmd/gen-synth-abi -o ../js/synth_param_abi.gen.js
 
 Diff (want = on-disk, got = generator output):
 --- want (%d bytes) ---
@@ -74,31 +74,17 @@ func goBinaryPath() string {
 	return "go"
 }
 
-// TestSynthParamSchemaShape pins the schema list against the Go SynthParams
-// struct so adding/removing a field on one side fails fast on the other.
-// Pre-Phase-2 a desync would only show up at audio render time as
-// "instrument got the wrong knob".
-func TestSynthParamSchemaShape(t *testing.T) {
-	got := SynthParamSchema()
-	want := []string{"pitch", "decay", "tone", "drive", "body", "brightness", "fundamental"}
-	if len(got) != len(want) {
-		t.Fatalf("schema len = %d, want %d (%v)", len(got), len(want), got)
+func TestTableColumnsFlattenToCells(t *testing.T) {
+	idx := ModularParamSchemaIndexMap()
+	a, okA := idx["modal_freq[0]"]
+	b, okB := idx["modal_freq[127]"]
+	if !okA || !okB || b-a != 127 {
+		t.Fatalf("modal_freq cells: [0]=%d,%v [127]=%d,%v", a, okA, b, okB)
 	}
-	for i, n := range want {
-		if got[i] != n {
-			t.Errorf("schema[%d] = %q, want %q", i, got[i], n)
-		}
+	if !IsTableField("modal_freq[5]") || !IsTableField("modal_count") || IsTableField("modal_tune") {
+		t.Fatal("IsTableField misclassifies")
 	}
-	idx := SynthParamSchemaIndexMap()
-	for i, n := range want {
-		if idx[n] != i {
-			t.Errorf("index map %q = %d, want %d", n, idx[n], i)
-		}
-	}
-	ident := SynthParamSchemaIdentity()
-	for _, n := range want {
-		if _, ok := ident[n]; !ok {
-			t.Errorf("identity map missing %q", n)
-		}
+	if _, ok := idx["modal_freq"]; ok {
+		t.Fatal("a table column must not appear as a scalar")
 	}
 }

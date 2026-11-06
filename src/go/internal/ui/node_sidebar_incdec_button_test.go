@@ -24,13 +24,13 @@ func TestSidebarIncDecButtons(t *testing.T) {
 	// Run layout to wire the button rects and closures.
 	g.sidebar.layout()
 
-	for _, key := range []string{"vol-", "vol+", "pit-", "pit+", "dur-", "dur+"} {
+	for _, key := range []sbID{sbMinus(fieldVol), sbPlus(fieldVol), sbMinus(fieldPit), sbPlus(fieldPit), sbMinus(fieldDur), sbPlus(fieldDur)} {
 		b := g.sidebar.btns[key]
 		if b == nil {
 			t.Fatalf("sidebar button %q missing after layout", key)
 		}
 		wantIcon := "plus"
-		if key[len(key)-1] == '-' {
+		if key.el == elMinus {
 			wantIcon = "minus"
 		}
 		if b.Icon != wantIcon {

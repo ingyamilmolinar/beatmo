@@ -1,67 +1,85 @@
 package userprefs
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestKnobStepStoreRoundTrips verifies marshalPrefsV6 + parseKnobStepsFromPrefs
-// preserve the full step map across a marshal/unmarshal cycle.
+// TestKnobStepStoreRoundTrips verifies marshalPrefs + parsePrefs preserve
+// the full step map across a serialize/parse cycle.
 func TestKnobStepStoreRoundTrips(t *testing.T) {
 	steps := map[string]float64{"filter_cutoff": 100, "amp_attack": 0.01}
-	b, err := marshalPrefsV6(nil, nil, nil, AudioPanelStateDoc{}, nil, nil, steps)
+	b, err := marshalPrefs(prefsSnapshot{knobSteps: steps})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := parseKnobStepsFromPrefs(b)
+	snap, err := parsePrefs(b, nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if got["filter_cutoff"] != 100 {
-		t.Fatalf("filter_cutoff: got %v, want 100", got["filter_cutoff"])
+	if snap.knobSteps["filter_cutoff"] != 100 {
+		t.Fatalf("filter_cutoff: got %v, want 100", snap.knobSteps["filter_cutoff"])
 	}
-	if got["amp_attack"] != 0.01 {
-		t.Fatalf("amp_attack: got %v, want 0.01", got["amp_attack"])
+	if snap.knobSteps["amp_attack"] != 0.01 {
+		t.Fatalf("amp_attack: got %v, want 0.01", snap.knobSteps["amp_attack"])
 	}
 }
 
-// TestKnobStepStoreEmptyOmitted verifies that an absent knob-steps section in a
-// V5-era prefs file is correctly parsed as an empty map (backward compat).
+// TestKnobStepStoreEmptyOmitted verifies an empty knob-steps map is omitted
+// from the document entirely (omitempty), and parses back as an empty —
+// never nil — map.
 func TestKnobStepStoreEmptyOmitted(t *testing.T) {
-	// No knob steps => V6 serialises as V5 (section omitted). Parse must
-	// succeed and return an empty map, never an error.
-	b, err := marshalPrefsV6(map[string]bool{"kick": true}, nil, nil, AudioPanelStateDoc{}, nil, nil, nil)
+	b, err := marshalPrefs(prefsSnapshot{favorites: map[instrument.ID]bool{roster.Kick: true}})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := parseKnobStepsFromPrefs(b)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, present := raw["knob_steps"]; present {
+		t.Errorf("empty knob_steps section must be omitted, got %s", b)
+	}
+	snap, err := parsePrefs(b, nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("expected no knob steps, got %+v", got)
+	if len(snap.knobSteps) != 0 {
+		t.Fatalf("expected no knob steps, got %+v", snap.knobSteps)
+	}
+	if snap.knobSteps == nil {
+		t.Error("load path must return a non-nil map")
 	}
 }
 
-// TestKnobStepStoreV5BackwardCompat verifies that a V5 prefs doc (no
-// knob_steps key) is read back as an empty map without error.
-func TestKnobStepStoreV5BackwardCompat(t *testing.T) {
-	// Simulate an old V5 prefs file by marshalling without a knob-steps map.
-	b, err := marshalPrefsV5(
-		map[string]bool{"snare": true},
-		nil, nil,
-		AudioPanelStateDoc{SpectrumSlopeIdx: 1},
-		nil, nil,
-	)
+// TestKnobStepStoreAbsentSectionCompat verifies a document written without
+// a knob_steps key at all (every prefs file before the section existed) is
+// read back as an empty map without error.
+func TestKnobStepStoreAbsentSectionCompat(t *testing.T) {
+	b, err := marshalPrefs(prefsSnapshot{
+		favorites:  map[instrument.ID]bool{roster.Snare: true},
+		audioPanel: AudioPanelStateDoc{SynthGraphDetails: true},
+	})
 	if err != nil {
-		t.Fatalf("marshalPrefsV5: %v", err)
+		t.Fatalf("marshal: %v", err)
 	}
-	got, err := parseKnobStepsFromPrefs(b)
+	snap, err := parsePrefs(b, nil)
 	if err != nil {
-		t.Fatalf("parseKnobStepsFromPrefs on V5 data: %v", err)
+		t.Fatalf("parsePrefs: %v", err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty map for V5 data, got %+v", got)
+	if len(snap.knobSteps) != 0 {
+		t.Fatalf("expected empty map, got %+v", snap.knobSteps)
+	}
+	// The rest of the document must survive intact.
+	if !snap.favorites[roster.Snare] {
+		t.Error("favorites lost")
+	}
+	if !snap.audioPanel.SynthGraphDetails {
+		t.Errorf("audioPanel lost: %+v", snap.audioPanel)
 	}
 }
 
@@ -74,24 +92,20 @@ func TestKnobStepStoreDropsNonFinite(t *testing.T) {
 		"inf":    math.Inf(1),
 		"neginf": math.Inf(-1),
 	}
-	b, err := marshalPrefsV6(nil, nil, nil, AudioPanelStateDoc{}, nil, nil, steps)
+	b, err := marshalPrefs(prefsSnapshot{knobSteps: steps})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := parseKnobStepsFromPrefs(b)
+	snap, err := parsePrefs(b, nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if _, ok := got["nan"]; ok {
-		t.Errorf("NaN entry must be dropped")
+	for _, bad := range []string{"nan", "inf", "neginf"} {
+		if _, ok := snap.knobSteps[bad]; ok {
+			t.Errorf("%s entry must be dropped", bad)
+		}
 	}
-	if _, ok := got["inf"]; ok {
-		t.Errorf("+Inf entry must be dropped")
-	}
-	if _, ok := got["neginf"]; ok {
-		t.Errorf("-Inf entry must be dropped")
-	}
-	if got["good"] != 100.0 {
-		t.Errorf("finite entry must survive, got %v", got["good"])
+	if snap.knobSteps["good"] != 100.0 {
+		t.Errorf("finite entry must survive, got %v", snap.knobSteps["good"])
 	}
 }

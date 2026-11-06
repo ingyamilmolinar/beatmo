@@ -43,13 +43,24 @@ func TestP4_TierClassification(t *testing.T) {
 	// Sanity: the Advanced set is small (a beginner still sees mostly Essential).
 	// Contextual physical-model knobs (osc_sax_*/osc_bow_*) are excluded from the
 	// cap: they are hidden unless the matching oscillator is selected
-	// (synthOscModelParamHidden), so they never crowd the default view.
+	// (synthOscModelParamHidden), so they never crowd the default view. The
+	// cymbal modal-plate knobs are contextual the same way (shown only while the
+	// plate runs — synthCymbalModalParamHidden in the ui package), and so are
+	// the table-gated WAV-clone stages.
 	adv := 0
 	for _, d := range defs {
 		if d.Tier != TierAdvanced {
 			continue
 		}
 		if strings.HasPrefix(d.Name, "osc_sax_") || strings.HasPrefix(d.Name, "osc_bow_") {
+			continue
+		}
+		if f, ok := strings.CutPrefix(d.Name, "gen1_"); ok && IsCymbalModalField(f) {
+			continue
+		}
+		// The WAV-clone stages are table-gated: their knobs exist only on a
+		// document with mode rows (tableGatedStages).
+		if _, gated := tableGatedFields()[d.Name]; gated {
 			continue
 		}
 		adv++

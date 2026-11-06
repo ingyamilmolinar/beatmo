@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // --- instDisplayLabel tests (preserved from drumview_instrument_menu_test.go) ---
@@ -20,11 +22,11 @@ func TestInstDisplayLabel_EmptyID(t *testing.T) {
 
 func TestInstDisplayLabel_CacheHit(t *testing.T) {
 	dv := &DrumView{
-		instLabelCache: map[string]string{
-			"kick": "Cached Kick",
+		instLabelCache: map[instrument.ID]string{
+			roster.Kick: "Cached Kick",
 		},
 	}
-	got := dv.instDisplayLabel("kick")
+	got := dv.instDisplayLabel(roster.Kick)
 	if got != "Cached Kick" {
 		t.Fatalf("instDisplayLabel(%q) = %q, want %q", "kick", got, "Cached Kick")
 	}
@@ -32,13 +34,13 @@ func TestInstDisplayLabel_CacheHit(t *testing.T) {
 
 func TestInstDisplayLabel_CacheMiss(t *testing.T) {
 	dv := &DrumView{
-		instLabelCache: map[string]string{},
+		instLabelCache: map[instrument.ID]string{},
 	}
-	got := dv.instDisplayLabel("snare")
+	got := dv.instDisplayLabel(roster.Snare)
 	if got != "Snare" {
 		t.Fatalf("instDisplayLabel(%q) = %q, want %q", "snare", got, "Snare")
 	}
-	cached, ok := dv.instLabelCache["snare"]
+	cached, ok := dv.instLabelCache[roster.Snare]
 	if !ok {
 		t.Fatal("expected label to be cached after miss")
 	}
@@ -49,15 +51,15 @@ func TestInstDisplayLabel_CacheMiss(t *testing.T) {
 
 func TestInstDisplayLabel_InitializesCache(t *testing.T) {
 	dv := &DrumView{}
-	got := dv.instDisplayLabel("hihat")
+	got := dv.instDisplayLabel(roster.Hihat)
 	if got != "Hihat" {
 		t.Fatalf("instDisplayLabel(%q) = %q, want %q", "hihat", got, "Hihat")
 	}
 	if dv.instLabelCache == nil {
 		t.Fatal("instLabelCache should be initialized after first call")
 	}
-	if dv.instLabelCache["hihat"] != "Hihat" {
-		t.Fatalf("cached = %q, want %q", dv.instLabelCache["hihat"], "Hihat")
+	if dv.instLabelCache[roster.Hihat] != "Hihat" {
+		t.Fatalf("cached = %q, want %q", dv.instLabelCache[roster.Hihat], "Hihat")
 	}
 }
 
@@ -70,7 +72,7 @@ func TestInstDisplayLabel_InitializesCache(t *testing.T) {
 
 func TestComputeInstLabel_FallbackCapitalize(t *testing.T) {
 	dv := &DrumView{}
-	got := dv.computeInstLabel("snare")
+	got := dv.computeInstLabel(roster.Snare)
 	if got != "Snare" {
 		t.Fatalf("computeInstLabel(%q) = %q, want %q", "snare", got, "Snare")
 	}
@@ -86,11 +88,11 @@ func TestComputeInstLabel_SingleChar(t *testing.T) {
 
 func TestComputeInstLabel_MetaEmptyBoth(t *testing.T) {
 	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
-			"tom": {},
+		instMeta: map[instrument.ID]audio.SoundMeta{
+			roster.Tom: {},
 		},
 	}
-	got := dv.computeInstLabel("tom")
+	got := dv.computeInstLabel(roster.Tom)
 	if got != "Tom" {
 		t.Fatalf("computeInstLabel(%q) = %q, want %q", "tom", got, "Tom")
 	}
@@ -100,7 +102,7 @@ func TestComputeInstLabel_MetaEmptyBoth(t *testing.T) {
 
 func TestMatchInstrumentSearch_EmptyQuery(t *testing.T) {
 	dv := &DrumView{}
-	if !dv.matchInstrumentSearch("kick", "") {
+	if !dv.matchInstrumentSearch(roster.Kick, "") {
 		t.Fatal("empty query should always match")
 	}
 }
@@ -132,7 +134,7 @@ func TestMatchInstrumentSearch_MatchLabel(t *testing.T) {
 
 func TestMatchInstrumentSearch_MatchRelPath(t *testing.T) {
 	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
+		instMeta: map[instrument.ID]audio.SoundMeta{
 			"myinst": {RelPath: "drums/vintage_snare.wav"},
 		},
 	}
@@ -143,7 +145,7 @@ func TestMatchInstrumentSearch_MatchRelPath(t *testing.T) {
 
 func TestMatchInstrumentSearch_NoMatch(t *testing.T) {
 	dv := &DrumView{}
-	if dv.matchInstrumentSearch("kick", "zzzzz") {
+	if dv.matchInstrumentSearch(roster.Kick, "zzzzz") {
 		t.Fatal("query 'zzzzz' should NOT match id 'kick'")
 	}
 }

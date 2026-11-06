@@ -85,7 +85,7 @@ func TestParseHooksConfigBadJSON(t *testing.T) {
 	for _, body := range [][]byte{
 		[]byte("{ this is not valid"),
 		[]byte("[1, 2, 3]"), // wrong shape
-		[]byte("null"),       // null isn't a struct
+		[]byte("null"),      // null isn't a struct
 	} {
 		// Note: "null" actually decodes successfully (Go json sees it as
 		// a zero-valued struct) — accept either nil-error or error here,

@@ -178,7 +178,6 @@ colors:
   viz-scope-trace-b:    "#FF7A3D"
   viz-scope-trace-diff: "#3FD67A"
   viz-scope-bg:         "#120A1C"
-  viz-scope-trigger:    "#FFD319"
 
   # Spectrum panel peak marker — pale peach, pinned at the highest recent
   # spectrum value. Distinct from `viz-bar` (the live bar) so it reads as
@@ -324,6 +323,19 @@ colors:
   # rack beneath. Lifted with the surface ladder.
   transport-bar-bg: "#120A1C"
 
+  # Drum-view BEDS — the row-rack column surface (desktop rack mask, mobile
+  # rack widget, add-row strip), the drum-pane header row (desktop transport
+  # strip + the timeline header band right of the beat counter), the area
+  # under the last row, and the mobile transport toolbar bed. One bed: the
+  # header used to take `background`, a black band across the whole pane. Same
+  # hex as `surface-1` on purpose (the rack reads flush with the even drum
+  # stripes), but they are AREAS, not controls: a runtime theme recolors
+  # them with the Background category alongside the canvas, the stripes and
+  # the timeline bed, while `surface-1` stays a control surface (row
+  # buttons, steppers). Guard: TestDrumBedsFollowBackgroundCategory.
+  rack-bed:    "#1C1230"
+  toolbar-bed: "#1C1230"
+
   # Pure black, used at runtime alpha for modal scrims and row-dim
   # overlays. Distinct from any surface token because it's the only
   # opaque base meant to subtract light, not show through.
@@ -445,7 +457,14 @@ profileOverrides:
     grabZone:              5
     minTarget:             0
     minCellWidth:          2
-    popupPanelW:           220
+    # Menu width classes (§ "Menu sizing & layout"): chosen by ROLE, desktop
+    # only — every menu is a full-width bottom sheet on mobile, so the mobile
+    # values mirror desktop for code that measures before the sheet decision.
+    menuWActionMin:        160
+    menuWActionMax:        240
+    menuWList:             300
+    menuWEditor:           360
+    menuWWideMax:          960
     popupBtnW:             18
     popupBtnH:             16
     popupGap:              4
@@ -491,7 +510,14 @@ profileOverrides:
     grabZone:              16
     minTarget:             44
     minCellWidth:          2
-    popupPanelW:           300
+    # Menu width classes (§ "Menu sizing & layout"): chosen by ROLE, desktop
+    # only — every menu is a full-width bottom sheet on mobile, so the mobile
+    # values mirror desktop for code that measures before the sheet decision.
+    menuWActionMin:        160
+    menuWActionMax:        240
+    menuWList:             300
+    menuWEditor:           360
+    menuWWideMax:          960
     popupBtnW:             44
     popupBtnH:             36
     popupGap:              6
@@ -586,16 +612,17 @@ densities:
     synthConceptVizH:      38
     synthFocusGraphH:      96
     synthRightCardMinH:    34
-    synthHeaderButtonH:    24
-    synthHeaderThumbW:     96
+    synthHeaderButtonH:    22
     synthSectionMinH:      56
     synthChipH:            22
     synthChipMinW:         56
     synthChipStripH:       28
+    synthGaugeH:           4
+    synthDialD:            18
+    synthKnobD:            24
     synthDetailHeaderH:    28
     chainMiniMeterW:        3
     chainMiniMeterGap:      2
-    chainTriggerMarkerW:    2
     chainStageColW:        48
     chainStageRowH:        20
     chainLabelScale:      800
@@ -638,6 +665,11 @@ densities:
     mobileWheelTickGap:    30
     mobileWheelResStripW:  64
     mobileWheelPillH:      34
+    synthArmedCardH:      104
+    synthArmedCardW:      260
+    synthWheelLaneW:       48
+    synthWheelRowH:        22
+    synthWheelVisibleRows:  5
   comfortable:
     rowHeight:             36
     grabZone:               5
@@ -680,16 +712,17 @@ densities:
     synthConceptVizH:      50
     synthFocusGraphH:     120
     synthRightCardMinH:    40
-    synthHeaderButtonH:    28
-    synthHeaderThumbW:    120
+    synthHeaderButtonH:    24
     synthSectionMinH:      72
     synthChipH:            26
     synthChipMinW:         64
     synthChipStripH:       34
+    synthGaugeH:           5
+    synthDialD:            22
+    synthKnobD:            26
     synthDetailHeaderH:    34
     chainMiniMeterW:        6
     chainMiniMeterGap:      3
-    chainTriggerMarkerW:    3
     chainStageColW:        64
     chainStageRowH:        26
     chainLabelScale:      850
@@ -732,6 +765,11 @@ densities:
     mobileWheelTickGap:    34
     mobileWheelResStripW:  72
     mobileWheelPillH:      38
+    synthArmedCardH:      120
+    synthArmedCardW:      300
+    synthWheelLaneW:       54
+    synthWheelRowH:        26
+    synthWheelVisibleRows:  5
   spacious:
     rowHeight:             44
     grabZone:              16
@@ -775,15 +813,16 @@ densities:
     synthFocusGraphH:     140
     synthRightCardMinH:    44
     synthHeaderButtonH:    44
-    synthHeaderThumbW:     80
     synthSectionMinH:      96
     synthChipH:            32
     synthChipMinW:         72
     synthChipStripH:       40
+    synthGaugeH:           6
+    synthDialD:            30
+    synthKnobD:            34
     synthDetailHeaderH:    44
     chainMiniMeterW:       10
     chainMiniMeterGap:      4
-    chainTriggerMarkerW:    4
     chainStageColW:        72
     chainStageRowH:        36
     chainLabelScale:     1100
@@ -826,6 +865,11 @@ densities:
     mobileWheelTickGap:    38
     mobileWheelResStripW:  80
     mobileWheelPillH:      44
+    synthArmedCardH:      148
+    synthArmedCardW:      340
+    synthWheelLaneW:       64
+    synthWheelRowH:        32
+    synthWheelVisibleRows:  5
 typography:
   # Chrome text renders through the embedded Inter faces (Inter-SemiBold for
   # the bold roles, Inter-Regular for caption). The legacy Ebiten debug font is
@@ -887,14 +931,26 @@ spacing:
   # instrument" chip reads at a legible size — see "Menu anatomy" prose.
   swatch-sm: 10px
   swatch-md: 12px
+# Corner radius. Two layers, exactly like the color tokens: a raw scale
+# (xxs..xl) that fixes the available values, and a ROLE layer that says which
+# step a given kind of surface takes. Call sites reference the ROLE tokens —
+# reaching for a raw step is how controls drifted into pill territory.
+#
+# There is no `full` step. A pill is not a shape this system can express: see
+# "The anti-pill invariant" in the Shapes section.
 rounded:
+  # raw scale
   xxs: 4px
   xs: 6px
   sm: 8px
   md: 12px
   lg: 16px
   xl: 20px
-  full: 999px
+  # role layer
+  none: 0px
+  control: 4px
+  container: 8px
+  sheet: 20px
 # Icon system — every IconID in the unified icon set draws onto a 24×24
 # logical-unit canvas. `stroke` is a fractional unit (Lucide-style 1.75)
 # converted to pixels at render time as `stroke * (renderSize / grid)`.
@@ -1126,7 +1182,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: white-decoration
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-lg}"
 
   # Secondary transport (Play/Stop/Record/BPM stepper/follow/upload/import)
@@ -1138,7 +1194,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
     topEdgeHighlight: true
     interaction:
@@ -1156,7 +1212,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
     typography: "{typography.button-label}"
     interaction:
@@ -1171,7 +1227,7 @@ components:
     textColor: "{colors.on-surface}"
     border:
       color: "{colors.mute-active-border}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   button-row-control-solo-active:
     category: button
@@ -1179,7 +1235,7 @@ components:
     textColor: "{colors.background}"
     border:
       color: "{colors.solo-active-border}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   button-row-control-fx-active:
     category: button
@@ -1187,7 +1243,7 @@ components:
     textColor: "{colors.primary}"
     border:
       color: "{colors.primary}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Destructive (delete button) — runtime renders a destructive-fill body
@@ -1201,7 +1257,7 @@ components:
     textColor: "{colors.background}"
     border:
       color: "{colors.destructive-border}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   # Confirm visual on second click — brighter fill + bright border.
   button-destructive-confirm:
@@ -1210,7 +1266,7 @@ components:
     textColor: "{colors.on-surface}"
     border:
       color: "{colors.destructive-confirm-border}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   # `colors.destructive-border` is consumed by `button-destructive`'s
   # extended `border: { color }` block. Stitch's narrow component schema
@@ -1227,17 +1283,17 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
 
   # Floating panel (inspector / FX / context menu container)
   panel:
     backgroundColor: "{colors.surface-overlay}"
     textColor: "{colors.on-surface}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.container}"
   bottom-sheet:
     backgroundColor: "{colors.surface-overlay}"
     textColor: "{colors.on-surface}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.sheet}"
 
   # Context menu items — destructive items share the panel background and
   # only color the text. This is intentional: the menu is a single
@@ -1281,7 +1337,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-default
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.container}"
 
   # Menu group header — non-interactive section row inside a long list
   # menu (template genres; any future grouped list). Uppercase caption in
@@ -1305,25 +1361,25 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.container}"
 
   # Record button (icon-only; semantic state colors)
   button-record-idle:
     backgroundColor: "{colors.surface-2}"
     textColor: "{colors.record-idle}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   button-record-active:
     backgroundColor: "{colors.surface-2}"
     textColor: "{colors.record-active}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Play button while playing (mobile uses success-tinted icon)
   button-play-active:
     backgroundColor: "{colors.surface-2}"
     textColor: "{colors.success}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Section header text (uses on-surface-accent)
@@ -1334,7 +1390,7 @@ components:
   # Splitter handle (mobile uses primary-dim sunset-gold)
   splitter-handle-mobile:
     backgroundColor: "{colors.primary-dim}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.container}"
 
   # Row rack container (surface-1 is the row-list backdrop)
   row-rack:
@@ -1343,7 +1399,7 @@ components:
   # Visualization canvas (Wave / Spectrum / Meters / Scope / EQ)
   viz-canvas:
     backgroundColor: "{colors.viz-bg}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.container}"
   viz-spectrum-bar:
     backgroundColor: "{colors.viz-bar}"
   viz-spectrum-bar-peak:
@@ -1363,7 +1419,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-default
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     interaction:
       focus: { fillDelta: 30, borderDelta: 80 }
   input-field-focused:
@@ -1387,7 +1443,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
     topEdgeHighlight: true
     interaction:
@@ -1405,7 +1461,7 @@ components:
     textColor: "{colors.background}"
     border:
       color: "{colors.play-desktop-border}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   button-stop-desktop:
     category: button
@@ -1413,7 +1469,7 @@ components:
     textColor: "{colors.background}"
     border:
       color: "{colors.stop-desktop-border}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Dropdown control — secondary surface with a primary-tinted border at
@@ -1425,7 +1481,7 @@ components:
     border:
       color: "{colors.primary}"
       alpha: accent-tint
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Missing-instrument row label — error-fill body to telegraph "this row
@@ -1437,7 +1493,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-default
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
 
   # EQ band-mute chip (resting + active). Resting uses surface-3 to sit
   # one level above the EQ panel; active swaps to a saturated red but
@@ -1449,7 +1505,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-default
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
   button-eq-mute-active:
     category: button
@@ -1458,7 +1514,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-default
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # EQ filter (HPF / LPF) toggle — active state is sunset-gold; uses inverted
@@ -1471,7 +1527,7 @@ components:
     textColor: "{colors.background}"
     border:
       color: "{colors.eq-filter-active-border}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Transport "follow-on" — locked-scroll indicator. Neutral surface-3 fill
@@ -1485,7 +1541,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # Mobile row label — surface-1 body so the label sits visually below the
@@ -1497,7 +1553,7 @@ components:
     border:
       color: "{colors.border}"
       alpha: border-thin
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     height: "{spacing.btn-md}"
 
   # `colors.border` is consumed by every component's extended
@@ -1833,9 +1889,11 @@ app collapses if any of them slips.
    per-row controls that belong to a single instrument** carry the row's
    identity (free-hex per instrument; the `instrumentSwatches` block names a
    curated suggestion set). The instrument-identity surfaces are:
-   - the rack's per-row **mute / solo / FX** toggles (shades of the
-     instrument color — see "Per-instrument control shading" below) and the
-     per-row **ellipsis/kebab** chip;
+   - the rack row's **identity swatch** (the rounded square leading the
+     row name — a slim bar on mobile) and the **active** state of its
+     **mute / solo / FX** toggles (shades of the instrument color — see
+     "Per-instrument control shading" below); the toggles at rest and the
+     **ellipsis/kebab** chip are the neutral row-control body;
    - the **FX-panel** for that row: parameter slider rails **and** the
      per-effect enable-toggle pill tint to the instrument color (the *Remove*
      button keeps its destructive red);
@@ -1877,12 +1935,19 @@ app collapses if any of them slips.
 
    **Per-instrument control shading.** Mute = the instrument color
    *darkened* (deeper shade); solo = the instrument color *brightened*
-   (lighter shade); FX-on = the full instrument hue (with a brightened-shade
-   badge); any *off* state = a dim low-alpha tint of the hue plus a thin hued
-   border. The M / S / FX letters carry the semantic meaning; lightness
-   separates the active states. All shades derive from the one instrument
-   color via the `adjustColor` / `WithAlphaFromColor` helpers
-   (`row_instrument_shades.go`) — no per-state hex literals.
+   (lighter shade); FX-on = the full instrument hue, with one small dot per
+   enabled effect along the chip's bottom inner edge (the gauge's
+   discrete-dot form). Any *off* state = the **neutral** row-control body
+   (`surface-2`) with an `on-surface-muted` letter — never a tint of the hue.
+   Identity at rest lives once per row, in the label's leading swatch; a
+   rack of idle chips each washed in its row's hue (a yellow row's chips
+   turned brown, a green row's grey-teal) was 28 competing colors that all
+   meant "off". An active chip's letter is whichever of `on-surface` /
+   `background` has the higher contrast against its fill (the two safe
+   contrast patterns), so a pale instrument gets a dark letter. The M / S /
+   FX letters carry the semantic meaning; lightness separates the active
+   states. All shades derive from the one instrument color via
+   `adjustColor` (`row_instrument_shades.go`) — no per-state hex literals.
 
 ### Color usage (Vice City palette)
 
@@ -2017,6 +2082,13 @@ axis/tick labels) or `caption` (labels with room); body-size readouts →
 `body`; the big aggregate numbers (Levels HEADROOM) → `panel-title`.
 (2026-07-16 audio-tab typography migration.)
 
+**Audio-tab headers (Synth, Sampler) are a group label + a name**, never a
+heading: the tab name in uppercase muted `caption`, then the instrument at
+`body`, on one baseline. Their text actions (Preview / Save / Save As /
+Reset, and the Sampler's Rev / Norm / Fade / Preview row) are `body`-role
+keycaps `densities.synthHeaderButtonH` tall — the scale of the sticky-bar tab
+pills above them. One helper draws both (`audio_tab_header.go`).
+
 Prefer the role API (`DrawTextStyled` + `StyledText{Width,Height}`) over the
 legacy `DrawTextAtScale` GeoM-upscale path for any new chrome text.
 
@@ -2084,152 +2156,219 @@ they live under `spacing` with `btn-` and `icon-` prefixes.
 
 ## Elevation & Depth
 
-Beatmo uses **cushioned tonal layers + thin borders + a matte
-hardware-bevel press affordance on interactive buttons (all platforms)**.
-No *Material-style offset drop shadows* on solid surfaces; panel overlays
-use a subtle shadow + panel-border. Interactive **buttons** carry a slim
-matte keycap (flat fill framed by a faint light top edge + a soft dark
-bottom lip; cap travels down on press, springs back with overshoot; an
-active/latched key looks pressed-IN and lit amber) — non-interactive
-surfaces (panels, cards, rows) stay flat. The mental model is **matte
-hardware on a vintage synth/mixing-console panel**: depth comes from edge
-contrast, NOT from gloss, sheen, specular shine, or neon glow (retro-
-analogue restyle, 2026-06-17). Earlier revisions layered a sheen band, a
-crisp specular line, a cyan hover-glow ring, a `|sin|` toggle pulse, and a
-cyan engage flash; those are all removed.
+Beatmo uses **flat tonal layers**. The doctrine, in one line:
 
-### Surface elevation cues
+> **Depth comes from tone, feedback comes from motion, and the accent color
+> belongs to values, not chrome.**
 
-The four-level surface hierarchy in "Colors" *is* the elevation system. A
-button on `surface-1` rises by sitting on `surface-2`; hovering lifts it
-to `surface-3`. There is no shadow between surface levels — elevation is
-purely tonal.
+This replaced the matte-keycap / "hardware on a vintage console" model on
+2026-07-25. That model gave every discrete button a socket side-wall, a
+contact shadow, a bevel and a rim. At the 24–28 px sizes real chrome uses,
+that framing consumed most of the pixel budget, and because *every* control
+was a physical object, none of them had hierarchy — seven tab pills, four
+row chips and six transport keys all competed at equal weight. The
+flat-tonal system spends those pixels on content instead.
 
-### Keycap elevation (all platforms)
+Three rules govern every interactive surface.
 
-Every discrete button (`Button.Draw`) renders as a slim matte keycap: a
-dark **socket/side-wall** (`drawKeycapShell`, depth = `keycap-wall-depth`,
-slim at 2px) extruded behind a flat **cap face** (`keycapCapRect`) framed
-by a **matte bevel** (`drawKeycapBevel`): a faint 1-px light top edge + a
-soft dark bottom-inner-shadow lip — no sheen band, no specular shine. At
-rest the cap sits slightly raised above the socket. On press the cap
-**travels straight down** (eased via `pressDepth`/`AdvancePressAnim`) until
-it bottoms out against the socket floor. On release it **springs back**
-past rest by a small overshoot fraction (`keycap-release-overshoot-frac`)
-before settling — an analogue bounce, not a digital snap. A **contact
-shadow** (`drawKeycapContactShadow`) is drawn beneath the cap when it is
-raised, disappearing as the cap bottoms out. This geometry replaces the old
-press-scale shrink; the scale tokens (`button-press-scale`,
-`button-release-overshoot`) are retained in the YAML for legacy reference
-but no longer drive the visual.
+### Rule 1 — A control's silhouette is a tone step, never a line
 
-**Knobs** carry the same matte light model: a **knurled volumetric cap**
-(`knurledCapSprite`, cached per diameter) with a ridged rim, matte concentric
-dome (no specular highlight), side wall, and contact shadow sits behind the
-existing value arc and pointer. **Slider thumbs** render a matte cap
-(contact shadow + flat body + a neutral edge rim that strengthens while
-dragging); the old top specular highlight, the cyan drag rim, and the rail
-outer-glow stroke are all gone.
+The four-level surface hierarchy in "Colors" *is* the elevation system, and
+its steps are large enough to read an edge unaided:
 
-Desktop chrome stacks one additional cue per-control. Mobile chrome stays
-flat (no hover lift); it gets generous rounding instead.
+| Level | Hex |
+|---|---|
+| `background` | `#120A1C` |
+| `surface-1` | `#1C1230` |
+| `surface-2` | `#281A40` |
+| `surface-3` | `#382354` |
 
-1. **Tonal lift** — surface-2 → surface-3 on hover (already covered
-   above).
-2. **Hover lift** — a flat, uniform ~8% white brighten
-   (`keycapHoverLiftAlpha`) over the hovered clickable control (buttons,
-   text inputs like the BPM box, the volume icon/slider, and similar) that
-   **eases in** when the cursor enters and **fades out** on leave, so the
-   lift glides rather than popping.
+A button on `surface-1` rises by sitting on `surface-2`; hovering lifts it
+toward `surface-3`. There is **no border at rest, anywhere**, and no shadow
+between surface levels.
 
-   **Everything clickable hovers (2026-07-16).** The lift is not optional
-   chrome: any surface a click can activate — buttons, expandable section
-   headers, action rows, drill-in chips, pipeline stage chips, grid nodes —
-   must show a hover cue on desktop. Three sanctioned mechanisms, all
-   driven by the SAME `button-hover-fade` spring so the glide is identical
-   everywhere; do not hand-roll a fourth:
-   - **Tree-registered controls**: the `HitIndex`-driven overlay
-     (`hover_glow_overlay.go`) — implement `glowTarget` on the control's
-     hit adapter and the overlay lifts it for free.
-   - **Dispatcher-routed / hand-drawn surfaces** (node sidebar headers +
-     action rows, expand tab, …): the shared `hoverFade` animator
-     (`hover_fade.go`) + `drawButtonHoverGlow` at the surface's draw site.
-     `Button`s on a per-frame `HandleInputResult` cadence already hover via
-     their style's `interaction.hover` delta; flat menu rows hover via
-     `menuItemHover`.
-   - **Grid nodes** (data canvas): the firing bloom (`drawNodeBloom`) at
-     `nodeHoverGlowIntensity` (0.35) of trigger strength, eased by the same
-     spring — hover and trigger share one visual language. NOT a rim, specular catch, or bloom —
-   just a quiet "this is reachable" brighten. It is a single per-frame
-   **overlay** (`hover_glow_overlay.go`, drawn by `DrumViewTree.Draw` on
-   top of all zones, beneath portals): each frame it asks the live
-   `HitIndex` which clickable control is under the cursor (resolving a hit
-   via the `glowTarget` interface, which yields the control's rect and a
-   suppress flag — implemented by the button, text-input, volume-icon, and
-   slider-group hit adapters; drag-only surfaces like knobs, the timeline
-   scrub, and grid drag deliberately opt out), eases a 0..1 progress toward
-   "over a control?" using the `button-hover-fade` token (exp-decay), and
-   paints the lift via `drawButtonHoverGlow`. A focused (being-edited) text
-   input is suppressed so it shows only its own focus ring. An overlay —
-   not `Button.Draw` — is required because (a) the input dispatcher only
-   runs on press/drag/release, so a button never learns the cursor is
-   merely *over* it, and (b) zones render their buttons into state-hashed
-   sprite caches, so `Button.Draw` isn't called per frame; the overlay
-   sidesteps both by drawing outside every cache. Desktop-only: the overlay
-   is a no-op on a mobile profile, so a tap never flashes. The surface-2 →
-   surface-3 tonal lift ships separately via the `interaction.hover`
-   brightness delta on `ComponentSpec`.
+Borders survive in exactly two roles:
 
-### Active "latched amber" state (recessed)
+1. the hot-pink `focus-ring` (`#FF2D9E`), which is the **only** outline left
+   in the system, and
+2. a 1 px hairline **separator** between menu groups and panel sections — a
+   divider, never an enclosure.
 
-A latched/active button (e.g. a selected audio-tab pill, a toggled
-transport key) renders as a **recessed lamp-amber keycap** — the cap sits
-flush (raised=false) with an **inverted bevel** (`drawKeycapActiveInset`:
-top inner-shadow + faint bottom light edge) so it reads as **pressed-IN**,
-filled with a solid warm amber (`keycapActiveFill`, the on-palette
-sunset-gold `#FFB30A`) and a dark legend (`{colors.background}`) for
-contrast. The amber is a SOLID fill, never a glow. There is **no engage
-flash and no toggle pulse**: the static recessed-amber cap is the only
-active signal, so a latched key does **zero per-frame work**. The
-`engageAnim` field + `button-engage-flash` / `button-toggle-pulse` tokens
-and the `drawKeycapEngageFlash` no-op are retained for the press-spring
-contract/tests but paint nothing.
+`components:` entries still carry `border:` blocks for documentation and for
+the focus-ring recipe, but the runtime ignores them for button bodies: both
+`Render()` (`render.go`) and `ButtonStyle.Draw` (`components.go`) paint a
+single filled body via `drawFlatButtonBody` and never stroke.
 
-Amber-as-active-fill now shares its hue with the chrome accent: the
-`primary` / `on-surface-accent` accent was repainted from cyan to this same
-sunset-gold `#FFB30A`, so a latched keycap and an active chrome surface read
-as one coherent warm-gold "this is on" signal (hot-pink `focus-ring` stays
-the second, focus-only accent). It is not a free hue — it reuses an existing
-sunset-gold palette member, so `TestPaletteMembership` stays green. Semantic-colored toggles (mute / solo /
-record) keep their own accent colors but gain the same recessed keycap
-volume.
+An **input** shares the control body: it paints its `input-field` spec fill
+(the same `surface-2` tone as every keycap) so a label box reads as one
+family with the stepper buttons beside it — the BPM box and its ⌃⌄, the EQ
+dB boxes and HP/LP. What marks it as a slot you type into is the focus ring,
+the exception that proves rule 1. (It used to drop to `surface-1`; that
+"recessed" step made inputs look like a different component from their
+buttons — reverted 2026-09-05, guard `TestVolumeButtonsAndInputsShareKeycapBody`.)
+The same body rule covers the volume buttons (master + per-row): they paint
+the `button-secondary` body under the speaker glyph and the level gauge.
 
-The hover overlay skips active buttons entirely (no double-lift). Both idle
-latched keys and settled pressed keys perform zero ongoing animation work
-once their transients have decayed.
+### Rule 2 — Nothing is 3D
 
-### WASM idle budget rule
+`drawKeycapShell`, `drawKeycapContactShadow`, `drawKeycapBevel`,
+`drawKeycapActiveInset`, `drawKeycapPanelButton`, `drawKeycapEngageFlash` and
+`keycapCapRect` are **deleted**. Do not reintroduce a socket, a bevel, a
+contact shadow, or a press-travel offset.
 
-All static volume — cap body, socket, contact shadow, amber latched fill —
-bakes into per-state **sprite caches** so `Button.Draw` only blits a
-pre-rendered texture when nothing is changing. All **motion** (press travel,
-overshoot spring, hover fade) is a cheap **blit-offset + alpha overlay**
-that writes nothing to the cache. A control that is idle (not pressed, not
-being hovered) or steadily latched (recessed amber, settled) performs **zero
-per-frame allocation and zero per-frame draw work** — the matte restyle
-removed the engage flash and toggle pulse, so a latched key now does
-literally nothing per frame. This is a hard discipline enforced by the
-alloc-rate + settle-to-silence tests in `button_keycap_alloc_test.go`.
+An audit of every keycap call site (2026-07-25) found **no genuine
+physical-key user**. The drum pads — the one surface where the metaphor
+would be literal — render through `drawDrumCell` / `DrumCellStyle`, a plain
+rect path that never touched the keycap helpers. All eight call sites were
+chrome: `Button.Draw`, the audio-panel channel and tab pills,
+`SegmentedControl`, the synth chip strip, `param_card.go`,
+`synth_macro_render.go`, and two popup action buttons.
+
+Two of those are worth naming: `param_card.go` and `synth_macro_render.go`
+are the Synth-tab cards this whole system is modelled on, and they drew a
+keycap shell too. They read flat anyway, because at card size a 2 px wall
+and a 1 px bevel are invisible. That is the empirical case that the keycap
+was never carrying its weight.
+
+The press **spring** survives (`pressDepth` / `pressTarget` /
+`AdvancePressAnim`) because it is the settle-to-silence contract — a
+released control must ease back to exactly `0` so an idle button does zero
+per-frame work. It no longer drives any geometry.
+
+**Knobs** and **slider thumbs** keep their own volumetric light model
+(`knurledCapSprite`, the slider thumb cap). They are data controls, not
+chrome, and were never part of the keycap system.
+
+### Rule 3 — Gold is data ink
+
+`primary` / `on-surface-accent` (`#FFB30A`) is the color of **value**:
+gauges, signature curves, selection indicator bars, meter fills, the
+armed-control highlight. A control **never floods itself with the accent**.
+
+The single exception is `button-primary`, the one dominant call-to-action on
+a surface — rationed to **at most one per surface**. This is a design rule
+enforced by review, not by a test.
+
+Before this pass the same gold meant both "this tab is selected" (chrome)
+and "this envelope's attack is 5 ms" (data). Now it means only the second,
+and selection is expressed by the primitive below.
+
+### One selection primitive
+
+> Selection is marked by a 2 px accent bar on the **leading edge** of the
+> selected element: **left** in a vertical list, **bottom** in a horizontal
+> group. Fill is a tint (`alpha.subtle`), never a flood. In a group with
+> exactly one selection, the bar is a single shared element that animates
+> between members.
+
+One implementation serves both orientations: `drawFlatSelectionBar(dst, r,
+col, edge, frac)` in `button_flat.go`, with `selectionEdgeBottom` and
+`selectionEdgeLeft`. The `frac` argument (0..1) scales the bar's length so a
+hover spring can grow it from nothing; `frac <= 0` draws nothing, which is
+what keeps an unselected control at zero draw cost.
+
+In instrument-scoped surfaces (row context menu, instrument picker) the bar
+and tint use the owning **instrument's identity color** rather than
+`primary`. Identity always outranks chrome accent.
+
+### Every control shows its value
+
+> Every control that carries a value must show at least one hint at rest. A
+> control whose value is discoverable only by opening it is a defect.
+
+Two sanctioned affordances, both originating in the Synth tab's param
+cards:
+
+| Affordance | What it is | Use for |
+|---|---|---|
+| **gauge** | a 2 px hairline strip on the control's bottom inner edge — fill / bipolar / discrete-dot variants | any continuous or enumerated value: volume, pan, BPM, subdiv, length, sends, EQ dB |
+| **gloss** | a plain-English caption under the label, via `PlainEnglish()` | cards, menu rows, popups — wherever a second line fits |
+
+A param whose value has a *shape* (an envelope, a filter, an oscillator) is
+explained by the Synth tab's graph, measured from the rendered note — never by
+an inline schematic of what the knob "should" do (the old per-card signature
+graphs modelled the voice and lied; removed 2026-10-25).
+
+On desktop, hovering a valued control additionally fades its numeric value
+in beside the label, on the same `button-hover-fade` spring — so a value is
+legible without opening anything.
+
+### Interaction states
+
+Six states, one uniform recipe, applied identically to every button
+variant. No per-variant special-casing.
+
+| State | Visual | Motion |
+|---|---|---|
+| rest | tonal fill per variant | none |
+| **hover** (desktop) | fill rises one surface level, and the accent indicator grows 0 → full width beneath the label | `button-hover-fade` spring drives both |
+| **press** | fill −20 brightness | `button-press-decay`; no travel, no overshoot |
+| **active** | accent tint at `alpha.subtle` + full-bright label + 2 px accent bar | in a group, one shared bar slides between members |
+| disabled | fill drops to `surface-1`; label `on-surface-disabled` | none |
+| focus | hot-pink `focus-ring` outline | none |
+
+Mobile has no hover, so the same lift is **press-driven** there. This needs
+no screen-class divergence — it is already how `button-hover-fade` is
+specified.
 
 ### Hover / press brightness deltas
 
-`ButtonStyle.Draw` automatically:
+`ButtonStyle.Draw` and `Render()` apply these automatically; no code is
+required at call sites.
 
-- Hover: `+12` brightness via `adjustColor` (in addition to the glow
-  named above).
+- Hover: `+12` brightness via `adjustColor`.
 - Press: `−20` brightness.
 
-No additional code required at call sites.
+These are the historical values, retained verbatim. The flat-tonal restyle
+changed a button's **geometry**, not its interaction *feel*.
+
+### Everything clickable hovers (desktop)
+
+The hover lift is not optional chrome: any surface a click can activate —
+buttons, expandable section headers, action rows, drill-in chips, pipeline
+stage chips, grid nodes — must show a hover cue on desktop. Three sanctioned
+mechanisms, all driven by the SAME `button-hover-fade` spring so the glide
+is identical everywhere; do not hand-roll a fourth:
+
+- **Tree-registered controls**: the `HitIndex`-driven overlay
+  (`hover_glow_overlay.go`) — implement `glowTarget` on the control's hit
+  adapter and the overlay lifts it for free.
+- **Dispatcher-routed / hand-drawn surfaces** (node sidebar headers + action
+  rows, expand tab, …): the shared `hoverFade` animator (`hover_fade.go`) +
+  `drawButtonHoverGlow` at the surface's draw site. Flat menu rows hover via
+  `menuItemHover`.
+- **Grid nodes** (data canvas): the firing bloom (`drawNodeBloom`) at
+  `nodeHoverGlowIntensity` (0.35) of trigger strength, eased by the same
+  spring — hover and trigger share one visual language.
+
+The lift is a flat, uniform ~8 % white brighten (`keycapHoverLiftAlpha`)
+that eases in on cursor-enter and fades out on leave. NOT a rim, specular
+catch, or bloom — just a quiet "this is reachable".
+
+An **overlay** — not `Button.Draw` — is required because (a) the input
+dispatcher only runs on press/drag/release, so a button never learns the
+cursor is merely *over* it, and (b) zones render their buttons into
+state-hashed sprite caches, so `Button.Draw` isn't called per frame. The
+overlay sidesteps both by drawing outside every cache. It is a no-op on a
+mobile profile, so a tap never flashes. A focused text input is suppressed
+so it shows only its own focus ring. The hover overlay also skips active
+buttons entirely (no double-lift).
+
+### WASM idle budget rule
+
+All static appearance — the tonal body, the active tint, the selection bar
+at rest — bakes into per-state **sprite caches**, so a draw call blits a
+pre-rendered texture when nothing is changing. All **motion** (hover fade,
+press dim, indicator slide) is a cheap **blit-offset + alpha overlay** that
+writes nothing to the cache.
+
+A control that is idle (not pressed, not hovered) or steadily latched
+performs **zero per-frame allocation and zero per-frame draw work**. This is
+a hard discipline enforced by the alloc-rate + settle-to-silence tests in
+`button_keycap_alloc_test.go`.
+
+Retiring the keycap shell, contact shadow and bevel *reduced* per-state
+sprite work, so the flat-tonal system is net-cheaper than what it replaced.
 
 ### Panel chrome
 
@@ -2237,7 +2376,9 @@ Floating panels (inspector, FX, context menu, color wheel) draw via
 `drawPanel(dst, r)` which paints:
 
 1. `surface-overlay` fill (with 250/255 alpha).
-2. Rounded corners (`rounded.md` desktop, `rounded.xl` mobile bottom-sheet).
+2. Rounded corners (`rounded.container`, or `rounded.sheet` for the mobile
+   bottom sheet), bounded by `fitRadius` so a short banner or toast can't
+   round away half its own height.
 3. A 1 px **panel border** (`border` at 20/255 alpha).
 4. A subtle drop shadow.
 
@@ -2247,22 +2388,120 @@ alpha-bearing colors).
 
 ## Shapes
 
-A five-step rounding scale. Use these — never numeric literals. The
-scale is bumped one notch over a "professional/tactical" baseline so
-the whole UI reads as cushioned/touchable rather than wireframe-strict.
+Corner radius is chosen by **role**, not by size. Four role tokens cover
+every surface in the app; reach for one of these, never a raw scale step
+and never a numeric literal.
 
-| Token | Value | Usage |
+| Role token | Value | Applies to |
 |---|---|---|
-| `rounded.sm` | 8 px | Compact buttons, context menu groups, row chips |
-| `rounded.md` | 12 px | Standard buttons, popups, panel chrome |
-| `rounded.lg` | 16 px | Desktop bottom sheets |
-| `rounded.xl` | 20 px | Mobile bottom sheets |
-| `rounded.full` | 999 px | Pill buttons (transport group bg, EQ/Scope tabs) |
+| `rounded.none` | 0 px | Anything that tiles: grid cells, meter segments, track fills, spectrum bars |
+| `rounded.control` | 4 px | **Every** interactive control — buttons, chips, tabs, keycaps, text inputs, dropdowns, steppers, synth controls |
+| `rounded.container` | 8 px | Popups, menus, cards, tooltips, panel chrome, FX cards |
+| `rounded.sheet` | 20 px | Mobile bottom sheet and full-width overlays |
 
-`rounded.full` replaces the in-code `min(w, h) / 2` pill convention so
-every pill in the app shares one token-driven story. When a runtime
-caller renders a pill, it should reach for `rounded.full` rather than
-computing a half-height.
+One radius for *all* controls is the point. A button does not get rounder
+because it is bigger, and a chip does not get squarer because it is small —
+that variance is what made the toolbar read as a pile of unrelated widgets.
+Controls are *slightly* rounded: enough to soften the corner, never enough
+to suggest a capsule.
+
+There is no `rounded.full`. It was retired along with the in-code
+`min(w, h) / 2` pill convention.
+
+### Runtime themes (user / circuit color schemes)
+
+The invariants above describe the DEFAULT theme and the STRUCTURE every theme
+keeps. At runtime a theme document (`internal/theme.Doc`: nine category →
+swatch-name picks plus an optional token → hex escape hatch) recolors the
+palette in place (`ui/theme_runtime.go`): every token keeps its HSL offset from
+its category's default anchor, the dark categories (background, surfaces, grid,
+nodes, dividers) and text keep their absolute lightness, achromatic tokens stay
+untouched, and the semantic reds/greens (`success`, `error`, `mute`,
+`destructive`, `record-*`, `play-/stop-desktop-*`, meter high/clip) are fixed.
+So "two chrome accents", "panel state never recolors chrome", and "instrument
+identity is the only multi-color signal" all hold under every theme — the
+accent is simply a different hue. Membership is the single table in
+`ui/theme_categories.go` (guard: `TestThemeCategoryTableComplete` — every
+`colors:` token is in exactly one category, fixed, or a raw ramp entry). The
+default theme is the identity (`TestThemeDefaultIsIdentity`), which is why the
+drift/discipline tests keep comparing against these YAML values. The Theme
+editor (grid-pane palette button) is the only UI that writes themes; it stores
+swatch NAMES, never hex, so this palette can be regenerated without orphaning a
+saved theme.
+
+### The anti-pill invariant
+
+A control whose radius reaches half its shorter side **is** a pill. Since
+`rounded.md` (12 px) applied to a 22–26 px-tall control lands at exactly
+that threshold, over-rounding used to be a one-token slip — it is how the
+beat counter, the synth action bar and the row-control chips all ended up
+fully rounded.
+
+The system now forbids it geometrically:
+
+```
+radius <= min(w, h) / 4
+```
+
+`drawRoundedRect` — the single func var every rounded corner in the app
+passes through — clamps to this ceiling, so a pill cannot reach the screen
+regardless of what a call site asks for.
+
+The clamp is a backstop, not the design. Controls land at 4 px because
+`rounded.control` says so, not because they were clamped down to 6.
+`TestNoPillShapedControls` (`internal/ui/pill_shape_discipline_test.go`)
+keeps call sites honest: it intercepts the `drawRoundedRect` func var, so it
+observes the **pre-clamp** requested radius across every scene in the
+catalog at both profiles, and fails a call site that over-asks even though
+the clamp would have rescued it on screen.
+
+**Genuine capsules** — the bottom-sheet drag handle, slider rails and thumbs,
+count badges — are a different shape, not an over-rounded rect. They call
+`drawCapsule`, which passes the sentinel radius `radiusCapsule` (-1) through the
+same `drawRoundedRect` chokepoint; the clamp recognises the sentinel and sizes
+the radius from the rect instead. Being a sentinel rather than a pixel value is
+the point — a call site cannot arrive at it by typing a plausible number, so
+the escape is always deliberate. Routing through the one chokepoint also keeps
+every test that intercepts `drawRoundedRect` seeing capsule draws.
+
+If you find yourself wanting a radius above the ceiling, you want a capsule;
+say so.
+
+**Shared chrome helpers** that serve rects across a wide size range
+(`Button.Draw`, `drawPanel`, the toast, panel headers) wrap their role token in
+`fitRadius(role, r)`: the role still picks the intent, but a surface too short
+to carry it takes the ceiling instead. A call site drawing ONE known control
+should name its role token directly.
+
+### Cluster alignment
+
+Controls that sit in one horizontal run share their vertical bounds —
+same `Min.Y`, same `Max.Y`, same height. A control that insets itself
+relative to its siblings leaves bands of the container visible above and
+below it, which read as a stray line cutting through the strip.
+
+Visual hierarchy within a cluster is expressed with **tone** (fill and icon
+color), never by shrinking the box. The mobile record button was shrunk 8 px
+top and bottom to look less prominent than play/stop; the result was a
+visible seam, and the demotion it was after was already carried by its muted
+red icon. Guard: `TestTransportClusterSharesBounds`.
+
+An inset helper that clamps its budget across both axes will violate this by
+accident: grid layouts hand out leftover pixels one at a time, so two
+nominally equal cells can differ by 1 px in width, and a shared clamp lets
+that width difference change the *vertical* inset. Clamp each axis
+independently (`clampInsetAxis` in `transport_zone.go`).
+
+**Groups are spacing, not containers.** A run of controls that each carry
+their own body (the desktop transport, a rack row) is grouped by gutters:
+`spacing.cluster` between the desktop transport's groups (Play Stop Rec |
+BPM ± ÷n | Vol | Undo Redo), `spacing.sm` between a rack row's groups. A
+container drawn around such a group adds a frame that sticks out above and
+below the run — the desktop BPM "pill" made the BPM box read 4 px taller
+than its neighbours, and the Play/Stop/Rec tray left 2 px bands around the
+keys. Group containers survive only where they ARE the controls' body (the
+mobile toolbar's bodiless icons — `TransportZone.groupChrome`), and never
+with a border.
 
 ## Components
 
@@ -2292,22 +2531,42 @@ component-token entries in the YAML front matter.
 
 ### Row control (inline)
 
-`{components.button-row-control}` — `surface-2` fill, subtle border,
-**vector `IconID` glyphs** at 16–24 px.
+`{components.button-row-control}` — `surface-2` fill (no border at rest —
+Rule 1). One rack row reads `[▪ Name] [volume] [M] [S] [FX] [⋯]`:
 
-- **Icons:** `IconMute` (speaker + slash) / `IconSolo` (headphones) /
-  `IconFx` (sparkle) / `IconTarget` (Origin crosshair) / `IconClose`
-  (Delete). The antialiased vector renderer (1.75-unit stroke, round caps —
-  see "Icon renderer") keeps these legible at row-control size; the
-  pre-overhaul scanline icons were jagged, which is why this section
-  historically mandated text labels. The Icon Map appendix's "Row controls"
-  table is the authoritative glyph list.
-- Per-instrument shading: inactive/active fills derive from the row's
-  instrument color (see "Per-instrument control shading" under Colors), not
-  the fixed mute/solo component tokens; those tokens remain wired for the
-  legacy `ComponentButtonRowControl*` specs.
-- Go style: `InstButtonStyle` (inactive) → `MuteActiveStyle` /
-  `SoloActiveStyle` / `FXActiveStyle` (active).
+- **Label:** the row name LEFT-aligned after a leading identity swatch
+  (`Button.LeadSwatch`: the instrument menu's `spacing.swatch-md` rounded
+  square on desktop, a slim bar of the profile's accent-stripe width on
+  mobile). The swatch is the row's only resting identity mark — the
+  instrument picker's "swatch + text" row, the gold standard named in the
+  Overview. The label column is sized to the names ON SCREEN (floor
+  `rackLabelMinW`), and the rack column to `labelW` + the real control
+  cluster (`RowRackZone.FixedControlsWidth`), capped at the profile's default
+  share — never "whatever is left", which is what made a 505 px bar hold
+  the word "Kick".
+- **Toggles:** text letters `M` / `S` / `FX` (body role, stepping down to
+  caption when a mobile chip is too narrow), plus the `IconOverflow` kebab.
+  Letters, not icons: a slashed-speaker mute glyph read as "muted" even at
+  rest (beside the volume button's speaker), and the FX sparkle read as a
+  "+" at chip size, next to the add-row "+". `IconTarget` (Origin) and
+  `IconClose` (Delete) live in the kebab menu.
+- **Volume:** the shared volume button — speaker glyph above the shared
+  **gauge** strip (`drawGaugeStrip`, the Synth param cards' renderer) in the
+  instrument color.
+- **One band, two gaps:** every control in the row shares one vertical band
+  (the row inset by `spacing.xs` top and bottom — "Cluster alignment");
+  toggles sit `ControlGap` apart, and `spacing.sm` separates the three groups
+  (label | volume | toggles).
+- **Add row:** a ghost row directly UNDER the last visible row (pinned to the
+  rack bottom only when the rows scroll), sharing the rows' span and band:
+  the neutral body with a "+" in the swatch slot and a muted "Add
+  instrument" label. No dashed outline.
+- Per-instrument shading: active fills derive from the row's instrument
+  color (see "Per-instrument control shading" under Colors), not the fixed
+  mute/solo component tokens; those tokens remain wired for the legacy
+  `ComponentButtonRowControl*` specs.
+- Go: `newRowToggleButton` + `applyRowToggle` / `rowToggleStyle`
+  (`row_instrument_shades.go`), layout in `RowRackZone.layoutRowControls`.
 
 ### Destructive (delete / confirm)
 
@@ -2384,9 +2643,9 @@ explicitly at button construction — never rely on the default. The
 | BPM +/− | `Profile().BPMIconColor` | — |
 | Track on/off | `on-surface-muted` | accent border in `TransportFollowOnStyle` when locked |
 | Upload / Import / Export | `on-surface-muted` | — |
-| Mute (row) | text `"M"` (no icon) | `MuteActiveStyle` fill when muted |
-| Solo (row) | text `"S"` (no icon) | `SoloActiveStyle` fill when soloed |
-| FX (row) | text `"FX"` (no icon) | `FXActiveStyle` border when panel open |
+| Mute (row) | text `"M"` (no icon), `on-surface-muted` | darkened instrument-color fill when muted |
+| Solo (row) | text `"S"` (no icon), `on-surface-muted` | brightened instrument-color fill when soloed |
+| FX (row) | text `"FX"` (no icon), `on-surface-muted` | full instrument-color fill + one dot per enabled effect |
 | Close (any panel) | `on-surface-muted` | — |
 | Trash / Destructive | `error` | confirm: `button-destructive-confirm` |
 | Chevron (FX expand / reorder, BPM stepper) | `on-surface-muted` | — |
@@ -2433,6 +2692,23 @@ Shared modal confirmation: `surface-overlay` panel via `drawPanel`,
 secondary, Confirm = destructive/primary), close-X = cancel. Closes on
 Confirm/Cancel/close-X/Esc/Enter and on click-outside (tree `CloseTop`).
 Consumers: paste-overwrite, break-circuit.
+
+**Menu frame — `MenuCard` (`menu_card.go`).** Every floating menu (Theme,
+Settings, Logs, File, row context menu, navigation menu, confirm dialogs, the
+FX panel header, the swatch color picker) draws its frame through ONE value
+type composed from the existing primitives: `drawPanel` (or the bottom-sheet
+surface + drag handle on mobile), the accent-hairline title band
+(`drawMenuHeaderBandAccent`) with a leading swatch (identity menus) or icon
+(global menus) and the title at `menuTitleRole`, optional header actions,
+an optional muted caption band, footer keycaps (destructive on the right),
+and the close × from `newPopupCloseButton` (desktop; mobile sheets tap away).
+Behavior is shared too — `menuCardEntry` opens every menu non-modal with a
+scrim, so Esc, the ×, and a tap outside all close it; a picker STACKED on an
+open menu is the one must-answer (modal) case. Guards:
+`TestEveryPortalMenuUsesMenuCard` (every portal overlay embeds the card or
+is exempt with a reason: tooltips, value popups, dropdown option lists, the
+instrument picker whose breadcrumb strip is its band) and
+`TestEveryMenuClosesTheSameWay` (real-input ×/Esc/outside-tap per menu).
 
 **Menu anatomy (list menus: instrument picker, template page, and any
 future searchable list).** Every list menu is composed from the same five
@@ -2486,6 +2762,55 @@ expects the in-panel affordance).
 (`IconChevronRight` / `IconChevronDown`) already wired in
 `game_node_sidebar.go` — one chevron renderer across sidebar sections and
 menus. Do not use raw text `>` / `v` / `▶` / `▼` for collapsibles.
+
+### Menu sizing & layout
+
+A floating menu's desktop width is chosen by **role, never by its content** —
+the same rule corner radius follows. Pick the class for what the menu *is*;
+do not size a card to fit its longest label. On mobile every menu class is a
+**full-width bottom sheet** (`MenuCard` with `BottomSheet`), so the classes are
+desktop-only. Tokens live in `profileOverrides` (layout-tied) and are read
+through `menu_sizing.go` (`menuWAction`, `menuWList`, `menuWEditor`,
+`menuWWide`).
+
+| Class | Token | Desktop width | Role | Examples |
+|---|---|---|---|---|
+| Action | `menuWActionMin` / `menuWActionMax` | fit to content, clamped 160–240 | short verb lists | row context menu, action menu, subdivision |
+| List | `menuWList` | 300 | searchable lists | instrument picker, template page |
+| Editor | `menuWEditor` | 360 | cards hosting controls | navigation / go-to card, Settings, Theme, FX panel |
+| Wide | `menuWWideMax` | ¾ of the window, ≤ 960 | data panels | Logs |
+| Value popup | `densities.mobileWheelW` | density-driven | a value wheel anchored to its control | Sampler / EQ / BPM / node value wheels |
+
+**Height.** A list menu is as tall as its content, capped at **80 %** of the
+window (desktop) or **85 %** (mobile sheet); past the cap the body scrolls with
+the shared `MenuScroll` and the title band stays pinned. A card that hosts
+controls (not a list) keeps its full height: when the pane it drops into is too
+short, bound it by the window instead of shrinking it (the navigation card:
+`navMenuBounds`) and repaint it — and anything stacked on it — above the pane
+divider (`Game.drawThemeOverlaysAboveDivider`).
+
+**Anatomy.** Title band (`MenuCard`) → body inset by `spacing.md` → sections
+separated by a hairline with an UPPERCASE caption (`RoleCaption`, e.g. "GO
+TO") → the **primary action bottom-right** (a `ComponentButtonPrimary` keycap,
+e.g. **Go**), a secondary readout bottom-left. Rows are at least
+`touchMinTargetPx` tall on every platform. Controls sharing a row follow
+**cluster alignment** (same `Min.Y` / `Max.Y` / height).
+
+**Don't cover what the menu previews.** A menu that previews a change
+elsewhere must not cover that place: the navigation card drops from the bottom
+of the timeline ribbon (not the beat counter) so the go-to ghost on the ribbon
+stays visible, and on desktop its jog cluster and jump-unit toggle share one
+row so the card fits under the ribbon.
+
+**Value entry.** Numbers are set with the shared **value wheel** (`ValueWheel`
+over a `WheelModel`; `MobileWheelPopup` is its popup host) — never typed.
+Wheels show **5 rows**; a compact inline pair (the logs HH : MM clock) shows
+**3**. The ladder strip is about ⅓ of the wheel width, coarsest step on top.
+On the popup wheels and the go-to wheel, Up/Down step the value, Left/Right
+the step size, and a centre click confirms; the inline logs clock pair is
+pointer-only. Esc restores the opening value exactly.
+Text (names, searches) is typed through `NewTextField`, which wires the
+desktop soft-keyboard proxy and the mobile native `<input>` automatically.
 
 ## Do's and Don'ts
 
@@ -2569,6 +2894,7 @@ fits.
 | Transport (Play/Stop/Record/Track/Upload/Import/Export/Overflow) | ≥ 32 px | **Yes** | no | no | |
 | BPM ± steppers | ≥ 28 px | **Yes** (chevrons) | no | no | |
 | Subdivision label | ≥ 28 px | no | **Yes** (`÷n`) | no | Permitted exception. |
+| Timeline band keycaps (track lock, length −/+) | = the beat-counter keycap (~21–26 px) | **Yes** (`IconTrack`/`IconTrackOff`, `IconMinus`/`IconPlus`) | no | no | One row of equal keycaps with the counter; Touch-expanded hit areas keep the 44 px mobile target. |
 | Row-rack control buttons (mute/solo/fx/origin/delete) | 16–24 px | **Yes** (`IconMute`, `IconSolo`, `IconFx`, `IconTarget`, `IconClose`) | no | no | Vector renderer makes 16 px legible. |
 | Sidebar expand tab (collapsed sidebar) | 20 px | **Yes** (`IconChevronRight`) | no | no | |
 | Row instrument selector | row label | no | **Yes** + color swatch | no | Gold standard. |
@@ -2663,19 +2989,18 @@ The icon set is defined in `icons.go` (one `IconID` per glyph). Every icon has
 
 ### Row controls
 
-Row-rack buttons use the unified `IconID` glyphs at 16–24 px. The vector
-renderer (1.75-unit stroke, round caps, antialiased) keeps small icons
-legible — earlier scanline-stamped icons looked jagged at this size,
-which is why the controls used text labels prior to the icon-system
-overhaul.
+The rack row's M / S / FX toggles are TEXT letters (see Components → "Row
+control" for why the slashed-speaker / sparkle glyphs were retired); the
+kebab and the menu-hosted row actions keep their `IconID` glyphs.
 
-| Button | `IconID` | Inactive style | Active style |
+| Button | Glyph | Inactive style | Active style |
 |---|---|---|---|
-| Mute | `IconMute` (speaker + slash) | `InstButtonStyle` | `MuteActiveStyle` |
-| Solo | `IconSolo` (headphones) | `InstButtonStyle` | `SoloActiveStyle` |
-| FX | `IconFx` (sparkle) | `InstButtonStyle` | `FXActiveStyle` |
-| Origin | `IconTarget` (crosshair) | `InstButtonStyle` | — |
-| Delete | `IconClose` (× diagonals) | `DeleteButtonStyle` | `DeleteConfirmButtonStyle` (text `"!!"`) |
+| Mute | text `"M"` | neutral row-control body | instrument color darkened |
+| Solo | text `"S"` | neutral row-control body | instrument color brightened |
+| FX | text `"FX"` | neutral row-control body | full instrument color + one dot per enabled effect |
+| Overflow (kebab) | `IconOverflow` | neutral row-control body | — |
+| Origin (kebab menu) | `IconTarget` (crosshair) | `InstButtonStyle` | — |
+| Delete (kebab menu) | `IconClose` (× diagonals) | `DeleteButtonStyle` | `DeleteConfirmButtonStyle` (text `"!!"`) |
 
 The delete-confirm state stays as text `"!!"` because it is a stateful
 warning glyph, distinct in role from the resting close-icon — see the
@@ -2742,7 +3067,8 @@ These differences are **intentional** and must be preserved:
 | Audio-view tabs | In-panel right-side strip (`EQ / Wave / Spectrum / Levels / Chain / Synth / Sampler`) | Bottom-navigation segmented strip (`Pads / EQ / Wave / Spec / Lvl / Chn / Syn / Smpl`); the EQ panel only carries the left filter chips (`Master / HP / LP / Freeze`). The strip's highlight derives from the panel's `PanelTabState` (single source of truth — programmatic tab switches sync it via `OnTabChange`). |
 | Track / follow toggle | Vertical strip left of the timeline | Square chip on the right edge of the timeline ruler header |
 | Row zoom | N/A (fixed `desktopRowHeightPx`) | ⊕ / ⊖ chip top-right of the rows zone + 2-finger pinch over `dv.rowsRect()` (in-memory `dv.rowZoom`) |
-| Accent stripe | 3 px, flush | 5 px, 2 px vertical inset |
+| Row identity mark | `spacing.swatch-md` rounded square before the name | Slim bar (accent-stripe width, 5 px) — a narrow mobile label cannot spare a square's width |
+| Transport groups | Gutters (`spacing.cluster`); every key has its own body, so no container | Group containers (fill only, no border) — the toolbar icons are bodiless and the container IS their body |
 | Scrollbar width | 6 px hairline (`DefaultScrollbarStyle.Width`); popup/menu scrollers 10 px (`DropdownScrollbarStyle.Width`) | 6 px (`mobileScrollbarWidth`) — **every** mobile scrollbar shares this one width (content scrollers via `MobileScrollbarStyle`, popup/menu scrollers via `dropdownScrollbarStyle`), so none reads thicker than another. Touch grab comes from the ≥ 44 px-tall thumb (`MinThumbH`), not the width. |
 | Popup text scale | 1.0× | 1.3–1.7× |
 | Timeline default | No cap (full circuit) | 8 beats |
@@ -2754,8 +3080,10 @@ never diverge by platform.** Buttons, knobs, sliders, pills, and toggles render
 identically on both; toggle buttons (Reverse / Normalize / Fade, EQ mutes, tab
 pills, …) show the same latched amber-keycap state everywhere. The button depth
 highlight, the hover/press lift (hover-driven on desktop, press-driven on touch
-since touch has no hover), the transport-cluster pill, and the recording-armed
-ring all render on both platforms.
+since touch has no hover) and the recording-armed ring render on both
+platforms. (The transport-cluster container is the one deliberate exception —
+it is a control BODY on mobile and redundant chrome around keycaps on
+desktop; see "Groups are spacing, not containers".)
 
 ## Screenshot Infrastructure
 
@@ -2795,7 +3123,8 @@ same PR. The CI gate is: `make screenshots-all` succeeds and
 `crop_chain_*` / `crop_eq_*` subject-cropped scenes.
 
 **Per-row menus / popups:** `context_menu_open`, `instrument_menu_open`,
-`instrument_menu_categories`, `color_wheel_open`, `subdiv_menu_open`,
+`instrument_menu_categories`, `instrument_menu_favorites_empty`,
+`color_wheel_open`, `subdiv_menu_open`,
 `master_vol_popup`, `desktop_per_row_vol_popup`.
 
 **FX panel:** `fx_panel_open_empty`, `fx_panel_with_3_effects`,

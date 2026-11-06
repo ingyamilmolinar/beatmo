@@ -1,0 +1,264 @@
+{
+  "schema_version": "0.0.1",
+  "id": "sax",
+  "name": "Saxophone",
+  "category": "modular",
+  "notes": "saxSeed: SUBTRACTIVE reed (saw → band-pass formant → opening filtenv), the SAME\narchitecture as oboeSeed but with TENOR-SAX character: lower/broader formant\n(BP @1000Hz vs oboe's 1450), airier breath chiff (gen2 with a small sustained\ntail), and a slower-blooming filtenv. Used as the So What 2nd horn and the\nGirl from Ipanema melody (Stan Getz tenor).\nSAXOPHONE = hybrid additive + formant-filtered saw. Tuned against the\nTRUE-grid measurement of 360251__mtg__sax-baritone-c3 (f0 ≈ 122.8 Hz/B2 —\nthe earlier \"H3-dominant, breath 0.45\" profile was an OCTAVE-UP analysis\nartifact: DetectF0 locked onto H2 because the bari fundamental sits ~7 dB\nbelow it; fixed via the odd-harmonic-evidence octave guard). Real bari\nsignature (rel H2=1.0): H1 .47, H2 1.00, H3 .97, H4 .68, H5 .39, H6 .67\n(the ~740 Hz knee formant), H7 .37, then a REBOUND plateau H14-H16 ≈ .3\n(the 1.9/2.6 kHz formants); even/odd 1.25 (conical bore = even-strong);\nnoise only ~0.08; vibrato ~2¢ (nearly straight); rise10-90 ≈ 0.22 s; and\nbrightness tracks loudness (+0.77) via the note's slow decrescendo.\nArchitecture: sines pin H1-H4+H6 exactly; a saw→BP@820 builds the knee\nfill (H5/H7-H10); a saw→BP@2050 builds the high formant plateau; a narrow\nbreath-noise band sits at the ref's residual centroid (~1.2-1.5 kHz) so\nlouder breath = brighter (positive coupling), and a slow amp decrescendo\nsupplies the macro brightness-loudness coupling.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.721,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.5,
+        "amp_curve": 1,
+        "amp_decay": 2.5,
+        "amp_release": 0.2,
+        "amp_sustain": 0.45
+      },
+      "notes": "amp_attack: measured rise10-90 0.21 s ≈ ref 0.22 s (env curve is nonlinear)\namp_decay: slow decrescendo — drives the ref's +0.77 brightness↔loudness coupling"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.7,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2200,
+        "filter_resonance": 1,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: shoulder just above the 2 kHz formant plateau (ref cliffs at ~2.6 kHz)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.2,
+        "lfo_depth": 0.002,
+        "lfo_rate": 5,
+        "lfo_target": 1
+      },
+      "notes": "lfo_depth: renders ~2.1¢ ≈ ref 2.4¢ (0.008 rendered 8.5¢)\nlfo_enabled: subtle vibrato (the ref reads 2.4¢, below the 3¢ detection threshold)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.5,
+        "env_fast_rate": 8,
+        "env_tail_mix": 0.85,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1200,
+        "filt_q": 2.5,
+        "filt_type": 5,
+        "gain": 0.18,
+        "noise_offset": 0
+      },
+      "notes": "gen1_source: breath noise at the ref's residual centroid (~1.5 kHz), narrow + quiet\n(true breathiness is ~0.08, not the octave-artifact 0.45)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.22,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: H1 (weak fundamental)\ngen2_freq_mode: H1 (weak fundamental)\ngen2_gain: H1 (weak fundamental)\ngen2_source: sines pin the measured low harmonics (rel H2 ×0.5 gain scale) H1 (weak fundamental)\ngen2_wave: H1 (weak fundamental)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.5,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: H2 DOMINANT\ngen3_freq_mode: H2 DOMINANT\ngen3_gain: H2 DOMINANT\ngen3_source: H2 DOMINANT\ngen3_wave: H2 DOMINANT"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.45,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_freq: H3 near-equal\ngen4_freq_mode: H3 near-equal\ngen4_gain: H3 near-equal\ngen4_source: H3 near-equal\ngen4_wave: H3 near-equal"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.37,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_freq: H4\ngen5_freq_mode: H4\ngen5_gain: H4\ngen5_source: H4\ngen5_wave: H4"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.53,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen6_freq: H6 knee-formant bump\ngen6_freq_mode: H6 knee-formant bump\ngen6_gain: H6 knee-formant bump\ngen6_source: H6 knee-formant bump\ngen6_wave: H6 knee-formant bump"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 820,
+        "filt_q": 1.8,
+        "filt_type": 5,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1.9,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 1
+      },
+      "notes": "gen7_source: saw → BP@820 Q1.8: the ~740 Hz knee fill (H5, H7-H10)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 2050,
+        "filt_q": 2,
+        "filt_type": 5,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 4,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 1
+      },
+      "notes": "gen8_source: saw → BP@2050 Q2.0: the H14-H18 plateau (1.9 + 2.6 kHz formants).\ngain 4.0 = the gen_gain ParamDef Max — the recipe path CLAMPS on merge,\nso a larger value silently renders as 4.0 anyway, and the baked one-shot\npath (which does NOT clamp) would diverge from playback."
+    }
+  ]
+}

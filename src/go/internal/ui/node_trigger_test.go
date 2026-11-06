@@ -24,7 +24,7 @@ func TestNodeTriggeredRespectsMuteLogic(t *testing.T) {
 
 	if n, ok := g.graph.GetNodeByID(mute.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(mute.ID, p)
 	}

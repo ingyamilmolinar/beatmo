@@ -133,17 +133,13 @@ try {
   // Edit a knob on whatever instrument the synth tab currently
   // shows (the startup demo's first row). We can't assume "snare" —
   // the active row depends on startup_demo.json content.
-  const recipeIDs = await page.evaluate(() => {
-    const regs = (typeof synthRecipeCatalog === "function") ? synthRecipeCatalog() : {};
-    return Object.keys(regs);
-  });
   // The footer Save/Reset buttons operate on the synth tab's ACTIVE instrument
   // (Go: DrumView.synthTabActiveInstrument = EQ ActiveChannel, else the first
   // non-empty drum row). We MUST target that exact instrument — Reset clears the
   // ACTIVE instrument's overlay, so editing any other id leaves the overlay
   // uncleared and the assertion fails. Mirror the Go resolver instead of
-  // guessing from a hardcoded id list (which picked kick-1 while the real active
-  // row was dnb-kick, so Reset never cleared our edit).
+  // guessing from a hardcoded id list (which picked the wrong row while the
+  // real active row was dnb-kick, so Reset never cleared our edit).
   const activeInst = await page.evaluate(() => {
     let ch = "";
     try {
@@ -162,11 +158,15 @@ try {
     throw new Error("no active synth instrument — can't drive the synth tab");
   }
   console.log("[TEST] active synth instrument:", activeInst);
-  // Use a generic param name that every shipped recipe carries.
-  await page.evaluate((inst) => {
-    setInstrumentParam(inst, "decay", 1.85);
+  // post_decay lives in the FINISH stage every instrument document carries.
+  // Reset's target is the value the open CIRCUIT carried (read it, never
+  // assume the hand-edited startup demo's); the edits must differ from it.
+  const circuitDecay = await page.evaluate((inst) => getInstrumentParams(inst).post_decay, activeInst);
+  const [SAVED, EDITED] = [0.4, 0.7].map((v) => (v === circuitDecay ? v + 0.05 : v));
+  await page.evaluate(([inst, v]) => {
+    setInstrumentParam(inst, "post_decay", v);
     forceDraw();
-  }, activeInst);
+  }, [activeInst, SAVED]);
   await page.waitForTimeout(120);
 
   const footerRects = await page.evaluate(() => synthFooterButtonRects());
@@ -200,35 +200,27 @@ try {
   if (dlg !== null) {
     throw new Error(`dialog still open after confirm: ${JSON.stringify(dlg)}`);
   }
-  // Confirm a user.* recipe registered. The id pattern is
-  // user.<base-trimmed>.<short-hash>; the exact base depends on the
-  // active row's recipe binding, so we look up by prefix only.
-  const newID = await page.evaluate((preExisting) => {
-    const regs = (typeof synthRecipeCatalog === "function") ? synthRecipeCatalog() : {};
-    const pre = new Set(preExisting);
-    for (const k of Object.keys(regs)) {
-      if (k.startsWith("user.") && !pre.has(k)) return k;
-    }
-    return "";
-  }, recipeIDs);
-  if (!newID) {
-    throw new Error("no new user.* recipe registered after Save As confirm — sink wiring broken");
+  // Confirm Save As created a user.* instrument: the active row's document
+  // is repointed at it (id pattern user.<slug>.<content hash>).
+  const newID = await page.evaluate((inst) => (JSON.parse(getInstrumentDoc(inst) || "{}").origin || ""), activeInst);
+  if (!newID.startsWith("user.")) {
+    throw new Error(`Save As did not repoint the document at a new user.* instrument (origin ${JSON.stringify(newID)})`);
   }
-  console.log("[TEST] Save As registered new recipe:", newID);
+  console.log("[TEST] Save As created user instrument:", newID);
 
-  // ─── Click Reset — overlay must clear ───
-  // After Save As, the row is rebound to the new user recipe and the
-  // overlay is cleared. Edit again so Reset has something to clear.
-  // (The active row's instrument is unchanged by Save As — only its
-  // recipe binding moved — so we keep using activeInst.)
-  await page.evaluate((inst) => {
-    setInstrumentParam(inst, "decay", 2.4);
+  // ─── Click Reset — back to what the circuit carried ───
+  // After Save As the row's document equals the new user instrument. Edit
+  // again (the row keeps its id: only the document's origin moved, so we keep
+  // using activeInst); Reset restores the document the open circuit carried,
+  // not the Save As (synth_save_trumps_circuit_test.go).
+  await page.evaluate(([inst, v]) => {
+    setInstrumentParam(inst, "post_decay", v);
     forceDraw();
-  }, activeInst);
+  }, [activeInst, EDITED]);
   await page.waitForTimeout(60);
   const beforeReset = await page.evaluate((inst) => getInstrumentParams(inst), activeInst);
-  if (!beforeReset || beforeReset.decay !== 2.4) {
-    throw new Error(`overlay write didn't take: ${JSON.stringify(beforeReset)}`);
+  if (!beforeReset || beforeReset.post_decay !== EDITED) {
+    throw new Error(`edit didn't take: post_decay=${beforeReset && beforeReset.post_decay}`);
   }
   // Re-read footer rects in case dirty-state spec swap moved them.
   const fr2 = await page.evaluate(() => synthFooterButtonRects());
@@ -236,15 +228,19 @@ try {
   await clickCanvasAt(page, canvasBox, rs.x + rs.w / 2, rs.y + rs.h / 2);
   await page.waitForTimeout(120);
   const afterReset = await page.evaluate((inst) => getInstrumentParams(inst), activeInst);
-  const decayAfter = afterReset && afterReset.decay;
-  if (decayAfter === 2.4) {
-    throw new Error(`Reset click did not clear overlay: still ${JSON.stringify(afterReset)}`);
+  const decayAfter = afterReset && afterReset.post_decay;
+  if (decayAfter !== circuitDecay) {
+    throw new Error(`Reset click did not return to the circuit's value: post_decay=${decayAfter}, want ${circuitDecay} (saved-as ${SAVED}, edited ${EDITED})`);
   }
-  console.log("[TEST] Reset cleared overlay; params:", JSON.stringify(afterReset));
+  const originAfter = await page.evaluate((inst) => JSON.parse(getInstrumentDoc(inst) || "{}").origin || "", activeInst);
+  if (originAfter === newID) {
+    throw new Error(`Reset kept the Save As identity (origin ${originAfter}); it must restore the circuit's document`);
+  }
+  console.log("[TEST] Reset returned to the circuit's document; post_decay:", decayAfter, "origin:", originAfter);
 
-  // ─── Click Save As again, then Cancel — dialog must close, no new recipe ───
+  // ─── Click Save As again, then Cancel — dialog must close, nothing saved ───
   await page.evaluate((inst) => {
-    setInstrumentParam(inst, "decay", 1.5);
+    setInstrumentParam(inst, "post_decay", 0.55);
     forceDraw();
   }, activeInst);
   await page.waitForTimeout(60);

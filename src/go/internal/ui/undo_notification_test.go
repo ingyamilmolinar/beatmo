@@ -24,14 +24,10 @@ func TestUndoRedoShowNotification(t *testing.T) {
 	}
 
 	g.performUndo()
-	if last := g.drum.notifStore.Latest(); last == nil || last.display() != "Undo: add node" {
-		t.Fatalf("undo should notify 'Undo: add node', got %q", notifTextOf(g.drum.notifStore.Latest()))
-	}
+	requireNotified(t, g, "Undo: add node")
 
 	g.performRedo()
-	if last := g.drum.notifStore.Latest(); last == nil || last.display() != "Redo: add node" {
-		t.Fatalf("redo should notify 'Redo: add node', got %q", notifTextOf(g.drum.notifStore.Latest()))
-	}
+	requireNotified(t, g, "Redo: add node")
 }
 
 // TestUndoRedoNoNotificationWhenStackEmpty proves a no-op undo/redo (empty stack)
@@ -51,6 +47,7 @@ func TestUndoRedoNoNotificationWhenStackEmpty(t *testing.T) {
 // fires — proving the keyboard trigger (not just the chokepoint) surfaces it.
 func TestUndoKeyboardShowsNotification(t *testing.T) {
 	g := newTestGameForUndo(t)
+	warmCircuitForTest(t, g)
 	g.drum.SetBPM(140)
 	g.undoManager.record("change BPM")
 	if !g.undoManager.CanUndo() {
@@ -68,9 +65,7 @@ func TestUndoKeyboardShowsNotification(t *testing.T) {
 	}
 	// The keyboard path surfaces the concrete from → to detail (the snapshot diff
 	// resolves the single BPM scalar), not the generic "change BPM" label.
-	if last := g.drum.notifStore.Latest(); last == nil || last.display() != "Undo: BPM 120 → 140" {
-		t.Fatalf("Ctrl+Z should notify 'Undo: BPM 120 → 140', got %q", notifTextOf(g.drum.notifStore.Latest()))
-	}
+	requireNotified(t, g, "Undo: BPM 120 → 140")
 }
 
 // TestUndoRedoNotificationLocalized proves undo/redo notifications are fully
@@ -83,13 +78,9 @@ func TestUndoRedoNotificationLocalized(t *testing.T) {
 
 	i18n.SetLocale(i18n.LocaleES)
 	g.performUndo()
-	if last := g.drum.notifStore.Latest(); last == nil || last.display() != "Deshacer: añadir nodo" {
-		t.Fatalf("Spanish undo notification = %q, want %q", notifTextOf(g.drum.notifStore.Latest()), "Deshacer: añadir nodo")
-	}
+	requireNotified(t, g, "Deshacer: añadir nodo")
 	g.performRedo()
-	if last := g.drum.notifStore.Latest(); last == nil || last.display() != "Rehacer: añadir nodo" {
-		t.Fatalf("Spanish redo notification = %q, want %q", notifTextOf(g.drum.notifStore.Latest()), "Rehacer: añadir nodo")
-	}
+	requireNotified(t, g, "Rehacer: añadir nodo")
 }
 
 func notifTextOf(n *notification) string {
@@ -119,4 +110,24 @@ func TestEveryUndoableActionHasLocalizedLabel(t *testing.T) {
 			t.Errorf("EN i18n label for %q = %q, want the registry label %q", a.Kind, got, a.Label)
 		}
 	}
+}
+
+// requireNotified fails unless want was pushed to the notification history.
+//
+// Searched in the HISTORY, not read off Latest(): an undo/redo re-imports the
+// document, which trips the playback warm-up gate, and its "Circuit ready" toast
+// is posted when the shared audio.prewarm pool drains. Alone it drains before
+// the undo toast; after the rest of the suite has queued work it drains a moment
+// later and lands on top. Both orders are correct, so a Latest() assertion
+// failed purely on suite order.
+func requireNotified(t *testing.T, g *Game, want string) {
+	t.Helper()
+	var got []string
+	for _, n := range g.drum.notifStore.History() {
+		if n.display() == want {
+			return
+		}
+		got = append(got, n.display())
+	}
+	t.Fatalf("expected notification %q, history (newest first) = %q", want, got)
 }

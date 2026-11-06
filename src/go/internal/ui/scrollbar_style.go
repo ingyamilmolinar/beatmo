@@ -20,6 +20,37 @@ type ScrollbarStyle struct {
 	ThumbColor color.Color
 	Width      int
 	MinThumbH  int
+	// live names the shared palette this copy was taken from. Every
+	// ScrollBehavior/MenuScroll copies a style at construction and keeps it
+	// for the menu's lifetime, so Draw re-reads the colors from the CURRENT
+	// palette (rebuilt by rebuildThemeAliases on a theme change) instead of
+	// the alpha-blended copies, which liveCaptured cannot map. Width and
+	// MinThumbH stay per-copy (controlGrid/mobile overrides).
+	live scrollbarLive
+}
+
+// scrollbarLive identifies one of the three shared scrollbar palettes.
+type scrollbarLive uint8
+
+const (
+	scrollbarLiveNone scrollbarLive = iota
+	scrollbarLiveDefault
+	scrollbarLiveMobile
+	scrollbarLiveDropdown
+)
+
+// colors returns the track/thumb colors to paint: the live palette's when the
+// copy is tagged, else the captured ones.
+func (s ScrollbarStyle) colors() (track, thumb color.Color) {
+	switch s.live {
+	case scrollbarLiveDefault:
+		return DefaultScrollbarStyle.TrackColor, DefaultScrollbarStyle.ThumbColor
+	case scrollbarLiveMobile:
+		return MobileScrollbarStyle.TrackColor, MobileScrollbarStyle.ThumbColor
+	case scrollbarLiveDropdown:
+		return DropdownScrollbarStyle.TrackColor, DropdownScrollbarStyle.ThumbColor
+	}
+	return s.TrackColor, s.ThumbColor
 }
 
 // mobileScrollbarWidth is the single visual thickness shared by EVERY scrollbar
@@ -30,25 +61,13 @@ type ScrollbarStyle struct {
 // DESIGN.md "Mobile vs. Desktop — Intentional Differences".
 const mobileScrollbarWidth = 6
 
+// The three styles are DERIVED in rebuildThemeAliases (theme.go) so a runtime
+// theme re-tints the thumbs: Default (6px/10), Mobile (mobileScrollbarWidth/44),
+// Dropdown (10px/12).
 var (
-	DefaultScrollbarStyle = ScrollbarStyle{
-		TrackColor: WithAlpha(genColorBorder, genAlphaBorderThin),
-		ThumbColor: WithAlpha(genColorPrimary, genAlphaScrollbarThumb),
-		Width:      6,
-		MinThumbH:  10,
-	}
-	MobileScrollbarStyle = ScrollbarStyle{
-		TrackColor: WithAlpha(genColorBorder, genAlphaBorderThin),
-		ThumbColor: WithAlpha(genColorPrimary, genAlphaScrollbarThumbMobile),
-		Width:      mobileScrollbarWidth,
-		MinThumbH:  44,
-	}
-	DropdownScrollbarStyle = ScrollbarStyle{
-		TrackColor: WithAlpha(genColorBorder, genAlphaBorderThin),
-		ThumbColor: WithAlpha(genColorPrimary, genAlphaScrollbarThumb),
-		Width:      10,
-		MinThumbH:  12,
-	}
+	DefaultScrollbarStyle  ScrollbarStyle
+	MobileScrollbarStyle   ScrollbarStyle
+	DropdownScrollbarStyle ScrollbarStyle
 )
 
 // ScrollbarStyleForPlatform returns the appropriate scrollbar style for the
@@ -99,8 +118,9 @@ func (s ScrollbarStyle) Draw(dst *ebiten.Image, barRect, thumbRect image.Rectang
 	if barRect.Empty() {
 		return
 	}
-	drawRect(dst, barRect, s.TrackColor, true)
+	track, thumb := s.colors()
+	drawRect(dst, barRect, track, true)
 	if !thumbRect.Empty() {
-		drawRect(dst, thumbRect, s.ThumbColor, true)
+		drawRect(dst, thumbRect, thumb, true)
 	}
 }

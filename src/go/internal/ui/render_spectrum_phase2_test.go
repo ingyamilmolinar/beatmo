@@ -17,21 +17,28 @@ import (
 func TestSpectrumPhase2_PersistentMaxMarker(t *testing.T) {
 	var st SpectrumPeakState
 
-	// Feed a loud burst on band 4 (Mids).
+	// Feed a loud burst on band 4 (Mids). Levels are dBFS now, not
+	// normalised heights — see SpectrumPeakState.
 	loud := [10]float64{}
-	loud[4] = 0.85
+	for i := range loud {
+		loud[i] = spectrumMinDB
+	}
+	loud[4] = -12
 	st.UpdateMax(loud)
-	if st.MaxPeaks[4] < 0.85 {
-		t.Fatalf("MAX should rise to live peak: got %v, want ≥0.85", st.MaxPeaks[4])
+	if st.maxDB(4) > -12 {
+		t.Fatalf("MAX should rise to the live peak: got %v, want <= -12 dB", st.maxDB(4))
 	}
 
 	// Feed many quiet frames.
 	quiet := [10]float64{}
+	for i := range quiet {
+		quiet[i] = spectrumMinDB
+	}
 	for i := 0; i < 500; i++ {
 		st.UpdateMax(quiet)
 	}
-	if st.MaxPeaks[4] < 0.85 {
-		t.Fatalf("MAX should persist across 500 quiet frames, got %v", st.MaxPeaks[4])
+	if st.maxDB(4) != -12 {
+		t.Fatalf("MAX should persist across 500 quiet frames, got %v", st.maxDB(4))
 	}
 }
 
@@ -39,10 +46,10 @@ func TestSpectrumPhase2_PersistentMaxMarker(t *testing.T) {
 // state should zero every band's MAX.
 func TestSpectrumPhase2_ResetMaxClearsAllBands(t *testing.T) {
 	var st SpectrumPeakState
-	st.MaxPeaks = [10]float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}
+	st.MaxPeaksDB = [10]float64{-1, -2, -3, -4, -5, -6, -7, -8, -9, -10}
 	st.ResetMax()
-	for i, v := range st.MaxPeaks {
-		if v != 0 {
+	for i, v := range st.MaxPeaksDB {
+		if v != spectrumNoPeakDB {
 			t.Errorf("MaxPeaks[%d] after reset: got %v, want 0", i, v)
 		}
 	}
@@ -69,12 +76,14 @@ func TestSpectrumPhase2_MaxMarkerRendered(t *testing.T) {
 
 	// Pre-set MAX markers near the top of bands 1, 4, 8 so we can find them.
 	st := &SpectrumPeakState{}
-	st.MaxPeaks[1] = 0.9
-	st.MaxPeaks[4] = 0.7
-	st.MaxPeaks[8] = 0.95
+	st.MaxPeaksDB[1] = -10
+	st.MaxPeaksDB[4] = -24
+	st.MaxPeaksDB[8] = -6
 
+	// detail is unconditional now (the DTL pill is gone), but the renderer
+	// still takes the flag, so pass it explicitly.
 	rects := collectFilledRects(t, func() {
-		drawAnalyzerSpectrumWithScale(dst, rect, ch, st, freqScaleLog)
+		drawAnalyzerSpectrumImpl(dst, rect, ch, st, freqScaleLog, spectrumChromeOpts{detail: true})
 	})
 
 	// MAX markers are rendered in genColorVizSpectrumPeakMarker (same hue

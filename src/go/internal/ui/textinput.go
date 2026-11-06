@@ -76,6 +76,17 @@ type TextInput struct {
 	// the visible-text window all shift/shrink by these amounts.
 	PadLeft  int
 	PadRight int
+
+	// Native keyboard wiring (see textfield.go): set by NewTextField.
+	native   TextFieldSpec
+	reg      *textFieldRegistry
+	liveTick uint64 // registry tick of the last Update
+	listed   bool   // present in reg.fields
+
+	// TextColor, when non-nil, tints the readout glyphs. Nil keeps the default
+	// near-white sprite color. Used to calm the home-row BPM readout to the
+	// on-surface-muted grey without touching the shared default.
+	TextColor color.Color
 }
 
 // NewTextInput constructs a text input with the given rectangle and style.
@@ -143,6 +154,9 @@ func (t *TextInput) CursorForTest() int { return t.cursor }
 // Update processes mouse/keyboard input.
 
 func (t *TextInput) Update() bool {
+	if t.reg != nil {
+		t.reg.markLive(t) // live this frame → native keyboard wiring armed
+	}
 	skipClick := false
 	if suppressClicksUntilRelease {
 		if isMouseButtonPressed(ebiten.MouseButtonLeft) {
@@ -469,7 +483,11 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 	txt, start := t.visibleText()
 	th := TextHeight()
 	ty := t.Rect.Min.Y + (t.Rect.Dy()-th)/2
-	DrawTextAt(dst, txt, t.Rect.Min.X+4+t.PadLeft, ty)
+	if tc := liveCaptured(t.TextColor); tc != nil {
+		DrawTextColorAt(dst, txt, t.Rect.Min.X+4+t.PadLeft, ty, tc)
+	} else {
+		DrawTextAt(dst, txt, t.Rect.Min.X+4+t.PadLeft, ty)
+	}
 	if t.focused && t.blink < 30 {
 		// Cursor x from the width of text before cursor position.
 		rs := []rune(t.Text)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -192,7 +193,7 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		// segment is enabled and the tap can switch views.
 		if c.want == viewModeSynth || c.want == viewModeSampler {
 			if len(dv.Rows) > 0 {
-				dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+				dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 			}
 		}
 		r := dv.viewSwitchSegmented.SegmentRect(c.seg)

@@ -6,6 +6,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -201,7 +202,7 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 	// dispatched step value while preserving production behavior.
 	var seeks []int
 	prev := z.callbacks.OnSeekToStep
-	z.callbacks.OnSeekToStep = func(step int, origin string) {
+	z.callbacks.OnSeekToStep = func(step int, origin hooks.SeekOrigin) {
 		seeks = append(seeks, step)
 		if prev != nil {
 			prev(step, origin)

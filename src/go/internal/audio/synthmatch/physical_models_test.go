@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -71,20 +73,20 @@ func lateStable(w wave.Wave) bool {
 // instruments: each must render finite, bounded, stable, audible, and on pitch.
 func TestPhysicalModelInstrumentsRenderCleanly(t *testing.T) {
 	cases := []struct {
-		id     string
+		id     instrument.ID
 		pitch  float64 // semitones from A3 (=0)
 		wantF0 float64 // Hz
 		tolPct float64
 	}{
-		{"violin", 17, 587.33, 7},       // D5 — bowed-string waveguide (osc_type:7)
-		{"cello", -7, 146.83, 9},        // D2 — bowed-string waveguide (low note)
-		{"oboe", 12, 440.0, 9},          // A4 — reed waveguide (osc_type:9)
-		{"guitar-nylon", 15, 523.25, 7}, // C5 — Karplus-Strong + warm nylon body (body_model:2)
-		{"guitar-steel", 15, 523.25, 7}, // C5 — Karplus-Strong + bright steel body (body_model:4)
-		{"harp", 15, 523.25, 7},         // C5 — Karplus-Strong celtic harp (bright, long ring)
+		{roster.Violin, 17, 587.33, 7},      // D5 — bowed-string waveguide (osc_type:7)
+		{roster.Cello, -7, 146.83, 9},       // D2 — bowed-string waveguide (low note)
+		{roster.Oboe, 12, 440.0, 9},         // A4 — reed waveguide (osc_type:9)
+		{roster.GuitarNylon, 15, 523.25, 7}, // C5 — Karplus-Strong + warm nylon body (body_model:2)
+		{roster.GuitarSteel, 15, 523.25, 7}, // C5 — Karplus-Strong + bright steel body (body_model:4)
+		{roster.Harp, 15, 523.25, 7},        // C5 — Karplus-Strong celtic harp (bright, long ring)
 	}
 	for _, c := range cases {
-		t.Run(c.id, func(t *testing.T) {
+		t.Run(string(c.id), func(t *testing.T) {
 			w, err := RenderInstrument(c.id, c.pitch, pmSampleRate, 2.0)
 			if err != nil {
 				t.Fatalf("render %s: %v", c.id, err)
@@ -120,19 +122,19 @@ func TestPhysicalModelInstrumentsRenderCleanly(t *testing.T) {
 func TestWaveguideOscTypesAreFinite(t *testing.T) {
 	cases := []struct {
 		oscType   int
-		name      string
+		name      instrument.ID
 		mustSound bool
 	}{
 		{7, "bowed", true},
 		{8, "brass", false}, // implemented but not yet a clean self-oscillator
 		{9, "reed", true},
-		{10, "flute", false}, // air-jet oscillates only in a narrow regime; not wired
-		{11, "sax", true},   // Saxofony reed-cone — all-harmonic, self-oscillating
+		{10, roster.Flute, false}, // air-jet oscillates only in a narrow regime; not wired
+		{11, roster.Sax, true},    // Saxofony reed-cone — all-harmonic, self-oscillating
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+		t.Run(string(c.name), func(t *testing.T) {
 			over := map[string]float64{"osc_enabled": 1, "osc_type": float64(c.oscType)}
-			w, err := RenderWithParams("modular", 4, pmSampleRate, 1.5, over)
+			w, err := RenderWithParams(roster.Modular, 4, pmSampleRate, 1.5, over)
 			if err != nil {
 				t.Fatalf("render osc_type %d: %v", c.oscType, err)
 			}

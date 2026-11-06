@@ -6,22 +6,22 @@ Reference for diagnosing audio issues. For pipeline architecture, see `AGENTS.sy
 
 ### Signal Isolation Env Vars
 
-These bypass pipeline stages to narrow down where a problem originates. Apply via environment variable before running.
+These bypass pipeline stages to narrow down where a problem originates. Apply via environment variable before running. The test/single-voice vars were renamed with a `BEATMO_` prefix (`internal/env/vars.go`, "Was TEST_TONE." etc.) and the old names are NOT read; the `BYPASS_*`, `AUDIO_CLIP_DEBUG` and `DEBUG_*` names are unchanged.
 
 | Var | What It Does | Use When |
 |-----|-------------|----------|
-| `TEST_TONE=1` | Pure 440Hz sine wave, bypasses all synth and mixing | Verifying oto/driver layer produces any sound at all |
-| `TEST_VOICE=1` | Simple 220Hz sine per drum hit, bypasses C synth | Testing voice scheduling and mixer path without C render complexity |
-| `TEST_RAW_VOICE=1` | Output first voice's raw samples, bypass all channel processing | Testing buffer integrity — are C-rendered samples correct? |
-| `TEST_RAW_VOICE_FULL=1` | With `TEST_RAW_VOICE`: full amplitude (1.0x instead of 0.2x) | Testing if attenuation is masking a signal issue |
-| `TEST_RAW_VOICE_NOSCALE=1` | With `TEST_RAW_VOICE`: skip all multiplication (direct to int16) | Isolating whether any Go-side scaling is corrupting the signal |
-| `SINGLE_VOICE=1` | Limit mixer to one voice at a time | Isolating multi-voice accumulation or clipping issues |
+| `BEATMO_TEST_TONE=1` | Pure 440Hz sine wave, bypasses all synth and mixing | Verifying oto/driver layer produces any sound at all |
+| `BEATMO_TEST_VOICE=1` | Simple 220Hz sine per drum hit, bypasses C synth | Testing voice scheduling and mixer path without C render complexity |
+| `BEATMO_TEST_RAW_VOICE=1` | Output first voice's raw samples, bypass all channel processing | Testing buffer integrity — are C-rendered samples correct? |
+| `BEATMO_TEST_RAW_VOICE_FULL=1` | With `BEATMO_TEST_RAW_VOICE`: full amplitude (1.0x instead of 0.2x) | Testing if attenuation is masking a signal issue |
+| `BEATMO_TEST_RAW_VOICE_NOSCALE=1` | With `BEATMO_TEST_RAW_VOICE`: skip all multiplication (direct to int16) | Isolating whether any Go-side scaling is corrupting the signal |
+| `BEATMO_SINGLE_VOICE=1` | Limit mixer to one voice at a time | Isolating multi-voice accumulation or clipping issues |
 | `BYPASS_CHANNEL_PROC=1` | Skip all channel processing (volume, inserts, EQ) | Isolating mixer vs channel processing issues |
 | `BYPASS_EQ=1` | Skip EQ/processor processing only | Isolating EQ-specific distortion or biquad corruption |
-| `BYPASS_HEADROOM=1` | Skip per-voice 0.25x headroom attenuation | Testing if headroom is too aggressive (instruments too quiet) |
+| `BYPASS_HEADROOM=1` | Skip per-voice 0.18x headroom attenuation (`VoiceHeadroom`, `chain_spec.go`) | Testing if headroom is too aggressive (instruments too quiet) |
 | `BYPASS_NORMALIZE=1` | Skip peak normalization during export | Testing export-specific amplitude issues |
 
-**File**: `src/go/internal/audio/engine_stop.go`
+**Files**: declared in `src/go/internal/env/vars.go`; read in `src/go/internal/audio/engine_stop.go` (most), `engine_mixer.go` (`BEATMO_TEST_VOICE`, in `Schedule`), `channels.go` (`BYPASS_EQ`, `BYPASS_CHANNEL_PROC`), `export.go` (`BYPASS_NORMALIZE`)
 
 ---
 
@@ -31,10 +31,10 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
 |-----|-------------|----------|
 | `AUDIO_CLIP_DEBUG=1` | Clipping events: samples exceeding +/-1.0 before hard clamp | Diagnosing distortion — shows exactly which samples clip |
 | `DEBUG_MIXER=1` | workBuf min/max values and active voice stats, periodically | Understanding signal levels at master output stage |
-| `DEBUG_CHANNEL=1` | Per-channel processing values (volume, processor output) | Understanding signal levels at per-instrument stage |
+| `DEBUG_CHANNEL=1` | Per-channel processing values (volume, processor output) | ⚠️ Only read in `Channel.ProcessSample`, which the block mixer doesn't call — expect no output from the live mixer |
 | `BEATMO_DEBUG_INST=1` | Instrument menu operations | Debugging instrument registration/lookup issues |
 
-**File**: `src/go/internal/audio/engine_stop.go` (mixer/clip), `channels.go` (channel)
+**File**: `src/go/internal/audio/engine_stop.go` (mixer/clip), `channels.go` (channel); `BEATMO_DEBUG_INST` is read in `internal/ui/drumview_instruments.go`
 
 ---
 
@@ -43,17 +43,17 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
 #### Problem: Instrument Too Quiet
 
 ```
-1. TEST_TONE=1 → silent?
-   YES → oto/driver issue, not synth. Check system audio, AUDIO_SAMPLE_RATE.
+1. BEATMO_TEST_TONE=1 → silent?
+   YES → oto/driver issue, not synth. Check system audio, BEATMO_AUDIO_SAMPLE_RATE.
    NO  ↓
-2. TEST_VOICE=1 → audible at expected level?
+2. BEATMO_TEST_VOICE=1 → audible at expected level?
    NO  → mixer/scheduling issue. Check voice is being scheduled.
    YES ↓
-3. TEST_RAW_VOICE=1 → C render output level?
-   LOW → C synth generating quiet samples. Check drums.c render function gains/envelopes.
+3. BEATMO_TEST_RAW_VOICE=1 → C render output level?
+   LOW → C synth generating quiet samples. Check the voice in modular_stages.c and the instrument's document (internal/assets/instruments/<id>.json).
    OK  ↓
 4. BYPASS_HEADROOM=1 → louder now?
-   YES → headroom (0.25x) is correct but too aggressive for this use case.
+   YES → headroom (0.18x) is correct but too aggressive for this use case.
          Consider: adjusting voice amplitude in C render, or channel volume.
    NO  ↓
 5. BYPASS_EQ=1 → louder now?
@@ -68,10 +68,10 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
 #### Problem: Crackling / Distortion
 
 ```
-1. TEST_TONE=1 → clean sine?
-   NO  → driver/oto buffer underrun. Check AUDIO_SAMPLE_RATE, buffer sizes.
+1. BEATMO_TEST_TONE=1 → clean sine?
+   NO  → driver/oto buffer underrun. Check BEATMO_AUDIO_SAMPLE_RATE, buffer sizes.
    YES ↓
-2. SINGLE_VOICE=1 → clean single hits?
+2. BEATMO_SINGLE_VOICE=1 → clean single hits?
    YES → multi-voice accumulation clipping. Too many voices × headroom.
          AUDIO_CLIP_DEBUG=1 to confirm. Consider: fewer simultaneous voices,
          lower per-voice amplitude, or adjust mixHeadroom.
@@ -80,7 +80,7 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
    YES → insert effect or EQ causing distortion.
          BYPASS_EQ=1 to isolate: if clean, biquad issue; if still dirty, insert effect.
    NO  ���
-4. TEST_RAW_VOICE=1 → clean C render output?
+4. BEATMO_TEST_RAW_VOICE=1 → clean C render output?
    NO  → C synth producing distorted samples. Check saturation/drive in render function.
    YES → mixer accumulation issue. DEBUG_MIXER=1, check workBuf ranges.
 ```
@@ -97,8 +97,9 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
      completes before voice is dropped.
 
 3. Clicks when toggling effects?
-   → Channel crossfade may not be triggering. Check channels.go crossfade logic:
-     samplesThruOld atomic flag, channelXfadeSamples = 220.
+   → Expected today on desktop: the channel crossfade (channelXfadeSamples = 220)
+     is only armed via ProcessSampleLocal (samplesThruOld), which the block mixer
+     never calls — so chain swaps are NOT crossfaded during playback.
    → BYPASS_CHANNEL_PROC=1 → no clicks? Confirms processor chain swap issue.
 
 4. Clicks in browser only?
@@ -109,11 +110,15 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
 #### Problem: Wrong Instrument Sound / Silent Instrument
 
 ```
-1. Verify instrument ID mapping in engine_instruments.go / audio.js RENDER map.
-2. Check voice cache: wrong synthParams key could serve cached buffer for different params.
+1. Verify the instrument's document (internal/assets/instruments/<id>.json, or its
+   project copy via audio.InstrumentDoc) and, in the browser, that Go pushed its block
+   (window.__instrumentBlockForTest(id)).
+2. Check voice cache: a wrong paramsHash key could serve a cached buffer for different params.
 3. Run with BEATMO_DEBUG_INST=1 to log instrument lookup.
-4. For parameterized instruments: verify _p() variant is being called, not the base renderer.
-   Check SynthParams → toCParams() → nil means default (no params applied).
+4. Every instrument renders through render_modular_p, the engine's only entry point
+   (NULL params render silence; there are no C defaults). In the browser an id renders
+   ONLY once Go has pushed its block (setInstrumentBlock); before that it has no voice
+   at all — see AGENTS.synth.wasm.md.
 ```
 
 ---
@@ -133,15 +138,16 @@ These bypass pipeline stages to narrow down where a problem originates. Apply vi
 
 #### AnalyserNodes
 
-Two AnalyserNodes exist per channel (when created):
-- **Pre-EQ**: captures signal before EQ processing
-- **Post-EQ**: captures signal after EQ processing
+Three AnalyserNodes exist per channel (when created), all wired IN-LINE:
+- **Synth** (`synthAnalyser`): before the insert effects (scope StageSynth / StageAntiPop)
+- **Pre-EQ** (`preEQAnalyser`): after inserts, before EQ (scope StageInsertFX)
+- **Post-EQ** (`analyser`): after EQ
 
 These can be tapped for spectrum analysis (FFT) or time-domain waveform capture. Useful for visualizing where in the per-channel chain signal is being altered.
 
 #### Output Capture
 
-`startOutputCapture(sampleRate)` / `stopOutputCapture()` intercepts the final mixed output before the limiter. Returns Float32Array of captured samples. Used for testing and bit-accuracy verification against desktop.
+`startOutputCapture()` (no arguments) / `stopOutputCapture()` captures the final mixed output AFTER the limiter (limiter → mono ScriptProcessor capture node → destination). Returns Float32Array of captured samples. Used for testing and bit-accuracy verification against desktop.
 
 **File**: `audio.js`
 
@@ -153,17 +159,17 @@ These are locations in the signal pipeline where signal can be measured or captu
 
 | Tap Point | Platform | What You See | How to Access |
 |-----------|----------|-------------|---------------|
-| Post-C-render | Both | Raw synthesized voice buffer (float32) | `TEST_RAW_VOICE=1` (desktop), or inspect `ensureRenderedSample()` cache (browser) |
+| Post-C-render | Both | Raw synthesized voice buffer (float32) | `BEATMO_TEST_RAW_VOICE=1` (desktop), or inspect `ensureRenderedSample()` cache (browser) |
 | Post-voice-headroom | Desktop | Voice after 0.18x attenuation | `instBufs[slot]` in `engine_stop.go` Phase 1 |
 | Per-instrument sum | Desktop | All voices for one instrument summed | `instBufs[slot]` after Phase 1 completes |
-| Post-channel-processing | Desktop | After volume + inserts + EQ | `postEQBuf` in Phase 2 (per instrument, before masterBuf accumulation) |
-| Post-send-effects | Desktop | After delay/reverb wet mixed in | `masterBuf` after Phase 2.5 |
+| Post-inserts | Desktop | After volume + inserts, before EQ | `postFXBuf` in Phase 2a |
+| Post-channel-processing | Desktop | After volume + inserts + EQ | `postEQBuf` in Phase 2b (per instrument, before masterBuf accumulation) |
 | Post-master | Desktop | After master EQ + compressor | `workBuf` after Phase 3 |
-| Pre-clamp | Desktop | Signal before [-1,1] hard clamp | `AUDIO_CLIP_DEBUG=1` logs clipping here |
+| Pre-clamp | Desktop | Signal before the 0.9 soft-clip + [-1,1] safety clamp | `AUDIO_CLIP_DEBUG=1` logs clipping here |
 | Pre-EQ (browser) | Browser | Per-channel signal before EQ | `AnalyserNode` (pre-EQ) |
 | Post-EQ (browser) | Browser | Per-channel signal after EQ | `AnalyserNode` (post-EQ) |
-| Final mix (browser) | Browser | Stereo output before limiter | `startOutputCapture()` / `stopOutputCapture()` |
-| All stages (export) | Desktop | All 5 stages for all instruments + master | `SCOPE_EXPORT=1` → JSONL file (see Scope Export section) |
+| Final mix (browser) | Browser | Mono output after the limiter | `startOutputCapture()` / `stopOutputCapture()` |
+| All stages (export) | Desktop | All 6 stages for all instruments + master | `SCOPE_EXPORT=1` → JSONL file (see Scope Export section) |
 
 ---
 
@@ -182,8 +188,8 @@ A continuous JSONL exporter that captures all 6 pipeline stages for every instru
 | `SCOPE_EXPORT_INTERVAL` | `2` | Seconds between snapshots |
 
 **What each snapshot contains** (one JSON line, ~5-10KB):
-- Per-instrument: peak/RMS dB, clip count, 64-point waveform (min/max pairs), top-16 FFT bins (Hz + dB), zero-crossing rate — at each stage (synth, antipop, eq)
-- Master: same metrics at sends and master stages
+- Per-instrument: peak/RMS dB, clip count, 64-point waveform (min/max pairs), top-16 FFT bins (Hz + dB), zero-crossing rate — at each per-instrument stage (synth, antipop, insertfx, eq)
+- Master: same metrics at the master stage
 - Metadata: BPM, sample rate, per-channel volume/pan/name/kind
 
 **Pipeline stages captured** (push points in `engine_mixer.go` and `engine_stop.go`):
@@ -192,9 +198,9 @@ A continuous JSONL exporter that captures all 6 pipeline stages for every instru
 |-------|----|----------|--------|
 | StageSynth | 0 | `engine_mixer.go` Schedule() | Raw C synth buffer (float32→float64) |
 | StageAntiPop | 1 | `engine_stop.go` Phase 1 post | Per-instrument after headroom (before EQ) |
-| StageEQ | 3 | `engine_stop.go` Phase 2 | Per-instrument after volume + inserts + EQ (via `postEQBuf`) |
-| StageSends | 4 | `engine_stop.go` Phase 2.5 post | Master after send effects mixed in |
-| StageMaster | 5 | `engine_stop.go` Phase 3 post | Final master output |
+| StageInsertFX | 2 | `engine_stop.go` Phase 2a | Per-instrument after volume + inserts, before EQ (via `postFXBuf`) |
+| StageEQ | 3 | `engine_stop.go` Phase 2b | Per-instrument after volume + inserts + EQ (via `postEQBuf`) |
+| StageMaster | 4 | `engine_stop.go` Phase 3 post | Final master output |
 
 **Analysis with jq**:
 

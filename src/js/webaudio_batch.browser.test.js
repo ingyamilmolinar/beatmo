@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
@@ -64,23 +65,29 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   // Wrap bridge calls to count invocations. Go's PlayBatch prefers
   // playSoundsBatchFlat over playSoundsBatch when both exist (see
   // src/go/internal/audio/batch_wasm.go), so both paths count as "batch".
-  await page.evaluate(() => { window.__counts = { batch: 0, params: 0 };
+  // `notes` counts what each crossing carried, so batching is measured at the
+  // bridge itself — on the audio lane (the browser default) and the legacy
+  // audioLoop path alike.
+  await page.evaluate(() => { window.__counts = { batch: 0, notes: 0, params: 0 };
     const ob = window.playSoundsBatch;
     const obf = window.playSoundsBatchFlat;
     const op = window.playSoundParams;
-    if (typeof window.playSoundsBatch === 'function') { window.playSoundsBatch = (arr) => { window.__counts.batch++; return ob.call(window, arr); };
+    if (typeof window.playSoundsBatch === 'function') { window.playSoundsBatch = (arr) => { window.__counts.batch++; window.__counts.notes += arr.length; return ob.call(window, arr); };
     }
-    if (typeof window.playSoundsBatchFlat === 'function') { window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen) => { window.__counts.batch++; return obf.call(window, ids, vols, pitches, durs, whens, hasWhen); };
+    if (typeof window.playSoundsBatchFlat === 'function') { window.playSoundsBatchFlat = (ids, ...rest) => { window.__counts.batch++; window.__counts.notes += ids.length; return obf.call(window, ids, ...rest); };
     }
     if (typeof window.playSoundParams === 'function') { window.playSoundParams = (id, vol, pitch, dur, when) => { window.__counts.params++; return op.call(window, id, vol, pitch, dur, when); };
     }
-    if (typeof window.resumeAudio === 'function') { window.resumeAudio(); }
   });
+  // The audio lane commits notes against the AudioContext clock, so nothing is
+  // sent until a context runs; audio.js creates it on the first user gesture.
+  await page.evaluate(() => { document.dispatchEvent(new Event('pointerdown')); window.resumeAudio?.(); });
+  await page.waitForFunction(() => window.__audioCtx && window.__audioCtx.state === 'running', null, { timeout: 15000 });
 
   // Build a moderate graph and start playback.
   await page.evaluate(() => buildPerfRect(2, 1));
   await page.evaluate(() => setBPM(150));
-  await page.evaluate(() => startPlay());
+  await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 
   await page.waitForTimeout(1200);
 
@@ -93,7 +100,7 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   }
   if (res.counts.params > 2) { throw new Error('unexpected fallback to per-item params calls');
   }
-  if (!(res.stats.audioDeq < res.stats.audioEnq)) { throw new Error(`expected fewer dispatches than enqueues; got deq=${res.stats.audioDeq} enq=${res.stats.audioEnq}`);
+  if (!(res.counts.notes > res.counts.batch)) { throw new Error(`expected fewer bridge crossings than notes; got ${res.counts.batch} crossings for ${res.counts.notes} notes`);
   }
   await assertNoSchedulerMismatches(page, "batch audio: scheduler mismatches");
   if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "batch_audio");

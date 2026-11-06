@@ -24,7 +24,7 @@ func almostEqual(a, b float64) bool {
 // exercises GroupMenu's buttons — mirroring the already-established fact
 // (zz_repro_groupmenu_click_test.go, superseded by this file) that rects are
 // live and clickable without any Draw() call in this harness.
-func clickMenuControl(t *testing.T, g *Game, id string) {
+func clickMenuControl(t *testing.T, g *Game, id gmID) {
 	t.Helper()
 	r, ok := g.groupMenu.rects[id]
 	if !ok || r.Empty() {
@@ -61,7 +61,7 @@ func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 	g.groupMenu.OpenAt(gid, 100, 100)
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "rdpit+")
+	clickMenuControl(t, g, gmPlus(gmStepPitch))
 	advanceFrames(g, 2)
 	grp, _ := g.graph.Group(gid)
 	if len(grp.Rules) != 1 {
@@ -71,7 +71,7 @@ func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 		t.Fatalf("rdpit+ click must NOT enable the group, got RulesEnabled=true")
 	}
 
-	clickMenuControl(t, g, "ruleonoff")
+	clickMenuControl(t, g, gmRuleOnOff)
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if !grp.RulesEnabled {
@@ -81,7 +81,7 @@ func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 		t.Fatalf("ruleonoff click must not touch the configured rule, got %+v", grp.Rules)
 	}
 
-	clickMenuControl(t, g, "ruleonoff")
+	clickMenuControl(t, g, gmRuleOnOff)
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if grp.RulesEnabled {
@@ -106,21 +106,21 @@ func TestGroupMenuE2E_DeltaStepClicksApplyIndependentlyPerParam(t *testing.T) {
 	g.groupMenu.OpenAt(gid, 100, 100)
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "rdpit+")
+	clickMenuControl(t, g, gmPlus(gmStepPitch))
 	advanceFrames(g, 2)
 	grp, _ := g.graph.Group(gid)
 	if r := findRule(grp.Rules, model.GroupParamPitch); r == nil || !almostEqual(r.Delta, 1) {
 		t.Fatalf("pitch after 1 rdpit+ = %+v, want delta 1", r)
 	}
 
-	clickMenuControl(t, g, "rdpit+")
+	clickMenuControl(t, g, gmPlus(gmStepPitch))
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if r := findRule(grp.Rules, model.GroupParamPitch); r == nil || !almostEqual(r.Delta, 2) {
 		t.Fatalf("pitch after 2 rdpit+ = %+v, want delta 2", r)
 	}
 
-	clickMenuControl(t, g, "rdvol+")
+	clickMenuControl(t, g, gmPlus(gmStepVolume))
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if r := findRule(grp.Rules, model.GroupParamVolume); r == nil || !almostEqual(r.Delta, 0.05) {
@@ -131,7 +131,7 @@ func TestGroupMenuE2E_DeltaStepClicksApplyIndependentlyPerParam(t *testing.T) {
 		t.Fatalf("pitch rule disturbed by volume edit: %+v", r)
 	}
 
-	clickMenuControl(t, g, "rddur-")
+	clickMenuControl(t, g, gmMinus(gmStepDuration))
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if r := findRule(grp.Rules, model.GroupParamDuration); r == nil || !almostEqual(r.Delta, -0.05) {
@@ -153,24 +153,24 @@ func TestGroupMenuE2E_EveryNStepClickFloorsAtOne(t *testing.T) {
 	g.groupMenu.OpenAt(gid, 100, 100)
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "rdpit+") // configure a rule, EveryN default 1
+	clickMenuControl(t, g, gmPlus(gmStepPitch)) // configure a rule, EveryN default 1
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "n-") // already at floor
+	clickMenuControl(t, g, gmMinus(gmStepEveryN)) // already at floor
 	advanceFrames(g, 2)
 	grp, _ := g.graph.Group(gid)
 	if grp.Rules[0].EveryN != 1 {
 		t.Fatalf("n- at floor = %d, want 1", grp.Rules[0].EveryN)
 	}
 
-	clickMenuControl(t, g, "n+")
+	clickMenuControl(t, g, gmPlus(gmStepEveryN))
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if grp.Rules[0].EveryN != 2 {
 		t.Fatalf("n+ = %d, want 2", grp.Rules[0].EveryN)
 	}
 
-	clickMenuControl(t, g, "n-")
+	clickMenuControl(t, g, gmMinus(gmStepEveryN))
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
 	if grp.Rules[0].EveryN != 1 {
@@ -188,7 +188,7 @@ func TestGroupMenuE2E_SaveClickCommitsProvisionalGroup(t *testing.T) {
 	gid := marqueeCreateGroup(t, g, aID, bID)
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "save")
+	clickMenuControl(t, g, gmSave)
 	advanceFrames(g, 2)
 
 	if !g.groupMenu.IsOpen() {
@@ -214,7 +214,7 @@ func TestGroupMenuE2E_CloseClickDiscardsProvisionalGroup(t *testing.T) {
 	gid := marqueeCreateGroup(t, g, aID, bID)
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "close")
+	clickMenuControl(t, g, gmClose)
 	advanceFrames(g, 2)
 
 	if g.groupMenu.IsOpen() {
@@ -253,7 +253,7 @@ func TestGroupMenuE2E_DeleteClickRemovesCommittedGroup(t *testing.T) {
 	advanceFrames(g, 2)
 	undoBefore := len(g.undoManager.undo)
 
-	clickMenuControl(t, g, "delete")
+	clickMenuControl(t, g, gmDelete)
 	advanceFrames(g, 2)
 
 	if g.groupMenu.IsOpen() {
@@ -283,14 +283,14 @@ func TestGroupMenuE2E_ClickInsidePanelNoControlIsConsumed(t *testing.T) {
 	g.groupMenu.OpenAt(gid, 100, 100)
 	advanceFrames(g, 2)
 
-	r, ok := g.groupMenu.rects["rulelabel"]
+	r, ok := g.groupMenu.rects[gmRuleLabel]
 	if !ok || r.Empty() {
 		t.Fatalf("setup: rulelabel rect missing/empty")
 	}
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	pt := image.Pt(cx, cy)
 	for id, cr := range g.groupMenu.rects {
-		if id == "panel" || id == "title" || id == "rulelabel" {
+		if id == gmPanel || id == gmTitle || id == gmRuleLabel {
 			continue
 		}
 		if pt.In(cr) {
@@ -345,11 +345,11 @@ func TestGroupMenuE2E_PlaybackRuleEditPreservesTriggerParity(t *testing.T) {
 	t.Cleanup(func() { stopPlaybackForTest(g) })
 	advanceFrames(g, 5)
 
-	clickMenuControl(t, g, "rdpit+") // configure rule (pitch, delta 1, everyN 1)
+	clickMenuControl(t, g, gmPlus(gmStepPitch)) // configure rule (pitch, delta 1, everyN 1)
 	advanceFrames(g, 2)
-	clickMenuControl(t, g, "rdpit+") // delta 1 -> 2
+	clickMenuControl(t, g, gmPlus(gmStepPitch)) // delta 1 -> 2
 	advanceFrames(g, 3)
-	clickMenuControl(t, g, "ruleonoff") // deltas alone never enable — flip it on
+	clickMenuControl(t, g, gmRuleOnOff) // deltas alone never enable — flip it on
 	advanceFrames(g, 3)
 
 	grp, ok := g.graph.Group(gid)
@@ -507,7 +507,7 @@ func TestGroupMenuE2E_PlaybackDeleteClickRevertsAllMembersToBase(t *testing.T) {
 		t.Fatalf("setup: round-2 pitch A=%v B=%v, want both 4", pitchA, pitchB)
 	}
 
-	clickMenuControl(t, g, "delete")
+	clickMenuControl(t, g, gmDelete)
 	advanceFrames(g, 3)
 
 	if g.groupMenu.IsOpen() {
@@ -540,7 +540,7 @@ func TestGroupMenuE2E_PlaybackSaveViaRealMarquee(t *testing.T) {
 	}
 	advanceFrames(g, 2)
 
-	clickMenuControl(t, g, "save")
+	clickMenuControl(t, g, gmSave)
 	advanceFrames(g, 3)
 
 	if !g.groupMenu.IsOpen() {

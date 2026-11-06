@@ -6,6 +6,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -16,7 +17,7 @@ import (
 func TestColorWheelHoldRelease(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openColorWheelPortal()
@@ -32,7 +33,7 @@ func TestColorWheelHoldRelease(t *testing.T) {
 func TestColorWheelPressOnWheel(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openColorWheelPortal()
@@ -50,7 +51,7 @@ func TestColorWheelPressOnWheel(t *testing.T) {
 func TestColorWheelPressOutsideWheel(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openColorWheelPortal()
@@ -68,7 +69,7 @@ func TestColorWheelPressOutsideWheel(t *testing.T) {
 func TestColorWheelCloseResetsState(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openColorWheelPortal()
@@ -88,7 +89,7 @@ func TestColorWheelCloseResetsState(t *testing.T) {
 func TestInstMenuBoundsWhenClosed(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.CloseAllPopups()
@@ -106,7 +107,7 @@ func TestInstMenuBoundsWhenClosed(t *testing.T) {
 func TestInstMenuBoundsInvalidRow(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openInstMenuPortal()
@@ -124,7 +125,7 @@ func TestInstMenuBoundsInvalidRow(t *testing.T) {
 func TestInstMenuScrollDragging(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openInstMenuPortal()
@@ -140,7 +141,7 @@ func TestInstMenuScrollDragging(t *testing.T) {
 func TestInstMenuCloseResetsState(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0}}
 	dv.Length = 8
 
 	dv.openInstMenuPortal()

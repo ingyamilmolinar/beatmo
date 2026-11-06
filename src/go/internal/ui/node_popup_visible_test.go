@@ -22,7 +22,7 @@ func TestNodePopupClampedInsideTopPane(t *testing.T) {
 	n := g.tryAddNode(g.grid.MaxDiv()-1, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	g.sidebar.layout()
-	panel, ok := g.sidebar.rects["panel"]
+	panel, ok := g.sidebar.rects[sbPanel]
 	if !ok || panel.Empty() {
 		t.Fatalf("panel rect missing")
 	}

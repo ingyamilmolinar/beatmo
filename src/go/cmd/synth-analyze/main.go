@@ -19,6 +19,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/synthmatch"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // ---- Subcommands --------------------------------------------------------
@@ -64,7 +66,7 @@ func cmdRef(args []string) {
 
 func cmdSynth(args []string) {
 	fs := flag.NewFlagSet("synth", flag.ExitOnError)
-	inst := fs.String("inst", "violin", "instrument id")
+	inst := fs.String("inst", string(roster.Violin), "instrument id")
 	pitch := fs.Float64("pitch", 0, "pitch offset in semitones from A3=220Hz")
 	dur := fs.Float64("dur", 0, "duration in seconds (0 = instrument default)")
 	label := fs.String("label", "", "label for fingerprint")
@@ -80,7 +82,7 @@ func cmdSynth(args []string) {
 	sr := audio.SampleRate()
 	fmt.Fprintf(os.Stderr, "Rendering %q at pitch=%+.1f, sr=%d...\n", *inst, *pitch, sr)
 
-	w, err := synthmatch.RenderInstrument(*inst, *pitch, sr, *dur)
+	w, err := synthmatch.RenderInstrument(instrument.ID(*inst), *pitch, sr, *dur)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "synth: render error: %v\n", err)
 		os.Exit(1)

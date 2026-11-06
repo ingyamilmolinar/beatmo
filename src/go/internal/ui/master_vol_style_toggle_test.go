@@ -10,11 +10,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// These tests pin the master volume icon to the same minimalist style as the
-// per-row volume icons (drawVolIcon) and require that clicking the icon a
-// second time closes the popup (toggle behavior).
+// These tests pin the master volume icon to the same style as the per-row
+// volume icons (drawVolIcon) and require that clicking the icon a second time
+// closes the popup (toggle behavior).
 //
-// Style: just the speaker glyph — no rounded chip background, no overlay
+// Style: the shared button-secondary keycap body (like every neighbouring
+// keycap) with the speaker glyph and the level indicator on it — no overlay
 // fill bar, identical mobile/desktop chrome.
 //
 // Toggle: a second press on the icon — not on empty canvas — closes the
@@ -50,17 +51,17 @@ func colorEqRGB(a, b color.Color) bool {
 
 // --- Style consistency tests ---
 
-// TestMasterVolIcon_NoChipBackgroundOnMobile pins the master vol icon to the
-// row-vol-icon minimalist style: no rounded surface chip on mobile. Row vol
-// icons (drawVolIcon) draw only the speaker glyph.
-func TestMasterVolIcon_NoChipBackgroundOnMobile(t *testing.T) {
+// TestMasterVolIcon_KeycapBodyOnMobile pins the master vol icon to the shared
+// keycap body: a filled rounded rect equal to the icon rect in the
+// button-secondary fill, exactly like the per-row volume cells and every
+// other transport keycap (it used to paint no body at all).
+func TestMasterVolIcon_KeycapBodyOnMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	activeProfile = nil
 	defer func() {
 		forceSmallScreenForTest = false
 		activeProfile = nil
 	}()
-
 	z, _ := newTestTransportZone()
 	z.Layout(image.Rect(0, 0, 720, 240))
 	if z.mainVolIconRect.Empty() {
@@ -70,24 +71,23 @@ func TestMasterVolIcon_NoChipBackgroundOnMobile(t *testing.T) {
 		t.Skip("mainVolSlider nil")
 	}
 	z.mainVolSlider.Value = 0.5
-
 	dst := ebiten.NewImage(720, 240)
 	calls := captureRoundedRect(t, func() {
 		z.drawMasterVolIconOffset(dst, 0, 0)
 	})
 	icon := z.mainVolIconRect
+	want := Spec(ComponentButtonSecondary).Fill
+	body := false
 	for _, c := range calls {
-		if !c.Filled {
-			continue
+		if c.Filled && c.Rect == icon && colorEqRGB(c.Color, want) {
+			body = true
 		}
-		// A filled rounded rect whose rect equals (or covers) the icon
-		// rect is the deprecated chip background.
-		if c.Rect == icon || icon.In(c.Rect) {
-			t.Fatalf("master vol icon drew a filled rounded chip behind the glyph: %+v", c)
+		if c.Filled && c.Rect == icon && colorEqRGB(c.Color, colSurface1) {
+			t.Fatalf("master vol icon drew a surface-1 body (the bed tone), not the keycap body: %+v", c)
 		}
-		if c.Rect.In(icon) && colorEqRGB(c.Color, colSurface1) {
-			t.Fatalf("master vol icon drew a colSurface1 chip inside the icon rect: %+v", c)
-		}
+	}
+	if !body {
+		t.Fatalf("master vol icon drew no keycap body %v at %v: %+v", want, icon, calls)
 	}
 }
 

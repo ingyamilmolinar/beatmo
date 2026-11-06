@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.0.1",
+  "id": "clap-lofi",
+  "name": "Lo-Fi Clap",
+  "category": "modular",
+  "notes": "clapSeed is the clap voice as config (the former drum-clap C literals). The clap\nreads only tune / noise_d / tail_d / noise_m / attack.\nNOTE: no voice_freq_hz. The source==8 clap is pure noise and ignores it (the\nlegacy spec carried 500 only for ABI uniformity), but DECLARING a base\nfrequency makes the fundamentals generator resolve a note name for it — and a\nclap must stay unpitched, or every clap node grows a bogus note label.",
+  "render": {
+    "seconds": 0.15,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 10,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "clap",
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "snare_attack": 110,
+        "snare_noise_d": 7,
+        "snare_noise_m": 0.15,
+        "snare_tail_d": 4,
+        "snare_tune": 1
+      }
+    }
+  ],
+  "fx": [
+    {
+      "type": "fx.bitcrusher",
+      "v": 1,
+      "on": true,
+      "values": {
+        "bits": 4,
+        "mix": 1,
+        "rate": 1
+      }
+    },
+    {
+      "type": "fx.distortion",
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 2,
+        "mix": 1,
+        "tone": 8000
+      }
+    },
+    {
+      "type": "fx.filter",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cutoff": 500,
+        "mix": 1,
+        "mode": 1,
+        "q": 0.707
+      }
+    }
+  ]
+}

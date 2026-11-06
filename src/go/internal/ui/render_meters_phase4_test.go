@@ -8,6 +8,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestLevelsReadoutNeverDisappears pins the Phase 4 contract: across
@@ -25,12 +27,12 @@ func TestLevelsReadoutNeverDisappears(t *testing.T) {
 			PeakDB: -8, RMSDB: -14, ClipCount: 0,
 		},
 		Instruments: []analyzer.InstrumentMetrics{
-			{ID: "kick", Name: "Kick", Active: true, PeakDB: -6},
-			{ID: "snare", Name: "Snare", Active: true, PeakDB: -10},
+			{ID: channel.Of(roster.Kick), Name: "Kick", Active: true, PeakDB: -6},
+			{ID: channel.Of(roster.Snare), Name: "Snare", Active: true, PeakDB: -10},
 		},
 	}
 	latches := NewMultiLevelsLatch()
-	latches.Get("main").Update(0, -8, -14)
+	latches.Get(channel.Master).Update(0, -8, -14)
 
 	densities := []Density{DensityCompact, DensityComfortable, DensitySpacious}
 	widths := []int{200, 280, 360, 480, 720}
@@ -91,11 +93,11 @@ func TestLevelsAggregatesIconRowRendersAllThree(t *testing.T) {
 	state := &analyzer.State{
 		Master: analyzer.ChannelMetrics{Active: true, PeakDB: -8},
 		Instruments: []analyzer.InstrumentMetrics{
-			{ID: "kick", Name: "Kick", Active: true, PeakDB: -6},
+			{ID: channel.Of(roster.Kick), Name: "Kick", Active: true, PeakDB: -6},
 		},
 	}
 	latches := NewMultiLevelsLatch()
-	latches.Get("main").Update(0, -8, -14)
+	latches.Get(channel.Master).Update(0, -8, -14)
 
 	dst := ebiten.NewImage(60, 90)
 	rects := collectFilledRects(t, func() {

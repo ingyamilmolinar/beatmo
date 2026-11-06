@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestRowsLayerWindowedRenderMatchesLegacy verifies the windowed scroll cache
@@ -37,7 +38,7 @@ func TestRowsLayerWindowedRenderMatchesLegacy(t *testing.T) {
 		g.addEdge(n0, n1)
 		g.addEdge(n1, n0)
 		g.updateBeatInfos()
-		g.SetPlayFunc(func(string, float64, ...float64) {})
+		g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 		g.drum.SetFollow(true)
 		defer SetTrackBeatForceRefreshForTest(false)()
 		pressPlay(t, g.drum)

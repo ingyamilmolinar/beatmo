@@ -1,0 +1,102 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-punchy",
+  "name": "Dry Kick",
+  "category": "modular",
+  "notes": "punchyKickSeed: a PUNCHY, RAW, BRUTAL kick (tuned toward yellowtree\n\"hybrid-kick-1\") on the LAYERED kick DSP (variant 5). That voice resolves the\npunch-vs-raw tension a single distorted voice cannot: a pitch-swept body +\nenvelope-tracked grit fused through distortion (raw, decays with the body = no\nhiss) + a sharp POST-distortion click (high crest = the punch). The kick knobs\nare re-purposed by variant 5: sat = DISTORTION DRIVE, noise = GRIT amount,\nclick = the TRANSIENT SPIKE.\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nclick 0.30→0.22, noise 0.16→0, env0 12.0→13.5, sat 1.4→2.6, h2 0.22→0,\nenv1 12→0.5",
+  "render": {
+    "seconds": 0.25,
+    "amplitude": 0.8834,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 45
+      },
+      "notes": "voice_freq_hz: settles ~45 Hz (more sub weight); the sweep loads 60-90 Hz"
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.hybrid",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 1.5,
+        "kick_click": 0.22,
+        "kick_env0": 13.5,
+        "kick_env1": 0.5,
+        "kick_fade": 4,
+        "kick_h2": 0,
+        "kick_h3": 0.02,
+        "kick_noise": 0,
+        "kick_pe_amt": 0.9,
+        "kick_pe_rate": 35,
+        "kick_sat": 2.6,
+        "wave": 0
+      },
+      "notes": "gen1_kick_click: low thud attack = punch without a high tss\ngen1_kick_env0: tight decay + attack-swell = a punchy thump that finishes DRY\ngen1_kick_env1: tight decay + attack-swell = a punchy thump that finishes DRY\ngen1_kick_h2: modest h2 punch, tiny h3 (ref has ~1% in 120-250)\ngen1_kick_h3: modest h2 punch, tiny h3 (ref has ~1% in 120-250)\ngen1_kick_noise: low-mid attack grit = organic thickness + punch (no high air)\ngen1_kick_pe_amt: PUNCH BAND: the reference puts 42% of its energy in 60-120 Hz (the thump you\nFEEL) — a pure <60 Hz sub reads \"weak/boomy\". A moderate-rate sweep from\n~91 Hz that LINGERS in 60-90 during the loud swell (peak ~30 ms) lands the\nbody in the punch band, then settles to 48. NOT \"high pitched\" (that bug was\na 105 Hz body); 60-90 Hz is a thump.\ngen1_kick_sat: ORGANIC grit comes from a LOW-MID noise texture (120-500 Hz, steep) in the\nATTACK only — that's body thickness + attack thwack (punch), NOT high air.\n\"Airy/spitty\" is HF noise (>1 kHz); this band has none, so it's organic +\npunchy without spit. Fully removing noise made it electronic and unpunchy. light tonal distortion for warmth/dirt\ngen1_kick_variant: the layered hybrid DSP"
+    }
+  ]
+}

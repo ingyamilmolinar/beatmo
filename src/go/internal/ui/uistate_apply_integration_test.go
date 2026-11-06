@@ -62,6 +62,7 @@ func TestUistateApplyFileFullConfigDrivesGame(t *testing.T) {
 	// node from the public API. The (camera, splitter, view, profile)
 	// path covers every other applier method.
 	body := `{
+		"schema_version": "0.0.1",
 		"profile": "mobile",
 		"force_auto_size": true,
 		"camera": {"x": 75, "y": 40, "scale": 1.5},

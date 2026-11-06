@@ -3,6 +3,10 @@ package ui
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
 func TestImportScalesSubdivisionsAndKeepsOrthogonality(t *testing.T) {
@@ -23,25 +27,25 @@ func TestImportScalesSubdivisionsAndKeepsOrthogonality(t *testing.T) {
 		Outputs []int  `json:"outputs"`
 	}
 	type inst struct {
-		Name   string  `json:"name"`
-		ID     string  `json:"id"`
-		Kind   string  `json:"kind"`
-		Volume float64 `json:"volume"`
-		Origin int     `json:"origin"`
-		Color  string  `json:"color"`
+		Name   string        `json:"name"`
+		ID     instrument.ID `json:"id"`
+		Kind   string        `json:"kind"`
+		Volume float64       `json:"volume"`
+		Origin int           `json:"origin"`
+		Color  string        `json:"color"`
 	}
 	type file struct {
-		Version     int    `json:"version"`
-		Subdiv      int    `json:"subdiv"`
-		BPM         int    `json:"bpm"`
-		Instruments []inst `json:"instruments"`
-		Nodes       []node `json:"nodes"`
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Instruments   []inst `json:"instruments"`
+		Nodes         []node `json:"nodes"`
 	}
 	f := file{
-		Version:     1,
-		Subdiv:      32,
-		BPM:         110,
-		Instruments: []inst{{Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           110,
+		Instruments:   []inst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
 		Nodes: []node{
 			{ID: 1, I: 0, J: 32, Type: "regular", Inputs: []int{4}, Outputs: []int{2}},
 			{ID: 2, I: 32, J: 32, Type: "regular", Inputs: []int{1}, Outputs: []int{3}},

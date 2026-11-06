@@ -28,8 +28,10 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(__dirname, "../go");
@@ -93,12 +95,12 @@ try {
     {},
     { timeout: 10000 },
   );
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
   // Start playback. The default circuit boots with active nodes so hits
   // begin immediately. Settle 1s so several hits land in the analyser
   // window across snapshot reads.
-  await page.evaluate(() => startPlay());
+  await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
   await page.waitForTimeout(1000);
 
   // Capture master output to verify audio is actually pumping.

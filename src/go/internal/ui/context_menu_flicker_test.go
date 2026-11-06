@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -31,7 +32,7 @@ func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 	dv := NewDrumView(bounds, nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Snare",
-		Instrument: "snare",
+		Instrument: roster.Snare,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -124,7 +125,7 @@ func TestContextMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv := NewDrumView(bounds, nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{{
 		Name:       "Snare",
-		Instrument: "snare",
+		Instrument: roster.Snare,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}

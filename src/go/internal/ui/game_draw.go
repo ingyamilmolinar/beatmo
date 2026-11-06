@@ -34,10 +34,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.lastDrawDrumMS = float64(drumDur) / 1e6
 	// Draw divider last so it sits above both panes
 	g.drawDivider(screen)
+	// …except the window-bounded theme editor, which sits above the divider.
+	g.drawThemeOverlaysAboveDivider(screen)
 	if !g.perfDrawMuted {
 		g.perf.onDraw(time.Since(t0))
 	}
 	g.maybeCaptureScreenshot(screen)
+	if g.tour != nil {
+		g.tour.frame(g, screen)
+	}
 }
 
 // maybeCaptureScreenshot counts draws and captures the screen once the UI has

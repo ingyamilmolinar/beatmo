@@ -27,7 +27,7 @@ func buildRebuildCircuit(t *testing.T, profile string) (*Predictor, *model.Graph
 		graph.Edges[[2]model.NodeID{ids[k], ids[(k+1)%n]}] = struct{}{}
 	}
 	graph.StartNodeID = ids[0]
-	set := func(idx int, kind string, ln int, lp float64) {
+	set := func(idx int, kind model.LogicKind, ln int, lp float64) {
 		node, _ := graph.GetNodeByID(ids[idx])
 		node.Params.LogicKind, node.Params.LogicN, node.Params.LogicP = kind, ln, lp
 		graph.SetNodeParams(ids[idx], node.Params)
@@ -35,24 +35,24 @@ func buildRebuildCircuit(t *testing.T, profile string) (*Predictor, *model.Graph
 	switch profile {
 	case "static":
 	case "every_n":
-		set(2, "every_n_triggers", 2, 0)
-		set(5, "every_n_triggers", 3, 0)
+		set(2, model.LogicEveryN, 2, 0)
+		set(5, model.LogicEveryN, 3, 0)
 	case "skip_every_n":
-		set(3, "skip_every_n", 2, 0)
-		set(7, "skip_every_n", 4, 0)
+		set(3, model.LogicSkipEveryN, 2, 0)
+		set(7, model.LogicSkipEveryN, 4, 0)
 	case "probability":
-		set(4, "probability", 0, 0.5)
-		set(9, "probability", 0, 0.25)
+		set(4, model.LogicProbability, 0, 0.5)
+		set(9, model.LogicProbability, 0, 0.25)
 	case "prev_chain":
 		for k := 1; k < n; k++ {
-			set(k, "trigger_if_prev_triggered", 0, 0)
+			set(k, model.LogicIfPrevTriggered, 0, 0)
 		}
 	case "mixed":
-		set(2, "every_n_triggers", 2, 0)
-		set(4, "skip_every_n", 3, 0)
-		set(6, "probability", 0, 0.5)
-		set(8, "trigger_if_prev_triggered", 0, 0)
-		set(10, "trigger_if_prev_skipped", 0, 0)
+		set(2, model.LogicEveryN, 2, 0)
+		set(4, model.LogicSkipEveryN, 3, 0)
+		set(6, model.LogicProbability, 0, 0.5)
+		set(8, model.LogicIfPrevTriggered, 0, 0)
+		set(10, model.LogicIfPrevSkipped, 0, 0)
 	default:
 		t.Fatalf("unknown profile %q", profile)
 	}

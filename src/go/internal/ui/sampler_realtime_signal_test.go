@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // recipeParamsSignature is the order-independent fingerprint that drives the
@@ -40,7 +42,7 @@ func TestSamplerRecapturesWhenSynthSignatureChanges(t *testing.T) {
 	g.Layout(640, 480)
 
 	calls := 0
-	restoreCap := SwapSamplerCaptureFnForTest(func(id string) ([]float32, int) {
+	restoreCap := SwapSamplerCaptureFnForTest(func(id instrument.ID) ([]float32, int) {
 		calls++
 		buf := make([]float32, 8)
 		for i := range buf {
@@ -51,13 +53,13 @@ func TestSamplerRecapturesWhenSynthSignatureChanges(t *testing.T) {
 	t.Cleanup(func() { SwapSamplerCaptureFnForTest(restoreCap) })
 
 	sig := uint64(1)
-	restoreSig := SwapSamplerSourceSignatureFnForTest(func(string) uint64 { return sig })
+	restoreSig := SwapSamplerSourceSignatureFnForTest(func(instrument.ID) uint64 { return sig })
 	t.Cleanup(func() { SwapSamplerSourceSignatureFnForTest(restoreSig) })
 
 	// A recipe binding makes inst.alpha a synth source (the precondition for
 	// live re-capture-on-signature-change); a non-recipe id is a raw WAV.
-	audio.BindInstrumentToRecipe("inst.alpha", "drum-kick")
-	t.Cleanup(func() { audio.BindInstrumentToRecipe("inst.alpha", "") })
+	_ = audio.InstallInstrumentDocForTest("inst.alpha", roster.Kick)
+	t.Cleanup(func() { audio.RemoveInstrumentDocForTest("inst.alpha") })
 
 	s := &g.drum.sampler
 
@@ -103,14 +105,14 @@ func TestSamplerDoesNotRecaptureWAVSource(t *testing.T) {
 	g.Layout(640, 480)
 
 	calls := 0
-	restoreCap := SwapSamplerCaptureFnForTest(func(id string) ([]float32, int) {
+	restoreCap := SwapSamplerCaptureFnForTest(func(id instrument.ID) ([]float32, int) {
 		calls++
 		return []float32{1, 1, 1, 1}, 48000
 	})
 	t.Cleanup(func() { SwapSamplerCaptureFnForTest(restoreCap) })
 
 	sig := uint64(1)
-	restoreSig := SwapSamplerSourceSignatureFnForTest(func(string) uint64 { return sig })
+	restoreSig := SwapSamplerSourceSignatureFnForTest(func(instrument.ID) uint64 { return sig })
 	t.Cleanup(func() { SwapSamplerSourceSignatureFnForTest(restoreSig) })
 
 	s := &g.drum.sampler
@@ -134,11 +136,11 @@ func TestSamplerReloadResetsEditsOnInstrumentChange(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	restoreCap := SwapSamplerCaptureFnForTest(func(id string) ([]float32, int) {
+	restoreCap := SwapSamplerCaptureFnForTest(func(id instrument.ID) ([]float32, int) {
 		return []float32{1, 1, 1, 1}, 48000
 	})
 	t.Cleanup(func() { SwapSamplerCaptureFnForTest(restoreCap) })
-	restoreSig := SwapSamplerSourceSignatureFnForTest(func(string) uint64 { return 1 })
+	restoreSig := SwapSamplerSourceSignatureFnForTest(func(instrument.ID) uint64 { return 1 })
 	t.Cleanup(func() { SwapSamplerSourceSignatureFnForTest(restoreSig) })
 
 	s := &g.drum.sampler

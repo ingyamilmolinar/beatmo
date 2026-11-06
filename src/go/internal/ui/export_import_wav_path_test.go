@@ -17,18 +17,19 @@ func TestExportImportWAVPath(t *testing.T) {
 	// Simulate a custom upload result via the upload flow.
 	startUploadForTest(t, g.drum)
 	waitForUploadNaming(t, g)
-	g.drum.registerInstrument("mykick")
-	if !g.drum.IsInstrumentAvailable("mykick") {
+	g.drum.registerInstrument("MyKick")
+	mykick := wavInstrumentID("MyKick")
+	if !g.drum.IsInstrumentAvailable(mykick) {
 		t.Fatalf("expected mykick to be available after register")
 	}
 	// Set row 0 to custom instrument
-	g.drum.SetInstrument("mykick")
+	g.drum.SetInstrument(mykick)
 	g.drum.Rows[0].Name = "MyKick"
 	data, err := g.drum.exportBytes()
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	var f exportFile
+	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -37,7 +38,7 @@ func TestExportImportWAVPath(t *testing.T) {
 	}
 	found := false
 	for _, inst := range f.Instruments {
-		if inst.ID == "mykick" {
+		if inst.ID == mykick {
 			if inst.Path == "" {
 				t.Fatalf("expected path in export for custom instrument")
 			}
@@ -55,7 +56,7 @@ func TestExportImportWAVPath(t *testing.T) {
 	if err := g2.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if !g2.drum.IsInstrumentAvailable("mykick") {
+	if !g2.drum.IsInstrumentAvailable(mykick) {
 		t.Fatalf("custom wav not registered on import")
 	}
 }

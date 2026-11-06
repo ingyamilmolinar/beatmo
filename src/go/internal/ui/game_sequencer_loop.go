@@ -32,6 +32,10 @@ func (g *Game) sequencerLoop() {
 				continue
 			}
 			g.seqScheduleTime()
+		case <-g.laneKick: // an edit outside Update: reconcile the audio lane now (kickLane)
+			if g.Playing() {
+				g.laneKickPass()
+			}
 		}
 	}
 }

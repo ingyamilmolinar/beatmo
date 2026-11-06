@@ -23,7 +23,7 @@
  * playback, and for each BPM in ALL_KNOB_BPMS runs two spam phases:
  *
  *   1. synth-knobs: round-robin over EVERY user-facing ParamDef of every row
- *      instrument (enumerated live from synthRecipeCatalog(), group!=="hidden"
+ *      instrument (enumerated live from instrumentParamDefs(id), group!=="hidden"
  *      — so new knobs are covered automatically, no drift), one set per
  *      instrument per 16 ms tick, values alternating within [min,max].
  *   2. mixer-fx: round-robin live edits over insert-FX params (from
@@ -60,8 +60,10 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
+import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
@@ -132,7 +134,7 @@ await page.waitForFunction(() => typeof setInstrumentParam === "function");
 await page.waitForFunction(() => typeof window.buildPerfRect === "function");
 await page.waitForFunction(() => typeof window.getRenderLatencyMetrics === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 // Real gesture unlocks + CREATES the AudioContext (resumeAudio alone does not).
 await page.mouse.click(20, 20);
@@ -152,13 +154,12 @@ const setup = await page.evaluate(async (ROW_INSTRUMENTS) => {
   // Give warm-on-switch a moment before the storm starts.
   await new Promise((res) => setTimeout(res, 600));
 
-  // Enumerate every USER-FACING knob per instrument from the live registry —
-  // group "hidden" is engine plumbing, everything else renders in the Synth tab.
-  const cat = synthRecipeCatalog();
+  // Enumerate every USER-FACING knob per instrument from its document's knob
+  // schema — group "hidden" is engine plumbing, everything else renders in the
+  // Synth tab.
   const knobs = {};
   for (const id of ROW_INSTRUMENTS) {
-    const rid = recipeForInstrument(id);
-    const params = (cat[rid] && cat[rid].params) || [];
+    const params = instrumentParamDefs(id) || [];
     knobs[id] = params
       .filter((d) => d.group !== "hidden")
       .map((d) => ({ name: d.name, min: d.min, max: d.max, def: d.default }));
@@ -176,6 +177,12 @@ const setup = await page.evaluate(async (ROW_INSTRUMENTS) => {
   return { knobs: Object.fromEntries(Object.entries(knobs).map(([k, v]) => [k, v.length])), fx: Object.fromEntries(Object.entries(fx).map(([k, v]) => [k, v.type])), fxTypes };
 }, ROW_INSTRUMENTS);
 console.log(`[TEST] knobs per instrument: ${JSON.stringify(setup.knobs)} insert-fx: ${JSON.stringify(setup.fx)}`);
+// The synth-knobs phase writes ONE knob per instrument per tick, so it must
+// last at least (visible knobs × tick). Sized from the live count — the knob
+// set grows with the engine (Phase C's FINISH stage added eight) and a fixed
+// window silently stopped covering it (2600 ms / 16 ms = 162 < 179). 1.6× slack
+// absorbs timer slip under the BPM load; ALL_KNOB_PHASE_MS stays a floor.
+const phaseMs = Math.max(PHASE_MS, Math.ceil(Math.max(...Object.values(setup.knobs)) * SPAM_INTERVAL_MS * 1.6));
 for (const [id, n] of Object.entries(setup.knobs)) {
   if (!n || n < 5) throw new Error(`instrument ${id} exposes only ${n} visible knobs — enumeration broken`);
 }
@@ -189,10 +196,8 @@ async function runPhase(mode, bpm, phaseOpts = {}) {
     if (window.resetRenderLatencyMetrics) window.resetRenderLatencyMetrics();
     if (window.resetAudioScheduleMetrics) window.resetAudioScheduleMetrics();
 
-    const cat = synthRecipeCatalog();
     const insts = ROW_INSTRUMENTS.map((id) => {
-      const rid = recipeForInstrument(id);
-      const defs = ((cat[rid] && cat[rid].params) || []).filter((d) => d.group !== "hidden");
+      const defs = (instrumentParamDefs(id) || []).filter((d) => d.group !== "hidden");
       return { id, defs, idx: 0, visits: 0 };
     });
     const fxCat = insertEffectCatalog();
@@ -234,17 +239,15 @@ async function runPhase(mode, bpm, phaseOpts = {}) {
       } else {
         const id = ROW_INSTRUMENTS[tick % ROW_INSTRUMENTS.length];
         const row = tick % ROW_INSTRUMENTS.length;
-        const ph = tick % 8;
+        const ph = tick % 6;
         const f = fxState[row];
         switch (ph) {
           case 0: if (f.slot >= 0 && f.params.length) { const p = f.params[f.idx++ % f.params.length]; setInsertEffectParam(id, f.slot, p.name, p.min + ((f.idx % 2) ? 0.7 : 0.3) * (p.max - p.min)); } break;
           case 1: setEQBandGain(id, tick % 10, (tick % 2 ? 4 : -4)); break;
           case 2: setEQHPF(true, 40 + (tick % 5) * 100); break;
           case 3: setEQLPF(true, 2000 + (tick % 5) * 2000); break;
-          case 4: window.setChannelVolume(id, 0.4 + 0.1 * (tick % 5)); window.setChannelPan(id, ((tick % 5) - 2) / 2.5); break;
-          case 5: window.setDelaySend(id, 0.1 * (tick % 6)); break;
-          case 6: window.setReverbSend(id, 0.1 * (tick % 6)); break;
-          case 7: setRowVolume(row, 0.5 + 0.1 * (tick % 4)); setMasterVolume(0.5 + 0.1 * (tick % 4)); break;
+          case 4: window.setChannelVolume(id, 0.4 + 0.1 * (tick % 5)); break;
+          case 5: setRowVolume(row, 0.5 + 0.1 * (tick % 4)); setMasterVolume(0.5 + 0.1 * (tick % 4)); break;
         }
       }
     }, SPAM_INTERVAL_MS);
@@ -280,7 +283,7 @@ async function runPhase(mode, bpm, phaseOpts = {}) {
       workerQueuePeak: rl.workerQueuePeak || 0,
       audio: { count: am.count, overdue: am.overdue, smallLead: am.smallLeadCount },
     };
-  }, { mode, bpm, ROW_INSTRUMENTS, PHASE_MS, SPAM_INTERVAL_MS, SOLO: phaseOpts.solo ?? SOLO_INSTRUMENT });
+  }, { mode, bpm, ROW_INSTRUMENTS, PHASE_MS: phaseMs, SPAM_INTERVAL_MS, SOLO: phaseOpts.solo ?? SOLO_INSTRUMENT });
 }
 
 const failures = [];
@@ -302,7 +305,7 @@ function evaluatePhase(label, m, opts = {}) {
   if (opts.requireAllKnobs) {
     m.knobsTouched.forEach((n, i) => {
       if (SOLO_INSTRUMENT && ROW_INSTRUMENTS[i] !== SOLO_INSTRUMENT) return;
-      if (n < m.knobsTotal[i]) failures.push(`${label}: instrument ${ROW_INSTRUMENTS[i]} — only ${n}/${m.knobsTotal[i]} knobs written; increase ALL_KNOB_PHASE_MS`);
+      if (n < m.knobsTotal[i]) failures.push(`${label}: instrument ${ROW_INSTRUMENTS[i]} — only ${n}/${m.knobsTotal[i]} knobs written in ${phaseMs} ms — the page could not keep the ${SPAM_INTERVAL_MS} ms write cadence`);
     });
   }
   // PRIMARY machine-independent gates.
@@ -315,7 +318,7 @@ function evaluatePhase(label, m, opts = {}) {
 }
 
 // ── Main matrix: BPM × {synth-knobs, mixer-fx} under real playback ──
-await page.evaluate(() => startPlay());
+await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 await page.waitForTimeout(300);
 
 for (const bpm of BPMS) {

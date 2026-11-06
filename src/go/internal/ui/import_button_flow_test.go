@@ -14,7 +14,7 @@ func TestImportButtonFlowCallsOnImport(t *testing.T) {
 	old := selectJSONAsyncFn
 	defer func() { selectJSONAsyncFn = old }()
 	selectJSONAsyncFn = func(cb func([]byte, string, error)) {
-		cb([]byte(`{"version":1,"subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`), "", nil)
+		cb([]byte(`{"schema_version":"0.0.1","subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`), "", nil)
 	}
 
 	g := New(testLogger)

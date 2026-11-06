@@ -1,6 +1,9 @@
 package wave
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 // WindowType identifies a window function shape.
 type WindowType int
@@ -43,23 +46,42 @@ func TrimTransform(startMs, endMs float64) Transform {
 // which uses the symmetric (n-1) form for filter design; the two conventions are
 // deliberately distinct, so the coefficient arms are not shared.
 func applyWindowInPlace(seg []float64, wt WindowType) {
-	n := len(seg)
-	if n == 0 {
+	if len(seg) == 0 {
 		return
 	}
+	for i, c := range windowCoeffs(len(seg), wt) {
+		seg[i] *= c
+	}
+}
+
+// windowCache holds each (length, type)'s periodic window, computed once by
+// the same expressions as before caching (TestCachedWindowIsBitIdentical).
+var windowCache sync.Map // windowKey -> []float64
+
+type windowKey struct {
+	n  int
+	wt WindowType
+}
+
+func windowCoeffs(n int, wt WindowType) []float64 {
+	k := windowKey{n, wt}
+	if v, ok := windowCache.Load(k); ok {
+		return v.([]float64)
+	}
 	fn := float64(n)
-	for i := range seg {
-		var coeff float64
+	c := make([]float64, n)
+	for i := range c {
 		switch wt {
 		case WindowHann:
-			coeff = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/fn))
+			c[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/fn))
 		case WindowHamming:
-			coeff = 0.54 - 0.46*math.Cos(2*math.Pi*float64(i)/fn)
+			c[i] = 0.54 - 0.46*math.Cos(2*math.Pi*float64(i)/fn)
 		case WindowBlackman:
-			coeff = 0.42 - 0.5*math.Cos(2*math.Pi*float64(i)/fn) + 0.08*math.Cos(4*math.Pi*float64(i)/fn)
+			c[i] = 0.42 - 0.5*math.Cos(2*math.Pi*float64(i)/fn) + 0.08*math.Cos(4*math.Pi*float64(i)/fn)
 		}
-		seg[i] *= coeff
 	}
+	v, _ := windowCache.LoadOrStore(k, c)
+	return v.([]float64)
 }
 
 // WindowTransform returns a Transform that applies the given window function.

@@ -2,13 +2,18 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // INVARIANT I3: with non-blocking dispatch armed, a cache miss must NEVER
 // render on the caller's goroutine. It must serve the best available buffer and
 // hand the exact render off-thread.
 func TestNonBlockingDispatchNeverRendersInline(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	globalVoiceCache.Clear()
 	ResetInstrumentParams(id)
 	t.Cleanup(func() {
@@ -21,14 +26,14 @@ func TestNonBlockingDispatchNeverRendersInline(t *testing.T) {
 	PrewarmVoice(id, 0)
 
 	var submitted int
-	SetAsyncRenderSubmit(func(id string, pitch float64, params RecipeParams) { submitted++ })
+	SetAsyncRenderSubmit(func(id instrument.ID, pitch float64, d instrument.Doc) { submitted++ })
 	dispatchMustNotRender.Store(true)
 
 	// Rotate the binding so the next trigger is a guaranteed miss.
-	SetInstrumentParam(id, churnableParam(t, id), 0.61)
+	SetInstrumentParam(id, churnableParam(t, string(id)), 0.61)
 
 	ResetRenderLatencyMetrics()
-	v := newRecipeAwareVoicePitched(id, bpm, SampleRate(), 0)
+	v := newRecipeAwareVoicePitched(id, SampleRate(), 0)
 	m := GetRenderLatencyMetrics()
 
 	if v == nil {
@@ -49,7 +54,7 @@ func TestNonBlockingDispatchNeverRendersInline(t *testing.T) {
 
 // With the gate DISARMED (e.g. prewarm pool calls), rendering inline is correct.
 func TestNonBlockingGateDoesNotAffectPrewarm(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	globalVoiceCache.Clear()
 	dispatchMustNotRender.Store(false)
 	t.Cleanup(func() { dispatchMustNotRender.Store(false) })
@@ -66,7 +71,7 @@ func TestNonBlockingGateDoesNotAffectPrewarm(t *testing.T) {
 // and dispatch must FALL THROUGH to a real render — a LATE first note, never
 // silence and never nil. Regression net for the Tier-3→fall-through revert.
 func TestNonBlockingDispatchFallsThroughWhenNothingCached(t *testing.T) {
-	const id = "organ-church"
+	const id = roster.OrganChurch
 	globalVoiceCache.Clear()
 	ResetInstrumentParams(id)
 	t.Cleanup(func() {
@@ -75,11 +80,11 @@ func TestNonBlockingDispatchFallsThroughWhenNothingCached(t *testing.T) {
 		SetAsyncRenderSubmit(nil)
 	})
 
-	SetAsyncRenderSubmit(func(string, float64, RecipeParams) {})
+	SetAsyncRenderSubmit(func(instrument.ID, float64, instrument.Doc) {})
 	dispatchMustNotRender.Store(true)
 
 	ResetRenderLatencyMetrics()
-	v := newRecipeAwareVoicePitched(id, bpm, SampleRate(), 0)
+	v := newRecipeAwareVoicePitched(id, SampleRate(), 0)
 	m := GetRenderLatencyMetrics()
 
 	if v == nil {

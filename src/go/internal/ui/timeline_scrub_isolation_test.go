@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // TestTimelineScrubReleasesOnYDrift pins Phase 3 Part B: a captured
@@ -173,7 +175,7 @@ func newTimelineZoneTestHarness(t *testing.T) *timelineZoneTestHarness {
 		Length:               func() int { return 64 },
 		Offset:               func() int { return 0 },
 		OnOffsetChange:       func(int) {},
-		OnSeekToStep:         func(int, string) {},
+		OnSeekToStep:         func(int, hooks.SeekOrigin) {},
 	}
 	z := NewTimelineZone(cb)
 	z.rect = image.Rect(0, 0, 400, 200)

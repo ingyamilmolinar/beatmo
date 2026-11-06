@@ -1,48 +1,21 @@
 import {
-  SYNTH_PARAM_COUNT,
-  SYNTH_PARAM_INDEX,
-  SYNTH_PARAM_IDENTITY,
   MODULAR_PARAM_COUNT,
   MODULAR_PARAM_INDEX,
-  MODULAR_PARAM_IDENTITY,
-  // Kick family migrated to the modular engine (Phase-3): no KICK_PARAM_* block.
-  // Tom family migrated to the modular engine (Phase-4): no TOM_PARAM_* block.
-  // Snare family migrated to the modular engine (Phase-5): no SNARE_PARAM_* block.
-  // Cymbal family migrated to the modular engine (Phase-6): no CYMBAL_PARAM_* block.
-  // Bass family migrated to the modular engine (Phase-2): no BASS_PARAM_* block.
-  // FM family migrated to the modular engine (Phase-7, LAST): no FM_PARAM_* block.
+  MODULAR_PARAM_TABLES,
 } from './synth_param_abi.gen.js';
 
-// CHAIN_SPEC is the single source of truth (generated from Go's chain_spec.go)
-// for the post-voice master/mix chain — compressor params, soft-clip threshold,
-// per-voice headroom, target sample rate. The desktop Go/C mixer and this
-// WebAudio chain MUST stay configured identically or the same instrument sounds
-// different across platforms (the exact bug this prevents). ensureCompressor +
-// ensureLimiter read from it; chain_spec_parity.browser.test.js asserts the
-// live nodes match it; the Go drift test keeps the gen file current.
+// CHAIN_SPEC (generated from Go's chain_spec.go) is every value the path from a
+// voice to the speaker uses on both platforms: the sample rate, the per-voice
+// headroom, the fade / stop / gate times, the soft-clip knee, the master
+// volume range. The DSP itself is desktop's C (dsp_host.js, run on the audio
+// thread by the beatmo-dsp worklet) and a note is desktop's played voice
+// (played_voice.js); xplat_audio_stages.browser.test.js compares every stage
+// with desktop's, sample by sample.
 import { CHAIN_SPEC } from './chain_spec.gen.js';
+import { createStage } from './dsp_host.js';
+import { gateLength, playedVoiceSamples } from './played_voice.js';
+import { applyVoicePost } from './voice_post.js';
 
-// MODULAR_RENDER / MODULAR_RENDER_INFO are generated from the config-first Go
-// table modularInstrumentDefs (src/go/internal/audio/modular_instruments.go).
-// They are Object.assign()d into RENDER / RENDER_INFO below so adding or cloning
-// a modular instrument is a one-row table edit — no manual audio.js change.
-import { MODULAR_RENDER, MODULAR_RENDER_INFO } from './modular_instruments.gen.js';
-
-// INSTRUMENT_LOUDNESS_AMP is generated from the config-first Go loudness
-// measurement (src/go/internal/audio/instrument_loudness_gen.go) and applied
-// as an amp override below so browser output matches native Go loudness
-// normalization exactly (see loudness_amp_parity_test.go).
-import { INSTRUMENT_LOUDNESS_AMP } from './instrument_loudness.gen.js';
-
-// Family param blocks (native-deprecation migration). An instrument whose
-// RENDER_INFO carries paramBlock:'<family>' fills this block instead of the
-// legacy 7-field synth_params. Each embeds the synth_params base at indices
-// 0..6; family fields default to NaN ("keep the C engine's literal").
-//
-// EMPTY after Phase-7: every legacy family (bass/kick/tom/snare/cymbal/FM) has
-// migrated to paramBlock:'modular' (render_modular_p). No family block remains;
-// the modular block (validateModularABI) covers every migrated instrument.
-const FAMILY_PARAM_BLOCKS = {};
 
 // ABI consistency guard. synth_param_abi.gen.js is generated from the Go schema
 // (which is drift-tested against the C modular_params struct). If it ships stale
@@ -57,11 +30,6 @@ const MODULAR_REQUIRED_FIELDS = [
   'osc_type', 'osc_enabled', 'fm_enabled', 'env_enabled',
   'filter_enabled', 'drive_enabled', 'noise_seed',
 ];
-// Lower bound on the modular param block size (floats). The C modular_params
-// struct currently has 33 fields; 64 is a generous floor so renderToCache never
-// hands render_modular_p an out-of-bounds buffer even if the generated ABI lags
-// the struct. NOT the source of truth — just a safety net (see validateModularABI).
-const MODULAR_ALLOC_FLOOR = 64;
 function validateModularABI() {
   const missing = MODULAR_REQUIRED_FIELDS.filter(
     (f) => !Number.isFinite(MODULAR_PARAM_INDEX[f]),
@@ -71,6 +39,11 @@ function validateModularABI() {
     if (Number.isFinite(MODULAR_PARAM_INDEX[k]) && MODULAR_PARAM_INDEX[k] > maxIdx) {
       maxIdx = MODULAR_PARAM_INDEX[k];
     }
+  }
+  // Stage TABLE columns ([first index, rows]) must fit in the block too.
+  for (const k in MODULAR_PARAM_TABLES) {
+    const [first, rows] = MODULAR_PARAM_TABLES[k];
+    if (first + rows - 1 > maxIdx) maxIdx = first + rows - 1;
   }
   const undersized = MODULAR_PARAM_COUNT <= maxIdx;
   if (missing.length || undersized) {
@@ -87,45 +60,12 @@ function validateModularABI() {
   return true;
 }
 const MODULAR_ABI_OK = validateModularABI();
-// Family block guards — same stale-ABI failure mode as the modular block:
-// an undersized/missing family block would feed the render_*_p engines
-// garbage overrides. Family identities are NaN ("keep the engine literal"),
-// so a correctly-sized block is always safe; these guards catch the sizing.
-const FAMILY_REQUIRED_FIELDS = {
-  // EMPTY after Phase-7 — every legacy family migrated to the modular block
-  // (validateModularABI covers them all): fm/cymbal/bass/kick/tom/snare.
-};
-function validateFamilyABI(family) {
-  const blk = FAMILY_PARAM_BLOCKS[family];
-  const required = FAMILY_REQUIRED_FIELDS[family] || [];
-  const missing = required.filter((f) => !Number.isFinite(blk.index[f]));
-  let maxIdx = -1;
-  for (const k in blk.index) {
-    if (Number.isFinite(blk.index[k]) && blk.index[k] > maxIdx) {
-      maxIdx = blk.index[k];
-    }
-  }
-  const undersized = blk.count <= maxIdx;
-  if (missing.length || undersized) {
-    const msg =
-      `[AUDIOJS] STALE synth_param_abi.gen.js — the ${family} family ABI is out ` +
-      'of sync with its C struct. Edited instruments may render garbage. ' +
-      'Run `make gen-synth-abi` (or rebuild via `make wasm`). ' +
-      `missing=[${missing.join(',')}] count=${blk.count} maxIndex=${maxIdx}`;
-    try { console.error(msg); } catch (_) {}
-    if (typeof window !== 'undefined') window.__synthABIStale = true;
-    return false;
-  }
-  return true;
-}
-const FAMILY_ABI_OK = Object.keys(FAMILY_PARAM_BLOCKS).every((f) => validateFamilyABI(f));
 if (typeof window !== 'undefined') {
   // Test-friendly summary so the browser ABI guard test can assert the loaded
   // gen.js is consistent with the C struct (catches a stale committed file).
   window.__synthABI = {
     modularCount: MODULAR_PARAM_COUNT,
-    synthCount: SYNTH_PARAM_COUNT,
-    stale: !MODULAR_ABI_OK || !FAMILY_ABI_OK,
+    stale: !MODULAR_ABI_OK,
     hasModularFields: MODULAR_REQUIRED_FIELDS.every((f) => Number.isFinite(MODULAR_PARAM_INDEX[f])),
   };
   // Unmissable load banner with a build marker. If you do NOT see this line in
@@ -143,59 +83,70 @@ if (typeof window !== 'undefined') {
 let modulePromise = null;
 let mod;
 let ctx;
-const samples = {};
-const sampleURLs = {};
 
-// Output capture: intercept final mixed output for debugging/comparison
+// Output capture: intercept final mixed output for debugging/comparison.
+//
+// Captured on the AUDIO thread by a tiny AudioWorklet tap (parallel branch off
+// the limiter) whenever the module has loaded; the ScriptProcessorNode is only
+// the fallback. A ScriptProcessor runs its callback on the MAIN thread, and
+// with the full app running (Go game loop + drawing) Chrome dropped most of its
+// blocks: xplat_output_capture recorded fragments and silence for voices that
+// were playing correctly. Worklet blocks are POSTED and queue rather than drop,
+// so a busy main thread delays them but never loses them —
+// window.flushOutputCapture() waits until everything captured so far arrived.
+const OUTPUT_TAP_SRC = `class BeatmoOutputTap extends AudioWorkletProcessor {
+  constructor() { super(); this.on = false;
+    this.port.onmessage = (e) => { const d = e.data;
+      if (d === 'on') this.on = true; else if (d === 'off') this.on = false;
+      else if (d && d.flush !== undefined) this.port.postMessage({ flushed: d.flush }); }; }
+  process(inputs) { const ch = inputs[0] && inputs[0][0]; if (this.on && ch) this.port.postMessage(ch.slice(0)); return true; }
+}
+registerProcessor('beatmo-output-tap', BeatmoOutputTap);`;
+let outputTapModule = null; // Promise<boolean> once addModule was attempted
+let outputTapReady = false;
+let outputTapFlushSeq = 0;
+const outputTapFlushWaiters = new Map();
+function preloadOutputTap(c) {
+  if (outputTapModule || !c || !c.audioWorklet) return;
+  try {
+    const url = URL.createObjectURL(new Blob([OUTPUT_TAP_SRC], { type: 'application/javascript' }));
+    outputTapModule = c.audioWorklet.addModule(url).then(() => { outputTapReady = true; return true; }, () => false);
+  } catch (_) { outputTapModule = Promise.resolve(false); }
+}
+let outputCaptureIsWorklet = false;
 let outputCaptureNode = null;
 let outputCaptureBuffer = [];
 let outputCaptureEnabled = false;
-let outputCaptureSampleRate = 44100;
+let outputCaptureSampleRate = CHAIN_SPEC.sampleRate;
 
-// Limiter (WaveShaperNode) matching the desktop master output stage in
-// engine_stop.go: a tanh SOFT-CLIP above CHAIN_SPEC.softClipThreshold, then a
-// hard clamp to [-1, 1]. Previously this was a pure hard clamp with no
-// soft-clip, so loud peaks sounded harsher in the browser than on desktop —
-// part of the audible desktop↔browser divergence. Created lazily.
-let mainLimiter = null;
+// masterOut is the last node before ctx.destination: what the device
+// receives, after the master soft clip (desktop's output capture and
+// recording tap the same point). Output capture and the recording master tap
+// read it. Created lazily.
+let masterOut = null;
+// masterClip is the master soft clip — desktop's C (mix_dsp.c soft_clip) on
+// the DSP host; null until that host is up.
+let masterClip = null;
 
-// softClipSample mirrors engine_stop.go's final conversion: gently saturate
-// peaks above the threshold with tanh, then safety-clamp to [-1, 1]. Shared by
-// the limiter curve and getChainConfigForTest so the test asserts the real fn.
-function softClipSample(x) {
-  const t = CHAIN_SPEC.softClipThreshold;
-  let y = x;
-  if (y > t) y = t * Math.tanh(y / t);
-  else if (y < -t) y = -t * Math.tanh(y / -t);
-  return Math.max(-1, Math.min(1, y));
-}
-
-function ensureLimiter() {
-  if (mainLimiter) return mainLimiter;
+function ensureMasterOut() {
+  if (masterOut) return masterOut;
   if (!hasCtx()) return null;
-  const c = ctx;
-  mainLimiter = c.createWaveShaper();
-  const curveLen = 8192;
-  const curve = new Float32Array(curveLen);
-  for (let i = 0; i < curveLen; i++) {
-    const x = (i / (curveLen - 1)) * 2 - 1;
-    curve[i] = softClipSample(x);
-  }
-  mainLimiter.curve = curve;
-  mainLimiter.oversample = 'none';
-  mainLimiter.connect(c.destination);
-  return mainLimiter;
+  masterOut = ctx.createGain();
+  masterOut.gain.value = 1;
+  masterOut.connect(ctx.destination);
+  return masterOut;
 }
 
-// Returns the correct final audio destination. All channel outputs should
-// connect to this node. Routes through limiter → [capture →] destination.
+// audioDestination is where the master bus's chain ends: the soft clip, which
+// feeds masterOut (masterOut itself until the DSP host is up).
 function audioDestination() {
-  const limiter = ensureLimiter();
-  if (!limiter && hasCtx()) {
-    // Limiter creation failed somehow; fallback to raw destination.
-    return ctx.destination;
+  const out = ensureMasterOut();
+  if (!out) return hasCtx() ? ctx.destination : null;
+  if (!masterClip && dspHostUp(ctx)) {
+    masterClip = dspNode(ctx, 'softclip', { threshold: CHAIN_SPEC.softClipThreshold });
+    if (masterClip) masterClip.connect(out);
   }
-  return limiter;
+  return masterClip || out;
 }
 
 // Debug: ring buffer of recent audio events
@@ -232,6 +183,7 @@ function trackSource(id, src) {
     try { set.delete(src); } catch (_) {}
     if (set.size === 0) {
       try { activeSources.delete(id); } catch (_) {}
+      considerRelease(id);
     }
     return ev;
   };
@@ -245,6 +197,120 @@ function trackSource(id, src) {
   src.onended = (ev) => {
     try { cleanup(ev); } catch (_) {}
     try { if (typeof prev === 'function') prev(ev); } catch (_) {}
+  };
+}
+
+// ───────── Audio lane registry (vid > 0) ─────────
+// The Go audio lane commits sequencer notes up to its horizon (~1 s) ahead
+// and must take them back when an edit changes them. vid 0 = preview / UI
+// sound: never touched here.
+const LANE_CANCEL_GUARD_SEC = 0.008; // closer to start than this = "started"
+const laneVoices = new Map();      // vid → { src, gain, inst, when, pk }
+const laneTombstones = new Set();  // vids cancelled before they reached start()
+let laneGeneration = 0;            // bumped by cancelAllLaneFuture
+
+function laneRegister(vid, src, gain, inst, when, pk, level) {
+  if (!vid) return;
+  laneVoices.set(vid, { src, gain, inst, when, pk, level });
+  // Only if still THIS source: a swapped voice's stopped stale source ends
+  // after the fresh one registered under the same vid.
+  try { src.addEventListener('ended', () => { if (laneVoices.get(vid)?.src === src) laneVoices.delete(vid); }, { once: true }); } catch (_) {}
+}
+
+// laneCancelOne: silent stop of a not-yet-started lane voice. A vid not
+// started yet anywhere (queued, awaiting a worker render, stale-race replay)
+// is tombstoned so the replay drops it. Returns true if it already started.
+function laneCancelOne(vid, now) {
+  const v = laneVoices.get(vid);
+  if (!v) { laneTombstone(vid); return false; }
+  if (v.when <= now + LANE_CANCEL_GUARD_SEC) return true; // started: leave it (edit semantics (a))
+  try { v.src.stop(0); } catch (_) {}
+  try { v.src.disconnect(); } catch (_) {}
+  try { v.gain.disconnect(); } catch (_) {}
+  laneVoices.delete(vid);
+  laneTombstone(vid); // a late replay of this vid (if any) must drop too
+  if (audioProbe && v.pk) audioProbe.noteCancelled(v.pk);
+  return false;
+}
+
+// Tombstones are consumed by the replay they target; ones whose replay
+// never comes are pruned oldest-first so a long session cannot grow them.
+const LANE_TOMBSTONES_MAX = 4096;
+function laneTombstone(vid) {
+  laneTombstones.add(vid);
+  if (laneTombstones.size > LANE_TOMBSTONES_MAX) {
+    for (const old of laneTombstones) { laneTombstones.delete(old); if (laneTombstones.size <= LANE_TOMBSTONES_MAX / 2) break; }
+  }
+}
+
+// laneSwapFresh re-starts a lane voice that was scheduled on a STALE render
+// on the fresh one, at the same start, if it has not started yet and the
+// fresh record is current. Otherwise the stale voice plays (timing wins;
+// timbre lags one note) — a newer edit brings a new lane revision anyway.
+function laneSwapFresh(vid, ev, cacheKey) {
+  const v = laneVoices.get(vid);
+  if (!v || !hasCtx()) return;
+  if (v.when <= ctx.currentTime + LANE_CANCEL_GUARD_SEC) return;
+  const rec = renderCache.get(cacheKey);
+  if (!rec || renderRecordStale(ev.id, rec)) return;
+  try { v.src.stop(0); } catch (_) {}
+  try { v.src.disconnect(); } catch (_) {}
+  try { v.gain.disconnect(); } catch (_) {}
+  laneVoices.delete(vid);
+  ev.when = v.when;
+  enqueueAudioEvents([ev]);
+}
+
+if (typeof window !== 'undefined') {
+  // Returns the vids it REFUSED because they have started: Go then drops the
+  // replacement of each (an atomic replace — never the old AND the new voice).
+  window.cancelLaneVoices = (vids) => {
+    const started = [];
+    if (!vids) return started;
+    const now = hasCtx() ? ctx.currentTime : 0;
+    for (let i = 0; i < vids.length; i++) {
+      const vid = Number(vids[i]);
+      if (vid > 0 && laneCancelOne(vid, now)) started.push(vid);
+    }
+    return started;
+  };
+
+  // stopLaneAt: a mute node at ctx time t — fade the lane voices of inst that
+  // start before t; voices starting at/after t are spared. The fade is
+  // desktop's (antiPopVoice RequestStopAt): from the voice's own level,
+  // linearly to zero over CHAIN_SPEC.stopFadeMs, starting on t's sample. A
+  // voice's gain is constant until a stop (its fade-in is in its buffer), so
+  // there is nothing to cancel-and-hold (Firefox lacks cancelAndHoldAtTime).
+  window.stopLaneAt = (inst, t) => {
+    if (!hasCtx()) return;
+    const fade = CHAIN_SPEC.stopFadeMs / 1000;
+    for (const [vid, v] of laneVoices) {
+      if (v.inst !== inst || !(v.when < t)) continue;
+      const at = frameTime(ctx, Math.max(t, ctx.currentTime));
+      try {
+        const g = v.gain.gain;
+        g.cancelScheduledValues(at);
+        g.setValueAtTime(v.level, at);
+        g.linearRampToValueAtTime(0, at + fade);
+        v.src.stop(at + fade + 1 / ctx.sampleRate);
+      } catch (_) {}
+      laneVoices.delete(vid);
+    }
+  };
+
+  window.cancelAllLaneFuture = () => {
+    laneGeneration++;
+    if (!hasCtx()) return;
+    const now = ctx.currentTime;
+    for (const vid of Array.from(laneVoices.keys())) laneCancelOne(vid, now);
+    lastScheduledPlayWhen = -1;
+  };
+
+  window.laneVoiceStateForTest = (vid) => {
+    if (laneTombstones.has(vid)) return 'cancelled';
+    const v = laneVoices.get(vid);
+    if (!v) return 'unknown';
+    return v.when <= (hasCtx() ? ctx.currentTime : 0) ? 'started' : 'scheduled';
   };
 }
 
@@ -479,9 +545,206 @@ if (typeof window !== 'undefined') {
   window.resetTimingTraces = () => timingTraces.reset();
 }
 
+// ───────── Playback probe (what the listener actually HEARS) ─────────
+// Opt-in measurement of the real output stream, for benches and for
+// diagnosing choppy playback on real hardware (run from the console:
+// `await startAudioProbe()`, play, `await audioProbeReport()`).
+//
+// Every other timing metric stops at the `when` handed to
+// BufferSource.start. This one records, per sequencer note, the predictor's
+// trigger time (grid), the scheduler's request (ideal), when JS actually
+// called start() — and then detects the note's ONSET in the rendered audio,
+// on the audio thread, via one `beatmo-audio-probe` AudioWorkletNode per
+// channel bus plus one on the final output (audio_probe_worklet.js). The
+// pure analysis (lag, jitter, missed/extra notes, clicks, cuts, clock slips)
+// lives in audio_probe_analysis.js so Node benches run the same code.
+//
+// Zero cost while off: every hook is behind `if (audioProbe)`.
+const AUDIO_PROBE_LOG_MAX = 50000;
+let audioProbe = null;
+let _audioProbeWorkletReady = null;
+
+function createAudioProbeState(c, opts) {
+  const st = {
+    opts,
+    sampleRate: c.sampleRate,
+    baseLatency: Number.isFinite(c.baseLatency) ? c.baseLatency : null,
+    outputLatency: Number.isFinite(c.outputLatency) ? c.outputLatency : null,
+    ctxAtStart: c.currentTime,
+    perfAtStart: performance.now(),
+    seq: 0,
+    requests: [],
+    starts: [],
+    cancels: [],           // lane voices cancelled before they started {pk, ctx}
+    taps: new Map(),       // channelId → {node, source}
+    reports: {},           // channelId → [report]
+    loopGaps: [],          // main-thread event-loop stalls {ctx, ms}
+    loopTimer: null,
+    loopLast: performance.now(),
+    loopMaxMs: 0,
+    truncated: false,
+    noteRequested(ev) {
+      if (this.requests.length >= AUDIO_PROBE_LOG_MAX) { this.truncated = true; return; }
+      ev.pk = ++this.seq;
+      this.requests.push({
+        pk: ev.pk, id: ev.id, row: ev.row, abs: ev.abs, vol: ev.vol, pitch: ev.pitch,
+        when: Number.isFinite(ev.when) ? ev.when : null,
+        ideal: Number.isFinite(ev.ideal) ? ev.ideal : null,
+        grid: Number.isFinite(ev.grid) ? ev.grid : null,
+        ctx: hasCtx() ? ctx.currentTime : 0,
+        perf: performance.now(),
+      });
+    },
+    noteCancelled(pk) {
+      if (!pk || this.cancels.length >= AUDIO_PROBE_LOG_MAX) return;
+      this.cancels.push({ pk, ctx: hasCtx() ? ctx.currentTime : 0 });
+    },
+    noteStarted(pk, id, startWhen, ctxNow, path) {
+      if (this.starts.length >= AUDIO_PROBE_LOG_MAX) { this.truncated = true; return; }
+      // fxLatency: how late the channel's insert chain makes this note sound
+      // (insertChainLatencySec) — the analysis matches its onset that much later.
+      const chain = channelNodes.get(id);
+      const fxLatency = chain && chain.fxLatencySec ? chain.fxLatencySec : 0;
+      this.starts.push({ pk, id, startWhen, ctx: ctxNow, perf: performance.now(), path, fxLatency });
+    },
+    tap(channelId, source) {
+      if (!source || this.taps.has(channelId)) return;
+      let node;
+      try {
+        node = new AudioWorkletNode(ctx, 'beatmo-audio-probe', {
+          numberOfInputs: 1,
+          numberOfOutputs: 0,
+          channelCount: 2,
+          channelCountMode: 'explicit',
+          processorOptions: { channelId, ...(this.opts.detector || {}) },
+        });
+      } catch (err) {
+        dbg('audio.probe.tap.error', { channelId, err: String(err) });
+        return;
+      }
+      const list = this.reports[channelId] = this.reports[channelId] || [];
+      node.port.onmessage = (e) => {
+        const m = e.data;
+        if (m && m.type === 'report' && list.length < AUDIO_PROBE_LOG_MAX) list.push(m);
+      };
+      source.connect(node);
+      this.taps.set(channelId, { node, source });
+    },
+  };
+  return st;
+}
+
+function _ensureAudioProbeWorklet(c) {
+  if (!_audioProbeWorkletReady) {
+    const url = new URL('./audio_probe_worklet.js', import.meta.url).href;
+    _audioProbeWorkletReady = c.audioWorklet.addModule(url).then(() => true, (err) => {
+      console.error('[AUDIO PROBE] worklet load failed:', err);
+      _audioProbeWorkletReady = null;
+      return false;
+    });
+  }
+  return _audioProbeWorkletReady;
+}
+
+// Called from buildChannelPipeline so channels created mid-probe are tapped.
+function audioProbeTapChannel(id, chain) {
+  if (audioProbe && chain && id !== 'main') audioProbe.tap(id, chain.gain);
+}
+
+// startAudioProbe({master=true, channels=true, detector}) → {ok, channels}
+// Taps every existing channel bus (post EQ/FX/fader, pre-pan) and the final
+// output (post-limiter). Restarting discards the previous log.
+window.startAudioProbe = async (opts = {}) => {
+  const c = getCtx();
+  if (!c || !c.audioWorklet) return { ok: false, error: 'AudioWorklet unavailable' };
+  if (!(await _ensureAudioProbeWorklet(c))) return { ok: false, error: 'probe worklet failed to load' };
+  if (audioProbe) await window.stopAudioProbe();
+  const st = createAudioProbeState(c, opts);
+  if (opts.master !== false) st.tap('__master__', ensureMasterOut() || null);
+  if (opts.channels !== false) {
+    for (const [id, chain] of channelNodes) {
+      if (id !== 'main') st.tap(id, chain.gain);
+    }
+  }
+  // Main-thread stall sampler: the UI side of the story. A gap here is time
+  // the Go scheduler could not run; the probe shows whether audio suffered.
+  st.loopTimer = setInterval(() => {
+    const t = performance.now();
+    const gap = t - st.loopLast;
+    st.loopLast = t;
+    if (gap > st.loopMaxMs) st.loopMaxMs = gap;
+    if (gap > 25 && st.loopGaps.length < AUDIO_PROBE_LOG_MAX) {
+      st.loopGaps.push({ ctx: hasCtx() ? ctx.currentTime : 0, ms: gap });
+    }
+  }, 8);
+  audioProbe = st;
+  return { ok: true, channels: Array.from(st.taps.keys()) };
+};
+
+function audioProbeRawOf(st) {
+  return {
+    sampleRate: st.sampleRate,
+    baseLatency: st.baseLatency,
+    outputLatency: st.outputLatency,
+    ctxAtStart: st.ctxAtStart,
+    ctxAtEnd: hasCtx() ? ctx.currentTime : null,
+    wallMs: performance.now() - st.perfAtStart,
+    requests: st.requests.slice(),
+    starts: st.starts.slice(),
+    cancels: st.cancels.slice(),
+    reports: Object.fromEntries(Object.entries(st.reports).map(([k, v]) => [k, v.slice()])),
+    loopGaps: st.loopGaps.slice(),
+    loopMaxMs: st.loopMaxMs,
+    truncated: st.truncated,
+  };
+}
+
+// audioProbeRaw() → the raw log so far (probe keeps running).
+window.audioProbeRaw = () => (audioProbe ? audioProbeRawOf(audioProbe) : null);
+
+// stopAudioProbe() → raw log. Flushes each worklet's partial report first.
+window.stopAudioProbe = async () => {
+  const st = audioProbe;
+  if (!st) return null;
+  audioProbe = null;
+  clearInterval(st.loopTimer);
+  const done = [];
+  for (const [channelId, tap] of st.taps) {
+    done.push(new Promise((resolve) => {
+      const list = st.reports[channelId];
+      const t = setTimeout(resolve, 500);
+      tap.node.port.onmessage = (e) => {
+        const m = e.data;
+        if (m && m.type === 'report' && list.length < AUDIO_PROBE_LOG_MAX) list.push(m);
+        if (m && m.type === 'done') { clearTimeout(t); resolve(); }
+      };
+      try { tap.node.port.postMessage({ type: 'stop' }); } catch (_) { resolve(); }
+    }).then(() => {
+      try { tap.source.disconnect(tap.node); } catch (_) {}
+    }));
+  }
+  await Promise.all(done);
+  return audioProbeRawOf(st);
+};
+
+// audioProbeReport(opts) → analysed report of the log so far (keeps running).
+window.audioProbeReport = async (opts = {}) => {
+  const raw = audioProbe ? audioProbeRawOf(audioProbe) : null;
+  if (!raw) return null;
+  const { analyzeAudioProbe } = await import('./audio_probe_analysis.js');
+  return analyzeAudioProbe(raw, opts);
+};
+
 const AUDIO_QUEUE_MAX = 8192;
 const AUDIO_FLUSH_CHUNK = 64;
 const AUDIO_FLUSH_BUDGET_MS = 1.2;
+// Budget for the SYNCHRONOUS flush of a Go sequencer batch (see
+// enqueueAudioEvents): none. Every event in a sequencer batch (≤ AudioBatchMax
+// = 32) is due within the lookahead, and deferring any of them hands it back
+// to a timer that cannot fire until the current frame ends — measured: the
+// 4 ms budget first tried here still left 2/148 notes waiting 196 ms. A cache
+// hit costs microseconds; a miss only kicks off an async worker render.
+const AUDIO_SYNC_FLUSH_BUDGET_MS = Infinity;
 const AUDIO_MIN_LEAD_SEC = 0.004;
 
 const audioQueue = [];
@@ -528,10 +791,43 @@ function sanitizeAudioEvent(ev) {
   // a fire-and-forget/preview event — never recorded into timingTraces.
   const row = Number.isFinite(ev.row) ? ev.row : -1;
   const abs = Number.isFinite(ev.abs) ? ev.abs : -1;
-  return { id, vol, pitch, dur, when, origWhen, allowStale, row, abs };
+  // ideal/grid/pk: measurement-only timing identity (see carryTiming). They
+  // never influence WHEN a note plays.
+  const ideal = Number.isFinite(ev.ideal) && ev.ideal > 0 ? ev.ideal : NaN;
+  const grid = Number.isFinite(ev.grid) && ev.grid > 0 ? ev.grid : NaN;
+  const pk = Number.isFinite(ev.pk) ? ev.pk : 0;
+  // vid > 0: an audio-lane voice (cancellable before it starts); laneGen:
+  // the lane generation it was enqueued under (cancelAllLaneFuture bumps it).
+  const vid = Number.isFinite(ev.vid) && ev.vid > 0 ? ev.vid : 0;
+  const laneGen = Number.isFinite(ev.laneGen) ? ev.laneGen : undefined;
+  // laneFresh: this event re-starts a lane voice on its just-landed fresh
+  // render (laneSwapFresh) — same vid, same start, no new request.
+  const laneFresh = vid > 0 && ev.laneFresh === true;
+  return { id, vol, pitch, dur, when, origWhen, allowStale, row, abs, ideal, grid, pk, vid, laneGen, laneFresh };
 }
 
-function enqueueAudioEvents(events) {
+// carryTiming copies an event's measurement identity onto a replay event
+// (render defer, stale race, sample load). Without it a deferred note would
+// reach BufferSource.start as an anonymous event and the playback probe could
+// not attribute its (late) onset to the beat that asked for it.
+function carryTiming(from, to) {
+  to.ideal = from.ideal;
+  to.grid = from.grid;
+  to.pk = from.pk;
+  to.vid = from.vid;
+  to.laneGen = from.laneGen;
+  return to;
+}
+
+// sync=true (the Go sequencer batch bridges): start the batch's voices NOW,
+// inside the Go→JS call, instead of on a microtask. A microtask cannot run
+// until the JS stack unwinds — i.e. until Go returns control to the event
+// loop, which on WASM is the END of the whole Ebiten frame (Update + Draw +
+// every runnable goroutine). Measured 2026-09-30 with the playback probe
+// (startup demo, headless): notes reached audio.js with +73..+122 ms of lead
+// and then sat in this queue ~190-204 ms behind a slow frame, starting
+// 74-134 ms late. That queue wait was the UI frame length, not audio work.
+function enqueueAudioEvents(events, sync = false) {
   if (!Array.isArray(events) || events.length === 0) {
     return;
   }
@@ -549,6 +845,10 @@ function enqueueAudioEvents(events) {
     if (!ev) {
       continue;
     }
+    if (audioProbe && ev.row >= 0 && !ev.pk && !Number.isFinite(ev.origWhen)) {
+      audioProbe.noteRequested(ev);
+    }
+    if (ev.vid && ev.laneGen === undefined) ev.laneGen = laneGeneration;
     audioQueue.push(ev);
     added++;
     if (Number.isFinite(ev.when) && ev.when > lastScheduledPlayWhen) {
@@ -563,6 +863,13 @@ function enqueueAudioEvents(events) {
     const drop = size - AUDIO_QUEUE_MAX;
     audioQueueHead = Math.min(audioQueueHead + drop, audioQueue.length);
     dbg('audio.queue.trim', { drop, size: queueSize() });
+  }
+  // __beatmoAudioFlushMode = 'microtask' restores the legacy deferred flush
+  // (A/B diagnostics in webaudio_audio_isolation_bench; never set in prod).
+  const legacyFlush = typeof window !== 'undefined' && window.__beatmoAudioFlushMode === 'microtask';
+  if (sync && !legacyFlush && !audioFlushInFlight && hasCtx() && ctx.state === 'running') {
+    flushAudioQueue(AUDIO_SYNC_FLUSH_BUDGET_MS);
+    return;
   }
   scheduleAudioFlush();
 }
@@ -584,6 +891,38 @@ function scheduleAudioFlush(useTimeout = false) {
   }
 }
 
+// queuedStart is an event's requested start; one without a time plays now.
+function queuedStart(ev) {
+  return Number.isFinite(ev.when) ? ev.when : -Infinity;
+}
+
+// orderQueueByStart sorts the pending events by requested start (stable:
+// simultaneous events keep their arrival order). Already-ordered queues — the
+// common case — cost one pass.
+function orderQueueByStart() {
+  let prev = -Infinity;
+  let ordered = true;
+  for (let i = audioQueueHead; i < audioQueue.length; i++) {
+    const ev = audioQueue[i];
+    if (!ev) continue;
+    const w = queuedStart(ev);
+    if (w < prev) {
+      ordered = false;
+      break;
+    }
+    prev = w;
+  }
+  if (ordered) return;
+  const pending = [];
+  for (let i = audioQueueHead; i < audioQueue.length; i++) {
+    if (audioQueue[i]) pending.push(audioQueue[i]);
+  }
+  pending.sort((a, b) => queuedStart(a) - queuedStart(b));
+  audioQueue.length = 0;
+  audioQueueHead = 0;
+  for (let i = 0; i < pending.length; i++) audioQueue.push(pending[i]);
+}
+
 function nextAudioEvent() {
   while (audioQueueHead < audioQueue.length) {
     const ev = audioQueue[audioQueueHead];
@@ -598,7 +937,7 @@ function nextAudioEvent() {
   return null;
 }
 
-function flushAudioQueue() {
+function flushAudioQueue(budgetMs = AUDIO_FLUSH_BUDGET_MS) {
   if (audioFlushInFlight) {
     audioFlushScheduled = false;
     scheduleAudioFlush(true);
@@ -628,9 +967,14 @@ function flushAudioQueue() {
       });
       return;
     }
+    // Soonest start first: a lane flush hands over a horizon of replacements
+    // and new notes at once, and a note due in 10 ms must not wait behind
+    // ones due in a second (knob drags: near-due replacements started
+    // 0.1-16 ms late behind 80-160 far ones).
+    orderQueueByStart();
     const hasPerf = typeof performance !== 'undefined' && typeof performance.now === 'function';
     const start = hasPerf ? performance.now() : 0;
-    const deadline = hasPerf ? start + AUDIO_FLUSH_BUDGET_MS : 0;
+    const deadline = hasPerf ? start + budgetMs : 0;
     let processed = 0;
     while (queueSize() > 0) {
       const ev = nextAudioEvent();
@@ -666,6 +1010,15 @@ function flushAudioQueue() {
 function processAudioEvent(ev, ctx) {
   const id = ev.id;
   if (!id) return;
+  if (ev.vid) {
+    // A lane voice cancelled while queued or awaiting a render (tombstone),
+    // or committed before a cancelAllLaneFuture (stale generation): drop.
+    if (laneTombstones.has(ev.vid) || ev.laneGen !== laneGeneration) {
+      laneTombstones.delete(ev.vid);
+      if (audioProbe && ev.pk) audioProbe.noteCancelled(ev.pk);
+      return;
+    }
+  }
   const vol = Number.isFinite(ev.vol) ? ev.vol : 1.0;
   const pitch = Number.isFinite(ev.pitch) ? ev.pitch : 0.0;
   const dur = Number.isFinite(ev.dur) && ev.dur > 0 ? ev.dur : 1.0;
@@ -673,31 +1026,49 @@ function processAudioEvent(ev, ctx) {
   // survives defer/stale-race replays — see sanitizeAudioEvent + timingTraces.
   const row = Number.isFinite(ev.row) ? ev.row : -1;
   const abs = Number.isFinite(ev.abs) ? ev.abs : -1;
-  // Melodic instruments re-render at the played pitch (desktop parity), so the
-  // BufferSource only needs the RESIDUAL pitch ratio (rounded → integer/half-
-  // semitone, so ≈1.0) plus the duration scale. Non-melodic (drums, FM, base
-  // modular) keep the full resample rate exactly as before (byte-identical).
+  // A note is desktop's played voice (engine_play.go playedVoice): a melodic
+  // voice renders AT its exact pitch and a Duration below 1 GATES it short
+  // (dividing by dur, as for drums, played a duration-0.5 note an octave
+  // high); every other voice is pitched and sized by resampling at
+  // 2^(pitch/12) / dur. played_voice.js builds those samples; WebAudio only
+  // plays them at rate 1.
   const melodic = isMelodicInstrument(id);
-  const roundedPitch = melodic ? roundPitchForCache(pitch) : 0;
-  const residualPitch = melodic ? (pitch - roundedPitch) : pitch;
-  const rate = Math.pow(2, residualPitch / 12) / dur;
-  const cacheKey = melodic ? cacheKeyFor(id, roundedPitch) : id;
+  const renderPitch = melodic ? roundPitchForCache(pitch) : 0;
+  const rate = melodic ? 1 : Math.pow(2, pitch / 12) / dur;
+  const gate = melodic && dur < 1 ? dur : 1;
+  const cacheKey = melodic ? cacheKeyFor(id, renderPitch) : id;
+  // The C stages (effects, EQ, soft clip) must be on the audio thread before a
+  // note reaches them: only the first moments of a context wait here.
+  if (dspHostState(ctx) === 'loading') {
+    dspReadyFor(ctx).then(() => enqueueAudioEvents([ev]));
+    return;
+  }
   const now = ctx.currentTime || 0;
   let when = Number.isFinite(ev.when) ? ev.when : NaN;
-  const minWhen = now + AUDIO_MIN_LEAD_SEC;
+  // The caller's requested start, BEFORE the min-lead floor below. Schedule
+  // metrics observe THIS: observing the clamped value made every late note
+  // read as lead=+4ms, so `overdue` could never fire in the browser.
+  const requestedWhen = when;
+  // The min-lead floor is for real time; an offline render (the stage-test
+  // seam) has no clock to beat, so a note at frame 0 stays at frame 0.
+  const minWhen = offlineRenderActive ? 0 : now + AUDIO_MIN_LEAD_SEC;
   if (!Number.isFinite(when)) {
     when = minWhen;
   } else if (when < minWhen) {
     when = minWhen;
   }
   const render = renderCache.get(cacheKey);
+  if (render) touchRender(cacheKey, render);
   if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch && window.__synthEvtTrace) {
-    console.log('[SYNTH-EVT]', { id, cacheKey, cached: !!render, stale: renderRecordStale(id, render), hasRENDER: !!RENDER[id], vol, pitch, roundedPitch, dur, rate, when, now, params: instrumentParamsFor(id) });
+    console.log('[SYNTH-EVT]', { id, cacheKey, cached: !!render, stale: renderRecordStale(id, render), hasRENDER: !!RENDER[id], vol, pitch, dur, rate, when, now, block: instrumentBlocks.has(id) });
   }
   // The FIRST musically-intended `when`, carried across defers/replays so a
   // note never loses its grid position (and renderLatencyMetrics can report
   // the deviation when it does slip).
-  const intendedWhen = Number.isFinite(ev.origWhen) ? ev.origWhen : when;
+  const intendedWhen = Number.isFinite(ev.origWhen) ? ev.origWhen
+    : (Number.isFinite(requestedWhen) ? requestedWhen : when);
+  const timing = { ideal: ev.ideal, grid: ev.grid, pk: ev.pk, vid: ev.vid, laneGen: ev.laneGen };
+  let laneStale = false;
   if (render && renderRecordStale(id, render) && ev.allowStale !== true) {
     // P0 — stale-while-revalidate: a live edit bumped the param generation.
     // Race the fresh render against this note's deadline: play the fresh
@@ -706,8 +1077,16 @@ function processAudioEvent(ev, ctx) {
     // Events without a caller `when` (preview taps) aren't grid-locked and
     // instead wait a short freshness budget for the just-edited timbre.
     const gridLocked = Number.isFinite(ev.when);
-    raceFreshRenderAgainstDeadline(ctx, { id, vol, pitch, dur, row, abs }, melodic ? pitch : undefined, intendedWhen, gridLocked);
-    return;
+    if (!(ev.vid && gridLocked)) {
+      raceFreshRenderAgainstDeadline(ctx, carryTiming(timing, { id, vol, pitch, dur, row, abs }), melodic ? pitch : undefined, intendedWhen, gridLocked);
+      return;
+    }
+    // A LANE voice never waits on the race: its replay is a main-thread
+    // timer / promise, so a stalled main thread started the note whenever it
+    // came back (an edit storm bunched 4 notes 160–415 ms late into one
+    // burst). Schedule the stale buffer NOW — the audio thread owns the
+    // timing — and swap to the fresh render if it lands before the start.
+    laneStale = true;
   }
   if (!render && RENDER[id]) {
     if (melodic) {
@@ -715,35 +1094,31 @@ function processAudioEvent(ev, ctx) {
       // but another pitch of the instrument is cached. Play the nearest one
       // resampled AT THE INTENDED TIME (wrong formant for one note beats a
       // note off the grid) and background-render the exact pitch for next hit.
-      const near = nearestCachedPitch(id, roundedPitch);
-      if (near) {
-        const nearRec = renderCache.get(near.key);
-        const nearBuf = nearRec && (nearRec.buffer || ensureAudioBuffer(id, near.key));
-        if (nearBuf) {
-          const nearRate = Math.pow(2, (pitch - near.pitch) / 12) / dur;
-          startRenderVoice(ctx, id, vol, nearRate, when, now, nearBuf, nearRec.data, row, abs, intendedWhen);
-          renderLatencyMetrics.neighborPlays += 1;
-          if (Number.isFinite(ev.origWhen)) {
-            renderLatencyMetrics.observeDefer((when - ev.origWhen) * 1000);
-          }
-          ensureRenderReady(id, roundedPitch).catch(() => {});
-          return;
+      const near = nearestCachedPitch(id, renderPitch);
+      const nearRec = near && renderCache.get(near.key);
+      const nearPlayed = nearRec && playedBufferFor(nearRec, Math.pow(2, (pitch - near.pitch) / 12), gate);
+      if (nearPlayed) {
+        startRenderVoice(ctx, id, vol, nearPlayed, when, now, nearRec.data, row, abs, intendedWhen, timing, 'neighbor');
+        renderLatencyMetrics.neighborPlays += 1;
+        if (Number.isFinite(ev.origWhen)) {
+          renderLatencyMetrics.observeDefer((when - ev.origWhen) * 1000);
         }
+        ensureRenderReady(id, renderPitch).catch(() => {});
+        return;
       }
     }
     // P1 — true first-render defer: replay at the ORIGINAL intended `when`
     // (floored to now+minLead on arrival), not at a fresh "now". If the render
     // beats the deadline the note lands exactly on grid; if not it plays as
     // soon as possible — late by the render overshoot only, never early.
-    ensureRenderReady(id, melodic ? roundedPitch : undefined).then(() => {
-      enqueueAudioEvents([{ id, vol, pitch, dur, when: intendedWhen, origWhen: intendedWhen, row, abs }]);
+    ensureRenderReady(id, melodic ? renderPitch : undefined).then(() => {
+      enqueueAudioEvents([carryTiming(timing, { id, vol, pitch, dur, when: intendedWhen, origWhen: intendedWhen, row, abs })]);
     }).catch((err) => dbg('audio.render.defer.error', { id, err: String(err) }));
     return;
   }
   if (render) {
-    // Lazily create the AudioBuffer from cached Float32Array on first play.
-    const buf = render.buffer || ensureAudioBuffer(id, cacheKey);
-    if (!buf) {
+    const played = playedBufferFor(render, rate, gate);
+    if (!played) {
       dbg('audio.render.nobuf', { id });
       return;
     }
@@ -756,75 +1131,116 @@ function processAudioEvent(ev, ctx) {
       // the schedule metrics, which only see the rewritten `when`).
       renderLatencyMetrics.observeDefer((when - ev.origWhen) * 1000);
     }
-    startRenderVoice(ctx, id, vol, rate, when, now, buf, render.data, row, abs, intendedWhen);
-    return;
-  }
-  const buf = samples[id];
-  if (!render && !buf) {
-    if (sampleURLs[id]) {
-      ensureSampleBuffer(id).then(() => {
-        // Omit `when` — same stale-timestamp fix as the render path above.
-        enqueueAudioEvents([{ id, vol, pitch, dur, row, abs }]);
-      }).catch((err) => dbg('audio.sample.defer.error', { id, err: String(err) }));
-      return;
-    }
-  }
-  if (buf) {
-    const src = ctx.createBufferSource();
-    trackSource(id, src);
-    src.buffer = buf;
-    try { src.playbackRate.setValueAtTime(rate, when); } catch (_) { src.playbackRate.value = rate; }
-    // Anti-pop: per-source fade GainNode with 5ms fade-in ramp. The ramp target
-    // is CHAIN_SPEC.voiceHeadroom (NOT 1.0): native applies this per-voice
-    // attenuation before summing voices (engine_stop.go renderVoiceIntoInstBuf),
-    // so WebAudio must too — otherwise N voices sum hot and slam the master
-    // compressor/limiter into audible clipping (browser-only mix distortion).
-    const fadeGain = ctx.createGain();
-    fadeGain.gain.setValueAtTime(0, when);
-    fadeGain.gain.linearRampToValueAtTime(CHAIN_SPEC.voiceHeadroom, when + 0.005);
-    src.connect(fadeGain);
-    fadeGain.connect(getBus(id, vol));
-    src._antiPopGain = fadeGain; // stash for stopSound fade-out
-    observeScheduleTiming(ctx, when, now);
-    try {
-      const channel = buf.numberOfChannels > 0 ? buf.getChannelData(0) : null;
-      if (channel) recordSamples(channel, vol);
-    } catch (_) {}
-    src.start(when);
-    if (row >= 0) {
-      timingTraces.push(row, abs, Number.isFinite(intendedWhen) ? intendedWhen : when, when, ctx.currentTime || 0);
+    startRenderVoice(ctx, id, vol, played, when, now, render.data, row, abs, intendedWhen, timing,
+      laneStale ? 'lane-stale' : ev.laneFresh ? 'lane-fresh'
+        : Number.isFinite(ev.origWhen) ? (ev.allowStale === true ? 'stale' : 'deferred') : 'hit');
+    if (laneStale) {
+      const vid = ev.vid;
+      const fresh = carryTiming(timing, { id, vol, pitch, dur, row, abs, laneFresh: true });
+      ensureRenderReady(id, melodic ? renderPitch : undefined)
+        .then(() => laneSwapFresh(vid, fresh, cacheKey))
+        .catch(() => {}); // render failed: the stale voice simply plays
     }
     return;
   }
-  playSoundParams(id, vol, pitch, dur, when).catch((err) => dbg('play.batch.fallback.error', { id, err: String(err) }));
+  dbg('audio.unknown', { id });
 }
 
-// startRenderVoice: create + connect + start one BufferSource for a cached
-// render (the former inline body of processAudioEvent's render-hit branch,
-// shared with the P3 neighbor-pitch fallback). row/abs/idealWhen (optional,
-// row defaults -1/not-recorded) thread sequencer identity into timingTraces —
-// see processAudioEvent callers.
-function startRenderVoice(ctx, id, vol, rate, when, now, buf, recData, row = -1, abs = -1, idealWhen) {
+// voiceLevel is a note's gain: the per-voice headroom × its volume (row ×
+// node), exact — desktop's scaledVoice × mixHeadroom. (Notes used to share
+// per-volume buses that rounded the volume to 1/16: up to ±1.9 dB per note,
+// and anything below 1/32 silent.)
+function voiceLevel(vol) {
+  return CHAIN_SPEC.voiceHeadroom * Math.max(0, Number.isFinite(vol) ? vol : 1);
+}
+
+// frameTime puts a start on the context's sample grid: a note starts on a
+// sample on both platforms (WebAudio would otherwise start it between two,
+// interpolating every sample of the voice).
+function frameTime(c, t) {
+  const sr = c.sampleRate || CHAIN_SPEC.sampleRate;
+  return Math.round(t * sr) / sr;
+}
+
+// playedBufferFor is the AudioBuffer of a render's played voice at (rate,
+// gate) — played_voice.js over the render's samples, with desktop's fade-in
+// baked in — cached per render record (a newer render is a new record).
+const playedCache = new WeakMap(); // render record → Map(variant → AudioBuffer)
+const PLAYED_VARIANTS_PER_RENDER = 32;
+function playedBufferFor(record, rate, gate) {
+  if (!record || !record.data) return null;
+  const variant = rate + '|' + gate;
+  let byVariant = playedCache.get(record);
+  if (!byVariant) {
+    byVariant = new Map();
+    playedCache.set(record, byVariant);
+  }
+  let buf = byVariant.get(variant);
+  if (buf) {
+    byVariant.delete(variant); // keep the most recently played last (LRU)
+    byVariant.set(variant, buf);
+    return buf;
+  }
+  const sr = record.sr || CHAIN_SPEC.sampleRate;
+  const g = gate < 1 ? gateLength(record.data.length, gate, sr, CHAIN_SPEC.gateFadeMs) : null;
+  const data = playedVoiceSamples(record.data, g, rate, Math.trunc((sr * CHAIN_SPEC.fadeInMs) / 1000));
+  buf = makeAudioBuffer(data, sr);
+  byVariant.set(variant, buf);
+  if (byVariant.size > PLAYED_VARIANTS_PER_RENDER) byVariant.delete(byVariant.keys().next().value);
+  return buf;
+}
+
+function makeAudioBuffer(data, sr) {
+  const n = Math.max(1, data.length);
+  let b;
+  try {
+    b = new AudioBuffer({ length: n, sampleRate: sr, numberOfChannels: 1 });
+  } catch (_) {
+    b = getCtx().createBuffer(1, n, sr);
+  }
+  if (data.length) b.copyToChannel(data, 0);
+  return b;
+}
+
+if (typeof window !== 'undefined') {
+  // Test seam: the samples a note puts into the mix (before its gain), so the
+  // stage test can compare them with desktop's played voice directly.
+  window.__playedVoiceForTest = (data, sr, melodic, pitch, dur) => {
+    const d = dur > 0 ? dur : 1;
+    const g = melodic && d < 1 ? gateLength(data.length, d, sr, CHAIN_SPEC.gateFadeMs) : null;
+    return playedVoiceSamples(Float32Array.from(data), g, melodic ? 1 : Math.pow(2, pitch / 12) / d, Math.trunc((sr * CHAIN_SPEC.fadeInMs) / 1000));
+  };
+}
+
+// startRenderVoice: create + connect + start one BufferSource for a played
+// voice (render hit, neighbour fallback, lane swap). row/abs/idealWhen
+// (optional, row defaults -1/not-recorded) thread sequencer identity into
+// timingTraces — see processAudioEvent callers.
+let voiceStartCount = 0; // voices started (the offline render seam checks none deferred)
+let offlineRenderActive = false; // __offlineRenderForTest is scheduling
+
+function startRenderVoice(ctx, id, vol, played, when, now, recData, row = -1, abs = -1, idealWhen, timing, path) {
+  voiceStartCount++;
   const src = ctx.createBufferSource();
   trackSource(id, src);
-  try { src.playbackRate.setValueAtTime(rate, when); } catch (_) { src.playbackRate.value = rate; }
-  src.buffer = buf;
-  // Anti-pop: per-source fade GainNode with 5ms fade-in ramp. The ramp target
-  // is CHAIN_SPEC.voiceHeadroom (NOT 1.0): native applies this per-voice
-  // attenuation before summing voices (engine_stop.go renderVoiceIntoInstBuf),
-  // so WebAudio must too — otherwise N voices sum hot and slam the master
-  // compressor/limiter into audible clipping (browser-only mix distortion).
-  const fadeGain = ctx.createGain();
-  fadeGain.gain.setValueAtTime(0, when);
-  fadeGain.gain.linearRampToValueAtTime(CHAIN_SPEC.voiceHeadroom, when + 0.005);
-  src.connect(fadeGain);
-  fadeGain.connect(getBus(id, vol));
-  src._antiPopGain = fadeGain; // stash for stopSound fade-out
-  observeScheduleTiming(ctx, when, now);
-  try { if (recData) recordSamples(recData, vol); } catch (_) {}
-  src.start(when);
+  src.buffer = played;
+  const level = voiceLevel(vol);
+  const gain = ctx.createGain();
+  gain.gain.value = level;
+  src.connect(gain);
+  const sink = channelSink(id);
+  if (sink) gain.connect(sink);
+  src._antiPopGain = gain; // stash for stopSound / stopLaneAt fade-out
+  src._level = level;
+  const at = frameTime(ctx, when);
+  const swap = path === 'lane-fresh'; // the same note, already observed when it was scheduled stale
+  if (!swap) observeScheduleTiming(ctx, Number.isFinite(idealWhen) ? idealWhen : at, now);
+  try { if (recData && !swap) recordSamples(recData, vol); } catch (_) {}
+  src.start(at);
+  if (timing) laneRegister(timing.vid, src, gain, id, at, timing.pk, level);
   if (row >= 0) {
-    timingTraces.push(row, abs, Number.isFinite(idealWhen) ? idealWhen : when, when, ctx.currentTime || 0);
+    if (!swap) timingTraces.push(row, abs, Number.isFinite(idealWhen) ? idealWhen : at, at, ctx.currentTime || 0);
+    if (audioProbe && timing && timing.pk) audioProbe.noteStarted(timing.pk, id, at, ctx.currentTime || 0, path || 'hit');
   }
 }
 
@@ -856,7 +1272,7 @@ function raceFreshRenderAgainstDeadline(ctx, ev, pitchForRender, intendedWhen, g
   const replay = () => {
     if (decided) return;
     decided = true;
-    enqueueAudioEvents([{ id: ev.id, vol: ev.vol, pitch: ev.pitch, dur: ev.dur, when: intendedWhen, origWhen: intendedWhen, allowStale: true, row: ev.row, abs: ev.abs }]);
+    enqueueAudioEvents([carryTiming(ev, { id: ev.id, vol: ev.vol, pitch: ev.pitch, dur: ev.dur, when: intendedWhen, origWhen: intendedWhen, allowStale: true, row: ev.row, abs: ev.abs })]);
   };
   ensureRenderReady(ev.id, pitchForRender).then(replay).catch(replay);
   const now = ctx.currentTime || 0;
@@ -906,9 +1322,10 @@ if (typeof window !== 'undefined') {
   window.getAudioScheduleMetrics = getAudioScheduleMetrics;
 }
 
+// getSampleRate is the rate every voice renders at: the engine's (desktop's
+// too), whatever the device runs at.
 function getSampleRate() {
-  if (hasCtx() && ctx.sampleRate) return ctx.sampleRate;
-  return 48000; // Safe default; most mobile/desktop browsers use 48kHz
+  return CHAIN_SPEC.sampleRate;
 }
 
 // iOS speaker routing fix — configures the audio session type to 'playback'
@@ -972,7 +1389,8 @@ function applyPendingOps() {
 // handlers (unlockAudio) or from code that absolutely needs a context now.
 function createCtx() {
   if (ctx) return ctx;
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  ctx = newEngineContext();
+  preloadOutputTap(ctx);
   try {
     if (typeof window !== 'undefined') {
       window.__audioCtx = ctx;
@@ -1007,7 +1425,23 @@ function createCtx() {
     }
   }
   dbg('ctx.new', { sr: ctx.sampleRate, state: ctx.state });
+  // Load the C stages (effects, EQ, soft clip) onto the audio thread up front;
+  // chains built before they land are rebuilt onto them (onDSPHostReady).
+  ensureDSPHost(ctx);
   return ctx;
+}
+
+// newEngineContext: an AudioContext at the engine's rate (CHAIN_SPEC.sampleRate,
+// desktop's rate too). An engine that refuses the rate gets its own; voices
+// still render at the engine rate and WebAudio converts them.
+function newEngineContext() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  try {
+    return new AC({ sampleRate: CHAIN_SPEC.sampleRate });
+  } catch (err) {
+    console.warn('[AUDIOJS] AudioContext refused', CHAIN_SPEC.sampleRate, 'Hz — using the device rate:', err);
+    return new AC();
+  }
 }
 
 function getCtx() {
@@ -1022,6 +1456,24 @@ function getCtx() {
   }
   return ctx;
 }
+
+// flushPendingChannelOps forces the AudioContext into existence and drains
+// pendingChannelOps (channel volume/pan/EQ/insert-FX node construction
+// deferred while no context existed). Called from Go's
+// audio.EnsureAudioGraphReady (internal/audio/audio_graph_ready_js.go), which
+// the playback readiness gate invokes at import time (see import.go) so a
+// circuit imported BEFORE the audio-unlock gesture builds its whole
+// channel/FX graph now — while the progress toast is up and Play is already
+// disabled, so a stall here is invisible — instead of bursting at the very
+// first triggered note. Safe to call when the queue is already drained
+// (applyPendingOps is idempotent) or when ctx is still suspended: creating
+// and wiring nodes does not require a 'running' context, only producing
+// audible output does.
+window.flushPendingChannelOps = () => {
+  getCtx();
+  applyPendingOps();
+  ensureMainNode();
+};
 
 // Robust multi-event audio unlock for mobile browsers.
 // iOS Safari requires a silent buffer play inside a user gesture to truly unlock.
@@ -1144,14 +1596,34 @@ async function loadDSPModule() {
 if (!modulePromise) {
   modulePromise = loadDSPModule();
 }
+// checkEngineABI: the loaded C engine must have been compiled with the param
+// layout this file marshals (synth_param_abi.gen.js). A glue built from an
+// older modular_params.gen.h reads every later field at a shifted offset —
+// wrong voices, no error — so refuse it loudly.
+let engineABIChecked = false;
+function checkEngineABI(m) {
+  if (engineABIChecked) return;
+  const n = (m && typeof m._modular_param_count === 'function') ? m._modular_param_count() : -1;
+  if (typeof window !== 'undefined') window.__synthEngineParamCount = n;
+  if (n !== MODULAR_PARAM_COUNT) {
+    if (typeof window !== 'undefined') window.__synthABIStale = true;
+    const msg = '[AUDIOJS] STALE drums.single.js — the C engine was compiled with ' + n +
+      ' params, synth_param_abi.gen.js marshals ' + MODULAR_PARAM_COUNT + '. Run `rm -f src/js/drums.single.js && make wasm`.';
+    try { console.error(msg); } catch (_) {}
+    throw new Error(msg);
+  }
+  engineABIChecked = true;
+}
+
 async function ensureModule() {
   mod = await modulePromise;
+  checkEngineABI(mod);
   try { dbg('dsp.exports', { hasCcall: !!mod.ccall, hasMalloc: !!mod._malloc, hasHeap: !!mod.HEAPF32 }); } catch (e) { dbg('dsp.exports.error', { err: String(e) }); }
   return mod;
 }
 
 // ───────── Off-main-thread synth rendering (WASM perf fix) ─────────
-// The C voice renderers (render_modular_p, render_X, …) are synchronous and
+// The C voice renderer (render_modular_p) is synchronous and
 // cost ~30–40 ms for a 2 s melodic / physical-model voice. Running them via
 // ccall on the main thread blocked the UI + audio scheduler whenever a live
 // param edit invalidated the render cache mid-playback (the user-reported
@@ -1168,23 +1640,40 @@ async function ensureModule() {
 // Render-worker POOL. A single worker serialized every cold render, so a burst
 // of distinct cold pitches (a row just switched to a melodic instrument, or a
 // pre-warm of its pitch set) stacked round-trips (organ ~420ms each in WASM →
-// multi-second warm). A small pool renders the burst in parallel; each render
-// is dispatched to the least-loaded worker. Pool size is capped low to bound
-// memory (each worker hosts its own SINGLE_FILE wasm module). Output is
-// worker-independent, so parity (xplat_audio_compare) is unaffected.
-const SYNTH_WORKER_POOL_SIZE = (() => {
+// multi-second warm; a measured 91-pair import-warm circuit took 7.79s at
+// ~108ms/pair, 2026-09-13). Requests are independent pure renders, so a small
+// pool renders the burst in parallel; each render is dispatched to the
+// least-loaded worker (per-item cost varies widely — ~2ms for a short drum
+// vs. ~40ms for a bowed string — so a state-blind round-robin can stack
+// several expensive items on one worker while a sibling sits idle; the
+// least-loaded pick routes around that skew). Pool size is capped low to
+// bound memory (each worker hosts its own SINGLE_FILE wasm module) and to
+// leave a core free for the main thread + audio thread. Output is
+// worker-independent, so parity (xplat_audio_compare) is unaffected — the
+// pool changes only WHICH worker renders a request, never what it computes.
+// Lazily created on first use (ensureSynthRenderWorkers()), NOT at module
+// load: a worker that is never used should never be paid for, and several
+// tests import this module without ever rendering.
+const RENDER_WORKER_MAX = 4;
+function renderWorkerCount() {
   try {
-    const c = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
-    return Math.max(1, Math.min(3, c - 1));
-  } catch (_) { return 2; }
-})();
+    // Test/bench-only override (mirrors window.__beatmoProfileOverride) so a
+    // sweep can compare pool sizes without re-launching with a different
+    // navigator.hardwareConcurrency. Never set in production.
+    if (typeof window !== 'undefined' && Number.isFinite(window.__beatmoRenderWorkerCountOverride)) {
+      return Math.max(1, window.__beatmoRenderWorkerCountOverride | 0);
+    }
+    const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
+    return Math.max(1, Math.min(RENDER_WORKER_MAX, hc - 1));
+  } catch (_) { return 1; }
+}
 let synthWorkerPool = null;       // array of { worker, inflight }
 let synthWorkerDisabled = false;
 let synthWorkerReqSeq = 0;
 const synthWorkerPending = new Map(); // reqId -> { resolve, reject, t, entry }
 const SYNTH_WORKER_RENDER_TIMEOUT_MS = 4000;
 
-function makeSynthWorker() {
+function createRenderWorker() {
   const w = new Worker(new URL('./synth_render_worker.js', import.meta.url), { type: 'module' });
   const entry = { worker: w, inflight: 0 };
   w.onmessage = (ev) => {
@@ -1211,13 +1700,16 @@ function makeSynthWorker() {
   return entry;
 }
 
+// ensureSynthRenderWorkers lazily creates the pool on first call (never at
+// module load) and memoizes it — a page that never renders (several browser
+// tests just import this module) never pays for a single Worker.
 function ensureSynthRenderWorkers() {
   if (synthWorkerPool) return synthWorkerPool;
   if (synthWorkerDisabled) return null;
   if (typeof Worker === 'undefined') { synthWorkerDisabled = true; return null; }
   try {
     const pool = [];
-    for (let i = 0; i < SYNTH_WORKER_POOL_SIZE; i++) pool.push(makeSynthWorker());
+    for (let i = 0; i < renderWorkerCount(); i++) pool.push(createRenderWorker());
     synthWorkerPool = pool;
     return pool;
   } catch (e) {
@@ -1228,7 +1720,12 @@ function ensureSynthRenderWorkers() {
 }
 
 // pickSynthWorker returns the least-loaded pool entry so a burst of renders
-// spreads across workers instead of piling on one.
+// (import warm-up, a row switching to a melodic instrument) spreads across
+// every worker instead of piling on one, and — because per-item render cost
+// varies widely (a short drum vs. a bowed string) — routes around a worker
+// that is mid-way through an expensive item rather than queuing behind it.
+// Requests are pure/stateless renders, so which worker serves a given
+// request never affects the result.
 function pickSynthWorker(pool) {
   let best = pool[0];
   for (let i = 1; i < pool.length; i++) {
@@ -1242,13 +1739,17 @@ function rejectAllSynthWorkerPending(err) {
   synthWorkerPending.clear();
 }
 
-// renderVoiceInWorker posts a render request to the least-loaded pool worker and
-// resolves with the rendered Float32Array (length === frames). Rejects if no
-// worker is available, on error, or on timeout — callers handle the reject
-// (during playback they do NOT sync-render; see ensureRenderedSample). The param
-// block is structured-cloned (NOT transferred) so the caller keeps it for the
-// synchronous fallback path.
-function renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount, postAmp) {
+// renderVoiceInWorker posts a render request to the least-loaded pool worker
+// and resolves with the rendered Float32Array (length === frames). Rejects if
+// no worker is available, on error, or on timeout — callers handle the
+// reject (during playback they do NOT sync-render; see ensureRenderedSample).
+// The param block is structured-cloned (NOT transferred) so the caller keeps
+// it for the synchronous fallback path.
+// synthWorkerPending stays ONE map keyed by request id across the whole pool
+// — synthWorkerPending.size is read as the workerQueuePeak metric
+// (webaudio_import_cold_bench.browser.test.js), so it must keep meaning
+// "total requests in flight across the pool", not per-worker.
+function renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount, post) {
   const pool = ensureSynthRenderWorkers();
   if (!pool) return Promise.reject(new Error('synth render worker unavailable'));
   const entry = pickSynthWorker(pool);
@@ -1265,10 +1766,10 @@ function renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount, postAmp
     synthWorkerPending.set(reqId, { resolve, reject, t, entry });
     entry.inflight++;
     try {
-      // postAmp: when finite, the worker also peak-normalizes and amp-scales
-      // the buffer (identical float32 loop order to the main-thread fallback,
-      // so results stay bit-identical), keeping that O(frames) work off main.
-      entry.worker.postMessage({ type: 'render', reqId, renderFn, sr, frames, allocCount: allocCount || 0, params: paramArr || null, postAmp: Number.isFinite(postAmp) ? postAmp : null });
+      // post: when set, the worker also applies the voice post-processing
+      // (voice_post.js — the same function as the main-thread fallback, so
+      // results stay bit-identical), keeping that O(frames) work off main.
+      entry.worker.postMessage({ type: 'render', reqId, renderFn, sr, frames, allocCount: allocCount || 0, params: paramArr || null, post: post || null });
     } catch (e) {
       synthWorkerPending.delete(reqId); clearTimeout(t); entry.inflight--; reject(e);
     }
@@ -1277,268 +1778,49 @@ function renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount, postAmp
 
 // renderVoiceSync is the original synchronous main-thread render, used as the
 // fallback when the worker is unavailable and to preserve the parameterized →
-// native resilience path. Returns a freshly-copied Float32Array (length frames).
-function renderVoiceSync(m, renderFn, sr, frames, paramArr, allocCount) {
+// native resilience path. Returns a freshly-copied Float32Array (length
+// frames), post-processed like the worker's when post is set.
+function renderVoiceSync(m, renderFn, sr, frames, paramArr, allocCount, post) {
   const ptr = m._malloc(frames * 4);
   if (!ptr) throw new Error('Failed to allocate memory for audio buffer.');
   let paramsPtr = 0;
   try {
-    if (paramArr) {
-      const count = Math.max(paramArr.length, allocCount || 0);
-      paramsPtr = m._malloc(count * 4);
-      if (!paramsPtr) throw new Error('Failed to allocate memory for param block.');
-      const pheap = m.HEAPF32.subarray(paramsPtr >> 2, (paramsPtr >> 2) + count);
-      pheap.fill(0);
-      pheap.set(paramArr);
-      m.ccall(renderFn, null, ['number', 'number', 'number', 'number'], [ptr, sr, frames, paramsPtr]);
-    } else {
-      m.ccall(renderFn, null, ['number', 'number', 'number'], [ptr, sr, frames]);
-    }
+    // Every render passes a full param block: the engine has no defaults.
+    if (!paramArr) throw new Error('renderVoiceSync: no param block for ' + renderFn);
+    const count = Math.max(paramArr.length, allocCount || 0);
+    // The modular param block is double; emscripten malloc is 8-byte aligned,
+    // so >> 3 is exact.
+    if (!m.HEAPF64) throw new Error('drums module has no HEAPF64 — the C glue (drums.single.js) is older than the double param block; run `make wasm`');
+    paramsPtr = m._malloc(count * 8);
+    if (!paramsPtr) throw new Error('Failed to allocate memory for param block.');
+    const pheap = m.HEAPF64.subarray(paramsPtr >> 3, (paramsPtr >> 3) + count);
+    pheap.fill(0);
+    pheap.set(paramArr);
+    m.ccall(renderFn, null, ['number', 'number', 'number', 'number'], [ptr, sr, frames, paramsPtr]);
     const heap = m.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + frames);
     const data = new Float32Array(frames);
     data.set(heap);
-    return data;
+    return applyVoicePost(m, data, sr, post || null);
   } finally {
     m._free(ptr);
     if (paramsPtr) m._free(paramsPtr);
   }
 }
 
-// Pre-warm the off-thread synth render pool so the first live render is ready
-// to go off-main-thread (no first-note main-thread stall). Best-effort.
-try { ensureSynthRenderWorkers(); } catch (_) {}
+// NOTE: the render-worker pool used to be pre-warmed here at module load so
+// the first live render was already off-main-thread. That cost every page
+// load a pool of Workers even when nothing was ever rendered (several browser
+// tests import this module without rendering). The pool is now created
+// lazily on first use inside ensureSynthRenderWorkers() (called from
+// renderVoiceInWorker) — the first render pays the one-time Worker spin-up,
+// but that is async off-thread already and never blocks the main thread.
 
-const RENDER = {
-  // Snare family migrated to the unified modular engine (Phase-5). Render through
-  // render_modular / render_modular_p; the binding-translated modular default
-  // block is seeded into JS at bootstrap (seedInstrumentDefaults) and per-edit
-  // pushes carry modular-named params (synth_recipe_wasm.go seam).
-  snare: 'render_modular',
-  // Kick family migrated to the unified modular engine (Phase-3). Render through
-  // render_modular / render_modular_p; the binding-translated modular default
-  // block is seeded into JS at bootstrap (seedInstrumentDefaults) and per-edit
-  // pushes carry modular-named params (synth_recipe_wasm.go seam).
-  kick: 'render_modular',
-  // Cymbal family migrated to the unified modular engine (Phase-6). Render through
-  // render_modular / render_modular_p; the binding-translated modular default
-  // block is seeded into JS at bootstrap (seedInstrumentDefaults) and per-edit
-  // pushes carry modular-named params (synth_recipe_wasm.go seam).
-  hihat: 'render_modular',
-  // Tom family migrated to the unified modular engine (Phase-4). Render through
-  // render_modular / render_modular_p; the binding-translated modular default
-  // block is seeded into JS at bootstrap (seedInstrumentDefaults) and per-edit
-  // pushes carry modular-named params (synth_recipe_wasm.go seam).
-  tom: 'render_modular',
-  clap: 'render_modular',
-  cowbell: 'render_modular',
-  // Bass instruments — migrated to the unified modular engine (Phase-2).
-  // Render through render_modular / render_modular_p; the binding-translated
-  // modular default block is seeded into JS at bootstrap (seedInstrumentDefaults)
-  // and per-edit pushes carry modular-named params (synth_recipe_wasm.go seam).
-  'sub-bass': 'render_modular',
-  // Variant set 1: slightly brighter/tighter flavours.
-  'snare-1': 'render_modular',
-  'kick-1': 'render_modular',
-  'hihat-1': 'render_modular',
-  'tom-1': 'render_modular',
-  'clap-1': 'render_modular',
-  'cowbell-1': 'render_modular',
-  'sub-bass-1': 'render_modular',
-  // Variant set 2: more obviously digital/lofi flavours.
-  'snare-2': 'render_modular',
-  'kick-2': 'render_modular',
-  'hihat-2': 'render_modular',
-  'tom-2': 'render_modular',
-  'clap-2': 'render_modular',
-  'cowbell-2': 'render_modular',
-  // New distinct instruments.
-  'rimshot': 'render_modular',
-  'sidestick': 'render_modular',
-  'kick-deep': 'render_modular',
-  'shaker': 'render_modular',
-  'ride': 'render_modular',
-  'crash': 'render_modular',
-  // Variant set 3: expressive dynamics.
-  'snare-ghost': 'render_modular',
-  'kick-tight': 'render_modular',
-  'hihat-pedal': 'render_modular',
-  'clap-tight': 'render_modular',
-  // FM synthesis instruments — migrated to the modular engine (Phase-7, the LAST
-  // legacy family). Render through render_modular / render_modular_p; the
-  // binding-translated modular default (fmRecipeToModular → source==10 FM voice)
-  // is seeded into JS at bootstrap via seedInstrumentDefaults.
-  'fm-bass':     'render_modular',
-  'fm-bell':     'render_modular',
-  'fm-lead':     'render_modular',
-  'fm-epiano':   'render_modular',
-  'fm-pluck':    'render_modular',
-  'fm-bass-1':   'render_modular',
-  'fm-bell-1':   'render_modular',
-  'fm-lead-1':   'render_modular',
-  'fm-epiano-1': 'render_modular',
-  'fm-pluck-1':  'render_modular',
-  // Unified modular synth voice (fully user-editable pipeline).
-  'modular': 'render_modular',
-  // Second shipped modular preset — same C renderer, pad defaults seeded
-  // into JS at bootstrap via seedInstrumentDefaults.
-  'modular-pad': 'render_modular',
-  // Bowed strings family — same C renderer, seed defaults seeded at bootstrap.
-  'violin':          'render_modular',
-  'violin-ensemble': 'render_modular',
-  'cello':           'render_modular',
-  'cello-warm':      'render_modular',
-  'organ-church':    'render_modular',
-  'scifi-lead':      'render_modular',
-  // Plucked strings — guitars (Task 2).
-  'guitar-nylon':         'render_modular',
-  'guitar-nylon-bright':  'render_modular',
-  'guitar-steel':         'render_modular',
-  'guitar-steel-warm':    'render_modular',
-  'guitar-electric':      'render_modular',
-  'guitar-electric-neck': 'render_modular',
-  'harp':                 'render_modular',
-  // Keys — piano (Task 3).
-  'piano-grand': 'render_modular',
-  'piano-felt':  'render_modular',
-  // Woodwind (Task 4).
-  'flute':         'render_modular',
-  'flute-breathy': 'render_modular',
-  'oboe':          'render_modular',
-  'oboe-full':     'render_modular',
-  // Brass (Task 5).
-  'trumpet':          'render_modular',
-  'trumpet-mellow':   'render_modular',
-  'french-horn':      'render_modular',
-  'french-horn-loud': 'render_modular',
-  // Synth bass (Task 6).
-  'bass-guitar': 'render_modular',
-  'bass-acid': 'render_modular',
-  'bass-reese': 'render_modular',
-  'bass-fm': 'render_modular',
-  'bass-808': 'render_modular',
-  // Modal conga (Task 7).
-  'conga': 'render_modular',
-  'conga-open': 'render_modular',
-  'conga-tumba': 'render_modular',
-  // Masterpiece template set — organ + sax (shipped as Go builtins in
-  // config.go / instrument_ids_gen.go and bound to synth-modular-organ /
-  // synth-modular-sax). Without these entries playSoundParams('organ'|'sax')
-  // throws "Unknown sound" and is silent on WASM while playing fine on desktop.
-  'organ': 'render_modular',
-  'sax': 'render_modular',
-  // Configurable KICK stage family (modular gen-bank kick voice, source==5) is
-  // generated from the Go table and merged via Object.assign(RENDER, …) below.
-};
-
-const RENDER_INFO = {
-  snare:   { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
-  kick:    { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
-  hihat:   { seconds: 0.25, amp: 0.8 , paramBlock: 'modular' },
-  tom:     { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
-  clap:    { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
-  cowbell: { seconds: 0.4,  amp: 0.8 , paramBlock: 'modular' },
-  'sub-bass':    { seconds: 2.0, amp: 0.8 , paramBlock: 'modular' },
-  'snare-1':        { seconds: 0.9,  amp: 0.8, paramBlock: 'modular' },
-  'kick-1':         { seconds: 0.6,  amp: 0.8, paramBlock: 'modular' },
-  'hihat-1':        { seconds: 0.7,  amp: 0.8 , paramBlock: 'modular' },
-  'tom-1':          { seconds: 0.6,  amp: 0.8, paramBlock: 'modular' },
-  'clap-1':         { seconds: 0.45, amp: 0.8, paramBlock: 'modular' },
-  'cowbell-1':      { seconds: 0.5,  amp: 0.8 , paramBlock: 'modular' },
-  'sub-bass-1':     { seconds: 1.5,  amp: 0.8 , paramBlock: 'modular' },
-  'snare-2':        { seconds: 0.7,  amp: 0.8, paramBlock: 'modular' },
-  'kick-2':         { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
-  'hihat-2':        { seconds: 0.22, amp: 0.8 , paramBlock: 'modular' },
-  'tom-2':          { seconds: 0.45, amp: 0.8, paramBlock: 'modular' },
-  'clap-2':         { seconds: 0.4,  amp: 0.8, paramBlock: 'modular' },
-  'cowbell-2':      { seconds: 0.4,  amp: 0.8 , paramBlock: 'modular' },
-  'rimshot':        { seconds: 0.3,  amp: 0.8, paramBlock: 'modular' },
-  'sidestick':      { seconds: 0.25, amp: 0.8, paramBlock: 'modular' },
-  'kick-deep':      { seconds: 0.8,  amp: 0.8, paramBlock: 'modular' },
-  'shaker':         { seconds: 0.3,  amp: 0.8 , paramBlock: 'modular' },
-  'ride':           { seconds: 1.0,  amp: 0.8 , paramBlock: 'modular' },
-  'crash':          { seconds: 1.5,  amp: 0.8 , paramBlock: 'modular' },
-  'snare-ghost':    { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
-  'kick-tight':     { seconds: 0.35, amp: 0.8, paramBlock: 'modular' },
-  'hihat-pedal':    { seconds: 0.15, amp: 0.8 , paramBlock: 'modular' },
-  'clap-tight':     { seconds: 0.3,  amp: 0.8, paramBlock: 'modular' },
-  // FM synthesis instruments — migrated to the modular engine (Phase-7, the LAST
-  // legacy family). FM knobs travel in the wide modular_params block (gen_fm_*
-  // gen-slot columns, source==10) via the Go-side binding; the JS side fills the
-  // modular block and the binding-translated default is seeded at bootstrap.
-  'fm-bass':        { seconds: 1.5,  amp: 0.8, paramBlock: 'modular' },
-  'fm-bell':        { seconds: 2.0,  amp: 0.8, paramBlock: 'modular' },
-  'fm-lead':        { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
-  'fm-epiano':      { seconds: 2.0,  amp: 0.8, paramBlock: 'modular' },
-  'fm-pluck':       { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
-  'fm-bass-1':      { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
-  'fm-bell-1':      { seconds: 1.5,  amp: 0.8, paramBlock: 'modular' },
-  'fm-lead-1':      { seconds: 0.7,  amp: 0.8, paramBlock: 'modular' },
-  'fm-epiano-1':    { seconds: 1.5,  amp: 0.8, paramBlock: 'modular' },
-  'fm-pluck-1':     { seconds: 0.3,  amp: 0.8, paramBlock: 'modular' },
-  // Modular voice instrument uses the wide modular_params block (paramBlock).
-  'modular':        { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
-  'modular-pad':    { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
-  // Bowed strings family — sustained (2s), same modular param block.
-  'violin':          { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'violin-ensemble': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'cello':           { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'cello-warm':      { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'organ-church':    { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'scifi-lead':      { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  // Plucked strings — guitars (Task 2, 1.5s).
-  'guitar-nylon':         { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'guitar-nylon-bright':  { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'guitar-steel':         { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'guitar-steel-warm':    { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'guitar-electric':      { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'guitar-electric-neck': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'harp':                 { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  // Keys — piano (Task 3, 2.0s).
-  'piano-grand': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'piano-felt':  { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  // Woodwind (Task 4, 2.0s).
-  'flute':         { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'flute-breathy': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'oboe':          { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'oboe-full':     { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  // Brass (Task 5, 2.0s).
-  'trumpet':          { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'trumpet-mellow':   { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'french-horn':      { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'french-horn-loud': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  // Synth bass (Task 6, 1.5s).
-  'bass-guitar': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'bass-acid': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'bass-reese': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'bass-fm': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  'bass-808': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
-  // Modal conga (Task 7, 0.5s — short percussion).
-  'conga': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
-  'conga-open': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
-  'conga-tumba': { seconds: 0.6, amp: 0.8, paramBlock: 'modular' },
-  // Masterpiece template set — organ + sax (sustained 2.0s, modular block).
-  'organ': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  'sax':   { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
-  // Configurable KICK stage family (NOT in MELODIC_INSTRUMENTS — percussion,
-  // resampled like the other drums) is generated from the Go table and merged
-  // via Object.assign(RENDER_INFO, …) below.
-};
-
-// Merge the config-first modular instrument tables generated from the Go source
-// of truth. Kept as an Object.assign (not spread inline) so the generated file
-// is the sole owner of these ids and future rows need no audio.js edit.
-Object.assign(RENDER, MODULAR_RENDER);
-Object.assign(RENDER_INFO, MODULAR_RENDER_INFO);
-
-// Loudness normalization: override each instrument's amp with the measured,
-// loudness-normalized value so browser output matches native Go (which applies
-// the same value via ConfigForInstrument). Modular entries come from a frozen
-// generated object, so REPLACE the entry (spread) rather than mutate .amp.
-for (const [id, amp] of Object.entries(INSTRUMENT_LOUDNESS_AMP)) {
-  if (RENDER_INFO[id]) {
-    RENDER_INFO[id] = { ...RENDER_INFO[id], amp };
-  }
-}
+// RENDER / RENDER_INFO / MELODIC_INSTRUMENTS are filled by Go: every synth
+// instrument is an instrument DOCUMENT, flattened in Go and pushed here with
+// its render metadata (window.setInstrumentBlock below; spec 2026-10-04 §8).
+// audio.js keeps no parameter maps and no instrument table of its own.
+const RENDER = {};
+const RENDER_INFO = {};
 
 // ───────── Per-pitch melodic re-render (desktop↔WASM parity) ─────────
 // Desktop melodic instruments RE-RENDER the C voice at the played semitone
@@ -1553,28 +1835,8 @@ for (const [id, amp] of Object.entries(INSTRUMENT_LOUDNESS_AMP)) {
 // modular are UNTOUCHED (bare-id key, full playbackRate resample, byte-identical
 // to before).
 //
-// This MUST stay in sync with melodicRecipeIDs in
-// src/go/internal/audio/synth_recipe_dispatch.go. These are the INSTRUMENT ids
-// (bare names) whose recipe is the synth-modular melodic recipe. (bass-guitar →
-// recipe synth-modular-bass-guitar.)
-const MELODIC_INSTRUMENTS = new Set([
-  // Bowed strings
-  'violin', 'violin-ensemble', 'cello', 'cello-warm', 'organ-church', 'scifi-lead',
-  // Plucked strings — guitars
-  'guitar-nylon', 'guitar-nylon-bright', 'guitar-steel', 'guitar-steel-warm',
-  'guitar-electric', 'guitar-electric-neck', 'harp',
-  // Keys — piano
-  'piano-grand', 'piano-felt',
-  // Woodwind
-  'flute', 'flute-breathy', 'oboe', 'oboe-full',
-  // Brass
-  'trumpet', 'trumpet-mellow', 'french-horn', 'french-horn-loud',
-  // Bass guitar (renamed from synth-bass) + synth bass family
-  'bass-guitar', 'bass-acid', 'bass-reese', 'bass-fm', 'bass-808',
-  // Masterpiece template set — organ + sax (melodic on desktop:
-  // synth-modular-organ / synth-modular-sax in melodicRecipeIDs)
-  'organ', 'sax',
-]);
+// The set is each pushed document's render.melodic flag (setInstrumentBlock).
+const MELODIC_INSTRUMENTS = new Set();
 
 function isMelodicInstrument(id) {
   return MELODIC_INSTRUMENTS.has(id);
@@ -1585,12 +1847,14 @@ function isMelodicInstrument(id) {
 // tree-shaking skip it; production code uses isMelodicInstrument directly.
 export const __isMelodicInstrument = isMelodicInstrument;
 
-// roundPitchForCache mirrors Go's roundPitchForCache: round to nearest 0.5
-// semitone. Bounds the cache key space while staying exact for the UI's
-// integer / half-integer node pitches.
+// roundPitchForCache is the pitch a melodic voice renders at: the note's EXACT
+// pitch, as desktop renders it (doc_voice_native.go writes the exact pitch into
+// the block). It used to round to the nearest half semitone and bend the rest
+// with playbackRate, which no platform-neutral render matches. Only NaN and
+// -0 are normalised, so equal pitches share one cache key.
 function roundPitchForCache(pitch) {
   const p = Number.isFinite(pitch) ? pitch : 0;
-  return Math.round(p * 2) / 2;
+  return p === 0 ? 0 : p;
 }
 
 // cacheKeyFor returns the renderCache key for (id, rounded pitch). For melodic
@@ -1626,7 +1890,6 @@ function evictRenderCache(id) {
 if (typeof window !== 'undefined') {
   window.__evictRenderCacheForTest = (id) => {
     evictRenderCache(id);
-    delete samples[id];
     rawRenderCache.delete(id);
   };
 }
@@ -1698,46 +1961,15 @@ function nearestCachedPitch(id, roundedPitch) {
 // by the bare instrument id exactly as before.
 export const renderCache = new Map();
 const pendingRenderEnsures = new Map();
-const pendingSampleLoads = new Map();
-// Volume buses reduce per-voice GainNode creation overhead by reusing
-// a small set of GainNodes per instrument and quantized volume.
-const volumeBus = new Map(); // key: `${id}|${qVol}` -> GainNode
-const VOL_Q = 16;
-const MAX_BUSES_PER_INST = 16; // soft-cap per instrument
-const _EVICT_AGE_SEC = 2.0;     // only evict buses unused for this time
-// Index per instrument for LRU bookkeeping: id -> Map(q -> { node, lastUsed })
-const busIndex = new Map();
-const channelNodes = new Map(); // id -> { ingress, gain, analyser, eqChain }
+const channelNodes = new Map(); // id -> { ingress, gain, analysers, fxChain, fxNode, eqProgram, eqNode }
 let mainChannelNode = null;
 
+// clampVolume guards a channel gain against garbage; the master range itself
+// is clamped once, in Go (audio.SetMainVolume, CHAIN_SPEC.maxMasterVolume).
 function clampVolume(vol) {
   if (!Number.isFinite(vol)) return 1;
   if (vol < 0) return 0;
-  if (vol > 4) return 4; // allow some headroom for boosts
   return vol;
-}
-
-// Master compressor: inserted between mainChannelNode and the limiter.
-// Uses WebAudio's native DynamicsCompressorNode with drum-optimized defaults.
-let mainCompressor = null;
-
-function ensureCompressor() {
-  if (mainCompressor) return mainCompressor;
-  if (!hasCtx()) return null;
-  const c = ctx;
-  mainCompressor = c.createDynamicsCompressor();
-  // Configuration from CHAIN_SPEC (Go chain_spec.go) so this matches the
-  // desktop master compressor. attack/release are SECONDS here, so the spec's
-  // millisecond values are ÷1000. (The DynamicsCompressorNode algorithm still
-  // differs from the Go peak-detect compressor — matching params is as close as
-  // the two algorithms allow; full-mix parity is correlation-graded.)
-  mainCompressor.threshold.value = CHAIN_SPEC.compressorThresholdDb;
-  mainCompressor.ratio.value = CHAIN_SPEC.compressorRatio;
-  mainCompressor.attack.value = CHAIN_SPEC.compressorAttackMs / 1000;
-  mainCompressor.release.value = CHAIN_SPEC.compressorReleaseMs / 1000;
-  mainCompressor.knee.value = CHAIN_SPEC.compressorKneeDb;
-  mainCompressor.connect(audioDestination());
-  return mainCompressor;
 }
 
 function ensureMainNode() {
@@ -1747,138 +1979,25 @@ function ensureMainNode() {
     const c = ctx;
     mainChannelNode = c.createGain();
     mainChannelNode.gain.value = 1;
-    // Route through compressor before limiter.
-    const comp = ensureCompressor();
-    mainChannelNode.connect(comp || audioDestination());
-    channelNodes.set('main', { ingress: mainChannelNode, gain: mainChannelNode, analyser: null, eqChain: [] });
+    mainChannelNode.connect(audioDestination());
+    channelNodes.set('main', { ingress: mainChannelNode, gain: mainChannelNode, analyser: null });
   }
   return mainChannelNode;
 }
 
-// ==== Send Effects (Delay + Reverb) ====
-// Shared send buses: each instrument channel can route signal via send gains.
-
-let delaySendBus = null;  // GainNode → DelayNode feedback loop → mainChannel
-let reverbSendBus = null; // GainNode → ConvolverNode → mainChannel
-const sendGains = new Map(); // id -> { delay: GainNode, reverb: GainNode }
-
-// Shared analyser tapped on the wet output of both send buses (delay tail +
-// reverb tail). Created lazily by enableSendBusAnalyzer; existing buses are
-// re-tapped at that point. Feeds the Chain panel's StageSends comparison.
-let sendBusAnalyser = null;
-let sendBusTimeBuf = null;
-let sendBusFreqBuf = null;
-
-function ensureDelaySendBus() {
-  if (delaySendBus) return delaySendBus;
-  if (!hasCtx()) return null;
-  const c = ctx;
-
-  // Delay line: 300ms with LP-filtered feedback for warm tape echo.
-  const delayTime = 0.3;
-  const feedback = 0.3;
-  const dampFreq = 3000;
-
-  const inputGain = c.createGain();
-  inputGain.gain.value = 1;
-
-  const delay = c.createDelay(1.0);
-  delay.delayTime.value = delayTime;
-
-  const fbGain = c.createGain();
-  fbGain.gain.value = feedback;
-
-  const lpFilter = c.createBiquadFilter();
-  lpFilter.type = 'lowpass';
-  lpFilter.frequency.value = dampFreq;
-  lpFilter.Q.value = 0.707;
-
-  // Signal flow: input → delay → LP → fbGain → delay (feedback loop)
-  //                            ↓
-  //                     mainChannelNode + sendBusAnalyser (fan-out)
-  inputGain.connect(delay);
-  delay.connect(lpFilter);
-  lpFilter.connect(fbGain);
-  fbGain.connect(delay); // feedback
-  delay.connect(ensureMainNode()); // wet output
-  if (sendBusAnalyser) {
-    delay.connect(sendBusAnalyser); // fan-out tap for StageSends
-  }
-
-  delaySendBus = inputGain;
-  return delaySendBus;
-}
-
-function ensureReverbSendBus() {
-  if (reverbSendBus) return reverbSendBus;
-  if (!hasCtx()) return null;
-  const c = ctx;
-
-  const inputGain = c.createGain();
-  inputGain.gain.value = 1;
-
-  // Algorithmic Schroeder reverb (native nodes), same as the insert reverb —
-  // replaces a ConvolverNode (CPU hog) and matches desktop's Schroeder reverb.
-  // Medium room/damping for a ~1.5s shared send tail.
-  const { input: rvInput, wet: rvWet } = buildSchroederReverbCore(c, 0.6, 0.4);
-
-  const wetGain = c.createGain();
-  wetGain.gain.value = 0.3;
-
-  inputGain.connect(rvInput);
-  rvWet.connect(wetGain);
-  wetGain.connect(ensureMainNode());
-  if (sendBusAnalyser) {
-    wetGain.connect(sendBusAnalyser); // fan-out tap for StageSends
-  }
-
-  reverbSendBus = inputGain;
-  return reverbSendBus;
-}
-
-function ensureSendGains(id) {
-  if (sendGains.has(id)) return sendGains.get(id);
-  if (!hasCtx()) return null;
-  const c = ctx;
-  const chain = getChannelChain(id);
+// __testChannelSummary(id) — test seam: what a channel actually does to a voice
+// between playSound and the master bus (EQ filters, insert effects, channel
+// gain). A capture that disagrees with its voice is explained by this, not by
+// guessing: an EQ high-pass or a distortion insert both reshape the waveform
+// while leaving the energy envelope intact.
+window.__testChannelSummary = (id) => {
+  const chain = channelNodes.get(id);
   if (!chain) return null;
-
-  const delaySend = c.createGain();
-  delaySend.gain.value = 0; // default: no send
-  chain.gain.connect(delaySend);
-  const delayBus = ensureDelaySendBus();
-  if (delayBus) delaySend.connect(delayBus);
-
-  const reverbSend = c.createGain();
-  reverbSend.gain.value = 0; // default: no send
-  chain.gain.connect(reverbSend);
-  const reverbBus = ensureReverbSendBus();
-  if (reverbBus) reverbSend.connect(reverbBus);
-
-  const sg = { delay: delaySend, reverb: reverbSend };
-  sendGains.set(id, sg);
-  return sg;
-}
-
-// Expose send level control to Go/WASM.
-window.setDelaySend = (id, amount) => {
-  const sg = ensureSendGains(id);
-  if (sg) sg.delay.gain.value = Math.max(0, Math.min(1, amount || 0));
-};
-
-window.setReverbSend = (id, amount) => {
-  const sg = ensureSendGains(id);
-  if (sg) sg.reverb.gain.value = Math.max(0, Math.min(1, amount || 0));
-};
-
-window.delaySend = (id) => {
-  const sg = sendGains.get(id);
-  return sg ? sg.delay.gain.value : 0;
-};
-
-window.reverbSend = (id) => {
-  const sg = sendGains.get(id);
-  return sg ? sg.reverb.gain.value : 0;
+  return {
+    gain: chain.gain && chain.gain.gain ? chain.gain.gain.value : null,
+    eqProgram: chain.eqProgram ? Array.from(chain.eqProgram) : null,
+    insertFX: (chain.fxChain || []).filter((e) => e && e.enabled).map((e) => e.type),
+  };
 };
 
 function buildChannelPipeline(id) {
@@ -1891,30 +2010,158 @@ function buildChannelPipeline(id) {
   ingress.connect(gain);
   const main = ensureMainNode();
   if (main) gain.connect(main);
-  const chain = { ingress, gain, analyser: null, eqChain: [], insertFX: [] };
+  const chain = { ingress, gain, analyser: null, fxChain: [], fxNode: null, eqProgram: null, eqNode: null };
   channelNodes.set(id, chain);
+  audioProbeTapChannel(id, chain);
   return chain;
 }
 
-function getChannelChain(id) {
-  const key = id || 'main';
+// getChannelChain returns a channel's chain, building it on first use unless
+// create is false (a read: volumes and analyser snapshots never build one).
+function getChannelChain(id, create = true) {
+  // One name per bus: the master is 'main' and only 'main' (Go's channel.ID
+  // never sends ''). An omitted or empty id names no channel and fails
+  // closed: mapping it to master made a probe asking for a nonexistent
+  // channel read the MASTER bus and report its levels as the channel's —
+  // every tap on that chain then agreed with every other, which is exactly
+  // what a correct reading looks like.
+  if (id === undefined || id === null || id === '') return null;
+  const key = id;
   if (key === 'main') {
     const main = ensureMainNode();
     if (!main) return null;
     return channelNodes.get('main');
   }
   let chain = channelNodes.get(key);
-  if (!chain) {
+  if (!chain && create) {
     chain = buildChannelPipeline(key);
   }
-  return chain;
+  return chain || null;
 }
 
 function channelSink(id) {
   const chain = getChannelChain(id);
   if (!chain) return null;
+  if (chain.released) wakeChannel(chain); // a voice brings it back
   return chain.ingress;
 }
+
+// ─── Residency (spec 2026-10-31 §1.2) ───
+//
+// Go declares the instruments the rows play (setHeldChannels). A chain outside
+// that set is RELEASED — its beatmo-dsp stages disposed and its output
+// disconnected — only once nothing in it can still sound: no voice scheduled
+// or playing, and every stage's input and output at or below
+// CHAIN_SPEC.releaseQuietDB for the hold plus the chain's memory (a delay's
+// echo can come back after that much silence). Its settings (insert chain, EQ
+// program, analysers) stay on the chain; the next voice wakes it with fresh
+// stages, as a chain built for the first time. Desktop does the same in its
+// mixer (residency.go).
+let heldChannels = null; // null: no circuit declared a held set — every chain is held
+
+function channelHeld(id) { return !heldChannels || heldChannels.has(id); }
+
+function chainMemorySec(list) {
+  let sec = 0;
+  for (const e of list || []) if (e && e.enabled) sec += (CHAIN_SPEC.effectMemoryMs[e.type] || 0) / 1000;
+  return sec;
+}
+
+// considerRelease arms the release of an unheld, voiceless chain; called when
+// the held set changes and when an instrument's last voice ends.
+function considerRelease(id) {
+  const chain = channelNodes.get(id);
+  if (!chain || chain.released || id === 'main' || offlineRenderActive || channelHeld(id)) return;
+  if (activeSources.get(id)?.size) return;
+  const needSec = CHAIN_SPEC.releaseHoldMs / 1000 + chainMemorySec(chain.fxChain);
+  const stages = [chain.fxNode, chain.eqNode].filter(Boolean);
+  if (!stages.length) {
+    // Nothing on the chain holds a sound: the hold covers its last voice's fade.
+    clearTimeout(chain._releaseTimer);
+    chain._releaseTimer = setTimeout(() => releaseIfStillSilent(id), needSec * 1000);
+    return;
+  }
+  const pending = new Set(stages);
+  const watch = { frames: Math.ceil(needSec * ctx.sampleRate), amp: Math.pow(10, CHAIN_SPEC.releaseQuietDB / 20) };
+  for (const n of stages) {
+    n._onQuiet = () => {
+      pending.delete(n);
+      if (!pending.size) releaseIfStillSilent(id);
+    };
+    n._dspPost({ watchQuiet: watch });
+  }
+}
+
+function releaseIfStillSilent(id) {
+  const chain = channelNodes.get(id);
+  if (!chain || chain.released || offlineRenderActive || channelHeld(id) || activeSources.get(id)?.size) return;
+  for (const n of [chain.fxNode, chain.eqNode]) {
+    if (!n) continue;
+    try { n.disconnect(); } catch (_) {}
+    n._dspDispose();
+  }
+  chain.fxNode = null;
+  chain.eqNode = null;
+  // Only the gain's way to the master bus: its other listeners (the playback
+  // probe's tap) stay connected across a release.
+  try { chain.gain.disconnect(ensureMainNode()); } catch (_) {}
+  chain.released = true;
+  audioGraphStats.channelsReleased++;
+}
+
+function wakeChannel(chain) {
+  chain.released = false;
+  const main = ensureMainNode();
+  if (main) chain.gain.connect(main);
+  if (dspHostUp(ctx)) {
+    if (Array.isArray(chain.fxChain) && chain.fxChain.length) chain.fxNode = dspNode(ctx, 'inserts', null, [{ chain: chain.fxChain }]);
+    if (chain.eqProgram) chain.eqNode = dspNode(ctx, 'eq', null, [{ program: chain.eqProgram }]);
+  }
+  rewireChannel(chain);
+}
+
+// ─── Render budget (residency spec §5.5) ───
+//
+// renderCache's insertion order is its LRU order: a trigger's hit re-inserts
+// its render (touchRender). Over the budget (Go's VoiceCacheBudgetBytes,
+// setRenderCacheBudget), the oldest renders go first — never one of an
+// instrument a row plays, one with a voice scheduled or playing, or a user
+// sample's PCM (source data, not a render). No budget until Go sets one, and
+// nothing is evicted before a circuit declares its held set.
+let renderBudgetBytes = 0;
+
+function touchRender(key, rec) {
+  renderCache.delete(key);
+  renderCache.set(key, rec);
+}
+
+function evictRendersOverBudget() {
+  if (!renderBudgetBytes || !heldChannels) return;
+  let total = 0;
+  for (const r of renderCache.values()) total += r && r.data ? r.data.byteLength : 0;
+  for (const [key, r] of renderCache) {
+    if (total <= renderBudgetBytes) break;
+    if (!r || !r.id || samplePCMIds.has(r.id) || channelHeld(r.id) || activeSources.get(r.id)?.size) continue;
+    renderCache.delete(key);
+    total -= r.data ? r.data.byteLength : 0;
+    audioGraphStats.rendersEvicted++;
+  }
+}
+
+window.setRenderCacheBudget = (bytes) => {
+  renderBudgetBytes = bytes > 0 ? bytes : 0;
+  evictRendersOverBudget();
+};
+
+// setHeldChannels(idsJSON): the instruments the rows play (Go's
+// audio.SetHeldInstruments).
+window.setHeldChannels = (idsJSON) => {
+  let ids = [];
+  try { ids = JSON.parse(idsJSON); } catch (_) { ids = []; }
+  heldChannels = new Set(Array.isArray(ids) ? ids : []);
+  for (const id of channelNodes.keys()) considerRelease(id);
+  evictRendersOverBudget();
+};
 
 export function setChannelVolume(id, vol) {
   if (!hasCtx()) {
@@ -1929,7 +2176,7 @@ export function setChannelVolume(id, vol) {
 
 export function channelVolume(id) {
   if (!hasCtx()) return 1; // default volume when no context
-  const chain = getChannelChain(id);
+  const chain = getChannelChain(id, false);
   if (!chain) return 1;
   return chain.gain.gain.value;
 }
@@ -1937,777 +2184,327 @@ export function channelVolume(id) {
 export function setMainVolume(vol) { setChannelVolume('main', vol); }
 export function mainVolume() { return channelVolume('main'); }
 
-// Stereo panning via StereoPannerNode. pan: -1 (left) to +1 (right), 0 = center.
-export function setChannelPan(id, pan) {
-  if (!hasCtx()) {
-    pendingChannelOps.push(() => setChannelPan(id, pan));
-    return;
-  }
-  const chain = getChannelChain(id);
-  if (!chain) return;
-  // Create StereoPannerNode lazily.
-  if (!chain.panner) {
-    const c = ctx;
-    chain.panner = c.createStereoPanner();
-    // Insert panner after gain, before EQ chain / destination.
-    // The rewireChannel function will include it in the signal path.
-    chain.panner.pan.value = Math.max(-1, Math.min(1, pan));
-  } else {
-    chain.panner.pan.value = Math.max(-1, Math.min(1, pan));
+// ─── The C stages after the voice: insert effects, EQ, soft clip ───
+//
+// Every channel's insert chain and EQ, and the master soft clip, are desktop's
+// C (fx_host.c, mix_dsp.c) — run on the audio thread by the beatmo-dsp
+// AudioWorklet (dsp_worklet.js), which loads drums.single.js ONCE per
+// AudioContext and keeps each node's state in that one heap. Go hands over
+// everything the C needs and nothing is decided here: an insert chain is
+// [{uid, type, enabled, params}] with complete params (Go's
+// InsertEffectInstance), an EQ is a program of biquad coefficients (Go's
+// BuildEQProgram), the soft-clip knee is CHAIN_SPEC's.
+//
+// A channel:  ingress → [synthAnalyser] → [fx node] → [preEQAnalyser]
+//               → [eq node] → [analyser] → gain → main
+// The master: main gain (master volume) → [synth/preEQ analysers] → [eq node]
+//               → [analyser] → soft clip → masterOut → destination
+//
+// An edit is a message to a live node — a param retunes one C instance
+// (state kept: desktop SetParam), a chain edit reconciles instances by uid
+// (survivors keep their state, as desktop keeps its Go processors), an EQ edit
+// of the same shape swaps coefficients and keeps the filter state. The graph
+// is rewired only when a channel gains its first fx / eq node.
+//
+// Where AudioWorklet does not exist (an insecure origin such as `make
+// serve-lan`) the same C runs on the main-thread module in a ScriptProcessor
+// (its buffer adds latency there; beatmo.io is HTTPS). Until a context's DSP
+// host is up, chains are wired without the stage nodes and rebuilt onto them
+// when it lands; notes wait for it (processAudioEvent), so nothing plays
+// unprocessed.
+
+// audioGraphStats counts what live edits do to the graph (window.audioGraphStats).
+const audioGraphStats = {
+  insertChainUpdates: 0,   // updateInsertEffects: the chain reconciled in its live node
+  insertParamUpdates: 0,   // retuneInsertEffect: one live C effect retuned
+  dspNodesCreated: 0,      // beatmo-dsp nodes built (fx / eq / soft clip)
+  eqUpdates: 0,            // setChannelEQ applied to a live eq node
+  channelRewires: 0,       // rewireChannel calls (disconnect + reconnect a whole channel)
+  channelsReleased: 0,     // residency: chains released once silent (considerRelease)
+  rendersEvicted: 0,       // renders dropped to stay inside the render budget
+};
+
+// dspHosts: AudioContext → { state: 'loading' | 'worklet' | 'scriptprocessor' | 'none', ready, module }
+const dspHosts = new WeakMap();
+
+async function loadDSPWorklet(c) {
+  try {
+    await c.audioWorklet.addModule(new URL('./dsp_worklet.js', import.meta.url).href);
+    const probe = new AudioWorkletNode(c, 'beatmo-dsp', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { kind: 'ready' },
+    });
+    const msg = await new Promise((res) => { probe.port.onmessage = (e) => res(e.data); });
+    if (!msg || !msg.ready) throw new Error((msg && msg.error) || 'the C module did not load in the worklet');
+    return true;
+  } catch (err) {
+    console.warn('[AUDIOJS] beatmo-dsp worklet unavailable — running the C stages on the main thread:', err);
+    return false;
   }
 }
 
-export function channelPan(id) {
-  if (!hasCtx()) return 0;
-  const chain = getChannelChain(id);
-  if (!chain || !chain.panner) return 0;
-  return chain.panner.pan.value;
+function ensureDSPHost(c) {
+  let h = dspHosts.get(c);
+  if (h) return h;
+  h = { state: 'loading', ready: null, module: null };
+  dspHosts.set(c, h);
+  // __beatmoDSPHost = 'scriptprocessor' forces the main-thread host (tests).
+  const forceSP = typeof window !== 'undefined' && window.__beatmoDSPHost === 'scriptprocessor';
+  const viaWorklet = !forceSP && !!c.audioWorklet && typeof AudioWorkletNode !== 'undefined';
+  h.ready = (viaWorklet ? loadDSPWorklet(c) : Promise.resolve(false))
+    .then(async (ok) => {
+      if (ok) { h.state = 'worklet'; return; }
+      try {
+        h.module = await ensureModule();
+        h.state = h.module ? 'scriptprocessor' : 'none';
+      } catch (_) {
+        h.state = 'none';
+      }
+    })
+    .then(() => onDSPHostReady(c));
+  return h;
 }
 
-function makeBiquad(c, band) {
-  const type = (band && band.type) || 'peaking';
-  const freq = Math.max(10, Math.min(20000, band?.freq || 1000));
-  const q = Math.max(0.001, Math.min(50, band?.q || 1));
-  const gain = Number.isFinite(band?.gainDB) ? band.gainDB : (band?.gain || 0);
-  const node = c.createBiquadFilter();
-  node.frequency.value = freq;
-  node.Q.value = q;
-  node.gain.value = gain;
-  switch (type) {
-    case 'lowshelf': node.type = 'lowshelf'; break;
-    case 'highshelf': node.type = 'highshelf'; break;
-    case 'lowpass': node.type = 'lowpass'; break;
-    case 'highpass': node.type = 'highpass'; break;
-    default: node.type = 'peaking'; break;
+function dspHostState(c) {
+  const h = c && dspHosts.get(c);
+  return h ? h.state : 'none';
+}
+
+function dspHostUp(c) {
+  const s = dspHostState(c);
+  return s === 'worklet' || s === 'scriptprocessor';
+}
+
+// dspNode builds one stage node (kind 'inserts' | 'eq' | 'softclip') on c's
+// DSP host, configured by `messages` (dsp_host.js createStage), or null when
+// the host is not up.
+function dspNode(c, kind, init, messages) {
+  const h = dspHosts.get(c);
+  if (!h) return null;
+  let node = null;
+  if (h.state === 'worklet') {
+    node = new AudioWorkletNode(c, 'beatmo-dsp', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers',
+      processorOptions: { kind, init: init || {}, messages: messages || [] },
+    });
+    node.port.onmessage = (e) => {
+      if (e.data && e.data.refused) console.warn('[AUDIOJS] the C engine could not build', e.data.refused, '(passing through)');
+      if (e.data && e.data.quiet && node._onQuiet) node._onQuiet();
+    };
+    node._dspPost = (d) => node.port.postMessage(d);
+    node._dspDispose = () => node.port.postMessage('dispose');
+    node._dspHost = 'worklet';
+  } else if (h.state === 'scriptprocessor') {
+    const stage = createStage(h.module, kind, c.sampleRate, init, () => node && node._onQuiet && node._onQuiet());
+    if (!stage) return null;
+    for (const d of messages || []) stage.message(d);
+    node = c.createScriptProcessor(256, 1, 1);
+    node.onaudioprocess = (e) => stage.process(e.inputBuffer.getChannelData(0), e.outputBuffer.getChannelData(0));
+    node._dspPost = (d) => stage.message(d);
+    node._dspDispose = () => stage.destroy();
+    node._dspHost = 'scriptprocessor';
   }
+  if (node) audioGraphStats.dspNodesCreated++;
   return node;
 }
 
-// Band definitions for the 10-band ISO standard EQ - matches Go's defaultBandDefs
-const BAND_DEFS = [
-  { loHz: 22, hiHz: 44 },      // 31 Hz
-  { loHz: 44, hiHz: 88 },      // 62 Hz
-  { loHz: 88, hiHz: 177 },     // 125 Hz
-  { loHz: 177, hiHz: 354 },    // 250 Hz
-  { loHz: 354, hiHz: 707 },    // 500 Hz
-  { loHz: 707, hiHz: 1414 },   // 1 kHz
-  { loHz: 1414, hiHz: 2828 },  // 2 kHz
-  { loHz: 2828, hiHz: 5657 },  // 4 kHz
-  { loHz: 5657, hiHz: 11314 }, // 8 kHz
-  { loHz: 11314, hiHz: 20000 }, // 16 kHz
-];
-
-// Creates a serial peaking-EQ multiband processor. Each band is a peaking
-// filter in series — muted bands get a deep cut (-60 dB), others get the
-// requested gain. Serial topology means cuts can only reduce signal, never
-// boost, avoiding the gain-staging issues of parallel crossover approaches.
-function createMultibandProcessor(c, bands) {
-  const numBands = bands.length;
-  if (numBands === 0) {
-    const passthrough = c.createGain();
-    passthrough.gain.value = 1;
-    return { input: passthrough, output: passthrough, isMultiband: true };
-  }
-
-  const allMuted = bands.every((b) => b?.muted === true);
-  if (allMuted) {
-    const silentInput = c.createGain();
-    silentInput.gain.value = 0;
-    return { input: silentInput, output: silentInput, isMultiband: true };
-  }
-
-  const input = c.createGain();
-  input.gain.value = 1;
-
-  const defs = numBands === BAND_DEFS.length ? BAND_DEFS : BAND_DEFS.slice(0, numBands);
-  let lastNode = input;
-
-  for (let i = 0; i < numBands; i++) {
-    const band = bands[i];
-    const def = defs[i] || { loHz: 20, hiHz: 20000 };
-    const isMuted = band?.muted === true;
-    const gainDB = Number.isFinite(band?.gainDB) ? band.gainDB : (band?.gain || 0);
-
-    // Skip bands at unity gain that aren't muted
-    if (!isMuted && Math.abs(gainDB) < 0.01) continue;
-
-    const effectiveGainDB = isMuted ? -60 : gainDB;
-    const centerFreq = Math.sqrt(def.loHz * def.hiHz);
-    const bwOctaves = Math.log2(def.hiHz / def.loHz);
-    const Q = 1 / (2 * Math.sinh(Math.LN2 / 2 * bwOctaves));
-
-    const peaking = c.createBiquadFilter();
-    peaking.type = 'peaking';
-    peaking.frequency.value = centerFreq;
-    peaking.Q.value = Q;
-    peaking.gain.value = effectiveGainDB;
-    lastNode.connect(peaking);
-    lastNode = peaking;
-
-    // For muted bands, cascade a second peaking filter at the same settings
-    // to deepen the notch across the full band width (-120 dB at center).
-    if (isMuted) {
-      const peaking2 = c.createBiquadFilter();
-      peaking2.type = 'peaking';
-      peaking2.frequency.value = centerFreq;
-      peaking2.Q.value = Q;
-      peaking2.gain.value = effectiveGainDB;
-      lastNode.connect(peaking2);
-      lastNode = peaking2;
+// onDSPHostReady moves every chain built before the host was up onto its
+// stage nodes.
+function onDSPHostReady(c) {
+  if (c !== ctx) return;
+  for (const chain of channelNodes.values()) {
+    if (!chain || chain.released) continue;
+    if (!chain.fxNode && Array.isArray(chain.fxChain) && chain.fxChain.length) {
+      chain.fxNode = dspNode(c, 'inserts', null, [{ chain: chain.fxChain }]);
     }
-  }
-
-  const output = c.createGain();
-  output.gain.value = 1;
-  lastNode.connect(output);
-
-  return { input, output, isMultiband: true };
-}
-
-// ─── INSERT EFFECTS ───
-
-// Insert effects are rendered by the WebAudio node graph built in
-// createInsertEffectSubgraph() below. (An earlier design ran the C DSP in an
-// AudioWorklet for exact desktop parity, but each per-channel worklet needs its
-// own WASM instance — a cost the project deliberately avoided; see the
-// buildSchroederReverbCore comment — so that path was removed as dead code.)
-
-// buildSchroederReverbCore builds a Freeverb/Schroeder reverb out of native
-// WebAudio nodes — 4 damped-feedback comb filters + 2 allpass stages — matching
-// the desktop C reverb (src/c/insert_fx.c ifx_reverb: COMB_DELAYS, AP_DELAYS,
-// fb = 0.7 + 0.28*room, allpass g = 0.5, one-pole damping). It replaces the
-// previous ConvolverNode reverb, which was BOTH the dominant audio-thread CPU
-// cost (an OfflineAudioContext benchmark measured a 2.5s-IR convolver at ~36×
-// a gain node and ~3× the next-most-expensive effect — the cause of choppy
-// playback under heavy FX on real hardware) AND a sound mismatch vs desktop's
-// Schroeder reverb. The algorithmic version is ~6.7× cheaper (15% of the
-// convolver cost) and closer to desktop. Returns { input, wet } where `wet` is
-// the 100%-wet reverb output (callers add their own dry/mix).
-//
-// Native-node caveat: WebAudio adds a 1-render-quantum (128-sample) latency to
-// every feedback loop, so the effective comb/allpass times are ~2.7ms longer
-// than the C engine's; the reverb character is preserved, the tail is not
-// sample-identical. (Exact parity would require reviving the insert-FX worklet
-// running ifx_reverb; that reintroduces the per-channel WASM cost this fix
-// removes, so it is intentionally not used for the default reverb.)
-function buildSchroederReverbCore(c, room, damping) {
-  const sr = c.sampleRate;
-  const COMB = [1116, 1188, 1277, 1356]; // samples @ 44100 (C: COMB_DELAYS)
-  const AP = [556, 441];                 // samples @ 44100 (C: AP_DELAYS)
-  const fb = 0.7 + 0.28 * Math.max(0, Math.min(1, room)); // C: fb formula
-  // C damping is a one-pole coef == damping; map to a biquad lowpass cutoff
-  // fc where damping = exp(-2π fc / sr)  ⇒  fc = -ln(damping)·sr/2π.
-  const dClamp = Math.max(1e-4, Math.min(0.9999, damping));
-  let fc = (-Math.log(dClamp) * sr) / (2 * Math.PI);
-  fc = Math.max(200, Math.min(sr * 0.45, fc));
-
-  const input = c.createGain();
-  const combSum = c.createGain();
-  combSum.gain.value = 1 / COMB.length;
-  for (const d of COMB) {
-    const delay = c.createDelay(0.1);
-    delay.delayTime.value = d / 44100;
-    const fbg = c.createGain();
-    fbg.gain.value = fb;
-    // input → delay → out(combSum); delay → fbg → delay (feedback)
-    input.connect(delay);
-    delay.connect(combSum);
-    delay.connect(fbg);
-    fbg.connect(delay);
-  }
-  // Damping: one lowpass on the comb sum. The C engine damps inside each comb's
-  // one-pole feedback (per-comb); native WebAudio has no cheap one-pole, so both
-  // a per-comb biquad and this single comb-sum biquad are approximations — the
-  // comb-sum placement is ~29% cheaper (OfflineAudioContext-measured) and brings
-  // the reverb in line with the compressor instead of being the dominant cost.
-  const damp = c.createBiquadFilter();
-  damp.type = "lowpass";
-  damp.frequency.value = fc;
-  combSum.connect(damp);
-  // Two Schroeder allpass stages in series: y = d[n-M] - g·x ; d[n] = x + g·d[n-M].
-  let node = damp;
-  const g = 0.5;
-  for (const d of AP) {
-    const delay = c.createDelay(0.05);
-    delay.delayTime.value = d / 44100;
-    const ff = c.createGain();
-    ff.gain.value = -g; // feedforward -g·x
-    const fbg = c.createGain();
-    fbg.gain.value = g; // feedback g·d
-    const out = c.createGain();
-    node.connect(delay);
-    node.connect(ff);
-    delay.connect(out);
-    ff.connect(out);
-    delay.connect(fbg);
-    fbg.connect(delay);
-    node = out;
-  }
-  return { input, wet: node };
-}
-
-// Creates a WebAudio subgraph for a single insert effect slot.
-// Returns { input, output, nodes } or null if the effect type is unknown.
-export function createInsertEffectSubgraph(c, slot) {
-  const p = slot.params || {};
-  const mix = Math.max(0, Math.min(1, p.mix ?? 1));
-
-  switch (slot.type) {
-    case 'distortion': {
-      // WaveShaperNode with tanh curve controlled by drive.
-      const drive = Math.max(1, Math.min(20, p.drive ?? 2));
-      const ws = c.createWaveShaper();
-      const samples = 8192;
-      const curve = new Float32Array(samples);
-      for (let i = 0; i < samples; i++) {
-        const x = (i * 2) / samples - 1;
-        curve[i] = Math.tanh(x * drive);
-      }
-      ws.curve = curve;
-      ws.oversample = '2x';
-      // Wet/dry via parallel gain nodes.
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(ws); ws.connect(wet); wet.connect(output);
-      return { input, output, nodes: [ws, dry, wet] };
+    if (!chain.eqNode && chain.eqProgram) {
+      chain.eqNode = dspNode(c, 'eq', null, [{ program: chain.eqProgram }]);
     }
-    case 'delay': {
-      const time = Math.max(0.01, Math.min(1, (p.time ?? 250) / 1000));
-      const feedback = Math.max(0, Math.min(0.95, p.feedback ?? 0.4));
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const delay = c.createDelay(2);
-      delay.delayTime.value = time;
-      const fbGain = c.createGain(); fbGain.gain.value = feedback;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(delay); delay.connect(wet); wet.connect(output);
-      delay.connect(fbGain); fbGain.connect(delay);
-      return { input, output, nodes: [delay, fbGain, dry, wet] };
-    }
-    case 'reverb': {
-      const room = Math.max(0, Math.min(1, p.room ?? 0.5));
-      const damping = Math.max(0, Math.min(1, p.damping ?? 0.5));
-      // Algorithmic Schroeder reverb (native nodes) — ~6.7× cheaper than the
-      // old per-channel ConvolverNode, which OfflineAudioContext benchmarking
-      // pinned as the dominant audio-thread CPU cost behind choppy heavy-FX
-      // playback (and matches desktop's Schroeder reverb). See
-      // buildSchroederReverbCore + bench-results/choppy_audio_fx_chain_findings.
-      const { input: rvInput, wet: rvWet } = buildSchroederReverbCore(c, room, damping);
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(rvInput); rvWet.connect(wet); wet.connect(output);
-      return { input, output, nodes: [dry, wet] };
-    }
-    case 'chorus': {
-      const rate = Math.max(0.1, Math.min(10, p.rate ?? 1.5));
-      const depth = Math.max(0, Math.min(0.02, (p.depth ?? 5) / 1000));
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const delay = c.createDelay(0.1);
-      delay.delayTime.value = 0.01;
-      const lfo = c.createOscillator();
-      lfo.type = 'sine';
-      lfo.frequency.value = rate;
-      const lfoGain = c.createGain();
-      lfoGain.gain.value = depth;
-      lfo.connect(lfoGain);
-      lfoGain.connect(delay.delayTime);
-      lfo.start();
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(delay); delay.connect(wet); wet.connect(output);
-      return { input, output, nodes: [delay, lfo, lfoGain, dry, wet], oscillators: [lfo] };
-    }
-    case 'bitcrusher': {
-      // Mirrors fx_bitcrusher.go / ifx_bitcrusher_process: sample-and-hold
-      // decimation + bit-depth quantization. No native node does this, so a
-      // ScriptProcessor runs the same per-sample math as the Go/C DSP.
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const bits = clamp(p.bits ?? 8, 2, 16);
-      const rate = clamp(p.rate ?? 0.5, 0.01, 1);
-      const levels = Math.pow(2, bits);
-      let holdCounter = 0, holdValue = 0;
-      const sp = c.createScriptProcessor(256, 1, 1);
-      sp.onaudioprocess = (e) => {
-        const inBuf = e.inputBuffer.getChannelData(0);
-        const outBuf = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inBuf.length; i++) {
-          const x = inBuf[i];
-          holdCounter += rate;
-          if (holdCounter >= 1) { holdCounter -= 1; holdValue = Math.round(x * levels) / levels; }
-          outBuf[i] = x * (1 - mix) + holdValue * mix;
-        }
-      };
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(sp); sp.connect(output);
-      return { input, output, nodes: [sp] };
-    }
-    case 'filter': {
-      const mode = Math.round(p.mode ?? 0);
-      const cutoff = Math.max(20, Math.min(20000, p.cutoff ?? 1000));
-      const q = Math.max(0.1, Math.min(10, p.q ?? 0.707));
-      const bq = c.createBiquadFilter();
-      bq.type = mode === 2 ? 'bandpass' : mode === 1 ? 'highpass' : 'lowpass';
-      bq.frequency.value = cutoff;
-      bq.Q.value = q;
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(bq); bq.connect(wet); wet.connect(output);
-      return { input, output, nodes: [bq, dry, wet] };
-    }
-    case 'waveshaper': {
-      const drive = Math.max(1, Math.min(20, p.drive ?? 2));
-      const curve_type = Math.round(p.curve ?? 0);
-      const ws = c.createWaveShaper();
-      const samples = 8192;
-      const curve = new Float32Array(samples);
-      for (let i = 0; i < samples; i++) {
-        const x = (i * 2) / samples - 1;
-        const driven = x * drive;
-        switch (curve_type) {
-        case 1: curve[i] = Math.max(-1, Math.min(1, driven)); break;
-        case 2: { let v = driven; while (v > 1 || v < -1) { if (v > 1) v = 2 - v; if (v < -1) v = -2 - v; } curve[i] = v; break; }
-        case 3: curve[i] = Math.sin(driven * Math.PI * 0.5); break;
-        default: curve[i] = Math.tanh(driven); break;
-        }
-      }
-      ws.curve = curve;
-      ws.oversample = '2x';
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(ws); ws.connect(wet); wet.connect(output);
-      return { input, output, nodes: [ws, dry, wet] };
-    }
-    case 'ringmod': {
-      const freq = Math.max(20, Math.min(5000, p.frequency ?? 440));
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = 0;
-      const carrier = c.createOscillator();
-      carrier.type = (p.shape ?? 0) >= 0.5 ? 'square' : 'sine';
-      carrier.frequency.value = freq;
-      const modGain = c.createGain(); modGain.gain.value = mix;
-      carrier.connect(modGain);
-      modGain.connect(input.gain);
-      carrier.start();
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(output);
-      return { input, output, nodes: [carrier, modGain, dry, wet], oscillators: [carrier] };
-    }
-    case 'tremolo': {
-      const rate = Math.max(0.5, Math.min(20, p.rate ?? 4));
-      const depth = Math.max(0, Math.min(1, p.depth ?? 0.5));
-      const input = c.createGain(); input.gain.value = 1;
-      const tremGain = c.createGain(); tremGain.gain.value = 1 - depth * 0.5;
-      const lfo = c.createOscillator();
-      lfo.type = 'sine';
-      lfo.frequency.value = rate;
-      const lfoGain = c.createGain(); lfoGain.gain.value = depth * 0.5;
-      lfo.connect(lfoGain);
-      lfoGain.connect(tremGain.gain);
-      lfo.start();
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(tremGain); tremGain.connect(output);
-      return { input, output, nodes: [tremGain, lfo, lfoGain], oscillators: [lfo] };
-    }
-    case 'gate': {
-      // Mirrors fx_gate.go / ifx_gate_process: peak envelope follower gates the
-      // signal to `range` dB below threshold, unity above.
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const sr = c.sampleRate || 44100;
-      const thresholdLin = Math.pow(10, clamp(p.threshold ?? -30, -60, 0) / 20);
-      const rangeLin = Math.pow(10, clamp(p.range ?? -90, -90, 0) / 20);
-      const aCoef = Math.exp(-1 / (clamp(p.attack ?? 1, 0.1, 50) * 0.001 * sr));
-      const rCoef = Math.exp(-1 / (clamp(p.release ?? 50, 1, 500) * 0.001 * sr));
-      let env = 0;
-      const sp = c.createScriptProcessor(256, 1, 1);
-      sp.onaudioprocess = (e) => {
-        const inBuf = e.inputBuffer.getChannelData(0);
-        const outBuf = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inBuf.length; i++) {
-          const x = inBuf[i], ax = Math.abs(x);
-          if (ax > env) env = aCoef * env + (1 - aCoef) * ax;
-          else env = rCoef * env + (1 - rCoef) * ax;
-          outBuf[i] = x * (env >= thresholdLin ? 1 : rangeLin);
-        }
-      };
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(sp); sp.connect(output);
-      return { input, output, nodes: [sp] };
-    }
-    case 'pitchshift': {
-      // Mirrors fx_pitchshift.go / ifx_pitchshift_process: dual delay-line
-      // ("Eventide-style") shifter — two read heads drift at step = 1-2^(st/12)
-      // over a circular buffer, triangular-crossfaded to hide the wrap.
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const pitch = clamp(p.pitch ?? 0, -24, 24);
-      const winMs = clamp(p.window ?? 50, 20, 100);
-      const sr = c.sampleRate || 44100;
-      const ws = Math.max(1, winMs * 0.001 * sr);
-      const bufLen = Math.max(64, Math.round(0.15 * sr) + 64);
-      const buf = new Float32Array(bufLen);
-      let writePos = 0, headA = 0, headB = ws / 2;
-      const step = 1 - Math.pow(2, pitch / 12);
-      const read = (pos) => {
-        while (pos < 0) pos += bufLen;
-        const idx = Math.floor(pos) % bufLen;
-        const frac = pos - Math.floor(pos);
-        const next = (idx + 1) % bufLen;
-        return buf[idx] * (1 - frac) + buf[next] * frac;
-      };
-      const sp = c.createScriptProcessor(256, 1, 1);
-      sp.onaudioprocess = (e) => {
-        const inBuf = e.inputBuffer.getChannelData(0);
-        const outBuf = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inBuf.length; i++) {
-          const x = inBuf[i];
-          buf[writePos] = x;
-          writePos = (writePos + 1) % bufLen;
-          headA += step; headB += step;
-          headA = ((headA % ws) + ws) % ws;
-          headB = ((headB % ws) + ws) % ws;
-          const aA = 1 - Math.abs(2 * headA / ws - 1);
-          const aB = 1 - Math.abs(2 * headB / ws - 1);
-          const rA = read(writePos - headA);
-          const rB = read(writePos - headB);
-          const sum = aA + aB;
-          const w = sum > 0 ? (aA * rA + aB * rB) / sum : 0;
-          outBuf[i] = x * (1 - mix) + w * mix;
-        }
-      };
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(sp); sp.connect(output);
-      return { input, output, nodes: [sp] };
-    }
-    case 'transient': {
-      // Mirrors fx_transient.go / ifx_transient_process: dual-envelope shaper.
-      // attack/sustain are 0-200 (% mapped to 0-2 gain); speed is 1-50ms.
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const attackGain = clamp(p.attack ?? 100, 0, 200) / 100;
-      const sustainGain = clamp(p.sustain ?? 100, 0, 200) / 100;
-      const speedMs = clamp(p.speed ?? 10, 1, 50);
-      const sr = c.sampleRate || 44100;
-      const fastCoef = Math.exp(-1 / (speedMs * 0.001 * sr));
-      const fastRelCoef = Math.exp(-1 / (speedMs * 0.003 * sr));
-      const slowCoef = Math.exp(-1 / (0.1 * sr));
-      let fastEnv = 0, slowEnv = 0;
-      const sp = c.createScriptProcessor(256, 1, 1);
-      sp.onaudioprocess = (e) => {
-        const inBuf = e.inputBuffer.getChannelData(0);
-        const outBuf = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inBuf.length; i++) {
-          const x = inBuf[i];
-          const ax = Math.abs(x);
-          if (ax > fastEnv) fastEnv = fastCoef * fastEnv + (1 - fastCoef) * ax;
-          else fastEnv = fastRelCoef * fastEnv;
-          slowEnv = slowCoef * slowEnv + (1 - slowCoef) * ax;
-          const denom = slowEnv > 1e-10 ? slowEnv : 1e-10;
-          let trans = (fastEnv - slowEnv) / denom;
-          if (trans < 0) trans = 0;
-          if (trans > 1) trans = 1;
-          outBuf[i] = x * (attackGain * trans + sustainGain * (1 - trans));
-        }
-      };
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(sp); sp.connect(output);
-      return { input, output, nodes: [sp] };
-    }
-    case 'limiter':
-    case 'compressor': {
-      const comp = c.createDynamicsCompressor();
-      comp.threshold.value = p.threshold ?? -20;
-      comp.ratio.value = p.ratio ?? 12;
-      comp.attack.value = (p.attack ?? 10) / 1000;
-      comp.release.value = (p.release ?? 100) / 1000;
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(comp); comp.connect(output);
-      return { input, output, nodes: [comp] };
-    }
-    case 'flanger': {
-      const rate = Math.max(0.1, Math.min(10, p.rate ?? 0.5));
-      const depth = Math.max(0, Math.min(0.01, (p.depth ?? 3) / 1000));
-      const feedback = Math.max(-0.95, Math.min(0.95, p.feedback ?? 0.5));
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wet = c.createGain(); wet.gain.value = mix;
-      const delay = c.createDelay(0.05);
-      delay.delayTime.value = 0.003;
-      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = rate;
-      const lfoGain = c.createGain(); lfoGain.gain.value = depth;
-      lfo.connect(lfoGain); lfoGain.connect(delay.delayTime); lfo.start();
-      const fbGain = c.createGain(); fbGain.gain.value = feedback;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(delay); delay.connect(wet); wet.connect(output);
-      delay.connect(fbGain); fbGain.connect(delay);
-      return { input, output, nodes: [delay, lfo, lfoGain, fbGain, dry, wet], oscillators: [lfo] };
-    }
-    case 'phaser': {
-      // Mirrors fx_phaser.go / ifx_phaser_process: cascade of first-order
-      // allpass stages with an LFO-swept coefficient + feedback.
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const sr = c.sampleRate || 44100;
-      const stages = Math.round(clamp(p.stages ?? 4, 2, 12));
-      const rate = clamp(p.rate ?? 0.5, 0.1, 10);
-      const depth = clamp(p.depth ?? 0.7, 0, 1);
-      const feedback = clamp(p.feedback ?? 0.5, 0, 0.95);
-      const x1 = new Float64Array(12), y1 = new Float64Array(12);
-      let phase = 0, fbSample = 0;
-      const sp = c.createScriptProcessor(256, 1, 1);
-      sp.onaudioprocess = (e) => {
-        const inBuf = e.inputBuffer.getChannelData(0);
-        const outBuf = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inBuf.length; i++) {
-          const x = inBuf[i];
-          let v = x + fbSample * feedback;
-          const lfo = (Math.sin(phase) + 1) * 0.5;
-          const fc = 200 + lfo * (depth * 3800);
-          const w = Math.tan(Math.PI * fc / sr);
-          const a = (w - 1) / (w + 1);
-          for (let s = 0; s < stages; s++) {
-            const y = a * v + x1[s] - a * y1[s];
-            x1[s] = v; y1[s] = y; v = y;
-          }
-          fbSample = v;
-          phase += 2 * Math.PI * rate / sr;
-          if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
-          outBuf[i] = x * (1 - mix) + v * mix;
-        }
-      };
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(sp); sp.connect(output);
-      return { input, output, nodes: [sp] };
-    }
-    case 'autowah': {
-      // Mirrors fx_autowah.go / ifx_autowah_process: envelope + LFO drive a
-      // state-variable bandpass sweep (base 200Hz..4000Hz, Q 2).
-      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const sr = c.sampleRate || 44100;
-      const sensitivity = clamp(p.sensitivity ?? 0.5, 0, 1);
-      const rate = clamp(p.rate ?? 2, 0.5, 20);
-      const depth = clamp(p.depth ?? 0.7, 0, 1);
-      const BASE = 200, MAX = 4000, Q = 2;
-      const lfoInc = 2 * Math.PI * rate / sr;
-      let env = 0, lfoPhase = 0, bp = 0, lp = 0;
-      const sp = c.createScriptProcessor(256, 1, 1);
-      sp.onaudioprocess = (e) => {
-        const inBuf = e.inputBuffer.getChannelData(0);
-        const outBuf = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inBuf.length; i++) {
-          const x = inBuf[i], ax = Math.abs(x);
-          // Envelope follower (fast attack, slow release) — matches Go coefs.
-          if (ax > env) env = 0.001 * env + 0.999 * ax;
-          else env = 0.9995 * env;
-          const lfo = (Math.sin(lfoPhase) + 1) * 0.5;
-          lfoPhase += lfoInc; if (lfoPhase >= 2 * Math.PI) lfoPhase -= 2 * Math.PI;
-          let envMod = env * sensitivity * 10; if (envMod > 1) envMod = 1;
-          const modTotal = clamp(envMod + lfo * depth, 0, 1);
-          const cutoff = BASE + modTotal * (MAX - BASE);
-          let f = 2 * Math.sin(Math.PI * cutoff / sr); if (f > 0.99) f = 0.99;
-          const q = 1 / Q;
-          const hp = x - lp - q * bp;
-          bp += f * hp;
-          lp += f * bp;
-          outBuf[i] = x * (1 - mix) + bp * mix;
-        }
-      };
-      const input = c.createGain(); input.gain.value = 1;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(sp); sp.connect(output);
-      return { input, output, nodes: [sp] };
-    }
-    case 'tape': {
-      // Saturation via waveshaper + warmth LP filter
-      const drive = Math.max(1, Math.min(10, p.drive ?? 2));
-      const ws = c.createWaveShaper();
-      const samples = 8192;
-      const curve = new Float32Array(samples);
-      const norm = Math.tanh(drive);
-      for (let i = 0; i < samples; i++) {
-        const x = (i * 2) / samples - 1;
-        curve[i] = norm > 0.001 ? Math.tanh(drive * x) / norm : x;
-      }
-      ws.curve = curve; ws.oversample = '2x';
-      const warmth = Math.max(0, Math.min(1, p.warmth ?? 0.5));
-      const lp = c.createBiquadFilter(); lp.type = 'lowpass';
-      lp.frequency.value = 2000 + (1 - warmth) * 18000; lp.Q.value = 0.707;
-      const input = c.createGain(); input.gain.value = 1;
-      const dry = c.createGain(); dry.gain.value = 1 - mix;
-      const wetG = c.createGain(); wetG.gain.value = mix;
-      const output = c.createGain(); output.gain.value = 1;
-      input.connect(dry); dry.connect(output);
-      input.connect(ws); ws.connect(lp); lp.connect(wetG); wetG.connect(output);
-      return { input, output, nodes: [ws, lp, dry, wetG] };
-    }
-    default:
-      return null;
+    rewireChannel(chain);
   }
 }
 
-// Disconnect and clean up insert effect subgraphs on a channel chain.
-function disconnectInsertEffects(chain) {
-  if (!chain.insertFX) return;
-  for (const fx of chain.insertFX) {
-    try { fx.input.disconnect(); } catch (_) {}
-    try { fx.output.disconnect(); } catch (_) {}
-    if (fx.nodes) {
-      for (const n of fx.nodes) { try { n.disconnect(); } catch (_) {} }
-    }
-    if (fx.oscillators) {
-      for (const o of fx.oscillators) { try { o.stop(); } catch (_) {} }
-    }
-  }
-  chain.insertFX = [];
+// dspReadyFor resolves once c's DSP host is up (or known absent).
+function dspReadyFor(c) {
+  return ensureDSPHost(c).ready;
 }
 
-// updateInsertEffects rebuilds the insert effect WebAudio subgraph for
-// an instrument channel. Called from Go via platformInsertEffectsChanged.
-// slotsJSON is a JSON-encoded array of EffectSlot objects. Each enabled slot
-// becomes a WebAudio subgraph via createInsertEffectSubgraph.
-function updateInsertEffects(id, slotsJSON) {
+// insertEffectHosts(id) → the host of the channel's insert chain
+// ('worklet' | 'scriptprocessor'), one entry per enabled effect.
+window.insertEffectHosts = (id) => {
+  const chain = channelNodes.get(id);
+  if (!chain || !Array.isArray(chain.fxChain)) return [];
+  const host = chain.fxNode ? chain.fxNode._dspHost : 'pending';
+  return chain.fxChain.filter((e) => e && e.enabled).map(() => host);
+};
+
+// updateInsertEffects(id, chainJSON): the channel's whole insert chain
+// (InsertEffectInstance[]). Called from Go (platformInsertEffectsChanged).
+function updateInsertEffects(id, chainJSON) {
   if (!hasCtx()) {
-    // Queue the operation for when the AudioContext is created. Without this,
-    // insert effects pushed from Go during early startup (e.g. demo Import()
-    // before the user gesture that unlocks audio on mobile) would be silently
-    // dropped — the audible effect would only kick in after the user toggled
-    // it off/on, which would fire updateInsertEffects() again with a live ctx.
-    pendingChannelOps.push(() => updateInsertEffects(id, slotsJSON));
+    // Queue for when the AudioContext exists (effects pushed by an import
+    // before the unlock gesture must not be dropped).
+    pendingChannelOps.push(() => updateInsertEffects(id, chainJSON));
     return;
   }
   const chain = getChannelChain(id);
   if (!chain) return;
-
-  let slots;
-  try {
-    slots = typeof slotsJSON === 'string' ? JSON.parse(slotsJSON) : slotsJSON;
-  } catch (_) {
-    slots = [];
-  }
-  if (!Array.isArray(slots)) slots = [];
-
-  // Tear down old insert effect nodes.
-  disconnectInsertEffects(chain);
-
-  // Build a WebAudio subgraph per enabled effect.
-  const c = ctx;
-  chain.insertFX = [];
-  for (const slot of slots) {
-    if (!slot.enabled) continue;
-    const sg = createInsertEffectSubgraph(c, slot);
-    if (sg) chain.insertFX.push(sg);
-  }
-
-  // Rewire the channel to include insert effects.
-  const oldMb = chain.multibandProc;
-  rewireChannel(chain, oldMb);
+  let list;
+  try { list = typeof chainJSON === 'string' ? JSON.parse(chainJSON) : chainJSON; } catch (_) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  chain.fxChain = list;
+  chain.fxLatencySec = insertChainLatencySec(list);
+  audioGraphStats.insertChainUpdates++;
+  if (chain.fxNode) { chain.fxNode._dspPost({ chain: list }); return; }
+  if (!list.length || chain.released || !dspHostUp(ctx)) return;
+  chain.fxNode = dspNode(ctx, 'inserts', null, [{ chain: list }]);
+  if (chain.fxNode) rewireChannel(chain);
 }
 
-window.updateInsertEffects = (id, slotsJSON) => {
-  try { updateInsertEffects(id, slotsJSON); }
+window.updateInsertEffects = (id, chainJSON) => {
+  try { updateInsertEffects(id, chainJSON); }
   catch (err) { dbg('insert.effect.error', { id, err: String(err) }); }
 };
 
-// Phase 5: per-instrument SynthRecipe params (8 generic knobs). Storage
-// is a JS-side mirror of the Go audio.instrumentParamsMgr so the WASM
-// render path can pull params at trigger time without crossing the
-// Go↔JS boundary every play.
-const instrumentSynthParams = new Map();
+// retuneInsertEffect(id, uid, name, value): retune one live effect — the C
+// effect's own smoothing applies and its state is kept (desktop SetParam).
+// Called from Go (platformInsertEffectParamChanged) once per value change.
+function retuneInsertEffect(id, uid, name, value) {
+  const chain = hasCtx() ? channelNodes.get(id) : null;
+  if (!chain || !Array.isArray(chain.fxChain)) return false;
+  const e = chain.fxChain.find((x) => x && x.uid === uid);
+  if (!e) return false;
+  e.params = { ...(e.params || {}), [name]: value };
+  chain.fxLatencySec = insertChainLatencySec(chain.fxChain);
+  if (chain.fxNode) chain.fxNode._dspPost({ param: { uid, name, value } });
+  audioGraphStats.insertParamUpdates++;
+  return true;
+}
 
-// instrumentDefaultParams holds the shipped recipe-default param block for any
-// preset whose defaults diverge from the C render built-ins (e.g. modular-pad).
-// Seeded once at bootstrap by Go via seedInstrumentDefaults. renderToCache
-// falls back to this map when there is no user overlay, so a divergent preset
-// renders its intended sound before any edit — and a Reset (which clears the
-// overlay) returns to the preset defaults, not the base render defaults.
-const instrumentDefaultParams = new Map();
-
-// seedInstrumentDefaults is invoked by Go-WASM (platformInstrumentDefaultsPush
-// in synth_recipe_wasm.go) once at startup for each seeded preset. Distinct
-// from updateInstrumentParams: this is the base layer, not a user edit.
-window.seedInstrumentDefaults = (id, paramsJSON) => {
-  try {
-    const params = JSON.parse(paramsJSON);
-    if (params && typeof params === 'object' && Object.keys(params).length > 0) {
-      instrumentDefaultParams.set(id, params);
-    } else {
-      instrumentDefaultParams.delete(id);
-    }
-    // A late seed (after first render) must re-render with the preset.
-    evictRenderCache(id);
-    delete samples[id];
-    rawRenderCache.delete(id);
-  } catch (err) { dbg('synth.defaults.error', { id, err: String(err) }); }
+// (Not "setInsertEffectParam": that global is Go's JS export (ui
+// js_exports_insert_effects.go) — sharing it made Go's push call Go's export,
+// which pushed again, until the page died.)
+window.retuneInsertEffect = (id, uid, name, value) => {
+  try { return retuneInsertEffect(id, uid, name, value); }
+  catch (err) { dbg('insert.effect.param.error', { id, uid, err: String(err) }); return false; }
 };
 
-// updateInstrumentRecipe is invoked by Go-WASM (platformInstrumentRecipeChanged
-// in synth_recipe_wasm.go) whenever an instrument's recipe binding changes —
-// a MigrateGenType re-voice at import, or a project whose instrument carries a
-// recipe differing from the static table. The exemplar is a builtin instrument
-// id whose static RENDER/RENDER_DEFAULTS/RENDER_INFO entries already carry the
-// recipe's render function + param block; copying them keeps those tables the
-// single source of truth (no recipe→renderer map to drift). Without this push
-// the browser kept rendering the OLD voice for a rebound instrument while the
-// desktop dispatch followed the new binding.
-const renderInfoFactory = new Map(); // id -> RENDER_INFO entry before its first rebind
-window.updateInstrumentRecipe = (id, recipeID, exemplar) => {
-  try {
-    const target = exemplar && RENDER_DEFAULTS[exemplar] ? exemplar : null;
-    if (!target) {
-      // No builtin exemplar (user Save-As clone, or a cleared binding):
-      // restore the instrument's own factory entries when it has them so a
-      // later re-bind to its native recipe sounds right again.
-      if (!recipeID && RENDER_DEFAULTS[id] && RENDER[id] !== RENDER_DEFAULTS[id]) {
-        RENDER[id] = RENDER_DEFAULTS[id];
-        if (renderInfoFactory.has(id)) RENDER_INFO[id] = renderInfoFactory.get(id);
-        evictRenderCache(id);
-        delete samples[id];
-        rawRenderCache.delete(id);
-      }
-      return;
-    }
-    const wantFn = RENDER_DEFAULTS[target];
-    const wantBlock = RENDER_INFO[target] && RENDER_INFO[target].paramBlock;
-    const haveBlock = RENDER_INFO[id] && RENDER_INFO[id].paramBlock;
-    if (RENDER[id] === wantFn && haveBlock === wantBlock) return; // bootstrap factory re-bind: no-op
-    if (!renderInfoFactory.has(id) && RENDER_INFO[id]) renderInfoFactory.set(id, RENDER_INFO[id]);
-    RENDER[id] = wantFn;
-    RENDER_INFO[id] = { ...RENDER_INFO[target] };
-    evictRenderCache(id);
-    delete samples[id];
-    rawRenderCache.delete(id);
-    dbg('synth.recipe.rebind', { id, recipeID, exemplar });
-  } catch (err) { dbg('synth.recipe.error', { id, recipeID, err: String(err) }); }
+// insertChainLatencySec is how much later than start(when) a note on a channel
+// with this chain SOUNDS: the pitch shifter's dual read heads trail the write
+// head by up to one window, and at mix ≥ 0.5 the wet path is what is heard.
+// The playback probe matches onsets that much later (heard, with its lag),
+// instead of calling a delayed note silent.
+function insertChainLatencySec(list) {
+  let lat = 0;
+  for (const e of list || []) {
+    if (!e || !e.enabled || e.type !== 'pitchshift') continue;
+    const p = e.params || {};
+    if (Math.max(0, Math.min(1, p.mix ?? 1)) < 0.5) continue;
+    lat += Math.max(20, Math.min(100, p.window ?? 50)) / 1000;
+  }
+  return lat;
+}
+
+// resetDSPState clears every delay line, envelope and filter memory — Go's
+// audio.ResetDSPState (project import, offline renders) on both platforms.
+window.resetDSPState = () => {
+  for (const chain of channelNodes.values()) {
+    if (chain && chain.fxNode) chain.fxNode._dspPost({ clear: true });
+    if (chain && chain.eqNode) chain.eqNode._dspPost({ clear: true });
+  }
 };
 
-// updateInstrumentParams is invoked by Go-WASM (platformInstrumentParamsChanged
-// in synth_recipe_wasm.go) whenever the user edits a per-instrument knob via
-// the Synth tab. Stores the params + invalidates the renderCache so the next
-// trigger re-renders via the parameterized C function (`render_X_p`).
-window.updateInstrumentParams = (id, paramsJSON) => {
-  try { _updateInstrumentParams(id, paramsJSON); }
-  catch (err) { dbg('synth.param.error', { id, err: String(err) }); }
+function liveChannelIds() {
+  return [...channelNodes.entries()].filter(([k, c]) => k !== 'main' && c && !c.released).map(([k]) => k);
+}
+
+// audioGraphStats() → the churn counters above plus the live graph size.
+window.audioGraphStats = () => {
+  let insertEffectsLive = 0;
+  for (const chain of channelNodes.values()) {
+    insertEffectsLive += (chain && Array.isArray(chain.fxChain) ? chain.fxChain.filter((e) => e && e.enabled).length : 0);
+  }
+  let dspStages = 0;
+  for (const chain of channelNodes.values()) {
+    if (chain && chain.fxNode) dspStages++;
+    if (chain && chain.eqNode) dspStages++;
+  }
+  let renderBytes = 0;
+  for (const rec of renderCache.values()) renderBytes += rec && rec.data ? rec.data.byteLength : 0;
+  return {
+    ...audioGraphStats,
+    channelChains: channelNodes.size,
+    liveChannels: liveChannelIds().length,
+    liveChannelIds: liveChannelIds(),
+    insertEffectsLive,
+    dspStages,
+    renderEntries: renderCache.size,
+    renderBytes,
+    blocksPushed: instrumentBlocks.size,
+    dspHost: hasCtx() ? dspHostState(ctx) : 'none',
+  };
+};
+
+// instrumentBlocks holds one complete modular param block per instrument, the
+// instrument document flattened in Go (spec 2026-10-04 §8). It is the ONLY
+// parameter source a render reads; a melodic per-pitch render patches only the
+// pitch index of a copy.
+const instrumentBlocks = new Map();
+
+// samplePCMIds are the ids a registered PCM currently overrides
+// (registerSamplePCM). A pushed block never evicts that PCM — Go drops the
+// override (UnregisterSamplePCM, which re-pushes the block) when the synth
+// should sound again.
+const samplePCMIds = new Set();
+
+// voicePost is the post-processing a voice of this render info gets after the
+// C render (voice_post.js): its document's voice FX, gate tail and amplitude.
+function voicePost(info) {
+  return {
+    amp: Number.isFinite(info.amp) ? info.amp : 0.6,
+    gateTail: Number.isFinite(info.gateTail) ? info.gateTail : 0,
+    fx: Array.isArray(info.fx) ? info.fx : [],
+  };
+}
+
+// setInstrumentBlock is invoked by Go-WASM (instrument_docs_wasm.go) at boot
+// and on every instrument-document change: the flattened block plus the
+// document's render settings (seconds = the voice's fixed length, amplitude,
+// gate tail, voice FX as C init calls — audio.VoiceFXCalls). Marks cached
+// renders STALE (generation bump) so the next play re-renders in the
+// BACKGROUND while the stale buffer keeps playing ON TIME
+// (stale-while-revalidate).
+window.setInstrumentBlock = (id, block, seconds, amp, melodic, gateTail, fx) => {
+  if (!(block instanceof Float64Array) || block.length !== MODULAR_PARAM_COUNT) {
+    throw new Error(`setInstrumentBlock(${id}): want a Float64Array(${MODULAR_PARAM_COUNT})`);
+  }
+  instrumentBlocks.set(id, block);
+  RENDER_INFO[id] = { seconds, amp, gateTail, fx, paramBlock: 'modular' };
+  if (melodic) MELODIC_INSTRUMENTS.add(id); else MELODIC_INSTRUMENTS.delete(id);
+  if (samplePCMIds.has(id)) return; // a loaded sample keeps playing
+  RENDER[id] = 'render_modular_p';
+  bumpInstrumentParamsGen(id);
+  rawRenderCache.delete(id);
+};
+
+// Test seam: the block + render metadata Go last pushed for id (a copy), so a
+// browser test can re-push it (a generation bump) without going through Go.
+window.__instrumentBlockForTest = (id) => {
+  const b = instrumentBlocks.get(id);
+  const info = RENDER_INFO[id];
+  if (!b || !info) return null;
+  return { block: Float64Array.from(b), seconds: info.seconds, amp: info.amp, melodic: MELODIC_INSTRUMENTS.has(id), gateTail: info.gateTail, fx: info.fx };
+};
+
+// clearInstrumentBlock forgets an instrument's block and render entry.
+window.clearInstrumentBlock = (id) => {
+  instrumentBlocks.delete(id);
+  delete RENDER_INFO[id];
+  MELODIC_INSTRUMENTS.delete(id);
+  if (!samplePCMIds.has(id)) {
+    delete RENDER[id];
+    evictRenderCache(id);
+  }
 };
 
 // warmInstrument is invoked by Go-WASM (voice_warm_js.go) when a row is switched
@@ -2738,16 +2535,159 @@ window.warmInstrument = (id, pitchesJSON) => {
   } catch (err) { dbg('warm.error', { id, err: String(err) }); }
 };
 
+// isMelodicInstrumentJS exposes the render layer's melodic predicate to Go-WASM
+// (internal/audio/voice_prewarm_js.go IsMelodicInstrument) so the warm set only
+// mints per-pitch items for instruments that actually keep a per-pitch cache.
+window.isMelodicInstrumentJS = (id) => {
+  try { return !!isMelodicInstrument(id); } catch (_) { return false; }
+};
+
+// voiceCachedFor answers "is this exact (instrument, pitch) already rendered
+// and fresh?" using the SAME key the trigger path reads (cacheKeyFor over the
+// rounded pitch) plus the param-generation staleness check. Go's
+// audio.VoiceCached delegates here on js; before this existed it returned a
+// hardcoded false, so the warm-up re-rendered voices already in the cache.
+window.voiceCachedFor = (id, pitch) => {
+  try {
+    if (!RENDER[id]) return false;
+    const rp = (isMelodicInstrument(id) && Number.isFinite(pitch)) ? roundPitchForCache(pitch) : 0;
+    const rec = renderCache.get(cacheKeyFor(id, rp));
+    return !!rec && !renderRecordStale(id, rec);
+  } catch (_) { return false; }
+};
+
+// voiceReadyFor: would a trigger of (id, pitch) find its voice rendered? An id
+// with no synth render (a sample) has nothing to wait for. The audio lane
+// switches a row to an instrument only from its first ready note.
+window.voiceReadyFor = (id, pitch) => !RENDER[id] || window.voiceCachedFor(id, pitch);
+
+// warmInstrumentBatch renders a whole working set off-thread. It invokes the
+// named global callback ONCE PER ITEM (success or failure) — failures still
+// call back, because the readiness gate (warmup_controller.go) must never wait
+// on an item that can never complete, or the toast hangs out its full
+// deadline instead of opening. itemsJSON is [[instrumentID, pitch, token?], …];
+// when present, `token` (opaque to this function) is passed straight back to
+// the callback so a caller juggling many concurrent items — Go's
+// WarmVoiceItem, see voice_prewarm_js.go — can tell which item finished. When
+// itemsJSON entries carry no token (see warm_batch.browser.test.js, which
+// calls this directly) the callback simply receives undefined.
+//
+// Dispatch is CHUNKED via a shared, persistent queue + pump. Go's actual
+// caller (warmup_controller.go's feeder, via WarmVoiceItem in
+// voice_prewarm_js.go) invokes this once PER ITEM, in a tight Go loop with no
+// yield between calls — so chunking only the array *within* one call would
+// miss the real burst: each 1-item call's dispatch work (building the
+// param block + posting to the render worker) still ran synchronously inline
+// before returning to Go, and Go's wasm scheduler does not yield to the
+// browser event loop between plain calls either, so N single-item calls in a
+// row reproduce the exact same unyielding burst a single N-item call would.
+// Measured at ~450-700ms of main-thread stall for the ~91-item warm set the
+// readiness gate now dispatches at import — independent of render
+// worker-pool size (the stall is dispatch cost, not render cost) — long
+// enough to freeze the progress toast's own animation exactly when it should
+// be moving.
+//
+// The fix: every call only ENQUEUES its items (O(1) per item — cheap enough
+// that a tight Go loop of enqueue-only calls can't itself stall the main
+// thread) and starts the pump if it isn't already running. The pump drains
+// WARM_BATCH_CHUNK_SIZE jobs synchronously, then yields to the event loop,
+// then continues — picking up any items enqueued by later calls too, so
+// repeated 1-item calls and one large batched call are dispatched identically.
+// WARM_BATCH_CHUNK_SIZE=3 keeps a slice under roughly one frame (measured
+// ~5-8ms dispatch cost per item, so ~15-24ms/slice) while keeping the number
+// of yields — and their ~4ms-clamped setTimeout(0) overhead — small against
+// the 15s gate deadline.
+const WARM_BATCH_CHUNK_SIZE = 3;
+const warmPumpQueue = [];
+let warmPumpRunning = false;
+
+async function runWarmPump() {
+  warmPumpRunning = true;
+  try {
+    while (warmPumpQueue.length > 0) {
+      const slice = warmPumpQueue.splice(0, WARM_BATCH_CHUNK_SIZE);
+      for (const job of slice) {
+        try {
+          job();
+        } catch (err) {
+          // Backstop only — each job already guards its own body (see
+          // warmInstrumentBatch below) and always fires its done callback
+          // even on a synchronous throw. Without this backstop too, an
+          // uncaught throw here would abort the while loop early, leaving
+          // every remaining queued item's done() never called (the gate
+          // waits out its full 15s deadline on those items) and — via the
+          // `finally` below still running — merely resets warmPumpRunning
+          // rather than the worse failure mode of leaving it stuck true.
+          dbg('warm.pump.job.error', { err: String(err) });
+        }
+      }
+      if (warmPumpQueue.length > 0) {
+        // Yield to the event loop between slices so a long (or long-running,
+        // via repeated single-item calls) warm set can't monopolize the main
+        // thread in one synchronous burst.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  } finally {
+    // Always clear the running flag, even if something above throws past
+    // the per-job try/catch (e.g. a bug in the pump loop itself) — a stuck
+    // `true` here means no future warmInstrumentBatch call in this tab ever
+    // starts the pump again, silently killing warm-up for the rest of the
+    // session.
+    warmPumpRunning = false;
+  }
+}
+
+window.warmInstrumentBatch = (itemsJSON, doneFnName) => {
+  let items = [];
+  try { items = JSON.parse(itemsJSON); } catch (_) { items = []; }
+  const cb = window[doneFnName];
+  const fire = (token) => {
+    try { if (typeof cb === "function") cb(token); }
+    catch (err) { dbg('warm.batch.cb.error', { err: String(err) }); }
+  };
+  if (!Array.isArray(items) || items.length === 0) return;
+  for (const entry of items) {
+    warmPumpQueue.push(() => {
+      try {
+        const id = entry && entry[0];
+        const pitch = entry && entry[1];
+        const token = entry && entry[2];
+        if (!id || !RENDER[id]) { fire(token); return; }
+        const melodic = isMelodicInstrument(id);
+        ensureRenderReady(id, melodic ? pitch : undefined).then(() => fire(token)).catch(() => fire(token));
+      } catch (err) {
+        // ensureRenderReady/isMelodicInstrument/renderRecordStale are plain
+        // (non-async) functions, so a synchronous throw from any of them —
+        // one malformed instrument id in a 91-item import is enough —
+        // would otherwise escape this job and propagate out of the pump's
+        // while loop (see runWarmPump), permanently stranding
+        // warmPumpRunning at true and killing every later warm-up in this
+        // tab. A failed render must still count as done: the readiness
+        // gate counts callbacks, and a lost one makes it wait out its full
+        // 15s deadline instead of opening.
+        dbg('warm.pump.dispatch.error', { err: String(err) });
+        fire(entry && entry[2]);
+      }
+    });
+  }
+  if (!warmPumpRunning) runWarmPump();
+};
+
 // Test-only helper: forces a fresh render via ensureRenderedSample and
 // returns a tail-energy summary of the resulting Float32Array. Used by
 // instrument_params_audible.browser.test.js to verify
 // setInstrumentParam reaches the C `_p` variant. Production code never
 // reads __testCaptureSynthRender — keep it window-scoped + underscored
 // so tree-shaking + linters skip it cleanly.
-window.__testCaptureSynthRender = async (id) => {
-  renderCache.delete(id);
-  delete samples[id];
-  const rec = await ensureRenderedSample(id);
+window.__testCaptureSynthRender = async (id, opts) => {
+  // opts.sampleRate: render at that rate, bypassing (and not disturbing) the
+  // playback cache — see ensureRenderedSample.
+  const pinned = opts && Number.isFinite(opts.sampleRate) && opts.sampleRate > 0;
+  if (!pinned) {
+    renderCache.delete(id);
+  }
+  const rec = await ensureRenderedSample(id, pinned ? { sampleRate: opts.sampleRate } : undefined);
   if (!rec || !rec.data) return null;
   const data = rec.data;
   let tailRMS = 0;
@@ -2773,6 +2713,7 @@ window.__testCaptureSynthRender = async (id) => {
     peak,
     rms,
     length: data.length,
+    viaWorker: rec.viaWorker,
   };
 };
 
@@ -2784,80 +2725,14 @@ window.__testCaptureSynthRender = async (id) => {
 window.__testApplySampleEdit = (arr, sr, editJSON) =>
   Array.from(applySampleEdit(Float32Array.from(arr), sr, JSON.parse(editJSON)));
 
-function _updateInstrumentParams(id, paramsJSON) {
-  let params = null;
-  try { params = JSON.parse(paramsJSON); } catch (_) { params = null; }
-  // gen_type-era hygiene: the Generator selector was removed by the
-  // native-deprecation migration (Go strips/migrates it at import; this is
-  // the defensive belt for any stale caller still pushing the key).
-  if (params && typeof params === 'object') delete params.gen_type;
-  if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
-    console.log('[SYNTH-UPD]', 'updateInstrumentParams', { id, params, RENDER: !!RENDER[id], hadCache: renderCache.has(id) });
-  }
-  if (params && typeof params === 'object' && Object.keys(params).length > 0) {
-    instrumentSynthParams.set(id, params);
-  } else {
-    instrumentSynthParams.delete(id);
-  }
-  // Mark cached renders STALE (generation bump) so the next play re-renders
-  // through `render_X_p` with the new values in the BACKGROUND while the stale
-  // buffer keeps playing ON TIME (stale-while-revalidate — the WASM real-time
-  // fix; a hard evict left nothing playable and every storm note played off
-  // the grid). Only for a C-synth instrument (RENDER[id] present), whose
-  // renderCache entry is re-derivable. For a SAMPLE-based instrument
-  // (registerSamplePCM deleted RENDER[id]), the renderCache entry holds the ONLY
-  // copy of its PCM: a knob edit must leave its buffer intact. This is the
-  // "changing the generator on a soloed (sample) instrument kills the audio,
-  // dead until reload" bug.
-  // Guard: synth_sample_param_change_keeps_audio.browser.test.js.
-  if (RENDER[id]) {
-    bumpInstrumentParamsGen(id);
-    delete samples[id];
-    rawRenderCache.delete(id);
-  } else if (RENDER_DEFAULTS[id] !== undefined) {
-    // A synth edit arrived for a FACTORY instrument whose render mapping was
-    // deleted by a sample registration (in-session WAV-save over a builtin,
-    // or any stale PCM override that slipped past the startup skip in Go's
-    // ApplySavedSamples). Desktop precedence: the recipe path wins as soon as
-    // params exist — mirror it. Restore the factory render and drop the
-    // frozen PCM so the next trigger re-renders the synth with the new
-    // params. Without this the instrument is FROZEN: the edit lands in
-    // instrumentSynthParams but the cached PCM keeps playing unchanged — the
-    // "knobs / stage toggles / Save do nothing on WASM (desktop fine)" bug.
-    // Pure user samples (no factory render) keep the silence protection
-    // above. Regression: synth_edits_override_stale_sample.browser.test.js.
-    RENDER[id] = RENDER_DEFAULTS[id];
-    evictRenderCache(id);
-    delete samples[id];
-    rawRenderCache.delete(id);
-  }
-}
-
-// instrumentParamsFor returns the JS-side mirror of the Go manager's
-// per-instrument params: the user overlay MERGED OVER the bootstrap-seeded
-// preset defaults (modular-pad), else null when neither exists. The merge
-// mirrors the desktop dispatch (MergeRecipeDefaults: registered defaults
-// under the overlay) — an OR here dropped the entire seed the moment ONE
-// knob was edited, re-voicing the pad as the base modular voice for every
-// elided key. Per-key overlay still wins; clearing the overlay (Reset)
-// falls back to the full preset.
-function instrumentParamsFor(id) {
-  const overlay = instrumentSynthParams.get(id);
-  const defaults = instrumentDefaultParams.get(id);
-  if (!overlay && !defaults) return null;
-  if (!defaults) return overlay;
-  if (!overlay) return defaults;
-  return { ...defaults, ...overlay };
-}
-
 // ───────── Non-destructive sample-edit descriptors ─────────
 // JS-side mirror of Go's audio.sampleEdits (sample_edit_descriptor.go). A
 // descriptor keeps a synth instrument a SYNTH: the Sampler-tab edit
 // (trim/pitch/gain/reverse/normalize/fade) is applied to the freshly-rendered
 // C-synth buffer inside ensureRenderedSample instead of baking PCM and
 // killing the render mapping. Field names match Go's SampleEdit JSON
-// (StartFrac, EndFrac, TransposeSemis, DetuneCents, GainDB, FadeInMs,
-// FadeOutMs, Reverse, Normalize).
+// (StartFrac, EndFrac, TransposeSemis, DetuneCents, GainDB, Fade, Reverse,
+// Normalize) plus FadeMs, the fade length Go sends with it.
 const instrumentSampleEdits = new Map();
 
 // rawRenderCache holds UN-edited renders for the Sampler editor's raw capture
@@ -2873,7 +2748,7 @@ function sampleEditIsIdentity(e) {
   return !e ||
     ((e.StartFrac || 0) === 0 && (e.EndFrac === undefined ? 1 : e.EndFrac) === 1 &&
      (e.TransposeSemis || 0) === 0 && (e.DetuneCents || 0) === 0 &&
-     (e.GainDB || 0) === 0 && (e.FadeInMs || 0) === 0 && (e.FadeOutMs || 0) === 0 &&
+     (e.GainDB || 0) === 0 && !e.Fade &&
      !e.Reverse && !e.Normalize);
 }
 
@@ -2892,7 +2767,7 @@ function _updateSampleEdit(id, editJSON) {
   } else {
     instrumentSampleEdits.delete(id);
   }
-  // Same RENDER[id] guard as _updateInstrumentParams: a sample-based
+  // Same RENDER[id] guard as setInstrumentBlock: a sample-based
   // instrument's renderCache entry holds the ONLY copy of its PCM — deleting
   // it would permanently silence the instrument. The descriptor only applies
   // to re-derivable C-synth renders anyway. Generation bump, not evict: the
@@ -2900,7 +2775,6 @@ function _updateSampleEdit(id, editJSON) {
   // (stale-while-revalidate, same as the param path).
   if (RENDER[id]) {
     bumpInstrumentParamsGen(id);
-    delete samples[id];
   }
 }
 
@@ -2962,177 +2836,53 @@ function applySampleEdit(src, sr, e) {
     for (let i = 0; i < out.length; i++) out[i] = Math.fround(out[i] * lin);
   }
   // ApplyFades (linear, float32 ratio like Go's float32(i)/float32(fi))
-  const fadeIn = e.FadeInMs || 0;
-  const fadeOut = e.FadeOutMs || 0;
-  if (fadeIn > 0 || fadeOut > 0) {
+  const fadeMs = e.FadeMs || 0;
+  if (fadeMs > 0) {
     const n = out.length;
-    const fi = Math.min(Math.floor(sr * fadeIn / 1000.0), n);
+    const fi = Math.min(Math.floor(sr * fadeMs / 1000.0), n);
     for (let i = 0; i < fi; i++) out[i] = Math.fround(out[i] * Math.fround(i / fi));
-    const fo = Math.min(Math.floor(sr * fadeOut / 1000.0), n);
-    for (let k = 0; k < fo; k++) out[n - 1 - k] = Math.fround(out[n - 1 - k] * Math.fround(k / fo));
+    for (let k = 0; k < fi; k++) out[n - 1 - k] = Math.fround(out[n - 1 - k] * Math.fround(k / fi));
   }
   return out;
 }
 
-function rewireChannel(chain, oldMultibandProc = null) {
+// rewireChannel connects a channel's nodes in order (see the chain diagram
+// above "The C stages after the voice"). The analysers are wired IN-LINE (audio
+// passes through): fan-out tap nodes whose output is unreachable from
+// ctx.destination can be skipped by Chrome's renderer, leaving their
+// time-domain buffer all-zero (chain_per_instrument_traces.browser.test.js).
+function rewireChannel(chain) {
+  audioGraphStats.channelRewires++;
+  const stages = [chain.synthAnalyser, chain.fxNode, chain.preEQAnalyser, chain.eqNode, chain.analyser].filter(Boolean);
   try { chain.ingress.disconnect(); } catch (_) {}
-  // Disconnect insert FX outgoing connections only (preserve internal wiring).
-  if (chain.insertFX) {
-    for (const fx of chain.insertFX) {
-      try { fx.output.disconnect(); } catch (_) {}
-    }
-  }
-  if (chain.eqChain) {
-    for (const f of chain.eqChain) { try { f.disconnect(); } catch (_) {} }
-  }
-  // Disconnect OLD multiband processor (passed explicitly), not the current one.
-  // This prevents breaking the internal connections of a newly created multiband processor.
-  if (oldMultibandProc) {
-    try { oldMultibandProc.input.disconnect(); } catch (_) {}
-    try { oldMultibandProc.output.disconnect(); } catch (_) {}
-  }
-  if (chain.preEQAnalyser) { try { chain.preEQAnalyser.disconnect(); } catch (_) {} }
-  if (chain.synthAnalyser) { try { chain.synthAnalyser.disconnect(); } catch (_) {} }
-  if (chain.analyser) { try { chain.analyser.disconnect(); } catch (_) {} }
-
-  // Helper: wire insert effects into the signal chain starting from `node`.
-  // Returns the last node in the chain after insert effects.
-  function wireInsertFX(node) {
-    if (chain.insertFX && chain.insertFX.length > 0) {
-      for (const fx of chain.insertFX) {
-        node.connect(fx.input);
-        node = fx.output;
-      }
-    }
-    return node;
-  }
-
-  // Special-case the main bus (ingress === gain) to avoid creating a feedback
-  // loop when an analyser/EQ is inserted. We tap the analyser and then go
-  // straight to the destination.
-  if (chain.ingress === chain.gain) {
-    let node = chain.ingress;
-    // Synth analyser (BEFORE inserts) — feeds scope.StageSynth /
-    // scope.StageAntiPop. Wired IN-LINE (audio passes through), not as a
-    // fan-out: fan-out tap nodes whose output is unreachable from
-    // ctx.destination can be skipped by Chrome's renderer, leaving their
-    // time-domain buffer all-zero even though ingress is receiving audio.
-    // AnalyserNode passes audio through unchanged, so in-line wiring is
-    // transparent to the audible signal. See
-    // chain_per_instrument_traces.browser.test.js — case "antipop_vs_eq".
-    if (chain.synthAnalyser) {
-      node.connect(chain.synthAnalyser);
-      node = chain.synthAnalyser;
-    }
-    // Insert effects (before EQ)
-    node = wireInsertFX(node);
-    // Pre-EQ analyser (after inserts, before EQ) — feeds scope.StageInsertFX.
-    // Also wired IN-LINE; see synth-analyser comment above for rationale.
-    if (chain.preEQAnalyser) {
-      node.connect(chain.preEQAnalyser);
-      node = chain.preEQAnalyser;
-    }
-    // Use multiband processor if present, otherwise use eqChain
-    if (chain.multibandProc) {
-      node.connect(chain.multibandProc.input);
-      node = chain.multibandProc.output;
-    } else if (chain.eqChain) {
-      for (const f of chain.eqChain) {
-        node.connect(f);
-        node = f;
-      }
-    }
-    if (chain.analyser) {
-      node.connect(chain.analyser);
-      chain.analyser.connect(audioDestination());
-    } else {
-      node.connect(audioDestination());
-    }
-    return;
-  }
-
+  for (const n of stages) { try { n.disconnect(); } catch (_) {} }
   let node = chain.ingress;
-  // Synth analyser (BEFORE inserts) — see main-bus branch above for the
-  // reason these analysers are wired IN-LINE rather than as fan-out taps.
-  if (chain.synthAnalyser) {
-    node.connect(chain.synthAnalyser);
-    node = chain.synthAnalyser;
-  }
-  // Insert effects (before EQ)
-  node = wireInsertFX(node);
-  // Pre-EQ analyser (after inserts, before EQ) — feeds scope.StageInsertFX.
-  if (chain.preEQAnalyser) {
-    node.connect(chain.preEQAnalyser);
-    node = chain.preEQAnalyser;
-  }
-  // Use multiband processor if present, otherwise use eqChain
-  if (chain.multibandProc) {
-    node.connect(chain.multibandProc.input);
-    node = chain.multibandProc.output;
-  } else if (chain.eqChain) {
-    for (const f of chain.eqChain) {
-      node.connect(f);
-      node = f;
-    }
-  }
-  if (chain.analyser) {
-    node.connect(chain.analyser);
-    node = chain.analyser;
-  }
-  node.connect(chain.gain);
+  for (const n of stages) { node.connect(n); node = n; }
+  // The master bus (ingress === gain) ends at the soft clip; a channel at its
+  // gain, which feeds the master bus.
+  node.connect(chain.ingress === chain.gain ? audioDestination() : chain.gain);
 }
 
-export function setChannelEQ(id, bands = []) {
+// setChannelEQ(id, program): the channel's EQ program (Go's BuildEQProgram, a
+// Float64Array), or null for no EQ. A live eq node takes it as a message — the
+// C retunes in place when the shape is unchanged (state kept), or starts a
+// fresh EQ for a new shape, exactly as desktop's SetChannelEQ.
+export function setChannelEQ(id, program) {
   if (!hasCtx()) {
-    // Queue the operation for when context is created.
-    pendingChannelOps.push(() => setChannelEQ(id, bands));
+    pendingChannelOps.push(() => setChannelEQ(id, program));
     return;
   }
   const chain = getChannelChain(id);
   if (!chain) return;
-  const c = ctx;
-  if (!Array.isArray(bands) || bands.length === 0) {
-    const oldMb = chain.multibandProc;
-    chain.eqChain = [];
-    chain.multibandProc = null;
-    rewireChannel(chain, oldMb);
+  chain.eqProgram = program && program.length ? Float64Array.from(program) : null;
+  if (chain.eqNode) {
+    chain.eqNode._dspPost({ program: chain.eqProgram });
+    audioGraphStats.eqUpdates++;
     return;
   }
-
-  // Count muted bands explicitly to avoid any truthy/falsy edge cases
-  let mutedCount = 0;
-  for (let i = 0; i < bands.length; i++) {
-    if (bands[i]?.muted === true) {
-      mutedCount++;
-    }
-  }
-
-  // Check if all bands are muted - if so, use a gain node set to 0 for complete silence
-  if (mutedCount === bands.length) {
-    const oldMb = chain.multibandProc;
-    const silenceGain = c.createGain();
-    silenceGain.gain.value = 0;
-    chain.eqChain = [silenceGain];
-    chain.multibandProc = null;
-    rewireChannel(chain, oldMb);
-    return;
-  }
-
-  // Check if any band is muted - if so, use multiband processor for proper isolation
-  if (mutedCount > 0) {
-    const oldMb = chain.multibandProc;
-    const mb = createMultibandProcessor(c, bands);
-    chain.multibandProc = mb;
-    chain.eqChain = [];
-    rewireChannel(chain, oldMb);
-    return;
-  }
-
-  // No muting - use simple biquad chain for efficiency
-  const oldMb = chain.multibandProc;
-  chain.multibandProc = null;
-  chain.eqChain = bands.map((b) => makeBiquad(c, b));
-  rewireChannel(chain, oldMb);
+  if (!chain.eqProgram || chain.released || !dspHostUp(ctx)) return;
+  chain.eqNode = dspNode(ctx, 'eq', null, [{ program: chain.eqProgram }]);
+  if (chain.eqNode) rewireChannel(chain);
 }
 
 export function enableChannelAnalyzer(id, opts = {}) {
@@ -3148,6 +2898,9 @@ export function enableChannelAnalyzer(id, opts = {}) {
     const pow = Math.pow(2, Math.round(Math.log2(Math.max(64, Math.min(8192, v)))));
     return pow;
   })();
+  // How many time-domain samples this channel's snapshots export, kept
+  // independent of fftSize. See WAVE_EXPORT_DEFAULT.
+  chain._waveExportMax = Math.max(64, Math.min(fft, opts.waveSamples || WAVE_EXPORT_DEFAULT));
   // Idempotent: reuse the existing analyser when its fftSize already matches.
   // setEQActiveChannel re-issues all three Enable*Analyzer calls every time
   // the user switches channels; rebuilding the AudioNode + rewiring three
@@ -3171,7 +2924,7 @@ export function enableChannelAnalyzer(id, opts = {}) {
 // (also persistent on the chain) so the Go-WASM bridge can read it via
 // js.CopyBytesToGo on the Uint8Array views, eliminating the per-element
 // js.Value allocation loop that was the WASM OOM driver. Mutates the
-// chain's _snapResult in-place; no new objects are allocated per call.
+// per-analyser record in chain._taps in-place; no new objects per call.
 //
 // Output object shape:
 //   { rms: number, peak: number,
@@ -3184,10 +2937,37 @@ export function enableChannelAnalyzer(id, opts = {}) {
 // buffers used to compute the data — no extra copy. Reading on the Go
 // side requires only ONE bulk CopyBytesToGo per array (vs. 64+512 per-
 // element js.Value allocations under the old plain-array contract).
+// WAVE_EXPORT_DEFAULT caps the time-domain samples a snapshot exports when
+// the caller did not ask for a specific number.
+//
+// One AnalyserNode per channel serves BOTH domains, and its fftSize is set
+// by the spectrum's resolution requirement (Go: analyzer.SpectrumFFTSize —
+// a display band holding no FFT bin renders as silence, so the bins have to
+// be finer than the narrowest band). The time domain wants no such thing:
+// the scope taps, the Wave tab and the per-stage traces all read `wave`, and
+// a longer window would quadruple every one of them across the bridge for
+// nothing. So the node is long and the EXPORT is capped, taking the most
+// RECENT samples — which is exactly the tap those consumers had before.
+const WAVE_EXPORT_DEFAULT = 512;
+
 function fillSnapshotBuffersForChain(chain, analyserKey, timeBufKey, freqBufKey, bins) {
   const a = chain[analyserKey];
-  let result = chain._snapResult || {};
-  chain._snapResult = result;
+  // Output buffers are PER ANALYSER, not per chain. A chain carries up to
+  // three taps (analyser / preEQAnalyser / synthAnalyser) and they used to
+  // share one _snapResult and one pair of Float32Arrays, so each call
+  // overwrote the previous tap's output in place. It happened to be safe
+  // only because the Go bridge copies the bytes out before the next call —
+  // an invariant nothing states and nothing checks. It also stopped being
+  // merely theoretical once the taps got DIFFERENT fftSizes (the channel
+  // analyser runs at analyzer.SpectrumFFTSize for the Spectrum tab's bin
+  // width while preEQ/synth stay short): one shared array sized for the
+  // largest tap, with a length field from the smallest, is a readback bug
+  // waiting for a reordering.
+  let taps = chain._taps;
+  if (!taps) taps = chain._taps = {};
+  let tap = taps[analyserKey];
+  if (!tap) tap = taps[analyserKey] = { result: {} };
+  const result = tap.result;
   if (!a) {
     result.rms = 0;
     result.peak = 0;
@@ -3202,24 +2982,46 @@ function fillSnapshotBuffersForChain(chain, analyserKey, timeBufKey, freqBufKey,
   chain[timeBufKey] = time;
   chain[freqBufKey] = freq;
   a.getFloatTimeDomainData(time);
-  a.getFloatFrequencyData(freq);
+  // bins === 0 means the caller wants SCALARS ONLY (Go's
+  // ChannelAnalyzerMetrics, which the Meters tab and every non-detail row
+  // use). Skip the frequency read, the downsample loop and the wave copy
+  // entirely rather than computing a spectrum for a caller that never looks
+  // at it — with rows on the scalar path that is most calls per rebuild.
+  const scalarsOnly = bins === 0;
+  if (!scalarsOnly) a.getFloatFrequencyData(freq);
+  // Export window: the most RECENT waveExportMax samples (see
+  // WAVE_EXPORT_DEFAULT). rms/peak are measured over the SAME slice that is
+  // exported, so a consumer reading `wave` and a consumer reading `rms`
+  // never disagree about which window they are describing.
+  const cap = chain._waveExportMax || WAVE_EXPORT_DEFAULT;
+  const exportN = Math.min(time.length, cap);
+  const off = time.length - exportN;
   let sum = 0;
   let peak = 0;
-  for (let i = 0; i < time.length; i++) {
-    const v = time[i];
+  for (let i = 0; i < exportN; i++) {
+    const v = time[off + i];
     sum += v * v;
     const av = Math.abs(v);
     if (av > peak) peak = av;
   }
-  const rms = Math.sqrt(sum / time.length);
+  const rms = exportN > 0 ? Math.sqrt(sum / exportN) : 0;
+  if (scalarsOnly) {
+    result.rms = rms;
+    result.peak = peak;
+    result.spectrumLen = 0;
+    result.waveLen = 0;
+    result.spectrumU8 = null;
+    result.waveU8 = null;
+    return result;
+  }
   // Spectrum: persistent Float32Array sized to bin count.
   const n = freq.length;
   const step = Math.max(1, Math.floor(n / Math.max(1, bins)));
   const numBins = Math.ceil(n / step);
-  let specOut = chain._specF32;
+  let specOut = tap.specF32;
   if (!specOut || specOut.length < numBins) {
-    specOut = chain._specF32 = new Float32Array(numBins);
-    chain._specU8 = new Uint8Array(specOut.buffer);
+    specOut = tap.specF32 = new Float32Array(numBins);
+    tap.specU8 = new Uint8Array(specOut.buffer);
   }
   let oi = 0;
   for (let i = 0; i < n; i += step) {
@@ -3230,22 +3032,22 @@ function fillSnapshotBuffersForChain(chain, analyserKey, timeBufKey, freqBufKey,
     }
     specOut[oi++] = Math.pow(10, max / 20);
   }
-  // Wave: persistent Float32Array sized to fftSize, clamp to [-1,1].
-  let waveOut = chain._waveF32;
-  if (!waveOut || waveOut.length < time.length) {
-    waveOut = chain._waveF32 = new Float32Array(time.length);
-    chain._waveU8 = new Uint8Array(waveOut.buffer);
+  // Wave: persistent Float32Array sized to the export window, clamp to [-1,1].
+  let waveOut = tap.waveF32;
+  if (!waveOut || waveOut.length < exportN) {
+    waveOut = tap.waveF32 = new Float32Array(exportN);
+    tap.waveU8 = new Uint8Array(waveOut.buffer);
   }
-  for (let i = 0; i < time.length; i++) {
-    const v = time[i];
+  for (let i = 0; i < exportN; i++) {
+    const v = time[off + i];
     waveOut[i] = v > 1 ? 1 : v < -1 ? -1 : v;
   }
   result.rms = rms;
   result.peak = peak;
   result.spectrumLen = oi;
-  result.waveLen = time.length;
-  result.spectrumU8 = chain._specU8;
-  result.waveU8 = chain._waveU8;
+  result.waveLen = exportN;
+  result.spectrumU8 = tap.specU8;
+  result.waveU8 = tap.waveU8;
   // Back-compat fields: do NOT allocate plain arrays here. Old callers
   // that read `.spectrum` / `.wave` will see undefined and must adapt;
   // the only known consumer is the Go-WASM bridge, which uses the U8
@@ -3254,7 +3056,7 @@ function fillSnapshotBuffersForChain(chain, analyserKey, timeBufKey, freqBufKey,
 }
 
 export function channelAnalyzerSnapshot(id, bins = 64) {
-  const chain = getChannelChain(id);
+  const chain = getChannelChain(id, false);
   if (!chain) {
     return { rms: 0, peak: 0, spectrumLen: 0, waveLen: 0, spectrumU8: null, waveU8: null };
   }
@@ -3287,7 +3089,7 @@ export function enablePreEQAnalyzer(id, opts = {}) {
 }
 
 export function preEQAnalyzerSnapshot(id, bins = 64) {
-  const chain = getChannelChain(id);
+  const chain = getChannelChain(id, false);
   if (!chain) {
     return { rms: 0, peak: 0, spectrumLen: 0, waveLen: 0, spectrumU8: null, waveU8: null };
   }
@@ -3342,7 +3144,7 @@ export function enableSynthAnalyzer(id, opts = {}) {
 }
 
 export function synthAnalyzerSnapshot(id, bins = 64) {
-  const chain = getChannelChain(id);
+  const chain = getChannelChain(id, false);
   if (!chain) {
     return { rms: 0, peak: 0, spectrumLen: 0, waveLen: 0, spectrumU8: null, waveU8: null };
   }
@@ -3359,112 +3161,49 @@ export function synthAnalyzerSnapshot(id, bins = 64) {
   return r;
 }
 
-// enableSendBusAnalyzer creates the shared analyser that taps the summed
-// send-bus returns (delay tail + reverb tail). Any send buses already
-// instantiated when this runs are re-tapped so the analyser starts seeing
-// audio immediately; future buses pick it up at construction time.
-export function enableSendBusAnalyzer(opts = {}) {
-  if (!hasCtx()) {
-    pendingChannelOps.push(() => enableSendBusAnalyzer(opts));
-    return;
-  }
-  const c = ctx;
-  const fft = (() => {
-    const v = opts.fftSize || 512;
-    return Math.pow(2, Math.round(Math.log2(Math.max(64, Math.min(8192, v)))));
-  })();
-  if (!sendBusAnalyser) {
-    sendBusAnalyser = c.createAnalyser();
-    sendBusAnalyser.fftSize = fft;
-    sendBusAnalyser.smoothingTimeConstant = Math.max(0, Math.min(0.95, opts.smoothing || 0.0));
-    sendBusTimeBuf = new Float32Array(sendBusAnalyser.fftSize);
-    sendBusFreqBuf = new Float32Array(sendBusAnalyser.frequencyBinCount);
-  }
-  // Tap whichever buses already exist. The bus-creation code paths also check
-  // `sendBusAnalyser` and tap on construction for buses built later.
-  if (delaySendBus) {
-    // delaySendBus is the input gain; the wet output is the DelayNode itself,
-    // which we can't reach directly from here. Tapping inputGain is wrong
-    // because that's the dry summing point with no echo. Instead the wet
-    // node was tapped inline in ensureDelaySendBus; do nothing here for
-    // already-built buses other than refresh references.
-  }
-  if (reverbSendBus) {
-    // Same rationale as above: the wet wetGain was tapped inline in
-    // ensureReverbSendBus.
-  }
+// audioReady resolves once the C DSP ENGINE is loaded and warm. Exposed as
+// window.audioReady so index.html can gate game start on it.
+//
+// It warms the ENGINE, never an instrument. Which voices a session needs, and
+// with which params, is Go's knowledge: the loaded circuit (the startup demo
+// JSON or an import) and each instrument's bound recipe defaults. Go's circuit
+// warm-up gate (warmup_controller.go → warmInstrumentBatch) renders exactly
+// those, AFTER the defaults are seeded. The hardcoded instrument list that used
+// to render here ran BEFORE the seed — every config-first instrument got the
+// bare modular voice, which the seed then evicted.
+//
+// That list did do one useful thing, by accident: each render compiled and
+// tiered up the WASM in a render worker before the game started. Without it the
+// circuit warm-up runs on COLD workers at the moment playback begins, and the
+// first notes are scheduled late (webaudio_three_stage_latency: 19 → 68 overdue
+// events). So: a couple of throwaway renders of the bare voice on EVERY pool
+// worker and on the main-thread module, results discarded, nothing cached.
+// engineWarmBlock is a minimal sounding block for the engine warm-up (compile /
+// tier-up only — never an instrument; every instrument's block comes from Go).
+function engineWarmBlock() {
+  const b = new Float64Array(MODULAR_PARAM_COUNT);
+  b[MODULAR_PARAM_INDEX.osc_enabled] = 1;
+  b[MODULAR_PARAM_INDEX.env_enabled] = 1;
+  b[MODULAR_PARAM_INDEX.amp_sustain] = 1;
+  b[MODULAR_PARAM_INDEX.gain] = 1;
+  return b;
 }
 
-// sendBusChainProxy is a module-scope proxy object that mimics the per-
-// channel chain shape so fillSnapshotBuffersForChain can be reused.
-// Module-scope because sendBusAnalyser/sendBus*Buf are module globals.
-const sendBusChainProxy = {};
-
-export function sendBusAnalyzerSnapshot(bins = 64) {
-  sendBusChainProxy.analyser = sendBusAnalyser;
-  sendBusChainProxy._timeBuf = sendBusTimeBuf;
-  sendBusChainProxy._freqBuf = sendBusFreqBuf;
-  const r = fillSnapshotBuffersForChain(sendBusChainProxy, "analyser", "_timeBuf", "_freqBuf", bins);
-  sendBusTimeBuf = sendBusChainProxy._timeBuf;
-  sendBusFreqBuf = sendBusChainProxy._freqBuf;
-  return r;
-}
-
-function getBus(id, vol) {
-  // Per-note gain (row × node volume) is unbounded above so a boosted node can
-  // exceed unity, matching native scaledVoice (no upper clamp) for cross-platform
-  // parity; the master compressor/limiter tames extreme peaks. Only clamp <0.
-  const v = Math.max(0, Number.isFinite(vol) ? vol : 1.0);
-  const q = Math.round(v * VOL_Q);
-  const key = id + '|' + q;
-  const now = (hasCtx() ? ctx.currentTime : 0) || 0;
-  let bus = volumeBus.get(key);
-  let per = busIndex.get(id);
-  if (!per) { per = new Map(); busIndex.set(id, per); }
-  if (!bus) {
-    const c = getCtx();
-    bus = c.createGain();
-    bus.gain.value = q / VOL_Q;
-    const sink = channelSink(id);
-    if (sink) bus.connect(sink);
-    volumeBus.set(key, bus);
-    per.set(q, { node: bus, lastUsed: now });
-    maybeEvictBuses(id, now);
-    return bus;
-  }
-  const meta = per.get(q) || { node: bus, lastUsed: 0 };
-  meta.lastUsed = now;
-  per.set(q, meta);
-  return bus;
-}
-
-function maybeEvictBuses(id, _now) {
-  const per = busIndex.get(id);
-  if (!per || per.size <= MAX_BUSES_PER_INST) return;
-  const entries = Array.from(per.entries());
-  entries.sort((a, b) => (a[1].lastUsed - b[1].lastUsed));
-  for (const [q, meta] of entries) {
-    if (per.size <= MAX_BUSES_PER_INST) break;
-    if (!meta || !meta.node) continue;
-    try { meta.node.disconnect(); } catch (_) {}
-    per.delete(q);
-    volumeBus.delete(id + '|' + q);
-  }
-}
-
-// Warm up common synthesized instruments so hot path is synchronous.
-// Exposed as window.audioReady so index.html can gate game start on it.
+const ENGINE_WARM_RENDERS_PER_WORKER = 2;
+const ENGINE_WARM_SECONDS = 0.5;
 async function warmupAudio() {
-  await ensureModule();
-  const ids = ['snare', 'kick', 'hihat', 'tom', 'clap', 'cowbell',
-               'rimshot', 'sidestick', 'kick-deep', 'shaker', 'ride', 'crash',
-               'kick-tight'];
-  await Promise.all(ids.map(id => {
-    if (RENDER[id] && !renderCache.has(id)) {
-      return ensureRenderedSample(id).catch(() => {});
-    }
-    return Promise.resolve();
-  }));
+  const m = await ensureModule();
+  const sr = Math.max(8000, Math.min(192000, getSampleRate()));
+  const frames = Math.max(1, Math.floor(sr * ENGINE_WARM_SECONDS));
+  const jobs = [];
+  const pool = ensureSynthRenderWorkers();
+  // renderVoiceInWorker routes to the least-loaded worker, so issuing them
+  // together spreads them across the whole pool.
+  for (let i = 0; pool && i < pool.length * ENGINE_WARM_RENDERS_PER_WORKER; i++) {
+    jobs.push(renderVoiceInWorker('render_modular_p', sr, frames, engineWarmBlock(), MODULAR_PARAM_COUNT, null).catch(() => {}));
+  }
+  try { renderVoiceSync(m, 'render_modular_p', sr, frames, engineWarmBlock(), MODULAR_PARAM_COUNT); } catch (_) {}
+  await Promise.all(jobs);
 }
 window.audioReady = warmupAudio();
 
@@ -3534,9 +3273,21 @@ function recordSamples(data, gain) {
 // Phase A: Render C synth to raw Float32Array without creating an AudioContext.
 // This allows the warmup IIFE to pre-render samples before any user gesture,
 // which is critical on mobile where premature AudioContext creation starts suspended.
+// postProcessVoiceRender finishes a voice render exactly as playback plays it:
+// both render paths arrive already post-processed (voice_post.js: voice FX,
+// gate tail, normalise × amplitude, end fade — P4), then the non-destructive
+// Sampler edit — the same transform as Go's BakeSample, applied to the fresh C
+// render (mirrors tryRecipeVoice in synth_recipe_dispatch.go). The synth stays
+// the source of truth: a param change re-renders through here on the next play.
+// Shared by ensureRenderedSample and renderDocPCM (the Synth-tab graph render),
+// so the graph is the played voice.
+function postProcessVoiceRender(data, sr, sampleEdit) {
+  return sampleEdit ? applySampleEdit(data, sr, sampleEdit) : data;
+}
+
 async function ensureRenderedSample(id, opts) {
   if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch && window.__synthEvtTrace) {
-    console.log('[SYNTH-ERS]', 'enter', { id, hasCache: renderCache.has(id), params: instrumentParamsFor(id) });
+    console.log('[SYNTH-ERS]', 'enter', { id, hasCache: renderCache.has(id), block: instrumentBlocks.has(id) });
   }
   if (!RENDER[id]) {
     return null;
@@ -3547,7 +3298,12 @@ async function ensureRenderedSample(id, opts) {
   // (read above is fine — see the bypass below — and write at the end).
   const skipEdit = !!(opts && opts.skipEdit);
   const sampleEdit = skipEdit ? null : (instrumentSampleEdits.get(id) || null);
-  const bypassCache = skipEdit && instrumentSampleEdits.has(id);
+  // opts.sampleRate renders at an explicit rate instead of the device's (test
+  // seam: engines disagree on the AudioContext rate — WebKit 44.1 kHz, Chromium
+  // 48 kHz — so a cross-engine voice comparison must pin one). Such a render is
+  // never read from or written to the playback cache.
+  const srOverride = (opts && Number.isFinite(opts.sampleRate) && opts.sampleRate > 0) ? opts.sampleRate : 0;
+  const bypassCache = (skipEdit && instrumentSampleEdits.has(id)) || srOverride > 0;
   // Melodic per-pitch re-render: when a rounded pitch is requested for a
   // melodic instrument, render the C voice AT that pitch and cache under the
   // pitch-folded key. roundedPitch defaults to 0 → bare-id key (unchanged for
@@ -3556,8 +3312,8 @@ async function ensureRenderedSample(id, opts) {
   const atPitch = isMelodicInstrument(id) && roundedPitch !== 0;
   const cacheKey = atPitch ? cacheKeyFor(id, roundedPitch) : id;
   // Use getSampleRate() to avoid creating AudioContext prematurely.
-  // If ctx already exists we get the real rate; otherwise 48000 default.
-  const sr = Math.max(8000, Math.min(192000, getSampleRate()));
+  // The engine rate (CHAIN_SPEC.sampleRate), whatever the device runs at.
+  const sr = Math.max(8000, Math.min(192000, srOverride || getSampleRate()));
   // If cache exists but was built for a different sample rate, rebuild so pitch
   // and duration stay correct on devices that default to 48 kHz.
   // Param generation this render is being built for. Captured BEFORE the
@@ -3587,84 +3343,47 @@ async function ensureRenderedSample(id, opts) {
   // The synchronous main-thread module is still loaded (other paths — worklets,
   // insert effects, delay/reverb — use it) and serves as the render fallback.
   const m = await ensureModule();
-  // Phase 5: when user has edited synth params for this instrument,
-  // route through the parameterized C variant (`render_X_p`). The param block
-  // is built here on the main thread (the ABI lives in one place) and shipped
-  // to the off-thread renderer or the sync fallback.
-  const params = instrumentParamsFor(id);
-  // Select the param block by the instrument's render family. The legacy
-  // bespoke renderers use the 7-field synth_params block; the unified modular
-  // voice (paramBlock:'modular') uses the wide modular_params block. Both are
-  // schema-keyed flat float blocks generated from synth_param_abi.gen.js, so
-  // the C struct field order is the single source of truth (drift-tested by
-  // synth_param_schema_test.go).
-  const isModular = !!(info && info.paramBlock === 'modular');
-  // Family instruments (paramBlock 'fm' / 'kick' / …) use their family block
-  // (synth_params base at offsets 0..6 + curated family knobs after),
-  // mirroring the desktop builtinFamilyRenderers dispatch. Family fields
-  // default to NaN ("keep the engine literal") via the block's identity map,
-  // so unedited knobs never perturb the native sound.
-  const familyBlock = (info && !isModular && FAMILY_PARAM_BLOCKS[info.paramBlock]) || null;
-  const useModular = isModular;
-  const fam = useModular ? null : familyBlock;
-  const PARAM_COUNT = useModular ? MODULAR_PARAM_COUNT : (fam ? fam.count : SYNTH_PARAM_COUNT);
-  const PARAM_INDEX = useModular ? MODULAR_PARAM_INDEX : (fam ? fam.index : SYNTH_PARAM_INDEX);
-  const PARAM_IDENTITY = useModular ? MODULAR_PARAM_IDENTITY : (fam ? fam.identity : SYNTH_PARAM_IDENTITY);
-  // Build the flat param block as a plain Float32Array (NOT a WASM heap view) so
-  // it can be structured-cloned into the render worker AND reused by the sync
-  // fallback. allocCount carries a safety floor (see below).
-  let paramArr = null;
-  let allocCount = 0;
-  if (params) {
-    // CRITICAL: unset knobs MUST resolve to their C-side IDENTITY values
-    // (the *_PARAM_IDENTITY map mirrors the C fallbacks). Passing 0 for decay
-    // causes the legacy `_p` variant to divide-by-zero on the envelope formula
-    // (`1 / decayMul`), producing NaN output that silences the channel.
-    // The floor guards against a stale/undersized ABI (the silence bug): the C
-    // modular_params struct is wider than the legacy synth_params, so a generous
-    // zeroed block keeps every C read in-bounds and deterministic.
-    allocCount = useModular ? Math.max(PARAM_COUNT, MODULAR_ALLOC_FLOOR) : PARAM_COUNT;
-    paramArr = new Float32Array(allocCount); // zero-initialised
-    for (const [name, idx] of Object.entries(PARAM_INDEX)) {
-      const v = params[name];
-      paramArr[idx] = (typeof v === 'number' && Number.isFinite(v)) ? v : PARAM_IDENTITY[name];
-    }
-    // Per-pitch melodic re-render: override the modular `pitch` field so the C
-    // voice renders at freq=220·2^(roundedPitch/12) (formant stays fixed, no
-    // resample). Only modular melodic instruments reach here with atPitch=true.
-    if (atPitch && useModular && Number.isFinite(PARAM_INDEX.pitch)) {
-      paramArr[PARAM_INDEX.pitch] = roundedPitch;
-    }
+  // The instrument's block is its document, flattened in Go and pushed via
+  // setInstrumentBlock. Copied (never a WASM heap view) so it can be
+  // structured-cloned into the render worker AND reused by the sync fallback;
+  // a melodic per-pitch render patches only the copy's pitch field so the C
+  // voice renders at freq=220·2^(roundedPitch/12) (formant fixed, no resample).
+  const pushed = instrumentBlocks.get(id);
+  if (!pushed) return null; // Go has not pushed this instrument
+  const paramArr = Float64Array.from(pushed);
+  const allocCount = MODULAR_PARAM_COUNT;
+  if (atPitch && Number.isFinite(MODULAR_PARAM_INDEX.pitch)) {
+    paramArr[MODULAR_PARAM_INDEX.pitch] = roundedPitch;
   }
-  const renderFn = paramArr ? (useModular ? 'render_modular_p' : (RENDER[id] + '_p')) : RENDER[id];
-  const nativeFn = RENDER[id];
+  const renderFn = 'render_modular_p';
   if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
     const fld = (n) => (paramArr && Number.isFinite(MODULAR_PARAM_INDEX[n])) ? paramArr[MODULAR_PARAM_INDEX[n]] : 'n/a';
-    const block = (paramArr && useModular) ? {
+    const block = paramArr ? {
       osc_type: fld('osc_type'), osc_enabled: fld('osc_enabled'),
       fm_enabled: fld('fm_enabled'), env_enabled: fld('env_enabled'),
       filter_enabled: fld('filter_enabled'), drive_enabled: fld('drive_enabled'),
       gain: fld('gain'), osc_level: fld('osc_level'), level: fld('level'),
     } : null;
-    console.log('[SYNTH-DISPATCH]', 'render request', { id, fn: renderFn, useModular, block, params });
+    console.log('[SYNTH-DISPATCH]', 'render request', { id, fn: renderFn, block });
   }
   // Test seam (synth_revoice_render_resilience.browser.test.js): force the
-  // parameterized render to fail so the native-fallback path is exercised.
-  const forceParamThrow = (typeof window !== 'undefined' && !!window.__forceRevoiceRenderThrow);
+  // render to fail so the failure contract is exercised.
+  const forceRenderThrow = (typeof window !== 'undefined' && !!window.__forceRevoiceRenderThrow);
 
   // ── Render: off-thread worker preferred, synchronous main-thread fallback ──
   // This is the WASM perf fix: the ~30–40 ms C render runs on the worker so a
   // live param edit that invalidates the cache mid-playback no longer blocks
-  // the UI + audio scheduler. The worker is unavailable (or times out) → fall
-  // back to the original synchronous ccall (degraded, not broken). A failure of
-  // the PARAMETERIZED render falls back to the NATIVE renderer so the instrument
-  // keeps sounding (preserves the pre-worker resilience contract).
+  // the UI + audio scheduler. The worker is unavailable (or times out) → the
+  // same render runs synchronously (degraded, not broken). A render that FAILS
+  // throws: the instrument's previous (param-stale) record stays in the cache
+  // and keeps playing on time, and the caller drops the note when there is
+  // none. There is no substitute voice — rendering anything else in its place
+  // would play a different instrument.
   let data = null;
   let viaWorker = false;
-  let nativeFallback = false;
-  // P4: the worker applies peak-normalize + amp when it renders, so the main
-  // thread's per-render O(frames) passes only run on the sync fallback.
-  const ampVal = Number.isFinite(info.amp) ? info.amp : 0.6;
+  // P4: the worker applies the voice post-processing when it renders, so the
+  // main thread's per-render O(frames) passes only run on the sync fallback.
+  const post = voicePost(info);
   // Render-latency observation: wall time from render request to cached
   // buffer, as experienced by the trigger path (worker queue wait + render +
   // main-thread post-process). Queue depth is sampled at request time — with
@@ -3679,69 +3398,39 @@ async function ensureRenderedSample(id, opts) {
   // idle warm-up and offline paths so behaviour there degrades, not breaks.
   const allowMainThreadRender = !isPlaybackActive();
   const RENDER_DEFERRED = () => new Error('render deferred: worker unavailable during playback');
-  if (!(paramArr && forceParamThrow)) {
+  // Test seam (synth_param_block_double.browser.test.js): skip the worker so the
+  // synchronous main-thread path renders — the two must agree bit for bit.
+  const forceSync = (typeof window !== 'undefined' && !!window.__beatmoForceSyncRender);
+  let deferred = false;
+  try {
+    if (forceRenderThrow) throw new Error('forced render failure (test seam)');
     try {
-      data = await renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount, ampVal);
+      if (forceSync) throw new Error('forced sync render (test seam)');
+      data = await renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount, post);
       viaWorker = true;
     } catch (werr) {
-      if (!allowMainThreadRender) throw RENDER_DEFERRED();
-      try {
-        data = renderVoiceSync(m, renderFn, sr, frames, paramArr, allocCount);
-        viaWorker = false;
-      } catch (serr) {
-        data = null; // parameterized render itself threw → native fallback below
-      }
-    }
-  }
-  if (data === null && paramArr) {
-    console.error('[AUDIOJS] parameterized render failed for ' + id + ' via ' + renderFn +
-      '; falling back to native ' + nativeFn);
-    nativeFallback = true;
-    try {
-      data = await renderVoiceInWorker(nativeFn, sr, frames, null, 0, ampVal);
-      viaWorker = true;
-    } catch (_) {
-      if (!allowMainThreadRender) throw RENDER_DEFERRED();
-      data = renderVoiceSync(m, nativeFn, sr, frames, null, 0);
+      if (!allowMainThreadRender) { deferred = true; throw RENDER_DEFERRED(); }
+      data = renderVoiceSync(m, renderFn, sr, frames, paramArr, allocCount, post);
       viaWorker = false;
     }
-  }
-  if (data === null) {
-    // No params (or everything above failed) — last-resort synchronous render.
-    if (!allowMainThreadRender) throw RENDER_DEFERRED();
-    data = renderVoiceSync(m, nativeFn, sr, frames, null, 0);
-    viaWorker = false;
+  } catch (err) {
+    if (!deferred) {
+      console.error('[AUDIOJS] render failed for ' + id + ' via ' + renderFn + ': ' +
+        (err && err.message ? err.message : String(err)) +
+        ' — its previous buffer (if any) keeps playing; no substitute voice');
+    }
+    throw err;
   }
 
-  // ── Post-processing: peak-normalize → amp scale → optional sample-edit ──
-  // Worker renders arrive already normalized + amp-scaled (P4); the sync
-  // fallback still does it here. Loop order matches the worker exactly so
-  // both paths produce bit-identical float32 output.
+  // ── Post-processing: the optional sample-edit ──
+  // Both render paths arrive already post-processed (voice_post.js: voice FX,
+  // gate tail, normalise × amplitude, end fade), bit-identical to each other.
   if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
     let pk = 0;
     for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > pk) pk = a; }
-    console.log('[SYNTH-DISPATCH]', 'render result', { id, viaWorker, nativeFallback, peak: pk, normalized: viaWorker, silent: !(pk > 1e-6) });
+    console.log('[SYNTH-DISPATCH]', 'render result', { id, viaWorker, peak: pk, silent: !(pk > 1e-6) });
   }
-  if (!viaWorker) {
-    let peak = 0;
-    for (let i = 0; i < data.length; i++) {
-      const a = Math.abs(data[i]);
-      if (a > peak) peak = a;
-    }
-    if (peak > 0) {
-      const inv = 1 / peak;
-      for (let i = 0; i < data.length; i++) data[i] *= inv;
-    }
-    for (let i = 0; i < data.length; i++) data[i] *= ampVal;
-  }
-  // Non-destructive Sampler edit: same transform as Go's BakeSample, applied
-  // to the fresh C render (mirrors tryRecipeVoice in synth_recipe_dispatch.go).
-  // The synth stays the source of truth — a param change re-renders through
-  // this path on the next play, so synth edits always take effect.
-  let finalData = data;
-  if (sampleEdit) {
-    finalData = applySampleEdit(data, sr, sampleEdit);
-  }
+  const finalData = postProcessVoiceRender(data, sr, sampleEdit);
   if (renderT0 > 0) {
     renderLatencyMetrics.observeRender(performance.now() - renderT0, viaWorker, renderQueueDepth);
   }
@@ -3749,9 +3438,12 @@ async function ensureRenderedSample(id, opts) {
   // ensureAudioBuffer() when playback actually needs it, so this path
   // never forces an AudioContext into existence. `gen` marks which param
   // generation this render reflects (stale-while-revalidate).
-  const record = { buffer: null, data: finalData, sr, frames: finalData.length, gen: genAtStart };
+  // viaWorker travels with the record so tests can tell the worker render from
+  // the synchronous one.
+  const record = { id, buffer: null, data: finalData, sr, frames: finalData.length, gen: genAtStart, viaWorker };
   if (!bypassCache) {
     renderCache.set(cacheKey, record);
+    evictRendersOverBudget();
   }
   try {
     if (typeof window !== 'undefined') {
@@ -3781,12 +3473,6 @@ function ensureAudioBuffer(id, cacheKey) {
   const buffer = c.createBuffer(1, record.frames, record.sr);
   buffer.copyToChannel(record.data, 0);
   record.buffer = buffer;
-  // Only mirror into samples[id] for the canonical (bare-id) render. Per-pitch
-  // melodic variants keep their AudioBuffer on the renderCache record only, so
-  // they never clobber the instrument's base entry in samples[].
-  if (key === id) {
-    samples[id] = buffer;
-  }
   return buffer;
 }
 
@@ -3802,19 +3488,14 @@ export function registerSamplePCM(id, u8, sr) {
   if (frames > 0) {
     data.set(new Float32Array(u8.buffer, u8.byteOffset, frames));
   }
-  const rate = sr && sr > 0 ? sr : 44100;
+  const rate = sr && sr > 0 ? sr : CHAIN_SPEC.sampleRate;
   delete RENDER[id];
+  samplePCMIds.add(id);
   renderCache.set(id, { buffer: null, data, sr: rate, frames });
-  delete samples[id];
   rawRenderCache.delete(id);
   dbg('sample.registerPCM', { id, frames, sr: rate });
 }
 window.registerSamplePCM = (id, u8, sr) => registerSamplePCM(id, u8, sr);
-
-// RENDER_DEFAULTS preserves the as-shipped id→C-render mapping so a factory
-// Reset can restore an instrument's synth render after registerSamplePCM
-// deleted RENDER[id] to override it with a chopped sample.
-const RENDER_DEFAULTS = { ...RENDER };
 
 // unregisterSamplePCM is the inverse of registerSamplePCM: it drops the PCM
 // override for id (clearing the cached buffer + render cache) and restores the
@@ -3823,12 +3504,14 @@ const RENDER_DEFAULTS = { ...RENDER };
 // ids that have no default render (pure user samples).
 export function unregisterSamplePCM(id) {
   renderCache.delete(id);
-  delete samples[id];
   rawRenderCache.delete(id);
-  if (RENDER_DEFAULTS[id] !== undefined) {
-    RENDER[id] = RENDER_DEFAULTS[id];
+  samplePCMIds.delete(id);
+  // The synth render comes back with the block Go re-pushes right after
+  // (UnregisterSamplePCM → setInstrumentBlock).
+  if (instrumentBlocks.has(id)) {
+    RENDER[id] = 'render_modular_p';
   }
-  dbg('sample.unregisterPCM', { id, restored: RENDER_DEFAULTS[id] !== undefined });
+  dbg('sample.unregisterPCM', { id, restored: instrumentBlocks.has(id) });
 }
 window.unregisterSamplePCM = (id) => unregisterSamplePCM(id);
 
@@ -3867,20 +3550,86 @@ export function captureInstrumentPCM(id, raw) {
 }
 window.captureInstrumentPCM = (id, raw) => captureInstrumentPCM(id, raw);
 
-// decodeWavToPCM fetches and decodes a WAV (or any decodeAudioData-supported)
-// file at the given URL into mono PCM, returning a byte view over the
-// Float32Array plus its sample rate. Used by the Go Sampler tab's "Load WAV"
-// on the browser so the samples can be drawn + edited in Go.
+// renderDocPCM renders a FLATTENED instrument document (block: Float64Array of
+// MODULAR_PARAM_COUNT, with its render settings as setInstrumentBlock takes
+// them) the way a trigger of instrument id plays it — the playback render
+// worker (synchronous fallback only while nothing is playing), then
+// postProcessVoiceRender with id's Sampler edit — and resolves with
+// { bytes, length, sr } like captureInstrumentPCM. It is the Synth tab's graph
+// render (Go audio.RenderDocForGraph): it never touches the playback cache, and
+// it WAITS while any playback render is queued so a graph never delays a note.
+export async function renderDocPCM(id, block, seconds, amp, gateTail, fx) {
+  if (!(block instanceof Float64Array) || block.length !== MODULAR_PARAM_COUNT) {
+    throw new Error(`renderDocPCM(${id}): want a Float64Array(${MODULAR_PARAM_COUNT})`);
+  }
+  const waitStart = Date.now();
+  while (synthWorkerPending.size > 0 && Date.now() - waitStart < 2000) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  const sr = Math.max(8000, Math.min(192000, getSampleRate()));
+  const frames = Math.max(1, Math.floor(sr * (Number.isFinite(seconds) && seconds > 0 ? seconds : 0.5)));
+  const post = voicePost({ amp, gateTail, fx });
+  const paramArr = Float64Array.from(block);
+  let data;
+  try {
+    data = await renderVoiceInWorker('render_modular_p', sr, frames, paramArr, MODULAR_PARAM_COUNT, post);
+  } catch (werr) {
+    if (isPlaybackActive()) throw werr;
+    const m = await ensureModule();
+    data = renderVoiceSync(m, 'render_modular_p', sr, frames, paramArr, MODULAR_PARAM_COUNT, post);
+  }
+  const out = postProcessVoiceRender(data, sr, instrumentSampleEdits.get(id) || null);
+  return { bytes: new Uint8Array(out.buffer, out.byteOffset, out.byteLength), length: out.length, sr };
+}
+window.renderDocPCM = (id, block, seconds, amp, gateTail, fx) => renderDocPCM(id, block, seconds, amp, gateTail, fx);
+
+// decodeWavToPCM fetches and decodes a WAV (or any decodeAudioData-supported
+// file) at the FILE'S OWN rate into mono PCM — channels averaged, as desktop's
+// decoder (miniaudio, mono out) does — returning a byte view over the
+// Float32Array plus its rate. Go converts it to the engine rate with the same
+// resampler desktop uses (audio.RegisterSamplePCM → pcmAtEngineRate), so the
+// browser's decodeAudioData resampler never touches it: decoding on an
+// OfflineAudioContext at the file's rate converts nothing.
 export async function decodeWavToPCM(url) {
   const res = await fetch(url);
   const arr = await res.arrayBuffer();
-  const buf = await getCtx().decodeAudioData(arr);
-  const f32 = buf.numberOfChannels > 0 ? buf.getChannelData(0) : new Float32Array(0);
+  const sr = wavFileSampleRate(arr) || CHAIN_SPEC.sampleRate;
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  let buf;
+  try {
+    buf = await new OAC(1, 1, sr).decodeAudioData(arr.slice(0));
+  } catch (_) {
+    buf = await getCtx().decodeAudioData(arr); // a rate the engine cannot decode at: its own rate
+  }
+  const n = buf.length;
+  const mono = new Float32Array(n);
+  const chans = buf.numberOfChannels;
+  for (let c = 0; c < chans; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < n; i++) mono[i] += d[i];
+  }
+  if (chans > 1) for (let i = 0; i < n; i++) mono[i] /= chans;
   return {
-    bytes: new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength),
-    length: f32.length,
+    bytes: new Uint8Array(mono.buffer, mono.byteOffset, mono.byteLength),
+    length: n,
     sr: buf.sampleRate,
   };
+}
+
+// wavFileSampleRate reads a RIFF/WAVE file's sample rate from its 'fmt '
+// chunk (0 when the bytes are not a WAV).
+function wavFileSampleRate(arr) {
+  try {
+    const v = new DataView(arr);
+    const tag = (o) => String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3));
+    if (v.byteLength < 12 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return 0;
+    for (let o = 12; o + 8 <= v.byteLength;) {
+      const size = v.getUint32(o + 4, true);
+      if (tag(o) === 'fmt ' && o + 16 <= v.byteLength) return v.getUint32(o + 12, true);
+      o += 8 + size + (size & 1);
+    }
+  } catch (_) {}
+  return 0;
 }
 window.decodeWavToPCM = (url) => decodeWavToPCM(url);
 
@@ -3977,133 +3726,18 @@ export function ensureRenderReady(id, pitch) {
   return pending;
 }
 
-export async function loadWav(id, url) {
-  const res = await fetch(url);
-  const arr = await res.arrayBuffer();
-  const buf = await getCtx().decodeAudioData(arr);
-  samples[id] = buf;
-  dbg('sample.loaded', { id, frames: buf.length, sr: buf.sampleRate });
-}
-
-function ensureSampleBuffer(id) {
-  if (samples[id]) {
-    return Promise.resolve(samples[id]);
-  }
-  const url = sampleURLs[id];
-  if (!url) {
-    return Promise.resolve(null);
-  }
-  let pending = pendingSampleLoads.get(id);
-  if (pending) {
-    return pending;
-  }
-  pending = loadWav(id, url).then(() => {
-    pendingSampleLoads.delete(id);
-    return samples[id] || null;
-  }).catch((err) => {
-    pendingSampleLoads.delete(id);
-    throw err;
-  });
-  pendingSampleLoads.set(id, pending);
-  return pending;
-}
-
+// playSound / playSoundParams: render the voice if it is not yet, then play
+// it through the one note path (processAudioEvent) — the same played voice,
+// headroom, fade-in and channel as every sequencer note.
 export async function playSound(id, vol = 1.0, when) {
-  if (RENDER[id]) {
-    try {
-      const record = await ensureRenderedSample(id);
-      if (!record) throw new Error('render info missing for ' + id);
-      ensureAudioBuffer(id);
-      const ctx = getCtx();
-      const src = ctx.createBufferSource();
-      const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
-      const t = typeof when === 'number' && Number.isFinite(when) ? when : ctx.currentTime;
-      observeScheduleTiming(ctx, t);
-      dbg('play.render', { id, vol: v, when: t, ctxState: ctx.state, ctxTime: ctx.currentTime });
-      recordSamples(record.data, v);
-      src.buffer = record.buffer;
-      src.connect(getBus(id, v));
-      if (typeof when === 'number' && Number.isFinite(when)) src.start(when); else src.start();
-      return;
-    } catch (err) {
-      dbg('play.render.error', { id, err: String(err) });
-      throw err;
-    }
-  }
-  let buf = samples[id];
-  if (!buf && renderCache.has(id)) {
-    ensureAudioBuffer(id);
-    buf = samples[id];
-  }
-  if (!buf) {
-    const url = sampleURLs[id];
-    if (url) {
-      await loadWav(id, url);
-      buf = samples[id];
-    }
-  }
-  if (!buf) throw new Error('Unknown sound: ' + id);
-  const ctx = getCtx();
-  const src = ctx.createBufferSource();
-  trackSource(id, src);
-  const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
-  const t = typeof when === 'number' && Number.isFinite(when) ? when : ctx.currentTime;
-  observeScheduleTiming(ctx, t);
-  dbg('play.sample', { id, vol: v, when: t, ctxState: ctx.state, ctxTime: ctx.currentTime, frames: buf.length });
-  try {
-    const channel = buf.numberOfChannels > 0 ? buf.getChannelData(0) : null;
-    if (channel) recordSamples(channel, v);
-  } catch (_) {}
-  src.buffer = buf;
-  src.connect(getBus(id, v));
-  if (typeof when === 'number' && Number.isFinite(when)) src.start(when); else src.start();
+  return playSoundParams(id, vol, 0, 1, when);
 }
 
-// Extended path with pitch (semitones) and duration multiplier.
 export async function playSoundParams(id, vol = 1.0, pitch = 0.0, dur = 1.0, when) {
-  const rate = Math.pow(2, pitch / 12) / (dur > 0 ? dur : 1);
-  if (RENDER[id]) {
-    const record = await ensureRenderedSample(id);
-    if (record) {
-      ensureAudioBuffer(id);
-      const ctx = getCtx();
-      const src = ctx.createBufferSource();
-      trackSource(id, src);
-      const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
-      const t = typeof when === 'number' && Number.isFinite(when) ? when : ctx.currentTime;
-      observeScheduleTiming(ctx, t);
-      try { src.playbackRate.setValueAtTime(rate, t); } catch (_) { src.playbackRate.value = rate; }
-      recordSamples(record.data, v);
-      src.buffer = record.buffer;
-      src.connect(getBus(id, v));
-      if (typeof when === 'number' && Number.isFinite(when)) src.start(when); else src.start();
-      return;
-    }
-  }
-  let buf = samples[id];
-  if (!buf && renderCache.has(id)) {
-    ensureAudioBuffer(id);
-    buf = samples[id];
-  }
-  if (!buf) {
-    const url = sampleURLs[id];
-    if (url) { await loadWav(id, url); buf = samples[id]; }
-  }
-  if (!buf) throw new Error('Unknown sound: ' + id);
-  const ctx = getCtx();
-  const src = ctx.createBufferSource();
-  trackSource(id, src);
-  const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
-  const t = typeof when === 'number' && Number.isFinite(when) ? when : ctx.currentTime;
-  observeScheduleTiming(ctx, t);
-  src.buffer = buf;
-  try { src.playbackRate.setValueAtTime(rate, t); } catch (_) { src.playbackRate.value = rate; }
-  try {
-    const channel = buf.numberOfChannels > 0 ? buf.getChannelData(0) : null;
-    if (channel) recordSamples(channel, v);
-  } catch (_) {}
-  src.connect(getBus(id, v));
-  if (typeof when === 'number' && Number.isFinite(when)) src.start(when); else src.start();
+  const melodic = isMelodicInstrument(id);
+  if (RENDER[id]) await ensureRenderReady(id, melodic ? roundPitchForCache(pitch) : undefined);
+  if (!renderCache.has(melodic ? cacheKeyFor(id, roundPitchForCache(pitch)) : id)) throw new Error('Unknown sound: ' + id);
+  enqueueAudioEvents([{ id, vol, pitch, dur, when }], true);
 }
 
 // Expose for Go
@@ -4127,14 +3761,16 @@ window.stopSound = (id) => {
   if (!set || set.size === 0) return;
   dbg('stopSound', { id: key, count: set.size });
   const now = hasCtx() ? ctx.currentTime : 0;
-  const fadeOutSec = 0.02; // 20ms fade-out
-  for (const src of Array.from(set)) {
+  const fadeOutSec = CHAIN_SPEC.stopFadeMs / 1000; // desktop's stop fade (linear)
+  const stopped = Array.from(set);
+  for (const src of stopped) {
     try {
       // Use the anti-pop GainNode for smooth fade-out if available.
       const fadeGain = src._antiPopGain;
       if (fadeGain && hasCtx()) {
         fadeGain.gain.cancelScheduledValues(now);
-        fadeGain.gain.setValueAtTime(fadeGain.gain.value, now);
+        // From the voice's own level (its gain is constant until a stop).
+        fadeGain.gain.setValueAtTime(Number.isFinite(src._level) ? src._level : fadeGain.gain.value, now);
         fadeGain.gain.linearRampToValueAtTime(0, now + fadeOutSec);
         src.stop(now + fadeOutSec + 0.001);
       } else {
@@ -4154,9 +3790,11 @@ window.stopSound = (id) => {
   }
   // Clean up tracking after fade-out window.
   const cleanupMs = hasCtx() ? (fadeOutSec + 0.05) * 1000 : 0;
+  // Untrack only the sources stopped here: clearing the whole set would orphan
+  // sources started during the fade window, so a later stop could not reach them.
   setTimeout(() => {
-    try { set.clear(); } catch (_) {}
-    try { activeSources.delete(key); } catch (_) {}
+    for (const s of stopped) { try { set.delete(s); } catch (_) {} }
+    if (set.size === 0) { try { activeSources.delete(key); } catch (_) {} }
   }, cleanupMs);
 };
 
@@ -4168,27 +3806,28 @@ window.channelVolume = (id) => {
   try { return channelVolume(id); } catch (err) { dbg('channel.get.error', { id, err: String(err) }); return 1; }
 };
 
-window.setMainVolume = (vol) => window.setChannelVolume('main', vol);
-window.mainVolume = () => window.channelVolume('main');
+// window.setMainVolume / mainVolume are Go's exports (js_exports_graph_ui.go:
+// they clamp and move the transport slider); audio.js must not shadow them.
 
-window.setChannelPan = (id, pan) => {
-  try { setChannelPan(id, pan); } catch (err) { dbg('channel.pan.error', { id, err: String(err) }); }
+window.setChannelEQ = (id, program) => {
+  try { setChannelEQ(id, program); } catch (err) { dbg('channel.eq.error', { id, err: String(err) }); }
 };
 
-window.channelPan = (id) => {
-  try { return channelPan(id); } catch (err) { dbg('channel.pan.get.error', { id, err: String(err) }); return 0; }
+// fftSize sets the FREQUENCY resolution (Go: analyzer.SpectrumFFTSize);
+// waveSamples caps the TIME-domain export independently. Go passes both —
+// see audio.BridgeAnalyserFFTSize / BridgeWaveformSamples. Older callers
+// that pass only a window size still get the WAVE_EXPORT_DEFAULT tap.
+window.enableChannelAnalyzer = (id, fftSize, waveSamples) => {
+  try { enableChannelAnalyzer(id, { fftSize, waveSamples }); } catch (err) { dbg('channel.analyzer.error', { id, err: String(err) }); }
 };
 
-window.setChannelEQ = (id, bands) => {
-  try { setChannelEQ(id, bands); } catch (err) { dbg('channel.eq.error', { id, err: String(err) }); }
-};
-
-window.enableChannelAnalyzer = (id, windowSize) => {
-  try { enableChannelAnalyzer(id, { fftSize: windowSize }); } catch (err) { dbg('channel.analyzer.error', { id, err: String(err) }); }
-};
-
-window.channelAnalyzerSnapshot = (id) => {
-  try { return channelAnalyzerSnapshot(id); } catch (err) { dbg('channel.analyzer.snap.error', { id, err: String(err) }); return { rms: 0, peak: 0, spectrum: [], wave: [] }; }
+// bins is the number of spectrum bins to return. Go passes
+// audio.BridgeSpectrumBins (== the analyser's own bin count, i.e. NO
+// downsample): the grouping below is LINEAR, so any downsample costs
+// resolution exactly where the display bands are narrowest — at the bottom.
+// The old implicit default of 64 left every band under ~375 Hz empty.
+window.channelAnalyzerSnapshot = (id, bins) => {
+  try { return channelAnalyzerSnapshot(id, bins === 0 ? 0 : (bins || 64)); } catch (err) { dbg('channel.analyzer.snap.error', { id, err: String(err) }); return { rms: 0, peak: 0, spectrum: [], wave: [] }; }
 };
 
 window.enablePreEQAnalyzer = (id, windowSize) => {
@@ -4207,14 +3846,6 @@ window.synthAnalyzerSnapshot = (id) => {
   try { return synthAnalyzerSnapshot(id); } catch (err) { dbg('synth.analyzer.snap.error', { id, err: String(err) }); return { rms: 0, peak: 0, spectrum: [], wave: [] }; }
 };
 
-window.enableSendBusAnalyzer = (windowSize) => {
-  try { enableSendBusAnalyzer({ fftSize: windowSize }); } catch (err) { dbg('sendbus.analyzer.error', { err: String(err) }); }
-};
-
-window.sendBusAnalyzerSnapshot = () => {
-  try { return sendBusAnalyzerSnapshot(); } catch (err) { dbg('sendbus.analyzer.snap.error', { err: String(err) }); return { rms: 0, peak: 0, spectrum: [], wave: [] }; }
-};
-
 // Batch scheduling API to reduce Go→JS crossings in WASM builds.
 // Expects an Array of objects: { id, vol, pitch, dur, when? }.
 // Uses a synchronous fast path when samples are pre-rendered/decoded.
@@ -4224,7 +3855,7 @@ window.playSoundsBatch = (arr) => {
       if (window.BEATMO_AUDIO_DEBUG && arr && typeof arr === 'object') {
         dbg('play.params.enqueue', { id: arr.id, vol: arr.vol, pitch: arr.pitch, dur: arr.dur, when: arr.when });
       }
-      enqueueAudioEvents([arr]);
+      enqueueAudioEvents([arr], true);
     } else {
       if (window.BEATMO_AUDIO_DEBUG) {
         for (const item of arr) {
@@ -4233,7 +3864,7 @@ window.playSoundsBatch = (arr) => {
           }
         }
       }
-      enqueueAudioEvents(arr);
+      enqueueAudioEvents(arr, true);
     }
   } catch (err) {
     console.error('[AUDIOJS] playSoundsBatch error', err);
@@ -4245,7 +3876,12 @@ window.playSoundsBatch = (arr) => {
 // audio.BatchParam.Row/Abs (batch_wasm.go) so timingTraces (Stage-D browser
 // emission timing, parity-timing-sync) can attribute each scheduled note.
 // Omitted/undefined entries default to -1 (fire-and-forget, never recorded).
-window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen, rows, abss) => {
+// ideals/grids (optional trailing args): measurement-only timing identity from
+// audio.BatchParam.Ideal/Grid — the scheduler's pre-clamp request and the
+// predictor's trigger time without lookahead — read by the playback probe.
+// vids (optional 11th arg): audio-lane voice ids (audio.BatchParam.VoiceID);
+// 0 / missing = a preview or UI sound, never touched by lane cancel/stop.
+window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen, rows, abss, ideals, grids, vids) => {
   try {
     if (!ids || ids.length === 0) {
       return;
@@ -4262,6 +3898,9 @@ window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen, rows, ab
         dur: Number.isFinite(durs?.[i]) && durs[i] > 0 ? durs[i] : 1.0,
         row: Number.isFinite(rows?.[i]) ? rows[i] : -1,
         abs: Number.isFinite(abss?.[i]) ? abss[i] : -1,
+        ideal: ideals?.[i],
+        grid: grids?.[i],
+        vid: vids?.[i],
       };
       const when = Number.isFinite(whens?.[i]) ? whens[i] : NaN;
       if (hasWhen && hasWhen[i] && Number.isFinite(when)) {
@@ -4269,17 +3908,9 @@ window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen, rows, ab
       }
       events[i] = ev;
     }
-    enqueueAudioEvents(events);
+    enqueueAudioEvents(events, true);
   } catch (err) {
     console.error('[AUDIOJS] playSoundsBatchFlat error', err);
-  }
-};
-
-window.loadWav = async (id, url) => {
-  try {
-    await loadWav(id, url);
-  } catch (err) {
-    console.error('Error loading wav:', err);
   }
 };
 
@@ -4321,13 +3952,28 @@ window.resumeAudio = () => {
   } catch (_) { return null; }
 };
 
+// stampedDownloadName(base, ext) -> "<base>-YYYY-MM-DD_HHMMSS<ext>".
+//
+// Mirrors stampedFileName in src/go/internal/ui/download_name.go. A download
+// name that can already exist in the Downloads folder is renamed by the
+// browser, and every engine spells the uniquifier differently — Chrome
+// "x (1).json", Firefox "x(1).json", Safari "x 2.json". The page cannot pin
+// that format, so never ask for a name that can collide.
+window.stampedDownloadName = (base, ext) => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_` +
+    `${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `${base}-${stamp}${ext}`;
+};
+
 // Download a JSON blob with a given filename.
 window.downloadJSON = (name, text) => {
   try {
     const blob = new Blob([text], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = name || 'beatmo-export.json';
+    a.download = name || window.stampedDownloadName('beatmo-export', '.json');
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
@@ -4342,7 +3988,7 @@ window.downloadCSV = (name, text) => {
     const blob = new Blob([text], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = name || 'audio-history.csv';
+    a.download = name || window.stampedDownloadName('audio-history', '.csv');
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
@@ -4374,7 +4020,7 @@ window.exportAudioHistoryCSV = (opts = {}) => {
     }
     const csv = rows.join('\n');
     if (opts.download) {
-      window.downloadCSV(opts.filename || 'audio-history.csv', csv);
+      window.downloadCSV(opts.filename || window.stampedDownloadName('audio-history', '.csv'), csv);
     }
     return csv;
   } catch (err) {
@@ -4479,9 +4125,6 @@ window.openWAVFile = () => new Promise((resolve) => {
 });
 
 // Register a sample URL for lazy loading on first use.
-window.registerWav = (id, url) => {
-  sampleURLs[id] = url;
-};
 
 // Expose audio context current time for Go WASM scheduling.
 // Authoritative definitions above; no duplicate fallbacks.
@@ -4494,33 +4137,20 @@ window.sampleDurationSec = (id) => {
   try {
     // Prefer synthesized record if present
     const rec = renderCache.get(id);
-    if (rec) {
-      if (rec.buffer) return rec.buffer.duration || (rec.data ? rec.data.length / (rec.sr || 44100) : 0);
-      if (rec.data) return rec.data.length / (rec.sr || 44100);
-    }
-    // Fallback to decoded WAV buffer
-    const buf = samples[id];
-    if (buf && typeof buf.duration === 'number') return buf.duration;
+    if (rec && rec.data) return rec.data.length / (rec.sr || CHAIN_SPEC.sampleRate);
   } catch (_) {}
   return 0;
 };
-// Internal metric: number of reusable volume buses.
-window.__audioBusCount = () => {
-  try { return volumeBus.size || 0; } catch (_) { return 0; }
-};
-window.__audioBusCountById = (id) => {
-  try { const per = busIndex.get(id); return per ? per.size : 0; } catch (_) { return 0; }
-};
-// Internal metric: number of insert FX subgraphs currently wired on a channel.
+// Internal metric: number of enabled insert effects on a channel's chain.
 // Returns 0 when the channel chain hasn't been built yet (no AudioContext).
 // Used by tests to verify that updateInsertEffects() applied after context
 // unlock when called pre-context (e.g. demo import before user gesture).
 window.__channelInsertFXCount = (id) => {
   try {
     if (!hasCtx()) return 0;
-    const chain = channelNodes.get(id || 'main');
-    if (!chain || !Array.isArray(chain.insertFX)) return 0;
-    return chain.insertFX.length;
+    const chain = channelNodes.get(id);
+    if (!chain || !Array.isArray(chain.fxChain)) return 0;
+    return chain.fxChain.filter((e) => e && e.enabled).length;
   } catch (_) { return 0; }
 };
 window.resetRenderCache = () => {
@@ -4533,7 +4163,7 @@ window.getRenderCacheStats = () => {
   const stats = {};
   try {
     renderCache.forEach((rec, id) => {
-      const dur = rec && rec.buffer ? rec.buffer.duration || 0 : (rec && rec.data ? rec.data.length / (rec.sr || 44100) : 0);
+      const dur = rec && rec.buffer ? rec.buffer.duration || 0 : (rec && rec.data ? rec.data.length / (rec.sr || CHAIN_SPEC.sampleRate) : 0);
       stats[id] = {
         duration: dur,
         frames: rec && rec.data ? rec.data.length : rec && rec.buffer ? rec.buffer.length || 0 : 0,
@@ -4583,6 +4213,35 @@ window.enableOutputCapture = () => {
   }
 
   outputCaptureSampleRate = c.sampleRate;
+  preloadOutputTap(c);
+  if (outputTapReady) {
+    // Audio-thread tap on a PARALLEL branch: masterOut → tap → (silent) → out.
+    // The masterOut → destination path is left untouched.
+    const tap = new AudioWorkletNode(c, 'beatmo-output-tap', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers',
+    });
+    tap.port.onmessage = (e) => {
+      const d = e.data;
+      if (d && d.flushed !== undefined) {
+        const w = outputTapFlushWaiters.get(d.flushed);
+        if (w) { outputTapFlushWaiters.delete(d.flushed); w(); }
+        return;
+      }
+      if (outputCaptureEnabled && d && d.length) {
+        for (let i = 0; i < d.length; i++) outputCaptureBuffer.push(d[i]);
+      }
+    };
+    const mute = c.createGain();
+    mute.gain.value = 0;
+    tap.connect(mute);
+    mute.connect(c.destination); // keeps the tap pulled by the render graph
+    ensureMasterOut().connect(tap);
+    outputCaptureNode = tap;
+    outputCaptureIsWorklet = true;
+    console.log('[AUDIO CAPTURE] Audio-thread capture tap attached to the master output');
+    return;
+  }
   outputCaptureNode = c.createScriptProcessor(256, 1, 1);
   outputCaptureNode.onaudioprocess = (e) => {
     if (outputCaptureEnabled) {
@@ -4599,11 +4258,11 @@ window.enableOutputCapture = () => {
     }
   };
 
-  // Insert capture node between the limiter and the hardware destination.
-  // The limiter is always the last processing node before output.
-  const limiter = ensureLimiter();
-  try { limiter.disconnect(c.destination); } catch (_) {}
-  limiter.connect(outputCaptureNode);
+  // Insert the capture node between masterOut and the hardware destination
+  // (masterOut is always the last node before output).
+  const out = ensureMasterOut();
+  try { out.disconnect(c.destination); } catch (_) {}
+  out.connect(outputCaptureNode);
   outputCaptureNode.connect(c.destination);
 
   console.log('[AUDIO CAPTURE] Capture node inserted into audio chain');
@@ -4614,31 +4273,48 @@ window.startOutputCapture = () => {
   outputCaptureBuffer = [];
   if (!outputCaptureNode) {
     window.enableOutputCapture();
-  } else {
+  } else if (!outputCaptureIsWorklet) {
     // Re-verify capture chain is intact — Chrome's ScriptProcessorNode can
     // receive all-zero input after extended use across multiple start/stop
     // cycles. Re-wiring the limiter → captureNode → destination path fixes it.
     const c = getCtx();
-    const limiter = ensureLimiter();
-    if (limiter && c) {
-      try { limiter.disconnect(); } catch (_) {}
+    const out = ensureMasterOut();
+    if (out && c) {
+      try { out.disconnect(); } catch (_) {}
       try { outputCaptureNode.disconnect(); } catch (_) {}
-      limiter.connect(outputCaptureNode);
+      out.connect(outputCaptureNode);
       outputCaptureNode.connect(c.destination);
     }
   }
   // Set enabled AFTER enableOutputCapture (which resets it to false).
   outputCaptureEnabled = true;
+  if (outputCaptureIsWorklet && outputCaptureNode) outputCaptureNode.port.postMessage('on');
   console.log('[AUDIO CAPTURE] Started capturing output at', outputCaptureSampleRate, 'Hz');
 };
 
 // Stop capturing and return the captured samples as Float32Array
 window.stopOutputCapture = () => {
   outputCaptureEnabled = false;
+  if (outputCaptureIsWorklet && outputCaptureNode) outputCaptureNode.port.postMessage('off');
   const result = new Float32Array(outputCaptureBuffer);
   console.log('[AUDIO CAPTURE] Stopped. Captured', result.length, 'samples (',
     (result.length / outputCaptureSampleRate).toFixed(3), 'seconds)');
   return result;
+};
+
+// flushOutputCapture resolves once every block the audio-thread tap captured
+// BEFORE this call has reached outputCaptureBuffer. The tap posts blocks and
+// the reply on the same port (FIFO), so the reply arrives after all of them.
+// Call it before stop/get when the exact capture window matters and the main
+// thread may be busy. Resolves immediately for the ScriptProcessor fallback.
+window.flushOutputCapture = () => {
+  if (!outputCaptureIsWorklet || !outputCaptureNode) return Promise.resolve();
+  const seq = ++outputTapFlushSeq;
+  return new Promise((resolve) => {
+    outputTapFlushWaiters.set(seq, resolve);
+    outputCaptureNode.port.postMessage({ flush: seq });
+    setTimeout(() => { if (outputTapFlushWaiters.delete(seq)) resolve(); }, 5000);
+  });
 };
 
 // Get current capture buffer without stopping
@@ -4651,34 +4327,17 @@ window.getOutputCapture = () => {
 // nodes equal CHAIN_SPEC (the Go source of truth). Forces the lazy nodes to
 // exist first so a test can read real values, not nulls. Returns null if no
 // AudioContext can be created (headless without audio).
-window.getChainConfigForTest = () => {
-  // Force the AudioContext + lazy chain nodes into existence. Compressor and
-  // WaveShaper nodes build fine on a suspended context (no running device
-  // needed), so this works headless.
+window.getChainConfigForTest = async () => {
   try { getCtx(); } catch (_) { return null; }
   if (!hasCtx()) return null;
-  const comp = ensureCompressor();
-  ensureLimiter();
-  if (!comp) return null;
-  // Probe the soft-clip curve at a level above threshold to prove the limiter
-  // applies the tanh knee (not a pure hard clamp). Compare to softClipSample.
-  const probe = 1.5;
+  await dspReadyFor(ctx);
+  ensureMainNode();
+  rewireChannel(channelNodes.get('main'));
   return {
     spec: CHAIN_SPEC,
-    compressor: {
-      thresholdDb: comp.threshold.value,
-      ratio: comp.ratio.value,
-      attackSec: comp.attack.value,
-      releaseSec: comp.release.value,
-      kneeDb: comp.knee.value,
-    },
-    softClip: {
-      threshold: CHAIN_SPEC.softClipThreshold,
-      // Expected limiter output for `probe`, so the test can confirm the
-      // WaveShaper curve was built with the soft-clip (value < probe, < 1).
-      probeIn: probe,
-      probeOut: softClipSample(probe),
-    },
+    sampleRate: ctx.sampleRate,
+    dspHost: dspHostState(ctx),
+    masterSoftClip: masterClip ? masterClip._dspHost : null,
   };
 };
 
@@ -4690,6 +4349,7 @@ window.getOutputCaptureStats = () => {
     sampleRate: outputCaptureSampleRate,
     durationSec: outputCaptureBuffer.length / outputCaptureSampleRate,
     hasNode: !!outputCaptureNode,
+    audioThread: outputCaptureIsWorklet,
   };
 };
 
@@ -4772,17 +4432,21 @@ window.clearOutputCapture = () => {
 // Force-destroy the capture node so next startOutputCapture() creates a fresh one.
 // Used as retry recovery when the ScriptProcessorNode becomes unreliable.
 window.resetOutputCaptureNode = () => {
+  const wasWorklet = outputCaptureIsWorklet;
   if (outputCaptureNode) {
+    try { if (wasWorklet) masterOut && masterOut.disconnect(outputCaptureNode); } catch (_) {}
     try { outputCaptureNode.disconnect(); } catch (_) {}
     outputCaptureNode = null;
   }
+  outputCaptureIsWorklet = false;
   outputCaptureEnabled = false;
   outputCaptureBuffer = [];
   const c = hasCtx() ? ctx : null;
-  const limiter = mainLimiter;
-  if (limiter && c) {
-    try { limiter.disconnect(); } catch (_) {}
-    limiter.connect(c.destination);
+  // The worklet tap is a parallel branch — the masterOut → destination path
+  // was never cut, so there is nothing to restore.
+  if (masterOut && c && !wasWorklet) {
+    try { masterOut.disconnect(); } catch (_) {}
+    masterOut.connect(c.destination);
   }
 };
 
@@ -4843,12 +4507,11 @@ async function _ensureCaptureWorklet() {
 }
 
 function _buildMasterTap(c) {
-  // The master tap reads what hits the destination — we tap the limiter
-  // (last node before destination) the same way startOutputCapture does.
-  // We do NOT splice the captureNode INTO the chain; we add a parallel
-  // path so the user-audible output is unaffected.
-  const limiter = ensureLimiter ? ensureLimiter() : null;
-  return limiter || c.destination;  // fallback shouldn't happen in prod
+  // The master tap reads what hits the destination — masterOut, after the
+  // soft clip (desktop records the same point). We do NOT splice the capture
+  // node INTO the chain; we add a parallel path so the user-audible output is
+  // unaffected.
+  return ensureMasterOut() || c.destination;  // fallback shouldn't happen in prod
 }
 
 // startMultiChannelCapture(instrumentIDs: string[], optsJSON?: string) -> Promise<{ok: bool, error?: string}>
@@ -5137,7 +4800,7 @@ window.recordingTriggerDownload = (blobURL, filename) => {
   try {
     const a = document.createElement('a');
     a.href = blobURL;
-    a.download = filename || 'beatmo-recording.zip';
+    a.download = filename || window.stampedDownloadName('beatmo-recording', '.zip');
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -5161,7 +4824,7 @@ window.__silentAudioElState = () => {
 window.__audioSessionType = () => {
   try { return navigator?.audioSession?.type ?? null; } catch (_) { return null; }
 };
-window.__getMainLimiter = () => mainLimiter;
+window.__getMasterOut = () => masterOut;
 
 // NOTE: an earlier iteration installed a 4ms setInterval calling Go's
 // tickSequencer() to bypass WASM goroutine scheduling. Benchmarks showed
@@ -5170,3 +4833,100 @@ window.__getMainLimiter = () => mainLimiter;
 // reducing Stage A meaningfully — the seqMu TryLock conflicts dominate
 // any sub-frame gain. The Go-side tickSequencer export is kept available
 // for tests that want explicit sequencer drives.
+
+// ─── Offline render of the real graph (cross-platform stage tests) ───────────
+//
+// __offlineRenderForTest renders notes through THIS module's graph — the same
+// rewireChannel / setChannelEQ / updateInsertEffects / processAudioEvent /
+// startRenderVoice / stopLaneAt and the beatmo-dsp worklet — on an
+// OfflineAudioContext, and returns the signal at each requested tap.
+// xplat_audio_stages.browser.test.js compares those taps with desktop's
+// mixer, sample by sample. The live graph is set aside for the render and
+// restored after it (a test page plays nothing meanwhile).
+//
+// spec = {
+//   frames, sampleRate,
+//   channels: { id: { chain: InsertEffectInstance[], eq: number[] | null } } | 'live',
+//   masterVolume, masterEQ: number[] | null,
+//   notes: [{ id, at, pitch, vol, dur, lane }],  // at in frames
+//   stops: [{ id, at }],                          // lane stops (stopLaneAt)
+//   taps:  [{ name, channel, stage: 'voices' | 'inserts' | 'eq' }],
+// }
+// → { sampleRate, started, taps: { out: Float32Array, [name]: Float32Array } }
+// 'live' copies each live channel's pushed configuration (what Go sent).
+window.__offlineRenderForTest = async (spec) => {
+  const sr = spec.sampleRate || CHAIN_SPEC.sampleRate;
+  // Every voice rendered (and fresh) BEFORE the swap: a cold note would defer.
+  for (const n of spec.notes || []) {
+    const melodic = isMelodicInstrument(n.id);
+    await ensureRenderReady(n.id, melodic ? roundPitchForCache(n.pitch) : undefined);
+  }
+  const live = { ctx, mainChannelNode, masterOut, masterClip, chains: new Map(channelNodes), lanes: new Map(laneVoices), sources: new Map(activeSources) };
+  const channels = spec.channels === 'live' ? (() => {
+    const m = {};
+    for (const [id, c] of live.chains) if (id !== 'main' && c) m[id] = { chain: c.fxChain || [], eq: c.eqProgram ? Array.from(c.eqProgram) : null };
+    return m;
+  })() : (spec.channels || {});
+  const masterVolume = spec.channels === 'live' && live.mainChannelNode ? live.mainChannelNode.gain.value : spec.masterVolume;
+  const masterEQ = spec.channels === 'live' ? (live.chains.get('main') && live.chains.get('main').eqProgram) : spec.masterEQ;
+  const taps = [{ name: 'out' }, ...(spec.taps || [])];
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const off = new OAC({ numberOfChannels: taps.length, length: spec.frames, sampleRate: sr });
+  channelNodes.clear(); laneVoices.clear(); activeSources.clear();
+  ctx = off; mainChannelNode = null; masterOut = null; masterClip = null;
+  const offChains = [];
+  try {
+    await dspReadyFor(off);
+    if (!dspHostUp(off)) throw new Error('no DSP host on the OfflineAudioContext: ' + dspHostState(off));
+    ensureMasterOut();
+    masterOut.disconnect(); // the merger below owns the destination
+    ensureMainNode();
+    for (const [id, c] of Object.entries(channels)) {
+      getChannelChain(id);
+      if (c && Array.isArray(c.chain) && c.chain.length) updateInsertEffects(id, c.chain);
+      if (c && c.eq) setChannelEQ(id, c.eq);
+    }
+    setChannelVolume('main', masterVolume);
+    if (masterEQ) setChannelEQ('main', masterEQ);
+    let vid = 0;
+    const before = voiceStartCount;
+    offlineRenderActive = true;
+    try {
+      for (const n of spec.notes || []) {
+        processAudioEvent({ id: n.id, vol: n.vol, pitch: n.pitch, dur: n.dur, when: n.at / sr, vid: n.lane ? 1e9 + (++vid) : 0, laneGen: laneGeneration }, off);
+      }
+    } finally {
+      offlineRenderActive = false;
+    }
+    const started = voiceStartCount - before;
+    for (const s of spec.stops || []) window.stopLaneAt(s.id, s.at / sr);
+    const merger = off.createChannelMerger(taps.length);
+    merger.connect(off.destination);
+    taps.forEach((t, k) => {
+      let node = masterOut;
+      if (t.channel) {
+        const ch = channelNodes.get(t.channel);
+        if (!ch) throw new Error('tap ' + t.name + ': no channel ' + t.channel);
+        node = t.stage === 'voices' ? ch.ingress
+          : t.stage === 'inserts' ? (ch.fxNode || ch.ingress)
+            : (ch.eqNode || ch.fxNode || ch.ingress);
+      }
+      node.connect(merger, 0, k);
+    });
+    for (const c of channelNodes.values()) offChains.push(c);
+    const rendered = await off.startRendering();
+    const out = { sampleRate: off.sampleRate, started, taps: {} };
+    taps.forEach((t, k) => { out.taps[t.name] = rendered.getChannelData(k).slice(); });
+    return out;
+  } finally {
+    for (const c of offChains) {
+      for (const n of [c.fxNode, c.eqNode]) if (n && n._dspDispose) n._dspDispose();
+    }
+    if (masterClip && masterClip._dspDispose) masterClip._dspDispose();
+    channelNodes.clear(); laneVoices.clear(); activeSources.clear();
+    for (const [k, v] of live.chains) channelNodes.set(k, v);
+    for (const [k, v] of live.lanes) laneVoices.set(k, v);
+    for (const [k, v] of live.sources) activeSources.set(k, v);
+    ctx = live.ctx; mainChannelNode = live.mainChannelNode; masterOut = live.masterOut; masterClip = live.masterClip;
+  }
+};

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // buildInflightHighlightGame constructs the scheduler→UI in-flight gap state:
@@ -48,7 +49,7 @@ func buildInflightHighlightGame(t *testing.T, recordedAt time.Time) *Game {
 		Row:        0,
 		Abs:        abs,
 		When:       eventWhen,
-		Inst:       "kick",
+		Inst:       roster.Kick,
 		Vol:        1.0,
 		Dur:        1.0,
 		Gen:        g.audioGen.Load(),

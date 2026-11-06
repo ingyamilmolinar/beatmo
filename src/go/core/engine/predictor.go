@@ -91,6 +91,44 @@ type Predictor struct {
 	forceFullRebuild bool
 
 	logger *game_log.Logger
+
+	// epoch counts every change that can alter an ALREADY-computed cell
+	// (paths, node params, rebase, buffer reset). Extending the horizon does
+	// not bump it. The audio lane fingerprints the predictor with it.
+	epoch atomic.Uint64
+
+	// decisions holds the custom Params.Logic decision (volume/pitch/
+	// duration multipliers) for audible cells of custom-logic nodes only, so
+	// the audio lane's pure note function can apply it without re-running
+	// stateful logic. Keyed {row, idx}; guarded by mu.
+	decisions map[[2]int]model.NodeDecision
+}
+
+// Epoch returns the predictor's change epoch (see the epoch field).
+func (p *Predictor) Epoch() uint64 { return p.epoch.Load() }
+
+// DecisionAt returns the custom Params.Logic decision recorded for an audible
+// cell; ok is false for cells without custom logic (or not audible).
+func (p *Predictor) DecisionAt(row, idx int) (model.NodeDecision, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	d, ok := p.decisions[[2]int{row, idx}]
+	return d, ok
+}
+
+// recordDecisionLocked stores (ok) or clears (!ok) a cell's custom-logic
+// decision. Caller holds mu (evalAudible runs under the compute lock).
+func (p *Predictor) recordDecisionLocked(row, idx int, d model.NodeDecision, ok bool) {
+	if !ok {
+		if p.decisions != nil {
+			delete(p.decisions, [2]int{row, idx})
+		}
+		return
+	}
+	if p.decisions == nil {
+		p.decisions = make(map[[2]int]model.NodeDecision)
+	}
+	p.decisions[[2]int{row, idx}] = d
 }
 
 // SetForceFullRebuildForTest forces the dirty rebuild to re-walk the entire

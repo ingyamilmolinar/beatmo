@@ -3,10 +3,7 @@
 package ui
 
 import (
-	"image"
 	"testing"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // TestChainMiniMeterVisibleAtAllDensities pins the Phase 3 fix: the
@@ -28,40 +25,6 @@ func TestChainMiniMeterVisibleAtAllDensities(t *testing.T) {
 		if dv.ChainMiniMeterW < c.wantW {
 			t.Errorf("density=%v: ChainMiniMeterW=%d, want ≥%d",
 				c.density, dv.ChainMiniMeterW, c.wantW)
-		}
-		restore()
-	}
-}
-
-// TestChainTriggerMarkerVisibleAtAllDensities — the trigger marker
-// must paint at least density-table-width pixels of trigger color.
-func TestChainTriggerMarkerVisibleAtAllDensities(t *testing.T) {
-	cases := []struct {
-		density Density
-		wantW   int
-	}{
-		{DensityCompact, 2},
-		{DensityComfortable, 3},
-		{DensitySpacious, 4},
-	}
-	dst := ebiten.NewImage(200, 60)
-	for _, c := range cases {
-		restore := SetDensityForTest(c.density)
-		rects := collectFilledRects(t, func() {
-			drawChainTriggerMarker(dst, image.Rect(0, 0, 200, 60))
-		})
-		// The vertical-line rect should be at least wantW pixels wide.
-		var maxLineW int
-		for _, r := range rects {
-			w := r.Rect.Dx()
-			h := r.Rect.Dy()
-			if h > 40 && w > maxLineW {
-				maxLineW = w
-			}
-		}
-		if maxLineW < c.wantW {
-			t.Errorf("density=%v: max trigger-line width=%d, want ≥%d",
-				c.density, maxLineW, c.wantW)
 		}
 		restore()
 	}

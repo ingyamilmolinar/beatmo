@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
@@ -14,8 +16,8 @@ func TestChainPanelZone_FreezeCacheDefaultNil(t *testing.T) {
 	if z.frozenState != nil {
 		t.Fatal("freshly constructed zone should have frozenState=nil")
 	}
-	if z.instrumentID != "" {
-		t.Fatalf("freshly constructed zone should have empty instrumentID, got %q", z.instrumentID)
+	if z.instrumentID != channel.Master {
+		t.Fatalf("freshly constructed zone should read the master bus, got %q", z.instrumentID)
 	}
 }
 
@@ -34,8 +36,8 @@ func TestChainPanelZone_FreezeCacheHoldsState(t *testing.T) {
 
 func TestChainPanelZone_InstrumentIDSettable(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
-	z.instrumentID = "snare"
-	if z.instrumentID != "snare" {
+	z.instrumentID = channel.Of(roster.Snare)
+	if z.instrumentID != channel.Of(roster.Snare) {
 		t.Fatalf("expected instrumentID=snare, got %q", z.instrumentID)
 	}
 }
@@ -49,7 +51,7 @@ func TestEQPanelZone_FreezeCacheDefaultNil(t *testing.T) {
 
 func TestEQPanelZone_FreezeCacheHoldsState(t *testing.T) {
 	z := NewEQPanelZone(EQCallbacks{})
-	want := &analyzer.State{Master: analyzer.ChannelMetrics{ID: "main", Active: true}}
+	want := &analyzer.State{Master: analyzer.ChannelMetrics{ID: channel.Master, Active: true}}
 	z.frozenAnalyzer = want
 	if z.frozenAnalyzer != want {
 		t.Fatal("frozenAnalyzer should be settable and retrievable in-place")

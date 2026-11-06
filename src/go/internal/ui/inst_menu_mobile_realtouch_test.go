@@ -4,6 +4,8 @@ package ui
 
 import (
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // openMenuInstrumentsRealTouch opens the instrument menu for a row and reaches
@@ -101,13 +103,13 @@ func TestInstMenuMobileCrossRowSelectRealTouch(t *testing.T) {
 		t.Fatalf("expected instruments mode with items, mode=%v", comp.Mode())
 	}
 	cur := dv.Rows[row].Instrument
-	idx, wantID := instMenuFindAlternateInst(comp, cur)
+	idx, wantID := instMenuFindAlternateInst(comp, string(cur))
 	if idx < 0 {
 		t.Fatalf("no alternate instrument; ids=%v", comp.VisibleInstIDs())
 	}
 	r := comp.InstBtns()[idx].Rect()
 	realTouchTapGame(t, g, r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2, 2)
-	if dv.Rows[row].Instrument != wantID {
+	if dv.Rows[row].Instrument != instrument.ID(wantID) {
 		t.Fatalf("CROSS-ROW BUG: selected for row %d but row %d=%q (want %q)", row, row, dv.Rows[row].Instrument, wantID)
 	}
 	if dv.Rows[0].Instrument != row0Before {
@@ -120,14 +122,13 @@ func TestInstMenuMobileCrossRowSelectRealTouch(t *testing.T) {
 func TestInstMenuMobileFavoriteStarRealTouch(t *testing.T) {
 	g := newMobileGame(t)
 	comp := openMenuInstrumentsRealTouch(t, g, 0)
-	if len(comp.favRects) == 0 {
+	_, r, id, ok := firstStarRow(comp)
+	if !ok {
 		t.Skip("no favorite-star hit areas active in this mode")
 	}
-	id := comp.favIDs[0]
-	_, before := comp.favoritesIDs()[id]
-	r := comp.favRects[0]
+	_, before := comp.favoritesIDs()[instrument.ID(id)]
 	realTouchTapGame(t, g, r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2, 2)
-	_, after := comp.favoritesIDs()[id]
+	_, after := comp.favoritesIDs()[instrument.ID(id)]
 	if after == before {
 		t.Fatalf("FAVORITE STAR BUG: real-touch tap on ★ for %q did not toggle favorite (stayed %v)", id, before)
 	}

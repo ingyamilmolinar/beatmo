@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Beatmo landing mockup v7</title>
+<style>
+  :root{--bg:#120A1C;--s1:#1C1230;--s2:#281A40;--hi:#FDF2FF;--mid:#C9B8D6;--dim:#8A7A9C;--acc:#FFB30A;--pink:#EE00DD}
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);font-family:Inter,system-ui,sans-serif;color:var(--hi);touch-action:none;overscroll-behavior:none}
+  canvas#crystal{position:fixed;inset:0;width:100%;height:100%}
+  .video{position:fixed;left:50%;top:47%;transform:translate(-50%,-50%);width:min(58vw,92vh*16/9*.62);aspect-ratio:16/9;border-radius:6px;
+    background:url(game_play.png) center/cover;transition:box-shadow .3s}
+  .video::after{content:"recording plays here";position:absolute;right:8px;bottom:6px;font-size:10px;color:#fff8;background:#0008;padding:2px 6px;border-radius:3px}
+  .scrim{position:fixed;pointer-events:none;background:radial-gradient(closest-side,color-mix(in srgb,var(--bg) 88%,transparent),transparent)}
+  .brand{position:fixed;left:28px;top:24px}
+  .brand h1{font-size:22px;font-weight:800;letter-spacing:.22em}.brand h1 b{color:var(--acc)}
+  .brand p{margin-top:10px;max-width:280px;color:var(--mid);font-size:14px;line-height:1.45}
+  .seed{position:fixed;left:28px;bottom:40px;font:11px ui-monospace,monospace;color:var(--dim)}
+  .play{position:fixed;right:24px;top:20px;display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:4px;border:0;font:700 15px Inter,system-ui;cursor:pointer;background:var(--s2);color:var(--dim)}
+  .play.ready{background:var(--acc);color:var(--bg);box-shadow:0 0 24px color-mix(in srgb,var(--acc) 70%,transparent);animation:pulse 1s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 36px color-mix(in srgb,var(--acc) 90%,transparent)}}
+  .ring{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--acc) var(--p,0%),#ffffff22 0)}
+  .sound{position:fixed;right:24px;top:70px;font-size:12px;color:var(--mid);background:var(--s1);border:1px solid var(--s2);padding:6px 10px;border-radius:4px;cursor:pointer}
+  .cap{position:fixed;padding:12px 14px;border-radius:8px;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(6px);border-left:2px solid var(--acc);transition:opacity .35s,transform .35s}
+  .cap .t{font-size:17px;font-weight:700}.cap .s{margin-top:4px;font-size:13px;color:var(--mid)}
+  .chapters{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:6px}
+  .chapters button,.tips button{font:600 12px Inter,system-ui;color:var(--mid);background:var(--s1);border:1px solid var(--s2);padding:7px 11px;border-radius:4px;cursor:pointer;position:relative;overflow:hidden}
+  .chapters button i{position:absolute;left:0;bottom:0;height:2px;background:var(--acc);width:0}
+  .chapters button.on{color:var(--hi);border-color:var(--acc)}
+  .tips{position:fixed;right:24px;bottom:16px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .tips .row{display:flex;gap:6px;align-items:center}
+  .tips button{font:11px ui-monospace,monospace;padding:5px 8px;color:var(--hi)}
+  .tips kbd{color:var(--acc);font:700 11px ui-monospace,monospace;margin-right:5px}
+  .tips .hint{position:fixed;left:28px;bottom:58px;font:11px ui-monospace,monospace;color:var(--dim)}
+  .toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);padding:8px 14px;border-radius:4px;background:var(--s1);border:1px solid var(--acc);font:600 13px Inter,system-ui;opacity:0;transition:opacity .25s}
+  @media (max-aspect-ratio:1/1){.video{width:86vw;top:44%}.brand p{display:none}.cap{display:none}.chapters{flex-wrap:wrap;width:92vw;justify-content:center;bottom:120px}.tips{left:16px;right:16px;align-items:center}.tips .hint{display:none}.seed{display:none}}
+</style></head>
+<body>
+<canvas id="crystal"></canvas>
+<div class="scrim" id="scrimBrand"></div>
+<div class="video" id="video"></div>
+<div class="brand"><h1>BEAT<b>MO</b></h1><p>A drum machine you wire like a circuit. Draw paths on a grid; signals walk them; every node they reach plays.</p></div>
+<button class="play" id="play"><span class="ring" id="ring"></span><span id="playLbl">Loading game…</span></button>
+<div class="sound" id="sound">Tap for sound</div>
+<div class="cap" id="cap"><div class="t"></div><div class="s"></div></div>
+<div class="chapters" id="chapters"></div>
+<div class="seed" id="seed"></div>
+<div class="toast" id="toast"></div>
+<div class="tips">
+  <div class="row">
+    <button id="bRule"><kbd>R</kbd><span>rules: Crystal</span></button>
+    <button id="bSlow"><kbd>−</kbd>slower</button><button id="bSpeed" disabled style="cursor:default"><span>1×</span></button><button id="bFast"><kbd>+</kbd>faster</button>
+    <button id="bTheme"><kbd>T</kbd><span>Vice City</span></button>
+  </div>
+  <div class="hint">scroll / pinch to zoom · click to plant a seed · ← → chapters · space pause</div>
+</div>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+// ---------- seed from local date+time ----------
+const D=new Date(),z=n=>String(n).padStart(2,'0');
+const stamp=`${D.getFullYear()}-${z(D.getMonth()+1)}-${z(D.getDate())} ${z(D.getHours())}:${z(D.getMinutes())}`;
+let H0=2166136261; for(const c of stamp){H0^=c.charCodeAt(0);H0=Math.imul(H0,16777619)>>>0;}
+const seedHex=H0.toString(16).padStart(8,'0'); let st=H0;
+const rnd=()=>{st|=0;st=st+0x6D2B79F5|0;let t=Math.imul(st^st>>>15,1|st);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+
+// ---------- themes ----------
+const THEMES=[
+ {name:'Vice City',acc:'#FFB30A',bg:'#120A1C',cols:['#EE00DD','#00C8E0','#3FD67A','#FFB30A','#C24FFF','#FF5C2A']},
+ {name:'Ocean',acc:'#3FE0E8',bg:'#071420',cols:['#3FE0E8','#5E8AFF','#6BE89A','#A8C8FF','#00A8C9','#B3F5C2']},
+ {name:'Orchid',acc:'#C24FFF',bg:'#140A20',cols:['#C24FFF','#FF6AD5','#E0A8FF','#8C1EFF','#FFA8E0','#5E8AFF']},
+ {name:'Ember',acc:'#FF5C2A',bg:'#170A08',cols:['#FF5C2A','#FFB30A','#FF2D9E','#FFD319','#E84A1F','#FF9E54']}];
+let theme=0;
+function setTheme(i){theme=(i+THEMES.length)%THEMES.length;const t=THEMES[theme];
+  document.documentElement.style.setProperty('--acc',t.acc);document.documentElement.style.setProperty('--bg',t.bg);
+  $('bTheme').querySelector('span').textContent=t.name;}
+
+// ---------- rule sets (same machinery, different parameters → different graphs) ----------
+// pick: which live nodes may sprout; out: outward bias; straight: chance to keep the parent's heading;
+// L: step lengths (in lattice steps); loop: chance to close a loop on collision; maxDeg; retire: failures before a node is "crowded".
+const RULES=[
+ {name:'Crystal', pick:'any',  out:.45, straight:.2, L:[1,3], loop:.4, maxDeg:3, retire:6, mutate:.08},
+ {name:'Coral',   pick:'tips', out:.35, straight:.35, L:[1,2], loop:.03,maxDeg:3, retire:5, mutate:.04, branch:.2},
+ {name:'Circuit', pick:'any',  out:.2,  straight:.7, L:[2,5], loop:.3, maxDeg:3, retire:10,mutate:.12},
+ {name:'Weave',   pick:'any',  out:.35, straight:.3, L:[1,2], loop:.9, maxDeg:4, retire:8, mutate:.10}];
+let rule=0;
+
+// ---------- crystal state ----------
+let nodes,edges,occ,alive,level,step;
+const R0=7; const DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
+const key=(i,j)=>i+','+j;
+let videoHalf=[R0*16/9,R0];
+function add(i,j,col,lv,dir){const id=nodes.length;nodes.push({i,j,col,lv,dir:dir||[0,0],born:performance.now(),flash:-1e9,deg:0,fail:0});occ.set(key(i,j),id);return id;}
+function link(a,b){edges.push([a,b]);nodes[a].deg++;nodes[b].deg++;}
+function free(i,j,r){for(const n of nodes){if(n.i-i<=r&&i-n.i<=r&&n.j-j<=r&&j-n.j<=r)return false;}return true;}
+function inHole(i,j){return Math.abs(i)<videoHalf[0]&&Math.abs(j)<videoHalf[1];}
+function reset(){
+  st=H0; nodes=[];edges=[];occ=new Map();alive=[];level=0;step=1;autoScale=0;videoHalf=[R0*16/9,R0];
+  for(let k=0;k<6;k++){const side=k%4;let i,j;const a=rnd()*2-1;
+    if(side===0){i=Math.round(-videoHalf[0]-1);j=Math.round(a*videoHalf[1]);} if(side===1){i=Math.round(videoHalf[0]+1);j=Math.round(a*videoHalf[1]);}
+    if(side===2){i=Math.round(a*videoHalf[0]);j=Math.round(-videoHalf[1]-1);} if(side===3){i=Math.round(a*videoHalf[0]);j=Math.round(videoHalf[1]+1);}
+    alive.push(add(i,j,(rnd()*6)|0,0));}
+}
+function setRule(i){rule=(i+RULES.length)%RULES.length;$('bRule').querySelector('span').textContent='rules: '+RULES[rule].name;reset();}
+function grow(){
+  const R=RULES[rule];
+  for(let t=0;t<4;t++){
+    if(!alive.length)break;
+    const k=(rnd()*alive.length)|0, aid=alive[k], a=nodes[aid];
+    const retire=()=>{alive[k]=alive[alive.length-1];alive.pop();};
+    const fail=()=>{if(++a.fail>R.retire)retire();};
+    if(a.deg>=R.maxDeg||inHole(a.i,a.j)||(R.pick==='tips'&&a.deg>1&&rnd()>(R.branch||0))){retire();continue;}
+    const outH=Math.abs(a.i)/ASP()>Math.abs(a.j)*(rnd()*.8+.6);
+    const r=rnd(); let d;
+    if(r<R.straight&&(a.dir[0]||a.dir[1]))d=a.dir;
+    else if(r<R.straight+R.out)d=outH?[Math.sign(a.i)||1,0]:[0,Math.sign(a.j)||1];
+    else d=DIRS[(rnd()*4)|0];
+    const L=step*(R.L[0]+((rnd()*(R.L[1]-R.L[0]+1))|0));
+    const ni=Math.round((a.i+d[0]*L)/step)*step, nj=Math.round((a.j+d[1]*L)/step)*step;
+    if((ni===a.i&&nj===a.j)||inHole(ni,nj)){fail();continue;}
+    const hit=occ.get(key(ni,nj));
+    if(hit!==undefined){ if(rnd()<R.loop&&hit!==aid&&nodes[hit].deg<R.maxDeg+1)link(aid,hit); fail(); continue; }
+    if(!free(ni,nj,Math.max(1,Math.floor(step*.9)))){fail();continue;}
+    const col=rnd()<R.mutate?(rnd()*6)|0:a.col; const b=add(ni,nj,col,level,d); link(aid,b); alive.push(b);
+  }
+  const rr=reach(); const weak=Math.min(rr[0]/ASP(),rr[1]/ASP(),rr[2],rr[3]);
+  const want=Math.max(0,Math.floor(Math.log2(weak/(R0+4))));
+  if(want>level){level=want;step=1<<level;}
+  if(nodes.length>3500)prune();
+}
+// forget detail 4+ levels below the current lattice: sub-pixel at any zoom we allow
+function prune(){
+  const keep=nodes.map(n=>n.lv>=level-3); const remap=new Map(); const nn=[];
+  nodes.forEach((n,i)=>{if(keep[i]){remap.set(i,nn.length);nn.push(n);}});
+  edges=edges.filter(([a,b])=>keep[a]&&keep[b]).map(([a,b])=>[remap.get(a),remap.get(b)]);
+  alive=alive.filter(i=>keep[i]).map(i=>remap.get(i));
+  nodes=nn; occ=new Map(); nodes.forEach((n,i)=>occ.set(key(n.i,n.j),i));
+}
+
+// ---------- camera: auto-fit by the weakest side × the visitor's zoom (no panning) ----------
+const cv=$('crystal'),cx=cv.getContext('2d'); let W,H,dpr;
+function rs(){dpr=devicePixelRatio;W=cv.width=innerWidth*dpr;H=cv.height=innerHeight*dpr;} addEventListener('resize',rs); rs();
+const ASP=()=>innerWidth/innerHeight;
+let autoScale=0, userZoom=1, userZoomTarget=1;
+const vEl=$('video');
+function reach(){let r=[1,1,1,1];for(const n of nodes){if(n.i>r[0])r[0]=n.i;if(-n.i>r[1])r[1]=-n.i;if(n.j>r[2])r[2]=n.j;if(-n.j>r[3])r[3]=-n.j;}return r;}
+function targetScale(){const r=reach(),hw=W*.5*.92,ht=H*.47*.92,hb=H*.53*.92;return Math.max(hw/r[0],hw/r[1],hb/r[2],ht/r[3]);}
+function zoomBy(f){userZoomTarget=Math.max(.35,Math.min(6,userZoomTarget*f));}
+addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(-e.deltaY*.0015));},{passive:false});
+const touches=new Map(); let pinch0=0;
+addEventListener('touchstart',e=>{for(const t of e.changedTouches)touches.set(t.identifier,t);if(touches.size===2){const [a,b]=[...touches.values()];pinch0=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);}},{passive:false});
+addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)touches.set(t.identifier,t);
+  if(touches.size===2&&pinch0){const [a,b]=[...touches.values()];const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);zoomBy(d/pinch0);pinch0=d;}},{passive:false});
+addEventListener('touchend',e=>{for(const t of e.changedTouches)touches.delete(t.identifier);if(touches.size<2)pinch0=0;});
+
+// ---------- beat + signals ----------
+const BPM=132, BEAT=60000/BPM; let lastBeat=-1, signals=[];
+function onBeat(b){
+  const live=alive.length>8?alive:nodes.map((_,i)=>i); if(!live.length)return;
+  for(let k=0;k<(b%4===0?8:4);k++){const id=live[(rnd()*live.length)|0],n=nodes[id];if(!n)continue;n.flash=performance.now();
+    const es=edges.filter(e=>e[0]===id||e[1]===id); if(es.length){const e=es[(rnd()*es.length)|0];signals.push({a:id,b:e[0]===id?e[1]:e[0],t0:performance.now()});}}
+}
+let mx=-1,my=-1; addEventListener('mousemove',e=>{mx=e.clientX*dpr;my=e.clientY*dpr;});
+cv.addEventListener('click',e=>{
+  const s=autoScale*userZoom; const i=Math.round(((e.clientX*dpr-W/2)/s)/step)*step, j=Math.round(((e.clientY*dpr-H*.47)/s)/step)*step;
+  if(!occ.has(key(i,j))&&!inHole(i,j))alive.push(add(i,j,(rnd()*6)|0,level)); });
+
+// ---------- speed ----------
+const SPEEDS=[.25,.5,1,2,4,8]; let speedIdx=2; const BASE_TICK=110/4; // 4× the v6 growth tempo
+function setSpeed(i){speedIdx=Math.max(0,Math.min(SPEEDS.length-1,i));$('bSpeed').querySelector('span').textContent=SPEEDS[speedIdx]+'×';}
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.opacity=0,1100);}
+
+let paused=false, growAcc=0, last=performance.now();
+function frame(now){
+  const dt=Math.min(100,now-last); last=now;
+  if(!paused){ growAcc+=dt*SPEEDS[speedIdx]; let n=0; while(growAcc>BASE_TICK&&n++<40){grow();growAcc-=BASE_TICK;} if(n>=40)growAcc=0; }
+  const ts=targetScale(); autoScale=autoScale?autoScale+(ts-autoScale)*Math.min(1,dt/1200):ts;
+  userZoom+= (userZoomTarget-userZoom)*Math.min(1,dt/120);
+  const scale=autoScale*userZoom;
+  { const r=vEl.getBoundingClientRect(); videoHalf=[r.width*dpr/2/autoScale, r.height*dpr/2/autoScale]; } // growth sees the AUTO camera only
+  const b=Math.floor(now/BEAT); if(b!==lastBeat&&!paused){lastBeat=b;onBeat(b);}
+  const T=THEMES[theme]; cx.fillStyle=T.bg; cx.fillRect(0,0,W,H);
+  const ox=W/2, oy=H*.47, px=i=>ox+i*scale, py=j=>oy+j*scale;
+  // lattice dots at the two finest visible levels
+  for(let lv=Math.max(0,level-3);lv<=level+2;lv++){const g=(1<<lv)*scale; if(g<7*dpr||g>200*dpr)continue; const a=Math.min(1,(g/dpr-7)/14);
+    cx.fillStyle=`rgba(255,255,255,${.07*a})`; const x0=((ox%g)+g)%g,y0=((oy%g)+g)%g; for(let x=x0;x<W;x+=g)for(let y=y0;y<H;y+=g)cx.fillRect(x-dpr,y-dpr,2*dpr,2*dpr);}
+  const lodA=lv=>lv>=level-1?Math.max(.55,Math.min(1,((1<<lv)*scale/dpr-2)/6)):Math.max(0,Math.min(1,((1<<lv)*scale/dpr-2)/6));
+  const vis=(x,y)=>x>-20*dpr&&y>-20*dpr&&x<W+20*dpr&&y<H+20*dpr;
+  cx.lineWidth=1.3*dpr;
+  for(const [a,b] of edges){const na=nodes[a],nb=nodes[b]; const A=lodA(Math.min(na.lv,nb.lv)); if(A<=0)continue;
+    const x1=px(na.i),y1=py(na.j),x2=px(nb.i),y2=py(nb.j); if(!vis(x1,y1)&&!vis(x2,y2))continue;
+    cx.globalAlpha=.4*A; cx.strokeStyle=T.cols[nb.col]; cx.beginPath(); cx.moveTo(x1,y1); cx.lineTo(x2,y1); cx.lineTo(x2,y2); cx.stroke();}
+  for(const n of nodes){const A=lodA(n.lv); if(A<=0)continue; const x=px(n.i),y=py(n.j); if(!vis(x,y))continue;
+    const near=mx>=0?Math.max(0,1-Math.hypot(x-mx,y-my)/(180*dpr)):0;
+    const f=Math.max(0,1-(now-n.flash)/350), g=Math.min(1,(now-n.born)/300);
+    const s=Math.min(10*dpr,Math.max(1.5*dpr,(1<<n.lv)*scale*.35))*(1+.6*f+.4*near)*g;
+    cx.globalAlpha=A*(.75+.25*Math.max(f,near)); cx.fillStyle=f>0?'#FDF2FF':T.cols[n.col];
+    if(f>0||near>0){cx.shadowColor=T.cols[n.col];cx.shadowBlur=(14*f+10*near)*dpr;}
+    cx.fillRect(x-s/2,y-s/2,s,s); cx.shadowBlur=0;}
+  signals=signals.filter(s=>now-s.t0<BEAT&&nodes[s.a]&&nodes[s.b]);
+  for(const s of signals){const u=(now-s.t0)/BEAT,a=nodes[s.a],b=nodes[s.b];
+    const seg1=Math.abs(b.i-a.i),seg2=Math.abs(b.j-a.j),tot=seg1+seg2||1; let x,y;
+    if(u*tot<seg1){x=a.i+(b.i-a.i)*(u*tot/(seg1||1));y=a.j;}else{x=b.i;y=a.j+(b.j-a.j)*((u*tot-seg1)/(seg2||1));}
+    cx.globalAlpha=lodA(Math.min(a.lv,b.lv)); cx.fillStyle='#FDF2FF'; cx.shadowColor=T.cols[b.col]; cx.shadowBlur=10*dpr; cx.beginPath(); cx.arc(px(x),py(y),2.6*dpr,0,7); cx.fill(); cx.shadowBlur=0;}
+  cx.globalAlpha=1;
+  const kick=Math.exp(-((now%BEAT)/BEAT)*5); vEl.style.boxShadow=`0 0 0 1px ${T.acc}66, 0 0 ${40+50*kick}px ${T.cols[0]}66`;
+  requestAnimationFrame(frame);
+}
+
+// ---------- captions + chapters ----------
+const CH=[['Circuit','Signals walk the paths you draw','every node they reach plays its instrument','left'],
+ ['Nodes','Tap a node, roll its pitch','one wheel for every number','left'],
+ ['Chords','Stack notes into a chord','pick them from a note matrix on the node','right'],
+ ['Effects','Drop in effects','delay, crush, phaser… per instrument','right'],
+ ['Sound','Read your mix live','spectrum, levels, wave and the full chain','right'],
+ ['Themes','Repaint everything in one tap','six themes, or tune every colour','left']];
+const chEl=$('chapters'), cap=$('cap'); let ci=0, ct0=performance.now(); const CHDUR=6000;
+CH.forEach((c,i)=>{const b=document.createElement('button');b.innerHTML=c[0]+'<i></i>';b.onclick=()=>go(i);chEl.appendChild(b);});
+function go(i){ci=(i+CH.length)%CH.length;ct0=performance.now();cap.style.opacity=0;cap.style.transform='translateY(6px)';
+  setTimeout(()=>{const c=CH[ci];cap.querySelector('.t').textContent=c[1];cap.querySelector('.s').textContent=c[2];
+    const r=vEl.getBoundingClientRect(); cap.style.top=(r.top+r.height*.55)+'px';
+    const side=Math.max(140,Math.min(260,(c[3]==='left'?r.left:innerWidth-r.right)-36)); cap.style.width=side+'px'; cap.style.left=c[3]==='left'?(r.left-side-20)+'px':(r.right+16)+'px';
+    cap.style.opacity=1;cap.style.transform='none'; if(c[0]==='Themes')setTheme(theme+1);},350);
+  [...chEl.children].forEach((b,k)=>b.classList.toggle('on',k===ci));}
+setInterval(()=>{if(paused)return;const u=(performance.now()-ct0)/CHDUR;chEl.children[ci].querySelector('i').style.width=Math.min(100,u*100)+'%';
+  [...chEl.children].forEach((b,k)=>{if(k!==ci)b.querySelector('i').style.width='0';}); if(u>=1)go(ci+1);},50);
+
+// ---------- controls ----------
+$('bRule').onclick=()=>{setRule(rule+1);toast('Rules: '+RULES[rule].name+' — same seed, new growth');};
+$('bSlow').onclick=()=>{setSpeed(speedIdx-1);toast('Growth '+SPEEDS[speedIdx]+'×');};
+$('bFast').onclick=()=>{setSpeed(speedIdx+1);toast('Growth '+SPEEDS[speedIdx]+'×');};
+$('bTheme').onclick=()=>{setTheme(theme+1);toast('Theme: '+THEMES[theme].name);};
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight')go(ci+1); if(e.key==='ArrowLeft')go(ci-1);
+  if(e.key===' '){paused=!paused;e.preventDefault();toast(paused?'Paused':'Growing');}
+  if(e.key==='t'||e.key==='T')$('bTheme').onclick(); if(e.key==='r'||e.key==='R')$('bRule').onclick();
+  if(e.key==='-'||e.key==='_')$('bSlow').onclick(); if(e.key==='+'||e.key==='=')$('bFast').onclick();
+  if(e.key==='0'){userZoomTarget=1;toast('Zoom reset');}
+});
+
+// soft scrim behind the brand text so the crystal never fights it
+{const b=document.querySelector('.brand').getBoundingClientRect();Object.assign($('scrimBrand').style,{left:(b.left-60)+'px',top:(b.top-50)+'px',width:(b.width+120)+'px',height:(b.height+100)+'px'});}
+
+// ---------- readiness (fake) ----------
+let p=0; const ring=$('ring'), lbl=$('playLbl'), play=$('play');
+const iv=setInterval(()=>{p=Math.min(100,p+1.5+Math.random()*2);ring.style.setProperty('--p',p+'%');
+  if(p>=100){clearInterval(iv);play.classList.add('ready');lbl.textContent='Play';ring.style.display='none';}},120);
+$('sound').onclick=e=>{e.target.textContent='Sound on';};
+
+$('seed').textContent=`crystal #${seedHex} · grown from ${stamp}`;
+setTheme(0); reset(); go(0); requestAnimationFrame(frame);
+})();
+</script>
+</body></html>

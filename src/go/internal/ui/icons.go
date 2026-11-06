@@ -54,15 +54,17 @@ const (
 	IconSearch       IconID = "search"
 	IconFolder       IconID = "folder"
 	IconLogs         IconID = "logs"
+	IconPalette      IconID = "palette"
+	IconChord        IconID = "chord"
 	IconCalendar     IconID = "calendar"
+	IconGrip         IconID = "grip"
 
 	IconRewind      IconID = "rewind"
 	IconFastForward IconID = "fast-forward"
 
-	IconTriggerMarker IconID = "trigger-marker"
-	IconHeadroom      IconID = "headroom"
-	IconClipCount     IconID = "clip-count"
-	IconLoudest       IconID = "loudest"
+	IconHeadroom  IconID = "headroom"
+	IconClipCount IconID = "clip-count"
+	IconLoudest   IconID = "loudest"
 )
 
 // drawIconByID dispatches to the glyph's draw function. Returns true if the
@@ -87,6 +89,8 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawCloseIcon(dst, r, col)
 	case IconOverflow:
 		drawOverflowIcon(dst, r, col)
+	case IconGrip:
+		drawGripIcon(dst, r, col)
 	case IconPlus:
 		drawPlusIcon(dst, r, col)
 	case IconMinus:
@@ -155,10 +159,12 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawFolderIcon(dst, r, col)
 	case IconLogs:
 		drawLogsIcon(dst, r, col)
+	case IconPalette:
+		drawPaletteIcon(dst, r, col)
+	case IconChord:
+		drawChordIcon(dst, r, col)
 	case IconCalendar:
 		drawCalendarIcon(dst, r, col)
-	case IconTriggerMarker:
-		drawTriggerMarkerIcon(dst, r, col)
 	case IconHeadroom:
 		drawHeadroomIcon(dst, r, col)
 	case IconClipCount:

@@ -1,0 +1,76 @@
+//go:build test
+
+package ui
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestNoTopLevelDerivedColorsOutsideTheme guards the rebuild-in-place theme
+// engine: a package-level var whose initialiser references a genColor* token
+// (directly or via WithAlpha/ButtonStyleFromSpec) is evaluated ONCE at init and
+// would go stale after ApplyTheme. Every such derivation must live inside
+// rebuildThemeAliases() (theme.go) so a theme change re-derives it.
+func TestNoTopLevelDerivedColorsOutsideTheme(t *testing.T) {
+	files, _ := filepath.Glob("*.go")
+	var bad []string
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") || strings.HasSuffix(f, ".gen.go") || f == "theme.go" {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, f, src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range file.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, sp := range gd.Specs {
+				vs := sp.(*ast.ValueSpec)
+				for i, v := range vs.Values {
+					if _, isFn := v.(*ast.FuncLit); isFn {
+						continue // function bodies evaluate at call time, not init
+					}
+					refs := false
+					ast.Inspect(v, func(n ast.Node) bool {
+						id, ok := n.(*ast.Ident)
+						if !ok {
+							return true
+						}
+						if strings.HasPrefix(id.Name, "genColor") {
+							refs = true
+						}
+						if strings.HasPrefix(id.Name, "col") && len(id.Name) > 3 && id.Name[3] >= 'A' && id.Name[3] <= 'Z' {
+							refs = true
+						}
+						// A style built by a helper call (e.g. primaryActionStyle())
+						// copies spec/alias colors at init just the same.
+						if strings.HasSuffix(id.Name, "Style") || strings.HasSuffix(id.Name, "StyleFromSpec") {
+							refs = true
+						}
+						return true
+					})
+					if refs {
+						bad = append(bad, f+": "+vs.Names[i].Name)
+					}
+				}
+			}
+		}
+	}
+	if len(bad) > 0 {
+		t.Fatalf("package-level color derivations outside rebuildThemeAliases (move them into theme.go rebuildThemeAliases):\n  %s", strings.Join(bad, "\n  "))
+	}
+}

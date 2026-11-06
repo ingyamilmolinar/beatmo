@@ -71,7 +71,7 @@ const port = server.address().port;
 // Temp circuit file with a distinctive BPM so we can prove the import applied.
 const importFile = path.join(os.tmpdir(), "beatmo_import_gesture_probe.json");
 fs.writeFileSync(importFile, JSON.stringify({
-  version: 1, subdiv: 8, bpm: 123,
+  schema_version: "0.0.1", subdiv: 8, bpm: 123,
   instruments: [{ name: "Kick", id: "kick", kind: "builtin", volume: 1.0, origin: 0, color: "#C87850FF" }],
   nodes: [
     { id: 0, i: 0, j: 0, type: "regular", inputs: [], outputs: [1], volume: 1.0, pitch: 0, duration: 1.0 },
@@ -96,7 +96,7 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
     await page.goto(`http://localhost:${port}/`);
 
     await page.waitForFunction(
-      () => typeof fullLayoutSnapshot === "function" && typeof getBPM === "function",
+      () => typeof fullLayoutSnapshot === "function" && typeof getBPM === "function", null,
       { timeout: 30000 }
     );
     await page.waitForTimeout(500);
@@ -232,7 +232,7 @@ async function assertLandscapeImportBlocked(deviceName) {
     await page.goto(`http://localhost:${port}/`);
 
     await page.waitForFunction(
-      () => typeof fullLayoutSnapshot === "function" && typeof getBPM === "function",
+      () => typeof fullLayoutSnapshot === "function" && typeof getBPM === "function", null,
       { timeout: 30000 }
     );
     await page.waitForTimeout(500);

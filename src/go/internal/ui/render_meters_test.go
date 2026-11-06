@@ -7,6 +7,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // drawRectCall is one recorded drawRect invocation.
@@ -75,7 +77,7 @@ func TestDrawLevelsDetail_LowLevelUsesLowColor(t *testing.T) {
 	rect := image.Rect(0, 0, w, h)
 
 	ch := &analyzer.ChannelMetrics{
-		ID:         "kick",
+		ID:         channel.Of(roster.Kick),
 		Name:       "Kick",
 		PeakDB:     -20,
 		RMSDB:      -24,
@@ -106,7 +108,7 @@ func TestDrawLevelsDetail_ClipPaintsRed(t *testing.T) {
 	rect := image.Rect(0, 0, w, h)
 
 	ch := &analyzer.ChannelMetrics{
-		ID:         "kick",
+		ID:         channel.Of(roster.Kick),
 		Name:       "Kick",
 		PeakDB:     0,
 		RMSDB:      -3,

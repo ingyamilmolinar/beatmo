@@ -174,34 +174,29 @@ func TestFocusRectCoordinatesMatchGameCoords(t *testing.T) {
 	dv := newTestDrumView(t, 390, 844)
 	dv.calcLayout()
 
-	// Tree-owned native-gesture rect isolation (soft-keyboard channel
-	// migration): calcLayout no longer registers rects imperatively; the
-	// candidate producer is queried directly and gated by the per-frame
-	// sync phase. Find the "bpm" candidate.
+	// Tree-owned native-gesture rect isolation: the candidate producer is
+	// queried directly and gated by the per-frame sync phase. A live text field
+	// (TextField — BPM no longer has a text box) must produce a candidate whose
+	// rect is exactly the field's rect in game coordinates.
+	box := NewTextField(dv.textFields, TextFieldSpec{ID: "probe-coords", Owner: "probe"}, 32)
+	box.Rect = image.Rect(120, 700, 300, 736) // a field near the bottom of a 390x844 view
+	box.Update()                              // live this frame
 	var found *NativeRectCandidate
 	for _, c := range dv.softKeyboardCandidates() {
-		if c.Intent.ID == "bpm" {
+		if c.Intent.ID == "probe-coords" {
 			cc := c
 			found = &cc
 			break
 		}
 	}
 	if found == nil {
-		t.Fatal("softKeyboardCandidates never produced id='bpm'")
+		t.Fatal("softKeyboardCandidates never produced the live text field")
 	}
-
-	// The candidate rect must match bpmBox.Rect exactly (game coordinates).
-	box := dv.bpmBox().Rect
-	if found.Rect.Min.X != box.Min.X || found.Rect.Min.Y != box.Min.Y {
-		t.Fatalf("bpm rect origin mismatch: candidate=(%d,%d) bpmBox=(%d,%d)",
-			found.Rect.Min.X, found.Rect.Min.Y, box.Min.X, box.Min.Y)
+	if found.Rect != box.Rect {
+		t.Fatalf("candidate rect %v != field rect %v (game coordinates)", found.Rect, box.Rect)
 	}
-	if found.Rect.Dx() != box.Dx() || found.Rect.Dy() != box.Dy() {
-		t.Fatalf("bpm rect size mismatch: candidate=(%dx%d) bpmBox=(%dx%d)",
-			found.Rect.Dx(), found.Rect.Dy(), box.Dx(), box.Dy())
-	}
-	if found.Intent.InputMode != "numeric" {
-		t.Fatalf("expected inputmode='numeric', got %q", found.Intent.InputMode)
+	if found.Intent.InputMode != "text" {
+		t.Fatalf("expected inputmode='text', got %q", found.Intent.InputMode)
 	}
 }
 

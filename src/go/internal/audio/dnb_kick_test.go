@@ -5,15 +5,15 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// renderDnbKickSeed renders the dnbKickSeed config through the modular engine
-// (the same recipe path the dnb-kick instrument uses), returning the raw buffer.
-func renderDnbKickSeed(sr, samples int) []float32 {
-	mp := recipeParamsToModular(dnbKickSeed)
-	buf := make([]float32, samples)
-	renderModularP(buf, sr, samples, mp)
-	return buf
+// renderDnbKickSeed renders the dnb-kick instrument's document through the
+// modular engine (RAW — the path every note takes), returning the buffer.
+func renderDnbKickSeed(t testing.TB, sr, samples int) []float32 {
+	return renderFieldsForTest(t, roster.DnbKick, sr, samples, nil)
 }
 
 func f32toF64(buf []float32) []float64 {
@@ -53,7 +53,7 @@ func argmaxMagAt(f []float64, freqs []float64, sr int) float64 {
 func TestDnbKickSeedIsKickShaped(t *testing.T) {
 	const sr = 48000
 	const samples = sr / 2 // 0.5 s, matching the reference length
-	buf := renderDnbKickSeed(sr, samples)
+	buf := renderDnbKickSeed(t, sr, samples)
 	f := f32toF64(buf)
 
 	// 1. Non-silent.
@@ -110,7 +110,8 @@ func TestDnbKickPlaybackPathRendersKick(t *testing.T) {
 	for hz := 30.0; hz <= 400; hz += 2 {
 		grid = append(grid, hz)
 	}
-	for _, id := range []string{"dnb-kick", "kick-electro", "kick-808", "kick-acoustic", "kick-punchy", "zgump-kick", "raw-kick"} {
+	for _, id := range []instrument.ID{roster.DnbKick, roster.KickElectro, roster.Kick808, roster.KickAcoustic, roster.KickPunchy, roster.ZgumpKick, roster.RawKick,
+		roster.KickFat, roster.KickBoomBap, roster.KickBrutal, roster.KickRock, roster.KickWood, roster.KickAiry, roster.KickOrganicTight, roster.KickMuted, roster.KickMutedRoom} {
 		buf, sr := RenderInstrumentOneShotRaw(id)
 		if len(buf) == 0 {
 			t.Fatalf("%s playback produced no samples", id)
@@ -136,9 +137,9 @@ func TestDnbKickPlaybackPathRendersKick(t *testing.T) {
 }
 
 // renderKickVariantForTest renders the source==5 kick voice at the given variant
-// with a representative punchy param set, returning the raw buffer (no clamp —
-// recipeParamsToModular is direct).
-func renderKickVariantForTest(variant float64, extra RecipeParams) []float32 {
+// with a representative punchy param set, returning the raw buffer (an engine
+// block, initBlockForTest).
+func renderKickVariantForTest(t testing.TB, variant float64, extra RecipeParams) []float32 {
 	p := RecipeParams{
 		"kick_enabled": 1,
 		"gen1_source":  5, "gen1_freq_mode": 0, "gen1_freq": 1, "gen1_gain": 1,
@@ -154,7 +155,7 @@ func renderKickVariantForTest(variant float64, extra RecipeParams) []float32 {
 		p[k] = v
 	}
 	buf := make([]float32, 48000/2)
-	renderModularP(buf, 48000, len(buf), recipeParamsToModular(p))
+	renderModularBlock(buf, 48000, len(buf), initBlockForTest(p))
 	return buf
 }
 
@@ -177,8 +178,8 @@ func crestOf(buf []float32) float64 {
 // sustained bright hiss).
 func TestKickVariant5LayeredHasPunchAndCleanTail(t *testing.T) {
 	const sr = 48000
-	base := crestOf(renderKickVariantForTest(0, nil))
-	hybrid := renderKickVariantForTest(5, nil)
+	base := crestOf(renderKickVariantForTest(t, 0, nil))
+	hybrid := renderKickVariantForTest(t, 5, nil)
 	hc := crestOf(hybrid)
 	if hc < 5.0 {
 		t.Fatalf("variant 5 (layered) crest=%.2f, want >=5 (the post-distortion punch); base variant crest=%.2f", hc, base)
@@ -227,7 +228,7 @@ func TestKickVariant5BodyNotSpitty(t *testing.T) {
 	const sr = 48000
 	// High air (0.30) to STRESS the guard — if a change re-fused the noise into
 	// the distortion, this much noise would sputter loudly.
-	buf := renderKickVariantForTest(5, RecipeParams{
+	buf := renderKickVariantForTest(t, 5, RecipeParams{
 		"voice_freq_hz": 45, "gen1_kick_noise": 0.30, "gen1_kick_sat": 1.2,
 		"gen1_kick_click": 0.30, "gen1_kick_pe_amt": 0.9, "gen1_kick_pe_rate": 35,
 		"gen1_kick_h2": 0.22, "gen1_kick_h3": 0.02, "gen1_kick_env0": 12,
@@ -255,19 +256,19 @@ func TestKickVariant5BodyNotSpitty(t *testing.T) {
 
 // TestKickEnabledGatesVoice drives the KICK stage's enable pill: with the kick
 // gen-slot active (source==5), kick_enabled<0.5 silences the voice and
-// kick_enabled>=0.5 renders it. This is what makes the Synth-tab KICK enable
-// pill meaningful (it toggles kick_enabled).
+// kick_enabled>=0.5 renders it — the engine's gate on the family constant.
 func TestKickEnabledGatesVoice(t *testing.T) {
 	const sr = 48000
 	const samples = sr / 4
+	// kick_enabled is a type constant of the kick layer (the document always
+	// writes 1); this drives the ENGINE's gate on it directly in the block.
+	d, _ := ShippedDoc(roster.DnbKick)
+	base := modularBlock(instrument.Flatten(d, BuiltinModuleRegistry()))
 	render := func(enabled float64) float32 {
-		p := RecipeParams{}
-		for k, v := range dnbKickSeed {
-			p[k] = v
-		}
-		p["kick_enabled"] = enabled
+		b := base.clone()
+		b.set("kick_enabled", enabled)
 		buf := make([]float32, samples)
-		renderModularP(buf, sr, samples, recipeParamsToModular(p))
+		renderModularBlock(buf, sr, samples, b)
 		peak := float32(0)
 		for _, v := range buf {
 			if a := v; a > peak {
@@ -288,21 +289,12 @@ func TestKickEnabledGatesVoice(t *testing.T) {
 	}
 }
 
-// TestDnbKickInstrumentWiredAndKickShaped drives the instrument/recipe wiring:
-// the dnb-kick instrument binds to the synth-modular-kick-dnb recipe, which
-// registers and renders the same kick-shaped, bass-dominated signal as the seed.
+// TestDnbKickInstrumentWiredAndKickShaped: the dnb-kick instrument renders
+// (through its project document — EnsureInstrumentDoc) the kick-shaped,
+// bass-dominated signal.
 func TestDnbKickInstrumentWiredAndKickShaped(t *testing.T) {
-	const want = "synth-modular-kick-dnb"
-	if got := RecipeForInstrument("dnb-kick"); got != want {
-		t.Fatalf("dnb-kick recipe binding = %q, want %q", got, want)
-	}
-	r := NewRecipe(want)
-	if r == nil {
-		t.Fatalf("recipe %q not registered", want)
-	}
 	const sr, samples = 48000, sr / 2
-	buf := make([]float32, samples)
-	r.Render(buf, sr, samples, 0, MergeRecipeDefaults(want, nil))
+	buf := renderFieldsForTest(t, roster.DnbKick, sr, samples, nil)
 	f := f32toF64(buf)
 
 	peak := 0.0

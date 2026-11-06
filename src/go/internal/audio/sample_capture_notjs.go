@@ -2,11 +2,13 @@
 
 package audio
 
+import "github.com/ingyamilmolinar/beatmo/internal/instrument"
+
 // RenderInstrumentOneShot renders the active recipe-aware voice for id into a
 // fresh []float32 by draining it once. It is the deterministic "From Synth"
 // capture source for the Sampler tab — unlike LatestVoiceSample it does not
 // depend on the instrument having been played yet.
-func RenderInstrumentOneShot(id string) ([]float32, int) {
+func RenderInstrumentOneShot(id instrument.ID) ([]float32, int) {
 	return renderInstrumentOneShotOpts(id, false)
 }
 
@@ -14,20 +16,16 @@ func RenderInstrumentOneShot(id string) ([]float32, int) {
 // descriptor. The Sampler editor loads through this so it shows the UN-edited
 // source waveform and overlays the saved trim/pitch/gain itself — capturing
 // through the edited path would double-apply the edit.
-func RenderInstrumentOneShotRaw(id string) ([]float32, int) {
+func RenderInstrumentOneShotRaw(id instrument.ID) ([]float32, int) {
 	return renderInstrumentOneShotOpts(id, true)
 }
 
-func renderInstrumentOneShotOpts(id string, ignoreEdit bool) ([]float32, int) {
+func renderInstrumentOneShotOpts(id instrument.ID, ignoreEdit bool) ([]float32, int) {
 	sr := SampleRate()
-	b := bpm
-	if b <= 0 {
-		b = 120
-	}
 	// Sampler tab capture — UI goroutine, not audioLoop dispatch.
-	v, ok := tryRecipeVoiceOptsOrigin(id, b, sr, ignoreEdit, originPrewarm)
+	v, ok := tryRecipeVoiceOptsOrigin(id, sr, ignoreEdit, originPrewarm)
 	if !ok {
-		v = legacyNewVoice(id, b, sr)
+		v = legacyNewVoice(id, sr)
 	}
 	if v == nil {
 		return nil, sr

@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"strings"
-
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
@@ -26,7 +24,7 @@ func (s *playbackSlate) seqPrevTriggered(row, idx int, snap *seqPathSnapshot) (b
 	prevID := model.InvalidNodeID
 	for k := 0; k < 64; k++ {
 		bi := seqBeatInfoAtRow(snap, row, j)
-		if bi.NodeType == model.NodeTypeRegular {
+		if bi.NodeType.Fires() {
 			prevIdx = j
 			prevID = bi.NodeID
 			break
@@ -50,14 +48,14 @@ func (s *playbackSlate) seqPrevTriggered(row, idx int, snap *seqPathSnapshot) (b
 // seqShouldTriggerNode evaluates built-in logic rules using the sequencer path snapshot.
 func (s *playbackSlate) seqShouldTriggerNode(row, idx int, info model.BeatInfo, n model.Node, counts map[model.NodeID]int, snap *seqPathSnapshot) bool {
 	g := s.g
-	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
+	if !info.NodeType.Fires() && info.NodeType != model.NodeTypeMute {
 		return false
 	}
-	kind := strings.ToLower(strings.TrimSpace(n.Params.LogicKind))
+	kind := n.Params.LogicKind
 	switch kind {
-	case "", "none":
+	case model.LogicNone:
 		return true
-	case "every_n_triggers":
+	case model.LogicEveryN:
 		if n.Params.LogicN > 0 {
 			if info.NodeType == model.NodeTypeMute {
 				cycleLen := 0
@@ -78,7 +76,7 @@ func (s *playbackSlate) seqShouldTriggerNode(row, idx int, info model.BeatInfo, 
 				}
 			}
 		}
-	case "skip_every_n":
+	case model.LogicSkipEveryN:
 		if n.Params.LogicN > 0 {
 			if counts != nil {
 				counts[info.NodeID]++
@@ -87,7 +85,7 @@ func (s *playbackSlate) seqShouldTriggerNode(row, idx int, info model.BeatInfo, 
 				}
 			}
 		}
-	case "probability":
+	case model.LogicProbability:
 		p := n.Params.LogicP
 		if p <= 0 {
 			return false
@@ -98,12 +96,12 @@ func (s *playbackSlate) seqShouldTriggerNode(row, idx int, info model.BeatInfo, 
 				return false
 			}
 		}
-	case "trigger_if_prev_skipped":
+	case model.LogicIfPrevSkipped:
 		prevTrig, havePrev := g.seqPrevTriggered(row, idx, snap)
 		if !havePrev || prevTrig {
 			return false
 		}
-	case "trigger_if_prev_triggered":
+	case model.LogicIfPrevTriggered:
 		prevTrig, havePrev := g.seqPrevTriggered(row, idx, snap)
 		if !havePrev || !prevTrig {
 			return false
@@ -125,11 +123,24 @@ func applyNodeDecision(vol, pitch, dur float64, dec model.NodeDecision) (float64
 	return vol, pitch, dur
 }
 
+// nodeLayersAt is the firing cell's voice stack: nil (one voice) for every
+// non-chord node, the chord's layers otherwise (model.NodeLayers).
+func (s *playbackSlate) nodeLayersAt(info model.BeatInfo) []model.Layer {
+	if info.NodeType != model.NodeTypeChord {
+		return nil
+	}
+	n, ok := s.g.nodeSnapshot(info.NodeID)
+	if !ok {
+		return nil
+	}
+	return model.NodeLayers(n.Type, n.Params)
+}
+
 // evalNodeParamsOnly computes effective volume/pitch/duration from node
 // parameters without touching trigger counters or applying gating logic.
 func (s *playbackSlate) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, float64, float64) {
 	g := s.g
-	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
+	if !info.NodeType.Fires() && info.NodeType != model.NodeTypeMute {
 		return 0, 0, 1
 	}
 	vol := 1.0
@@ -180,7 +191,7 @@ func (s *playbackSlate) nodeTriggered(row, idx int, info model.BeatInfo) bool {
 
 func (s *playbackSlate) nodeTriggeredState(row, idx int, info model.BeatInfo) (bool, bool) {
 	g := s.g
-	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
+	if !info.NodeType.Fires() && info.NodeType != model.NodeTypeMute {
 		return false, true
 	}
 	if _, ok := g.graph.GetNodeByID(info.NodeID); !ok {

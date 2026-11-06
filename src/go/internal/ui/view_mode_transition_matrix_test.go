@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -136,7 +138,7 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 					// the segment is enabled and the tap can switch views.
 					if seg == bottomNavSynthIndex() || seg == segmentIndexForViewMode(viewModeSampler) {
 						if len(dv.Rows) > 0 {
-							dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+							dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 						}
 					}
 					r := dv.viewSwitchSegmented.SegmentRect(seg)
@@ -235,7 +237,7 @@ func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 		// enabled and the tap switches views.
 		if seg == bottomNavSynthIndex() || seg == segmentIndexForViewMode(viewModeSampler) {
 			if len(dv.Rows) > 0 {
-				dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+				dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 			}
 		}
 		r := dv.viewSwitchSegmented.SegmentRect(seg)
@@ -249,13 +251,13 @@ func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 	if dv.currentViewMode != viewModeSampler {
 		t.Fatalf("precondition: expected viewModeSampler, got %v", dv.currentViewMode)
 	}
-	dv.sampler.loadFromInstrument("kick", []float32{0.1, 0.2, -0.3, 0.4, -0.1}, 48000, samplerSourceSynth)
+	dv.sampler.loadFromInstrument(roster.Kick, []float32{0.1, 0.2, -0.3, 0.4, -0.1}, 48000, samplerSourceSynth)
 	if !dv.sampler.hasBuffer() {
 		t.Fatal("precondition: sampler buffer not loaded")
 	}
-	dv.openSamplerSaveAsDialog()
+	dv.samplerSaveAs()
 	if dv.saveAsDialog == nil {
-		t.Fatal("precondition: openSamplerSaveAsDialog did not open the dialog")
+		t.Fatal("precondition: samplerSaveAs did not open the dialog")
 	}
 
 	// Switch back to Pads — the modal must be gone, capture cleared.
@@ -392,11 +394,11 @@ func TestSamplerToPads_PortalSurvives_StrandsInput(t *testing.T) {
 	if dv.currentViewMode != viewModeSampler {
 		t.Fatalf("precondition: expected viewModeSampler, got %v", dv.currentViewMode)
 	}
-	dv.sampler.loadFromInstrument("kick", []float32{0.1, 0.2, -0.3, 0.4, -0.1}, 48000, samplerSourceSynth)
+	dv.sampler.loadFromInstrument(roster.Kick, []float32{0.1, 0.2, -0.3, 0.4, -0.1}, 48000, samplerSourceSynth)
 
 	// Open both a Save-As dialog and a full-screen MODAL portal — the kind
 	// of transient state a real session accumulates on the Sampler tab.
-	dv.openSamplerSaveAsDialog()
+	dv.samplerSaveAs()
 	dv.openNamingPortal()
 	if dv.saveAsDialog == nil {
 		t.Fatal("precondition: Save-As dialog did not open")

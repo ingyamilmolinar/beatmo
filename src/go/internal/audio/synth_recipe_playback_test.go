@@ -5,6 +5,8 @@ package audio
 import (
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Phase 4.6 follow-up: regression tests that pin "setInstrumentParam
@@ -19,24 +21,24 @@ import (
 // from the pre-change rendering for the same instrument. This is the
 // minimum bar: "the slider had ANY effect on the next note."
 func TestPlayback_SetParamChangesNextTrigger(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("snare") })
+	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
-	ResetInstrumentParams("snare")
+	ResetInstrumentParams(roster.Snare)
 
 	// Render once with no user params (legacy path).
-	v1 := newRecipeAwareVoice("snare", 120, 44100)
+	v1 := newRecipeAwareVoice(roster.Snare, 44100)
 	if v1 == nil {
 		t.Fatal("baseline voice is nil")
 	}
 	baseline := drainVoiceToBuffer(v1, 44100)
 
 	// Render again with no user params — should be cache-hit, identical bytes.
-	v2 := newRecipeAwareVoice("snare", 120, 44100)
+	v2 := newRecipeAwareVoice(roster.Snare, 44100)
 	cacheHit := drainVoiceToBuffer(v2, 44100)
 
 	// Set a non-trivial decay value and render a third time.
-	SetInstrumentParam("snare", "decay", 0.3)
-	v3 := newRecipeAwareVoice("snare", 120, 44100)
+	SetInstrumentParam(roster.Snare, "post_decay", 0.3)
+	v3 := newRecipeAwareVoice(roster.Snare, 44100)
 	modified := drainVoiceToBuffer(v3, 44100)
 
 	if len(baseline) == 0 || len(cacheHit) == 0 || len(modified) == 0 {
@@ -53,14 +55,14 @@ func TestPlayback_SetParamChangesNextTrigger(t *testing.T) {
 	}
 
 	// Modified voice should have substantially LESS tail energy because
-	// decay=0.3 (the recipe's identity is 1.0) shortens the envelope.
+	// post_decay=0.3 (identity 1.0) shortens the POST-stage envelope.
 	modTail := tailRMS(modified)
 	if modTail >= baseTail {
-		t.Errorf("decay=0.3 should shorten envelope; got modified tailRMS=%v >= baseline tailRMS=%v", modTail, baseTail)
+		t.Errorf("post_decay=0.3 should shorten envelope; got modified tailRMS=%v >= baseline tailRMS=%v", modTail, baseTail)
 	}
 	drop := (baseTail - modTail) / baseTail
 	if drop < 0.5 {
-		t.Errorf("decay=0.3 should drop tail RMS by >50%%; got %.1f%% drop (base=%v mod=%v)", drop*100, baseTail, modTail)
+		t.Errorf("post_decay=0.3 should drop tail RMS by >50%%; got %.1f%% drop (base=%v mod=%v)", drop*100, baseTail, modTail)
 	}
 }
 
@@ -68,20 +70,20 @@ func TestPlayback_SetParamChangesNextTrigger(t *testing.T) {
 // invalidates the recipe-path cache so the next trigger renders without
 // user params (i.e. produces a baseline-shaped voice again).
 func TestPlayback_ResetRestoresBaseline(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("snare") })
+	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
-	ResetInstrumentParams("snare")
-	v1 := newRecipeAwareVoice("snare", 120, 44100)
+	ResetInstrumentParams(roster.Snare)
+	v1 := newRecipeAwareVoice(roster.Snare, 44100)
 	baseline := drainVoiceToBuffer(v1, 44100)
 	baseTail := tailRMS(baseline)
 
 	// Apply param, render once.
-	SetInstrumentParam("snare", "decay", 0.3)
-	_ = drainVoiceToBuffer(newRecipeAwareVoice("snare", 120, 44100), 44100)
+	SetInstrumentParam(roster.Snare, "post_decay", 0.3)
+	_ = drainVoiceToBuffer(newRecipeAwareVoice(roster.Snare, 44100), 44100)
 
 	// Reset and render — should look like baseline again.
-	ResetInstrumentParams("snare")
-	v2 := newRecipeAwareVoice("snare", 120, 44100)
+	ResetInstrumentParams(roster.Snare)
+	v2 := newRecipeAwareVoice(roster.Snare, 44100)
 	restored := drainVoiceToBuffer(v2, 44100)
 	restoredTail := tailRMS(restored)
 
@@ -99,20 +101,20 @@ func TestPlayback_ResetRestoresBaseline(t *testing.T) {
 // distinct voice (no stale cache between mutations). Catches the
 // "cache invalidation only runs once" regression class.
 func TestPlayback_SequentialParamChangesProduceSequentialAudio(t *testing.T) {
-	t.Cleanup(func() { ResetInstrumentParams("snare") })
+	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
 	tails := []float64{}
 	for _, decay := range []float64{1.0, 0.7, 0.4, 0.2} {
-		ResetInstrumentParams("snare")
-		SetInstrumentParam("snare", "decay", decay)
-		buf := drainVoiceToBuffer(newRecipeAwareVoice("snare", 120, 44100), 44100)
+		ResetInstrumentParams(roster.Snare)
+		SetInstrumentParam(roster.Snare, "post_decay", decay)
+		buf := drainVoiceToBuffer(newRecipeAwareVoice(roster.Snare, 44100), 44100)
 		tails = append(tails, tailRMS(buf))
 	}
 
 	// As decay shrinks, tail RMS must shrink monotonically.
 	for i := 1; i < len(tails); i++ {
 		if tails[i] >= tails[i-1] {
-			t.Errorf("decay should reduce tail energy monotonically; tails[%d]=%v >= tails[%d]=%v",
+			t.Errorf("post_decay should reduce tail energy monotonically; tails[%d]=%v >= tails[%d]=%v",
 				i, tails[i], i-1, tails[i-1])
 		}
 	}

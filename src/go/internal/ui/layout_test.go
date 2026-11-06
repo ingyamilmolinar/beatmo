@@ -62,17 +62,18 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			t.Fatalf("w=%d: bpm +/- out of transport bounds: inc=%v dec=%v trans=%v", w, inc, dec, trans)
 		}
 
-		// Verify Length +/- are vertically stacked in the timeline area
+		// Verify Length − + sit side by side (− then +) in the timeline area,
+		// each at least btn-sm so the glyphs clear the icon floor.
 		linc := dv.lenIncBtn.Rect()
 		ldec := dv.lenDecBtn.Rect()
 		if linc.Empty() || ldec.Empty() {
 			t.Fatalf("w=%d: len +/- rects empty", w)
 		}
-		if linc.Min.X != ldec.Min.X || linc.Max.X != ldec.Max.X {
-			t.Fatalf("w=%d: len +/- not in same column: inc=%v dec=%v", w, linc, ldec)
+		if linc.Min.Y != ldec.Min.Y || linc.Max.Y != ldec.Max.Y {
+			t.Fatalf("w=%d: len +/- not on one row: inc=%v dec=%v", w, linc, ldec)
 		}
-		if linc.Min.Y >= ldec.Min.Y {
-			t.Fatalf("w=%d: len + not above - (inc=%v, dec=%v)", w, linc, ldec)
+		if ldec.Max.X > linc.Min.X {
+			t.Fatalf("w=%d: len − not left of + (inc=%v, dec=%v)", w, linc, ldec)
 		}
 		// Len buttons should be in the timeline widget area, not the transport.
 		tl := dv.widgetRects[WidgetTimeline]

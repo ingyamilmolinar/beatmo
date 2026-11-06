@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // buildRectangleWithLogic creates a rectangular loop with invisible pass-throughs
@@ -28,30 +29,30 @@ func buildRectangleWithLogic(g *Game) *uiNode {
 	// Mix in logic rules
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(B.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(C.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.5
 		g.graph.SetNodeParams(C.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(D.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(D.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(E.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_skipped"
+		p.LogicKind = model.LogicIfPrevSkipped
 		g.graph.SetNodeParams(E.ID, p)
 	}
 	return A
@@ -71,7 +72,7 @@ func TestSeqScheduleTimeAdvancesUnderHeavyPrediction(t *testing.T) {
 	g.updateBeatInfos()
 	g.drum.Offset = 0
 	g.refreshDrumRow()
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) {})
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) {})
 
 	if g.engine == nil || g.engine.Predictor == nil {
 		t.Fatalf("missing engine predictor")

@@ -1,5 +1,6 @@
 {
   "devDependencies": {
-    "browserstack-node-sdk": "^1.49.8"
+    "browserstack-node-sdk": "^1.49.8",
+    "subset-font": "^2.7.0"
   }
 }

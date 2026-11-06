@@ -6,6 +6,9 @@ import (
 	"math"
 	"math/cmplx"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // template_bass_spectral_test.go pins that the clean bass instruments the
@@ -70,11 +73,11 @@ func naiveDFT(x []complex128) []complex128 {
 func TestTemplateBassInstrumentsAreSpectrallyClean(t *testing.T) {
 	// Clean basses templates are allowed to use: nearly all energy below 2 kHz.
 	clean := []struct {
-		name   string
+		name   instrument.ID
 		render func(buf []float32, sampleRate, samples int)
 	}{
-		{"fm-bass", renderFMBassVoice},
-		{"sub-bass", renderSubBassVoice},
+		{roster.FmBass, shippedRender(roster.FmBass)},
+		{roster.SubBass, shippedRender(roster.SubBass)},
 	}
 	const cleanMax = 0.10 // ≤10% of energy above 2 kHz
 	for _, c := range clean {

@@ -5,6 +5,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // sectionHasEndlessKnob returns true if at least one knob in the section is
@@ -129,14 +131,6 @@ func TestSynthControlCaptionIsDisplayOnly(t *testing.T) {
 	defer releaseImage(img)
 	g.Draw(img)
 
-	// The ParamCard grid draws NAME + VALUE + gauge as one control surface —
-	// there is no longer a separate caption/readout sub-rect (that used to
-	// be populated by the deleted per-knob caption draw). Assert it stays
-	// empty under the new contract.
-	rr := g.drum.synthControlReadoutRect(idx)
-	if !rr.Empty() {
-		t.Fatalf("readout rect should stay empty under the ParamCard contract (no separate caption sub-rect); got %v", rr)
-	}
 	r := g.drum.SynthTabControls()[idx].Rect()
 	if r.Empty() {
 		t.Fatalf("knob %d has no rect after draw", idx)
@@ -163,44 +157,8 @@ func TestSynthControlCaptionIsDisplayOnly(t *testing.T) {
 	pressed = false
 	g.Update()
 
-	if g.drum.paramEditor != nil && g.drum.paramEditor.Active() {
-		t.Fatalf("tapping the knob caption opened a text-input editor — the title must be display-only text (tap=(%d,%d) caption=%v)", tx, ty, rr)
-	}
-}
-
-// TestSynthEditorActiveBlocksControlDrag verifies that when the numeric editor is
-// open, OnPress on the knob adapter returns InputConsumed (swallowing the tap)
-// and the knob value remains unchanged.
-func TestSynthEditorActiveBlocksControlDrag(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	g.Update()
-
-	img := newTrackedImage("test.editorblock", 1280, 720)
-	defer releaseImage(img)
-	g.Draw(img)
-
-	g.drum.openSynthParamEditor(idx, "ut-chip-modular")
-	if g.drum.paramEditor == nil || !g.drum.paramEditor.Active() {
-		t.Fatalf("editor not active after openSynthParamEditor")
-	}
-
-	k := g.drum.SynthTabControls()[idx]
-	before := k.Value
-
-	adapter := &synthControlHitAdapter{dv: g.drum, idx: idx, instID: "ut-chip-modular"}
-	r := k.Rect()
-	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+5
-	if res := adapter.OnPress(cx, cy); res != InputConsumed {
-		t.Fatalf("OnPress with editor active should return InputConsumed, got %v", res)
-	}
-	// Simulate what a captured drag would do (adapter.active is false here,
-	// so OnDrag is a no-op — but verify defensively).
-	adapter.OnDrag(r.Max.X, cy)
-	if k.Value != before {
-		t.Fatalf("knob value changed while editor open (before=%v after=%v)", before, k.Value)
+	if g.drum.KeyboardClaimed() {
+		t.Fatalf("tapping the knob caption took the keyboard — the title must be display-only text (tap=(%d,%d) card=%v)", tx, ty, r)
 	}
 }
 
@@ -253,35 +211,6 @@ func TestSynthBadgeStaleRectClearedOnSectionSwitch(t *testing.T) {
 // (the crackle regression). Investigate the offending path and remove the
 // synthAuditionFn / samplerAuditionFn call from it; do NOT silence the test.
 
-// TestSynthNumericCommitDoesNotAudition opens the numeric editor for
-// filter_cutoff, commits "5000", and asserts no audition fires. The param
-// write must reach audio.GetInstrumentParams (proving the commit is
-// non-vacuous) and synthAuditionFn must remain uncalled.
-func TestSynthNumericCommitDoesNotAudition(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-
-	prev := SwapSynthAuditionFnForTest(func(string) { t.Fatalf("numeric commit must NOT audition") })
-	defer SwapSynthAuditionFnForTest(prev)
-
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-
-	g.drum.openSynthParamEditor(idx, "ut-chip-modular")
-	if g.drum.paramEditor == nil || !g.drum.paramEditor.Active() {
-		t.Fatalf("openSynthParamEditor did not open the editor (idx=%d)", idx)
-	}
-
-	g.drum.paramEditor.ti.SetText("5000")
-	g.drum.paramEditor.commit()
-
-	// Confirm the commit actually wrote the param (non-vacuous assertion).
-	got := audio.GetInstrumentParams("ut-chip-modular")["filter_cutoff"]
-	if got < 4999 || got > 5001 {
-		t.Fatalf("numeric commit did not propagate to audio: filter_cutoff=%v want ~5000", got)
-	}
-}
-
 // TestSynthEndlessDragDoesNotAudition drives the production
 // synthControlHitAdapter drag path (OnPress → OnDrag → OnRelease) and asserts
 // no audition fires. A 40-px horizontal drag is used so the direction-lock
@@ -292,7 +221,7 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 
-	prev := SwapSynthAuditionFnForTest(func(string) { t.Fatalf("endless knob drag must NOT audition") })
+	prev := SwapSynthAuditionFnForTest(func(instrument.ID) { t.Fatalf("endless knob drag must NOT audition") })
 	defer SwapSynthAuditionFnForTest(prev)
 
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -431,8 +360,10 @@ func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	if g.drum.synthAdvDividerRect.Empty() {
 		t.Fatal("OSC stage has advanced knobs but no divider band was laid out once scrolled into view")
 	}
-	// Scroll to the end: osc_detune (Advanced) acquires a rect — it is placed,
-	// not hidden.
+	// Open More, then scroll to the end: osc_detune (Advanced) acquires a rect
+	// — it is placed below the divider, not structurally hidden.
+	g.drum.setSynthMoreOpen(g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument()), true)
+	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	grid.ScrollToIndex(dividerStartIdx + cols + len(adv))
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	if g.drum.SynthTabControls()[idx].Rect().Empty() {
@@ -458,8 +389,85 @@ func TestP4_PhysicalModelParamsContextual(t *testing.T) {
 		{"filter_cutoff", 0, false}, // ordinary param → never gated by this rule
 	}
 	for _, c := range cases {
-		if got := synthOscModelParamHidden(audio.ParamDef{Name: c.name}, c.oscType); got != c.hidden {
-			t.Errorf("synthOscModelParamHidden(%q, oscType=%v) = %v, want %v", c.name, c.oscType, got, c.hidden)
+		if got := !audio.FlatFieldDeclared(map[string]float64{"osc_type": c.oscType}, c.name); got != c.hidden {
+			t.Errorf("hidden(%q, oscType=%v) = %v, want %v", c.name, c.oscType, got, c.hidden)
+		}
+	}
+}
+
+// TestCymbalModalKnobsOnlyWherePlateRuns pins the cymbal modal-plate knobs'
+// exposure against the SHIPPED instruments: the hi-hat and the ride (plate on) show
+// the plate knobs, but only the hi-hat — two cymbals clamped together — shows
+// the Rattle knobs; the crash (plate-capable, plate off) shows only the Plate
+// Modes switch; the cowbell (not a plate) shows none. The knobs only exist where
+// they move the sound. It walks the same macro categories the Synth tab root
+// builds, so a knob hidden here has no card to appear on.
+func TestCymbalModalKnobsOnlyWherePlateRuns(t *testing.T) {
+	claimed := func(id instrument.ID) map[string]bool {
+		defs, merged := instSchemaForTest(t, id)
+		out := map[string]bool{}
+		for _, g := range buildMacroGroupsAll(defs, merged) {
+			for _, p := range g.Params {
+				out[p] = true
+			}
+		}
+		return out
+	}
+	hihat, ride := claimed(roster.Hihat), claimed(roster.Ride)
+	crash, cowbell := claimed(roster.Crash), claimed(roster.Cowbell)
+	for _, f := range []string{"cym_modes", "cym_tone_f", "cym_beat", "cym_wash"} {
+		name := "gen1_" + f
+		if !ride[name] || !hihat[name] {
+			t.Errorf("%s hidden on ride=%v hihat=%v, want shown on both (the plate is running)", name, !ride[name], !hihat[name])
+		}
+		if cowbell[name] {
+			t.Errorf("cowbell: %s shown, want hidden (a cowbell never runs the plate)", name)
+		}
+		if want := f == "cym_modes"; crash[name] != want {
+			t.Errorf("crash: %s shown=%v, want %v (only the Plate Modes switch until it is on)", name, crash[name], want)
+		}
+	}
+	for _, name := range []string{"gen1_cym_rattle", "gen1_cym_rattle_decay", "gen1_cym_drive_delay"} {
+		if !hihat[name] {
+			t.Errorf("hihat: %s hidden, want shown (a hi-hat rattles)", name)
+		}
+		if ride[name] {
+			t.Errorf("ride: %s shown, want hidden (one suspended cymbal cannot rattle)", name)
+		}
+	}
+	// The legacy cymbal knobs the plate also reads stay on the ride.
+	for _, name := range []string{"gen1_cym_tune", "gen1_cym_env_tail", "gen1_cym_env_fast", "gen1_cym_noise_m"} {
+		if !ride[name] {
+			t.Errorf("ride: %s hidden, want shown (the modal voice reads it)", name)
+		}
+	}
+}
+
+// TestPhysicalKickKnobsOnlyOnPhysicalKicks pins Body Hold / Air (the Phase-19
+// kick_hold / kick_hiss columns) to the variant-8 Physical kicks that read them:
+// a Physical kick offers both on its category cards, a base kick and an 808
+// (other kick variants) offer neither — they would be dead knobs there.
+func TestPhysicalKickKnobsOnlyOnPhysicalKicks(t *testing.T) {
+	claimed := func(id instrument.ID) map[string]bool {
+		defs, merged := instSchemaForTest(t, id)
+		out := map[string]bool{}
+		for _, g := range buildMacroGroupsAll(defs, merged) {
+			for _, p := range g.Params {
+				out[p] = true
+			}
+		}
+		return out
+	}
+	for _, name := range []string{"gen1_kick_hold", "gen1_kick_hiss"} {
+		for _, r := range []instrument.ID{roster.KickBoomBap, roster.KickMuted} {
+			if !claimed(r)[name] {
+				t.Errorf("%s: %s hidden, want shown (the Physical voice reads it)", r, name)
+			}
+		}
+		for _, r := range []instrument.ID{roster.Kick, roster.Kick808, roster.KickFat} {
+			if claimed(r)[name] {
+				t.Errorf("%s: %s shown, want hidden (only the variant-8 voice reads it)", r, name)
+			}
 		}
 	}
 }
@@ -487,4 +495,115 @@ func wheelOverPoint(t *testing.T, g *Game, mx, my, dx, dy int) {
 	g.Update() // one frame with the wheel delta
 	active = false
 	g.Update() // settle (no wheel)
+}
+
+// TestSubBassKnobsAreEditable: the analytic dual-osc voice (gen source 4) has a
+// Synth-tab stage — every sound-shaping field the seed sets is a visible knob.
+func TestSubBassKnobsAreEditable(t *testing.T) {
+	defs, merged := instSchemaForTest(t, roster.SubBass)
+	claimed := map[string]bool{}
+	for _, g := range buildMacroGroupsAll(defs, merged) {
+		for _, p := range g.Params {
+			claimed[p] = true
+		}
+	}
+	for _, name := range []string{"gen1_harm_mix", "gen1_pitch_env_amt", "gen1_pitch_env_rate", "gen1_atk_amt", "gen1_atk_rate", "gen1_env_fast_rate", "gen1_sat_k", "gen1_out_scale", "gen1_wave", "voice_freq_hz"} {
+		if !claimed[name] {
+			t.Errorf("%s: no Synth-tab knob for the sub-bass voice", name)
+		}
+	}
+}
+
+// TestHihatAndRideAlwaysShowThePlate: the hi-hat (variant 0) and ride (variant
+// 4) have no voice except the modal plate, so dialing Plate Modes to 0 (which
+// the engine clamps to 1) must not hide the plate knobs.
+func TestHihatAndRideAlwaysShowThePlate(t *testing.T) {
+	for _, id := range []instrument.ID{roster.Hihat, roster.Ride} {
+		defs, merged := instSchemaForTest(t, id)
+		merged["gen1_cym_modes"] = 0
+		claimed := map[string]bool{}
+		for _, g := range buildMacroGroupsAll(defs, merged) {
+			for _, p := range g.Params {
+				claimed[p] = true
+			}
+		}
+		for _, f := range []string{"gen1_cym_tone_f", "gen1_cym_beat", "gen1_cym_wash"} {
+			if !claimed[f] {
+				t.Errorf("%s with Plate Modes 0: %s hidden, want shown (the plate always runs)", id, f)
+			}
+		}
+	}
+}
+
+// TestBasePitchKnobIsUsableAndStable: on an instrument that seeds a base
+// pitch (sub-bass 45 Hz), the Pitch knob spans a musical range on a log curve
+// (one step can't reach 0 Hz, which would switch the voice to note-derived
+// pitch), and it stays visible whatever the live value is (gating on the live
+// value made the knob delete itself mid-edit).
+func TestBasePitchKnobIsUsableAndStable(t *testing.T) {
+	const id = roster.SubBass
+	defs, merged := instSchemaForTest(t, id)
+	var def *audio.ParamDef
+	for i := range defs {
+		if defs[i].Name == "voice_freq_hz" {
+			def = &defs[i]
+		}
+	}
+	if def == nil {
+		t.Fatal("no voice_freq_hz ParamDef")
+	}
+	if def.Min < 20 || def.Max > 2000 || def.Curve != "log" {
+		t.Errorf("voice_freq_hz on %s = [%v,%v] curve %q, want within [20,2000] on a log curve", id, def.Min, def.Max, def.Curve)
+	}
+	merged["voice_freq_hz"] = 0 // a live edit to the floor
+	claimed := map[string]bool{}
+	for _, g := range buildMacroGroupsAll(defs, merged) {
+		for _, p := range g.Params {
+			claimed[p] = true
+		}
+	}
+	if !claimed["voice_freq_hz"] {
+		t.Error("the Pitch knob disappeared when its live value reached 0")
+	}
+	// An instrument that does not seed a base pitch still hides it.
+	plainDefs, plainMerged := instSchemaForTest(t, roster.PianoGrand)
+	for _, g := range buildMacroGroupsAll(plainDefs, plainMerged) {
+		for _, p := range g.Params {
+			if p == "voice_freq_hz" {
+				t.Error("piano-grand (note-derived pitch) shows an inert base-Pitch knob")
+			}
+		}
+	}
+}
+
+// TestSubBassKnobsHaveMusicalRanges: the analytic voice's knobs span ranges a
+// person can actually dial (the engine accepts 0..2000 for a decay RATE whose
+// seed is 2 — the whole useful range sat in the first 0.1% of the knob). The
+// body decay rate spans the Length dial's whole span (0.02..40 /s on a log
+// curve, the seed mid-knob): a knob means the same values on every instrument
+// (TestDialSpansAreTheSameOnEveryInstrument).
+func TestSubBassKnobsHaveMusicalRanges(t *testing.T) {
+	const id = roster.SubBass
+	defs, _ := instSchemaForTest(t, id)
+	maxRange := map[string]float64{
+		"gen1_harm_mix": 1, "gen1_pitch_env_amt": 1, "gen1_pitch_env_rate": 200,
+		"gen1_atk_amt": 1.5, "gen1_atk_rate": 400, "gen1_env_fast_rate": 40,
+		"gen1_sat_k": 4, "gen1_out_scale": 2,
+	}
+	for _, d := range defs {
+		want, ok := maxRange[d.Name]
+		if !ok {
+			continue
+		}
+		delete(maxRange, d.Name)
+		if d.Max > want {
+			t.Errorf("%s: knob max %v, want <= %v (a musical range)", d.Name, d.Max, want)
+		}
+		if d.Default < d.Min || d.Default > d.Max {
+			t.Errorf("%s: seed %v outside its knob range [%v,%v]", d.Name, d.Default, d.Min, d.Max)
+		}
+	}
+	for n := range maxRange {
+		t.Errorf("%s: no ParamDef on %s", n, id)
+	}
 }

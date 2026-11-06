@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-boom-bap",
+  "name": "Boom Bap Kick",
+  "category": "modular",
+  "notes": "kickBoomBapSeed: BOOM-BAP / hip-hop: fitted to a sampled hip-hop kick\n(Rnd_K1), pitched down to a deeper 45 Hz. Only ~25% tonal like the\nreference: the Air (vacuum) noise carries half the body; a short Body Hold\nand heavy drive under the glue limiter give the compressed, held body.",
+  "render": {
+    "seconds": 0.5,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 45
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.physical",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 2.25,
+        "kick_click": 0,
+        "kick_env0": 22,
+        "kick_env1": 2,
+        "kick_fade": 12,
+        "kick_h2": 0.15,
+        "kick_h3": 0.45,
+        "kick_h4": 0.1,
+        "kick_hiss": 0.7,
+        "kick_hold": 0.03,
+        "kick_mode_decay": 25,
+        "kick_mode_detune": 0.5,
+        "kick_mode_gain": 0,
+        "kick_noise": 0.2,
+        "kick_pe_amt": 1.35,
+        "kick_pe_rate": 48,
+        "kick_reverb": 0.85,
+        "kick_sat": 3.5
+      }
+    }
+  ]
+}

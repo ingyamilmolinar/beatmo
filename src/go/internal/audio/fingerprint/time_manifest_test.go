@@ -1,6 +1,10 @@
 package fingerprint
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 func TestLoadTimeManifest_OptionalFields(t *testing.T) {
 	m, err := LoadTimeManifest([]byte(`{
@@ -21,7 +25,7 @@ func TestLoadTimeManifest_OptionalFields(t *testing.T) {
 	if len(m.Sections) != 1 || m.Sections[0].Instruments[0] != "organ" {
 		t.Errorf("sections not parsed: %+v", m.Sections)
 	}
-	if len(m.TuningPassages) != 1 || m.TuningPassages[0].Instrument != "organ" {
+	if len(m.TuningPassages) != 1 || m.TuningPassages[0].Instrument != roster.Organ {
 		t.Errorf("tuning passages not parsed: %+v", m.TuningPassages)
 	}
 }

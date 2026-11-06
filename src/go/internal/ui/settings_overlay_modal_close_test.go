@@ -12,15 +12,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestSettingsOverlayHasNoCloseButton: the settings overlay has NO close (×)
-// button — it is toggled closed by the gear button (see
-// TestSettingsOverlayClosesViaGearToggle and TestTopRightMenusHaveNoCloseButton).
-func TestSettingsOverlayHasNoCloseButton(t *testing.T) {
+// TestSettingsOverlayHasCardCloseButton: the settings overlay is framed by the
+// shared MenuCard, so on desktop it publishes the card's close (×) hit area
+// like every other floating menu (the gear button still toggles it too —
+// TestSettingsOverlayClosesViaGearToggle). Mobile keeps tap-away (no ×).
+func TestSettingsOverlayHasCardCloseButton(t *testing.T) {
 	o := NewSettingsOverlay(func(i18n.Locale) {})
 	screen := image.Rect(0, 0, 1200, 800)
 	o.Layout(screen, screen)
-	if _, ok := findHitAreaByTag(o.HitAreas(), "settings-close"); ok {
-		t.Error("settings overlay must not publish a close (×) hit area")
+	_, ok := findHitAreaByTag(o.HitAreas(), "settings-close")
+	if ok != desktopCloseVisible() {
+		t.Errorf("settings-close hit area published=%v, want %v (desktopCloseVisible)", ok, desktopCloseVisible())
 	}
 }
 

@@ -41,7 +41,7 @@ type WavLocator func(ref string) (data []byte, ok bool)
 //
 // Unknown source kinds (no locator) are skipped, never fatal — future kinds
 // degrade gracefully on older builds.
-func ResolveWavRef(ref *WavRef, locators map[string]WavLocator) WavResolveResult {
+func ResolveWavRef(ref *WavRef, locators map[WavSourceKind]WavLocator) WavResolveResult {
 	if ref == nil {
 		return WavResolveResult{Status: WavResolveMissing}
 	}

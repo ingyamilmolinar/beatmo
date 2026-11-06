@@ -10,6 +10,7 @@
 package ui
 
 import (
+	"os"
 	"runtime"
 	"syscall/js"
 
@@ -114,6 +115,15 @@ func (g *Game) initJSDiag() {
 	js.Global().Set("resetAnalyzerBridgeStats", jsFn(func(args jsArgs) any {
 		audio.ResetAnalyzerBridgeStats()
 		return nil
+	}))
+
+	// __envProbe returns os.Getenv(name). Test-only diagnostic (double-
+	// underscore prefix exempts it from the bridge-surface catalogue, per
+	// the convention set by __synthEvtTrace / __wasmReady) used by
+	// wasm_env.browser.test.js to prove window.__beatmoEnv set before
+	// go.run() actually reaches Go's os.Getenv via go.env in index.html.
+	js.Global().Set("__envProbe", jsFn(func(args jsArgs) any {
+		return os.Getenv(args.Str(0))
 	}))
 }
 

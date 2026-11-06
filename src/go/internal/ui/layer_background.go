@@ -34,14 +34,14 @@ func (l *BackgroundLayer) Draw(dst *ebiten.Image) {
 		if r.Empty() {
 			continue
 		}
-		fill := colBGBottom
-		if mobile {
-			switch kind {
-			case WidgetTransport:
-				fill = colTransportSurface
-			case WidgetRack:
-				fill = colRackSurface
-			}
+		// The drum pane is ONE bed (rack-bed, Background category): the rack,
+		// the area under the rows and the header row — transport strip and
+		// the timeline header band right of the beat counter — all share it.
+		// The header used to take the base background, a black band running
+		// the width of the pane above the lighter rack.
+		fill := colRackSurface
+		if mobile && kind == WidgetTransport {
+			fill = colTransportSurface
 		}
 		drawRect(dst, r, fill, true)
 		if mobile && kind == WidgetTransport {

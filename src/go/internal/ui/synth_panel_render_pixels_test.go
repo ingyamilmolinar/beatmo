@@ -10,6 +10,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -39,9 +40,9 @@ func TestSynthPanelDrawIntercepts(t *testing.T) {
 	g.drum.Rows[0].Origin = uiNode.ID
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
-	audio.BindInstrumentToRecipe("snare", "drum-snare")
-	t.Cleanup(func() { audio.ResetInstrumentParams("snare") })
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -89,39 +90,41 @@ func TestSynthPanelDrawIntercepts(t *testing.T) {
 // collapsed-"not used" hint card with always-populated stage cards.
 func TestSynthPanelStageSectionRendersCard(t *testing.T) {
 	g := setupModularSynthGame(t)
-
-	var oscSection synthSection
-	found := false
-	for _, s := range g.drum.SynthTabSections() {
-		if s.SectionID() == synthSectionOsc {
-			oscSection = s
-			found = true
-			break
-		}
+	inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+	g.drum.setSynthStageOpen(inst, synthSectionOsc)
+	// A production-height panel: the 640×480 harness leaves the drilled grid a
+	// few px tall (header row + Back row), so the first card is a peek band.
+	expandSynthPanelForTest(t, g)
+	order := g.drum.instEditorDrilledOrder
+	if len(order) == 0 {
+		t.Fatal("drilled OSC stage laid out no controls")
 	}
-	if !found {
-		t.Fatal("modular synth tab has no OSC stage section")
-	}
-	if oscSection.Rect().Empty() {
-		t.Fatal("OSC stage section has empty rect")
+	card := g.drum.instEditorControls[order[0]].Rect()
+	if card.Empty() {
+		t.Fatal("OSC stage's first ParamCard has an empty rect")
 	}
 
+	// RENDER_SAFE bypass: the cards render through the sprite cache (offscreen,
+	// origin-relative), so draw straight to the screen for absolute rects.
+	oldSafe := envRenderSafe
+	envRenderSafe = true
+	t.Cleanup(func() { envRenderSafe = oldSafe })
 	rects := installDrawRectInterceptor(t)
-	scratch := ebiten.NewImage(640, 480)
+	scratch := ebiten.NewImage(1280, 720)
 	g.drum.eqPanelZone.Draw(scratch)
 	captured := rects.snapshot()
 
 	// The card must render its background (not be blank): at least one
-	// filled rect lying inside the section rect.
+	// filled rect lying inside the card rect.
 	foundCard := false
 	for _, r := range captured {
-		if r.In(oscSection.Rect()) && r.Dx() > 8 && r.Dy() > 8 {
+		if r.In(card) && r.Dx() > 8 && r.Dy() > 8 {
 			foundCard = true
 			break
 		}
 	}
 	if !foundCard {
-		t.Errorf("OSC stage section drew no card background (section %v)", oscSection.Rect())
+		t.Fatalf("no filled rect inside the OSC card %v (%d rects captured)", card, len(captured))
 	}
 }
 
@@ -141,8 +144,7 @@ func TestSynthPanelNoSynthBannerRenders(t *testing.T) {
 	g.drum.Rows[0].Node = uiNode
 	g.drum.Rows[0].Name = "Kick"
 	g.drum.Rows[0].Instrument = "kick-wav"
-	audio.BindInstrumentToRecipe("kick-wav", "")
-
+	audio.RemoveInstrumentDocForTest("kick-wav")
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 

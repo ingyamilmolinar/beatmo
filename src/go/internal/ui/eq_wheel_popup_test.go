@@ -74,17 +74,35 @@ func TestEQWheelPopup_SharesSourceOfTruthWithCurve(t *testing.T) {
 	}
 }
 
-// The wheel's center-box tap opens the numeric editor (numeric entry preserved).
-func TestEQWheelPopup_CenterBoxOpensNumericEditor(t *testing.T) {
+// The wheel's centre-box click CONFIRMS (Accept: commit once, close) — the
+// uniform "click the middle to confirm" contract. Typed entry was retired, so
+// the centre no longer hands off to a numeric editor.
+func TestEQWheelPopup_CenterClickConfirms(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	setupEQTabForTest(g, 1280, 720)
 	dv := g.drum
 
 	dv.openEQKnobWheelPopup(2)
-	dv.eqWheelPopup.binding.OpenEditor()
-	if dv.eqPanelZone.paramEditor == nil || !dv.eqPanelZone.paramEditor.Active() {
-		t.Fatal("center-box OpenEditor did not open the numeric editor")
+	w := dv.eqWheelPopup
+	commits := 0
+	orig := w.binding.OnCommit
+	w.binding.OnCommit = func() {
+		commits++
+		if orig != nil {
+			orig()
+		}
+	}
+	w.StepValue(+1)
+	h := &mobileWheelHitHandler{popup: w}
+	cx, cy := center(w.centerH)
+	h.OnPress(cx, cy)
+	h.OnRelease(cx, cy)
+	if w.IsOpen() {
+		t.Fatal("a centre click must close the wheel")
+	}
+	if commits != 1 {
+		t.Fatalf("a centre click after an edit commits exactly once, got %d", commits)
 	}
 }
 

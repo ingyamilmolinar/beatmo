@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // sampler_realtime.go — keeps the Sampler tab's waveform in sync with the live
@@ -22,7 +23,7 @@ import (
 // Synth-tab knobs write through audio.SetInstrumentParam); swappable in tests so
 // the re-capture trigger can be exercised without the real renderer (which, in
 // the test build, ignores params).
-var samplerSourceSignatureFn = func(instID string) uint64 {
+var samplerSourceSignatureFn = func(instID instrument.ID) uint64 {
 	// The descriptor signature is folded in so an externally-changed sample
 	// edit (import, startup rehydration) re-syncs the open editor, not just
 	// live param edits.
@@ -33,7 +34,7 @@ var samplerSourceSignatureFn = func(instID string) uint64 {
 // SwapSamplerSourceSignatureFnForTest installs a test fake for the source
 // signature provider and returns the previous value, mirroring
 // SwapSamplerCaptureFnForTest / SwapSamplerAuditionFnForTest.
-func SwapSamplerSourceSignatureFnForTest(fn func(string) uint64) func(string) uint64 {
+func SwapSamplerSourceSignatureFnForTest(fn func(instrument.ID) uint64) func(instrument.ID) uint64 {
 	prev := samplerSourceSignatureFn
 	if fn != nil {
 		samplerSourceSignatureFn = fn

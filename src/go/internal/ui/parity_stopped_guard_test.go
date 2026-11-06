@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Parity scan should ignore checks after playback is stopped so stale audio
@@ -26,7 +27,7 @@ func TestParityScanSkippedWhenNotPlaying(t *testing.T) {
 	g.drum.SetLength(1)
 	g.drum.Offset = 0
 	g.refreshDrumRow()
-	g.recordParityAudio(0, 0, 0.1, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
+	g.recordParityAudio(0, 0, 0.1, roster.Kick, 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
 	defer func() {
 		if r := recover(); r != nil {

@@ -5,7 +5,7 @@
 // unregisterSamplePCM(id) must (a) clear the chopped PCM from renderCache and
 // (b) restore the deleted RENDER[id] → C-synth mapping that registerSamplePCM
 // removed. Without either, a built-in that was Sampler-Saved over keeps playing
-// the chop (or goes silent) after Reset — the "reverse kick-1 won't reset" bug.
+// the chop (or goes silent) after Reset — the "reversed kick won't reset" bug.
 //
 // The test registers a SILENT PCM over the real "kick" synth (registerSamplePCM
 // deletes RENDER['kick'] and caches the silent buffer), then unregisters and

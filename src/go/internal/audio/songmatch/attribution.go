@@ -3,15 +3,16 @@ package songmatch
 import (
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/songrender"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
 type TuningHint struct {
-	Instrument string
+	Instrument instrument.ID
 	Kind       string // "band" | "seed"
 	Suggestion string
 	SeedDeltas map[string]float64
@@ -46,14 +47,14 @@ func BandAttribution(ref fingerprint.SongFingerprint, rendered songrender.Render
 		return nil
 	}
 	// Per-stem band energy, for picking the dominant stem in a band.
-	stemBands := make(map[string][]float64)
-	ids := make([]string, 0, len(rendered.Stems))
+	stemBands := make(map[instrument.ID][]float64)
+	ids := make([]instrument.ID, 0, len(rendered.Stems))
 	for id, s := range rendered.Stems {
 		fp := fingerprint.SongFingerprintOf(wave.Wave{Samples: s, SampleRate: sr}, cfg)
 		stemBands[id] = fp.Bands
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 
 	var hints []TuningHint
 	for b := range refN {
@@ -62,7 +63,8 @@ func BandAttribution(ref fingerprint.SongFingerprint, rendered songrender.Render
 			continue
 		}
 		// Dominant stem in this band.
-		bestID, bestE := "", -1.0
+		var bestID instrument.ID
+		bestE := -1.0
 		for _, id := range ids {
 			if b < len(stemBands[id]) && stemBands[id][b] > bestE {
 				bestE = stemBands[id][b]

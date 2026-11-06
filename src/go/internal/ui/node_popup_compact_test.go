@@ -24,7 +24,7 @@ func TestNodePopupCompactSize(t *testing.T) {
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	g.sidebar.layout()
-	r, ok := g.sidebar.rects["panel"]
+	r, ok := g.sidebar.rects[sbPanel]
 	if !ok || r.Empty() {
 		t.Fatalf("missing panel rect")
 	}
@@ -65,7 +65,7 @@ func TestNodePopupCompactSizeMobile(t *testing.T) {
 	n := g.tryAddNode(2, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	g.sidebar.layout()
-	r, ok := g.sidebar.rects["panel"]
+	r, ok := g.sidebar.rects[sbPanel]
 	if !ok || r.Empty() {
 		t.Fatalf("missing panel rect")
 	}

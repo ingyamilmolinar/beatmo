@@ -6,6 +6,8 @@ import (
 	"image"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -61,9 +63,9 @@ func TestSamplerLayoutNoOverflowDesktop(t *testing.T) {
 	g := samplerLayoutGame(t)
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	contentR := image.Rect(0, 0, 1280, 180) // realistic desktop EQ-panel content
-	g.drum.buildSamplerTab(contentR, "kick")
+	g.drum.buildSamplerTab(contentR, roster.Kick)
 	assertSamplerNoOverflow(t, g.drum, contentR)
 }
 
@@ -72,20 +74,20 @@ func TestSamplerLayoutNoOverflowMobile(t *testing.T) {
 	withSmallScreen(t, true)
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	contentR := image.Rect(0, 0, 390, 270)
-	g.drum.buildSamplerTab(contentR, "kick")
+	g.drum.buildSamplerTab(contentR, roster.Kick)
 	assertSamplerNoOverflow(t, g.drum, contentR)
 }
 
 func TestSamplerHeaderTitleClearsButtons(t *testing.T) {
 	g := samplerLayoutGame(t)
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), roster.Kick)
 	// The header's right-aligned action buttons must never overlap the SAMPLER
 	// title on the left.
 	titleEnd := g.drum.sampler.headerRect.Min.X + samplerTitlePad + TextWidth("SAMPLER")
-	for _, tag := range []string{"sampler-save", "sampler-save-as", "sampler-reset"} {
+	for _, tag := range []string{"sampler-save-as"} {
 		b := g.drum.samplerButtonByTag(tag)
 		if b == nil {
 			t.Fatalf("missing button %q", tag)
@@ -99,10 +101,9 @@ func TestSamplerHeaderTitleClearsButtons(t *testing.T) {
 
 func TestSamplerHeaderButtonsFitLabels(t *testing.T) {
 	g := samplerLayoutGame(t)
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), roster.Kick)
 	for _, tc := range []struct{ tag, label string }{
-		{"sampler-save", "Save"},
 		{"sampler-save-as", "Save As"},
 	} {
 		b := g.drum.samplerButtonByTag(tc.tag)
@@ -117,43 +118,20 @@ func TestSamplerHeaderButtonsFitLabels(t *testing.T) {
 	}
 }
 
-func TestSamplerResetButtonPresentAndFitsLabel(t *testing.T) {
-	g := samplerLayoutGame(t)
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
-	b := g.drum.samplerButtonByTag("sampler-reset")
-	if b == nil {
-		t.Fatal("missing button \"sampler-reset\"")
-	}
-	if b.Rect().Dx() < TextWidth("Reset") {
-		t.Errorf("Reset button width %d < label width %d (would truncate)", b.Rect().Dx(), TextWidth("Reset"))
-	}
-}
 
-func TestSamplerResetDisabledWhenEmpty(t *testing.T) {
-	g := samplerLayoutGame(t)
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "")
-	b := g.drum.samplerButtonByTag("sampler-reset")
-	if b == nil {
-		t.Fatal("missing button \"sampler-reset\"")
-	}
-	if b.SpecID != ComponentButtonDisabled {
-		t.Errorf("Reset SpecID=%v, want ComponentButtonDisabled in empty state", b.SpecID)
-	}
-}
 
 func TestSamplerResetMobileRelocatedToStickyBar(t *testing.T) {
 	g := samplerLayoutGame(t)
 	withSmallScreen(t, true)
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), roster.Kick)
 
-	// Approach B: on mobile the Preview/Save/Save As/Reset actions relocate to
-	// the sticky bar, so the in-panel Reset (and Save/Save As) rects are empty —
+	// Approach B: on mobile the Preview/Save As actions relocate to the sticky
+	// bar, so the in-panel Save As (and Preview) rects are empty —
 	// only the Rev/Norm/Fade transforms row stays in-panel.
-	for _, tag := range []string{"sampler-reset", "sampler-save", "sampler-save-as", "sampler-preview"} {
+	for _, tag := range []string{"sampler-save-as", "sampler-preview"} {
 		if b := g.drum.samplerButtonByTag(tag); b != nil && !b.Rect().Empty() {
 			t.Errorf("%s still laid out in-panel on mobile (should be on the sticky bar)", tag)
 		}
@@ -172,7 +150,7 @@ func TestSamplerEmptyStateDisablesActions(t *testing.T) {
 	dv := g.drum
 
 	// Save / Save As / Preview / toggles disabled.
-	for _, tag := range []string{"sampler-save", "sampler-save-as", "sampler-preview", "sampler-reverse", "sampler-normalize", "sampler-fade"} {
+	for _, tag := range []string{"sampler-save-as", "sampler-preview", "sampler-reverse", "sampler-normalize", "sampler-fade"} {
 		b := dv.samplerButtonByTag(tag)
 		if b == nil {
 			t.Errorf("missing button %q", tag)
@@ -191,7 +169,7 @@ func TestSamplerEmptyStateDisablesActions(t *testing.T) {
 	// Hit areas exclude knobs/handles/save in empty state.
 	for _, a := range dv.samplerTabHitAreas() {
 		switch {
-		case a.Tag == "sampler-save", a.Tag == "sampler-preview":
+		case a.Tag == "sampler-save-as", a.Tag == "sampler-preview":
 			t.Errorf("hit area %q present in empty state; should be inert", a.Tag)
 		case len(a.Tag) >= 13 && a.Tag[:13] == "sampler-knob-":
 			t.Errorf("knob hit area %q present in empty state", a.Tag)
@@ -201,13 +179,13 @@ func TestSamplerEmptyStateDisablesActions(t *testing.T) {
 
 func TestSamplerLoadedStateEnablesActions(t *testing.T) {
 	g := samplerLayoutGame(t)
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), roster.Kick)
 	dv := g.drum
 
-	save := dv.samplerButtonByTag("sampler-save")
+	save := dv.samplerButtonByTag("sampler-save-as")
 	if save == nil || save.SpecID == ComponentButtonDisabled {
-		t.Error("Save must be enabled when a buffer is loaded")
+		t.Error("Save As must be enabled when a buffer is loaded")
 	}
 	for i, k := range dv.sampler.knobs {
 		if k == nil || k.Rect().Empty() {
@@ -218,7 +196,7 @@ func TestSamplerLoadedStateEnablesActions(t *testing.T) {
 
 func TestSamplerKnobCardSizeFromDensity(t *testing.T) {
 	g := samplerLayoutGame(t)
-	g.drum.sampler.captureFromSynth("kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
 	bigR := image.Rect(0, 0, 1280, 320) // ample room so density, not space, governs
 
 	// The card HEIGHT is the density-driven ParamCardH token; its width clamps to
@@ -227,7 +205,7 @@ func TestSamplerKnobCardSizeFromDensity(t *testing.T) {
 	measure := func(d Density) int {
 		restore := SetDensityForTest(d)
 		defer restore()
-		g.drum.buildSamplerTab(bigR, "kick")
+		g.drum.buildSamplerTab(bigR, roster.Kick)
 		return g.drum.sampler.knobs[samplerKnobStart].Rect().Dy()
 	}
 	compact := measure(DensityCompact)
@@ -242,7 +220,7 @@ func TestSamplerKnobCardSizeFromDensity(t *testing.T) {
 
 func TestSamplerWaveformScratchReused(t *testing.T) {
 	s := &samplerState{}
-	s.captureFromSynth("kick")
+	s.captureFromSynth(roster.Kick)
 	a := s.waveFloat64()
 	capA := cap(a)
 	b := s.waveFloat64()
@@ -255,7 +233,7 @@ func TestSamplerWaveformScratchReused(t *testing.T) {
 }
 
 func TestSamplerCaptureEmptyReportsStatus(t *testing.T) {
-	restore := SwapSamplerCaptureFnForTest(func(id string) ([]float32, int) { return nil, 0 })
+	restore := SwapSamplerCaptureFnForTest(func(id instrument.ID) ([]float32, int) { return nil, 0 })
 	defer SwapSamplerCaptureFnForTest(restore)
 
 	s := &samplerState{}
@@ -277,8 +255,8 @@ func TestSamplerButtonsDoNotOverlapMobile(t *testing.T) {
 	withSmallScreen(t, true)
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), "kick")
+	g.drum.sampler.captureFromSynth(roster.Kick)
+	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), roster.Kick)
 
 	type named struct {
 		tag string

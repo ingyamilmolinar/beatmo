@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -34,7 +35,7 @@ func TestEQCurveGeometricMean(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.calcLayout()
 
-	bands := dv.buildEQBands(dv.eqBandGainsDB(), dv.eqBandMuted())
+	bands := dv.buildFullEQBands(dv.eqBandGainsDB(), dv.eqBandMuted(), false, 20, false, 20000)
 	expectedCenters := []float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
 	for i, b := range bands {
 		expected := expectedCenters[i]
@@ -54,7 +55,7 @@ func TestEQCurveConstantQ(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.calcLayout()
 
-	bands := dv.buildEQBands(dv.eqBandGainsDB(), dv.eqBandMuted())
+	bands := dv.buildFullEQBands(dv.eqBandGainsDB(), dv.eqBandMuted(), false, 20, false, 20000)
 	for i, b := range bands {
 		if math.Abs(b.Q-1.414) > 0.001 {
 			t.Errorf("band %d: expected Q=1.414, got %.3f", i, b.Q)
@@ -155,7 +156,7 @@ func TestEQCurveHPFHandleDrag(t *testing.T) {
 	if !consumed {
 		t.Fatal("expected HPF handle to consume press")
 	}
-	if dv.eqCurveDragFilter != "hpf" {
+	if dv.eqCurveDragFilter != hooks.FilterHPF {
 		t.Fatalf("expected eqCurveDragFilter='hpf', got %q", dv.eqCurveDragFilter)
 	}
 
@@ -174,7 +175,7 @@ func TestEQCurveHPFHandleDrag(t *testing.T) {
 	if !consumed {
 		t.Fatal("expected release to consume")
 	}
-	if dv.eqCurveDragFilter != "" {
+	if dv.eqCurveDragFilter != hooks.FilterNone {
 		t.Errorf("expected drag filter reset to empty, got %q", dv.eqCurveDragFilter)
 	}
 }
@@ -204,7 +205,7 @@ func TestEQCurveLPFHandleDrag(t *testing.T) {
 	if !consumed {
 		t.Fatal("expected LPF handle to consume press")
 	}
-	if dv.eqCurveDragFilter != "lpf" {
+	if dv.eqCurveDragFilter != hooks.FilterLPF {
 		t.Fatalf("expected eqCurveDragFilter='lpf', got %q", dv.eqCurveDragFilter)
 	}
 
@@ -223,7 +224,7 @@ func TestEQCurveLPFHandleDrag(t *testing.T) {
 	if !consumed {
 		t.Fatal("expected release to consume")
 	}
-	if dv.eqCurveDragFilter != "" {
+	if dv.eqCurveDragFilter != hooks.FilterNone {
 		t.Errorf("expected drag filter reset to empty, got %q", dv.eqCurveDragFilter)
 	}
 }

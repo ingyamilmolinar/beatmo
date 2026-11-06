@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 // TestAllStagePushesDuringRead drives the desktop mixer through Read() and
-// asserts that every block-pipeline stage — AntiPop, InsertFX, EQ, Sends,
+// asserts that every block-pipeline stage — AntiPop, InsertFX, EQ,
 // Master — receives samples in the scope service's ring buffers.
 //
 // StageSynth is covered separately by scope/service_test.go's
@@ -43,13 +45,13 @@ func TestAllStagePushesDuringRead(t *testing.T) {
 		masterBuf: make([]float64, blockSize),
 		postFXBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
-		instSlots: make(map[string]int),
+		instSlots: make(map[channel.ID]int),
 	}
 
 	// Schedule a few overlapping voices to keep the mixer busy through Read().
 	const voiceSamples = 8192
 	for i := 0; i < 3; i++ {
-		m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+		m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 	}
 
 	// Drive enough samples through Read() so every block-processing stage
@@ -62,7 +64,6 @@ func TestAllStagePushesDuringRead(t *testing.T) {
 		scope.StageAntiPop,
 		scope.StageInsertFX,
 		scope.StageEQ,
-		scope.StageSends,
 		scope.StageMaster,
 	}
 	for _, stage := range blockStages {
@@ -73,7 +74,7 @@ func TestAllStagePushesDuringRead(t *testing.T) {
 
 			// Push more audio so the new tap selection gets fresh data.
 			for i := 0; i < 4; i++ {
-				m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+				m.Schedule(channel.Of(roster.Kick), newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 			}
 			readMixerSamples(m, voiceSamples)
 
@@ -84,7 +85,7 @@ func TestAllStagePushesDuringRead(t *testing.T) {
 					return // success
 				}
 				// Keep the mixer producing audio while we wait so master-path
-				// stages (Sends/Master) always have fresh data to publish.
+				// stages (Master) always have fresh data to publish.
 				readMixerSamples(m, blockSize)
 				time.Sleep(20 * time.Millisecond)
 			}

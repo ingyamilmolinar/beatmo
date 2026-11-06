@@ -18,18 +18,18 @@ import (
 // renderSnare deleted — the snare family migrated to the modular engine
 // (Phase-5). The no-edit native fast path is renderSnareVoice
 // (snare_modular_native.go), which renders the baked recipe-default
-// ModularParams through render_modular_p.
+// param block through render_modular_p.
 
 // renderKick deleted — the base kick migrated to the modular engine (Phase-3).
 // The no-edit native fast path is renderKickVoice (kick_modular_native.go),
-// which renders the baked recipe-default ModularParams through render_modular_p.
+// which renders the baked recipe-default param block through render_modular_p.
 
 // renderHiHat / renderOpenHiHat / renderCowbell / renderShaker / renderRide /
 // renderCrash deleted — the cymbal family migrated to the modular engine
 // (Phase-6). The no-edit native fast paths are renderHiHatVoice /
 // renderOpenHiHatVoice / renderCowbellVoice / renderShakerVoice / renderRideVoice
 // / renderCrashVoice (cymbal_modular_native.go), which render the baked
-// recipe-default ModularParams through render_modular_p; the recipe/edit path
+// recipe-default param block through render_modular_p; the recipe/edit path
 // renders through the modular binding (cymbalRecipeToModular).
 
 // renderTom / renderTomHigh / renderTomLow deleted — the tom family migrated to
@@ -43,7 +43,7 @@ import (
 // renderBassGuitar / renderSubBass deleted — the bass family migrated to the
 // modular engine (Phase-2). The no-edit native fast path is renderSubBassVoice
 // / renderSubBassVoice (bass_modular_native.go), which renders the baked
-// recipe-default ModularParams through render_modular_p.
+// recipe-default param block through render_modular_p.
 
 // renderSnareRimshot / renderSnareSidestick deleted — the snare family migrated
 // to the modular engine (Phase-5). The no-edit native fast paths are
@@ -59,7 +59,11 @@ func loadAudio(path string) ([]float32, int, error) {
 	defer C.free(unsafe.Pointer(cpath))
 	var ptr *C.float
 	var sr C.int
-	frames := C.load_audio(cpath, C.int(sampleRate), &ptr, &sr) //nolint:gocritic // dupSubExpr false positive in CGo
+	// Target rate 0: decode at the file's OWN rate. The conversion to the
+	// engine rate is pcmAtEngineRate (ResampleToRate), the same Go the browser
+	// runs on the same decoded PCM — never miniaudio's resampler on one side
+	// and decodeAudioData's on the other.
+	frames := C.load_audio(cpath, 0, &ptr, &sr) //nolint:gocritic // dupSubExpr false positive in CGo
 	if frames < 0 {
 		msg := C.GoString(C.result_description(C.int(frames)))
 		return nil, 0, fmt.Errorf("load_audio: %s", msg)

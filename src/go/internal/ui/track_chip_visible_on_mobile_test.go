@@ -32,9 +32,10 @@ func TestTrackChip_VisibleOnMobile(t *testing.T) {
 	if r.Empty() {
 		t.Fatalf("track chip rect empty on mobile; want non-empty inside the timeline ruler header")
 	}
-	// Chip must hit the touch-target floor.
-	if r.Dx() < TouchMinTarget() || r.Dy() < TouchMinTarget() {
-		t.Errorf("track chip %v below touch target %d", r, TouchMinTarget())
+	// The chip's finger target (Touch-expanded hit area) must hit the floor;
+	// the visible keycap itself is compact.
+	if tr := trackTouchRect(t, dv); tr.Dx() < TouchMinTarget() || tr.Dy() < TouchMinTarget() {
+		t.Errorf("track chip touch target %v below touch target %d", tr, TouchMinTarget())
 	}
 	// Unified layout: the track/lock chip is the LEFT anchor of the band, so
 	// it sits to the LEFT of the beat counter (which itself sits left of the

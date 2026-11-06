@@ -22,20 +22,6 @@ func TestNativeGesture_NoDirectRegistrarCallsOutsideSeam(t *testing.T) {
 		"filepicker_wasm.go": true, "filepicker_stub.go": true,
 		"softkeyboard_wasm.go": true, "softkeyboard_stub.go": true,
 		"mobile_input_wasm.go": true, "mobile_input_stub.go": true,
-		// User-approved pragmatic exception (see native_gesture.go's
-		// activeParamEditorNativeRects doc comment): the shared numeric
-		// ParamValueEditor (synth-param / sampler-param / eq-db-N) is not a
-		// portal, so it has no ownerID for the tree's TopmostOwnerAt gate to
-		// key on — there is no "owner" to route through the seam's producer
-		// pattern. It keeps its one-shot open-time mobileInputRegister call
-		// (OpenValue, ~line 148) to arm the native <input> the instant the
-		// editor opens. Safety net: activeParamEditorNativeRects() in
-		// native_gesture.go re-adds the active editor's rect every frame so
-		// the seam's clear-and-re-arm cycle in syncNativeGestures does not
-		// wipe it. See TestParamEditorNativeRectArmedBySync (native_gesture_test.go)
-		// and TestParamEditorOpenValueArmsMobileInput (this task) for the two
-		// halves of that contract.
-		"param_value_editor.go": true,
 	}
 	files, _ := filepath.Glob("*.go")
 	for _, f := range files {

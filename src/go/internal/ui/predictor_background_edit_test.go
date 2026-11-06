@@ -29,35 +29,35 @@ func buildComplexGraph(g *Game) []*uiNode {
 	// Mixed logic
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.41
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(B.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(C.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 4
 		g.graph.SetNodeParams(C.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(D.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_triggered"
+		p.LogicKind = model.LogicIfPrevTriggered
 		g.graph.SetNodeParams(D.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(E.ID); ok {
 		p := n.Params
-		p.LogicKind = "trigger_if_prev_skipped"
+		p.LogicKind = model.LogicIfPrevSkipped
 		g.graph.SetNodeParams(E.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(F.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.27
 		g.graph.SetNodeParams(F.ID, p)
 	}
@@ -114,7 +114,7 @@ func TestLiveEditRecomputesPredictions(t *testing.T) {
 	// Start with A probability 0.0 (always skipped).
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 0.0
 		g.graph.SetNodeParams(A.ID, p)
 	}
@@ -136,7 +136,7 @@ func TestLiveEditRecomputesPredictions(t *testing.T) {
 	// Edit A to probability 1.0 and ensure predictions are recomputed.
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "probability"
+		p.LogicKind = model.LogicProbability
 		p.LogicP = 1.0
 		g.graph.SetNodeParams(A.ID, p)
 	}

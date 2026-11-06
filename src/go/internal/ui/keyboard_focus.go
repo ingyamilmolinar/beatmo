@@ -31,13 +31,61 @@ func (t *DrumViewTree) OwnsKeyboard() bool {
 	return false
 }
 
-// ClaimsKeyboard reports whether this portal's top overlay claims the keyboard.
+// ClaimsKeyboard reports whether the node sidebar owns the keyboard.
+//
+// It does while the note-matrix picker is open: the picker's cursor moves on
+// the arrow keys, and the grid's arrow-pan must not run on the same press —
+// one keypress would otherwise both move the note cursor and pan the camera.
+//
+// The sidebar is a Game-level surface (it renders through GridTree, not the
+// DrumView trees), which is why Game.KeyboardClaimed exists to union it with
+// DrumView.KeyboardClaimed rather than it being reachable from there.
+func (sb *NodeSidebar) ClaimsKeyboard() bool {
+	return sb != nil && sb.openPicker() != nil
+}
+
+// KeyboardClaimed is the single keyboard-ownership predicate for the WHOLE
+// window: the bottom panel's surfaces plus the Game-level ones (currently the
+// node sidebar). handleGlobalShortcuts consults this, so every gated grid
+// shortcut yields to whichever surface is active.
+//
+// Add new keyboard-owning surfaces HERE (or to DrumView.KeyboardClaimed for
+// bottom-panel ones) — never as an inline check at a shortcut site.
+//
+// This is the TOTAL claim ("every key is mine", the right answer for a focused
+// text field). A control that owns only a few keys — a value popup wanting the
+// arrows — declares them via KeyboardKeyClaimant instead; see
+// keyboard_key_claim.go.
+func (g *Game) KeyboardClaimed() bool {
+	if g == nil {
+		return false
+	}
+	if g.sidebar.ClaimsKeyboard() {
+		return true
+	}
+	return g.drum != nil && g.drum.KeyboardClaimed()
+}
+
+// ClaimsKeyboard reports whether ANY overlay in this portal claims the keyboard.
+//
+// The WHOLE stack is scanned, not just the top. Consulting only TopOverlay made
+// the claim depend on nothing else having opened since: a tooltip, a
+// notification or any transient surface landing on top silently dropped it, and
+// the grid took the arrows back while the claiming overlay was still open and
+// visible on screen. That is not a state the claiming component can detect or
+// defend against, so the portal has to answer for its whole stack.
+//
+// Only one overlay normally claims at a time, so scanning is safe: the answer
+// is "is a keyboard-owning surface open", which is exactly what the grid needs
+// in order to yield.
 func (p *OverlayPortal) ClaimsKeyboard() bool {
 	if p == nil {
 		return false
 	}
-	if c, ok := p.TopOverlay().(KeyboardClaimant); ok {
-		return c.ClaimsKeyboard()
+	for _, e := range p.stack {
+		if c, ok := e.Overlay.(KeyboardClaimant); ok && c.ClaimsKeyboard() {
+			return true
+		}
 	}
 	return false
 }
@@ -63,9 +111,10 @@ func (dv *DrumView) KeyboardClaimed() bool {
 	if dv.overlayTree != nil && dv.overlayTree.OwnsKeyboard() {
 		return true
 	}
-	if dv.valueEditorActive() {
-		return true
-	}
+	// NOTE: an armed Synth/Sampler control is deliberately NOT here. It owns
+	// only the arrows, not the whole keyboard, so it declares itself as a
+	// PARTIAL claimant instead (armedControlKeyClaimant, keyboard_key_claim.go)
+	// — Space still plays and [ ] still zoom while a control is armed.
 	if dv.saveAsDialog != nil && dv.saveAsDialog.ClaimsKeyboard() {
 		return true
 	}

@@ -70,7 +70,7 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	}
 
 	// Keep the popup clear of the settings gear's protected top-right zone.
-	rect := avoidReservedRect(image.Rect(px, py, px+panelW, py+panelH), g.gridHelpReservedRect(), gridW, gridH)
+	rect := avoidReservedRect(image.Rect(px, py, px+panelW, py+panelH), g.gridTopButtonsReservedRect(), gridW, gridH)
 	g.longPressPopupRect = rect
 	px, py = rect.Min.X, rect.Min.Y
 	// Buttons inside the panel, with padding.
@@ -206,11 +206,14 @@ func (g *Game) longPressPopupAccent() color.Color {
 // and broke the filled-control pattern.
 func longPressDeleteTextColor() color.Color { return genColorBackground }
 
-// drawPopupActionCap renders one quick-action keycap: shared keycap chrome,
+// drawPopupActionCap renders one quick-action chip: shared flat-tonal chrome,
 // a leading/top icon, and a centered label. tint colors BOTH icon and label
 // (instrument accent on hover); delete overrides via its own fill/label.
+// The border parameter is retained for call-site compatibility but unused —
+// the flat-tonal system draws no border at rest.
 func drawPopupActionCap(dst *ebiten.Image, rect image.Rectangle, icon IconID, label string, fill, border, tint color.Color, hovered bool) {
-	capRect := drawKeycapPanelButton(dst, rect, fill, border, hovered)
+	_ = border
+	capRect := drawFlatPanelButton(dst, rect, fill, hovered)
 	iconSz := IconSizeMD
 	ix := capRect.Min.X + (capRect.Dx()-iconSz)/2
 	iy := capRect.Min.Y + SpaceXS

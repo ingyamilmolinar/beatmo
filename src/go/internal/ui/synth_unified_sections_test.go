@@ -9,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthUnified_EverySynthRecipeUsesStandardOrder is the Phase-8B
-// unification discipline: every shipped synth (non-WAV) recipe lays out as a
+// TestSynthUnified_EverySynthInstrumentUsesStandardOrder is the Phase-8B
+// unification discipline: every shipped synth (non-WAV) instrument lays out as a
 // PREFIX-preserving subsequence of the standardized pipeline order
 //
 //	VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE · FILTER ·
@@ -20,12 +22,12 @@ import (
 //
 // (PITCH/LFO/BURST are the Phase-8C modulator stages — the spec-§1 gap
 // closure; ENSEMBLE/FORMANT/RESONATOR are the Phase-15 voice/choir stages —
-// Task 8.) Sections may be pruned (a recipe with no FM stage has no FM card),
+// Task 8.) Sections may be pruned (an instrument with no FM stage has no FM card),
 // but the surviving sections must always appear in this exact relative order,
 // and POST must always be present (every synth carries gain + a post toggle,
 // or a generic post knob). This is the user-facing deliverable: the same
 // sections, in the same order, for every synth instrument.
-func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
+func TestSynthUnified_EverySynthInstrumentUsesStandardOrder(t *testing.T) {
 	rank := map[synthSectionID]int{
 		synthSectionVoice:     0,
 		synthSectionOsc:       1,
@@ -41,14 +43,12 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 		synthSectionFormant:   11,
 		synthSectionResonator: 12,
 		synthSectionPost:      13,
+		synthSectionFinish:    14,
 	}
-	for id, reg := range audio.RecipeRegistrations() {
-		if reg == nil {
-			continue
-		}
-		order := synthSectionOrderForSchema(reg.Params)
+	for _, id := range roster.All {
+		order := synthSectionOrderForSchema(audio.InstrumentParamDefs(id))
 		if len(order) == 0 {
-			t.Errorf("recipe %q: no sections (every synth recipe must show at least POST)", id)
+			t.Errorf("instrument %q: no sections (every synth instrument must show at least POST)", id)
 			continue
 		}
 		last := -1
@@ -56,11 +56,11 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 		for _, sec := range order {
 			r, ok := rank[sec]
 			if !ok {
-				t.Errorf("recipe %q: section %v is not part of the standardized order", id, sec)
+				t.Errorf("instrument %q: section %v is not part of the standardized order", id, sec)
 				continue
 			}
 			if r <= last {
-				t.Errorf("recipe %q: section order %v is not the standardized subsequence (VOICE·OSC·ENSEMBLE·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·FILTER ENV·FORMANT·RESONATOR·POST)", id, order)
+				t.Errorf("instrument %q: section order %v is not the standardized subsequence (VOICE·OSC·ENSEMBLE·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·FILTER ENV·FORMANT·RESONATOR·POST)", id, order)
 				break
 			}
 			last = r
@@ -69,7 +69,7 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 			}
 		}
 		if !havePost {
-			t.Errorf("recipe %q: standardized order %v is missing the POST section", id, order)
+			t.Errorf("instrument %q: standardized order %v is missing the POST section", id, order)
 		}
 	}
 }
@@ -95,17 +95,17 @@ func TestVoiceStagesRouting(t *testing.T) {
 
 // TestSynthUnified_EveryStageSectionHasEnablePill — the "enable/disable any
 // stage on any synth instrument" deliverable, in the chip-strip redesign: for
-// every shipped synth recipe, each standardized STAGE section the recipe
+// every shipped synth instrument, each standardized STAGE section the instrument
 // appended (OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER + the POST stage)
 //
-//	(a) appears as a chip in dv.instEditorChips — a disabled stage stays
-//	    visible as a ghost chip, so the full pipeline never disappears; and
+//	(a) is part of the pipeline strip model — an OFF stage is listed under
+//	    the "+" pill, so the full pipeline never disappears; and
 //	(b) when SELECTED at production panel height, surfaces its enable pill in
 //	    the detail-pane header (dv.synthDetailEnablePillRect() is non-empty).
 //
 // The VOICE section never carries an enable pill (the voice IS the instrument).
-// The per-section expectation keys off whether the recipe actually appended
-// that stage's enable toggle — a recipe whose voice IS the FM stage (the fm-*
+// The per-section expectation keys off whether the instrument actually declares
+// that stage's enable toggle — an instrument whose voice IS the FM stage (the fm-*
 // family) has the FM stage collision-excluded, so it shows no FM chip and is
 // not required to carry an fm_enabled pill.
 func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
@@ -120,19 +120,25 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 		synthSectionEnvelope:  {"env_enabled"},
 		synthSectionFilter:    {"filter_enabled"},
 		synthSectionFilterEnv: {"filtenv_enabled"},
-		synthSectionPost:      {"drive_enabled", "post_enabled"},
+		synthSectionPost:      {"drive_enabled"},
 	}
-	chipFor := func(dv *DrumView, id synthSectionID) (synthChip, bool) {
-		for _, c := range dv.instEditorChips {
-			if c.id == id {
-				return c, true
+	// stageInPipeline reports whether the strip model knows the stage (on or
+	// off — an off stage lives under the "+" pill, never disappears).
+	stageInPipeline := func(dv *DrumView, id synthSectionID) bool {
+		on, off := dv.synp().activePipelineStages(dv.synthTabActiveInstrument())
+		for _, i := range append(on, off...) {
+			if dv.instEditorSections[i].id == id {
+				return true
 			}
 		}
-		return synthChip{}, false
+		return false
 	}
-	for _, recipeID := range synthRecipeIDsForTest(t) {
-		instID := "ut-" + recipeID
-		audio.BindInstrumentToRecipe(instID, recipeID)
+	for _, libID := range roster.All {
+		instID := "ut-" + libID
+		if err := audio.InstallInstrumentDocForTest(instID, libID); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { audio.RemoveInstrumentDocForTest(instID) })
 		g := newSynthTabGame(t)
 		g.drum.Rows[0].Instrument = instID
 		// Production-like panel height so the detail-pane enable pill is laid
@@ -145,7 +151,7 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 		// VOICE never carries an enable pill.
 		for _, s := range g.drum.SynthTabSections() {
 			if s.SectionID() == synthSectionVoice && s.EnableParam() != "" {
-				t.Errorf("recipe %q: VOICE section has enable pill %q (the voice has none)", recipeID, s.EnableParam())
+				t.Errorf("instrument %q: VOICE section has enable pill %q (the voice has none)", libID, s.EnableParam())
 			}
 		}
 
@@ -155,13 +161,13 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 			if !isStage {
 				continue
 			}
-			// Does the recipe actually own this stage's enable toggle in its
+			// Does the instrument actually own this stage's enable toggle in its
 			// schema? (A collision-excluded stage section is never shown, and a
 			// plugin recipe that only wires generic knobs into ENVELOPE/POST
 			// carries no toggle there — legitimately no pill.)
 			ownsToggle := false
 			for _, tg := range toggles {
-				if recipeHasVisibleParam(recipeID, tg) {
+				if instHasVisibleParam(string(libID), tg) {
 					ownsToggle = true
 				}
 			}
@@ -170,22 +176,22 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 			}
 			sawStageSection = true
 			if s.EnableParam() == "" {
-				t.Errorf("recipe %q: stage section %q has no enable param", recipeID, s.Label())
+				t.Errorf("instrument %q: stage section %q has no enable param", libID, s.Label())
 				continue
 			}
-			// (a) the stage appears as a chip in the strip.
-			if _, ok := chipFor(g.drum, s.SectionID()); !ok {
-				t.Errorf("recipe %q: stage section %q is not a chip in the strip", recipeID, s.Label())
+			// (a) the stage is part of the pipeline model (strip pill or "+").
+			if !stageInPipeline(g.drum, s.SectionID()) {
+				t.Errorf("instrument %q: stage section %q is not in the pipeline strip model", libID, s.Label())
 			}
 			// (b) when selected, the detail-header pill is non-empty.
 			g.drum.setSelectedSynthSection(instID, s.SectionID())
 			layoutSynthTab(t, g)
 			if g.drum.synthDetailEnablePillRect().Empty() {
-				t.Errorf("recipe %q: selected stage section %q has no detail enable pill", recipeID, s.Label())
+				t.Errorf("instrument %q: selected stage section %q has no detail enable pill", libID, s.Label())
 			}
 		}
 		if !sawStageSection {
-			t.Errorf("recipe %q: shows no standardized stage section with an enable pill", recipeID)
+			t.Errorf("instrument %q: shows no standardized stage section with an enable pill", libID)
 		}
 		audio.ResetInstrumentParams(instID)
 	}
@@ -226,49 +232,13 @@ func TestSynthUnified_NoCollapsedHintInSource(t *testing.T) {
 	}
 }
 
-// recipeHasVisibleParam reports whether recipeID's schema carries a non-hidden
-// param named name (so the Synth tab would render it as a knob or pill).
-func recipeHasVisibleParam(recipeID, name string) bool {
-	reg, ok := audio.RecipeRegistrations()[recipeID]
-	if !ok || reg == nil {
-		return false
-	}
-	for _, d := range reg.Params {
+// instHasVisibleParam reports whether id's schema carries a non-hidden param
+// named name (so the Synth tab would render it as a knob or pill).
+func instHasVisibleParam(id, name string) bool {
+	for _, d := range audio.InstrumentParamDefs(instrument.ID(id)) {
 		if d.Name == name {
 			return d.Group != audio.SynthHiddenGroup
 		}
 	}
 	return false
-}
-
-// synthRecipeIDsForTest returns the SHIPPED synth recipe ids (the canonical
-// builtin drum/fm/modular recipes in RecipeOrder) that produce a renderable
-// Synth tab. Transient test-registered plugin recipes are excluded — they may
-// legitimately wire only generic knobs with no standardized stage params (hence
-// no enable pills), so they are not part of the unification contract.
-func synthRecipeIDsForTest(t *testing.T) []string {
-	t.Helper()
-	regs := audio.RecipeRegistrations()
-	var out []string
-	for _, id := range audio.RecipeOrder() {
-		reg := regs[id]
-		if reg == nil || len(reg.Params) == 0 {
-			continue
-		}
-		switch reg.Category {
-		case "drum", "fm", "modular":
-			// Only the SHIPPED migrated/modular recipes carry standardized stage
-			// toggles; a transient test-registered plugin recipe (also Category
-			// "drum") wires only generic knobs and is not part of the unification
-			// contract — exclude it by requiring at least one visible stage toggle.
-			if recipeHasVisibleParam(id, "osc_enabled") ||
-				recipeHasVisibleParam(id, "env_enabled") ||
-				recipeHasVisibleParam(id, "filter_enabled") ||
-				recipeHasVisibleParam(id, "drive_enabled") ||
-				recipeHasVisibleParam(id, "post_enabled") {
-				out = append(out, id)
-			}
-		}
-	}
-	return out
 }

@@ -10,7 +10,7 @@ import (
 func TestSeekStepsStoppedSetsPosition(t *testing.T) {
 	g := newGameWithStart(t) // internal package-ui constructor with a start node (playable)
 	div := g.grid.MaxDiv()
-	g.SeekSteps(4*div, seekOriginRibbon) // beat 4
+	g.SeekSteps(4*div, hooks.SeekRibbon) // beat 4
 	if got := g.playheadAbsSubdiv(); got != 4*div {
 		t.Fatalf("playhead=%d want %d", got, 4*div)
 	}
@@ -31,10 +31,10 @@ func TestSeekStepsEmitsEventWithOrigin(t *testing.T) {
 	})
 	defer unsub()
 	div := g.grid.MaxDiv()
-	g.SeekSteps(6*div, seekOriginKeyboard)
+	g.SeekSteps(6*div, hooks.SeekKeyboard)
 	select {
 	case p := <-ch:
-		if p.Origin != seekOriginKeyboard || p.Steps != 6*div {
+		if p.Origin != hooks.SeekKeyboard || p.Steps != 6*div {
 			t.Fatalf("payload=%+v want origin=keyboard steps=%d", p, 6*div)
 		}
 	case <-time.After(time.Second):
@@ -44,7 +44,7 @@ func TestSeekStepsEmitsEventWithOrigin(t *testing.T) {
 
 func TestSeekStepsClampsNegative(t *testing.T) {
 	g := newGameWithStart(t)
-	g.SeekSteps(-100, seekOriginJS)
+	g.SeekSteps(-100, hooks.SeekJS)
 	if got := g.playheadAbsSubdiv(); got != 0 {
 		t.Fatalf("playhead=%d want 0 (clamped)", got)
 	}
@@ -56,7 +56,7 @@ func TestSeekStepsPlayingReanchorsClocks(t *testing.T) {
 	g.state.SetPlaying(true)
 	div := g.grid.MaxDiv()
 	before := time.Now()
-	g.SeekSteps(3*div, seekOriginTransport)
+	g.SeekSteps(3*div, hooks.SeekTransport)
 	if got := g.playheadAbsSubdiv(); got != 3*div {
 		t.Fatalf("playhead=%d want %d", got, 3*div)
 	}

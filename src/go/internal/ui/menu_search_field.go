@@ -22,10 +22,9 @@ func menuSearchIconPad() int { return SpaceSM + IconSizeSM }
 // "menu-search-field" component of DESIGN.md's Menu anatomy: leading
 // IconSearch magnifier, query text, trailing clear-× while a query is
 // non-empty.
-func ensureMenuSearchBox(box *TextInput, searchRect image.Rectangle) *TextInput {
+func ensureMenuSearchBox(box *TextInput, searchRect image.Rectangle, reg *textFieldRegistry, spec TextFieldSpec) *TextInput {
 	if box == nil {
-		box = NewTextInput(image.Rectangle{}, BPMBoxStyle)
-		box.MaxLen = 40
+		box = NewTextField(reg, spec, 40)
 	}
 	box.Rect = insetRect(searchRect, SpaceSM)
 	box.PadLeft = menuSearchIconPad()

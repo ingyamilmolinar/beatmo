@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"encoding/json"
+	"fmt"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
@@ -22,12 +23,12 @@ const (
 type ImportCollision struct {
 	DocIndex int
 	Name     string
-	RecipeID string
+	RecipeID instrument.ID
 }
 
 // ImportResult reports the outcome for one imported instrument.
 type ImportResult struct {
-	ID       string
+	ID       instrument.ID
 	Name     string
 	WavRef   *audio.WavRef
 	WavState audio.WavResolveStatus // meaningful only when WavRef != nil
@@ -46,21 +47,42 @@ func (dv *DrumView) ApplyInstrumentBundle(
 	b *audio.InstrumentBundle,
 	resolve func(ImportCollision) CollisionChoice,
 	applyToRow int,
-	locators map[string]audio.WavLocator,
+	locators map[audio.WavSourceKind]audio.WavLocator,
 ) ([]ImportResult, error) {
 	if err := audio.ValidateBundleHeader(b); err != nil {
 		return nil, err
 	}
-	sink := activeRecipeSink()
+	// Validate EVERY document before registering any: a bad second doc must not
+	// leave the first one registered, bound and persisted.
+	for i, doc := range b.Instruments {
+		if doc.Synth == nil {
+			continue
+		}
+		d, err := audio.MigrateAndValidateInstrumentDoc(*doc.Synth)
+		if err != nil {
+			return nil, fmt.Errorf("instruments[%d] %q: %w", i, doc.Name, err)
+		}
+		b.Instruments[i].Synth = &d
+	}
 	var results []ImportResult
 	for i, doc := range b.Instruments {
 		newID := dv.resolveImportID(i, doc, resolve)
 
-		if _, err := audio.RegisterUserRecipeFromBase(newID, doc.Name, doc.Recipe.BaseRecipe, doc.Recipe.ParamSeed); err != nil {
-			return results, err
+		if doc.Synth != nil {
+			// The library gets the document under its (possibly re-namespaced)
+			// id; the project gets a copy whose Origin is that entry.
+			lib := doc.Synth.Clone()
+			lib.ID, lib.Origin = newID, ""
+			if err := audio.SaveLibraryDoc(lib); err != nil {
+				return results, err
+			}
+			proj := lib.Clone()
+			proj.Origin = newID
+			if err := audio.SetInstrumentDoc(newID, proj); err != nil {
+				return results, err
+			}
+			audio.RegisterLibraryInstrument(newID)
 		}
-		// An imported instrument's instrument-id equals its recipe-id.
-		audio.BindInstrumentToRecipe(newID, newID)
 
 		// Effects: denormalize the shared library + this instrument's ordered chain.
 		audio.SetInsertEffects(newID, audio.DenormalizeEffects(b.Effects, doc.EffectChain))
@@ -78,30 +100,26 @@ func (dv *DrumView) ApplyInstrumentBundle(
 				// Hash matched the pinned version — decode the bytes and bind.
 				if pcm, sr, derr := wavgen.DecodeWAV(r.Data); derr == nil {
 					audio.PutUserSample(newID, pcm, sr)
-					dv.wavRegistry().Register(newID, r.GotSha)
+					dv.wavRegistry().Register(string(newID), r.GotSha)
 				} else {
 					res.WavState = audio.WavResolveMissing // undecodable → treat as unresolved
 				}
 			}
 		}
 
-		// EQ + row binding when a target row is given (last instrument wins).
+		// EQ + row binding when a target row is given (last instrument wins),
+		// through the real pick path so dependents (EQ channel …) follow.
 		if applyToRow >= 0 && applyToRow < len(dv.Rows) {
 			if doc.EQ != nil {
 				applyInstrumentEQToRow(dv.Rows[applyToRow], doc.EQ)
 			}
-			dv.Rows[applyToRow].Instrument = newID
-		}
-
-		// Persist the reconstructed recipe to the (decoupled) store, best-effort.
-		if sink != nil {
-			if raw, err := json.Marshal(recipeDocForStore(newID, doc)); err == nil {
-				_ = sink.SaveUserRecipe(newID, raw)
-			}
+			dv.selRow = applyToRow
+			dv.SetInstrument(newID)
 		}
 
 		results = append(results, res)
 	}
+	dv.refreshInstruments()
 	return results, nil
 }
 
@@ -114,58 +132,69 @@ func bundleUserCollisions(b *audio.InstrumentBundle) []ImportCollision {
 	}
 	var out []ImportCollision
 	for i, doc := range b.Instruments {
-		want := doc.Recipe.ID
-		if want == "" || audio.RecipeIsBuiltin(want) {
+		want := bundleWantID(doc)
+		if want == "" {
 			continue
 		}
-		if audio.RecipeExists(want) {
+		if _, shipped := audio.ShippedDoc(want); shipped {
+			continue
+		}
+		if _, saved := audio.UserLibraryDoc(want); saved {
 			out = append(out, ImportCollision{DocIndex: i, Name: doc.Name, RecipeID: want})
 		}
 	}
 	return out
 }
 
-// resolveImportID picks the id a bundled instrument registers under, protecting
-// built-ins and honoring the collision resolver for user dups.
-func (dv *DrumView) resolveImportID(idx int, doc audio.InstrumentDoc, resolve func(ImportCollision) CollisionChoice) string {
-	want := doc.Recipe.ID
-	if want == "" || audio.RecipeIsBuiltin(want) {
-		// Never clobber a builtin (or a doc with no id) — mint a fresh user id.
-		return generateUserRecipeID(doc.Recipe.BaseRecipe, doc.Recipe.ParamSeed)
+// bundleWantID is the id a bundled instrument asks for (its document's id).
+func bundleWantID(doc audio.BundleInstrument) instrument.ID {
+	if doc.Synth != nil {
+		return doc.Synth.ID
 	}
-	if audio.RecipeExists(want) {
+	return ""
+}
+
+// freshImportID mints a user id for a bundled instrument that cannot keep the
+// id it carries (a shipped id, a Keep-both collision, or none at all).
+func freshImportID(doc audio.BundleInstrument) instrument.ID {
+	if doc.Synth != nil {
+		return audio.NewUserInstrumentID(doc.Name, *doc.Synth)
+	}
+	return userSampleID(doc.Name, "bundle")
+}
+
+// resolveImportID picks the id a bundled instrument registers under, protecting
+// shipped instruments and honoring the collision resolver for user dups.
+func (dv *DrumView) resolveImportID(idx int, doc audio.BundleInstrument, resolve func(ImportCollision) CollisionChoice) instrument.ID {
+	want := bundleWantID(doc)
+	if want == "" {
+		return freshImportID(doc)
+	}
+	if _, shipped := audio.ShippedDoc(want); shipped {
+		// Never clobber a shipped instrument — mint a fresh user id.
+		return freshImportID(doc)
+	}
+	if _, saved := audio.UserLibraryDoc(want); saved {
 		choice := CollisionReplace
 		if resolve != nil {
 			choice = resolve(ImportCollision{DocIndex: idx, Name: doc.Name, RecipeID: want})
 		}
 		if choice == CollisionKeepBoth {
-			return generateUserRecipeID(doc.Recipe.BaseRecipe, doc.Recipe.ParamSeed)
+			return freshImportID(doc)
 		}
 	}
 	return want
 }
 
-// recipeDocForStore builds the RecipeDoc persisted for an imported instrument,
-// with its id set to the (possibly re-namespaced) newID.
-func recipeDocForStore(newID string, doc audio.InstrumentDoc) audio.RecipeDoc {
-	rd := doc.Recipe
-	rd.ID = newID
-	return rd
-}
-
-// applyInstrumentEQToRow copies a bundle's inline EQ onto a row.
+// applyInstrumentEQToRow copies a bundle's inline EQ onto the row's
+// instrument.
 func applyInstrumentEQToRow(row *DrumRow, eq *audio.InstrumentEQ) {
 	if eq == nil {
 		return
 	}
-	if len(eq.GainsDB) > 0 {
-		row.EQGainsDB = append([]float64(nil), eq.GainsDB...)
-	}
-	if len(eq.BandMuted) > 0 {
-		row.EQBandMuted = append([]bool(nil), eq.BandMuted...)
-	}
-	row.HPFEnabled = eq.HPFEnabled
-	row.HPFCutoffHz = eq.HPFCutoffHz
-	row.LPFEnabled = eq.LPFEnabled
-	row.LPFCutoffHz = eq.LPFCutoffHz
+	dst := rowEQ(row)
+	copy(dst.GainsDB, eq.GainsDB)
+	copy(dst.BandMuted, eq.BandMuted)
+	dst.HPF, dst.HPFHz = eq.HPFEnabled, eq.HPFCutoffHz
+	dst.LPF, dst.LPFHz = eq.LPFEnabled, eq.LPFCutoffHz
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // Param describes a single tunable parameter in the search space.
@@ -22,14 +24,14 @@ type TunableSpec struct {
 	Params []Param
 }
 
-// ValidateKeys returns an error if any Param.Key is absent from the instrument's
-// merged recipe defaults (so a typo can't silently no-op).
-func (s TunableSpec) ValidateKeys(instID string) error {
-	recipeID := audio.RecipeForInstrument(instID)
-	if recipeID == "" {
-		return fmt.Errorf("synthmatch: instrument %q is not registered", instID)
+// ValidateKeys returns an error if any Param.Key is not a value of the
+// instrument's document (so a typo — or a knob on a module the instrument does
+// not have — can't silently no-op).
+func (s TunableSpec) ValidateKeys(instID instrument.ID) error {
+	if _, ok := audio.EnsureInstrumentDoc(instID); !ok {
+		return fmt.Errorf("synthmatch: instrument %q has no document", instID)
 	}
-	merged := audio.MergeRecipeDefaults(recipeID, audio.GetInstrumentParams(instID))
+	merged := audio.MergedInstrumentParamsRO(instID)
 	var missing []string
 	for _, p := range s.Params {
 		if _, ok := merged[p.Key]; !ok {
@@ -37,7 +39,7 @@ func (s TunableSpec) ValidateKeys(instID string) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("keys not found in merged recipe for %q: %s", instID, strings.Join(missing, ", "))
+		return fmt.Errorf("keys not found in the instrument document of %q: %s", instID, strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -45,7 +47,7 @@ func (s TunableSpec) ValidateKeys(instID string) error {
 // SpecForInstrument returns the tunable search space for instID (by family),
 // ok=false if the instrument has no spec. The returned TunableSpec.Params is a
 // defensive copy — callers cannot mutate the shared backing slice.
-func SpecForInstrument(instID string) (TunableSpec, bool) {
+func SpecForInstrument(instID instrument.ID) (TunableSpec, bool) {
 	spec, ok := specMap[instID]
 	if !ok {
 		return TunableSpec{}, false
@@ -119,24 +121,24 @@ var struckKeysParams = []Param{
 }
 
 // specMap maps instrument IDs to their TunableSpec.
-var specMap = map[string]TunableSpec{
+var specMap = map[instrument.ID]TunableSpec{
 	// struck-keys family.
-	"piano-grand": {Family: "struck-keys", Params: struckKeysParams},
+	roster.PianoGrand: {Family: "struck-keys", Params: struckKeysParams},
 
 	// subtractive-reed family.
-	"sax":         {Family: "subtractive-reed", Params: subtractiveReedParams},
-	"oboe":        {Family: "subtractive-reed", Params: subtractiveReedParams},
-	"trumpet":     {Family: "subtractive-reed", Params: subtractiveReedParams},
-	"french-horn": {Family: "subtractive-reed", Params: subtractiveReedParams},
-	"violin":      {Family: "subtractive-reed", Params: subtractiveReedParams},
-	"cello":       {Family: "subtractive-reed", Params: subtractiveReedParams},
-	"flute":       {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.Sax:        {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.Oboe:       {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.Trumpet:    {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.FrenchHorn: {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.Violin:     {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.Cello:      {Family: "subtractive-reed", Params: subtractiveReedParams},
+	roster.Flute:      {Family: "subtractive-reed", Params: subtractiveReedParams},
 
 	// additive-organ family.
-	"organ": {Family: "additive-organ", Params: additiveOrganParams},
+	roster.Organ: {Family: "additive-organ", Params: additiveOrganParams},
 
 	// ks-pluck family.
-	"guitar-electric": {Family: "ks-pluck", Params: ksPluckParams},
-	"guitar-nylon":    {Family: "ks-pluck", Params: ksPluckParams},
-	"guitar-steel":    {Family: "ks-pluck", Params: ksPluckParams},
+	roster.GuitarElectric: {Family: "ks-pluck", Params: ksPluckParams},
+	roster.GuitarNylon:    {Family: "ks-pluck", Params: ksPluckParams},
+	roster.GuitarSteel:    {Family: "ks-pluck", Params: ksPluckParams},
 }

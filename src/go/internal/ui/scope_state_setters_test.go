@@ -34,13 +34,10 @@ func TestChainSetAutoGainParityWithButton(t *testing.T) {
 	clickZ.SetYGain(2.5)
 	apiZ.SetYGain(2.5)
 
-	// Click path: AG button toggles autoGain; clicking it ON resets yGain.
-	if clickZ.autoGainBtn == nil {
-		t.Fatal("autoGainBtn nil")
-	}
-	clickZ.autoGainBtn.OnClick()
-
-	// API path: same effect via SetAutoGain.
+	// Auto-gain has no pill any more (it is on by default), so the only
+	// surviving path is the API. Both zones must land in the same place:
+	// re-enabling it resets the manual zoom it overrides.
+	clickZ.SetAutoGain(true)
 	apiZ.SetAutoGain(true)
 
 	if clickZ.AutoGain() != apiZ.AutoGain() {

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestP5_RenderPerfAudit is the P5 perf audit: it renders every built-in
@@ -24,13 +26,13 @@ func TestP5_RenderPerfAudit(t *testing.T) {
 	}
 	var rows []row
 	const iters = 8
-	for _, id := range BuiltinInstrumentIDs {
+	for _, id := range roster.All {
 		buf, _ := RenderInstrumentOneShotRaw(id) // warm-up (first-render setup excluded)
 		start := time.Now()
 		for i := 0; i < iters; i++ {
 			RenderInstrumentOneShotRaw(id)
 		}
-		rows = append(rows, row{id, time.Since(start).Nanoseconds() / iters, len(buf)})
+		rows = append(rows, row{string(id), time.Since(start).Nanoseconds() / iters, len(buf)})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].nsPer > rows[j].nsPer })
 

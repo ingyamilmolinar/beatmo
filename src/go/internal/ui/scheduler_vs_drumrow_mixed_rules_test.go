@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // TestSchedulerVsDrumRow_MixedEverySkipRules builds a rectangular loop with
@@ -39,37 +40,37 @@ func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 	// Mixed rules
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(B.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(B.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(C.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(C.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(D.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(D.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(E.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 4
 		g.graph.SetNodeParams(E.ID, p)
 	}
 	if n, ok := g.graph.GetNodeByID(F.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 4
 		g.graph.SetNodeParams(F.ID, p)
 	}
@@ -89,7 +90,7 @@ func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 
 	// Capture scheduler playback over the same horizon
 	got := make([]bool, horizon)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
+	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) {
 		// Index is the just-scheduled absolute subdivision index for row 0
 		idx := 0
 		if len(g.seqNextIdxs) > 0 {

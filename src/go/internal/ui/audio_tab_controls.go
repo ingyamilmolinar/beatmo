@@ -112,6 +112,46 @@ func applyFreezeVisual(b *Button, frozen bool) {
 	}
 }
 
+// newFreezeCodePill is the Chain tab's freeze toggle: a TEXT pill (FRZ / LIVE)
+// rather than the shared icon pill.
+//
+// Two reasons it diverges. The bare pause glyph reads as TRANSPORT pause —
+// the Chain panel sits directly under the transport bar, so an icon that means
+// "stop the music" one row up and "hold the picture" one row down is a real
+// misread. And it is the only icon in a row of text codes (OVR / SPL / DIF /
+// FIT / AG), so it looked like a different class of control.
+//
+// The other tabs keep the icon pill for now; the same ambiguity arguably
+// applies there, but that is a wider change than the Chain work.
+func newFreezeCodePill(onFreeze func() bool) *Button {
+	b := NewButton(i18n.T(i18n.KeyChainFreeze), InstButtonStyle, nil)
+	b.OnClick = func() {
+		if onFreeze == nil {
+			return
+		}
+		applyFreezeCodeVisual(b, onFreeze())
+	}
+	applyFreezeCodeVisual(b, false)
+	return b
+}
+
+// applyFreezeCodeVisual sets the Chain freeze pill's label from a frozen bool.
+// The label names the CURRENT state's action target the way the icon pill does:
+// live shows FRZ (tap to freeze), frozen shows LIVE (tap to go back to live).
+func applyFreezeCodeVisual(b *Button, frozen bool) {
+	if b == nil {
+		return
+	}
+	b.Icon = ""
+	if frozen {
+		b.Text = i18n.T(i18n.KeyChainLive)
+		b.TextColor = colAccent
+	} else {
+		b.Text = i18n.T(i18n.KeyChainFreeze)
+		b.TextColor = colTextSecondary
+	}
+}
+
 // layoutRightPill places btn flush against header's right edge and returns the
 // clamped button height, the pill top Y, and the running right-edge cursor for
 // any further pills laid out leftward. Shared by the freeze-pill base and the
@@ -293,99 +333,44 @@ func (c *levelsControls) Draw(dst *ebiten.Image) {
 // (log/lin), slope tilt (0/3/4.5 dB/oct), Pre overlay toggle, and Reset-Hold.
 // Freeze shows on both platforms; the other four are desktop-only (mirroring
 // the legacy bar gating).
+// spectrumControls owns the Spectrum tab's chrome. It used to carry six
+// pills; freeze is the only one left. Four were retired because their effect
+// is invisible without prior analyser vocabulary — a dB/oct slope tilt, a
+// pre-EQ overlay, a peak-hold reset for marks that only exist behind DTL,
+// and a linear-frequency axis (audio spectra are read logarithmically; LIN
+// was a strictly worse view). The frequency scale is now always logarithmic.
+//
+// DTL went last. It hid the dB numbers, the note anchors and the peak-hold
+// marks because on the old fixed -80..0 axis they crowded a plot whose bars
+// only reached its lower half. The axis is chosen from the signal now, so
+// those marks sit against bars that fill the plot and there is nothing to
+// opt out of.
 type spectrumControls struct {
 	freezeControls
-	freqScaleBtn *Button
-	freqScaleLog bool
-	slopeBtn     *Button
-	slopeOptions []float64
-	slopeIdx     int
-	preBtn       *Button
-	preOverlay   bool
-	resetHoldBtn *Button
 }
 
-func newSpectrumControls(z int, onFreeze func() bool, onResetHold func()) *spectrumControls {
-	c := &spectrumControls{freqScaleLog: true, slopeOptions: []float64{0, 3, 4.5}}
+func newSpectrumControls(z int, onFreeze func() bool) *spectrumControls {
+	c := &spectrumControls{}
 	c.z = z
 	c.freezeBtn = newFreezePill(onFreeze)
-
-	// Uppercase to match every other analyzer pill code (AG / FIT / K20 /
-	// CLR / RST) — mixed-case pills read as a different control class.
-	c.freqScaleBtn = NewButton("LOG", InstButtonStyle, nil)
-	c.freqScaleBtn.TextColor = colTextSecondary
-	c.freqScaleBtn.OnClick = func() {
-		c.freqScaleLog = !c.freqScaleLog
-		if c.freqScaleLog {
-			c.freqScaleBtn.Text = "LOG"
-		} else {
-			c.freqScaleBtn.Text = "LIN"
-		}
-	}
-
-	c.slopeBtn = NewButton(formatSlopeLabel(0), InstButtonStyle, nil)
-	c.slopeBtn.TextColor = colTextSecondary
-	c.slopeBtn.OnClick = func() {
-		c.slopeIdx = (c.slopeIdx + 1) % len(c.slopeOptions)
-		v := c.slopeOptions[c.slopeIdx]
-		c.slopeBtn.Text = formatSlopeLabel(v)
-		SetSpectrumSlope(v)
-	}
-
-	c.preBtn = NewButton(i18n.T(i18n.KeyPre), InstButtonStyle, nil)
-	c.preBtn.TextColor = colTextSecondary
-	c.preBtn.OnClick = func() { c.preOverlay = !c.preOverlay }
-
-	// "RST" (not a bare "R"): single-letter chrome labels are reserved for
-	// data labels (the wave panel's L/R channel tags); action pills carry
-	// 2–3 letter codes per the DESIGN.md permitted-text table.
-	c.resetHoldBtn = NewButton("RST", InstButtonStyle, onResetHold)
-	c.resetHoldBtn.TextColor = colTextSecondary
 	return c
 }
 
-func (c *spectrumControls) SlopeDBPerOct() float64 { return c.slopeOptions[c.slopeIdx] }
-func (c *spectrumControls) PreOverlay() bool       { return c.preOverlay }
-func (c *spectrumControls) FreqScaleLog() bool     { return c.freqScaleLog }
+// Detail is unconditional; see the type comment. Kept as a method so the
+// renderer keeps one name for "show the analyser marks" rather than a
+// scattering of literal trues.
+func (c *spectrumControls) Detail() bool { return true }
 
 func (c *spectrumControls) Layout(header image.Rectangle) {
-	btnH, y, rightEdge := c.layoutFreezePill(header)
-	if !Profile().IsMobile() {
-		d := Profile().DensityValues()
-		qw := audioPillWidth(c.freqScaleBtn)
-		c.freqScaleBtn.SetRect(image.Rect(rightEdge-qw, y, rightEdge, y+btnH))
-		rightEdge -= qw + d.AudioPillGap
-		rw := audioPillWidth(c.resetHoldBtn)
-		c.resetHoldBtn.SetRect(image.Rect(rightEdge-rw, y, rightEdge, y+btnH))
-		rightEdge -= rw + d.AudioPillGap
-		pw := audioPillWidth(c.preBtn)
-		c.preBtn.SetRect(image.Rect(rightEdge-pw, y, rightEdge, y+btnH))
-		rightEdge -= pw + d.AudioPillGap
-		c.slopeBtn.Text = formatSlopeLabel(c.slopeOptions[c.slopeIdx])
-		sw := audioPillWidth(c.slopeBtn)
-		c.slopeBtn.SetRect(image.Rect(rightEdge-sw, y, rightEdge, y+btnH))
-	} else {
-		c.freqScaleBtn.SetRect(image.Rectangle{})
-		c.resetHoldBtn.SetRect(image.Rectangle{})
-		c.preBtn.SetRect(image.Rectangle{})
-		c.slopeBtn.SetRect(image.Rectangle{})
-	}
+	c.layoutFreezePill(header)
 	c.rebuildHitAreas()
 }
 
 func (c *spectrumControls) rebuildHitAreas() {
 	c.hitAreas = c.hitAreas[:0]
 	c.addHit(c.freezeBtn, "spectrum-freeze-btn")
-	c.addHit(c.freqScaleBtn, "spectrum-freqscale-btn")
-	c.addHit(c.slopeBtn, "spectrum-slope-btn")
-	c.addHit(c.preBtn, "spectrum-pre-btn")
-	c.addHit(c.resetHoldBtn, "spectrum-reset-hold-btn")
 }
 
 func (c *spectrumControls) Draw(dst *ebiten.Image) {
 	drawPillTabAt(dst, c.freezeBtn, c.frozen)
-	drawPillTabAt(dst, c.freqScaleBtn, !c.freqScaleLog)
-	drawPillTabAt(dst, c.slopeBtn, c.slopeIdx != 0)
-	drawPillTabAt(dst, c.preBtn, c.preOverlay)
-	drawPillTabAt(dst, c.resetHoldBtn, false)
 }

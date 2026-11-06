@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -27,12 +29,12 @@ import (
 func instButtonTestDV(t *testing.T, w, h int) *DrumView {
 	t.Helper()
 	dv := NewDrumView(image.Rect(0, 0, w, h), nil, game_log.New(nil, game_log.LevelError))
-	dv.instOptions = []string{"kick", "snare", "hihat", "tom", "clap"}
+	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.Tom, roster.Clap}
 	dv.instCategories = nil
 	dv.instCatByID = nil
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
-		Instrument: "kick",
+		Instrument: roster.Kick,
 		Steps:      make([]bool, 8),
 		Volume:     1.0,
 	}}
@@ -170,8 +172,8 @@ func TestEllipsisMenuMobileItems(t *testing.T) {
 
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
-		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: roster.Snare, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 
@@ -193,8 +195,8 @@ func TestEllipsisMenuDesktopItems(t *testing.T) {
 
 	dv := NewDrumView(image.Rect(0, 0, 1280, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.Rows = []*DrumRow{
-		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
-		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Kick", Instrument: roster.Kick, Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: roster.Snare, Steps: make([]bool, 8), Volume: 1.0},
 	}
 	dv.Length = 8
 

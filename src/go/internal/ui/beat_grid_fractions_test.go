@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestBeatGridFractions_SilentRow asserts the helper returns no fractions
@@ -13,7 +14,7 @@ func TestBeatGridFractions_SilentRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.drum.Rows = []*DrumRow{{Instrument: "snare"}}
+	g.drum.Rows = []*DrumRow{{Instrument: roster.Snare}}
 	g.drum.SetLength(8)
 	g.beatInfosByRow = [][]model.BeatInfo{nil}
 	g.isLoopByRow = []bool{false}
@@ -37,7 +38,7 @@ func TestBeatGridFractions_DenseRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.drum.Rows = []*DrumRow{{Instrument: "snare"}}
+	g.drum.Rows = []*DrumRow{{Instrument: roster.Snare}}
 	g.drum.SetLength(8)
 	g.drum.SetBPM(120)
 	if err := g.SetSubdivisions(8); err != nil {
@@ -59,7 +60,7 @@ func TestBeatGridFractions_LongerWindow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.drum.Rows = []*DrumRow{{Instrument: "snare"}}
+	g.drum.Rows = []*DrumRow{{Instrument: roster.Snare}}
 	g.drum.SetLength(8)
 	g.drum.SetBPM(120)
 	if err := g.SetSubdivisions(8); err != nil {
@@ -104,7 +105,7 @@ func TestBeatGridFractions_FractionsInRange(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.drum.Rows = []*DrumRow{{Instrument: "snare"}}
+	g.drum.Rows = []*DrumRow{{Instrument: roster.Snare}}
 	g.drum.SetLength(8)
 	g.drum.SetBPM(120)
 	if err := g.SetSubdivisions(8); err != nil {

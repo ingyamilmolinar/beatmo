@@ -5,6 +5,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // verifyMutePattern steps the sequencer for steps beats and collects whether
@@ -13,7 +14,7 @@ func verifyMutePattern(t *testing.T, g *Game, row int, muteID model.NodeID, step
 	t.Helper()
 	stops := 0
 	inst := g.drum.Rows[row].Instrument
-	audio.SetStopHook(func(id string) {
+	audio.SetStopHook(func(id instrument.ID) {
 		if id == inst {
 			stops++
 		}
@@ -66,7 +67,7 @@ func TestMuteNodeSkipEveryN_TwoNodeLoop(t *testing.T) {
 	// N=2: trigger pattern at B is [true,false,true,false,...]
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(b.ID, p)
 	}
@@ -77,7 +78,7 @@ func TestMuteNodeSkipEveryN_TwoNodeLoop(t *testing.T) {
 	// N=3: [true,true,false,true,true,false]
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "skip_every_n"
+		p.LogicKind = model.LogicSkipEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(b.ID, p)
 	}
@@ -104,7 +105,7 @@ func TestMuteNodeEveryNTriggers_TwoNodeLoop(t *testing.T) {
 	// N=2: [false,true,false,true]
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 2
 		g.graph.SetNodeParams(b.ID, p)
 	}
@@ -115,7 +116,7 @@ func TestMuteNodeEveryNTriggers_TwoNodeLoop(t *testing.T) {
 	// N=3: [false,false,true,false,false,true]
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
-		p.LogicKind = "every_n_triggers"
+		p.LogicKind = model.LogicEveryN
 		p.LogicN = 3
 		g.graph.SetNodeParams(b.ID, p)
 	}

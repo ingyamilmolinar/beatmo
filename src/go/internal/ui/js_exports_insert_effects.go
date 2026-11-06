@@ -6,6 +6,7 @@ import (
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
@@ -43,11 +44,14 @@ func (g *Game) initJSInsertEffects() {
 		if args.Len() < 2 {
 			return -1
 		}
-		id := args.Str(0)
-		et := audio.EffectType(args.Str(1))
+		inst := args.Instrument(0)
+		et, err := audio.ParseEffectType(args.Str(1))
+		if inst == "" || err != nil {
+			return -1
+		}
 		g.bumpParityGen("insert-fx-add", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
-		idx := audio.AddInsertEffect(id, et, nil)
-		emitInsertEffectAdded(id, idx, string(et))
+		idx := audio.AddInsertEffect(inst, et, nil)
+		emitInsertEffectAdded(channel.Of(inst), idx, string(et))
 		return idx
 	}))
 
@@ -56,11 +60,14 @@ func (g *Game) initJSInsertEffects() {
 		if args.Len() < 2 {
 			return nil
 		}
-		id := args.Str(0)
+		inst := args.Instrument(0)
+		if inst == "" {
+			return nil
+		}
 		slot := args.Int(1)
 		g.bumpParityGen("insert-fx-remove", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
-		audio.RemoveInsertEffect(id, slot)
-		emitInsertEffectRemoved(id, slot)
+		audio.RemoveInsertEffect(inst, slot)
+		emitInsertEffectRemoved(channel.Of(inst), slot)
 		return nil
 	}))
 
@@ -69,12 +76,15 @@ func (g *Game) initJSInsertEffects() {
 		if args.Len() < 3 {
 			return nil
 		}
-		id := args.Str(0)
+		inst := args.Instrument(0)
+		if inst == "" {
+			return nil
+		}
 		from := args.Int(1)
 		to := args.Int(2)
 		g.bumpParityGen("insert-fx-move", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
-		audio.MoveInsertEffect(id, from, to)
-		emitInsertEffectMoved(id, from, to)
+		audio.MoveInsertEffect(inst, from, to)
+		emitInsertEffectMoved(channel.Of(inst), from, to)
 		g.drum.recordUndoStep(hooks.EventInsertEffectMoved)
 		return nil
 	}))
@@ -84,7 +94,10 @@ func (g *Game) initJSInsertEffects() {
 		if args.Len() < 4 {
 			return nil
 		}
-		id := args.Str(0)
+		inst := args.Instrument(0)
+		if inst == "" {
+			return nil
+		}
 		slot := args.Int(1)
 		param := args.Str(2)
 		value := args.Float(3)
@@ -93,8 +106,8 @@ func (g *Game) initJSInsertEffects() {
 		// — buffer hygiene cost would be too high. The chain shape isn't
 		// changing, only an audio knob value, so no parity coordination is
 		// needed.
-		audio.SetInsertEffectParam(id, slot, param, value)
-		emitInsertEffectParam(id, slot, param, value)
+		audio.SetInsertEffectParam(inst, slot, param, value)
+		emitInsertEffectParam(channel.Of(inst), slot, param, value)
 		return nil
 	}))
 
@@ -103,12 +116,15 @@ func (g *Game) initJSInsertEffects() {
 		if args.Len() < 3 {
 			return nil
 		}
-		id := args.Str(0)
+		inst := args.Instrument(0)
+		if inst == "" {
+			return nil
+		}
 		slot := args.Int(1)
 		enabled := args.Bool(2)
 		g.bumpParityGen("insert-fx-toggle", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
-		audio.ToggleInsertEffect(id, slot, enabled)
-		emitInsertEffectToggled(id, slot, enabled)
+		audio.ToggleInsertEffect(inst, slot, enabled)
+		emitInsertEffectToggled(channel.Of(inst), slot, enabled)
 		g.drum.recordUndoStep(hooks.EventInsertEffectToggled)
 		return nil
 	}))
@@ -120,8 +136,8 @@ func (g *Game) initJSInsertEffects() {
 		if args.Len() < 1 {
 			return arr
 		}
-		id := args.Str(0)
-		slots := audio.GetInsertEffects(id)
+		inst := args.Instrument(0)
+		slots := audio.GetInsertEffects(inst)
 		for _, s := range slots {
 			arr.Call("push", effectSlotToJS(s))
 		}

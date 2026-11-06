@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // synth_stage_toggles_test.go pins the "every shown synth stage has a toggle"
@@ -19,11 +21,11 @@ import (
 
 // setupSynthGameForInst builds a Synth-tab game on instID bound to recipe,
 // mirroring setupModularSynthGame for non-modular instruments.
-func setupSynthGameForInst(t *testing.T, instID, recipe string) *Game {
+func setupSynthGameForInst(t *testing.T, instID instrument.ID) *Game {
 	t.Helper()
 	g := newSynthTabGame(t)
 	g.drum.Rows[0].Instrument = instID
-	audio.BindInstrumentToRecipe(instID, recipe)
+	_ = audio.InstallInstrumentDocForTest(instID, instID)
 	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -44,7 +46,7 @@ func TestSynthTab_EmptyVoicePruned(t *testing.T) {
 // keeps its VOICE stage, and that stage shows a greyed, non-interactive
 // (locked) toggle: the voice is mandatory and can't be disabled.
 func TestSynthTab_PopulatedVoiceLockedToggle(t *testing.T) {
-	g := setupSynthGameForInst(t, "violin", "synth-modular-violin")
+	g := setupSynthGameForInst(t, roster.Violin)
 	layoutSynthTab(t, g)
 
 	sec, ok := synthSectionByID(g.drum, synthSectionVoice)
@@ -55,7 +57,7 @@ func TestSynthTab_PopulatedVoiceLockedToggle(t *testing.T) {
 		t.Fatal("precondition: violin VOICE must carry family knobs")
 	}
 
-	selectStageProdHeight(t, g, "violin", synthSectionVoice)
+	selectStageProdHeight(t, g, roster.Violin, synthSectionVoice)
 
 	// The locked pill is visible...
 	if g.drum.synthDetailEnablePillRect().Empty() {
@@ -74,13 +76,13 @@ func TestSynthTab_PopulatedVoiceLockedToggle(t *testing.T) {
 // and publishes an interactive hit area.
 func TestSynthTab_EnsembleToggleDrivesVoices(t *testing.T) {
 	g := setupModularSynthGame(t)
-	restore := SwapSynthAuditionFnForTest(func(string) {})
+	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
 	// Start from a known "on" state so the first tap turns it off.
-	audio.SetInstrumentParam("modular", "unison_voices", 4)
+	audio.SetInstrumentParam(roster.Modular, "unison_voices", 4)
 
-	selectStageProdHeight(t, g, "modular", synthSectionEnsemble)
+	selectStageProdHeight(t, g, roster.Modular, synthSectionEnsemble)
 	pill := g.drum.synthDetailEnablePillRect()
 	if pill.Empty() {
 		t.Fatal("ENSEMBLE must show an enable pill")
@@ -96,18 +98,18 @@ func TestSynthTab_EnsembleToggleDrivesVoices(t *testing.T) {
 		t.Error("interactive ENSEMBLE pill must publish its synth-toggle hit area")
 	}
 
-	voices := func() float64 { return audio.MergedInstrumentParamsRO("modular")["unison_voices"] }
+	voices := func() float64 { return audio.MergedInstrumentParamsRO(roster.Modular)["unison_voices"] }
 	cx, cy := (pill.Min.X+pill.Max.X)/2, (pill.Min.Y+pill.Max.Y)/2
 
 	// Tap 1: on (4) → off (1).
-	g.drum.handleSynthTabInput(cx, cy, true, "modular")
-	g.drum.handleSynthTabInput(cx, cy, false, "modular")
+	g.drum.handleSynthTabInput(cx, cy, true, roster.Modular)
+	g.drum.handleSynthTabInput(cx, cy, false, roster.Modular)
 	if voices() >= 2 {
 		t.Errorf("tapping ENSEMBLE while on must set unison_voices to 1 (got %v)", voices())
 	}
 	// Tap 2: off (1) → on (>= 2).
-	g.drum.handleSynthTabInput(cx, cy, true, "modular")
-	g.drum.handleSynthTabInput(cx, cy, false, "modular")
+	g.drum.handleSynthTabInput(cx, cy, true, roster.Modular)
+	g.drum.handleSynthTabInput(cx, cy, false, roster.Modular)
 	if voices() < 2 {
 		t.Errorf("tapping ENSEMBLE while off must set unison_voices to an active default >= 2 (got %v)", voices())
 	}
@@ -117,26 +119,26 @@ func TestSynthTab_EnsembleToggleDrivesVoices(t *testing.T) {
 // body_model gate value both ways (off = 0/Off, on = an active default >= 1).
 func TestSynthTab_ResonatorToggleDrivesBodyModel(t *testing.T) {
 	g := setupModularSynthGame(t)
-	restore := SwapSynthAuditionFnForTest(func(string) {})
+	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
-	audio.SetInstrumentParam("modular", "body_model", 2)
+	audio.SetInstrumentParam(roster.Modular, "body_model", 2)
 
-	selectStageProdHeight(t, g, "modular", synthSectionResonator)
+	selectStageProdHeight(t, g, roster.Modular, synthSectionResonator)
 	pill := g.drum.synthDetailEnablePillRect()
 	if pill.Empty() {
 		t.Fatal("RESONATOR must show an enable pill")
 	}
-	model := func() float64 { return audio.MergedInstrumentParamsRO("modular")["body_model"] }
+	model := func() float64 { return audio.MergedInstrumentParamsRO(roster.Modular)["body_model"] }
 	cx, cy := (pill.Min.X+pill.Max.X)/2, (pill.Min.Y+pill.Max.Y)/2
 
-	g.drum.handleSynthTabInput(cx, cy, true, "modular")
-	g.drum.handleSynthTabInput(cx, cy, false, "modular")
+	g.drum.handleSynthTabInput(cx, cy, true, roster.Modular)
+	g.drum.handleSynthTabInput(cx, cy, false, roster.Modular)
 	if model() >= 1 {
 		t.Errorf("tapping RESONATOR while on must set body_model to Off (got %v)", model())
 	}
-	g.drum.handleSynthTabInput(cx, cy, true, "modular")
-	g.drum.handleSynthTabInput(cx, cy, false, "modular")
+	g.drum.handleSynthTabInput(cx, cy, true, roster.Modular)
+	g.drum.handleSynthTabInput(cx, cy, false, roster.Modular)
 	if model() < 1 {
 		t.Errorf("tapping RESONATOR while off must set body_model to an active default >= 1 (got %v)", model())
 	}
@@ -148,7 +150,7 @@ func TestSynthTab_ResonatorToggleDrivesBodyModel(t *testing.T) {
 func TestSynthTab_EveryShownStageHasPill(t *testing.T) {
 	g := setupModularSynthGame(t)
 	for _, s := range g.drum.SynthTabSections() {
-		selectStageProdHeight(t, g, "modular", s.SectionID())
+		selectStageProdHeight(t, g, roster.Modular, s.SectionID())
 		if g.drum.synthDetailEnablePillRect().Empty() {
 			t.Errorf("shown stage %q has no enable pill", s.Label())
 		}

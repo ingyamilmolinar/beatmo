@@ -34,7 +34,7 @@ func (g *Game) paramsHash() uint64 {
 		nh *= fnvPrime
 		nh ^= mathFloat64Bits(n.Params.Duration) + mix
 		nh *= fnvPrime
-		for _, s := range []string{n.Params.LogicKind, n.Params.GrooveKind} {
+		for _, s := range []string{n.Params.LogicKind.String(), n.Params.GrooveKind.String()} {
 			for i := 0; i < len(s); i++ {
 				nh ^= uint64(s[i]) + mix
 				nh *= fnvPrime

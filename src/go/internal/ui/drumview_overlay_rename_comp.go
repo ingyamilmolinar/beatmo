@@ -21,7 +21,19 @@ type RenameProps struct {
 	// MobileInputID is the mobile native input ID for this rename (e.g., "rename-0").
 	// When set on mobile, Open() will use the native HTML input instead of TextInput.
 	MobileInputID string
+	// TextFields is the owning DrumView's text-field registry (desktop
+	// soft-keyboard wiring for the rename box).
+	TextFields *textFieldRegistry
 }
+
+// renameBoxMobileInputID is the soft-keyboard id of the DESKTOP rename box.
+// (Mobile renames type into a per-row native input, "rename-<row>", armed from
+// the row context menu's Rename trigger — see nativeInputCandidates.)
+const renameBoxMobileInputID = "rename"
+
+// renameTextFieldSpec is the rename box's native identity. The rename box has
+// always focused the soft-keyboard proxy on every platform.
+var renameTextFieldSpec = TextFieldSpec{ID: renameBoxMobileInputID, Owner: "rename", ProxyOnMobile: true}
 
 // RenameState contains the internal state for the rename component.
 type RenameState struct {
@@ -74,15 +86,13 @@ func (r *RenameComponent) Open() {
 		return
 	}
 
-	r.textBox = NewTextInput(rect, BPMBoxStyle)
-	r.textBox.Accept = AcceptTextRune
-	r.textBox.MaxLen = r.props.MaxLen
-	if r.textBox.MaxLen == 0 {
-		r.textBox.MaxLen = 32 // default
+	maxLen := r.props.MaxLen
+	if maxLen == 0 {
+		maxLen = 32 // default
 	}
-	r.textBox.InputMode = "text"
-	r.textBox.OnFocusGained = func() { softKeyboardShow("text") }
-	r.textBox.OnFocusLost = func() { softKeyboardHide() }
+	r.textBox = NewTextField(r.props.TextFields, renameTextFieldSpec, maxLen)
+	r.textBox.Rect = rect
+	r.textBox.Accept = AcceptTextRune
 	r.textBox.SetText(r.props.InitialText)
 	r.textBox.focused = true
 	r.textBox.anim = 1

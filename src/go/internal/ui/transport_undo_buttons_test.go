@@ -48,7 +48,7 @@ func TestTransportUndoRedoDim(t *testing.T) {
 	}
 
 	dimmed := color.Color(colTextDisabled)
-	lit := color.Color(colTextPrimary)
+	lit := color.Color(colTextSecondary)
 
 	// Fresh manager: both stacks empty -> both dim.
 	tz.syncUndoRedoVisual()

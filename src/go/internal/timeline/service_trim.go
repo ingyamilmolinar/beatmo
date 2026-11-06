@@ -73,36 +73,47 @@ func (s *Service) TrimAfterMutable(row, maxAbs int) {
 }
 
 // RewindTo repositions row `row` for a backward seek to absolute subdivision
-// `abs`: immutable Playback/Import commits with key >= abs are moved into the
-// cold archive tier (retained, NOT deleted — see the full-history-retention
-// rule), the mutable/ring tier is cut at abs-1, and everything below abs is
-// left untouched. After a rewind the caller lowers the freeze watermark so the
-// rewound region renders from the predictor, not the archive.
+// `abs`. The pass from abs on is ABANDONED — it is about to be replayed — so
+// every Playback/Import commit with key >= abs (hot sidecar AND entries that
+// had already aged into the scroll-back archive) moves to the superseded store:
+// retained (full-history rule), but never answered by the live lookup, which
+// must read only the pass being played. The mutable/ring tier is cut at abs-1
+// and everything below abs is left untouched. After a rewind the caller lowers
+// the freeze watermark so the rewound region renders from the predictor.
 func (s *Service) RewindTo(row, abs int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if row < 0 || row >= len(s.rows) {
 		return
 	}
-	// Move post-abs immutables to the archive, then drop them from the sidecar.
+	var sup *rowArchive
+	supersede := func(k int, ce commitEntry) {
+		if sup == nil {
+			sup = s.ensureSupersededLocked(row)
+		}
+		sup.append(k, ce.val, ce.typ, ce.kind, s.archiveMaxEntries)
+	}
+	if a := s.archives[row]; a != nil {
+		for _, e := range a.takeFrom(abs) {
+			supersede(int(e.abs), commitEntry{val: e.val, typ: e.typ, kind: e.kind})
+		}
+	}
 	if rowMap := s.immutables[row]; rowMap != nil {
-		var arch *rowArchive
 		for k, ce := range rowMap {
 			if k < abs {
 				continue
 			}
 			if ce.kind == CommitKindPlayback || ce.kind == CommitKindImport {
-				if arch == nil {
-					arch = s.ensureArchiveLocked(row)
-				}
-				arch.append(k, ce.val, ce.typ, ce.kind, s.archiveMaxEntries)
+				supersede(k, ce)
 			}
 			delete(rowMap, k)
 		}
 	}
 	// Hard-cut the ring at abs-1 (drops any ring entries >= abs, mutable or not;
-	// immutables were just archived, so no live copy is lost).
+	// immutables were just superseded, so no copy is lost).
 	s.rows[row].commits.trimAfter(abs - 1)
+	// The rewound region is re-simulated and re-recorded as it plays again.
+	s.played[row].truncateFrom(abs)
 }
 
 // ReplaceCommit overwrites an existing commit at abs (if present). This is
@@ -181,6 +192,8 @@ func (s *Service) ClearRow(row int) {
 	s.rows[row].commits.clear()
 	delete(s.immutables, row)
 	delete(s.archives, row)
+	delete(s.superseded, row)
+	delete(s.played, row)
 }
 
 // LastCommitted returns the newest absolute index stored for the row, or -1 if

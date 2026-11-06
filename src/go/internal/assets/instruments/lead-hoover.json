@@ -1,0 +1,111 @@
+{
+  "schema_version": "0.0.1",
+  "id": "lead-hoover",
+  "name": "Hoover Lead",
+  "category": "modular",
+  "notes": "leadHooverSeed: the 90s rave \"hoover\" — heavily detuned saws with a downward\npitch-envelope \"wah\" and a resonant filter sweep, plus drive. Aggressive.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.4481,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.008,
+        "amp_curve": 1,
+        "amp_decay": 0.25,
+        "amp_release": 0.2,
+        "amp_sustain": 0.8
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.6,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0.3
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 4000,
+        "filter_resonance": 2,
+        "filter_type": 0
+      }
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 1.5,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.3
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "pitch_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "pitchenv_amt": 5,
+        "pitchenv_decay": 0.18
+      },
+      "notes": "pitchenv_amt: the hoover pitch-drop\npitchenv_decay: the hoover pitch-drop\npitchenv_enabled: the hoover pitch-drop"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 30,
+        "unison_drift_depth": 12,
+        "unison_drift_rate": 2,
+        "unison_mix": 0.8,
+        "unison_voices": 5
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 1
+    }
+  }
+}

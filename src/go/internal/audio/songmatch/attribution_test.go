@@ -5,6 +5,8 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/songrender"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
@@ -17,7 +19,7 @@ func TestBandAttribution_NamesDominantInstrument(t *testing.T) {
 	rendered := songrender.Rendered{
 		Arrangement: songrender.Arrangement{SampleRate: sr},
 		Master:      low,
-		Stems:       map[string][]float64{"bass": low},
+		Stems:       map[instrument.ID][]float64{roster.BassGuitar: low},
 	}
 	hints := BandAttribution(ref, rendered, cfg)
 	if len(hints) == 0 {
@@ -25,7 +27,7 @@ func TestBandAttribution_NamesDominantInstrument(t *testing.T) {
 	}
 	named := false
 	for _, h := range hints {
-		if h.Instrument == "bass" {
+		if h.Instrument == roster.BassGuitar {
 			named = true
 		}
 	}

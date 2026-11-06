@@ -2,32 +2,36 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 // TestUnregisterSamplePCMRestoresFactoryInstrument proves the desktop half of
 // the factory-Reset fix: after the Sampler's Save registered a chopped Sample
-// over a built-in (kick-1), UnregisterSamplePCM must restore the as-shipped
-// CVariantInstrument so the synth — not the leftover chop — is what plays.
+// over a built-in (kick-snap), UnregisterSamplePCM must restore the as-shipped
+// document instrument so the synth — not the leftover chop — is what plays.
 // Without this, the desktop legacy-voice path keeps the reversed Sample because
 // the as-shipped recipe path is skipped for an un-customised instrument.
 func TestUnregisterSamplePCMRestoresFactoryInstrument(t *testing.T) {
 	ResetInstruments() // snapshots factoryInstruments
 
-	RegisterSamplePCM("kick-1", []float32{0.1, 0.2, 0.3}, SampleRate())
+	RegisterSamplePCM(roster.KickSnap, []float32{0.1, 0.2, 0.3}, SampleRate())
 	instMu.RLock()
-	_, isSample := instruments["kick-1"].(Sample)
+	_, isSample := instruments[roster.KickSnap].(Sample)
 	instMu.RUnlock()
 	if !isSample {
-		t.Fatalf("precondition: kick-1 should be a Sample after RegisterSamplePCM")
+		t.Fatalf("precondition: kick-snap should be a Sample after RegisterSamplePCM")
 	}
 
-	UnregisterSamplePCM("kick-1")
+	UnregisterSamplePCM(roster.KickSnap)
 
 	instMu.RLock()
-	inst := instruments["kick-1"]
+	inst := instruments[roster.KickSnap]
 	instMu.RUnlock()
-	cv, ok := inst.(CVariantInstrument)
-	if !ok || cv.Name != "kick-1" {
-		t.Errorf("after UnregisterSamplePCM kick-1 = %T (%+v), want factory CVariantInstrument kick-1", inst, inst)
+	di, ok := inst.(docInstrument)
+	if !ok || di.id != roster.KickSnap {
+		t.Errorf("after UnregisterSamplePCM kick-snap = %T (%+v), want the factory docInstrument kick-snap", inst, inst)
 	}
 }

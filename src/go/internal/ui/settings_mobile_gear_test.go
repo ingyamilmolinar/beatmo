@@ -39,7 +39,7 @@ func TestMobileSettingsGearReplacesOverflowEntry(t *testing.T) {
 	}
 
 	// Pressing the gear opens the settings overlay. The gear is wired into the
-	// grid pane's z-ordered inputDispatcher (gridHelpInputHandler), so a press at
+	// grid pane's z-ordered inputDispatcher (gridCornerButtonsHandler), so a press at
 	// its rect dispatches there — the same path on every platform.
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	if !g.inputDispatcher.Dispatch(cx, cy, true) {

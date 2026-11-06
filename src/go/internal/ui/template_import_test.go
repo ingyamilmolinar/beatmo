@@ -11,8 +11,7 @@ import (
 )
 
 // Templates are authoritative JSON project files (no procedural generator), so
-// these guards import the ACTUAL embedded bytes — the same strategy used for the
-// startup demo (see startup_demo_quality_test.go). Each shipped template must
+// these guards import the ACTUAL embedded bytes. Each shipped template must
 // import cleanly, attach known instruments, and produce a playable circuit.
 
 func TestTemplates_ImportRoundTrip(t *testing.T) {
@@ -82,10 +81,10 @@ func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 	withDefaultAudio(t)
 	registered := map[string]bool{}
 	for _, id := range audio.Instruments() {
-		registered[id] = true
+		registered[string(id)] = true
 	}
 	for _, tp := range assets.Templates() {
-		var f exportFile
+		var f projectFile
 		if err := json.Unmarshal(tp.Bytes, &f); err != nil {
 			t.Fatalf("%s: unmarshal: %v", tp.Genre, err)
 		}
@@ -94,8 +93,8 @@ func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 			// promotes them to first-class instruments aliased onto their base.
 			// Mirror that promotion (import.go does the same) before the check.
 			audio.EnsureInstanceInstrument(in.ID)
-			registered[in.ID] = registered[in.ID] || slices.Contains(audio.Instruments(), in.ID)
-			if !registered[in.ID] {
+			registered[string(in.ID)] = registered[string(in.ID)] || slices.Contains(audio.Instruments(), in.ID)
+			if !registered[string(in.ID)] {
 				t.Errorf("%s: instrument %q is not a registered builtin (audio.Play would silently drop it)", tp.Genre, in.ID)
 			}
 		}

@@ -59,6 +59,7 @@ import {
   shouldSkipWasmBuild,
   flushCoverage,
   isCoverageEnabled,
+  waitForAudioReady,
 } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -120,7 +121,7 @@ await page.waitForFunction(() => typeof window.playSoundParams === "function");
 await page.waitForFunction(() => typeof window.getRenderLatencyMetrics === "function");
 await page.waitForFunction(() => typeof window.registerSamplePCM === "function");
 await page.waitForFunction(() => window.audioReady !== undefined);
-await page.evaluate(async () => { await window.audioReady; });
+await waitForAudioReady(page);
 
 // Real gesture unlocks + CREATES the AudioContext.
 await page.mouse.click(20, 20);

@@ -3,6 +3,8 @@ package ui
 import (
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/theme"
+
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
@@ -27,6 +29,32 @@ func (g *Game) Close() {
 	// Stop audioLoop's opportunistic seqScheduleTime refills before any
 	// channels go away so audioCh drains and the audioQuit select wins.
 	g.closing.Store(true)
+	// Never leave committed lane voices playing after the Game is gone.
+	if g.audioLaneOn() {
+		g.resetAudioLane()
+		g.flushLaneOps()
+	}
+	if g.themeCancel != nil {
+		g.themeCancel()
+		g.themeCancel = nil
+	}
+	if g.recordStopUnsub != nil {
+		g.recordStopUnsub()
+		g.recordStopUnsub = nil
+	}
+	// The locale registry is process-global too; without this every closed
+	// Game stayed reachable through its DrumView's OnLocaleChanged.
+	if g.i18nCancel != nil {
+		g.i18nCancel()
+		g.i18nCancel = nil
+	}
+	unregisterGameForTest(g)
+	// The palette is package state; a Game that applied a theme (scene setup,
+	// an imported circuit) must not leak it into the next Game — test suites
+	// build hundreds of Games in one process. Production closes once, at exit.
+	if !g.circuitTheme.IsEmpty() || !g.userTheme.Doc.IsEmpty() || !ActiveTheme().IsEmpty() {
+		ApplyTheme(theme.Doc{})
+	}
 	g.StopBackgroundPredictorForTest()
 	g.StopSequencerForTest()
 	if g.audioScheduler != nil {

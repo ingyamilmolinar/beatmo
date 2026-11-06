@@ -14,12 +14,15 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ingyamilmolinar/beatmo/internal/enum"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
 	"github.com/ingyamilmolinar/beatmo/internal/ui"
 )
 
 // Config is the JSON schema for -ui-state. Pointers (*int, *bool) are
 // nullable: a missing field leaves the corresponding game state alone.
 type Config struct {
+	schema.Envelope
 	Profile       string `json:"profile,omitempty"` // "desktop" | "mobile"
 	ForceAutoSize *bool  `json:"force_auto_size,omitempty"`
 	DefaultStart  *bool  `json:"default_start,omitempty"`
@@ -46,9 +49,24 @@ type SidebarConfig struct {
 }
 
 type ViewConfig struct {
-	Mode              string `json:"mode,omitempty"` // "rows" | "audio"
-	MobileEQCollapsed *bool  `json:"mobile_eq_collapsed,omitempty"`
+	Mode              ViewMode `json:"mode,omitempty"`
+	MobileEQCollapsed *bool    `json:"mobile_eq_collapsed,omitempty"`
 }
+
+// ViewMode is the mobile view a config boots into (ViewUnset = leave it).
+type ViewMode int
+
+const (
+	ViewUnset ViewMode = iota
+	ViewRows
+	ViewAudio
+)
+
+var viewModeNames = enum.Names[ViewMode]{Kind: "view mode", Names: []string{"", "rows", "audio"}}
+
+func (m ViewMode) String() string                { return enum.String(viewModeNames, m) }
+func (m ViewMode) MarshalText() ([]byte, error)  { return enum.Marshal(viewModeNames, m) }
+func (m *ViewMode) UnmarshalText(b []byte) error { return enum.Unmarshal(viewModeNames, b, m) }
 
 // applier captures every Game setter Apply touches. Decoupling the
 // package from *ui.Game lets us unit-test the decision tree without the
@@ -89,6 +107,12 @@ func loadFile(path string) (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return Config{}, fmt.Errorf("parse ui-state: %w", err)
 	}
+	// This file is named explicitly on the command line, so an unreadable
+	// schema_version is a hard error — the caller chose it and should be
+	// told. A file with no schema_version predates versioning: accepted.
+	if err := c.Validate("ui-state"); err != nil {
+		return Config{}, err
+	}
 	return c, nil
 }
 
@@ -128,9 +152,9 @@ func apply(a applier, c Config) error {
 	}
 	if c.View != nil {
 		switch c.View.Mode {
-		case "rows":
+		case ViewRows:
 			a.SetViewMode(false)
-		case "audio":
+		case ViewAudio:
 			a.SetViewMode(true)
 		}
 		if c.View.MobileEQCollapsed != nil {

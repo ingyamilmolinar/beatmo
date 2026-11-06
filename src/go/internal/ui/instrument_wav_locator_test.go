@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
@@ -19,16 +20,11 @@ import (
 // import resolves them from a temp file and from an httptest server, verifying
 // the content hash before binding.
 func TestWavFileAndURLLocators(t *testing.T) {
-	g := newInstrumentTestGame(t)
-	const inst, base = "wavloc", "drum-snare"
-	if audio.RecipeRegistrations()[base] == nil {
-		t.Skipf("%s unavailable", base)
-	}
-	g.drum.Rows[0].Instrument = inst
-	audio.BindInstrumentToRecipe(inst, base)
+	g := newDocsGame(t, roster.Snare)
+	const inst = roster.Snare
 	pcm := wavgen.Sine(440, 0.6, 0.05, 48000)
 	audio.PutUserSample(inst, pcm, 48000)
-	t.Cleanup(func() { audio.ResetInstrumentParams(inst) })
+	t.Cleanup(func() { audio.DropBuiltinSampleOverride(inst) })
 
 	bundle, err := g.drum.BuildInstrumentBundle(0)
 	if err != nil {
@@ -51,8 +47,8 @@ func TestWavFileAndURLLocators(t *testing.T) {
 		d := bundle.Instruments[0]
 		d.WavRef = &audio.WavRef{Name: ref.Name, Sha256: ref.Sha256, Sources: []audio.WavSource{src}}
 		return &audio.InstrumentBundle{
-			Format: bundle.Format, Version: bundle.Version, Effects: bundle.Effects,
-			Instruments: []audio.InstrumentDoc{d},
+			Envelope: bundle.Envelope, Format: bundle.Format, Effects: bundle.Effects,
+			Instruments: []audio.BundleInstrument{d},
 		}
 	}
 	keepBoth := func(ImportCollision) CollisionChoice { return CollisionKeepBoth }
@@ -66,7 +62,7 @@ func TestWavFileAndURLLocators(t *testing.T) {
 	if err != nil {
 		t.Fatalf("file import: %v", err)
 	}
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(fileRes[0].ID) })
+	t.Cleanup(func() { audio.UnregisterSamplePCM(fileRes[0].ID) })
 	if fileRes[0].WavState != audio.WavResolveMatched {
 		t.Errorf("file locator: state = %v, want Matched", fileRes[0].WavState)
 	}
@@ -84,7 +80,7 @@ func TestWavFileAndURLLocators(t *testing.T) {
 	if err != nil {
 		t.Fatalf("url import: %v", err)
 	}
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(urlRes[0].ID) })
+	t.Cleanup(func() { audio.UnregisterSamplePCM(urlRes[0].ID) })
 	if urlRes[0].WavState != audio.WavResolveMatched {
 		t.Errorf("url locator: state = %v, want Matched", urlRes[0].WavState)
 	}
@@ -101,7 +97,7 @@ func TestWavFileAndURLLocators(t *testing.T) {
 	badRes, _ := g.drum.ApplyInstrumentBundle(bundleWithSource(audio.WavSource{Kind: audio.WavSourceURL, Ref: badSrv.URL}), keepBoth, -1, g.drum.wavImportLocators())
 	t.Cleanup(func() {
 		if len(badRes) > 0 {
-			audio.UnregisterRecipeForTest(badRes[0].ID)
+			audio.UnregisterSamplePCM(badRes[0].ID)
 		}
 	})
 	if len(badRes) == 0 || badRes[0].WavState != audio.WavResolveMismatch {

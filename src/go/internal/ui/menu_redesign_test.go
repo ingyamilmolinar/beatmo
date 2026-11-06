@@ -8,6 +8,9 @@ package ui
 import (
 	"regexp"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // TestTemplateMenu_GroupHeadersWhenUnfiltered pins the template page's group
@@ -33,8 +36,17 @@ func TestTemplateMenu_GroupHeadersWhenUnfiltered(t *testing.T) {
 	if len(groups) < 5 {
 		t.Fatalf("expected >=5 template group headers, got %v", groups)
 	}
-	if groups[0] != "Classical" {
-		t.Errorf("first group header = %q, want Classical", groups[0])
+	// The groove templates lead — they are what shows a new user the drums —
+	// and the classical library follows in chronological order.
+	if groups[0] != "Funk · Soul · Jazz" {
+		t.Errorf("first group header = %q, want the groove templates first", groups[0])
+	}
+	idx := map[string]int{}
+	for i, gl := range groups {
+		idx[gl] = i
+	}
+	if !(idx["Baroque"] < idx["Classical"] && idx["Classical"] < idx["Romantic"]) {
+		t.Errorf("classical groups out of chronological order: %v", groups)
 	}
 	seen := map[string]bool{}
 	for _, gl := range groups {
@@ -132,10 +144,10 @@ func TestTemplateMenu_LoadedTemplateReadsActive(t *testing.T) {
 func TestInstMenu_SearchClearButton(t *testing.T) {
 	props := instMenuTestProps(
 		[]InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Drums"},
-			{ID: "snare", Label: "Snare", Category: "Drums"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatPercussion},
 		},
-		[]string{"Drums"},
+		[]audio.Category{audio.CatPercussion},
 	)
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(props)
@@ -169,11 +181,11 @@ func TestInstMenu_SearchClearButton(t *testing.T) {
 func TestInstMenu_CategoryRowsCarryCounts(t *testing.T) {
 	props := instMenuTestProps(
 		[]InstrumentOption{
-			{ID: "kick", Label: "Kick", Category: "Drums"},
-			{ID: "snare", Label: "Snare", Category: "Drums"},
-			{ID: "saw", Label: "Saw", Category: "Synths"},
+			{ID: roster.Kick, Label: "Kick", Category: audio.CatPercussion},
+			{ID: roster.Snare, Label: "Snare", Category: audio.CatPercussion},
+			{ID: "saw", Label: "Saw", Category: audio.CatLead},
 		},
-		[]string{"Drums", "Synths"},
+		[]audio.Category{audio.CatPercussion, audio.CatLead},
 	)
 	props.ForceCategories = true
 	comp := NewInstrumentMenuComponent()
@@ -188,7 +200,7 @@ func TestInstMenu_CategoryRowsCarryCounts(t *testing.T) {
 	for i, b := range btns {
 		counts[b.Text] = comp.categoryMeta[i].count
 	}
-	if counts["Drums"] != 2 || counts["Synths"] != 1 {
-		t.Errorf("category counts = %v, want Drums=2 Synths=1", counts)
+	if counts["Percussion"] != 2 || counts["Lead/Synth"] != 1 {
+		t.Errorf("category counts = %v, want Percussion=2 Lead/Synth=1", counts)
 	}
 }

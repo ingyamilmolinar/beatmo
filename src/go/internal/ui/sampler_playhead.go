@@ -3,6 +3,8 @@ package ui
 import (
 	"image/color"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
 // sampler_playhead.go — the Sampler tab's preview playhead lines.
@@ -74,7 +76,7 @@ type samplerPlayheadView struct {
 // prunes finished ones; active() projects the survivors to draw fractions.
 type samplerPlayheadTracker struct {
 	lines     []samplerPlayheadLine
-	lastSeen  map[string]int64 // instrument id -> latest trigger nanos already spawned
+	lastSeen  map[instrument.ID]int64 // instrument id -> latest trigger nanos already spawned
 	nextColor int
 }
 
@@ -86,9 +88,9 @@ func (t *samplerPlayheadTracker) reset() { t.lines = t.lines[:0] }
 // already spawned and still within its playback window, then prunes finished
 // lines and caps the count. triggers maps instrument id -> latest trigger time
 // in unix-nanos (0 means "never triggered").
-func (t *samplerPlayheadTracker) observe(nowNanos int64, triggers map[string]int64, durSec float64) {
+func (t *samplerPlayheadTracker) observe(nowNanos int64, triggers map[instrument.ID]int64, durSec float64) {
 	if t.lastSeen == nil {
-		t.lastSeen = map[string]int64{}
+		t.lastSeen = map[instrument.ID]int64{}
 	}
 	durNanos := int64(durSec * float64(time.Second))
 	for id, tn := range triggers {

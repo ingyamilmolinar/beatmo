@@ -5,34 +5,47 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 // synthHeaderForTest lays out the synth header in isolation and returns the
 // resulting layout. headerH is generous so button height is governed by the
 // density token, not adaptive shrink.
-func synthHeaderForTest(t *testing.T, contentR image.Rectangle, inst, recipe string, mobile bool) synthHeaderLayout {
+func synthHeaderForTest(t *testing.T, contentR image.Rectangle, inst instrument.ID, mobile bool) synthHeaderLayout {
 	t.Helper()
 	dv := &DrumView{}
-	dv.layoutSynthHeader(contentR, 64, inst, recipe, mobile)
+	dv.layoutSynthHeader(contentR, 64, inst, mobile)
 	return dv.instEditorHeader
 }
 
-// TestSynthHeaderCaptionFitsRect — the caption-overflow guard (desktop only; the
-// mobile header is gone — identity lives in the channel pill). The "inst —
-// recipe" caption must be truncated to its captionRect so it never runs under
-// the Save/Save As/Reset buttons.
-func TestSynthHeaderCaptionFitsRect(t *testing.T) {
+// TestSynthHeader_SamplerStyle — the header mirrors the Sampler tab: title on
+// the left, the actions right-aligned in Preview < Save < Save As < Reset < ⋯
+// order with the ⋯ overflow flush against the right inset. No thumbnail, no recipe id.
+func TestSynthHeader_SamplerStyle(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
-
-	h := synthHeaderForTest(t, image.Rect(0, 0, 600, 200), "kick-1", "drum-kick-punchy-extra-long", false)
-	if h.captionRect.Dx() <= 0 {
-		t.Fatal("captionRect has no width")
+	h := synthHeaderForTest(t, image.Rect(0, 0, 900, 200), roster.Violin, false)
+	if h.rect.Empty() {
+		t.Fatal("header rect empty")
 	}
-	got := synthHeaderCaptionText(h)
-	if TextWidth(got) > h.captionRect.Dx() {
-		t.Errorf("caption %q width %d exceeds captionRect width %d (would overflow buttons)",
-			got, TextWidth(got), h.captionRect.Dx())
+	if !(h.previewRect.Max.X <= h.saveAsRect.Min.X) {
+		t.Fatalf("buttons not ordered Preview<SaveAs: %v %v", h.previewRect, h.saveAsRect)
+	}
+	if h.moreRect.Max.X != h.rect.Max.X-SpaceMD || h.saveAsRect.Max.X > h.moreRect.Min.X {
+		t.Fatalf("⋯ not flush right after Save As: save-as %v more %v header %v", h.saveAsRect, h.moreRect, h.rect)
+	}
+	if h.moreRect.Dx() != h.moreRect.Dy() {
+		t.Fatalf("⋯ is an icon keycap (square), got %v", h.moreRect)
+	}
+	for _, r := range []image.Rectangle{h.previewRect, h.saveAsRect, h.moreRect} {
+		if r.Min.Y != h.previewRect.Min.Y || r.Dy() != h.previewRect.Dy() {
+			t.Fatalf("action cluster not aligned: %v vs %v", r, h.previewRect)
+		}
+	}
+	if got, want := audioTabHeaderName(roster.Violin), "Violin"; got != want {
+		t.Fatalf("title name %q want %q", got, want)
 	}
 }
 
@@ -42,38 +55,32 @@ func TestSynthHeaderButtonHeightFromDensity(t *testing.T) {
 	measure := func(d Density) int {
 		restore := SetDensityForTest(d)
 		defer restore()
-		h := synthHeaderForTest(t, image.Rect(0, 0, 1000, 200), "kick-1", "drum-kick", false)
-		return h.saveRect.Dy()
+		h := synthHeaderForTest(t, image.Rect(0, 0, 1000, 200), "kick-1", false)
+		return h.saveAsRect.Dy()
 	}
 	for _, d := range []Density{DensityCompact, DensityComfortable, DensitySpacious} {
 		restore := SetDensityForTest(d)
 		want := Profile().DensityValues().SynthHeaderButtonH
 		restore()
 		if got := measure(d); got != want {
-			t.Errorf("density=%v: save button height %d, want SynthHeaderButtonH %d", d, got, want)
+			t.Errorf("density=%v: Save As button height %d, want SynthHeaderButtonH %d", d, got, want)
 		}
 	}
 }
-
-// Mobile header touch-min is no longer a concern: on mobile the header actions
-// are gone (relocated to the sticky bar). The sticky-bar cluster's touch-min is
-// guarded by TestStickyBarTrailingActionsMobileTouchMin
-// (audio_sticky_bar_trailing_test.go).
 
 // TestSynthHeaderButtonsFitLabels — header buttons must be wide enough for
 // their labels (label-derived width, not fixed 64/72/84).
 func TestSynthHeaderButtonsFitLabels(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
-	h := synthHeaderForTest(t, image.Rect(0, 0, 1000, 200), "kick-1", "drum-kick", false)
+	h := synthHeaderForTest(t, image.Rect(0, 0, 1000, 200), "kick-1", false)
 	for _, tc := range []struct {
 		name  string
 		r     image.Rectangle
 		label string
 	}{
-		{"save", h.saveRect, "Save"},
+		{"preview", h.previewRect, "Preview"},
 		{"saveAs", h.saveAsRect, "Save As"},
-		{"reset", h.resetRect, "Reset"},
 	} {
 		if tc.r.Empty() {
 			t.Errorf("%s button empty on a wide desktop header", tc.name)
@@ -86,36 +93,11 @@ func TestSynthHeaderButtonsFitLabels(t *testing.T) {
 	}
 }
 
-// TestSynthHeaderThumbFromDensity — the waveform thumbnail width comes from
-// DensityValues().SynthHeaderThumbW (clamped to a third of the header).
-func TestSynthHeaderThumbFromDensity(t *testing.T) {
-	restore := SetDensityForTest(DensityComfortable)
-	defer restore()
-	want := Profile().DensityValues().SynthHeaderThumbW
-	h := synthHeaderForTest(t, image.Rect(0, 0, 1200, 200), "kick-1", "drum-kick", false)
-	if got := h.waveformRect.Dx(); got != want {
-		t.Errorf("thumbnail width %d, want SynthHeaderThumbW %d", got, want)
+// TestSynthHeaderMobileLaysOutNothing — mobile keeps the actions on the
+// sticky bar; the in-panel header is empty.
+func TestSynthHeaderMobileLaysOutNothing(t *testing.T) {
+	h := synthHeaderForTest(t, image.Rect(0, 0, 360, 200), "kick-1", true)
+	if !h.rect.Empty() || !h.saveAsRect.Empty() || !h.previewRect.Empty() {
+		t.Fatalf("mobile header laid out in-panel rects: %+v", h)
 	}
 }
-
-// TestSynthHeaderWaveformScratchReused — the float32→float64 conversion for
-// the header mini-waveform must reuse a cached scratch (no per-Draw alloc).
-func TestSynthHeaderWaveformScratchReused(t *testing.T) {
-	sample := make([]float32, 1024)
-	a := synthHeaderWaveFloat64(sample)
-	capA := cap(a)
-	b := synthHeaderWaveFloat64(sample)
-	if cap(b) != capA {
-		t.Errorf("synthHeaderWaveFloat64 reallocated: cap %d → %d", capA, cap(b))
-	}
-	if len(b) != len(sample) {
-		t.Errorf("len=%d, want %d", len(b), len(sample))
-	}
-}
-
-// Phase 8B unification removed the collapsed-section hint string: every
-// standardized section is now either populated or carries an enable
-// pill (the section IS used — the pill toggles it), and empty sections are
-// pruned by synthSectionOrderForSchema. The hint discipline is replaced by
-// TestSynthTab_NoCollapsedHintStringInSource (synth_modular_toggle_test.go) and
-// the per-recipe unified-order tests.

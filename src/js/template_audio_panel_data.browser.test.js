@@ -28,7 +28,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { startServer, initPage } from "./visual_test_helpers.js";
-import { resolveGoBinary } from "./browser_test_helpers.js";
+import { resolveGoBinary, waitForAudioReady } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -48,10 +48,19 @@ function buildWasmSafely() {
   if (build.status !== 0) throw new Error("go build main.wasm failed");
 }
 
-// rock.json ships no per-instrument "eq" blocks — the exact shape that
-// left the analysers unwired. Its instruments:
-const TEMPLATE = "rock.json";
-const TEMPLATE_INSTR = ["kick-tight", "snare", "hihat", "crash", "fm-bass"];
+// The template ships no per-instrument "eq" blocks — the exact shape that
+// left the analysers unwired. (Every built-in template has that shape now;
+// they are all derived from public-domain scores and none carries an "eq"
+// block, so any of them exercises the same wiring.)
+//
+// This was rock.json until the public-domain template curation replaced the
+// 32 hand-written kit templates with 24 score-derived ones; rock.json no
+// longer exists and the test died on ENOENT before reaching a single
+// assertion. A string quartet is if anything the better subject here: the
+// analysers are read per channel, and a sustained instrument carries signal
+// between onsets where a percussive one is silent for most frames.
+const TEMPLATE = "bach-brandenburg-3.json";
+const TEMPLATE_INSTR = ["violin", "viola", "cello", "harpsichord"];
 const templateJSON = fs.readFileSync(
   path.resolve(goDir, "internal/assets/templates", TEMPLATE), "utf8");
 
@@ -81,7 +90,7 @@ try {
   await page.waitForFunction(
     () => window.__audioCtx && window.__audioCtx.state === "running",
     {}, { timeout: 10000 });
-  await page.evaluate(() => window.audioReady);
+  await waitForAudioReady(page);
 
   // Load the template, open the Levels tab (shows per-instrument
   // strips), and play via the SEQUENCER — exactly the user flow.
