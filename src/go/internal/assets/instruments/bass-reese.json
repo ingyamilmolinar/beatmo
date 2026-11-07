@@ -6,7 +6,7 @@
   "notes": "bassReeseSeed: Reese bass — the classic detuned-growl bass (DnB/dubstep). A\nheavy UNISON stack of saw voices with wide detune + slow drift gives the\nmetallic moving beating; a mild low-pass keeps it from getting harsh; the amp\nis sustained so the growl rings.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.8589,
+    "amplitude": 0.8619,
     "gate_tail": 0,
     "melodic": true
   },

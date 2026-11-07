@@ -461,12 +461,12 @@
 {"id":450,"i":0,"j":241,"type":"regular","outputs":[451],"volume":0.49500000000000005},
 {"id":451,"i":0,"j":239,"type":"regular","outputs":[372],"volume":0.49500000000000005}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "conga":{"ref":"sha256:77077ec693bf6766"},
 "conga-open":{"ref":"sha256:471d6d153834accb"},
-"cowbell":{"ref":"sha256:0f2d4213ed330b20"},
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"rimshot":{"ref":"sha256:eef746ccac7c6191"},
+"cowbell":{"ref":"sha256:27b9a0345175e3ba"},
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"rimshot":{"ref":"sha256:5916603b7007a3b4"},
 "sidestick":{"ref":"sha256:48fab82ebcea6105"},
-"trumpet":{"ref":"sha256:00ad3ab34b6fdaf3"}
+"trumpet":{"ref":"sha256:e2b5e57feed508e9"}
 }}

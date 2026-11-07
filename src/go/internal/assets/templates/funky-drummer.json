@@ -353,7 +353,7 @@
 {"id":344,"i":0,"j":181,"type":"regular","outputs":[345],"volume":0.36000000000000004,"groove_kind":"delay","groove_pct":0.083},
 {"id":345,"i":0,"j":173,"type":"regular","outputs":[322],"volume":0.36000000000000004,"groove_kind":"delay","groove_pct":0.083}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "clavinet":{"ref":"sha256:9298881ad4422d12"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},

@@ -325,12 +325,12 @@
 {"id":314,"i":0,"j":260,"type":"regular","outputs":[315],"volume":0.9450000000000001},
 {"id":315,"i":0,"j":244,"type":"regular","outputs":[304],"volume":0.9450000000000001}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
-"guitar-electric":{"ref":"sha256:9cce893a476971f3"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
+"guitar-electric":{"ref":"sha256:e2e4968694a34c2b"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"organ":{"ref":"sha256:43451faa02efba5a"},
-"organ--2":{"ref":"sha256:43451faa02efba5a"},
+"organ":{"ref":"sha256:ba30fbc65bb28101"},
+"organ--2":{"ref":"sha256:ba30fbc65bb28101"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"}
 }}

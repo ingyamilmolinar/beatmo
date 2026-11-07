@@ -6,7 +6,7 @@
   "notes": "mutedTrumpetSeed: a harmon-muted trumpet — a pinched, nasal, buzzy brass: a\nband-passed formant lift gives the muted \"wah\" while the fundamental is held\nback, bright and thin with a fast onset.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.8139,
+    "amplitude": 0.8168,
     "gate_tail": 0,
     "melodic": true
   },

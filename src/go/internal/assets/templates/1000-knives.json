@@ -291,12 +291,12 @@
 ],"instrument_docs":{
 "conga":{"ref":"sha256:77077ec693bf6766"},
 "crash":{"ref":"sha256:77b3f50171cf132d"},
-"fm-bass":{"ref":"sha256:5a84d3727757ddb5"},
+"fm-bass":{"ref":"sha256:517956ea54504412"},
 "hihat-lofi":{"ref":"sha256:26936071d9b036c5"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
-"kick-808":{"ref":"sha256:897a554c4972f0a6"},
-"koto":{"ref":"sha256:374560b40a8ba363"},
-"pwm-pad":{"ref":"sha256:5cc088d67fa2e6ca"},
-"pwm-pad--2":{"ref":"sha256:5cc088d67fa2e6ca"},
+"kick-808":{"ref":"sha256:13fcc43969ca4ce3"},
+"koto":{"ref":"sha256:52bbad401f2a5261"},
+"pwm-pad":{"ref":"sha256:2f0a6f3526f38f37"},
+"pwm-pad--2":{"ref":"sha256:2f0a6f3526f38f37"},
 "sidestick":{"ref":"sha256:48fab82ebcea6105"}
 }}

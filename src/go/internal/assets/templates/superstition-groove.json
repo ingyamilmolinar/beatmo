@@ -310,11 +310,11 @@
 {"id":300,"i":0,"j":206,"type":"regular","outputs":[301],"volume":0.62},
 {"id":301,"i":0,"j":205,"type":"regular","outputs":[210],"volume":0.36000000000000004,"groove_kind":"delay","groove_pct":0.25}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "clavinet":{"ref":"sha256:9298881ad4422d12"},
 "clavinet--2":{"ref":"sha256:9298881ad4422d12"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"sax":{"ref":"sha256:7b01fd9849591a70"},
+"sax":{"ref":"sha256:568092cf2ccd82ca"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"}
 }}

@@ -104,6 +104,26 @@ func runAdopt(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dst := filepath.Join(root, "internal/assets/instruments", string(doc.ID)+".json")
+	if sb, err := os.ReadFile(dst); err == nil {
+		shipped, err := instrument.ParseFile(sb)
+		if err != nil {
+			fmt.Fprintf(stderr, "clone adopt: the shipped %s: %v\n", doc.ID, err)
+			return 1
+		}
+		// A candidate keeps the note length of the document it was tuned against; shipping it would silently undo
+		// every later length change unless its pick set that length on purpose.
+		if doc.Render.Seconds != shipped.Render.Seconds && !setsSeconds(dir, doc.Render.Seconds) {
+			fmt.Fprintf(stderr, "clone adopt: the candidate's render.seconds is %g, the shipped %s's is %g: it was made against an older document — re-run `"+makeCandidate+"` and listen again\n",
+				doc.Render.Seconds, doc.ID, shipped.Render.Seconds, *inst)
+			return 2
+		}
+		doc.Render.Amplitude = shipped.Render.Amplitude // measure-loudness owns it; doc_sha excludes it
+	}
+	doc.Origin = ""
+	if b, err = instrument.MarshalFile(doc); err != nil {
+		fmt.Fprintln(stderr, "clone adopt:", err)
+		return 1
+	}
 	if err := os.WriteFile(dst, b, 0o644); err != nil {
 		fmt.Fprintln(stderr, "clone adopt:", err)
 		return 1
@@ -117,8 +137,21 @@ func runAdopt(args []string, stdout, stderr io.Writer) int {
 	if added {
 		fmt.Fprintf(stdout, "  added %s to index.json (roster order: last)\n", doc.ID)
 	}
-	fmt.Fprintln(stdout, "next: make asset-pack && (cd src/go && ../../.tools/go/bin/go generate ./internal/audio/) && make measure-loudness && make gen-fundamentals")
+	fmt.Fprintln(stdout, "next: make asset-pack && (cd src/go && ../../.tools/go/bin/go generate ./internal/audio/) && make measure-loudness && make gen-fundamentals && make templates && make gen-dial-relevance && make wav-match-calibrate")
 	return 0
+}
+
+// setsSeconds reports whether the candidate's meta.json records a pick that set render.seconds to s.
+func setsSeconds(dir string, s float64) bool {
+	var m struct {
+		Set map[string]float64 `json:"set"`
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "meta.json"))
+	if err != nil || json.Unmarshal(b, &m) != nil {
+		return false
+	}
+	v, ok := m.Set["render.seconds"]
+	return ok && v == s
 }
 
 // latestAccept returns the accept answer of the newest session holding a

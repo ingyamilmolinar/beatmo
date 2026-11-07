@@ -6,7 +6,7 @@
   "notes": "clarinetSeed: the hollow woody clarinet — its signature is a spectrum of ODD\nharmonics only (a cylindrical bore closed at one end), which reads as hollow and\ndark. Sustained reed onset, gentle vibrato, light band-passed breath.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.4953,
+    "amplitude": 0.4971,
     "gate_tail": 0,
     "melodic": true
   },

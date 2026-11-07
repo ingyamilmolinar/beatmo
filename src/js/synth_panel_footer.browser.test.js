@@ -1,30 +1,9 @@
-/**
- * Synth-tab footer hit routing + Save As dialog — end-to-end through the
- * real WASM ↔ WebAudio bridge.
- *
- * Mirrors the Go HitArea dispatch tests in synth_panel_footer_hit_test.go
- * (Reset / Save / Save As route to the correct handler on click) and the
- * dialog flow in synth_panel_save_as_dialog_test.go (Save As opens the
- * inline modal, the user can type a name, OK persists, Cancel discards).
- *
- * The user-visible bug this guards against: clicking the footer buttons
- * triggered other controls because the EQ tab's hit areas stayed live on
- * the Synth tab and the synth footer registration order made OUT-column
- * launchers win on overlap. Fixed by (a) gating EQ-tab hit areas behind
- * activeTab==TabEQ in rebuildHitAreas, (b) bumping synth-footer ZIndex
- * to z+1, (c) clamping OUT-column link rects to their column bounds,
- * (d) migrating all synth-tab clickables to shared *Button chrome.
- *
- * COVERED-BY-GO:
- *   - internal/ui/synth_panel_footer_hit_test.go
- *   - internal/ui/synth_panel_save_as_dialog_test.go
- *   - internal/ui/synth_panel_shared_widgets_test.go
- *   - internal/ui/synth_panel_dirty_indicator_test.go
- * This browser test focuses on the JS↔WASM bridge surface only — that
- * the new exports (synthFooterButtonRects, synthSaveAsDialogState,
- * synthSaveAsDialogSetValue, synthSaveAsDialogConfirm, …) wire up to
- * the same DrumView entry points the Go tests exercise.
- */
+// Synth-tab Save As, the only save, through the real WASM <-> WebAudio bridge:
+// a click opens the prefilled dialog, a new name makes a new user instrument,
+// the same name saves over it, and Cancel saves nothing.
+
+// COVERED-BY-GO: internal/ui/save_as_only_test.go,
+// synth_panel_footer_hit_test.go, synth_panel_save_as_dialog_test.go
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -110,6 +89,7 @@ try {
     typeof synthSaveAsDialogConfirm === "function" &&
     typeof synthSaveAsDialogCancel === "function" &&
     typeof getInstrumentParams === "function" &&
+    typeof getInstrumentDoc === "function" &&
     typeof fullLayoutSnapshot === "function" &&
     typeof totalRows === "function" &&
     typeof rowInstrument === "function"
@@ -130,16 +110,8 @@ try {
   });
   if (!canvasBox) throw new Error("no canvas in DOM");
 
-  // Edit a knob on whatever instrument the synth tab currently
-  // shows (the startup demo's first row). We can't assume "snare" —
-  // the active row depends on startup_demo.json content.
-  // The footer Save/Reset buttons operate on the synth tab's ACTIVE instrument
-  // (Go: DrumView.synthTabActiveInstrument = EQ ActiveChannel, else the first
-  // non-empty drum row). We MUST target that exact instrument — Reset clears the
-  // ACTIVE instrument's overlay, so editing any other id leaves the overlay
-  // uncleared and the assertion fails. Mirror the Go resolver instead of
-  // guessing from a hardcoded id list (which picked the wrong row while the
-  // real active row was dnb-kick, so Reset never cleared our edit).
+  // Save As acts on the Synth tab's ACTIVE instrument (the EQ channel, else
+  // the first non-empty row), so the test must edit that exact id.
   const activeInst = await page.evaluate(() => {
     let ch = "";
     try {
@@ -158,40 +130,48 @@ try {
     throw new Error("no active synth instrument — can't drive the synth tab");
   }
   console.log("[TEST] active synth instrument:", activeInst);
-  // post_decay lives in the FINISH stage every instrument document carries.
-  // Reset's target is the value the open CIRCUIT carried (read it, never
-  // assume the hand-edited startup demo's); the edits must differ from it.
-  const circuitDecay = await page.evaluate((inst) => getInstrumentParams(inst).post_decay, activeInst);
-  const [SAVED, EDITED] = [0.4, 0.7].map((v) => (v === circuitDecay ? v + 0.05 : v));
-  await page.evaluate(([inst, v]) => {
-    setInstrumentParam(inst, "post_decay", v);
-    forceDraw();
-  }, [activeInst, SAVED]);
-  await page.waitForTimeout(120);
+  const originOf = (inst) => page.evaluate((i) => JSON.parse(getInstrumentDoc(i) || "{}").origin || "", inst);
+  const decayOf = (inst) => page.evaluate((i) => getInstrumentParams(i).post_decay, inst);
+  const setDecay = async (v) => {
+    await page.evaluate(([inst, val]) => {
+      setInstrumentParam(inst, "post_decay", val);
+      forceDraw();
+    }, [activeInst, v]);
+    await page.waitForTimeout(60);
+  };
+  // Click Save As at its visible centre and return the dialog it opened.
+  const openSaveAs = async (label) => {
+    const rects = await page.evaluate(() => synthFooterButtonRects());
+    const sa = rects.saveAs;
+    if (!sa || sa.w <= 0 || sa.h <= 0) {
+      throw new Error(`${label}: synthFooterButtonRects().saveAs missing or empty: ${JSON.stringify(rects)}`);
+    }
+    await clickCanvasAt(page, canvasBox, sa.x + sa.w / 2, sa.y + sa.h / 2);
+    await page.waitForTimeout(120);
+    const dlg = await page.evaluate(() => synthSaveAsDialogState());
+    if (!dlg) throw new Error(`${label}: Save As click did not open the dialog`);
+    return dlg;
+  };
 
+  const circuitDecay = await decayOf(activeInst);
+  const [FIRST, SECOND] = [0.4, 0.7].map((v) => (v === circuitDecay ? v + 0.05 : v));
+  await setDecay(FIRST);
+
+  // Save As is the only save: the header carries no Save and no Reset.
   const footerRects = await page.evaluate(() => synthFooterButtonRects());
   console.log("[TEST] footer rects:", JSON.stringify(footerRects));
-  for (const key of ["save", "saveAs", "reset"]) {
-    const r = footerRects[key];
-    if (!r || r.w <= 0 || r.h <= 0) {
-      throw new Error(`synthFooterButtonRects().${key} missing or empty: ${JSON.stringify(r)}`);
+  for (const gone of ["save", "reset"]) {
+    if (footerRects[gone]) {
+      throw new Error(`synthFooterButtonRects().${gone} is present; Save As is the only save: ${JSON.stringify(footerRects)}`);
     }
   }
 
-  // ─── Click Save As — dialog should open ───
-  const sa = footerRects.saveAs;
-  await clickCanvasAt(page, canvasBox, sa.x + sa.w / 2, sa.y + sa.h / 2);
-  await page.waitForTimeout(120);
-  let dlg = await page.evaluate(() => synthSaveAsDialogState());
-  if (!dlg) {
-    throw new Error("Save As click did not open the dialog (synthSaveAsDialogState() == null)");
+  // ─── Save As a new name → a new user.* instrument ───
+  let dlg = await openSaveAs("first Save As");
+  console.log("[TEST] dialog opened, prefilled name:", dlg.value);
+  if (!dlg.value) {
+    throw new Error(`dialog opened without the instrument's current name: ${JSON.stringify(dlg)}`);
   }
-  console.log("[TEST] dialog opened, suggested name:", dlg.value);
-  if (!dlg.value || dlg.value.length === 0) {
-    throw new Error(`dialog opened with empty suggested name: ${JSON.stringify(dlg)}`);
-  }
-
-  // ─── Type a name, confirm ───
   const typed = "Browser-Test Punchy Snare";
   await page.evaluate((s) => synthSaveAsDialogSetValue(s), typed);
   await page.evaluate(() => synthSaveAsDialogConfirm());
@@ -200,60 +180,43 @@ try {
   if (dlg !== null) {
     throw new Error(`dialog still open after confirm: ${JSON.stringify(dlg)}`);
   }
-  // Confirm Save As created a user.* instrument: the active row's document
-  // is repointed at it (id pattern user.<slug>.<content hash>).
-  const newID = await page.evaluate((inst) => (JSON.parse(getInstrumentDoc(inst) || "{}").origin || ""), activeInst);
+  const newID = await originOf(activeInst);
   if (!newID.startsWith("user.")) {
     throw new Error(`Save As did not repoint the document at a new user.* instrument (origin ${JSON.stringify(newID)})`);
   }
   console.log("[TEST] Save As created user instrument:", newID);
 
-  // ─── Click Reset — back to what the circuit carried ───
-  // After Save As the row's document equals the new user instrument. Edit
-  // again (the row keeps its id: only the document's origin moved, so we keep
-  // using activeInst); Reset restores the document the open circuit carried,
-  // not the Save As (synth_save_trumps_circuit_test.go).
-  await page.evaluate(([inst, v]) => {
-    setInstrumentParam(inst, "post_decay", v);
-    forceDraw();
-  }, [activeInst, EDITED]);
-  await page.waitForTimeout(60);
-  const beforeReset = await page.evaluate((inst) => getInstrumentParams(inst), activeInst);
-  if (!beforeReset || beforeReset.post_decay !== EDITED) {
-    throw new Error(`edit didn't take: post_decay=${beforeReset && beforeReset.post_decay}`);
+  // ─── Save As again keeps the name → saves over that instrument ───
+  await setDecay(SECOND);
+  dlg = await openSaveAs("second Save As");
+  if (dlg.value !== typed) {
+    throw new Error(`Save As must be prefilled with the current name ${JSON.stringify(typed)}, got ${JSON.stringify(dlg.value)}`);
   }
-  // Re-read footer rects in case dirty-state spec swap moved them.
-  const fr2 = await page.evaluate(() => synthFooterButtonRects());
-  const rs = fr2.reset;
-  await clickCanvasAt(page, canvasBox, rs.x + rs.w / 2, rs.y + rs.h / 2);
+  await page.evaluate(() => synthSaveAsDialogConfirm());
   await page.waitForTimeout(120);
-  const afterReset = await page.evaluate((inst) => getInstrumentParams(inst), activeInst);
-  const decayAfter = afterReset && afterReset.post_decay;
-  if (decayAfter !== circuitDecay) {
-    throw new Error(`Reset click did not return to the circuit's value: post_decay=${decayAfter}, want ${circuitDecay} (saved-as ${SAVED}, edited ${EDITED})`);
+  if ((await page.evaluate(() => synthSaveAsDialogState())) !== null) {
+    throw new Error("dialog still open after saving over");
   }
-  const originAfter = await page.evaluate((inst) => JSON.parse(getInstrumentDoc(inst) || "{}").origin || "", activeInst);
-  if (originAfter === newID) {
-    throw new Error(`Reset kept the Save As identity (origin ${originAfter}); it must restore the circuit's document`);
+  const originOver = await originOf(activeInst);
+  if (originOver !== newID) {
+    throw new Error(`saving over under the same name made another instrument: origin ${originOver}, want ${newID}`);
   }
-  console.log("[TEST] Reset returned to the circuit's document; post_decay:", decayAfter, "origin:", originAfter);
+  if ((await decayOf(activeInst)) !== SECOND) {
+    throw new Error("saving over changed the instrument's sound");
+  }
+  console.log("[TEST] Save As under the same name saved over", newID);
 
-  // ─── Click Save As again, then Cancel — dialog must close, nothing saved ───
-  await page.evaluate((inst) => {
-    setInstrumentParam(inst, "post_decay", 0.55);
-    forceDraw();
-  }, activeInst);
-  await page.waitForTimeout(60);
-  const fr3 = await page.evaluate(() => synthFooterButtonRects());
-  await clickCanvasAt(page, canvasBox, fr3.saveAs.x + fr3.saveAs.w / 2, fr3.saveAs.y + fr3.saveAs.h / 2);
-  await page.waitForTimeout(120);
-  let dlg2 = await page.evaluate(() => synthSaveAsDialogState());
-  if (!dlg2) throw new Error("dialog did not open second time");
+  // ─── Save As → Cancel: dialog closes, nothing saved ───
+  await setDecay(0.55);
+  await openSaveAs("third Save As");
   await page.evaluate(() => synthSaveAsDialogCancel());
   await page.waitForTimeout(60);
-  dlg2 = await page.evaluate(() => synthSaveAsDialogState());
-  if (dlg2 !== null) {
-    throw new Error(`dialog still open after cancel: ${JSON.stringify(dlg2)}`);
+  dlg = await page.evaluate(() => synthSaveAsDialogState());
+  if (dlg !== null) {
+    throw new Error(`dialog still open after cancel: ${JSON.stringify(dlg)}`);
+  }
+  if ((await originOf(activeInst)) !== newID) {
+    throw new Error("Cancel changed the instrument the row's document comes from");
   }
   console.log("[TEST] Save As → Cancel: dialog dismissed without saving");
 
@@ -261,7 +224,7 @@ try {
     throw new Error(`page emitted ${pageErrors.length} errors during the test:\n  ${pageErrors.join("\n  ")}`);
   }
 
-  console.log("[TEST] ✓ synth panel footer + Save As dialog routing OK");
+  console.log("[TEST] ✓ synth panel Save As routing OK");
 } catch (err) {
   console.error("[TEST FAIL]", err);
   exitCode = 1;

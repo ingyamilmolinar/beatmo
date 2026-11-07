@@ -5,7 +5,7 @@
   "category": "modular",
   "render": {
     "seconds": 0.5,
-    "amplitude": 0.4813,
+    "amplitude": 0.483,
     "gate_tail": 0,
     "melodic": false
   },

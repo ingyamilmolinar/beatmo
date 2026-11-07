@@ -104,34 +104,24 @@ gates in `synth_panel_zone.go`.
 
 - **POST knobs** (the FINISH stage, `post_decay_rate` 8): `pitch` (re-index via playback rate), `decay` (a post-envelope `exp(-t·decay_rate·(1/decay−1))`), `drive` (saturation), `darken` (a one-pole LP crossfaded in).
 
-### Rimshot (tone-led)
+### Rimshot (a SNARE voice) and snare-crack (`gen_snare_rimshot`)
 
-**C function**: `gen_snare_rimshot` (source 7, variant 1)
+**The shipped `rimshot` is `snare.main` (source 7, variant 0), started from `snare-fat`'s document** (`refs tune`, pick
+`from: snare-fat`; ear-approved in `make ab-tuned`, 2026-11-07: "ball park"). A real rimshot is a stick striking the
+head AND the rim at once, so it is a snare hit with a rim crack: head, wires and rim together — the reference
+(`rimshot-vcsl`, a VCSL legacy-snare rimshot) measures noise 0.72, centroid 1459 Hz. The tone-led voice below was the
+shipped rimshot until then; the listener heard it as "a high tom or conga", and it ranked #33 on that recording with the
+cowbell as its nearest. The next round's ask was "more punch and crack, less air": in `snare.main` terms, punch = the
+body tone (`snare_tone_m`, ring length `snare_tone_d` — a decay RATE, so lower rings longer), crack = the wire bands
+raised (`snare_tune`, every band centre × it) and their onset boost (`snare_attack` multiplies the WIRES, so on its own
+it adds air), air = the low-noise and wire-tail share (`snare_noise_m`, `snare_tail_d`). Shortening the tail is not
+"less air" against this recording: it holds −14 dB at 0.5 s, and a faster tail cost the decay term at once.
 
-- **Architecture**: 808-inspired inharmonic resonator — **tone-led with heavy saturation**, fundamentally different from the snare.
-  - **NOT a modified snare**: rimshots get their character from inharmonic ringing tones and saturation, not noise bands.
-
-- **Tone (4 inharmonic partials)**:
-  - Fixed frequencies at ratios 1 : 2.1 : 3.4 : 5.6 (500 / 1050 / 1700 / 2800 Hz x detune).
-  - **No pitch drift** — fixed frequencies are critical. Pitch sweeps make it sound like a tom.
-  - Gains taper with frequency: 1.0, 0.95, 0.8, 0.5.
-  - Exponential decays get faster for higher partials: exp(-40t), exp(-50t), exp(-65t), exp(-90t).
-
-- **Transient**: Brief HP noise crack (~5ms). White noise minus 1st-order LP at 5 kHz. Amplitude 0.7, decay exp(-200t). Provides the initial "stick hit" without dominating.
-
-- **Attack spike**: `1.0 + 2.0 * exp(-1500t)` — boosts the first ~1ms by 3x for hard impact.
-
-- **Signal chain**: (tones + transient) x attack → 1st-order HP at 400 Hz → `tanh(x * 4.0)` → `softsat()`.
-  - The **high HP cutoff (400 Hz)** strips all warmth/body, leaving only metallic ring.
-  - The **hard drive (4.0)** generates dense harmonics from the sinusoids, creating the raw crunchy character.
-  - The **double saturation** (tanh then softsat) is what makes it sound metallic rather than clean.
-
-- **Buffer duration**: 0.3s (signal is essentially silent after ~100ms).
-
-- **Design notes**:
-  - To make it crunchier: increase tanh drive, raise HP cutoff, add higher partials.
-  - To make it more tonal/bell-like: reduce drive, lower HP cutoff, remove the 4th partial.
-  - Never add biquad noise bands or pitch drift — these push it back toward snare/tom territory.
+**`gen_snare_rimshot` (source 7, variant 1) is now `snare-crack`'s voice only** — an 808-style inharmonic resonator:
+four fixed partials at 1 : 2.1 : 3.4 : 5.6 (500 / 1050 / 1700 / 2800 Hz × detune, gains 1.0 / 0.95 / 0.8 / 0.5, decays
+exp(−40t) … exp(−90t), no pitch drift), a ~5 ms HP noise crack (decay exp(−200t)), an attack spike
+`1 + 2·exp(−1500t)`, then HP 400 Hz → `tanh(4x)` → `softsat()`; essentially silent after ~100 ms. It is a drum-machine
+clave/rim click, not an acoustic rimshot: snare-crack ranks #32 on the snare recording.
 
 ### Sidestick (tone-led)
 
@@ -327,7 +317,7 @@ modal plates below for the model, the knobs and how they were fitted. Rebuilt
 ### Ride (MODAL PLATE)
 
 **Shipped**: `ride` (variant 4, `gen1_cym_modes` 316) — a modal plate fitted to a
-user-supplied jazz ride and chosen by ear (2026-09-28). Duration 1.8 s (`Beats 3.6`),
+user-supplied jazz ride and chosen by ear (2026-09-28). Duration 1.8 s (`render.seconds` 1.8),
 because the plate rings like its 1.7 s reference. See § Cymbals as modal plates.
 
 **Partial voice deleted (2026-10-02)**: the ride's old fixed-sine-partial voice
@@ -765,7 +755,7 @@ time**). The decisive perceptual axes for a kick:
   fast pitch snap, and `kick_sat` drive. Reads bright/punchy (centroid ~2.8 kHz).
 - **808 sub** (`kick-808`, variant 1 "deep"): mostly sub with a deliberate body
   (`h2` 0.20, `h3` 0.05 — "not a pure sub"), a big 808 "pew" drop (`pe_amt` 2.4),
-  very LOW `env0` (long ring) + long Beats — a sustained sub-bass note.
+  very LOW `env0` (long ring) + a long `render.seconds` — a sustained sub-bass note.
 - **ACOUSTIC** (`kick-acoustic`, variant 7): the inharmonic MODAL bank with beater
   excitation plus a baked room tail (`kick_reverb`) — see the ACOUSTIC / REAL-RECORDED
   entry below.
@@ -827,8 +817,8 @@ time**). The decisive perceptual axes for a kick:
   present, HF smooth, bands fundamental-dominant — the anti-"watered-down" net) +
   the seeded-kick playback check in `TestDnbKickPlaybackPathRendersKick`.
   ⚠️ **Buffer-length coupling**: the global fade is buffer-normalized, so the
-  swell/bloom only survive if `Beats` (the render window) matches the tuning
-  buffer (~0.35 s @ 120 bpm → `Beats: 0.7`). A short buffer squashes them.
+  swell/bloom only survive if `render.seconds` (the render window, a fixed time — no tempo)
+  matches the tuning buffer (~0.35 s). A short buffer squashes them.
 
 - **ACOUSTIC / REAL-RECORDED** (`kick-acoustic`, `kick_variant: 7` — the
   **inharmonic modal bank + reverb DSP**). Tuned to the real sample *36010
@@ -938,8 +928,8 @@ those words turned out to mean, measured against the user's sample library:
    - The punchy/tight variants end in `softsat·k` into a **±1 hard clamp**; past
      drive ≈ 1.2 the onset flat-tops (thousands of samples). `kick-snap` clips 141
      samples BY DESIGN, so the constraint is "no more clipping than the original".
-   - A short buffer (`Beats` 0.3) leaves no room for a body (the fade is
-     buffer-normalized): snap and electro needed longer buffers (0.5 / 0.8).
+   - A short buffer (`render.seconds` 0.15) leaves no room for a body (the fade is
+     buffer-normalized): snap and electro needed longer buffers (0.25 / 0.4 s).
    - "Louder but the same kick" (kick-tight, kick-acoustic): shrink the onset
      spike (`attack` → 0) and add modest drive; partial blends toward a fuller
      retune ADDED warble (0.8–1.3) — interpolating several knobs is not a safe
@@ -999,7 +989,7 @@ lower F0: the sandyrb ref's F0 is ~90 Hz but it reads low because its mid modes
 are quiet — measure `AttackLowMidRatio`, not just settle Hz. (8) A **reverb tail
 raises RMS → fights crest**; keep it a quiet, fast-decaying, DENSE (multi-tap)
 wash so it never blooms over the sharp attack (which is the punchy "soul"). (9)
-`Beats` (render window) must fit the reverb/tail T60 or the tail AND the crest
+`render.seconds` (the render window) must fit the reverb/tail T60 or the tail AND the crest
 mis-measure. (10) A **"creaky door" / wooden buzz = intermodulation roughness**
 from `tanh`-saturating a bank of INHARMONIC modes together (the products of
 inharmonic partials are dissonant). Cure: keep body saturation LOW and let the
@@ -1081,7 +1071,7 @@ Per sample:
 - **Carrier envelope**: 5ms attack, 300ms decay, sustain 0.6, release 200ms.
 - **Modulator envelope**: 1ms attack, 150ms decay, sustain 0.2, release 100ms. Fast mod decay gives "pluck" character.
 - **Pitch envelope**: +3 semitones, 60ms decay.
-- **Buffer duration**: 1.5 beats.
+- **Buffer duration**: `render.seconds` 0.75 (it was 1.5 beats at 120 BPM; a note is a fixed time now).
 - **Design notes**:
   - Darker/rounder: reduce mod depth (try 1.5) or shorten mod decay.
   - More aggressive: increase mod depth (try 4.0) or add mod sustain.
@@ -1095,7 +1085,7 @@ Per sample:
 - **Carrier envelope**: 1ms attack, 1.5s decay, sustain 0.0, release 300ms. Pure ring-and-fade.
 - **Modulator envelope**: 1ms attack, 1.2s decay, sustain 0.0, release 200ms. Slightly shorter than carrier so brightness fades before volume.
 - **Pitch envelope**: None (0.0). Bells should not have pitch sweep.
-- **Buffer duration**: 2.0 beats.
+- **Buffer duration**: `render.seconds` 1.0.
 - **Design notes**:
   - More metallic: increase ratio (1:5.3, 1:7.1) or add `freq_offset`.
   - Warmer: decrease mod depth or shorten mod decay.
@@ -1111,7 +1101,7 @@ Per sample:
 - **op2 envelope**: 1ms attack, 80ms decay, sustain 0.1, release 50ms. Fastest decay — "edge" fades quickly.
 - **Frequency ratios**: op0=1x, op1=2x, op2=3x. All integer, brightness from cascaded depth.
 - **Pitch envelope**: +1.5 semitones, 40ms decay.
-- **Buffer duration**: 1.0 beats.
+- **Buffer duration**: `render.seconds` 0.5.
 - **Design notes**:
   - Tame brightness: reduce op2 amplitude or decay.
   - More aggressive: increase depths or add self-modulation (mod_matrix[0][0] > 0).
@@ -1126,7 +1116,7 @@ Per sample:
 - **op1 (modulator)**: 1ms attack, 200ms decay, sustain 0.1, release 200ms.
 - **op2 (shimmer carrier)**: 2x ratio, amplitude 0.30, 500ms decay.
 - **Pitch envelope**: None.
-- **Buffer duration**: 2.0 beats.
+- **Buffer duration**: `render.seconds` 1.0.
 - **Design notes**:
   - Rhodes character from mod decay ratio: mod ~2-3x faster than carrier. Equal rates = organ.
   - More "tine-like": increase mod depth (try 2.5).
@@ -1142,7 +1132,7 @@ Per sample:
 - **Modulator envelope**: 0.5ms attack, 40ms decay, sustain 0.0, release 20ms. **Extremely fast decay** is critical.
 - **Frequency ratio**: op1 at 2x. Keeps sidebands harmonic, 2x emphasizes odd harmonics.
 - **Pitch envelope**: +2 semitones, 30ms decay.
-- **Buffer duration**: 0.5 beats.
+- **Buffer duration**: `render.seconds` 0.25.
 - **Design notes**:
   - More guitar-like: lower base freq (110-150 Hz), increase mod depth (5.0+).
   - More harp-like: higher base freq (300-500 Hz), lower mod depth (2.0).
@@ -1202,7 +1192,7 @@ Reference for making **pitched/melodic** instruments (violin, cello, trumpet, sy
 | `lfo_target` | `lfo_target` | 0=tremolo **1=pitch vibrato** 2=filter sweep |
 | `filtenv_amt` / `filtenv_decay` | `filtenv_amt` / `filtenv_decay` | `cutoff *= 2^(amt·e^(-t/decay))` — brightens on attack |
 | `filtenv_attack` | `filtenv_attack` | seconds for the cutoff to **RISE** 0→amt octaves before the decay/hold. **0 = legacy onset-bloom (byte-identical); >0 = a slow brightening SWELL** — the brass/wind "spectral envelope tracks loudness" crescendo (set `filtenv_decay` large to HOLD bright after the rise). Added 2026-06 for the trumpet. |
-| `bow_dynamics` | `bow_dynamics` | **Bowing-expression** modulator (0=off, byte-identical). A slow smoothed random walk (≈250 ms gestures) drives LOUDNESS and BRIGHTNESS together — keep it GENTLE (~0.2-0.3 depth, ±~20 %) (more pressure → louder + brighter, via a one-pole LP whose cutoff tracks it). This is the organic, non-repeating PERFORMANCE motion a steady synth tone lacks — the "it sounds like an organ" fix. Added 2026-06 for the violin; reusable for any bowed/expressive sustain. |
+| `bow_dynamics` | `bow_dynamics` | **Bowing-expression** modulator (0=off, byte-identical). A slow smoothed random walk (≈250 ms gestures) drives LOUDNESS and BRIGHTNESS together — keep it GENTLE: 0.25 on the violin was heard as "the sound waves in volume or intensity in a way that the reference does not" and 0.5 on the cello as "vibrating too mechanically" (2026-11-07); ≤ ~0.1 on a solo bowed voice (more pressure → louder + brighter, via a one-pole LP whose cutoff tracks it). This is the organic, non-repeating PERFORMANCE motion a steady synth tone lacks — the "it sounds like an organ" fix. Added 2026-06 for the violin; reusable for any bowed/expressive sustain. |
 | `body_model` / `body_mix` | `body_model` / `body_mix` | **Body-resonator BANK** (organic string body). `body_model` 0=off (byte-identical), 1=violin (22 moderate-Q (6–11) signature modes incl. the ~2.6 kHz bridge hill, hardcoded in `modular.c`), 2=classical/nylon guitar, 3=cello, 4=steel guitar. `body_mix` blends the body-shaped signal in (and suppresses the dry as it rises, so the body SHAPES the tone rather than just adding peaks). The bowed saw driven through it gets the violin's woody body coloration; vibrato sweeps harmonics across the sharp modes. Added 2026-06 for the violin. |
 
 ### Why a naive recipe sounds synthetic
@@ -1217,7 +1207,7 @@ A single saw through one static filter has: (1) a **static spectrum** (never evo
 
 ### Principles, ranked by payoff-per-effort → engine mechanism
 
-1. **Unison/ensemble detune** *(biggest cheap win)* — 3–7 osc slots detuned ±4–12 cents. Cents→ratio: `r = 2^(c/1200)` (+5¢=1.00289, −7¢=0.99596). Set each `genK_freq` (ratio mode) to the detuned ratio.
+1. **Unison/ensemble detune** *(ENSEMBLES only — never a solo voice)* — 3–7 osc slots detuned ±4–12 cents. Two voices c cents apart beat every harmonic n at `n·f0·(2^(c/1200)−1)` Hz: the shipped tuba (2 voices, 5 ¢, A2) beat H4 at ~1.3 Hz and H8 at ~2.5 Hz, a 4–7 dB wobble on its strong harmonics against the recording's ~2 dB, which the listener heard as "audible waviness the reference does not have" (2026-11-07). A whole-band AM measure misses it — the partials beat at different rates and average out (`mod.am.depth` read the tuba 5× LESS modulated than its recording); measure each harmonic's level over time. Cents→ratio: `r = 2^(c/1200)` (+5¢=1.00289, −7¢=0.99596). Set each `genK_freq` (ratio mode) to the detuned ratio.
 2. **Formant / body-resonance band-pass banks** — several **parallel** band-pass slots summed: `genK_source:1`(saw) → `genK_filt_type:5`(rbjBP) at `genK_filt_freq=<formant Hz, ABSOLUTE>` (`genK_freq_mode:1` or fixed Hz), `genK_filt_q`, `genK_gain`. A saw band-passed at a fixed formant boosts whichever harmonic lands near it → real body character. **Combine with ensemble** by detuning each formant slot's source `genK_freq`.
 3. **Per-partial envelopes** — additive sine slots, each its own dual-rate envelope (`genK_env_fast_*`/`genK_env_tail_*`); higher partials decay faster.
 4. **Brightness-tracks-loudness** — `filtenv_amt`/`filtenv_decay` (cutoff blooms on attack, settles) + velocity→cutoff. **The #1 brass fix.**
@@ -1246,8 +1236,8 @@ A single saw through one static filter has: (1) a **static spectrum** (never evo
 > - **FLUTE** → *(superseded — the shipped `fluteSeed` is now ADDITIVE: sine gens 2/3/4 at H1 0.55 / H2 0.15 / H3 0.05 + a gen1 noise-tap band-passed at 2.1 kHz, `filter_cutoff` 2900, a delayed pitch vibrato `lfo_target 1` rate 5.6 depth 0.05, `amp_attack` 0.04; no `ks_*`)*. Historical: KS blown-tube (`gen_source:3`). The "organ" trap: too clean + static. Fixes = **AIR** (~14% breath noise, not 0%), a gentle **PITCH vibrato** (the air-jet wavers — movement breaks the static organ), and a fairly **pure** harmonic stack. (The dedicated air-jet waveguide `osc_type:10` mistunes ~1.47× → not wired.)
 > - **SAX** (baritone) → **HYBRID ADDITIVE + FORMANT-FILTERED SAW** (2026-07 retune, `saxSeed`). ⚠️ **Every earlier sax analysis was an OCTAVE-UP artifact**: the mtg `..._c3.wav` ref MEASURES **f0 = 122.8 Hz (≈B2)** by raw FFT peak scan (NOT C2/65 Hz, NOT 130.8 Hz); its fundamental sits ~7 dB below H2, so `DetectF0` locked onto H2 (245.6 Hz) and every "measured profile" (the H3-dominant ladder, the "breath ≈ 0.45") was computed on the doubled grid — the odd harmonics were being counted as NOISE. Fixed in `fingerprint.DetectF0` (odd-harmonic subharmonic evidence check, `TestDetectF0_RichWeakFundamental*`). TRUE bari signature (rel H2=1.0): H1 .47, **H2 1.00 dominant, H3 .97**, H4 .68, H5 .39, **H6 .67 (≈740 Hz knee-formant bump)**, H7 .37, H8 .21, then a REBOUND plateau H14-H16 ≈ .3 (formants at 1.9 kHz −2.4 dB and 2.6 kHz −4.2 dB, cliff above); even/odd 1.25 (conical bore = full even+odd series); noise only ~0.08; vibrato ~2¢ (nearly straight); rise10-90 ≈ 0.22 s; brightness↔loudness coupling +0.77 (from the slow decrescendo). Seed architecture: sines pin H1-H4+H6; **saw→BP@820 Q1.8** fills the knee (H5, H7-H10); **saw→BP@2050 Q2.0** builds the high plateau; narrow breath noise at ~1.2 kHz (louder breath = brighter → positive coupling); `amp_attack 0.5` + slow `amp_decay 2.5 / sustain 0.45` decrescendo; `lfo_depth 0.002` (0.008 rendered 8.5¢ vs the ref's 2.4¢). Matched to within a few % on every fixed-grid metric (`TestSaxTune` / `TestSaxProbe` in cmd/synth-match); **user ear-approved ("sounds great", 2026-07-05)**. The SAXOFONY waveguide (`osc_type:11` `render_sax`, config knobs `osc_sax_*`) remains available but was rejected: chaotically sensitive, and it was being tuned against the octave-wrong profile.
 > - **PIANO** (grand + felt) → CLEAN additive struck-string: sine fundamental + a few decaying upper partials (×2/×3/×4, upper ones decaying faster via `gen_env_fast_rate`) + a slight `osc_detune` (the piano's mistuned unison strings = warmth) + an EXPONENTIAL amp decay (`amp_curve:1`) for the struck "ping→tail" (current seeds: `amp_decay` 0.9, `filter_cutoff` 6000 grand / 4000 felt). Two fixes the user asked for: (1) **remove the hammer-NOISE gen** (`gen_source:2`) — it read as background hiss *(since re-added as a SHORT hammer transient: grand gen6 band-passed 2.6 kHz gain 0.22 fast_rate 45, felt gen5 at 1.8 kHz)* ("not a pure piano note"); (2) **remove the phantom SUB-OCTAVE gen** (`gen_freq:0.5`) — a real piano has NO octave below the played note, and the ref (pinkyfinger piano-g is **G5≈790 Hz**, NOT a low G) made DetectF0 lock an octave down AND darkened the tone. Grand = brighter; felt = duller filter + softer strike. Both used by templates (keep both ids). ⚠️ **HARPY vs PIANO** (user: "very harpy/bright, piano keys sound different"): chasing the reference's time-averaged CENTROID made the SUSTAINED tone too bright = harp (a plucked string rings bright the whole note). A piano = a FELT hammer: a bright ATTACK that DECAYS FAST into a WARM body. Fix = give the upper partials FAST decay (`gen_env_fast_rate` ~4/6/8, so they punch then fade) + soft strike (`amp_attack`~0.006) + warmer filter (~3200) — verify the centroid EVOLVES (attack ~1480 → body ~880), don't match the static centroid. Trust the ear over the metric.
-> - **HARP** (celtic) → Karplus-Strong plucked string, like the guitars but more OPEN: a brighter clear pluck (`ks_pluck` ~0.25), a much longer free ring (`ks_sustain` ~0.993 + long `amp_decay`), a light soundboard (`body_model:2`, low `body_mix`). ⚠️ On a LOW reference note (G2≈98 Hz) the `NoiseRatio` metric reads bogus-high (~0.64) because F0 detects an octave up and half the harmonics fall off-grid → counted as "noise"; verify the patch is actually clean at a HIGH note (C5) where detection is reliable (it measured 0.02). Match the CENTROID, not the low-note noise number.
-> - **GUITAR — NYLON vs STEEL**: same Karplus-Strong string + same body box, distinguished by **body-mode Q** and pluck brightness. NYLON (`body_model:2`) = low-Q broad upper modes + soft dark pluck (`ks_pluck` ~0.09) = warm. STEEL (`body_model:4`) = **high-Q ringing upper modes** + bright sharp pluck (`ks_pluck` ~0.6) + long bright sustain = metallic zing. KEY LESSON: a static centroid match is NOT enough — **metallic = high harmonics that RING** (high-Q upper resonances + long HF sustain); nylon = bright attack, fast-decaying highs. The user heard a centroid-matched nylon as "metallic steel" — proof the number can be right while the character is wrong.
+> - **HARP** (celtic) → Karplus-Strong plucked string, like the guitars but more OPEN: a brighter clear pluck (`ks_pluck` ~0.25), a much longer free ring (`ks_sustain` ~0.993 + long `amp_decay` — not long enough: at 0.997 / `amp_decay` 4 the voice was 11 dB under `harp-freesound-alt` by 1 s and the listener asked for a longer ring; 0.9985 / 8 follows the recording), a light soundboard (`body_model:2`, low `body_mix`). ⚠️ On a LOW reference note (G2≈98 Hz) the `NoiseRatio` metric reads bogus-high (~0.64) because F0 detects an octave up and half the harmonics fall off-grid → counted as "noise"; verify the patch is actually clean at a HIGH note (C5) where detection is reliable (it measured 0.02). Match the CENTROID, not the low-note noise number.
+> - **GUITAR — NYLON vs STEEL**: same Karplus-Strong string + same body box, distinguished by **body-mode Q** and pluck brightness. NYLON (`body_model:2`) = low-Q broad upper modes + soft dark pluck (`ks_pluck` ~0.09) = warm — but a dark `ks_pluck` is not a weak ATTACK: tuned down to 0.018 with the cutoff at 1.8 kHz it was heard as "the string pluck sound needs to be stronger"; the recording carries ~3× the onset noise. Strengthen the pluck with a filter-envelope bloom and a short band-passed noise burst, which leave the ringing tone alone. STEEL (`body_model:4`) = **high-Q ringing upper modes** + bright sharp pluck (`ks_pluck` ~0.6) + long bright sustain = metallic zing. KEY LESSON: a static centroid match is NOT enough — **metallic = high harmonics that RING** (high-Q upper resonances + long HF sustain); nylon = bright attack, fast-decaying highs. The user heard a centroid-matched nylon as "metallic steel" — proof the number can be right while the character is wrong.
 
 Formant frequencies are **ABSOLUTE Hz** (do NOT track pitch). Q ≈ 2–8 unless noted; gains are relative.
 
@@ -1407,7 +1397,7 @@ Additive synthesis (even decorrelated) still reads as a high-pitched organ, *esp
 Why ours sound static/buzzy: matching the steady-state spectrum is necessary but misses the three dynamic/textural cues the ear uses for "a real player is blowing this":
 
 1. **Brightness tracks loudness/dynamics — the #1 wind+brass cue.** Quiet note ≈ fundamental + ~6 harmonics; loud note = 15+ harmonics. Engine: filter envelope blooms cutoff on attack (`filtenv_amt` octaves / `filtenv_decay` s) + velocity→cutoff.
-2. **Flute spectrum is FUNDAMENTAL-DOMINATED — nearly a sine.** MEASURED from a real flute (sgossner E5 expressive-sustain, CC0, via the analysis recipe below): H1 0 dB, **H2 −18 dB** (≈0.12×), H3/H4 −34 dB, H5 −45 dB, rest trace; inter-harmonic noise floor ≈ −45 dB. **The fatal bug was a near-equal P1≈P2 + full harmonic stack → "high-pitched organ buzz."** Set `gen1` (fundamental) dominant, `gen2` ≈ 0.12×, `gen3/4` ≈ 0.02×, drop the rest. (`fluteSeed` is now built from exactly these ratios.)
+2. **A SOFT flute spectrum is FUNDAMENTAL-DOMINATED — nearly a sine; a LOUD one is not.** The catalogued `flute-A4` (Iowa MIS `Flute.nonvib.ff.A4`, fortissimo, no vibrato) has H2 > H1 (H1 −5.5, H3 −1.5 dB re H2), and the voice tuned toward it was approved as "very similar to the reference" while the listener asked whether the reference was a flute at all ("sounds like a clarinet or oboe"). Dynamics move a flute's spectrum more than any other cue: say which flute you are matching. MEASURED from a soft expressive flute (sgossner E5 expressive-sustain, CC0, via the analysis recipe below): H1 0 dB, **H2 −18 dB** (≈0.12×), H3/H4 −34 dB, H5 −45 dB, rest trace; inter-harmonic noise floor ≈ −45 dB. **The fatal bug was a near-equal P1≈P2 + full harmonic stack → "high-pitched organ buzz."** Set `gen1` (fundamental) dominant, `gen2` ≈ 0.12×, `gen3/4` ≈ 0.02×, drop the rest. (`fluteSeed` is now built from exactly these ratios.)
 3. **Vibrato — and what actually works on a near-sine:** the real flute's "expressive vibrato" at **~5.5 Hz** is *all three at once* — pitch **±16 ¢**, amplitude **12 dB(!)**, brightness/centroid **40 %** swing (all measured). BUT with a **single-target LFO** on a **near-sine** spectrum: a brightness sweep (`lfo_target:2`) moves almost nothing (no harmonics to filter), and amplitude-only (`lfo_target:0`) sounds like a tremolo effect — so **pitch (`lfo_target:1`, ±16 ¢ ⇒ `lfo_depth`≈0.011, delayed onset)** is the right single-LFO choice. **Capturing the real expressive vibrato (pitch+amp+brightness together) needs a multi-target LFO — the clearest next engine upgrade.** *(Earlier guidance here said "flute = brightness vibrato, lfo_target:2" — that was theory from Synth Secrets; the real-data analysis + our near-sine spectrum proves pitch is the working choice.)*
    - **Oboe / sax / brass** use pitch + amplitude vibrato (`lfo_target:1` or `0`), ~5–6 Hz, delayed onset.
 
@@ -1416,7 +1406,7 @@ Why ours sound static/buzzy: matching the steady-state spectrum is necessary but
    **Two hard-won engine facts from the flute A/B (matching a real flute, not just its steady spectrum):**
    - **Amplitude "breathing" is the #1 organ→flute cue** — bigger than pitch vibrato. A real flute's sustain RIPPLES ≈6 dB at the ~5.5 Hz vibrato rate; a dead-flat amplitude reads as an organ no matter how correct the spectrum. With one LFO, `lfo_target:0` (amplitude tremolo, depth ~0.5) buys this — at the cost of pitch vibrato. **Doing pitch + amplitude + brightness at once = a multi-target LFO (the clearest next engine upgrade).**
    - **A noise-tap (breath) gen goes SILENT unless you set its envelope mix.** Per-gen env in `modular_stages.c` is `fast_mix·e^(−fast_rate·t) + tail_mix·e^(−tail_rate·t)` with defaults `fast_mix=1, fast_rate=0, tail=0` (so an *unset* gen is constant unity). Setting only `env_fast_rate` turns the bed into a decay → breath dies. For **continuous** breath set `env_tail_mix≈0.9 + env_tail_rate=0` (constant bed) plus a `fast_mix` attack chiff. Also: the gen-slot path renders upper partials ~10 dB *under* their gain, so boost gen3+ above the bare measured ratios to hit the real centroid.
-4. **Excitation waveform by bore** (subtractive path): open pipe (flute) → saw/triangle, then HPF a few hundred Hz + LPF ~2 kHz + moderate resonance; closed pipe (clarinet) → **square** (odd harmonics, hollow); conical/brass + reeds (trumpet/horn/sax/oboe) → **saw** (bright, full series). Reeds add **sustained low-level breath noise**; **flute is better with little/no broadband noise** (Reid) — its breathiness is the attack chiff + filtering, not hiss. *(Note: the additive near-sine path above also works for flute and is what `fluteSeed` uses — it matched the measured spectrum directly.)*
+4. **Excitation waveform by bore** (subtractive path): open pipe (flute) → saw/triangle, then HPF a few hundred Hz + LPF ~2 kHz + moderate resonance; closed pipe (clarinet) → **square** (odd harmonics, hollow) — in the LOW (chalumeau) register only: the catalogued `clarinet-A4` (Iowa ff, clarion register) carries every even harmonic (H2 −10, H4 −12, H6 −24 dB re H1), and adding them to the odd-only additive clarinet took its essence distance 0.78 → 0.28 (#13 → #1); conical/brass + reeds (trumpet/horn/sax/oboe) → **saw** (bright, full series). Reeds add **sustained low-level breath noise**; **flute is better with little/no broadband noise** (Reid) — its breathiness is the attack chiff + filtering, not hiss. Measure before trusting this: the ff Iowa flute holds ~6× the breath of the voice tuned to it (essence noise 0.018 vs 0.003) and a flute with NO held air reads as a reed. *(Note: the additive near-sine path above also works for flute and is what `fluteSeed` uses — it matched the measured spectrum directly.)*
 5. **Attack chiff:** flute fast clean attack (~50–100 ms slow passages, faster for runs); reeds/brass slower onset (~100–300 ms) with a brief noise spike at the very start (short-decay noise-tap gen gated to attack).
 6. **Formants / presence (absolute Hz, do NOT track pitch):** 2–4 kHz presence + 5–8 kHz brightness; brass ~8 kHz; clarinet ~3 kHz hollow dip. Author as band-pass gen slots.
 7. **Reverb is critical for flute** (phase interaction of its two sound sources) — give a flute row a Reverb in its FX panel (there are no send buses since 2026-10-27; a template spec's `Effects` holds only filters today).
@@ -1723,6 +1713,11 @@ an instrument is not evidence it lacks the property).
 | "wooden", "marimba-esque" | `partial series deviation` | low | **not** `inharmonicity` — the kalimba's inharmonicity already matched while its partial *sequence* did not |
 | "metallic", "bell", "resonant" | `inharmonicity` | low | tubular-bells |
 | "goes up and down in time" (about vibrato) | `vibrato jitter` | low | reference double-bass 0.411 vs a metronomic LFO's 0.000 |
+| "wavy", "waves in volume or intensity" | each harmonic's level over time (p95−p5 dB in the held body) — **not** `mod.am.depth` | high | tuba: unison beating, 4–7 dB on H1–H3 vs the recording's ~2 dB, while the whole-band AM read 0.018 vs the recording's 0.083; violin: `bow_dynamics` 0.25 |
+| "vibrating too mechanically" (bowed) | a periodic pitch component at the LFO rate | present | cello: the 4 Hz LFO was the only periodic motion; the recording drifts at ~1.6 Hz and with the LFO at 0 the waveguide's own ±7 ¢ jitter remains |
+| "nasal" (oboe) | the share of the formant harmonic and the holes around it, not `formant.f1_hz` | concentrated | oboe-A4: H3 dominant, H5 a −31 dB hole, H6+ ≈ −21 dB; ours carried H5/H6 at −14/−11 dB, and f1 matched (1421 vs 1472 Hz) throughout |
+| "stronger pluck" | onset noise share + the first 300 ms drop | higher | guitar-nylon recording: noise 0.088 vs 0.025, −8.5 dB at 0.3 s vs −5.4 |
+| "punch", "crack", "less air" (drums) | body energy 30–80 ms; 2–6 kHz in the first 20 ms; the noise share | up; up; down | rimshot: noise 0.83 vs the recording's 0.72 |
 
 **`noise persistence` (late-half noise / early-half) is the single most useful
 new axis.** Wind-vs-string and airy-vs-dry are acoustically the same question: a
@@ -1807,6 +1802,9 @@ candidate among the whole roster on each recording (`report.md`). What it
 cannot search: structure (partial ratios, waveforms, filter types, a drum's
 tune, pitch), the vibrato LFO, unison, formant tables, and anything an off
 stage holds. Rules learned building it:
+- **It cannot search the `lfo` and `unison` stages, `snare_tune` or a layer's harmonic number** (`tuneSkippedStages` / `tuneSkippedValues`), so a defect that lives there survives any number of rounds: the tuba's unison beating and the cello's metronomic vibrato reached the listener in the round-1 candidates and were fixed by hand (round 2, 2026-11-07), as was the clarinet's missing even harmonics. When the ear names motion ("wavy", "mechanical") look at those stages first.
+- **Skip a recording filed under the instrument that is not it** (`skip` in the pick). Round 1 averaged `snare-vcsl` into the snare's objective — a VCSL `HitNS` take, the snares OFF (472 Hz, noise 0.15 against `snare-freesound-alt`'s 1278 Hz, 0.64) — and the candidate came back "an airy breathy high tom".
+- **A candidate is tuned against the shipped document of its day.** `clone adopt` keeps the shipped `render.amplitude` (measure-loudness owns it; doc_sha excludes it), drops `origin`, and refuses a candidate whose `render.seconds` differs from the shipped document's unless its pick `set` it — the round-1 candidates still carried the removed `render.beats` and the old web length (2 s for a 1 s note), and a verbatim copy would have undone the fixed note length.
 - **A partial table cannot brighten past its last harmonic.** The trombone has
   five partials (H5 at A3 = 1.1 kHz) against a recording whose centroid is
   1.6 kHz; `add_harmonics` appends silent partials (gain 0 = the shipped sound)
@@ -1899,7 +1897,10 @@ filed as**: the `celtic_harp_g2` download sounds G5; `koto-vcsl` is a glissando,
 not a note; `kalimba-vcsl` is an mbira; the glass-armonica ref is wine glasses;
 `pan-flute-vcsl` is a recorder; `singing-bowl-freesound` (ixwolf `g1_rr1`) is a
 GUESSED label for a harmonic tone on 49 Hz (no bowl is harmonic); `shaker-vcsl`
-is a sustained shake gesture, not one hit. A voice can only be as right as the
+is a sustained shake gesture, not one hit; `snare-vcsl` (`Snare2_HitNS`) is a hit
+with the snares OFF — a tom-like head with no wire buzz; `flute-A4` is a
+fortissimo non-vibrato flute (H2 above H1), which reads reedy; `clarinet-A4` is the
+clarion register, with even harmonics. A voice can only be as right as the
 recording it is tuned against.
 
 ### Signal-chain limits worth knowing before you tune
@@ -1917,8 +1918,19 @@ recording it is tuned against.
   WAV-clone MODAL and NOISEBAND rows are no exception: `render_modular_p` adds
   them after the gen bank, before the ADSR and filter (only bow dynamics, drive
   and the FINISH ops run after the body bank).
+- **The FINISH stage's Limit (`out_clamp`, identity 1.5) is a HARD clip, and an
+  additive bank summing past it is clipped there.** The trombone's, tuba's and
+  oboe's partial gains add up to 2.7–4.9, so their sines (all phase 0) peak far past
+  ±1.5 and the clip writes their upper harmonics: with `out_clamp` 0 the trombone's
+  H6–H12 fall from −12…−17 dB to −84 dB (essence 0.60 → 1.41 — the clip IS its
+  brass brightness). Consequences: a layer added at a harmonic the clip already
+  writes can CANCEL it (raising H6 0.10 → 0.45 took H6 from −5.8 to −18.5 dB; the
+  oboe's H5 0.005 → 0.3 sent it to −50 dB), so do not place partials by the
+  measured ratios on a clipped bank — halve every partial gain (the voice is
+  peak-normalised, so only the clip changes) or brighten through the clip and drive
+  instead. This is also why an upper gen seems to render "~10 dB under its gain".
 - **A note's loudness is a gain, never a timbre.** The voice cache keys on
-  instrument, BPM, rate, params hash and pitch — no velocity — so a node at
+  instrument, rate, params hash and pitch — no velocity, and no tempo — so a node at
   volume 0.2 is the same render as at 1.0, scaled. Real soft and loud notes
   differ in brightness and attack (a piano, a drum, brass most of all);
   nothing in the engine models that yet.

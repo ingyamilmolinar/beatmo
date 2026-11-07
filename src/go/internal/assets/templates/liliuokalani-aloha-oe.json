@@ -379,10 +379,10 @@
 {"id":370,"i":0,"j":338,"type":"regular","outputs":[371],"pitch":15,"volume":0.7200000000000001,"duration":1.5},
 {"id":371,"i":0,"j":332,"type":"regular","outputs":[310],"pitch":11,"volume":0.7200000000000001,"duration":0.5}
 ],"instrument_docs":{
-"guitar-nylon":{"ref":"sha256:4ebc137d7f2e6ab1"},
-"guitar-nylon--2":{"ref":"sha256:4ebc137d7f2e6ab1"},
-"guitar-nylon--3":{"ref":"sha256:4ebc137d7f2e6ab1"},
+"guitar-nylon":{"ref":"sha256:9d8f85e50d6fdd2e"},
+"guitar-nylon--2":{"ref":"sha256:9d8f85e50d6fdd2e"},
+"guitar-nylon--3":{"ref":"sha256:9d8f85e50d6fdd2e"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"},
 "voice-ahh--2":{"ref":"sha256:e54ff2094b923c96"},
-"voice-soprano":{"ref":"sha256:11a7f3360d76901e"}
+"voice-soprano":{"ref":"sha256:91fb94749d800c8c"}
 }}

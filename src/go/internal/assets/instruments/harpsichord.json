@@ -6,7 +6,7 @@
   "notes": "harpsichordSeed: a baroque quill-plucked string — a bright KS with a metallic\n4' overtone course (a bright tone partial an octave up) and no dynamics (the\nharpsichord can't play soft): fixed velocity, medium bright ring.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.9864,
+    "amplitude": 0.9899,
     "gate_tail": 0,
     "melodic": true
   },

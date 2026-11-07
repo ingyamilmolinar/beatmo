@@ -6,7 +6,7 @@
   "notes": "bassFMSeed: punchy FM/DX bass — a sine-ish carrier modulated by a decaying FM\noperator for the metallic DX attack that quickly settles into a clean low\ntone. Fast amp attack + short decay + low sustain make it punchy.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.5915,
+    "amplitude": 0.5936,
     "gate_tail": 0,
     "melodic": true
   },

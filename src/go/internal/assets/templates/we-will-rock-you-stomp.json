@@ -155,8 +155,8 @@
 {"id":147,"i":0,"j":140,"type":"regular","outputs":[128],"volume":0.9450000000000001}
 ],"instrument_docs":{
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
-"guitar-electric":{"ref":"sha256:9cce893a476971f3"},
-"guitar-electric--2":{"ref":"sha256:9cce893a476971f3"},
-"kick-deep":{"ref":"sha256:48cae092cfae5467"},
+"guitar-electric":{"ref":"sha256:e2e4968694a34c2b"},
+"guitar-electric--2":{"ref":"sha256:e2e4968694a34c2b"},
+"kick-deep":{"ref":"sha256:425072d6032dce8c"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"}
 }}

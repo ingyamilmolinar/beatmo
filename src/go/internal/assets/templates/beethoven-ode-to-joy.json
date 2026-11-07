@@ -129,8 +129,8 @@
 {"id":122,"i":63,"j":258,"type":"silent","outputs":[123]},
 {"id":123,"i":0,"j":258,"type":"silent","outputs":[119]}
 ],"instrument_docs":{
-"bassoon":{"ref":"sha256:3a0046c5d5f6d819"},
-"cello":{"ref":"sha256:626990a48d0da623"},
-"double-bass":{"ref":"sha256:32a0428e550237e3"},
-"tom":{"ref":"sha256:212363b98a36d190"}
+"bassoon":{"ref":"sha256:6df47eab41d74985"},
+"cello":{"ref":"sha256:8c1ece4f90b0c12c"},
+"double-bass":{"ref":"sha256:707fbbe71abb1915"},
+"tom":{"ref":"sha256:f12b63b2e8883211"}
 }}

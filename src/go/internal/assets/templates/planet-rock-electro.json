@@ -332,11 +332,11 @@
 {"id":322,"i":0,"j":216,"type":"regular","outputs":[323],"volume":0.62},
 {"id":323,"i":0,"j":208,"type":"regular","outputs":[304],"volume":0.62}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
-"cowbell":{"ref":"sha256:0f2d4213ed330b20"},
+"cowbell":{"ref":"sha256:27b9a0345175e3ba"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-808":{"ref":"sha256:897a554c4972f0a6"},
+"kick-808":{"ref":"sha256:13fcc43969ca4ce3"},
 "scifi-lead":{"ref":"sha256:ea7c63895801737a"},
 "snare":{"ref":"sha256:39717a9d6e0acf7d"}
 }}

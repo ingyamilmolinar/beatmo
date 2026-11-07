@@ -6,7 +6,7 @@
   "notes": "drum-kick-lofi -> C gen_kick_lofi\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nfade 3→4.5, sat 1.5→2.475, attack 0.2→0, noise 0.25→0.2, h2 0.4→0.46",
   "render": {
     "seconds": 0.25,
-    "amplitude": 0.6857,
+    "amplitude": 0.6882,
     "gate_tail": 0,
     "melodic": false
   },

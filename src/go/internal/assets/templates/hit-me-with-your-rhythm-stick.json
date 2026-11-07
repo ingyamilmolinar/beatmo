@@ -358,13 +358,13 @@
 {"id":346,"i":17,"j":304,"type":"regular","outputs":[347],"volume":0.62},
 {"id":347,"i":0,"j":304,"type":"silent","outputs":[342]}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "crash":{"ref":"sha256:77b3f50171cf132d"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-rock":{"ref":"sha256:98df8d43ce0a4d7e"},
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--2":{"ref":"sha256:08b4fe02beed1d61"},
-"sax":{"ref":"sha256:7b01fd9849591a70"},
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--2":{"ref":"sha256:38f2e3bbc82646a7"},
+"sax":{"ref":"sha256:568092cf2ccd82ca"},
 "snare-fat":{"ref":"sha256:b0e2f93d80b56424"}
 }}

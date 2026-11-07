@@ -322,12 +322,12 @@
 ],"instrument_docs":{
 "clap-lofi":{"ref":"sha256:712681f165232c8d"},
 "crash":{"ref":"sha256:77b3f50171cf132d"},
-"french-horn-loud":{"ref":"sha256:d891cf415a575567"},
+"french-horn-loud":{"ref":"sha256:875663531cd7b066"},
 "hihat-lofi":{"ref":"sha256:26936071d9b036c5"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-brutal":{"ref":"sha256:8db8b27cde0e7793"},
-"moog-bass":{"ref":"sha256:5b5a6013abf9ca87"},
-"snare-crack":{"ref":"sha256:85437546b64cdd18"},
+"moog-bass":{"ref":"sha256:483dc38c97bbba68"},
+"snare-crack":{"ref":"sha256:12a5c9b297aabd0f"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"},
 "voice-ahh--2":{"ref":"sha256:e54ff2094b923c96"}
 }}

@@ -6,7 +6,7 @@
   "notes": "dnbKickSeed: the configurable KICK stage tuned to a deep, dark DnB sub-kick\n(reference 36010__sandyrb__dnb-kick-003.wav). The kick body is the modular\ngen-bank kick voice (gen-slot 1, source==5, \"deep\" variant): a harmonic stack\nwith a fast downward pitch drop, a short tail, and almost no beater click —\nthe reference is bass-dominated (energy concentrated below 160 Hz, nothing\nabove 400 Hz). The legacy OSC/amp/filter stages are bypassed so only the kick\nvoice's own internal envelope shapes the hit. Tuned via A/B (synth-analyze)\nagainst the reference; pinned by TestDnbKickSeedIsKickShaped. NOTE: never seed\ngain:0.5 (TestPhase2Native mutates gain→0.5 and asserts a delta).\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nsat 0.6→0.975, fade 1.0→0, pe_amt 2.2→2.0875, noise 0.03→0, env1 1→0.5,\nh2 0.06→0.09\nOnly the kick voice sounds (osc/filter/drive bypassed). The amp ADSR IS\nenabled to sculpt the organic amplitude BLOOM: the reference swells to a\nplateau peak at ~49 ms then rolls off (a real drumhead body resonating),\nwhich the kick voice's decay-from-t0 envelope can't do. amp_attack gives\nthe swell, amp_decay the roll-off.",
   "render": {
     "seconds": 0.5,
-    "amplitude": 0.9907,
+    "amplitude": 0.9943,
     "gate_tail": 0,
     "melodic": false
   },

@@ -6,7 +6,7 @@
   "notes": "musicBoxSeed: a delicate wind-up music box — a plucked FM bell (inharmonic\nmodulator ratio) with a clean glassy ring, quiet and fragile.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.425,
+    "amplitude": 0.4265,
     "gate_tail": 0,
     "melodic": true
   },

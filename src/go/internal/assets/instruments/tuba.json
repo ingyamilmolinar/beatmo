@@ -6,7 +6,7 @@
   "notes": "tubaSeed: deep, round, orchestral low brass — a dark, fundamental+H2-dominant\nadditive brass with a slow onset and a gentle brassy filter bloom. Slight unison\nfor section warmth; a low band-passed air tap.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.6527,
+    "amplitude": 0.3613,
     "gate_tail": 0,
     "melodic": true
   },
@@ -15,7 +15,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "amp_attack": 0.06,
+        "amp_attack": 0.5739967294237848,
         "amp_curve": 1,
         "amp_decay": 0.1,
         "amp_release": 0.2,
@@ -39,15 +39,15 @@
       "v": 1,
       "on": true,
       "values": {
-        "drive": 0
+        "drive": 0.0016167126303578028
       }
     },
     "filter": {
       "v": 1,
       "on": true,
       "values": {
-        "filter_cutoff": 1800,
-        "filter_resonance": 1,
+        "filter_cutoff": 1055.4734614272281,
+        "filter_resonance": 2.691077734223204,
         "filter_type": 0
       }
     },
@@ -55,7 +55,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "filtenv_amt": 0.5,
+        "filtenv_amt": 0.016941017329523956,
         "filtenv_attack": 0,
         "filtenv_decay": 0.1
       }
@@ -65,10 +65,10 @@
       "on": true,
       "values": {
         "out_clamp": 1.5,
-        "post_body": 0,
+        "post_body": 0.07354245505840215,
         "post_brightness": 0,
         "post_darken": 0,
-        "post_decay": 1,
+        "post_decay": 0.9957913674347552,
         "post_decay_rate": 8,
         "post_drive": 0,
         "post_pitch": 0
@@ -115,7 +115,7 @@
         "filt_type": 0,
         "freq": 1,
         "freq_mode": 0,
-        "gain": 0.55,
+        "gain": 0.037672908941563374,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -159,7 +159,7 @@
         "filt_type": 0,
         "freq": 3,
         "freq_mode": 0,
-        "gain": 0.22,
+        "gain": 0.9659074701034162,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -181,7 +181,7 @@
         "filt_type": 0,
         "freq": 4,
         "freq_mode": 0,
-        "gain": 0.1,
+        "gain": 1.1596257788765445,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -203,7 +203,7 @@
         "filt_type": 0,
         "freq": 5,
         "freq_mode": 0,
-        "gain": 0.04,
+        "gain": 1.1313710829554753,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -226,6 +226,138 @@
         "gain": 0.03,
         "noise_offset": 0
       }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "H6 added by refs tune (starts silent)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 7,
+        "freq_mode": 0,
+        "gain": 0,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "H7 added by refs tune (starts silent)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 8,
+        "freq_mode": 0,
+        "gain": 0.2107518048828378,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "H8 added by refs tune (starts silent)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 9,
+        "freq_mode": 0,
+        "gain": 0.10237783548446738,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "H9 added by refs tune (starts silent)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 10,
+        "freq_mode": 0,
+        "gain": 0,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "H10 added by refs tune (starts silent)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 11,
+        "freq_mode": 0,
+        "gain": 0,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "H11 added by refs tune (starts silent)"
     }
   ]
 }

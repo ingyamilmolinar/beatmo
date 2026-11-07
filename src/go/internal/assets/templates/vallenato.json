@@ -265,8 +265,8 @@
 {"id":258,"i":0,"j":104,"type":"regular","outputs":[259],"volume":0.49500000000000005},
 {"id":259,"i":0,"j":103,"type":"regular","outputs":[164],"volume":0.49500000000000005}
 ],"instrument_docs":{
-"accordion":{"ref":"sha256:55f3916c6aa8d9eb"},
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"accordion":{"ref":"sha256:f8de3a3db1fe7e3e"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "shaker":{"ref":"sha256:c29b7ec7c5bfe1cd"},
 "tom-high-acoustic":{"ref":"sha256:d3ecdf137bcd52d0"}
 }}

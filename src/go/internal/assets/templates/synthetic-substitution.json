@@ -276,12 +276,12 @@
 {"id":265,"i":0,"j":270,"type":"silent","outputs":[266]},
 {"id":266,"i":0,"j":252,"type":"regular","outputs":[259],"volume":0.9450000000000001}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"piano-rhodes":{"ref":"sha256:2c9ed5eae2b27b86"},
-"piano-rhodes--2":{"ref":"sha256:2c9ed5eae2b27b86"},
+"piano-rhodes":{"ref":"sha256:148858785326dca7"},
+"piano-rhodes--2":{"ref":"sha256:148858785326dca7"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"},
-"trumpet-mellow":{"ref":"sha256:37c13a43d4bb196a"}
+"trumpet-mellow":{"ref":"sha256:a88e18f567649dc0"}
 }}

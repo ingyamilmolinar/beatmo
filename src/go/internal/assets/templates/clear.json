@@ -371,11 +371,11 @@
 {"id":360,"i":0,"j":242,"type":"regular","outputs":[341],"volume":0.62}
 ],"instrument_docs":{
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
-"fm-lead":{"ref":"sha256:9d7f7496f47c8f3b"},
+"fm-lead":{"ref":"sha256:b9c04800a3f2dba0"},
 "hihat-lofi":{"ref":"sha256:26936071d9b036c5"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
-"kick-808":{"ref":"sha256:897a554c4972f0a6"},
-"lead-chip":{"ref":"sha256:3f25effd0c8c3c48"},
-"moog-bass":{"ref":"sha256:5b5a6013abf9ca87"},
+"kick-808":{"ref":"sha256:13fcc43969ca4ce3"},
+"lead-chip":{"ref":"sha256:9bb800e130a6417a"},
+"moog-bass":{"ref":"sha256:483dc38c97bbba68"},
 "snare":{"ref":"sha256:39717a9d6e0acf7d"}
 }}

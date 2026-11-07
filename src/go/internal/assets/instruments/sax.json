@@ -6,7 +6,7 @@
   "notes": "saxSeed: SUBTRACTIVE reed (saw → band-pass formant → opening filtenv), the SAME\narchitecture as oboeSeed but with TENOR-SAX character: lower/broader formant\n(BP @1000Hz vs oboe's 1450), airier breath chiff (gen2 with a small sustained\ntail), and a slower-blooming filtenv. Used as the So What 2nd horn and the\nGirl from Ipanema melody (Stan Getz tenor).\nSAXOPHONE = hybrid additive + formant-filtered saw. Tuned against the\nTRUE-grid measurement of 360251__mtg__sax-baritone-c3 (f0 ≈ 122.8 Hz/B2 —\nthe earlier \"H3-dominant, breath 0.45\" profile was an OCTAVE-UP analysis\nartifact: DetectF0 locked onto H2 because the bari fundamental sits ~7 dB\nbelow it; fixed via the odd-harmonic-evidence octave guard). Real bari\nsignature (rel H2=1.0): H1 .47, H2 1.00, H3 .97, H4 .68, H5 .39, H6 .67\n(the ~740 Hz knee formant), H7 .37, then a REBOUND plateau H14-H16 ≈ .3\n(the 1.9/2.6 kHz formants); even/odd 1.25 (conical bore = even-strong);\nnoise only ~0.08; vibrato ~2¢ (nearly straight); rise10-90 ≈ 0.22 s; and\nbrightness tracks loudness (+0.77) via the note's slow decrescendo.\nArchitecture: sines pin H1-H4+H6 exactly; a saw→BP@820 builds the knee\nfill (H5/H7-H10); a saw→BP@2050 builds the high formant plateau; a narrow\nbreath-noise band sits at the ref's residual centroid (~1.2-1.5 kHz) so\nlouder breath = brighter (positive coupling), and a slow amp decrescendo\nsupplies the macro brightness-loudness coupling.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.721,
+    "amplitude": 0.7235,
     "gate_tail": 0,
     "melodic": true
   },

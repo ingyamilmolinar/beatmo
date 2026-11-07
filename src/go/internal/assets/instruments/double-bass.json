@@ -6,7 +6,7 @@
   "notes": "doubleBassSeed: the dark bowed bass of the string section — bowed physical model\nthrough the cello body, a slow heavy onset, more bow friction, dark roll-off.\nDefaults to A3 like everything else; a rich low timbre — pitch nodes down for a\nwalking bass.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.5066,
+    "amplitude": 0.5084,
     "gate_tail": 0,
     "melodic": true
   },

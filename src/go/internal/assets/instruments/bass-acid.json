@@ -6,7 +6,7 @@
   "notes": "bassAcidSeed: TB-303-style acid bass — saw OSC at -1 octave through a low,\nHIGH-resonance low-pass filter that a fast-decaying filter ENVELOPE sweeps up\nthen squelches back down. Light drive adds the 303 grit; plucked amp envelope\n(low sustain) keeps each note articulated.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.4555,
+    "amplitude": 0.4571,
     "gate_tail": 0,
     "melodic": true
   },

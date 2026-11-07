@@ -415,10 +415,10 @@
 {"id":406,"i":0,"j":176,"type":"regular","outputs":[407],"volume":0.49500000000000005},
 {"id":407,"i":0,"j":173,"type":"regular","outputs":[344],"volume":0.49500000000000005}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "conga-tumba":{"ref":"sha256:dd4de8961d633e4e"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"rimshot":{"ref":"sha256:eef746ccac7c6191"},
-"sax":{"ref":"sha256:7b01fd9849591a70"},
+"rimshot":{"ref":"sha256:5916603b7007a3b4"},
+"sax":{"ref":"sha256:568092cf2ccd82ca"},
 "shaker":{"ref":"sha256:c29b7ec7c5bfe1cd"}
 }}

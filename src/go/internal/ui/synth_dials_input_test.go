@@ -374,6 +374,10 @@ func TestSynthDialReadingIsAFunctionOfTheDocument(t *testing.T) {
 func TestDialAtItsEdgeCommitsNothing(t *testing.T) {
 	g := newDialGame(t)
 	inst := dialInst(g)
+	// Set rather than assumed: whether the shipped violin carries a little drive is a tuning decision.
+	audio.SetInstrumentParam(instrument.ID(inst), "drive", 0)
+	t.Cleanup(func() { audio.ResetInstrumentParams(instrument.ID(inst)) })
+	idleFrame(g)
 	if r := dialSlotReading(t, g, "warmth", "drive"); r != 0 {
 		t.Fatalf("premise: violin Drive reads %d, want 0 (clean)", r)
 	}

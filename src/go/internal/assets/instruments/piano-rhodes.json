@@ -6,7 +6,7 @@
   "notes": "pianoRhodesSeed: an electric-piano tine (Rhodes) — 2-op FM with the classic\nhigh modulator ratio (~14) that makes the metallic tine \"bark\", warm LP body,\nsoft attack, medium decay with a little sustain.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.4165,
+    "amplitude": 0.418,
     "gate_tail": 0,
     "melodic": true
   },

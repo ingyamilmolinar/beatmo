@@ -12,13 +12,9 @@ import (
 // clockThreadCPUTimeID is Linux's CLOCK_THREAD_CPUTIME_ID.
 const clockThreadCPUTimeID = 3
 
-// stretchClock returns a clock of the work the calling goroutine does: the
-// CPU time of its OS thread, which it is pinned to until release is called.
-// A stretch between two yields is how much WORK runs without handing the
-// thread back; the wall clock also counts every time the OS scheduler ran
-// something else, and under `go test ./...` (8 packages at once, the ui suite
-// among them) a ~15 ms Warm was preempted on every one of five runs, so the
-// best of five read 10-15 ms for code that does ~1 ms between yields.
+// stretchClock times the work between two yields on the thread's CPU clock:
+// the wall clock also counts every preemption, and a parallel `go test ./...`
+// preempts a whole Warm, failing the stretch bound on correct code.
 func stretchClock() (now func() time.Duration, release func()) {
 	runtime.LockOSThread()
 	return func() time.Duration {

@@ -326,13 +326,13 @@
 {"id":314,"i":0,"j":304,"type":"silent","outputs":[315]},
 {"id":315,"i":0,"j":298,"type":"regular","outputs":[305],"volume":0.62}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "crash":{"ref":"sha256:77b3f50171cf132d"},
-"fm-lead":{"ref":"sha256:9d7f7496f47c8f3b"},
-"guitar-electric":{"ref":"sha256:9cce893a476971f3"},
+"fm-lead":{"ref":"sha256:b9c04800a3f2dba0"},
+"guitar-electric":{"ref":"sha256:e2e4968694a34c2b"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-rock":{"ref":"sha256:98df8d43ce0a4d7e"},
 "snare-fat":{"ref":"sha256:b0e2f93d80b56424"},
-"tom":{"ref":"sha256:212363b98a36d190"}
+"tom":{"ref":"sha256:f12b63b2e8883211"}
 }}

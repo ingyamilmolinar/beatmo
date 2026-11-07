@@ -416,12 +416,12 @@
 {"id":405,"i":0,"j":241,"type":"regular","outputs":[406],"volume":0.62},
 {"id":406,"i":0,"j":240,"type":"regular","outputs":[319],"volume":0.62}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
-"cowbell":{"ref":"sha256:0f2d4213ed330b20"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
+"cowbell":{"ref":"sha256:27b9a0345175e3ba"},
 "hihat-lofi":{"ref":"sha256:26936071d9b036c5"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
-"kick-808":{"ref":"sha256:897a554c4972f0a6"},
-"sitar":{"ref":"sha256:c5ba3dedc0ce557f"},
+"kick-808":{"ref":"sha256:13fcc43969ca4ce3"},
+"sitar":{"ref":"sha256:a2c37122e29beebf"},
 "snare":{"ref":"sha256:39717a9d6e0acf7d"},
-"voice-alien":{"ref":"sha256:125716327f41bc0e"}
+"voice-alien":{"ref":"sha256:227109a3811940e4"}
 }}

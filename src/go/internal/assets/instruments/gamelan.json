@@ -6,7 +6,7 @@
   "notes": "gamelanSeed: an Indonesian saron/bonang metallophone — the definitively\nINHARMONIC tuned metal (partials near 2.76x and 5.4x, not integer harmonics),\nwith the paired-instrument \"ombak\" beating from a slightly detuned unison. Medium\nclangy ring. This is the deliberately-exotic one.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.5601,
+    "amplitude": 0.5621,
     "gate_tail": 0,
     "melodic": true
   },

@@ -335,10 +335,8 @@ func TestWarmYieldsOftenAndComputesOnlyWhatIsNeeded(t *testing.T) {
 	if !a.Has(NeedEnvelope) || a.Has(NeedSTFT) || a.Has(NeedPitch) {
 		t.Fatalf("Warm(NeedEnvelope) computed more or less than asked: env %v stft %v pitch %v", a.Has(NeedEnvelope), a.Has(NeedSTFT), a.Has(NeedPitch))
 	}
-	// The longest stretch between two yields, best of five fresh analyses,
-	// timed on the thread's CPU clock (stretchClock): the work between two
-	// yields, never the time the OS ran another process — code with no yield
-	// in a long loop fails every run.
+	// Best of five, on the thread's CPU clock: never the time the OS ran
+	// something else, yet a long loop with no yield fails every run.
 	clock, release := stretchClock()
 	defer release()
 	best := time.Duration(math.MaxInt64)

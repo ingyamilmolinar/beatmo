@@ -6,7 +6,7 @@
   "notes": "pianoFeltSeed: felt-damped piano — darker filter, softer attack, fewer partials.\nCLEAN felt-damped piano — a darker, softer sibling of pianoGrandSeed: the same\nclean struck-string approach (sine + gentle decaying partials + slight string\ndetune; NO hammer-noise gen, NO phantom sub-octave) but a duller filter, a\nsofter strike, and weaker upper partials (the felt over the hammers mutes the\nhighs). Pure note, no background hiss.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.6218,
+    "amplitude": 0.624,
     "gate_tail": 0,
     "melodic": true
   },

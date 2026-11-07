@@ -1,20 +1,7 @@
-/**
- * Synth-tab Save / Reset — WASM↔bridge boundary.
- *
- * Charter (CLAUDE.md § JS Test Charter, tier 4 "WASM↔JS bridge plumbing"):
- * this verifies that the real Go Save / Reset logic, running in WASM, leaves
- * the param block audio.js renders from (window.setInstrumentBlock, spec
- * 2026-10-04 §8) in the right state. Logic correctness is owned by Go:
- *   - internal/ui/synth_panel_save_test.go, synth_panel_save_persist_test.go
- *       (Save writes the library and leaves the project copy untouched;
- *        Reset returns the copy to its library entry; Restore shipped + Reset
- *        brings back the shipped sound)
- *
- * The bug this guards: clicking Save used to push an empty param map to JS,
- * dropping the liked tone from the browser's voice cache. Save now copies the
- * project document into the library and pushes nothing — the block audio.js
- * holds must be bit-identical before and after Save.
- */
+// Synth-tab Save As "over" through the WASM bridge leaves the param block audio.js
+// renders from bit-identical: that block is all a browser voice reads.
+
+// COVERED-BY-GO: internal/ui/synth_panel_save_persist_test.go, save_as_only_test.go
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -89,55 +76,43 @@ try {
 
   const INST = "kick";
   const K = "post_decay";
-  // Drive the whole scenario inside one page.evaluate so the actual numeric
-  // values cross the bridge (callExport only returns a shape descriptor).
+  // One evaluate, so the numeric values cross the bridge (callExport only returns a shape).
   const r = await page.evaluate(({ inst, k }) => {
     const blockOf = () => Array.from((__instrumentBlockForTest(inst) || {}).block || []);
-    resetActiveRecipe(inst); // clean baseline
     const orig = getInstrumentParams(inst)[k];
-    const liked = orig > 0.5 ? 0.3 : 0.8; // a real change inside post_decay's [0,1]
+    const liked = orig > 0.5 ? 0.3 : 0.8;
 
-    setInstrumentParam(inst, k, liked); // the knob drag
+    setInstrumentParam(inst, k, liked);
     const beforeSave = getInstrumentParams(inst)[k];
     const blockBeforeSave = blockOf();
 
-    const savedID = saveActiveRecipe(inst); // the Save button
+    const savedID = saveActiveRecipe(inst);
     const afterSave = getInstrumentParams(inst)[k];
     const blockAfterSave = blockOf();
-
-    setInstrumentParam(inst, k, orig); // move it again, unsaved
-    const resetID = resetActiveRecipe(inst); // the Reset button
-    const afterReset = getInstrumentParams(inst)[k];
     const doc = JSON.parse(getInstrumentDoc(inst) || "{}");
 
     return {
-      orig, liked, beforeSave, afterSave, afterReset, savedID, resetID,
+      orig, liked, beforeSave, afterSave, savedID,
       origin: doc.origin || "",
       blockLen: blockBeforeSave.length,
-      blockSame: blockBeforeSave.length > 0 && blockBeforeSave.every((v, i) => Object.is(v, blockAfterSave[i])),
+      blockSame: blockBeforeSave.length > 0 && blockBeforeSave.length === blockAfterSave.length &&
+        blockBeforeSave.every((v, i) => Object.is(v, blockAfterSave[i])),
     };
   }, { inst: INST, k: K });
 
   check(typeof r.orig === "number", `${INST} has no ${K} value`);
   check(approx(r.beforeSave, r.liked), `pre-save ${K}=${r.beforeSave}, want ${r.liked}`);
   check(r.savedID === INST, `saveActiveRecipe returned ${r.savedID}, want ${INST}`);
-
-  // BUG GUARD (Save must not change the sound): the document and the block
-  // audio.js renders from are unchanged by Save.
   check(approx(r.afterSave, r.liked), `post-save ${K}=${r.afterSave}, want ${r.liked}`);
   check(r.blockLen > 0, "no pushed block for the instrument (setInstrumentBlock never ran?)");
   check(r.blockSame, "Save changed the pushed param block — the browser voice would move");
-
-  // Reset returns to the library entry, which after Save is the liked value.
-  check(r.resetID === INST, `resetActiveRecipe returned ${r.resetID}, want ${INST}`);
-  check(approx(r.afterReset, r.liked), `after Reset ${K}=${r.afterReset}, want the saved ${r.liked}`);
-  check(r.origin === INST, `the project copy's origin is ${r.origin}, want ${INST}`);
+  check(r.origin === INST, `saving over repointed the project copy to ${r.origin}, want ${INST}`);
 
   if (failures.length) {
     console.error("[synth-save-persist] FAILURES:\n  " + failures.join("\n  "));
     process.exitCode = 1;
   } else {
-    console.log("[synth-save-persist] OK — Save leaves the pushed block untouched and Reset returns to the saved entry through the WASM bridge");
+    console.log("[synth-save-persist] OK — Save As over leaves the pushed block untouched through the WASM bridge");
   }
 } finally {
   await browser.close();

@@ -215,12 +215,12 @@
 {"id":204,"i":0,"j":249,"type":"regular","outputs":[205],"pitch":-1,"volume":0.62},
 {"id":205,"i":0,"j":243,"type":"regular","outputs":[186],"pitch":-1,"volume":0.62}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick":{"ref":"sha256:a48b5cb6429122a4"},
-"organ":{"ref":"sha256:43451faa02efba5a"},
+"kick":{"ref":"sha256:3c78783e1a81c2c0"},
+"organ":{"ref":"sha256:ba30fbc65bb28101"},
 "sidestick":{"ref":"sha256:48fab82ebcea6105"},
-"tom":{"ref":"sha256:212363b98a36d190"},
+"tom":{"ref":"sha256:f12b63b2e8883211"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"}
 }}

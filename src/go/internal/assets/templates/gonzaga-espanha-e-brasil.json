@@ -264,8 +264,8 @@
 {"id":257,"i":0,"j":158,"type":"regular","outputs":[258],"pitch":-7,"duration":0.5},
 {"id":258,"i":0,"j":154,"type":"regular","outputs":[201],"pitch":-7,"duration":0.5}
 ],"instrument_docs":{
-"flute":{"ref":"sha256:b04eb452e0aebe04"},
-"guitar-nylon":{"ref":"sha256:4ebc137d7f2e6ab1"},
-"guitar-nylon--2":{"ref":"sha256:4ebc137d7f2e6ab1"},
-"guitar-nylon--3":{"ref":"sha256:4ebc137d7f2e6ab1"}
+"flute":{"ref":"sha256:1f90918c86c0710f"},
+"guitar-nylon":{"ref":"sha256:9d8f85e50d6fdd2e"},
+"guitar-nylon--2":{"ref":"sha256:9d8f85e50d6fdd2e"},
+"guitar-nylon--3":{"ref":"sha256:9d8f85e50d6fdd2e"}
 }}

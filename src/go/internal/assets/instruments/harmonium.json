@@ -6,7 +6,7 @@
   "notes": "harmoniumSeed: a sustained reed-organ / Indian harmonium — a reedy saw with a\nnasal band-passed formant, a beating detuned-reed unison, and a steady vibrato.\nFull sustain (the bellows drone).",
   "render": {
     "seconds": 1,
-    "amplitude": 0.7972,
+    "amplitude": 0.8,
     "gate_tail": 0,
     "melodic": true
   },

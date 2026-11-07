@@ -6,7 +6,7 @@
   "notes": "celloSeed: SOLO cello — a BOWED-STRING PHYSICAL MODEL (osc_type:7, the STK digital-\nwaveguide render_bowed_string() in modular.c) through the cello body resonator\n(body_model:3), tuned toward the real cello D2 (257996__xserra__cello-d2.wav).\nThe journey: ADDITIVE sines → church organ (saved as organChurchSeed); subtractive\nsaw → sci-fi lead (sciFiLeadSeed); saw + body on a low note → \"radio hum\". Only the\nphysical model self-oscillates into a real bowed tone. osc_octave:-1 = pitch mapping.\nNOTE: the unison_*/lfo_* params below are VESTIGIAL — osc_type:7 bypasses the\nwavetable path; the body, amp, filter and bow_dynamics stages still apply.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.621,
+    "amplitude": 0.4096,
     "gate_tail": 0,
     "melodic": true
   },
@@ -15,7 +15,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "amp_attack": 0.08,
+        "amp_attack": 0.2725789028583782,
         "amp_curve": 1,
         "amp_decay": 0.12,
         "amp_release": 0.3,
@@ -27,7 +27,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "body_mix": 0.55,
+        "body_mix": 0.8407603577519377,
         "body_model": 3,
         "bow_dynamics": 0.5
       },
@@ -51,14 +51,14 @@
       "v": 1,
       "on": true,
       "values": {
-        "drive": 0
+        "drive": 0.014992990808741329
       }
     },
     "filter": {
       "v": 1,
       "on": true,
       "values": {
-        "filter_cutoff": 2800,
+        "filter_cutoff": 1144.9948168036622,
         "filter_resonance": 0.5,
         "filter_type": 0
       },
@@ -106,7 +106,7 @@
     "on": true,
     "values": {
       "osc_bow_loss": 0.55,
-      "osc_bow_pos": 0.13,
+      "osc_bow_pos": 0.2653490134442269,
       "osc_bow_slope": 3,
       "osc_bow_vel": 0.25
     },
@@ -121,7 +121,7 @@
         "env_fast_mix": 0.5,
         "env_fast_rate": 10,
         "env_tail_mix": 0.65,
-        "env_tail_rate": 0,
+        "env_tail_rate": 16.381291205477368,
         "filt_alpha": 0,
         "filt_freq": 1400,
         "filt_q": 0.7,

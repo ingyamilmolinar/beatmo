@@ -298,11 +298,11 @@
 {"id":288,"i":0,"j":206,"type":"regular","outputs":[289],"volume":0.36000000000000004},
 {"id":289,"i":0,"j":205,"type":"regular","outputs":[162],"volume":0.36000000000000004}
 ],"instrument_docs":{
-"fm-bass-drive":{"ref":"sha256:2e8477241a4c1a92"},
+"fm-bass-drive":{"ref":"sha256:30835a18a66324fc"},
 "hihat-lofi":{"ref":"sha256:26936071d9b036c5"},
 "kick-brutal":{"ref":"sha256:8db8b27cde0e7793"},
-"pwm-pad":{"ref":"sha256:5cc088d67fa2e6ca"},
-"pwm-pad--2":{"ref":"sha256:5cc088d67fa2e6ca"},
+"pwm-pad":{"ref":"sha256:2f0a6f3526f38f37"},
+"pwm-pad--2":{"ref":"sha256:2f0a6f3526f38f37"},
 "scifi-lead":{"ref":"sha256:ea7c63895801737a"},
-"snare-crack":{"ref":"sha256:85437546b64cdd18"}
+"snare-crack":{"ref":"sha256:12a5c9b297aabd0f"}
 }}

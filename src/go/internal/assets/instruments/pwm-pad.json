@@ -6,7 +6,7 @@
   "notes": "pwmPadSeed: a warm chorused poly pad — a detuned square-wave ensemble (the\nJuno/PWM shimmer) under a slow filter LFO for gentle movement, with a soft pad\nattack and a long release.",
   "render": {
     "seconds": 1.25,
-    "amplitude": 0.6031,
+    "amplitude": 0.6052,
     "gate_tail": 0,
     "melodic": true
   },

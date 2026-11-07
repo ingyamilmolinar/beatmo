@@ -6,7 +6,7 @@
   "notes": "drum-kick-tight -> C gen_kick_tight\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): LOUDER ONLY,\nsame short body — a smaller onset spike + more drive (the fuller retune read \"too bassy/punchy\").\nChanged: attack 0.3→0, sat 0.45→1.25, click 0.4→0.22",
   "render": {
     "seconds": 0.15,
-    "amplitude": 0.983,
+    "amplitude": 0.9865,
     "gate_tail": 0,
     "melodic": false
   },
