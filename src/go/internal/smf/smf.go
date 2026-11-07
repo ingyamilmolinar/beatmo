@@ -326,8 +326,8 @@ func parseTrack(b []byte) (tr track, tempos []tempoEvt, meters []meterEvt, copyr
 			return tr, nil, nil, "", fmt.Errorf("truncated event at tick %d", tick)
 		}
 		c := b[i]
-		switch {
-		case c == 0xFF:
+		switch c {
+		case 0xFF:
 			if i+2 > len(b) {
 				return tr, nil, nil, "", fmt.Errorf("truncated meta event")
 			}
@@ -363,7 +363,7 @@ func parseTrack(b []byte) (tr track, tempos []tempoEvt, meters []meterEvt, copyr
 			case 0x2F:
 				i = len(b)
 			}
-		case c == 0xF0 || c == 0xF7:
+		case 0xF0, 0xF7:
 			l, n, e := vlq(b, i+1)
 			if e != nil || n+l > len(b) {
 				return tr, nil, nil, "", fmt.Errorf("bad sysex length")

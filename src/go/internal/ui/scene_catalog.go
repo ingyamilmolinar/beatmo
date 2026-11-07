@@ -858,7 +858,7 @@ var sceneCatalog = []Scene{
 			// `clampLength` cell-width-derived max.
 			for i := 0; i < 64; i++ {
 				g.drum.rowZoomIncBtn.OnClick()
-				g.Update()
+				_ = g.Update()
 			}
 		}},
 	{Name: "mobile_length_min", Description: "mobile timeline shrunk to its minimum visible beat span via repeated − chip taps", Mobile: true, SettleFrames: 60,
@@ -869,7 +869,7 @@ var sceneCatalog = []Scene{
 			}
 			for i := 0; i < 64; i++ {
 				g.drum.rowZoomDecBtn.OnClick()
-				g.Update()
+				_ = g.Update()
 			}
 		}},
 	// Overflow menu (Theme 5) — every entry now carries an icon.
@@ -3632,7 +3632,7 @@ func instMenuKeyCursorSetup(mobile bool) func(*Game) {
 		// so it is still EMPTY at this point. Drive real frames first or
 		// SetSelected has nothing to select and the scene captures no ring.
 		for i := 0; i < 4 && len(c.FilteredInstIDsForTest()) == 0; i++ {
-			g.Update()
+			_ = g.Update()
 		}
 		nav := c.MenuKeyNavForTest()
 		nav.BindHost(c)

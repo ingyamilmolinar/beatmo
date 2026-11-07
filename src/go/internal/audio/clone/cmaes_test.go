@@ -23,7 +23,7 @@ func TestCMAESMinimisesAQuadratic(t *testing.T) {
 		return s
 	}
 	es := NewCMAES(n, 0.5, 0, 7)
-	var best float64 = math.Inf(1)
+	var best = math.Inf(1)
 	for g := 0; g < 600 && best > 1e-10; g++ {
 		xs := es.Ask()
 		fs := make([]float64, len(xs))

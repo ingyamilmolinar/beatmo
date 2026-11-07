@@ -370,10 +370,10 @@ func writeMatchMap(term io.Writer, dir string, man matchManifest) error {
 		}
 		own, diff := "—", ""
 		if len(r.label) > 0 {
-			switch {
-			case r.famRank == 0:
+			switch r.famRank {
+			case 0:
 				own = "not ranked"
-			case r.famRank == 1:
+			case 1:
 				own = "✓ #1 " + string(r.famBest)
 			default:
 				own = fmt.Sprintf("#%d %s", r.famRank, r.famBest)

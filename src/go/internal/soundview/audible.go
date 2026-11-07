@@ -130,7 +130,7 @@ func bandEnvelopeDB(x []float64, sr int, yield func()) [][]float64 {
 
 // bandChangeDB returns the whole-note mean |dB| band-envelope difference and
 // the largest mean over any AudibleLocalFrames consecutive frames.
-func bandChangeDB(A, B [][]float64) (global, local float64) {
+func bandChangeDB(a, b [][]float64) (global, local float64) {
 	pad := func(m [][]float64, n, w int) [][]float64 {
 		for len(m) < n {
 			row := make([]float64, w)
@@ -141,24 +141,24 @@ func bandChangeDB(A, B [][]float64) (global, local float64) {
 		}
 		return m
 	}
-	if len(A) == 0 || len(B) == 0 {
+	if len(a) == 0 || len(b) == 0 {
 		return 0, 0
 	}
-	w := len(A[0])
-	A, B = pad(A, len(B), w), pad(B, len(A), w)
+	w := len(a[0])
+	a, b = pad(a, len(b), w), pad(b, len(a), w)
 	peak := math.Inf(-1)
-	for i := range A {
-		for j := range A[i] {
-			peak = math.Max(peak, math.Max(A[i][j], B[i][j]))
+	for i := range a {
+		for j := range a[i] {
+			peak = math.Max(peak, math.Max(a[i][j], b[i][j]))
 		}
 	}
 	floor := peak - 60
 	sum, cnt := 0.0, 0
-	frame := make([]float64, len(A)) // per-frame mean |dB| (−1 = silent in both)
-	for i := range A {
+	frame := make([]float64, len(a)) // per-frame mean |dB| (−1 = silent in both)
+	for i := range a {
 		fs, fc := 0.0, 0
-		for j := range A[i] {
-			x, y := math.Max(A[i][j], floor), math.Max(B[i][j], floor)
+		for j := range a[i] {
+			x, y := math.Max(a[i][j], floor), math.Max(b[i][j], floor)
 			if x == floor && y == floor {
 				continue
 			}

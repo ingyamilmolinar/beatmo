@@ -79,7 +79,7 @@ func TestTracksOnSilenceAreFiniteAndEmptyOfPitch(t *testing.T) {
 
 func TestTracksAreMemoized(t *testing.T) {
 	b := NewBundle(bundleTone(44100, 220, 1), "t")
-	if b.Tracks() != b.Tracks() {
+	if first, second := b.Tracks(), b.Tracks(); first != second {
 		t.Fatal("Tracks() must return the same memoized instance")
 	}
 }

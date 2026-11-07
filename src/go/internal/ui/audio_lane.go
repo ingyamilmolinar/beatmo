@@ -387,7 +387,7 @@ func (l *audioLane) reconcileRowUpTo(r int, guard float64, lo, hi int, upTo floa
 		if (!had || e.note.Time > upTo) && (!want || n.Time > upTo) {
 			continue
 		}
-		if had && !l.retractable(e, guard) && !(e.vid == 0 && e.note.Kind == laneSound) {
+		if had && !l.retractable(e, guard) && (e.vid != 0 || e.note.Kind != laneSound) {
 			// Started / sent: leave it — unless the abs↔time mapping moved
 			// (a backward seek; every undo/redo while playing seeks to the
 			// beat start) and this cell now lies in the FUTURE. Then the entry

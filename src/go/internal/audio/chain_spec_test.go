@@ -1,13 +1,14 @@
 package audio
 
 import (
-	"github.com/ingyamilmolinar/beatmo/internal/env"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/env"
 )
 
 // TestChainSpecGenFileIsCurrent ensures the checked-in src/js/chain_spec.gen.js

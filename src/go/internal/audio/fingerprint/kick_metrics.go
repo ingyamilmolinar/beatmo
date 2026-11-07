@@ -884,7 +884,7 @@ func kickDecayDistance(a, b []float64) float64 {
 // brightness), and the flatness (noisy-vs-tonal) gap. These are the axes a real
 // recorded kick and a pure-tonal synth diverge on when band energies already
 // agree, so this term is what pulls tuning toward the reference's actual color.
-func kickTimbreDistance(a, b KickFingerprint, L int) float64 {
+func kickTimbreDistance(a, b KickFingerprint, l int) float64 {
 	// MFCC coeffs 1..12 (skip loudness), scaled to ~unit range.
 	mfcc := 0.0
 	for i := 1; i < 13; i++ {
@@ -895,14 +895,14 @@ func kickTimbreDistance(a, b KickFingerprint, L int) float64 {
 
 	// Centroid trajectory: octave distance per window (log-frequency; +25 Hz
 	// floor avoids blowups on near-silent windows).
-	ca := resampleLinear(a.CentroidTrace, L)
-	cb := resampleLinear(b.CentroidTrace, L)
+	ca := resampleLinear(a.CentroidTrace, l)
+	cb := resampleLinear(b.CentroidTrace, l)
 	cent := 0.0
-	for i := 0; i < L; i++ {
+	for i := 0; i < l; i++ {
 		cent += math.Abs(math.Log2((ca[i] + 25) / (cb[i] + 25)))
 	}
-	if L > 0 {
-		cent /= float64(L)
+	if l > 0 {
+		cent /= float64(l)
 	}
 
 	// Attack-click brightness (octaves).
@@ -914,11 +914,11 @@ func kickTimbreDistance(a, b KickFingerprint, L int) float64 {
 	return mfcc + cent + 0.5*atk + flat
 }
 
-func kickPitchDistance(a, b KickFingerprint, L int) float64 {
-	pa := resampleLinear(a.PitchTrace, L)
-	pb := resampleLinear(b.PitchTrace, L)
+func kickPitchDistance(a, b KickFingerprint, l int) float64 {
+	pa := resampleLinear(a.PitchTrace, l)
+	pb := resampleLinear(b.PitchTrace, l)
 	sum, n := 0.0, 0
-	for i := 0; i < L; i++ {
+	for i := 0; i < l; i++ {
 		if pa[i] > 1 && pb[i] > 1 {
 			sum += math.Abs(math.Log2(pa[i] / pb[i]))
 			n++
@@ -933,12 +933,12 @@ func kickPitchDistance(a, b KickFingerprint, L int) float64 {
 	return trace + 0.5*settle + 0.25*glide
 }
 
-func kickBandDistance(a, b KickFingerprint, L int) float64 {
+func kickBandDistance(a, b KickFingerprint, l int) float64 {
 	sum, cnt := 0.0, 0
 	for band := 0; band < KickBandCount; band++ {
-		sa := resampleLinear(bandColumn(a.BandTrace, band), L)
-		sb := resampleLinear(bandColumn(b.BandTrace, band), L)
-		for i := 0; i < L; i++ {
+		sa := resampleLinear(bandColumn(a.BandTrace, band), l)
+		sb := resampleLinear(bandColumn(b.BandTrace, band), l)
+		for i := 0; i < l; i++ {
 			sum += math.Abs(sa[i] - sb[i])
 			cnt++
 		}

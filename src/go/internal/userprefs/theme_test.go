@@ -32,7 +32,7 @@ func TestThemeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Doc.Equal(want.Doc) || got.OverrideCircuits != want.OverrideCircuits {
+	if !got.Equal(want.Doc) || got.OverrideCircuits != want.OverrideCircuits {
 		t.Fatalf("got %+v want %+v", got, want)
 	}
 }
@@ -42,7 +42,7 @@ func TestThemeAbsentIsEmptyAndOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !snap.theme.Doc.IsEmpty() || snap.theme.OverrideCircuits {
+	if !snap.theme.IsEmpty() || snap.theme.OverrideCircuits {
 		t.Fatalf("absent theme must load empty: %+v", snap.theme)
 	}
 	out, err := marshalPrefs(snap)

@@ -86,7 +86,7 @@ func renderMixer(m *mixer, nSamples int) []float64 {
 		if done+n > nSamples {
 			n = nSamples - done
 		}
-		m.Read(buf[:n*2])
+		_, _ = m.Read(buf[:n*2])
 		done += n
 	}
 	return StopOutputCapture()

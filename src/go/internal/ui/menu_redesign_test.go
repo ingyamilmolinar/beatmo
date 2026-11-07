@@ -45,7 +45,7 @@ func TestTemplateMenu_GroupHeadersWhenUnfiltered(t *testing.T) {
 	for i, gl := range groups {
 		idx[gl] = i
 	}
-	if !(idx["Baroque"] < idx["Classical"] && idx["Classical"] < idx["Romantic"]) {
+	if idx["Baroque"] >= idx["Classical"] || idx["Classical"] >= idx["Romantic"] {
 		t.Errorf("classical groups out of chronological order: %v", groups)
 	}
 	seen := map[string]bool{}

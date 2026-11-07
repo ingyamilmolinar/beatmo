@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -340,13 +339,13 @@ func resolveComponent(name string, raw *componentRaw, r *tokenResolver, line int
 
 	if raw.Dynamic != nil {
 		if raw.Dynamic.Anchor == "" {
-			return c, fmt.Errorf("components.%s.dynamic (line %d): missing anchor:", name, line)
+			return c, fmt.Errorf("components.%s.dynamic (line %d): missing anchor", name, line)
 		}
 		c.DynamicAnchor = raw.Dynamic.Anchor
 	}
 	if raw.Animation != nil {
 		if raw.Animation.Anchor == "" {
-			return c, fmt.Errorf("components.%s.animation (line %d): missing anchor:", name, line)
+			return c, fmt.Errorf("components.%s.animation (line %d): missing anchor", name, line)
 		}
 		c.AnimationAnchor = raw.Animation.Anchor
 	}
@@ -381,9 +380,6 @@ func emitComponents(comps []component) ([]byte, error) {
 	ids := make([]string, len(comps))
 	for i, c := range comps {
 		ids[i] = c.ID
-	}
-	if !sort.SliceIsSorted(ids, func(i, j int) bool { return ids[i] < ids[j] }) {
-		// keep source order
 	}
 
 	data := struct {

@@ -125,7 +125,7 @@ func TestDirtyRebuildEquivalentToFullWalk(t *testing.T) {
 func TestDirtyRebuildBoundedByWindowCap(t *testing.T) {
 	const reps = 9
 	timeRebuild := func(ws int) time.Duration {
-		var best time.Duration = time.Hour
+		var best = time.Hour
 		for r := 0; r < reps; r++ {
 			pred, graph, id := buildRebuildCircuit(t, "prev_chain")
 			horizon := ws + 4096

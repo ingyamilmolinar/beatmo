@@ -1111,15 +1111,7 @@ func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID instrument.I
 		)
 		sectionsRect.Max.X = dv.instEditorPreviewRect.Min.X - SpaceMD
 		dv.instEditorMobileFocusRect = image.Rectangle{}
-	} else if mobile {
-		dv.instEditorPreviewRect = image.Rectangle{}
-		// Mobile: the "Your sound" mirror + focus graph live in a RIGHT column
-		// beside the knob grid, set in layoutSynthSections once detailR is known
-		// (NOT a top band). Cleared here; the sections area keeps its full height
-		// so the chip strip + knob grid get the room.
-		dv.instEditorMobileFocusRect = image.Rectangle{}
 	} else {
-		// Narrow desktop panel with no preview pane: no mobile band either.
 		dv.instEditorPreviewRect = image.Rectangle{}
 		dv.instEditorMobileFocusRect = image.Rectangle{}
 	}

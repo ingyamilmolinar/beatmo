@@ -230,7 +230,7 @@ func (w *MobileWheelPopup) HoverAt(mx, my int) {
 	if !pt.In(w.rect) {
 		return
 	}
-	w.ValueWheel.hoverAt(pt)
+	w.hoverAt(pt)
 }
 
 // hoverAt refreshes the hovered rung / centre-grip state for a point already

@@ -56,7 +56,7 @@ func (g *Game) kickLane() {
 func (g *Game) laneKickPass() {
 	g.seqMu.Lock()
 	defer g.seqMu.Unlock()
-	g.playbackSlate.laneTick()
+	g.laneTick()
 }
 
 // initAudioLane builds the lane from the RuntimeProfile. Off under go test
@@ -68,7 +68,7 @@ func (g *Game) initAudioLane() {
 		g.laneKick = make(chan struct{}, 1)
 	}
 	g.laneSink = &outboxSink{wake: g.laneWake}
-	g.laneSrc = g.playbackSlate.newGameLaneSource()
+	g.laneSrc = g.newGameLaneSource()
 	g.audioLane = newAudioLane(g.laneSrc, g.laneSink, laneConfig{
 		Horizon: p.AudioHorizonSec, Guard: p.CancelGuardSec, LateTol: p.LateToleranceSec,
 		FullReconcile: p.LaneFullReconcileSec, VoiceRecommitMin: p.LaneVoiceRecommitMinSec,

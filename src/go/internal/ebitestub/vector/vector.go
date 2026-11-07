@@ -115,3 +115,38 @@ func DrawFilledCircle(dst *ebiten.Image, cx, cy, r float32, clr color.Color, ant
 // StrokeCircle strokes the outline of a circle centered at (cx, cy). No-op stub.
 func StrokeCircle(dst *ebiten.Image, cx, cy, r, strokeWidth float32, clr color.Color, antialias bool) {
 }
+
+// FillRule is the overlap rule FillPath fills with.
+type FillRule int
+
+const (
+	FillRuleNonZero FillRule = iota
+	FillRuleEvenOdd
+)
+
+// FillOptions configures FillPath.
+type FillOptions struct {
+	FillRule FillRule
+}
+
+// DrawPathOptions configures FillPath and StrokePath.
+type DrawPathOptions struct {
+	AntiAlias  bool
+	ColorScale ebiten.ColorScale
+}
+
+// FillPath fills a path. No-op stub.
+func FillPath(dst *ebiten.Image, path *Path, fillOptions *FillOptions, drawPathOptions *DrawPathOptions) {
+}
+
+// StrokePath strokes a path. No-op stub.
+func StrokePath(dst *ebiten.Image, path *Path, strokeOptions *StrokeOptions, drawPathOptions *DrawPathOptions) {
+}
+
+// FillRect draws a filled axis-aligned rectangle. No-op stub.
+func FillRect(dst *ebiten.Image, x, y, width, height float32, clr color.Color, antialias bool) {
+}
+
+// FillCircle draws a filled circle centered at (cx, cy). No-op stub.
+func FillCircle(dst *ebiten.Image, cx, cy, r float32, clr color.Color, antialias bool) {
+}

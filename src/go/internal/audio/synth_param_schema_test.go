@@ -65,10 +65,10 @@ Diff (want = on-disk, got = generator output):
 	}
 }
 
-// goBinaryPath returns the path to the go binary that executed this test.
-// Falls back to PATH lookup when GOROOT is unavailable (e.g. shared CI).
+// goBinaryPath returns the go binary that runs this test: `go test` exports
+// GOROOT to the binaries it runs; a bare `go` falls back to PATH.
 func goBinaryPath() string {
-	if goroot := runtime.GOROOT(); goroot != "" {
+	if goroot := os.Getenv("GOROOT"); goroot != "" {
 		return filepath.Join(goroot, "bin", "go")
 	}
 	return "go"

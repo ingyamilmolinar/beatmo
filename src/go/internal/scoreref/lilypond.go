@@ -64,8 +64,8 @@ func LilyPondDurationQuarters(d string) (float64, error) {
 	mult := 1.0
 	if i := strings.Index(d, "*"); i >= 0 {
 		num, den := d[i+1:], "1"
-		if j := strings.Index(num, "/"); j >= 0 {
-			num, den = num[:j], num[j+1:]
+		if before, after, ok := strings.Cut(num, "/"); ok {
+			num, den = before, after
 		}
 		n, err1 := strconv.Atoi(num)
 		dn, err2 := strconv.Atoi(den)

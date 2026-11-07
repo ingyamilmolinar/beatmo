@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"os"
@@ -63,7 +64,7 @@ func New(logger *game_log.Logger) *Game {
 	// cluster (see playback_slate.go); set as statements because promoted
 	// (embedded) fields can't be keyed in a composite literal, and the
 	// struct carries atomics that must never be copied.
-	g.playbackSlate.g = g
+	g.g = g
 	g.timeline = timeline.NewService()
 	g.beatInfos = []model.BeatInfo{}
 	g.drumBeatInfos = []model.BeatInfo{}
@@ -256,7 +257,7 @@ func New(logger *game_log.Logger) *Game {
 	timerOpts := async.Options{MaxConcurrent: 1, QueueSize: 64, Name: "audio.timers"}
 	timerPool, terr := async.DefaultRegistry().Get("audio.timers", timerOpts)
 	if terr != nil {
-		timerPool = async.NewPool(nil, timerOpts)
+		timerPool = async.NewPool(context.Background(), timerOpts)
 	}
 	g.audioScheduler = async.NewScheduler(timerPool)
 	g.voicePrewarmer = newVoicePrewarmer(g)

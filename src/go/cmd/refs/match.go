@@ -1094,7 +1094,7 @@ func writeMatchClips(dir string, ref wave.Wave, top []matchRender) (string, erro
 // an instrument. Here a namesake only adds one more clip to hear.
 func namesakeInFilename(name string, ids []instrument.ID) instrument.ID {
 	words := strings.FieldsFunc(strings.ToLower(strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))), func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 	})
 	var best instrument.ID
 	for _, id := range ids {

@@ -565,7 +565,7 @@ func (p *NavigationPanel) segAt(pt image.Point) (*SegmentedControl, *bool) {
 // HandleWheel scrolls the go-to wheel when the pointer is over it.
 func (p *NavigationPanel) HandleWheel(x, y, steps int) bool {
 	pt := image.Pt(x, y)
-	if p.beatModel == nil || !(pt.In(p.wheel.valRect) || pt.In(p.wheel.resRect)) {
+	if p.beatModel == nil || (!pt.In(p.wheel.valRect) && !pt.In(p.wheel.resRect)) {
 		return false
 	}
 	return p.wheel.HandleWheel(x, y, steps)

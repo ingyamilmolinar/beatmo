@@ -116,7 +116,7 @@ func ParseFile(data []byte) (Doc, error) {
 	if err := dec.Decode(&f); err != nil {
 		return Doc{}, fmt.Errorf("instrument: %w", err)
 	}
-	if err := f.Envelope.Validate(FileFormat); err != nil {
+	if err := f.Validate(FileFormat); err != nil {
 		return Doc{}, err
 	}
 	return f.Doc, nil

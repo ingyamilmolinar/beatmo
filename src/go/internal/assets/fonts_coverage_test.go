@@ -85,7 +85,7 @@ func cmapCoverage(t *testing.T, name string, ttf []byte) map[rune]bool {
 		rec := 4 + 8*i
 		platform, encoding := be16(cmap, rec), be16(cmap, rec+2)
 		// Unicode (0, *) and Windows Unicode BMP/full (3,1) and (3,10).
-		if !(platform == 0 || (platform == 3 && (encoding == 1 || encoding == 10))) {
+		if platform != 0 && (platform != 3 || (encoding != 1 && encoding != 10)) {
 			continue
 		}
 		sub := cmap[be32(cmap, rec+4):]

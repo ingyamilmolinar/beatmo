@@ -83,7 +83,7 @@ func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.
 	g.addEdgeNoRefresh(extra, mid)
 	g.updateBeatInfos()
 
-	if g.rowsPathChanged != nil && len(g.rowsPathChanged) > 1 && g.rowsPathChanged[1] {
+	if len(g.rowsPathChanged) > 1 && g.rowsPathChanged[1] {
 		t.Fatalf("row 1 path unexpectedly marked changed by a row-0 edit")
 	}
 

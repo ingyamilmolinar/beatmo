@@ -533,7 +533,7 @@ func TestMobileRowInlineControlsVisible(t *testing.T) {
 			mr := mutes[0].Rect()
 			sr := solos[0].Rect()
 			fr := fxs[0].Rect()
-			if !(vr.Max.X <= mr.Min.X && mr.Max.X <= sr.Min.X && sr.Max.X <= fr.Min.X) {
+			if vr.Max.X > mr.Min.X || mr.Max.X > sr.Min.X || sr.Max.X > fr.Min.X {
 				t.Fatalf("controls overlap on %dx%d: vol=%v mute=%v solo=%v fx=%v",
 					vp.w, vp.h, vr, mr, sr, fr)
 			}

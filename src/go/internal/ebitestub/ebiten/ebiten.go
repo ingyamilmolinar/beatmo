@@ -264,6 +264,12 @@ func (c *ColorScale) Scale(r, g, b, a float32) {
 }
 
 // Factors returns the tint multipliers and whether any tint is set. Tests only.
+// ScaleWithColor multiplies the scale by clr's premultiplied components.
+func (c *ColorScale) ScaleWithColor(clr color.Color) {
+	cr, cg, cb, ca := clr.RGBA()
+	c.Scale(float32(cr)/0xffff, float32(cg)/0xffff, float32(cb)/0xffff, float32(ca)/0xffff)
+}
+
 func (c ColorScale) Factors() (r, g, b, a float32, ok bool) {
 	if !c.set {
 		return 1, 1, 1, 1, false

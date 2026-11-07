@@ -112,7 +112,7 @@ func newVoicePrewarmer(g *Game) *voicePrewarmer {
 	opts := async.Options{MaxConcurrent: workers, QueueSize: 64, Name: prewarmPoolName}
 	pool, err := async.DefaultRegistry().Get(prewarmPoolName, opts)
 	if err != nil {
-		pool = async.NewPool(nil, opts)
+		pool = async.NewPool(context.Background(), opts)
 		p.private = true
 	}
 	p.pool = pool
@@ -352,5 +352,5 @@ func (p *voicePrewarmer) release() {
 		p.pool.Close()
 		return
 	}
-	async.DefaultRegistry().Release(p.poolName)
+	_ = async.DefaultRegistry().Release(p.poolName)
 }

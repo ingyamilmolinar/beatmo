@@ -328,7 +328,7 @@ func parseAdoptArgs(args []string) (adoptOpts, error) {
 	if rest := fs.Args(); len(rest) > 0 {
 		return adoptOpts{}, fmt.Errorf("refs adopt: unparsed argument(s): %s\n"+
 			"  A multi-word -note must be quoted; without quotes everything "+
-			"from the first bare word on is dropped, including later flags.",
+			"from the first bare word on is dropped, including later flags",
 			strings.Join(rest, " "))
 	}
 	if opts.Wav == "" && !opts.Scan {

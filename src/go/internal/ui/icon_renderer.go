@@ -4,7 +4,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -57,56 +56,15 @@ func iconStrokeWidth(r image.Rectangle) float32 {
 
 // ── Internal: white texture for path rasterization ─────────────────────
 //
-// Ebiten's path API (AppendVerticesAndIndicesForFilling/ForStroke) needs
-// a sample texture for DrawTriangles. The example pattern is a 3×3 white
-// image with a 1×1 sub-image so antialiased edges sample interior
-// pixels and don't bleed outside. Lazy-initialized so test builds (which
-// stub Ebiten) never attempt to allocate a real GPU texture.
-var (
-	iconWhiteOnce sync.Once
-	iconWhiteSub  *ebiten.Image
-)
-
-func iconWhiteSubImage() *ebiten.Image {
-	iconWhiteOnce.Do(func() {
-		base := ebiten.NewImage(3, 3)
-		base.Fill(color.White)
-		iconWhiteSub = base.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
-	})
-	return iconWhiteSub
-}
-
-// rgbaParts splits col into 0..1 float32 components for vertex tinting.
-func rgbaParts(col color.Color) (cr, cg, cb, ca float32) {
-	r16, g16, b16, a16 := col.RGBA()
-	return float32(r16) / 65535, float32(g16) / 65535, float32(b16) / 65535, float32(a16) / 65535
-}
-
-// drawPath rasterizes a built vector.Path either as a stroke (when op is
-// non-nil) or as a fill, tinting all generated vertices to col. Uses the
-// shared whiteSubImage texture per Ebiten's vector example.
+// drawPath rasterizes a built vector.Path as a stroke (op non-nil) or a fill, in col.
 func drawPath(dst *ebiten.Image, path *vector.Path, op *vector.StrokeOptions, col color.Color) {
-	var vs []ebiten.Vertex
-	var is []uint16
+	dop := &vector.DrawPathOptions{AntiAlias: true}
+	dop.ColorScale.ScaleWithColor(col)
 	if op != nil {
-		vs, is = path.AppendVerticesAndIndicesForStroke(vs, is, op)
-	} else {
-		vs, is = path.AppendVerticesAndIndicesForFilling(vs, is)
+		vector.StrokePath(dst, path, op, dop)
+		return
 	}
-	cr, cg, cb, ca := rgbaParts(col)
-	for i := range vs {
-		vs[i].SrcX = 1
-		vs[i].SrcY = 1
-		vs[i].ColorR = cr
-		vs[i].ColorG = cg
-		vs[i].ColorB = cb
-		vs[i].ColorA = ca
-	}
-	dop := &ebiten.DrawTrianglesOptions{
-		AntiAlias: true,
-		FillRule:  ebiten.FillRuleNonZero,
-	}
-	dst.DrawTriangles(vs, is, iconWhiteSubImage(), dop)
+	vector.FillPath(dst, path, &vector.FillOptions{FillRule: vector.FillRuleNonZero}, dop)
 }
 
 // makeStrokeOptions builds the canonical stroke options used by every icon:
@@ -153,7 +111,7 @@ func iconStrokeCircle(dst *ebiten.Image, c iconCanvas, cx, cy, r float32, col co
 func iconFillCircle(dst *ebiten.Image, c iconCanvas, cx, cy, r float32, col color.Color) {
 	pcx, pcy := c.px(cx, cy)
 	pr := r * c.scale
-	vector.DrawFilledCircle(dst, pcx, pcy, pr, col, true)
+	vector.FillCircle(dst, pcx, pcy, pr, col, true)
 }
 
 // iconStrokePolyline strokes a connected sequence of line segments
@@ -198,7 +156,7 @@ func iconFillPath(dst *ebiten.Image, c iconCanvas, pts [][2]float32, col color.C
 func iconFillRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radius float32, col color.Color) {
 	if radius <= 0 {
 		px, py := c.px(x, y)
-		vector.DrawFilledRect(dst, px, py, w*c.scale, h*c.scale, col, true)
+		vector.FillRect(dst, px, py, w*c.scale, h*c.scale, col, true)
 		return
 	}
 	if radius*2 > w {

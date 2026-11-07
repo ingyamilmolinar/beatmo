@@ -26,7 +26,7 @@ func stubGameForHighlightDuration(bpm int) *Game {
 	}
 	// playbackSlate methods dereference this back-reference; struct literals
 	// that bypass New() must set it explicitly (mirrors New()).
-	g.playbackSlate.g = g
+	g.g = g
 	g.drum = &DrumView{
 		Rows:   []*DrumRow{{}},
 		Graph:  g.graph,

@@ -58,7 +58,7 @@ func (l *LayoutGuidesLayer) Draw(dst *ebiten.Image) {
 	for i := 0; i < len(dv.widgets.colPos); i++ {
 		x := dv.widgets.colPos[i] + offX
 		th := 1
-		var col color.Color = baseCol
+		var col = baseCol
 		inner := i > 0 && i < len(dv.widgets.colPos)-1
 		if inner {
 			idx := i - 1
@@ -79,7 +79,7 @@ func (l *LayoutGuidesLayer) Draw(dst *ebiten.Image) {
 	for i := 0; i < len(dv.widgets.rowPos); i++ {
 		y := dv.widgets.rowPos[i] + offY
 		th := 1
-		var col color.Color = baseCol
+		var col = baseCol
 		inner := i > 0 && i < len(dv.widgets.rowPos)-1
 		if inner {
 			idx := i - 1

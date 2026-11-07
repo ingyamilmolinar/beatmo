@@ -1369,8 +1369,8 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		}
 		br := btn.Rect()
 		if br.Max.Y > dv.fxViewportRect.Min.Y && br.Min.Y < dv.fxViewportRect.Max.Y {
-			switch {
-			case btn == dv.fxAddMenuBackBtn:
+			switch btn {
+			case dv.fxAddMenuBackBtn:
 				// Add-menu dismiss row: shared flat menu row, leading chevron-left.
 				drawMenuRow(dst, btn, MenuRowSpec{
 					Accent:   fxAccent,

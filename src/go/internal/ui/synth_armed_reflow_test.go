@@ -484,7 +484,7 @@ func TestArmGrow_MidAnimationRectBetween(t *testing.T) {
 	midA := area()
 	settleArmGrow(dv)
 	grownA := area()
-	if !(midA > restA && midA < grownA) {
+	if midA <= restA || midA >= grownA {
 		t.Fatalf("mid-animation area must be between resting(%d) and grown(%d); got %d", restA, grownA, midA)
 	}
 }

@@ -80,7 +80,8 @@ func (c *Channel) replaceEQAnalyzer(an *Analyzer) {
 		}
 		kept = append(kept, p)
 	}
-	c.eqProcs = append(kept, an)
+	kept = append(kept, an)
+	c.eqProcs = kept
 	c.processors = append(append([]Processor(nil), c.inserts...), c.eqProcs...)
 	c.cacheBlockCapability()
 	c.mu.Unlock()

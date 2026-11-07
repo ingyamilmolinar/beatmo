@@ -126,8 +126,8 @@ func TestCircuitDigestIsAFunctionOfTheCircuit(t *testing.T) {
 	d := a
 	d.InstrumentDocs = map[instrument.ID]projectDoc{}
 	for id, pd := range a.InstrumentDocs {
-		pd.Doc = pd.Doc.Clone()
-		pd.Doc.Render.Amplitude += 0.001
+		pd.Doc = pd.Clone()
+		pd.Render.Amplitude += 0.001
 		d.InstrumentDocs[id] = pd
 	}
 	if circuitDigest(a) == circuitDigest(d) {

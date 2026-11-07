@@ -487,10 +487,10 @@ func (dv *DrumView) layoutTieredGrid(grid *ControlGrid, innerR image.Rectangle, 
 			padded = append(padded, -1)
 		}
 		dividerEnd = len(padded)
-		visible = padded
 		if moreOpen {
-			visible = append(padded, advanced...)
+			padded = append(padded, advanced...)
 		}
+		visible = padded
 	}
 	grid.Layout(innerR, len(visible), dv2.ParamCardW, cellH, hGap, vGap)
 	if dividerStart >= 0 {

@@ -40,7 +40,7 @@ func shippedPack() *instrumentpack.Pack {
 		if err := json.Unmarshal(raw, &packData); err != nil {
 			panic(fmt.Errorf("instrument pack: %w", err))
 		}
-		if err := packData.Envelope.Validate("instrument pack"); err != nil {
+		if err := packData.Validate("instrument pack"); err != nil {
 			panic(err)
 		}
 		// A document this build cannot validate is skipped (logged), never a
