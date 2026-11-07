@@ -2,12 +2,15 @@
 """Count comment lines and blocks per file and package, and rank them.
 
     python3 scripts/comment_census.py [--top N] [--json] [--lang go] [--no-tests]
+    python3 scripts/comment_census.py --check            # comment policy lint
+    python3 scripts/comment_census.py --digest > d.json  # then --compare d.json
 
 Tests: python3 scripts/comment_census_test.py (cross-checks the lexers against
 go/parser and esprima on every file in the repo).
 """
 import argparse
 import fnmatch
+import hashlib
 import io
 import json
 import os
@@ -21,7 +24,7 @@ EXCLUDED_DIRS = {
     ".git", ".tools", "node_modules", "vendor", "testdata", "build", "coverage",
     "bench-results", "screenshots", "scratchpad", "tmp", "tunkul", "dist",
 }
-EXCLUDED_GLOBS = ["src/c/miniaudio.*"]
+EXCLUDED_GLOBS = ["src/c/miniaudio.*", "src/js/wasm_exec.js"]
 
 EXT_LANG = {
     ".go": "go", ".js": "js", ".mjs": "js", ".cjs": "js", ".c": "c", ".h": "c",
@@ -48,6 +51,14 @@ DECLS = {
     "make": None,
 }
 
+MAX_BLOCK_LINES = 3
+HISTORY_MARKERS = [
+    re.compile(r"\b20\d\d-\d\d(-\d\d)?\b"),
+    re.compile(r"\bPhase \d"),
+    re.compile(r"\b((it|this|that|they|we|which|what|there) used to|pre-fix|historically|for now"
+               r"|as of 20\d\d|a future (pr|change)|was (removed|deleted|replaced|renamed))\b", re.I),
+]
+
 GENERATED = re.compile(r"Code generated .*DO NOT EDIT")
 JS_REGEX_KEYWORDS = {"return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw", "yield", "await", "instanceof"}
 JS_REGEX_AFTER = set("(,=:[!&|?{};+-*%<>~^")
@@ -60,6 +71,7 @@ class Line:
     comment: bool = False
     directive: bool = False
     ctext: str = ""
+    code_text: str = ""
 
 
 @dataclass
@@ -160,6 +172,10 @@ def _scan_clike(text, lang):
         if li < len(lines):
             lines[li].ctext += s
 
+    def addcode(s):
+        if li < len(lines):
+            lines[li].code_text += s
+
     if js and text.startswith("#!"):
         state = "line"
     while i < n:
@@ -185,14 +201,17 @@ def _scan_clike(text, lang):
                 state = "line"
                 mark("comment")
                 addc("//")
+                addcode(" ")
                 i += 2
                 continue
             if ch == "/" and nx == "*":
                 state = "block"
                 mark("comment")
                 addc("/*")
+                addcode(" ")
                 i += 2
                 continue
+            addcode(ch)
             if not ch.isspace():
                 mark("code")
             if ch.isalnum() or ch in "_$":
@@ -244,6 +263,7 @@ def _scan_clike(text, lang):
         mark("code")
         if state == "str":
             if ch == "\\" and nx != "\n":
+                addcode(text[i:i + 2])
                 i += 2
                 continue
             if ch == quote:
@@ -253,6 +273,7 @@ def _scan_clike(text, lang):
                 state = "code"
         elif state == "tpl":
             if ch == "\\" and nx != "\n":
+                addcode(text[i:i + 2])
                 i += 2
                 continue
             if ch == "`":
@@ -262,10 +283,12 @@ def _scan_clike(text, lang):
                 tpl_stack.append(0)
                 state = "code"
                 prev = "{"
+                addcode(text[i:i + 2])
                 i += 2
                 continue
         elif state == "regex":
             if ch == "\\" and nx != "\n":
+                addcode(text[i:i + 2])
                 i += 2
                 continue
             if ch == "[":
@@ -276,10 +299,12 @@ def _scan_clike(text, lang):
                 prev_word = ""
         elif state == "class":
             if ch == "\\" and nx != "\n":
+                addcode(text[i:i + 2])
                 i += 2
                 continue
             if ch == "]":
                 state = "regex"
+        addcode(ch)
         i += 1
     if go:
         _mark_cgo_preamble(lines)
@@ -308,6 +333,7 @@ def _scan_hash(text, lang):
     for ln in lines:
         if current:
             ln.code = True
+            ln.code_text = ln.text
             term, strip = current
             if (ln.text.lstrip("\t") if strip else ln.text) == term:
                 current = heredocs.pop(0) if heredocs else None
@@ -315,6 +341,7 @@ def _scan_hash(text, lang):
         if not sh:
             quote = ""
         t = ln.text
+        ln.code_text = t
         i = 0
         while i < len(t):
             ch = t[i]
@@ -331,6 +358,7 @@ def _scan_hash(text, lang):
             if ch == "#" and at_word_start:
                 ln.comment = True
                 ln.ctext = t[i:]
+                ln.code_text = t[:i]
                 break
             if not ch.isspace():
                 ln.code = True
@@ -360,6 +388,7 @@ def _scan_py(text):
                 ln.comment = True
                 ln.ctext = tok.string
             elif tok.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER):
+                lines[tok.start[0] - 1].code_text += tok.string + " "
                 for r in range(tok.start[0], min(tok.end[0], len(lines)) + 1):
                     lines[r - 1].code = True
     except (tokenize.TokenError, SyntaxError):
@@ -436,6 +465,38 @@ def analyze(path, text):
     return fs
 
 
+@dataclass
+class Violation:
+    path: str
+    line: int
+    rule: str
+    detail: str
+
+
+def check_file(path, text):
+    lang = lang_for(path)
+    if not lang:
+        return []
+    out = [Violation(path, b.start, "block-too-long", f"{b.lines} lines (max {MAX_BLOCK_LINES})")
+           for b in analyze(path, text).blocks if b.lines > MAX_BLOCK_LINES]
+    for idx, ln in enumerate(scan(text, lang)):
+        if not ln.comment or ln.directive:
+            continue
+        for rx in HISTORY_MARKERS:
+            m = rx.search(ln.ctext)
+            if m:
+                out.append(Violation(path, idx + 1, "history-marker", m.group(0)))
+                break
+    return sorted(out, key=lambda v: (v.line, v.rule))
+
+
+def code_digest(text, lang):
+    """sha256 of the code with comments removed (directives kept) and whitespace runs collapsed."""
+    parts = [ln.text if ln.directive else ln.code_text for ln in scan(text, lang)]
+    flat = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    return hashlib.sha256(flat.encode()).hexdigest()
+
+
 def _excluded(rel, extra):
     parts = rel.split("/")
     if any(p in EXCLUDED_DIRS for p in parts[:-1]):
@@ -458,23 +519,45 @@ def _list(root, use_git):
     return sorted(found)
 
 
-def collect(root, use_git=True, include_generated=False, include_tests=True, langs=None, exclude=()):
-    result = []
+def _read(root, rel):
+    with open(os.path.join(root, rel), encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def select(root, use_git=True, include_generated=False, include_tests=True, langs=None, exclude=(),
+           only=(), tests_only=False):
+    """Yield (path, text) for every file the census covers under these filters."""
     for rel in _list(root, use_git):
         lang = lang_for(rel)
         if not lang or (langs and lang not in langs) or _excluded(rel, exclude):
             continue
-        if not include_tests and is_test(rel):
+        if only and not any(fnmatch.fnmatch(rel, g) for g in only):
             continue
-        full = os.path.join(root, rel)
-        if not os.path.isfile(full):
+        if (not include_tests and is_test(rel)) or (tests_only and not is_test(rel)):
             continue
-        with open(full, encoding="utf-8", errors="replace") as f:
-            text = f.read()
+        if not os.path.isfile(os.path.join(root, rel)):
+            continue
+        text = _read(root, rel)
         if not include_generated and is_generated(rel, text):
             continue
-        result.append(analyze(rel, text))
-    return result
+        yield rel, text
+
+
+def collect(root, use_git=True, include_generated=False, include_tests=True, langs=None, exclude=(),
+            only=(), tests_only=False):
+    return [analyze(rel, text) for rel, text in select(root, use_git, include_generated, include_tests, langs,
+                                                       exclude, only, tests_only)]
+
+
+def compare_digests(root, saved):
+    """Paths in saved whose code digest changed or that no longer exist."""
+    changed = []
+    for rel, want in sorted(saved.items()):
+        if not os.path.isfile(os.path.join(root, rel)):
+            changed.append(rel)
+        elif code_digest(_read(root, rel), lang_for(rel)) != want:
+            changed.append(rel)
+    return changed
 
 
 def top_blocks(files, n):
@@ -591,13 +674,33 @@ def main(argv=None):
     ap.add_argument("--lang", action="append", help="restrict to a language (repeatable): go js c py sh yaml make")
     ap.add_argument("--no-tests", action="store_true", help="skip test files")
     ap.add_argument("--include-generated", action="store_true")
-    ap.add_argument("--exclude", action="append", default=[], help="extra path glob to skip (repeatable)")
+    ap.add_argument("--exclude", action="extend", nargs="+", default=[], metavar="GLOB", help="path globs to skip")
+    ap.add_argument("--only", action="extend", nargs="+", default=[], metavar="GLOB", help="restrict to path globs")
+    ap.add_argument("--tests-only", action="store_true", help="only test files")
     ap.add_argument("--no-git", action="store_true", help="walk the directory instead of git ls-files")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="lint the comment policy; exit 1 on any violation")
+    mode.add_argument("--digest", action="store_true", help="print {path: code digest} as JSON")
+    mode.add_argument("--compare", metavar="FILE", help="list files whose code digest differs from a --digest FILE")
     a = ap.parse_args(argv)
-    files = collect(a.root, use_git=not a.no_git, include_generated=a.include_generated,
-                    include_tests=not a.no_tests, langs=a.lang, exclude=a.exclude)
+    if a.compare:
+        with open(a.compare) as f:
+            changed = compare_digests(a.root, json.load(f))
+        sys.stdout.write("".join(p + "\n" for p in changed))
+        return 1 if changed else 0
+    picked = select(a.root, use_git=not a.no_git, include_generated=a.include_generated, include_tests=not a.no_tests,
+                    langs=a.lang, exclude=a.exclude, only=a.only, tests_only=a.tests_only)
+    if a.digest:
+        json.dump({rel: code_digest(text, lang_for(rel)) for rel, text in picked}, sys.stdout, indent=0, sort_keys=True)
+        return 0
+    if a.check:
+        found = [v for rel, text in picked for v in check_file(rel, text)]
+        sys.stdout.write("".join(f"{v.path}:{v.line}: {v.rule}: {v.detail}\n" for v in found))
+        return 1 if found else 0
+    files = [analyze(rel, text) for rel, text in picked]
     sys.stdout.write(report_json(files, a.top) if a.json else report_text(files, a.top, a.root))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

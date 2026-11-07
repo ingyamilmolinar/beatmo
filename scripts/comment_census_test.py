@@ -319,6 +319,133 @@ class CLI(unittest.TestCase):
         self.assertEqual(data["packages"][0]["name"], "p")
 
 
+class Policy(unittest.TestCase):
+    def rules(self, text, path="p/a.go"):
+        return [(v.path, v.line, v.rule) for v in cc.check_file(path, text)]
+
+    def test_block_of_four_lines_is_too_long(self):
+        self.assertEqual(self.rules("// 1\n// 2\n// 3\n// 4\nx := 1\n"), [("p/a.go", 1, "block-too-long")])
+        self.assertEqual(self.rules("// 1\n// 2\n// 3\nx := 1\n"), [])
+
+    def test_history_markers_are_flagged(self):
+        for c in ["// fixed 2026-09-19", "// it used to panic", "// Phase 5b of the refactor",
+                  "// pre-fix this leaked", "// for now both coexist", "// As of 2026 it is"]:
+            self.assertEqual(self.rules(c + "\nx := 1\n"), [("p/a.go", 1, "history-marker")], c)
+        for c in ["// phase 0 is the start of the cycle", 's := "2026-09-19"', "//go:build linux",
+                  "// the callback used to check input", "// skip an entry that no longer validates",
+                  "// strip the prefix"]:
+            self.assertEqual(self.rules(c + "\nx := 1\n"), [], c)
+
+    def test_trailing_comments_are_checked_for_markers(self):
+        self.assertEqual(self.rules("x := 1 // it used to be 2\n"), [("p/a.go", 1, "history-marker")])
+
+    def test_cgo_preamble_is_exempt(self):
+        text = "// 2026-01-01\n// a\n// b\n// c\nimport \"C\"\n"
+        self.assertEqual(self.rules(text), [])
+
+    def test_other_languages(self):
+        self.assertEqual(self.rules("# 1\n# 2\n# 3\n# 4\necho\n", "s.sh"), [("s.sh", 1, "block-too-long")])
+        self.assertEqual(self.rules("x = 1  # historically needed\n", "a.py"), [("a.py", 1, "history-marker")])
+        self.assertEqual(self.rules("plain text", "notes.txt"), [])
+
+
+class Digest(unittest.TestCase):
+    def same(self, a, b, lang):
+        self.assertEqual(cc.code_digest(a, lang), cc.code_digest(b, lang), (lang, a, b))
+
+    def differ(self, a, b, lang):
+        self.assertNotEqual(cc.code_digest(a, lang), cc.code_digest(b, lang), (lang, a, b))
+
+    def test_digest_ignores_comment_edits(self):
+        cases = [
+            ("go", "x := 1 // a\n", "// b\nx  :=  1\n"),
+            ("go", "// doc\n// more\nfunc f() {\n\t/* x */ g()\n}\n", "func f() {\n  g()\n}\n"),
+            ("js", "/* a */ const x = 1;\n", "const x = 1; // b\n\n"),
+            ("c", "int x = 1; /* a\n b */\n", "  int x = 1;\n"),
+            ("sh", "echo hi # a\n", "# b\necho hi\n"),
+            ("make", "a:\n\techo # c\n", "# top\na:\n\techo\n"),
+            ("py", "x = 1  # a\n", "# b\nx = 1\n"),
+        ]
+        for lang, a, b in cases:
+            self.same(a, b, lang)
+
+    def test_digest_sees_code_edits(self):
+        cases = [
+            ("go", "x := 1\n", "x := 2\n"),
+            ("go", 's := "a b"\n', 's := "a c"\n'),
+            ("go", "f()\ng()\n", "f()\n"),
+            ("go", "a/*c*/b\n", "ab\n"),
+            ("js", "const r = /a/;\n", "const r = /b/;\n"),
+            ("c", "int x = 1;\n", "int x = 2;\n"),
+            ("sh", "echo hi\n", "echo ho\n"),
+            ("py", "x = 1\n", "x = 2\n"),
+        ]
+        for lang, a, b in cases:
+            self.differ(a, b, lang)
+
+    def test_digest_sees_directive_and_cgo_edits(self):
+        self.differ("//go:build linux\n\npackage p\n", "package p\n", "go")
+        self.differ("//export Foo\nfunc Foo() {}\n", "func Foo() {}\n", "go")
+        cgo = '// #include "x.h"\n// #include "y.h"\nimport "C"\n'
+        self.differ(cgo, '// #include "x.h"\nimport "C"\n', "go")
+        self.differ("#!/bin/sh\necho\n", "echo\n", "sh")
+
+
+class Selection(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        for rel in ["p/a.go", "p/a_test.go", "q/b.go", "r/c.go"]:
+            os.makedirs(os.path.join(self.tmp, os.path.dirname(rel)), exist_ok=True)
+            self.write(rel, "// one\npackage x\n")
+
+    def write(self, rel, text):
+        with open(os.path.join(self.tmp, rel), "w") as f:
+            f.write(text)
+
+    def cli(self, *args):
+        return subprocess.run(
+            [sys.executable, os.path.join(REPO, "scripts", "comment_census.py"), "--root", self.tmp, "--no-git", *args],
+            capture_output=True, text=True,
+        )
+
+    def paths(self, *args):
+        res = self.cli("--json", "--top", "100", *args)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        return sorted(f["path"] for f in json.loads(res.stdout)["files"])
+
+    def test_only_and_tests_only_select_files(self):
+        self.assertEqual(self.paths("--only", "p/*", "--tests-only"), ["p/a_test.go"])
+        self.assertEqual(self.paths("--only", "p/*", "q/*", "--exclude", "p/a_test.go", "q/*"), ["p/a.go"])
+        self.assertEqual(self.paths("--only", "p/*", "--only", "r/*", "--no-tests"), ["p/a.go", "r/c.go"])
+
+    def test_cli_check_and_compare(self):
+        self.write("p/a.go", "// 1\n// 2\n// 3\n// 4\npackage p\n\nvar x = 1 // c\n")
+        res = self.cli("--check")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("p/a.go:1: block-too-long", res.stdout)
+
+        before = os.path.join(self.tmp, "before.json")
+        res = self.cli("--digest")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        with open(before, "w") as f:
+            f.write(res.stdout)
+        self.assertIn("p/a.go", json.loads(res.stdout))
+
+        self.write("p/a.go", "// why\npackage p\n\nvar x = 1\n")
+        res = self.cli("--compare", before)
+        self.assertEqual((res.returncode, res.stdout), (0, ""))
+        self.assertEqual(self.cli("--check").returncode, 0)
+
+        self.write("p/a.go", "// why\npackage p\n\nvar x = 2\n")
+        res = self.cli("--compare", before)
+        self.assertEqual(res.returncode, 1)
+        self.assertEqual(res.stdout.split(), ["p/a.go"])
+
+        os.remove(os.path.join(self.tmp, "q", "b.go"))
+        self.assertIn("q/b.go", self.cli("--compare", before).stdout.split())
+
+
 GO_ORACLE = r"""
 package main
 
