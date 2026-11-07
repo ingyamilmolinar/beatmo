@@ -12,9 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// makeInstMenuWithFiltered constructs a configured component with N
-// instruments in a single category so paginated tests have a deterministic
-// flat list to drive.
 func makeInstMenuWithFiltered(t *testing.T, n int) *InstrumentMenuComponent {
 	t.Helper()
 	comp := NewInstrumentMenuComponent()
@@ -63,8 +60,6 @@ func TestInstMenuComp_BreadcrumbStripClickPopsToCategories(t *testing.T) {
 	if len(comp.breadcrumbRects) < 2 {
 		t.Fatalf("expected ≥2 breadcrumb rects, got %d", len(comp.breadcrumbRects))
 	}
-	// Click on the first segment ("Categories"): popBreadcrumbTo(0)
-	// should return to categories mode.
 	root := comp.breadcrumbRects[0]
 	cx := root.Min.X + root.Dx()/2
 	cy := root.Min.Y + root.Dy()/2
@@ -78,11 +73,7 @@ func TestInstMenuComp_BreadcrumbStripClickPopsToCategories(t *testing.T) {
 }
 
 func TestInstMenuComp_LargeListScrollsWithoutPaginationStrip(t *testing.T) {
-	// The pagination strip was removed (2026-07-04 design pass): it was a
-	// second navigation affordance layered on a list that already scrolls,
-	// and its bottom-band layout clipped off-panel/off-screen. A large list
-	// must instead expose the scrollbar, and every laid-out row must sit
-	// inside the panel bounds.
+	// A large list scrolls (no second pagination affordance), and every laid-out row stays inside the panel.
 	comp := makeInstMenuWithFiltered(t, 100)
 	if comp.PageCount() <= 1 {
 		t.Fatalf("precondition: many instruments should produce >1 page; got %d", comp.PageCount())
@@ -117,9 +108,7 @@ func TestInstMenuComp_JumpToPageClampsAndAdvancesScroll(t *testing.T) {
 	}
 }
 
-// pressKey simulates one rising-edge keystroke on the component:
-// press, Update (rising edge fires), release, Update (edge resets).
-// Mirrors the keyEdge map's two-frame semantics.
+// Two frames, matching the keyEdge map: the rising edge fires on the first, resets on the second.
 func pressKey(comp *InstrumentMenuComponent, ks *keyState, k ebiten.Key) {
 	ks.press(k)
 	comp.Update()
@@ -130,9 +119,8 @@ func pressKey(comp *InstrumentMenuComponent, ks *keyState, k ebiten.Key) {
 func TestInstMenuComp_KeyboardArrowAdvancesSelection(t *testing.T) {
 	ks := installInputStub(t)
 	comp := makeInstMenuWithFiltered(t, 10)
-	// A freshly opened menu highlights NOTHING: lighting a row on open would
-	// imply a default the user never chose, and Enter would then fire it.
-	// (Before the shared-MenuKeyNav refactor this menu opened on row 0.)
+	// A freshly opened menu highlights NOTHING: a lit row would imply a default the user never chose, and Enter
+	// would fire it.
 	nav := comp.MenuKeyNavForTest()
 	if nav.Selected() != MenuKeyNavNoSelection {
 		t.Fatalf("initial selection = %d, want %d (nothing highlighted)",
@@ -152,13 +140,7 @@ func TestInstMenuComp_KeyboardArrowAdvancesSelection(t *testing.T) {
 	}
 }
 
-// TestInstMenuComp_KeyboardEnterPreviewsThenSecondEnterCloses pins the
-// preview/confirm rule at the component level.
-//
-// This test used to assert that ONE Enter both selected and closed, which made
-// the keyboard mean something different from a click (a click previews and
-// leaves the menu open). Enter now previews like a click, and the second Enter
-// on the same row is the confirm.
+// Enter previews like a click; a second Enter on the same row confirms, so keyboard and pointer mean the same.
 func TestInstMenuComp_KeyboardEnterPreviewsThenSecondEnterCloses(t *testing.T) {
 	ks := installInputStub(t)
 	called := 0
@@ -255,9 +237,7 @@ func TestInstMenuComp_SlashFocusesSearch(t *testing.T) {
 }
 
 func TestInstMenuComp_KeyboardNavSkippedOnMobile(t *testing.T) {
-	// When the layout profile reports mobile (small screen), keyboard
-	// handlers early-return so a paired Bluetooth keyboard doesn't move
-	// the selection unexpectedly.
+	// On a small screen the keyboard handlers return early, so a paired Bluetooth keyboard can't move the selection.
 	old := forceSmallScreenForTest
 	forceSmallScreenForTest = true
 	UpdateProfile()

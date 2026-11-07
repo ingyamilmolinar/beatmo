@@ -7,11 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// runFrameWithLockedButton mimics one production Game.Update frame in which the
-// transport button is pressed: Game.Update holds seqMu while dv.tree.Update()
-// dispatches the button OnClick, then releases seqMu and drains queued actions.
-// The locked section runs in a goroutine guarded by a timeout so a re-entrant
-// seqMu deadlock surfaces as a test failure instead of hanging the whole suite.
+// Update holds seqMu while the tree dispatches the button, then drains queued actions; the locked part runs under
+// a timeout so a re-entrant deadlock fails instead of hanging the suite.
 func runFrameWithLockedButton(t *testing.T, g *Game, click func()) {
 	t.Helper()
 	done := make(chan struct{})
@@ -30,12 +27,8 @@ func runFrameWithLockedButton(t *testing.T, g *Game, click func()) {
 	g.drainPendingActions()
 }
 
-// TestUndoButtonDuringPlaybackNoDeadlock reproduces the reported hang: during
-// playback, add a node, then click the transport Undo button. The button is
-// dispatched from dv.tree.Update() while Game.Update holds seqMu, so a direct
-// undoManager.Undo() (which re-imports → updateBeatInfos → seqMu.Lock) would
-// self-deadlock the non-reentrant seqMu. The undo must complete and actually
-// restore the document.
+// The button is dispatched under seqMu, and Undo re-imports → updateBeatInfos → seqMu.Lock, so a direct call
+// would self-deadlock; the undo must complete and restore the document.
 func TestUndoButtonDuringPlaybackNoDeadlock(t *testing.T) {
 	g := newTestGameForUndo(t)
 	baselineNodes := len(g.graph.Nodes)
@@ -73,9 +66,6 @@ func TestUndoButtonDuringPlaybackNoDeadlock(t *testing.T) {
 	}
 }
 
-// TestRedoButtonDuringPlaybackNoDeadlock is the redo counterpart: after an undo
-// during playback, clicking the transport Redo button (also dispatched under
-// seqMu) must complete and re-apply the change without deadlocking.
 func TestRedoButtonDuringPlaybackNoDeadlock(t *testing.T) {
 	g := newTestGameForUndo(t)
 	baselineNodes := len(g.graph.Nodes)

@@ -12,13 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// proportionalInkMeasure mimics how real (non-test) builds measure text:
-// text.BoundString(face, s).Dx() returns the INK bounds of the whole string —
-// per-glyph advances plus kerning, minus the side bearings, and a trailing
-// space contributes no ink at all. The critical property is that the measure
-// is NOT additive: measure("ab") != measure("a") + measure("b"), and
-// measure(" ") == 0. The test-build debug font is monospace (additive), which
-// is exactly why the production misalignment is invisible to every other test.
+// Real builds measure INK bounds, which are not additive (kerning, side bearings, a space measures 0); the
+// monospace test font is additive, which hides misplaced highlights from every other test.
 func proportionalInkAdvance(r rune) int {
 	if r == ' ' {
 		return 5
@@ -42,10 +37,7 @@ func proportionalInkMeasure(s string) int {
 	return w - 2 // side bearings: ink is narrower than the advance sum
 }
 
-// installProportionalFontMetrics swaps the package font-measurement hooks for
-// the proportional fake above, for both the body metric (TextWidth/TextHeight)
-// and the styled role metric (StyledTextWidth/StyledTextHeight), so label
-// layout and highlight layout see the same "font" — as in production builds.
+// Body and styled metrics both, so label layout and highlight layout see the same font, as in production.
 func installProportionalFontMetrics(t *testing.T) {
 	t.Helper()
 	origW, origH, origStyled := textMeasureWidth, textMeasureHeight, styledTextMeasure
@@ -59,21 +51,8 @@ func installProportionalFontMetrics(t *testing.T) {
 	})
 }
 
-// TestInstMenuSearchHighlightCellsAlignWithGlyphs reproduces the reported
-// mobile (and desktop) bug: the fuzzy-search character highlights in the
-// instrument menu do not sit under the matched characters. drawMenuRow draws
-// the label with the styled proportional font, but the highlight cells are
-// positioned by summing the width of each rune measured IN ISOLATION. With a
-// proportional font that summation is wrong three ways: a lone space measures
-// 0 (every highlight after a space shifts a full space-width left), isolated
-// glyph ink is narrower than its advance (error accumulates per character),
-// and kerning is lost. The cells drift left of the glyphs they should mark.
-//
-// Contract asserted: the highlight cell for rune i must span exactly
-// [labelX + measure(label[:i]), labelX + measure(label[:i+1])] at the label's
-// styled line box — i.e. the cells tile with the rendered text, using the
-// same measurement the label is drawn with. Runes with no ink (spaces) get no
-// cell.
+// The label is drawn with the styled proportional font, so cell i must span [measure(label[:i]),
+// measure(label[:i+1])] from labelX; summing isolated runes drifts left of the glyphs. A space gets no cell.
 func TestInstMenuSearchHighlightCellsAlignWithGlyphs(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -91,8 +70,7 @@ func TestInstMenuSearchHighlightCellsAlignWithGlyphs(t *testing.T) {
 		t.Fatal("no instruments available in instruments mode")
 	}
 
-	// Pick a target label — prefer one containing a space (the worst case for
-	// the per-rune summation), falling back to the longest label available.
+	// A label with a space is the worst case for per-rune summation.
 	target, label := "", ""
 	for _, id := range comp.state.filteredInsts {
 		l := comp.state.displayLabelByID[id]
@@ -154,8 +132,7 @@ func TestInstMenuSearchHighlightCellsAlignWithGlyphs(t *testing.T) {
 	screen := ebiten.NewImage(390, 844)
 	comp.Draw(screen)
 
-	// Expected cells: prefix-measured spans at the styled label line box,
-	// mirroring drawMenuRow's swatch-row label placement.
+	// Mirrors drawMenuRow's swatch-row label placement.
 	r := btn.Rect()
 	labelX := r.Min.X + SpaceSM + instMenuSwatchSz + SpaceSM
 	th := StyledTextHeight(RoleBody)

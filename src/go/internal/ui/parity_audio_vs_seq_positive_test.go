@@ -7,15 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestParityDetectsAudioWithoutSeqDecision is the true-positive counterpart to
-// TestParityAudioCarriesSchedulingGenAcrossMutation
-// (parity_audio_sched_gen_test.go): that test proves audio_vs_seq must NOT
-// fire for a legitimately scheduled sound whose seq decision briefly lags a
-// generation bump. This test proves the checker still fires audio_vs_seq for
-// a genuine bug: an audio event recorded at the current beat with no seq
-// decision behind it at all (row_parity_diff_scan.go's
-// `if hasAudio { if dec, ok2 := decRow[abs]; !ok2 || !dec.Audible { ... } }`
-// branch).
+// The true positive: an audio event at the current beat with no seq decision behind it still fires
+// audio_vs_seq.
 func TestParityDetectsAudioWithoutSeqDecision(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
@@ -38,20 +31,15 @@ func TestParityDetectsAudioWithoutSeqDecision(t *testing.T) {
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 
-	// Advance the playhead so abs=3 is the current beat: nextBeatIdxs[row]=4
-	// makes rowPastExclusive()=4 (elapsedBeats=3 keeps the global playhead
-	// clamp at >=4 so it doesn't lower it), and audioFloor = pastExclusive-1
-	// = 3 is exactly the "current beat" the audio/seq checks anchor on.
+	// nextBeatIdxs=4 makes abs=3 the current beat the audio/seq checks anchor on; elapsedBeats=3 keeps the global
+	// playhead clamp from lowering it.
 	g.nextBeatIdxs = []int{4}
 	g.seqNextIdxs = []int{4}
 	g.elapsedBeats = 3
 	g.SetPlaying(true)
 
 	const abs = 3
-	// Deliberately record NO seq decision at abs — only an audio event, at the
-	// current parity/audio generation so the gen filters keep it. This is the
-	// genuine "audio fired with no audible decision behind it" bug that
-	// audio_vs_seq exists to catch.
+	// Only an audio event, at the current generations so the filters keep it.
 	g.recordParityAudio(0, abs, 1.0, roster.Kick, 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 	g.parityScan("test-audio-vs-seq-positive")
 

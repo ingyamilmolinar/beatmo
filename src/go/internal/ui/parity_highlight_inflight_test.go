@@ -9,12 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// buildInflightHighlightGame constructs the scheduler→UI in-flight gap state:
-// the sequencer has just scheduled beat abs (audio event recorded, seqNextIdxs
-// advanced) but the matching highlight event is still in hlCh — the UI has not
-// applied it yet (nextBeatIdxs[0] == abs, highlightedBeats empty). The audio
-// clock is pinned so When is "due now" (no future-lead skip, clock
-// initialized).
+// Audio recorded and seqNextIdxs advanced, the highlight still in hlCh; the clock is pinned so When is due now.
 func buildInflightHighlightGame(t *testing.T, recordedAt time.Time) *Game {
 	t.Helper()
 	g := buildTestGame(t)
@@ -72,23 +67,11 @@ func buildInflightHighlightGame(t *testing.T, recordedAt time.Time) *Game {
 	return g
 }
 
-// TestParityHighlightInFlightGraceFreshAudio reproduces the order-dependent
-// TestTrackBeatConsumesCanonicalPlayhead crash from `make test-real`: the
-// sequencer goroutine records the audio event for the current beat an instant
-// before the UI drains the matching highlight from hlCh. A parityScan landing
-// in that gap saw hasAudio && highlight-off and panicked with
-// highlight_vs_audio, even though the highlight was simply still in flight.
-//
-// The fix mirrors the audio_missing check's RecordedAt grace: an audio event
-// recorded <120ms ago is given time for its highlight to be applied before
-// the mismatch fires.
+// The sequencer can record a beat's audio an instant before the UI drains its highlight; like audio_missing, an
+// event recorded within the grace window gets time for its highlight to land.
 func TestParityHighlightInFlightGraceFreshAudio(t *testing.T) {
 	assertDefaultParityState(t)
-	// Pin the RecordedAt-grace clock so "freshly recorded" is deterministic:
-	// the event's RecordedAt equals the pinned now, so the scan always sees it
-	// inside the 120ms window no matter how long the surrounding setup takes.
-	// Without pinning, a scan landing >120ms after the stamp (GC pause / a
-	// CPU-saturated test host) spuriously expires the grace and panics.
+	// Pinned, so the event always reads as fresh: a GC pause or a loaded host could otherwise outlast the window.
 	fixedNow := time.Now()
 	restoreNow := SetParityRecordNowForTest(func() time.Time { return fixedNow })
 	defer restoreNow()
@@ -106,10 +89,7 @@ func TestParityHighlightInFlightGraceFreshAudio(t *testing.T) {
 	}
 }
 
-// TestParityHighlightInFlightGraceExpired proves the grace does not gut the
-// detector: the same state with a stale RecordedAt (well past the 120ms
-// grace) is a genuine "audio fired but the UI never highlighted the beat"
-// violation and must still be reported.
+// The grace must not gut the detector: a stale RecordedAt is a real "audio fired, never highlighted".
 func TestParityHighlightInFlightGraceExpired(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildInflightHighlightGame(t, time.Now().Add(-500*time.Millisecond))

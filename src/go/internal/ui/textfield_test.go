@@ -13,12 +13,8 @@ import (
 	"testing"
 )
 
-// TextField contract: a text box built with NewTextField gets its native
-// keyboard wiring (desktop soft-keyboard proxy, mobile native <input>) from the
-// fact that it is LIVE — updated by its owner this frame or the last, or its
-// native input is open. No surface hand-lists its box in native_gesture.go any
-// more, so a new text box cannot be forgotten (the Save As dialogs and the FX
-// "add effect" search had no mobile keyboard for exactly that reason).
+// A NewTextField box gets its native keyboard wiring (desktop proxy, mobile <input>) from being LIVE, so no surface
+// hand-lists its box and a new one cannot be forgotten.
 
 func newTextFieldTestGame(t *testing.T, mobile bool) *Game {
 	t.Helper()
@@ -126,10 +122,7 @@ func TestTextFieldTriggerAndInputRects(t *testing.T) {
 	t.Fatal("probe-trig candidate missing")
 }
 
-// The two dialogs that had NO keyboard wiring at all before TextField: Save As
-// (synth preset) and the FX "add effect" search. Both must now arm a native
-// input on mobile and the proxy on the desktop browser, via their real open
-// paths.
+// Through their real open paths, on mobile and on the desktop browser.
 func TestSaveAsAndFXSearchHaveNativeCandidates(t *testing.T) {
 	for _, mobile := range []bool{true, false} {
 		name := "desktop"
@@ -169,8 +162,7 @@ func TestSaveAsAndFXSearchHaveNativeCandidates(t *testing.T) {
 	}
 }
 
-// assertLiveFieldCandidate checks the ARMED rects (after syncNativeGestures'
-// topmost-owner filter), so a wrong Owner tag fails here too.
+// The ARMED rects, after the topmost-owner filter, so a wrong Owner tag fails too.
 func assertLiveFieldCandidate(t *testing.T, dv *DrumView, mobile bool, id string) {
 	t.Helper()
 	want := NativeSoftKeyboard
@@ -185,8 +177,7 @@ func assertLiveFieldCandidate(t *testing.T, dv *DrumView, mobile bool, id string
 	t.Fatalf("mobile=%v: %q not armed (lastNativeRects=%+v)", mobile, id, dv.lastNativeRects)
 }
 
-// Every production text box goes through NewTextField: a bare NewTextInput
-// would have no native spec and silently no mobile keyboard.
+// A bare NewTextInput has no native spec and silently no mobile keyboard.
 func TestNoNewTextInputOutsideTextField(t *testing.T) {
 	allowed := map[string]bool{"textfield.go": true, "textinput.go": true}
 	files, _ := filepath.Glob("*.go")
@@ -214,8 +205,7 @@ func TestNoNewTextInputOutsideTextField(t *testing.T) {
 	}
 }
 
-// Native ids must be unique: two live fields sharing an id would fight over one
-// native <input>.
+// Two live fields sharing an id would fight over one native <input>.
 func TestTextFieldIDsAreUnique(t *testing.T) {
 	ids := map[string]string{}
 	files, _ := filepath.Glob("*.go")

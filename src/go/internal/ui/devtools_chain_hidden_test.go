@@ -6,11 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The Chain tab is a developer tool: the production UI (beatmo.io, or a
-// developer build with SetDevToolsForcedOff) must not show it and must refuse
-// every route into it — pills, the number keys, the JS/scene export, the
-// mobile view-mode switch — leaving the current tab active (never a blank or
-// hidden panel). The Chain code stays compiled in; only the view is hidden.
+// A developer tool: production refuses every route into it (pills, number keys, JS/scene, the mobile switch) and
+// keeps the current tab. The code stays compiled in.
 
 func TestProductionHidesTheChainTab(t *testing.T) {
 	forceProductionUIForTest(t)

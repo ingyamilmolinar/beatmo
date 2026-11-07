@@ -8,21 +8,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The drum row cell grid must fill the entire horizontal space the timeline
-// widget dedicates to it. Historically the cells were anchored to
-// dv.timelineRect — the header ribbon bar — which reserves horizontal space
-// for header-only chrome (the track/lock chip on the left, the len +/-
-// buttons on the right). Those reservations leaked into the cell grid and
-// left black bands between the row controls and the first cell, and between
-// the last cell and the right screen edge.
-//
-// The ribbon bar maps the WHOLE SONG (pxPerBeat = barRect.Dx()/totalBeats)
-// while the cells map the current window (dv.Offset/dv.Length), so the two
-// were never in an aligned relationship — the bar was only an incidental
-// carrier of the cell anchor. CellGridRect is the dedicated anchor.
+// The cells fill the timeline widget's whole width. The ribbon bar maps the whole song while the cells map the
+// current window, so it was never their anchor; CellGridRect is.
 
-// TestCellGridRectFillsDedicatedWidth asserts the cell-grid X span equals the
-// timeline widget's X span, on desktop and on mobile.
+// On desktop and mobile.
 func TestCellGridRectFillsDedicatedWidth(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -59,10 +48,7 @@ func TestCellGridRectFillsDedicatedWidth(t *testing.T) {
 	}
 }
 
-// TestRowStripesFillDedicatedWidth is the functional counterpart: it drives a
-// real Draw and asserts the painted row stripe actually spans the dedicated
-// width. drawRowsDirect paints one full-row stripe per visible row before the
-// cells, so intercepting drawRect gives us the rendered span.
+// A real Draw paints each row's stripe across the dedicated width.
 func TestRowStripesFillDedicatedWidth(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -82,8 +68,7 @@ func TestRowStripesFillDedicatedWidth(t *testing.T) {
 	var stripes []image.Rectangle
 	orig := drawRect
 	drawRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		// Full-row background stripes: exactly one row tall, painted in the
-		// rows area, in one of the two alternating stripe colors.
+		// One row tall, in the rows area, in a stripe colour.
 		if filled && r.Dy() == rh && r.Min.Y >= rowsTop {
 			got := color.RGBAModel.Convert(c).(color.RGBA)
 			if got == color.RGBAModel.Convert(genColorDrumStripeEven).(color.RGBA) ||

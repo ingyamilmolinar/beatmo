@@ -2,8 +2,7 @@ package ui
 
 import "testing"
 
-// Regression: stopping from a paused state must clear pulses/highlights even
-// when the playing flag does not transition (paused -> stopped).
+// The playing flag does not transition from paused to stopped.
 func TestStopFromPausedClearsPulsesAndHighlights(t *testing.T) {
 	withDefaultStart(t, true)
 

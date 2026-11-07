@@ -61,8 +61,7 @@ func TestToggleWaveWidget(t *testing.T) {
 	}
 }
 
-// The bottom Wave/EQ widget should occupy the full width of the bottom row so
-// no black gap hides the left column when the EQ panel grows.
+// Otherwise a black gap hides the left column as the EQ panel grows.
 func TestWaveWidgetSpansFullWidth(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -150,9 +149,7 @@ func TestTopLevelControlsBoundedByWidgets(t *testing.T) {
 		{"lenInc", dv.lenIncBtn.Rect(), tl},
 		{"lenDec", dv.lenDecBtn.Rect(), tl},
 		{"track", dv.trackBtn().Rect(), tl},
-		// File ops (upload/import/export) moved behind the grid folder button's
-		// file menu on desktop; the overflow/kebab button was removed. Undo is a
-		// representative right-side inline control bounded by the transport widget.
+		// File ops live behind the grid folder button; Undo is a representative right-side inline control.
 		{"undo", dv.transportZone.undoBtn.Rect(), tr},
 		{"rowLabel0", dv.rowLabels()[0].Rect(), rack},
 		// rowEdit0 and rowSave0 are hidden on desktop (empty rects).
@@ -169,8 +166,7 @@ func TestTopLevelControlsBoundedByWidgets(t *testing.T) {
 			t.Fatalf("%s must live inside widget: rect=%v widget=%v", c.name, c.rect, c.box)
 		}
 	}
-	// File ops are hidden inline on desktop (reachable via the overflow menu);
-	// guard against them leaking back into the toolbar.
+	// File ops are reached through the file menu and must not leak back into the toolbar.
 	for _, h := range []struct {
 		name string
 		rect image.Rectangle
@@ -222,13 +218,8 @@ func TestControlsStayBoundedAfterWaveGrow(t *testing.T) {
 	}
 }
 
-// TestAddRowButtonSitsUnderTheRows asserts the add-row ghost row sits one
-// slot under the last visible row, inside the rack width. History: this test
-// once asserted "follows last row", then flipped to "pinned to the rack
-// bottom" to avoid a moving target; the bottom pin opened an empty strip
-// between the rows and a floating "+" whenever the rack was taller than its
-// rows, so the ghost row follows the rows again (DESIGN.md "Row control" →
-// Add row). Past saturation it stops moving (footer_button_anchor_test.go).
+// Pinned to the rack bottom it opened an empty strip between the rows and a floating "+" whenever the rack was
+// taller than its rows.
 func TestAddRowButtonSitsUnderTheRows(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1100, 520)
@@ -257,12 +248,7 @@ func TestAddRowButtonSitsUnderTheRows(t *testing.T) {
 	}
 }
 
-// TestAddRowButtonStaysAnchoredAfterShrink asserts the addRow button
-// stays anchored to the rack column's bottom edge after a layout
-// shrink, even when scroll has been forced to the end. The button's
-// screen position must be the same as before/after the shrink — the
-// scroll offset only changes which ROWS are visible, not the button's
-// anchor.
+// Scroll changes which ROWS show, not where the button is anchored.
 func TestAddRowButtonStaysAnchoredAfterShrink(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1100, 420)
@@ -289,14 +275,8 @@ func TestAddRowButtonStaysAnchoredAfterShrink(t *testing.T) {
 	if btn.Max.Y > rack.Max.Y || btn.Min.Y < rack.Min.Y {
 		t.Fatalf("add button not within rack after shrink: btn=%v rack=%v", btn, rack)
 	}
-	// After the 2026-05-10 tight-layout fix, addRow lives in the band
-	// `[rowsTop + rendered*rh, zoneRect.Max.Y - rh]` where `rendered` is
-	// the number of rows actually painted (≤ capacity). When the rack
-	// is heavily oversubscribed (this test adds 6 rows then shrinks),
-	// `rendered == capacity` and `flushY == zoneRect.Max.Y - rh - slack`
-	// where slack is the rack-height modulo (< rh). Either anchor (flush
-	// or bottom-pinned) is acceptable; both keep the button inside the
-	// rack and within one rh of the rack bottom.
+	// Heavily oversubscribed, addRow may sit flush under the last painted row or pinned to the bottom; either keeps it
+	// inside the rack within one row height of its bottom.
 	rh := dv.rowHeight()
 	zoneRect := dv.rowRackZone.rect
 	bottomAnchor := zoneRect.Max.Y - rh + SpaceXS
@@ -313,9 +293,7 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	basePlay := dv.playBtn().Rect()
-	// The overflow/kebab button was removed; use redo — the rightmost inline
-	// control in the same row — as the representative right-edge button for the
-	// resize check.
+	// Redo is the rightmost inline control in the row.
 	baseRight := dv.transportZone.redoBtn.Rect()
 	if basePlay.Dy() <= 0 || baseRight.Dy() <= 0 {
 		t.Fatalf("base button heights invalid: play=%v redo=%v", basePlay, baseRight)
@@ -340,11 +318,7 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 func TestAddRowButtonNeverOverlapsEQPanel(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// Phase 0a audio-panel redesign raised the default panel height
-	// multiplier to 3×; this test exercises the legacy 180-px layout
-	// where the rows area is sized for many rows. Pin the multiplier
-	// back to 1× for the duration of this test (and re-derive the
-	// active runtime profile so the change takes effect).
+	// The layout this test checks assumes a 1× panel-height multiplier; the profile is re-derived so the change applies.
 	restoreProfile := SetRuntimeProfileForTest(func() *RuntimeProfile {
 		p := *RuntimeProf()
 		p.AudioPanelHeightMultiplier = 1
@@ -360,9 +334,8 @@ func TestAddRowButtonNeverOverlapsEQPanel(t *testing.T) {
 		dv.AddRow()
 	}
 
-	// Set production eqPanelHeight AFTER construction (recalcButtons resets
-	// it to 0 under test). This must be set before refreshWidgetLayout so
-	// the "runningUnderGoTest && eqPanelHeight==0" guard doesn't zero eqH.
+	// After construction (recalcButtons zeroes it under test) and before refreshWidgetLayout, or the test guard zeroes
+	// eqH.
 	eqPanelHeight = 180
 	t.Cleanup(func() { eqPanelHeight = 0 })
 
@@ -404,10 +377,7 @@ func TestAddRowButtonNeverOverlapsEQPanel(t *testing.T) {
 	}
 }
 
-// TestAddRowButtonNoOverlapAfterUpdateRowRects verifies the per-frame
-// fast path (updateRowRects) positions the "+" button identically to
-// calcLayout. This catches the historical bug where updateRowRects
-// capped the slot to visibleRows()-1 instead of visibleRows().
+// The per-frame fast path must place "+" exactly as calcLayout does.
 func TestAddRowButtonNoOverlapAfterUpdateRowRects(t *testing.T) {
 	assertDefaultParityState(t)
 

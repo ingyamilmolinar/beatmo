@@ -1,12 +1,5 @@
-// Code review follow-up (B2): integration test for the generator's
-// schema-validation CLI behavior. The unit tests in
-// design_md_schema_test.go validate against the schema directly via
-// gojsonschema; this test runs the generator binary against deliberately
-// malformed inputs and asserts (a) it exits non-zero, (b) the error
-// message references the schema, (c) the JSON-pointer field location
-// appears so the author can find the offending line. Together these
-// catch regressions in the wiring between main.go's CLI and the
-// validator helper.
+// The generator binary against malformed inputs exits non-zero, names the schema and the field's JSON pointer, so the
+// CLI wiring is covered, not just the validator.
 
 package ui
 
@@ -19,17 +12,7 @@ import (
 	"testing"
 )
 
-// TestGeneratorRejectsSchemaViolations runs the gen_design_tokens
-// binary against a copy of DESIGN.md with a single targeted corruption
-// and asserts the generator exits non-zero with a message that
-// includes the schema path and the offending field.
-//
-// We mutate the YAML by string-replacing a known token, run the
-// generator with --design pointing at the temp copy and -out paths
-// pointing into the tempdir (so the real .gen.go files are never
-// touched), and inspect stderr. This approach exercises the actual
-// CLI path; a unit test of the validator alone wouldn't catch a
-// regression in main.go's flag/error-reporting wiring.
+// One targeted corruption per case, every output redirected into the temp dir.
 func TestGeneratorRejectsSchemaViolations(t *testing.T) {
 	if runtime.GOOS == "js" {
 		t.Skip("CLI integration test requires host process exec")
@@ -98,14 +81,8 @@ func TestGeneratorRejectsSchemaViolations(t *testing.T) {
 			tmpTokens := filepath.Join(tmpDir, "tokens.gen.go")
 			tmpComps := filepath.Join(tmpDir, "components.gen.go")
 			tmpProfile := filepath.Join(tmpDir, "profile.gen.go")
-			// EVERY output must be redirected, including the two this test
-			// never inspects. Each -out* flag defaults to a real tracked
-			// generated file, and this test deliberately feeds the generator
-			// a malformed DESIGN.md — on its reject path it left the
-			// default-path outputs DELETED, so this passing test used to wipe
-			// internal/ui/design_density.gen.go and
-			// internal/templates/instrument_sequence.gen.go out of the
-			// working tree and break the next build.
+			// Every output redirected, even the uninspected ones: on its reject path the generator once left the default-path
+			// files deleted.
 			tmpDensity := filepath.Join(tmpDir, "density.gen.go")
 			tmpSequence := filepath.Join(tmpDir, "sequence.gen.go")
 			schemaPath := filepath.Join(repoRoot, "scripts", "gen_design_tokens", "schema.json")
@@ -138,10 +115,7 @@ func TestGeneratorRejectsSchemaViolations(t *testing.T) {
 	}
 }
 
-// findRepoRoot walks up from cwd until it finds a directory containing
-// DESIGN.md. The test invocation typically runs from
-// src/go/internal/ui, so 4 levels up is the typical depth. Bounded
-// loop avoids walking past the filesystem root.
+// Bounded, so it never walks past the root.
 func findRepoRoot(t *testing.T) string {
 	t.Helper()
 	cwd, err := os.Getwd()

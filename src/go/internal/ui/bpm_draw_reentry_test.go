@@ -6,8 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Ensure that clicking the BPM + button updates the game's BPM and that a
-// draw call between frames does not revert the change.
+// A Draw between frames does not revert the change.
 func TestBPMButtonsSurviveDrawLoop(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -42,8 +41,7 @@ func TestBPMButtonsSurviveDrawLoop(t *testing.T) {
 	}
 }
 
-// Ensure that committing a BPM value via the text box survives a draw call
-// during the same frame and affects playback.
+// Survives a same-frame Draw and reaches playback.
 func TestBPMEditorSurvivesDrawLoop(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

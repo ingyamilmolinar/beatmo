@@ -7,13 +7,7 @@ import (
 	"testing"
 )
 
-// TestDrumViewBackgroundCarriesVioletCast pins the sequencer background tokens
-// (the zebra row stripes and the empty-cell fill) to the same warm
-// magenta-violet hue family as the graph pane's `grid-horizon`, so the drum
-// view reads as part of the same Vice City "darker→lighter purple/pink"
-// surface rather than a cool slate panel. The invariant: red AND blue both
-// exceed green (a purple/magenta bias). Cool slate (#181C26: G>R) fails this;
-// the violet horizon (#2A1838) passes it.
+// The stripes and empty cells share the graph pane's magenta-violet hue family: red and blue both above green.
 func TestDrumViewBackgroundCarriesVioletCast(t *testing.T) {
 	cases := []struct {
 		name string

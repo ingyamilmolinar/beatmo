@@ -33,8 +33,7 @@ func TestNumberModelStepClampsAtBothEnds(t *testing.T) {
 }
 
 func TestNumberModelSnapsToTheRungGrid(t *testing.T) {
-	// Position 13 with a 4-step rung: one detent up lands on the next grid
-	// line (16), not on 17 — coarse steps snap to bar lines.
+	// Coarse steps snap to grid lines: 13 + one detent of 4 is 16, not 17.
 	m := intModel(0, 100, 13, 1, 4)
 	m.Rung = 1
 	m.Step(1)
@@ -157,8 +156,7 @@ func TestNumberModelFloatStepsDoNotDrift(t *testing.T) {
 	}
 }
 
-// The popup must drive a NumberModel exactly like a knob: drag and arrows move
-// the value live, Esc restores it, Enter commits once.
+// Live on drag and arrows, Esc restores, Enter commits once, exactly like a knob.
 func TestWheelPopupDrivesANumberModel(t *testing.T) {
 	m := intModel(1, 1000, 120, 1, 5, 10, 50)
 	changes, commits := 0, 0
@@ -196,8 +194,7 @@ func TestWheelPopupDrivesANumberModel(t *testing.T) {
 	}
 }
 
-// Wrap makes a clock field roll over (23 → 0 → 23), like the ± steppers it
-// replaces did; rows wrap too so the barrel never shows an empty slot.
+// Rows wrap too, so the barrel never shows an empty slot.
 func TestNumberModelWrap(t *testing.T) {
 	m := intModel(0, 23, 23, 1)
 	m.Wrap = true

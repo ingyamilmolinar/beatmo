@@ -6,18 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestFunctional_SearchCursorStaysAfterMidTextInsert reproduces the reported
-// bug: place the caret at the START of an existing instrument-search query and
-// type a character (e.g. a space) — the character inserts in place, but the
-// caret jumps to the END of the text. Root cause: every keystroke changes the
-// query → rebuildMenu() → buildInstrumentsMode() unconditionally calls
-// searchBox.SetText(state.searchText), and SetText resets the cursor to the
-// end even when the text is already identical. The caret must stay right
-// after the inserted character.
-//
-// Drives the real Game.Update loop with the fakeInput harness: type a query,
-// click at the left edge of the box to move the caret to position 0, type a
-// space, and assert both the text and the caret position.
+// Every keystroke rebuilds the menu, which re-sets the search box text; SetText must not move the caret to the
+// end when the text is unchanged, or an insert at the start jumps the caret away.
 func TestFunctional_SearchCursorStaysAfterMidTextInsert(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -88,9 +78,6 @@ func TestFunctional_SearchCursorStaysAfterMidTextInsert(t *testing.T) {
 	}
 }
 
-// openInstrumentsSearchDesktop opens the instrument menu on a desktop game,
-// drills to instruments mode if needed, focuses the search box, and types the
-// given seed query through the real input path. Returns the menu component.
 func openInstrumentsSearchDesktop(t *testing.T, g *Game, fi *fakeInput, seed string) *InstrumentMenuComponent {
 	t.Helper()
 	for i := 0; i < 3; i++ {
@@ -133,10 +120,6 @@ func pressArrow(t *testing.T, g *Game, fi *fakeInput, k ebiten.Key, n int) {
 	}
 }
 
-// TestFunctional_SearchArrowKeysThenInsertAtStart reproduces the reported bug:
-// move the caret to the START of the query with the LEFT ARROW key (not a
-// click) and type a character — the character must insert at the caret and
-// the caret must advance by one. "Nothing happens" is the bug.
 func TestFunctional_SearchArrowKeysThenInsertAtStart(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -164,9 +147,6 @@ func TestFunctional_SearchArrowKeysThenInsertAtStart(t *testing.T) {
 	}
 }
 
-// TestFunctional_SearchArrowKeysMidTextEditing exercises the full caret
-// editing contract in the search bar: arrows left/right, insert mid-text, and
-// backspace mid-text — all through the real Game.Update loop.
 func TestFunctional_SearchArrowKeysMidTextEditing(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -209,8 +189,6 @@ func TestFunctional_SearchArrowKeysMidTextEditing(t *testing.T) {
 	}
 }
 
-// TestFunctional_GlobalSearchArrowKeysThenInsertAtStart is the same
-// arrow-to-start editing contract on the CATEGORIES-view global search bar.
 func TestFunctional_GlobalSearchArrowKeysThenInsertAtStart(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)

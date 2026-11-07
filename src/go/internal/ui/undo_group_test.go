@@ -6,9 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestUndoGroupCoalescesIntoOneStep proves that several record() calls bracketed
-// by beginGroup/endGroup collapse into a SINGLE undo step capturing only the
-// final post-operation state, and a single Undo restores the pre-group state.
 func TestUndoGroupCoalescesIntoOneStep(t *testing.T) {
 	state := "A"
 	captures := 0
@@ -45,8 +42,6 @@ func TestUndoGroupCoalescesIntoOneStep(t *testing.T) {
 	}
 }
 
-// TestUndoGroupLabelFallsBackToFirstRecord proves that when beginGroup is opened
-// with an empty label, the step takes the first sub-action's label.
 func TestUndoGroupLabelFallsBackToFirstRecord(t *testing.T) {
 	state := "A"
 	m := NewUndoManager(func() []byte { return []byte(state) }, func(b []byte) error { state = string(b); return nil })
@@ -61,9 +56,7 @@ func TestUndoGroupLabelFallsBackToFirstRecord(t *testing.T) {
 	}
 }
 
-// TestUndoGroupNestedFinalizesOnce proves that nested begin/endGroup pairs only
-// finalize at the outermost endGroup (one step), and the depth balances so the
-// first non-empty label wins over inner labels.
+// Depth balances, so the first non-empty label wins over inner ones.
 func TestUndoGroupNestedFinalizesOnce(t *testing.T) {
 	state := "A"
 	m := NewUndoManager(func() []byte { return []byte(state) }, func(b []byte) error { state = string(b); return nil })
@@ -88,8 +81,7 @@ func TestUndoGroupNestedFinalizesOnce(t *testing.T) {
 	}
 }
 
-// TestUndoEmptyGroupDoesNotCapture proves an empty frame (group opened/closed
-// with no record) performs NO capture — the per-frame bracket must stay cheap.
+// The per-frame bracket must stay cheap.
 func TestUndoEmptyGroupDoesNotCapture(t *testing.T) {
 	captures := 0
 	state := "A"
@@ -110,8 +102,7 @@ func TestUndoEmptyGroupDoesNotCapture(t *testing.T) {
 	}
 }
 
-// TestUndoGroupRestoringSuppressed proves records during a restore are ignored
-// even inside a group (a keyboard-undo runs inside the per-frame bracket).
+// A keyboard undo runs inside the per-frame bracket.
 func TestUndoGroupRestoringSuppressed(t *testing.T) {
 	state := "A"
 	m := NewUndoManager(func() []byte { return []byte(state) }, func(b []byte) error { state = string(b); return nil })
@@ -126,12 +117,8 @@ func TestUndoGroupRestoringSuppressed(t *testing.T) {
 	}
 }
 
-// TestUndoMidCircuitNodeDeleteIsAtomic reproduces the reported bug: deleting a
-// node that sits BETWEEN two others (A->B->C) triggers a reconnect edge (A->C)
-// in addition to the node removal, so the operation emits multiple recorded
-// events. It must collapse into exactly ONE undo step, and a single Undo must
-// restore the deleted node AND both original edges (not a partial intermediate
-// graph that needs a second Undo).
+// Deleting B from A->B->C also adds the reconnect A->C: several recorded events, ONE step, and one Undo restores
+// the node and both edges.
 func TestUndoMidCircuitNodeDeleteIsAtomic(t *testing.T) {
 	g := newTestGameForUndo(t)
 

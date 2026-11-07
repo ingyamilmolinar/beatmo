@@ -11,14 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstrumentColorCorrelationAcrossSurfaces is the end-to-end guard for the
-// "instrument identity" correlation (DESIGN.md § Chrome accents, invariant 3):
-// every control and menu that belongs to a single instrument derives its accent
-// from that instrument's color. It drives the same owning-instrument color
-// through each surface's accent seam and asserts the seam reflects it, then
-// flips to a second color and asserts every seam tracks the change — proving the
-// outputs correlate to (are a function of) the instrument color, not a fixed
-// chrome accent.
+// Every control and menu that belongs to one instrument takes its accent from that instrument's colour; a
+// second colour proves the accents follow it rather than a fixed chrome colour.
 func TestInstrumentColorCorrelationAcrossSurfaces(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -63,10 +57,7 @@ func TestInstrumentColorCorrelationAcrossSurfaces(t *testing.T) {
 			if lum(rowToggleFillRGBA(tc.col, roleSolo, true)) <= base {
 				t.Error("solo-on fill must be a BRIGHTER shade of the instrument color")
 			}
-			// Identity at rest lives in the label's swatch, NOT the idle chips:
-			// every off toggle and the kebab wear the neutral row-control body
-			// whatever the instrument color (DESIGN.md "Per-instrument control
-			// shading").
+			// Identity at rest lives in the label swatch: idle chips and the kebab wear the neutral row-control body.
 			neutral := rowShadeToRGBA(InstButtonStyle.fill())
 			for _, role := range []rowToggleRole{roleMute, roleSolo, roleFX} {
 				if got := rowToggleFillRGBA(tc.col, role, false); got != neutral {
@@ -97,8 +88,7 @@ func TestInstrumentColorCorrelationAcrossSurfaces(t *testing.T) {
 		})
 	}
 
-	// Differentiation: the two colors must produce different control fills — the
-	// correlation is real, not a constant.
+	// Two colours must give different fills, or the correlation is a constant.
 	mWarm := rowToggleFillRGBA(cases[0].col, roleMute, true)
 	mCool := rowToggleFillRGBA(cases[1].col, roleMute, true)
 	if mWarm == mCool {
@@ -106,9 +96,6 @@ func TestInstrumentColorCorrelationAcrossSurfaces(t *testing.T) {
 	}
 }
 
-// TestInstrumentColorCorrelationInstrumentPicker guards the picker seam: its
-// chrome accent tracks the currently-selected instrument's color, and each
-// distinct instrument yields a distinct accent.
 func TestInstrumentColorCorrelationInstrumentPicker(t *testing.T) {
 	for _, id := range []instrument.ID{roster.Kick, roster.Snare} {
 		comp := NewInstrumentMenuComponent()
@@ -121,13 +108,9 @@ func TestInstrumentColorCorrelationInstrumentPicker(t *testing.T) {
 	}
 }
 
-// instrumentDerived reports whether c shares the instrument color's hue family
-// (same RGB ordering direction), i.e. it is a shade/tint of base rather than an
-// unrelated chrome accent.
+// Same RGB ordering: a shade or tint of base, not an unrelated chrome accent.
 func instrumentDerived(c color.Color, base color.RGBA) bool {
 	g := color.RGBAModel.Convert(c).(color.RGBA)
-	// Compare channel-order signature: a shade/tint preserves which channels
-	// dominate. base warm → R≥G; base cool → B≥G, etc.
 	order := func(p color.RGBA) (rg, gb bool) { return p.R >= p.G, p.G >= p.B }
 	br, bgb := order(base)
 	gr, ggb := order(g)

@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// TestEdgeNodeColocationOnPanAndZoom verifies that edge endpoints project to the
-// exact same screen positions as their corresponding node centers across zoom and pan.
+// Exactly the node centres' screen positions, across zoom and pan.
 func TestEdgeNodeColocationOnPanAndZoom(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

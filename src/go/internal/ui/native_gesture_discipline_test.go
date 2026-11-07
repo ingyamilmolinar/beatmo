@@ -10,10 +10,8 @@ import (
 	"testing"
 )
 
-// No production file outside the platform seam (native_gesture*.go) may call the
-// low-level JS gesture registrars directly. This keeps every native rect flowing
-// through the tree-owned, z-gated syncNativeGestures — so the file-picker leak
-// class cannot be reintroduced.
+// Every native rect must flow through the tree-owned, z-gated syncNativeGestures, so the file-picker leak
+// cannot return.
 func TestNativeGesture_NoDirectRegistrarCallsOutsideSeam(t *testing.T) {
 	banned := regexp.MustCompile(`\b(filePickerRegisterRect|softKeyboardRegisterRect|mobileInputRegister|mobileInputRegisterTrigger|filePickerClearRects|softKeyboardClearRects|mobileInputClear)\s*\(`)
 	seam := map[string]bool{
@@ -40,12 +38,8 @@ func TestNativeGesture_NoDirectRegistrarCallsOutsideSeam(t *testing.T) {
 	}
 }
 
-// syncNativeGestures must have exactly ONE production call site
-// (drumview_update.go). A second caller could sync a stale owner set (e.g. a
-// snapshot taken before the tree's Layout/dispatch phase finished) and
-// reintroduce the file-picker-leak class this feature closed. native_gesture.go
-// is skipped entirely — it DEFINES the method, so it can't legitimately be
-// counted as a "caller" of itself.
+// A second caller could sync a stale owner set taken before Layout/dispatch finished. native_gesture.go
+// defines the method and is skipped.
 func TestSyncNativeGestures_SingleCallSite(t *testing.T) {
 	callRe := regexp.MustCompile(`\.syncNativeGestures\s*\(`)
 	files, _ := filepath.Glob("*.go")

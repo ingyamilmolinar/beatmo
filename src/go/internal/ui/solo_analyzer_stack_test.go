@@ -7,25 +7,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// solo_analyzer_stack_test.go — regression guard for "soloing the organ makes
-// audio thrash".
-//
-// Soloing STRICTLY REMOVES work from the scheduler (game_sequencer_schedule.go
-// gates muted/solo'd-out rows before evalNodeParamsOnly/scheduleSound), so no
-// solo toggle may ever ADD steady-state cost to the audio thread.
-//
-// It used to. toggleSolo → reconcileChannelWithAudibleSet → selectAudioChannel
-// → setEQActiveChannel unconditionally re-issues EnableChannelAnalyzer, and the
-// desktop/stub EnableChannelAnalyzer APPENDED a brand-new Analyzer to the
-// channel's eqProcs every call. Each stacked analyzer runs a 512-point FFT on
-// the audio rendering thread forever and is un-disableable (SetAnalyzerEnabled
-// only reaches the registry-current instance), so the organ — the sole audible
-// and longest-sustaining channel once soloed — accumulated FFT load with every
-// toggle. The JS path already guards against this (see the "Idempotent" comment
-// in src/js/audio.go's enableChannelAnalyzer); Go never got the same fix.
+// Soloing only REMOVES scheduler work, so no toggle may add steady audio-thread cost. Each mute/solo re-selects
+// the channel, and an EnableChannelAnalyzer that APPENDS stacks another FFT on the audio thread per toggle.
 
-// TestSoloOrganDoesNotStackChannelAnalyzers pins the invariant: repeatedly
-// soloing/unsoloing the organ must not grow the organ channel's analyzer count.
 func TestSoloOrganDoesNotStackChannelAnalyzers(t *testing.T) {
 	g := newMelodicCircuitGame(t, 0, 5, -2, 7)
 	organ := melodicRow(t, g)
@@ -46,9 +30,7 @@ func TestSoloOrganDoesNotStackChannelAnalyzers(t *testing.T) {
 	}
 }
 
-// TestSelectAudioChannelIsAnalyzerIdempotent isolates the chokepoint: selecting
-// the same channel repeatedly (which reconcileChannelWithAudibleSet does on
-// every mute/solo toggle) must not stack analyzers.
+// reconcileChannelWithAudibleSet selects the same channel on every mute/solo toggle.
 func TestSelectAudioChannelIsAnalyzerIdempotent(t *testing.T) {
 	g := newMelodicCircuitGame(t, 0, 5, -2, 7)
 

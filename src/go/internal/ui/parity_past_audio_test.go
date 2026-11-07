@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Past audio events should not demand active highlights or slate parity once
-// the playhead has advanced beyond them.
 func TestParityIgnoresPastAudioEvents(t *testing.T) {
 	assertDefaultParityState(t)
 	prevFatal := parityFatalEnabled.Load()

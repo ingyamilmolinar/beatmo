@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensures highlight index and drum offset do not jump on resume and advance
-// smoothly in small increments.
 func TestResumeHighlightSmoothNoJump(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

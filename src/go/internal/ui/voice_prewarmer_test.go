@@ -11,29 +11,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// newTestGameWithOrganAtPitch builds a Game whose row 0 plays the given melodic
-// instrument, with a single regular node at the given semitone pitch. Mirrors
-// buildTestGame's node-placement recipe (subdiv_safety_test.go).
 func newTestGameWithOrganAtPitch(t *testing.T, inst instrument.ID, pitch int) *Game {
 	t.Helper()
 	g := buildTestGame(t)
-	// Neutralize the prewarmer BEFORE any updateBeatInfos below can fire it.
-	// Under -tags test PrewarmVoice is a no-op and VoiceCached is always false,
-	// but under the real build (make test-real) the default warmFn renders the
-	// melodic-instrument neighborhood into the process-global globalVoiceCache.
-	// That render would make VoiceCached true, so warmPitch would correctly skip
-	// the already-warm pitch and the tests below would observe zero warms. Tests
-	// install their own recorder via recordWarms after this; here we only want a
-	// clean cache so warmFromBeatInfos's enumeration decisions are observable.
+	// Before any updateBeatInfos: in the real build the default warmFn renders into the process-global cache, and a
+	// cached pitch is skipped, so the tests would observe no warms.
 	g.voicePrewarmer.warmFn = func(instrument.ID, float64) {}
-	// Neutralizing OUR warmFn is not enough: globalVoiceCache is process-global
-	// and every earlier test in the package renders into it (the param-edit
-	// playback bench plays the startup demo's organ-church row for 240 steps ×
-	// 4 scenarios). Whatever it left warm makes warmPitch correctly skip, so the
-	// recorder below sees an arbitrary subset of the enumeration — that is what
-	// made these tests pass alone and fail under `make test-real`. Clear it here
-	// so the premise above ("a clean cache") is actually established. No-op
-	// under -tags test, where VoiceCached is always false anyway.
+	// The cache is process-global and earlier tests leave pitches warm, so the recorder would see an arbitrary subset;
+	// clearing it makes the "clean cache" premise true. A no-op under -tags test.
 	audio.ClearVoiceCacheForTest()
 	g.drum.Rows[0].Instrument = inst
 	g.pendingStartRow = 0
@@ -59,10 +44,7 @@ func recordWarms(g *Game) (*sync.Mutex, map[warmKey]struct{}) {
 	return &mu, warmed
 }
 
-// TestWarmFromBeatInfosEnumeratesNodePitches drives the real enumeration over a
-// Game whose row plays a node at pitch -2 (the crashing organ pitch) and asserts
-// the prewarmer warmed exactly that (instrument, pitch). Under -tags test
-// audio.VoiceCached is always false, so every distinct pitch is submitted.
+// Under -tags test VoiceCached is always false, so every distinct pitch is submitted.
 func TestWarmFromBeatInfosEnumeratesNodePitches(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 	mu, warmed := recordWarms(g)
@@ -77,9 +59,7 @@ func TestWarmFromBeatInfosEnumeratesNodePitches(t *testing.T) {
 	}
 }
 
-// TestPitchNeighborhoodWarmedForMelodic verifies the predictive ±N warm: for a
-// melodic instrument with ticks=1, a node at pitch -2 warms the 0.5st neighbors
-// (-2.5, -2.0, -1.5) so an immediate one-tick pitch nudge is a cache hit.
+// A one-tick pitch nudge then hits the cache.
 func TestPitchNeighborhoodWarmedForMelodic(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 	g.voicePrewarmer.isMelodic = func(instrument.ID) bool { return true }
@@ -97,8 +77,7 @@ func TestPitchNeighborhoodWarmedForMelodic(t *testing.T) {
 	}
 }
 
-// TestPitchNeighborhoodSkippedForNonMelodic verifies non-melodic instruments get
-// ONLY the exact pitch (their pitch is a post-render resample — already a hit).
+// Their pitch is a post-render resample, already a hit.
 func TestPitchNeighborhoodSkippedForNonMelodic(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.Kick, 0)
 	g.voicePrewarmer.isMelodic = func(instrument.ID) bool { return false }
@@ -117,15 +96,10 @@ func TestPitchNeighborhoodSkippedForNonMelodic(t *testing.T) {
 	}
 }
 
-// TestWarmFromBeatInfosWithinPassDedup verifies a single enumeration pass
-// collapses the many repeated beats of a looping melody to one warm per distinct
-// (instrument, pitch) pair — so a graph edit can't burst-flood the pool.
+// One warm per distinct (instrument, pitch), so a graph edit cannot flood the pool.
 func TestWarmFromBeatInfosWithinPassDedup(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
-	// Isolate dedup from pitch-neighborhood expansion: ticks defaults to the
-	// runtime profile's PredictiveWarmTicks (0 under -tags test, 1 on real
-	// desktop), which would fan the single pitch out to its ±0.5st neighbors and
-	// make the "one distinct pitch -> one warm" assertion profile-dependent.
+	// ticks depends on the runtime profile and would fan the pitch out to its neighbours.
 	g.voicePrewarmer.ticks = 0
 
 	var mu sync.Mutex
@@ -147,10 +121,7 @@ func TestWarmFromBeatInfosWithinPassDedup(t *testing.T) {
 	}
 }
 
-// TestReWarmInstrumentReplaysEnumeratedPitches verifies the proactive re-warm
-// path: after enumeration records an instrument's pitches, reWarmInstrument
-// (fired by a cache invalidation) re-submits them so a param edit does not leave
-// the next beat to cold-render.
+// A cache invalidation re-submits the recorded pitches, so a param edit does not leave the next beat cold.
 func TestReWarmInstrumentReplaysEnumeratedPitches(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 	g.voicePrewarmer.warmFromBeatInfos() // record pitchesByInst
@@ -166,9 +137,7 @@ func TestReWarmInstrumentReplaysEnumeratedPitches(t *testing.T) {
 	}
 }
 
-// TestScheduleSoundBackstopWarmsExactPitch verifies the schedule-time backstop
-// warms the exact post-effect pitch handed to scheduleSound — the coverage for
-// group-transposed/dynamic pitches beyond the enumerated window.
+// Covers group-transposed and dynamic pitches beyond the enumerated window.
 func TestScheduleSoundBackstopWarmsExactPitch(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, 0)
 	mu, warmed := recordWarms(g)

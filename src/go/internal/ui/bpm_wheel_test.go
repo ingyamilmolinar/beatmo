@@ -8,9 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Transport BPM (spec §3): tapping the BPM readout opens the shared value-wheel
-// popup instead of a type-in box. Each detent changes the tempo LIVE; closing
-// records ONE undo step; Esc restores the tempo and records nothing.
+// The BPM readout opens the shared wheel: each detent changes the tempo live, closing records one undo step, Esc
+// restores and records nothing.
 
 func newBPMWheelGame(t *testing.T) (*Game, func(x, y, frames int)) {
 	t.Helper()

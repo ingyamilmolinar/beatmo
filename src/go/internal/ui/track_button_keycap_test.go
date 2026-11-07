@@ -9,13 +9,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTimelineBandKeycapsShareOneSizeDesktop guards the desktop counter band:
-// the lock/free keycap, the beat counter and the len −/+ pair are ONE row of
-// equal keycaps — the lock and the ± are squares as tall as the counter's
-// keycap, sharing its vertical centre — and none of them reaches down into the
-// timeline ruler, which keeps its full width. (The lock used to be a 44 px
-// gold block filling the left of the timeline, and the ± tall slabs spanning
-// the whole header.)
+// One row of equal keycaps: the lock and the ± are squares as tall as the counter keycap, on its centre line, and
+// none reaches into the timeline ruler, which keeps its full width.
 func TestTimelineBandKeycapsShareOneSizeDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -61,11 +56,7 @@ func TestTimelineBandKeycapsShareOneSizeDesktop(t *testing.T) {
 	}
 }
 
-// TestTrackButtonKeycapIsRoundedAndNotWhite guards the visual treatment: the
-// lock/free keycap is an ordinary rounded control keycap (a legacy
-// ButtonStyle with Radius 0 draws square corners) and its icon is never
-// the glaring near-white on-surface — both the tracking and free states use
-// calmer tokens.
+// A legacy ButtonStyle with Radius 0 draws square corners, and a near-white icon glares in both states.
 func TestTrackButtonKeycapIsRoundedAndNotWhite(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -94,9 +85,7 @@ func TestTrackButtonKeycapIsRoundedAndNotWhite(t *testing.T) {
 	}
 }
 
-// trackTouchRect is the lock keycap's EFFECTIVE touch target: its timeline
-// hit area expanded exactly as HitIndex.At expands a Touch area. The visible
-// keycap is compact; the finger target is what must meet TouchMinTarget.
+// The visible keycap is compact; the Touch-expanded target is what meets TouchMinTarget.
 func trackTouchRect(t *testing.T, dv *DrumView) image.Rectangle {
 	t.Helper()
 	if dv.timelineZone == nil {

@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstrumentMenuCategorySwitchDoesNotClose verifies that clicking a
-// category button switches to instruments mode without incorrectly closing
-// the menu due to geometry changes.
+// The geometry change on a mode switch must not read as a click outside.
 func TestInstrumentMenuCategorySwitchDoesNotClose(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -61,8 +59,7 @@ func TestInstrumentMenuCategorySwitchDoesNotClose(t *testing.T) {
 	clickX := rect.Min.X + 5
 	clickY := rect.Min.Y + 5
 
-	// Simulate mouse press on the category button.
-	// With deferred tap, the button won't fire until release.
+	// A deferred tap: the button fires on release, not here.
 	comp.HandleInput(clickX, clickY, true)
 
 	// Menu should still be open (deferred tap hasn't fired yet)
@@ -89,8 +86,6 @@ func TestInstrumentMenuCategorySwitchDoesNotClose(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuBackButtonDoesNotClose verifies that clicking the Back
-// button returns to categories mode without closing the menu.
 func TestInstrumentMenuBackButtonDoesNotClose(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -155,8 +150,6 @@ func TestInstrumentMenuBackButtonDoesNotClose(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuMultipleCategorySwitches verifies that switching between
-// multiple categories in sequence works correctly without closing the menu.
 func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -205,8 +198,7 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 		t.Fatalf("expected Kicks category, got %s", comp.ActiveCategory())
 	}
 
-	// Click back button to return to categories.
-	// Clear suppress first — the deferred category tap set it via SuppressClicksUntilMouseUp.
+	// The deferred category tap set SuppressClicksUntilMouseUp; clear it before the next click.
 	suppressClicksUntilRelease = false
 	backBtn := comp.BackBtn()
 	if backBtn == nil {
@@ -248,8 +240,6 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 		t.Fatalf("expected Snares category, got %s", comp.ActiveCategory())
 	}
 
-	// Go back again and switch to Cymbals.
-	// Clear suppress first.
 	suppressClicksUntilRelease = false
 	backBtn = comp.BackBtn()
 	rect = backBtn.Rect()

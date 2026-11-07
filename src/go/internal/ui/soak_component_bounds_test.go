@@ -10,19 +10,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// TestCheckComponentBounds_TripsParityAudio verifies that the hard
-// per-component bound on g.parityAudio fires when the drop-oldest cap in
-// recordParityAudio is bypassed. This is the assertion that long-running
-// memory soaks rely on to catch a future regression where someone removes
-// or bypasses the cap.
+// Long soaks rely on this to catch a removed or bypassed drop-oldest cap.
 func TestCheckComponentBounds_TripsParityAudio(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 
-	// Inflate parityAudio past the bound (1024 entries). The slice elements'
-	// content does not matter — checkComponentBounds asserts only on length.
+	// Only the length is asserted.
 	g.parityAudio = make([]parityAudioEvent, 1025)
 
 	fails := checkComponentBounds(g, soakScenario{name: "synthetic"}, 8400)
@@ -31,8 +26,6 @@ func TestCheckComponentBounds_TripsParityAudio(t *testing.T) {
 	}
 }
 
-// TestCheckComponentBounds_TripsParitySeqDecisions verifies the per-row map
-// bound trips when parityPrune fails to keep up with playback rate.
 func TestCheckComponentBounds_TripsParitySeqDecisions(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -54,22 +47,17 @@ func TestCheckComponentBounds_TripsParitySeqDecisions(t *testing.T) {
 	}
 }
 
-// TestCheckComponentBounds_TripsTimelineImmutables verifies the timeline
-// immutables sidecar bound trips when entries accumulate past 2× frames.
 func TestCheckComponentBounds_TripsTimelineImmutables(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 
-	// Build a minimal scene so g.drum.Rows is non-empty (the bound iterates
-	// over rows) and g.timeline is wired up.
+	// The bound iterates over rows, and needs g.timeline wired.
 	buildSoakScene(t, g, 1 /* rows */, 4 /* nodes */)
 
 	const frames = 100
-	// Inflate by recording many import-kind commits at fresh abs indices —
-	// each goes into immutables[0]. We use a windowLen/cap large enough to
-	// keep ring growth uncapped; the test only inspects immutables.
+	// A large window keeps the ring uncapped; only immutables are inspected.
 	for i := 0; i < frames*3; i++ {
 		g.timeline.RecordCommitKind(0, i, true, model.NodeTypeRegular, timeline.CommitKindPlayback, 1, 1)
 	}
@@ -80,9 +68,7 @@ func TestCheckComponentBounds_TripsTimelineImmutables(t *testing.T) {
 	}
 }
 
-// TestCheckComponentBounds_PassesUnderClean confirms that a freshly built
-// game with no synthetic inflation does not trip any per-component bound.
-// Guards against accidentally setting bounds too tight.
+// Bounds that trip on a clean game are set too tight.
 func TestCheckComponentBounds_PassesUnderClean(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)

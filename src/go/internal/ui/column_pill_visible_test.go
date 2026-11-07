@@ -11,12 +11,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestColumnPillVisibleOnDesktop verifies that the column divider pill handle
-// between the rack (instrument controls) and timeline (cell grid) is visible
-// on desktop — i.e., it is the last thing drawn at its position, not covered
-// by an opaque background fill — when the BEATMO_DEBUG_LAYOUT debug overlay
-// is enabled. (Layout pills are hidden by default in production; see
-// layout_guides_default_off_test.go.)
+// With BEATMO_DEBUG_LAYOUT on, the rack/timeline pill is the last thing drawn at its position, never under a
+// background fill.
 func TestColumnPillVisibleOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -72,11 +68,7 @@ func TestColumnPillVisibleOnDesktop(t *testing.T) {
 	screen := ebiten.NewImage(1200, 800)
 	dv.Draw(screen, nil, 0, nil, 0)
 
-	// Find the last substantial filled draw call that covers the pill center.
-	// The splitter handle is now a gold (#FFB30A) fill at AlphaStrong (180),
-	// drawn on top of a faint glow halo — so the visibility floor is the
-	// handle's own alpha, not a hard 200. Anything at >= AlphaStrong counts
-	// (handle + opaque backgrounds); the faint halo (~0.3 alpha) is ignored.
+	// The handle fills at AlphaStrong over a faint halo, so anything at ≥ AlphaStrong counts and the halo is ignored.
 	pillPt := image.Pt(pillCX, pillCY)
 	lastFilledSeq := -1
 	var lastFilledColor color.Color
@@ -98,10 +90,7 @@ func TestColumnPillVisibleOnDesktop(t *testing.T) {
 		t.Fatal("no opaque filled draw call covers the pill center")
 	}
 
-	// The last substantial fill at the pill position should NOT be a background
-	// fill. It should be the pill handle itself (colSplitterHandle, gold
-	// #FFB30A). Background/divider fills are dark (R,G,B < 100 in 8-bit);
-	// the gold handle is light (R high).
+	// The handle is light gold; backgrounds and dividers are dark.
 	lr, lg, lb, _ := lastFilledColor.RGBA()
 	// Background fills are dark (R,G,B < 50 in 8-bit). The pill handle is light (R,G,B > 150).
 	r8 := lr >> 8

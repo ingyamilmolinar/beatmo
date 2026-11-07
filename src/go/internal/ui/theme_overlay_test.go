@@ -110,8 +110,7 @@ func TestThemeOverlayScopeSwitchAndOverrideRealClicks(t *testing.T) {
 	}
 }
 
-// expandThemeAdjust taps the "Adjust colors" header (real input) so the
-// category chip rows exist, then settles a frame.
+// The chip rows exist only once the expander is open.
 func expandThemeAdjust(t *testing.T, g *Game, ov *ThemeOverlay, tap func(x, y, hold int)) {
 	t.Helper()
 	if ov.AdjustExpanded() {
@@ -139,8 +138,7 @@ func scrollThemeHeaderIntoView(t *testing.T, g *Game, ov *ThemeOverlay) {
 	}
 }
 
-// scrollThemeRowIntoView wheels the rows until the category's chip is fully
-// inside the panel, then settles a frame so the portal republishes hit areas.
+// The settle frame lets the portal republish hit areas.
 func scrollThemeRowIntoView(t *testing.T, g *Game, ov *ThemeOverlay, id string) {
 	t.Helper()
 	for i := 0; i < 60 && !ov.ChipRect(id).In(ov.rowsView); i++ {
@@ -195,8 +193,7 @@ func TestThemeOverlayChipShowsEffectiveColorAndRing(t *testing.T) {
 	if ov.chipColor("accent") != orchid || ov.chipSwatch("accent") != orchid {
 		t.Fatalf("chip color = %v swatch = %v want %v", ov.chipColor("accent"), ov.chipSwatch("accent"), orchid)
 	}
-	// A dark category's chip shows the REAL canvas color, not the purple
-	// anchor swatch.
+	// The REAL canvas colour, not the anchor swatch.
 	if ov.chipColor("background") != genColorBackground {
 		t.Fatalf("background chip = %v want the live background %v", ov.chipColor("background"), genColorBackground)
 	}
@@ -221,8 +218,6 @@ func TestThemeOverlayMobileFitsPane(t *testing.T) {
 		if chip.Dx() < TouchMinTarget() {
 			t.Fatalf("mobile chip %s below touch min: %v", c.ID, chip)
 		}
-		// Visible rows keep their chip inside the panel; rows past the
-		// viewport are reachable by scrolling.
 		if chip.Overlaps(ov.rowsView) && !chip.In(ov.Rect()) {
 			t.Fatalf("mobile chip %s %v spills outside panel %v", c.ID, chip, ov.Rect())
 		}
@@ -230,8 +225,6 @@ func TestThemeOverlayMobileFitsPane(t *testing.T) {
 	assertThemeRowsReachable(t, ov)
 }
 
-// assertThemeRowsReachable: the first row is visible at rest and, when the
-// rows scroll, scrolling to the end reveals the last row inside the panel.
 func assertThemeRowsReachable(t *testing.T, ov *ThemeOverlay) {
 	t.Helper()
 	first := themePresets[0].ID
@@ -257,10 +250,7 @@ func assertThemeRowsReachable(t *testing.T, ov *ThemeOverlay) {
 	}
 }
 
-// TestThemeOverlayPresetRowsRealClicks: the preset list is the primary
-// choice — a real click on Ocean applies it, clears customizations and marks
-// the row active; the Adjust header toggles the chip rows (and their hit
-// areas); a chip pick on top of a preset keeps the preset and reads
+// A preset pick clears customisations and marks the row active; a chip pick on top keeps the preset and reads
 // "customized".
 func TestThemeOverlayPresetRowsRealClicks(t *testing.T) {
 	defer SetThemeSink(nil)
@@ -309,9 +299,7 @@ func TestThemeOverlayPresetRowsRealClicks(t *testing.T) {
 	}
 }
 
-// TestThemeOverlayOpensOnEffectiveScope pins that the editor opens on the
-// document in effect: a circuit theme without a profile override shows the
-// circuit scope (and its preset row), otherwise the profile scope.
+// A circuit theme with no profile override opens the circuit scope, otherwise the profile scope.
 func TestThemeOverlayOpensOnEffectiveScope(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

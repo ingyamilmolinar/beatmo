@@ -18,8 +18,7 @@ func TestAcceptTextRunePermitsUnicodeRejectsControl(t *testing.T) {
 	}
 }
 
-// Locks in the rune-index → byte-offset invariant that makes insert/backspace
-// rune-correct for multi-byte text.
+// Makes insert and backspace rune-correct for multi-byte text.
 func TestByteIndexRuneCorrect(t *testing.T) {
 	// "áé" is 2 runes, 4 bytes (each is 2 bytes in UTF-8).
 	if got := byteIndex("áé", 0); got != 0 {
@@ -33,8 +32,7 @@ func TestByteIndexRuneCorrect(t *testing.T) {
 	}
 }
 
-// newRenameComponentForTest constructs a real RenameComponent the same way
-// production does (SetProps + Open), so the wired Accept func is exercised.
+// SetProps + Open as production does, so the wired Accept runs.
 func newRenameComponentForTest(t *testing.T) *RenameComponent {
 	t.Helper()
 	rc := NewRenameComponent()

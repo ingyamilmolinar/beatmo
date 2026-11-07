@@ -104,10 +104,7 @@ func TestFavoritesGlobalDefaultIsUsable(t *testing.T) {
 	t.Cleanup(func() { got.Set("temp-test-id", false) })
 }
 
-// TestPinSource_Tier covers the four cases (project, user-star, both, none).
-// "Both" deliberately resolves to project tier — the architecture lets a
-// project pin override a user's ★ when the menu has limited visual real
-// estate, and project pins are the more specific signal.
+// Both resolves to the project tier, the more specific signal.
 func TestPinSource_Tier(t *testing.T) {
 	src := PinSource{
 		ProjectPins: map[instrument.ID]struct{}{roster.Kick808: {}, "shared-id": {}},
@@ -130,11 +127,7 @@ func TestPinSource_Tier(t *testing.T) {
 	}
 }
 
-// TestSortByTierAlpha pins the empty-query menu order: project pins → ★ →
-// rest, alphabetised within each tier (case-insensitive). Without this, two
-// project pins would appear in input order, which is the catalog's
-// category+RelPath order — not what the user expects when they pinned
-// specific items.
+// Project pins, then ★, then the rest, alphabetised within each pinned tier (case-insensitive).
 func TestSortByTierAlpha(t *testing.T) {
 	src := PinSource{
 		ProjectPins: map[instrument.ID]struct{}{"zeta-pin": {}, "alpha-pin": {}},
@@ -151,8 +144,7 @@ func TestSortByTierAlpha(t *testing.T) {
 	labelFor := func(id instrument.ID) string { return labels[id] }
 	ids := []instrument.ID{"zeta-pin", "yankee", "mike", "charlie", "alpha-pin", "bravo"}
 	src.SortByTierAlpha(ids, labelFor)
-	// Pinned tiers (0, 1) are alpha-sorted; tier 2 keeps input order so the
-	// catalog's curated ordering is preserved for unpinned items.
+	// Unpinned items keep the catalogue's curated order.
 	want := []instrument.ID{"alpha-pin", "zeta-pin", "bravo", "yankee", "mike", "charlie"}
 	for i := range want {
 		if ids[i] != want[i] {
@@ -161,8 +153,6 @@ func TestSortByTierAlpha(t *testing.T) {
 	}
 }
 
-// TestSortByTierAlpha_TrivialInputs verifies the helper is a safe no-op on
-// nil and single-element slices (a common sort.Slice edge case).
 func TestSortByTierAlpha_TrivialInputs(t *testing.T) {
 	src := PinSource{}
 	src.SortByTierAlpha(nil, func(instrument.ID) string { return "" })
@@ -173,11 +163,7 @@ func TestSortByTierAlpha_TrivialInputs(t *testing.T) {
 	}
 }
 
-// TestStableTierBreaker_FuzzyWinsThenTier pins the contract that fuzzy
-// scores are primary: a clearly higher fuzzy score beats a project pin. Only
-// within equal-score groups does tier kick in. This is what makes the menu
-// useful when a user types a query that strongly favors one item — pinning
-// shouldn't drown out the obvious match.
+// Score first: a clearly better match beats a project pin, so pins never drown the obvious result.
 func TestStableTierBreaker_FuzzyWinsThenTier(t *testing.T) {
 	src := PinSource{
 		ProjectPins: map[instrument.ID]struct{}{"unrelated-pin": {}},
@@ -198,8 +184,7 @@ func TestStableTierBreaker_FuzzyWinsThenTier(t *testing.T) {
 
 	ids := []instrument.ID{"unrelated-pin", "weak-match", "strong-match"}
 	src.StableTierBreaker(ids, scoreOf, labelFor)
-	// Strong match wins on score; within the tied score-5 pair the project
-	// pin (tier 0) precedes the unranked weak-match (tier 2).
+	// Within the tied pair the pin precedes the weak match.
 	want := []instrument.ID{"strong-match", "unrelated-pin", "weak-match"}
 	for i := range want {
 		if ids[i] != want[i] {
@@ -208,10 +193,7 @@ func TestStableTierBreaker_FuzzyWinsThenTier(t *testing.T) {
 	}
 }
 
-// TestStableTierBreaker_AlphaWithinTier pins the third-key sort: within
-// equal score AND equal tier, ids are alphabetised by label. Without this,
-// a user typing a generic 3-letter query would see arbitrary in-catalog
-// ordering for the matched group.
+// Equal score and tier sort by label, not arbitrary catalogue order.
 func TestStableTierBreaker_AlphaWithinTier(t *testing.T) {
 	src := PinSource{}
 	scores := map[instrument.ID]int{"zeta": 10, "alpha": 10, "mike": 10}

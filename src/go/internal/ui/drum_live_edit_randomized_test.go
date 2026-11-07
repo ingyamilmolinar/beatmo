@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Property test: during chaotic live edits while "playing", every cell in the
-// DrumView window must match the engine predictor for the same absolute index.
-// This exercises graph -> predictor -> drumview caches under repeated
-// delete/re-add and logic toggles.
+// Under chaotic live edits during play, every window cell matches the predictor at its index.
 func TestDrumView_LiveEditRandomizedKeepsParity(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -124,8 +121,7 @@ func TestDrumView_LiveEditRandomizedKeepsParity(t *testing.T) {
 		for j := 0; j < len(r.Steps); j++ {
 			abs := g.drum.Offset + j
 			bi := g.beatInfoAtRow(0, abs)
-			// Immutable playback/import history is the source of truth; fall
-			// back to predictor for everything else.
+			// Immutable playback/import history wins; the predictor answers the rest.
 			if v, _, kind, ok := g.timelineCommittedWithKind(0, abs); ok && (kind == timeline.CommitKindPlayback || kind == timeline.CommitKindImport) {
 				want := v
 				got := r.Steps[j]

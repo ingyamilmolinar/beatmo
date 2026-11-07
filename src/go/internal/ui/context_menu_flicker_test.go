@@ -11,18 +11,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestContextMenuStaysOpenAfterKebabTap reproduces the kebab-popup flicker bug.
-//
-// Root cause: on mobile the row kebab (⋯) button opens the context menu inside
-// drum.Update() (which runs AFTER the InputDispatcher each frame). On the very
-// next frame the InputDispatcher dispatches to handleContextMenuInput() with
-// left=true at the kebab position. The kebab is NOT inside the context-menu
-// bottom-sheet rect, so the "click outside to close" check fires and immediately
-// closes the menu — even though suppressClicksUntilRelease=true was set by
-// openContextMenu(). The visible result is a 1-frame flash.
-//
-// The fix: honor suppressClicksUntilRelease in the "click outside to close"
-// path of handleContextMenuInput, the same way DeferredTap.Begin() does.
+// Opening the menu sets the suppression; on the next frame the still-held press lands outside the menu's rect and
+// must not close it, or the menu flashes for a frame.
 func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -60,10 +50,7 @@ func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 	lx := kebabRect.Min.X + kebabRect.Dx()/2
 	ly := kebabRect.Min.Y + kebabRect.Dy()/2
 
-	// ── Frame 0: touch down at kebab position (touch override active) ──
-	// drum.Update() fires AFTER InputDispatcher each real frame.
-	// We call Update() directly to simulate the drum-update half of the frame.
-	// This should open the context menu and set suppressClicksUntilRelease.
+	// drum.Update runs after the InputDispatcher each frame; this frame opens the menu and sets the suppression.
 	resetFrame0 := SetInputForTest(
 		func() (int, int) { return lx, ly },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -73,11 +60,7 @@ func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	dv.Update()
-	// Save the suppression state openContextMenu() set, then tear down the
-	// input mock. SetInputForTest clears suppressClicksUntilRelease on both
-	// call and teardown, but in the real app the touch hasn't been released so
-	// the flag stays true between frames. We restore it after the reset to
-	// accurately model the inter-frame state.
+	// SetInputForTest clears the flag on teardown, but the touch is still down between real frames, so it is restored.
 	savedSuppress := suppressClicksUntilRelease
 	resetFrame0()
 	suppressClicksUntilRelease = savedSuppress
@@ -87,14 +70,7 @@ func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 		t.Fatal("expected context menu to open after tapping row label")
 	}
 
-	// ── Frame 1: InputDispatcher runs with left=true at same label position ──
-	// suppressClicksUntilRelease is still true (touch not released yet).
-	// The dispatcher calls dv.HandleInput → portal.HandleInput.
-	// The label position is NOT inside the context-menu bottom-sheet rect
-	// (it opened below the label), so the "click outside to close" logic fires.
-	//
-	// Expected: menu stays open (portal guards on suppressClicksUntilRelease).
-	// Actual before fix: contextMenuOpen = false (menu closes = 1-frame flicker).
+	// The dispatcher runs with the press still down at the label, outside the menu.
 	result := dv.HandleInput(lx, ly, true)
 	_ = result // result is informational; the key assertion is below
 
@@ -112,10 +88,7 @@ func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 	}
 }
 
-// TestContextMenuClosesOnOutsideTapAfterSuppressClears verifies that the menu
-// DOES close when the user taps outside AFTER the suppression window ends
-// (i.e., once the touch that opened the menu has been released).
-// This ensures the fix doesn't break the normal "tap outside to close" flow.
+// Once the opening touch is released, an outside tap still closes it.
 func TestContextMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)

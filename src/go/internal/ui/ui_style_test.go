@@ -127,10 +127,8 @@ func TestMenuSpecHeights(t *testing.T) {
 	}
 }
 
-// TestRowRackButtonsUseLettersAndIcons verifies the row rack's M / S / FX
-// toggles are TEXT letters (a slashed-speaker mute glyph read as "muted" at
-// rest, and the FX sparkle read as "+" at chip size — DESIGN.md "Row
-// control"), while the menu-hosted Delete keeps its IconID glyph.
+// M / S / FX are TEXT letters: a slashed-speaker glyph read as "muted" at rest and the FX sparkle as "+" at chip size.
+// Delete, in the menu, keeps its icon.
 func TestRowRackButtonsUseLettersAndIcons(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDV(t)

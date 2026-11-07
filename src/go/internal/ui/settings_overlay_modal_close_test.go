@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestSettingsOverlayHasCardCloseButton: the settings overlay is framed by the
-// shared MenuCard, so on desktop it publishes the card's close (×) hit area
-// like every other floating menu (the gear button still toggles it too —
-// TestSettingsOverlayClosesViaGearToggle). Mobile keeps tap-away (no ×).
+// Framed by the shared MenuCard, so desktop publishes its close ×; mobile closes on a tap away.
 func TestSettingsOverlayHasCardCloseButton(t *testing.T) {
 	o := NewSettingsOverlay(func(i18n.Locale) {})
 	screen := image.Rect(0, 0, 1200, 800)
@@ -26,10 +23,7 @@ func TestSettingsOverlayHasCardCloseButton(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayLanguagePillsAreButtons asserts the language pills are real
-// Buttons (so they get the shared keycap style + press/hover animation) and that
-// the active locale renders as a toggled (latched) button — matching every other
-// active control in the UI.
+// Real Buttons, so they get the shared keycap style and animation; the active locale is latched.
 func TestSettingsOverlayLanguagePillsAreButtons(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	o := NewSettingsOverlay(func(i18n.Locale) {})
@@ -62,9 +56,7 @@ func TestSettingsOverlayLanguagePillsAreButtons(t *testing.T) {
 	}
 }
 
-// TestSettingsLanguageButtonRealClickDispatch guards the FULL real-click path now
-// that the pills are independent Buttons routed via buttonHitAdapter: a real
-// press at the Español pill switches the locale through Game.Update().
+// Through Game.Update, now that the pills are Buttons behind buttonHitAdapter.
 func TestSettingsLanguageButtonRealClickDispatch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)
@@ -97,9 +89,7 @@ func TestSettingsLanguageButtonRealClickDispatch(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayIsModal asserts the open settings overlay is a BLOCKING
-// (modal) overlay so input outside the panel is suppressed — the gear used to
-// open it non-modal, which let grid taps / camera pans fire behind the panel.
+// Modal, so grid taps and camera pans cannot fire behind the panel.
 func TestSettingsOverlayIsModal(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)
@@ -121,8 +111,7 @@ func TestSettingsOverlayIsModal(t *testing.T) {
 		t.Fatal("settings overlay open but modalOverlayActive() is false — outside input not blocked")
 	}
 
-	// A press well outside the panel must not fall through to grid input
-	// (modal filter restricts the HitIndex to the overlay's own areas).
+	// The modal filter limits the HitIndex to the overlay's own areas.
 	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay")
@@ -132,8 +121,6 @@ func TestSettingsOverlayIsModal(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayAnchorsUnderGear asserts the settings panel drops from the
-// grid-pane gear (top-right) instead of centering — the bottom-panel-pin bug.
 func TestSettingsOverlayAnchorsUnderGear(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)
@@ -152,10 +139,7 @@ func TestSettingsOverlayAnchorsUnderGear(t *testing.T) {
 	}
 
 	gridH := g.split.GridH(g.winH)
-	// Hugs the top-right (next to the gear) and is fully CONTAINED IN THE GRID
-	// PANE — it must never spill past the split into the drum-view panel. A tall
-	// panel is pushed up to fit, so its top may sit above the gear; the invariant
-	// is that its bottom does not cross the split (and it is not centered).
+	// It stays inside the grid pane: a tall panel is pushed up to fit, but its bottom never crosses the split.
 	if ov.rect.Max.Y > gridH {
 		t.Fatalf("settings panel %v spills past the grid pane (gridH=%d) into the drum-view panel", ov.rect, gridH)
 	}
@@ -167,8 +151,6 @@ func TestSettingsOverlayAnchorsUnderGear(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayClosesViaCloseButtonDispatch drives the real input loop:
-// clicking the close button removes the overlay from the portal.
 func TestSettingsOverlayClosesViaGearToggle(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)

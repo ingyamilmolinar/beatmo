@@ -14,15 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// awaitEmit subscribes to k on a private bus, runs fn, and returns the first
-// matching event delivered to the subscriber. Times out at 2s so a missing
-// publish fails loudly. Sources from the helper under test ARE the hot path
-// being verified — both payload + Source are inspected by the caller.
-//
-// Implementation note: we route the helpers through the global bus (that's
-// what hooks.PublishWithSource does), so the subscription is on GlobalBus().
-// The 2s timeout is generous because the global bus's worker pool is shared
-// with other tests in this package.
+// Times out at 2 s so a missing publish fails loudly; generous because the global bus's pool is shared.
 func awaitEmit(t *testing.T, k hooks.Kind, fn func()) hooks.Event {
 	t.Helper()
 	got := make(chan hooks.Event, 1)
@@ -43,11 +35,9 @@ func awaitEmit(t *testing.T, k hooks.Kind, fn func()) hooks.Event {
 	}
 }
 
-// ── Source attribution: every emit must carry the user-code call site,
-//    not the emit helper itself. This is the contract round-2 leans on.
+// Every emit carries the user-code call site, not the helper.
 
-// TestEmitSourceIsUserCallerNotHelper verifies a representative emit (Node
-// added) records the test file's site, not event_helpers.go.
+// The test file's site, not event_helpers.go.
 func TestEmitSourceIsUserCallerNotHelper(t *testing.T) {
 	n := &uiNode{ID: 42, I: 3, J: 4}
 	_, wantFile, wantLine, _ := runtime.Caller(0)
@@ -255,9 +245,7 @@ func TestEmitFavoriteToggled(t *testing.T) {
 	}
 }
 
-// ── Sanity: every emit passes through the source-aware bus (i.e. its
-//    Source is non-zero). Catches a future regression where someone routes
-//    a helper through the legacy PublishKind by accident.
+// Every emit goes through the source-aware bus, never the legacy PublishKind.
 
 func TestAllEmitsCarrySource(t *testing.T) {
 	type emit struct {

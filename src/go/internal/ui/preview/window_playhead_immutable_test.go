@@ -7,14 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Regression: everything strictly left of the VISUAL playhead (ElapsedBeats)
-// is past and must render from the immutable timeline/history commits — never
-// from the live predictor. This must hold even when the per-row highlight
-// index (NextIdx) lags the playhead, which happens in production whenever a
-// non-primary row's highlight is delayed or dropped (the stale-info guard in
-// applySequencerHighlight fires right after a circuit edit). Before the fix,
-// the past boundary was NextIdx alone, so cells in [NextIdx, ElapsedBeats]
-// followed the predictor and mutated when an edit changed it.
+// Everything left of the VISUAL playhead renders from immutable history, even when a row's highlight index lags
+// it (a delayed or dropped highlight right after an edit); otherwise those cells follow the edited predictor.
 func TestBuildRowWindow_PastAnchoredToPlayheadNotLaggedHighlight(t *testing.T) {
 	const (
 		length       = 8
@@ -38,8 +32,7 @@ func TestBuildRowWindow_PastAnchoredToPlayheadNotLaggedHighlight(t *testing.T) {
 		_, _ = abs, bi
 		return false
 	}
-	// Immutable playback history recorded as the playhead passed: ON for every
-	// abs the playhead has reached (0..elapsedBeats).
+	// ON for every abs the playhead reached.
 	commitAt := func(abs int) (bool, model.NodeType, timeline.CommitKind, bool) {
 		if abs < 0 || abs > elapsedBeats {
 			return false, model.NodeTypeInvisible, timeline.CommitKindPlayback, false
@@ -49,8 +42,7 @@ func TestBuildRowWindow_PastAnchoredToPlayheadNotLaggedHighlight(t *testing.T) {
 
 	steps, _ := BuildRowWindow(cfg, beatInfoAt, wantAt, commitAt, nil, nil)
 
-	// Every cell strictly left of the playhead must reflect committed history
-	// (true), not the post-edit predictor (false).
+	// Committed history (true), not the post-edit predictor (false).
 	for abs := 0; abs <= elapsedBeats; abs++ {
 		if !steps[abs] {
 			t.Fatalf("PAST MUTATED: abs=%d (< playhead=%d, highlight next=%d) rendered predictor=false instead of committed history=true; steps=%v",

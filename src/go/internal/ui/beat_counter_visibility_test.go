@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestDesktopBeatCounterRectNonEmpty verifies that the beat counter rect is
-// computed as a non-empty rectangle on desktop.
 func TestDesktopBeatCounterRectNonEmpty(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -19,8 +17,6 @@ func TestDesktopBeatCounterRectNonEmpty(t *testing.T) {
 	}
 }
 
-// TestDesktopBeatCounterAboveTimeline verifies that the beat counter sits
-// above the timeline bar (not behind it).
 func TestDesktopBeatCounterAboveTimeline(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -32,8 +28,6 @@ func TestDesktopBeatCounterAboveTimeline(t *testing.T) {
 	}
 }
 
-// TestDesktopBeatCounterNotBehindToolbar verifies that the beat counter rect
-// does not overlap the transport widget.
 func TestDesktopBeatCounterNotBehindToolbar(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -55,8 +49,6 @@ func TestDesktopBeatCounterNotBehindToolbar(t *testing.T) {
 	}
 }
 
-// TestDesktopBeatCounterWithinBounds verifies that the beat counter rect is
-// fully contained within the drum view bounds.
 func TestDesktopBeatCounterWithinBounds(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -67,10 +59,7 @@ func TestDesktopBeatCounterWithinBounds(t *testing.T) {
 	}
 }
 
-// TestDesktopSingleRowTransport verifies the desktop transport is a single-row
-// layout — play (leftmost) and redo (rightmost) are in the same row. (The
-// overflow/kebab and Navigate buttons were removed; redo is now the rightmost
-// inline control used to prove the single row.)
+// Play (leftmost) and redo (rightmost inline) share one row.
 func TestDesktopSingleRowTransport(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -87,8 +76,6 @@ func TestDesktopSingleRowTransport(t *testing.T) {
 	}
 }
 
-// TestMobileBeatCounterAboveTimeline verifies the beat counter is visible and
-// above the timeline bar on mobile (not inside/behind it).
 func TestMobileBeatCounterAboveTimeline(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -109,11 +96,7 @@ func TestMobileBeatCounterAboveTimeline(t *testing.T) {
 	}
 }
 
-// TestTopBarHeightMatchesActiveSpec verifies both platforms lock the top
-// control bar to ActiveTopBarSpec().Height (sourced from DESIGN.md
-// `profileOverrides.headerMinH/headerMaxH`). Desktop is a compact single-row
-// bar; mobile keeps a two-row tools layout but at a tighter height than the
-// pre-compaction 72 px.
+// Both platforms lock the bar to ActiveTopBarSpec().Height from DESIGN.md.
 func TestTopBarHeightMatchesActiveSpec(t *testing.T) {
 	assertDefaultParityState(t)
 	// Desktop
@@ -136,8 +119,7 @@ func TestTopBarHeightMatchesActiveSpec(t *testing.T) {
 	}
 }
 
-// TestDesktopVolumeIconPopup verifies the desktop master volume uses an
-// icon-only control (popup-based, no inline slider).
+// Icon only, popup-based, no inline slider.
 func TestDesktopVolumeIconPopup(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -155,8 +137,6 @@ func TestDesktopVolumeIconPopup(t *testing.T) {
 	}
 }
 
-// TestMobileVolumeIconOpensPopup verifies the mobile master volume icon is
-// present and opens a popup (no inline slider).
 func TestMobileVolumeIconOpensPopup(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -186,8 +166,6 @@ func TestMobileVolumeIconOpensPopup(t *testing.T) {
 	}
 }
 
-// TestDesktopTwoRowNoOverlap verifies that row 0 and row 1 controls do not
-// overlap in the desktop two-row layout.
 func TestDesktopTwoRowNoOverlap(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -212,10 +190,7 @@ func TestDesktopTwoRowNoOverlap(t *testing.T) {
 	}
 }
 
-// TestMobileTransportLayout (Theme 4) verifies mobile transport places
-// vol icon and overflow either on the same row as play (single-row mode,
-// preferred when topBounds height fits one row) or on row 1 below play
-// (two-row fallback). Both layouts must keep them reachable.
+// Volume and overflow sit on play's row, or on the row below as a fallback; either keeps them reachable.
 func TestMobileTransportLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -231,8 +206,6 @@ func TestMobileTransportLayout(t *testing.T) {
 	if volR.Empty() {
 		t.Fatal("mobile mainVolIconRect is empty")
 	}
-	// Either single-row (volR overlaps playR's row) or two-row (volR is
-	// strictly below playR). Both are accepted.
 	overlap := volR.Min.Y < playR.Max.Y && volR.Max.Y > playR.Min.Y
 	below := volR.Min.Y >= playR.Max.Y
 	if !overlap && !below {
@@ -240,8 +213,6 @@ func TestMobileTransportLayout(t *testing.T) {
 	}
 }
 
-// TestMobileTwoRowNoOverlap verifies that row 0 and row 1 controls do not
-// overlap in the mobile two-row layout.
 func TestMobileTwoRowNoOverlap(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -280,8 +251,7 @@ func TestMobileTwoRowNoOverlap(t *testing.T) {
 	}
 }
 
-// TestTrackButtonInTimelineArea verifies the Track button is positioned in the
-// timeline widget area on both platforms.
+// On both platforms.
 func TestTrackButtonInTimelineArea(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -304,8 +274,7 @@ func TestTrackButtonInTimelineArea(t *testing.T) {
 	}
 }
 
-// TestLenButtonsInTimelineArea verifies that on desktop, len +/- buttons are
-// within the timeline widget bounds, NOT within the transport widget bounds.
+// In the timeline widget, not the transport.
 func TestLenButtonsInTimelineArea(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -333,10 +302,7 @@ func TestLenButtonsInTimelineArea(t *testing.T) {
 	}
 }
 
-// TestLenButtonsHiddenOnMobile verifies the inline timeline length +/−
-// pair is suppressed on mobile (A7 in the screenshot critique). The
-// controls live behind the overflow menu instead — see
-// TestLenButtons_ReachableViaOverflowOnMobile.
+// Suppressed inline on mobile; they live in the overflow menu.
 func TestLenButtonsHiddenOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -352,8 +318,6 @@ func TestLenButtonsHiddenOnMobile(t *testing.T) {
 	}
 }
 
-// TestLenButtonsNoOverlapBeatCounter verifies len buttons don't overlap the
-// beat counter rect.
 func TestLenButtonsNoOverlapBeatCounter(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -371,8 +335,6 @@ func TestLenButtonsNoOverlapBeatCounter(t *testing.T) {
 	}
 }
 
-// TestLenButtonsNoOverlapTimeline verifies len buttons don't overlap the
-// timeline bar rect.
 func TestLenButtonsNoOverlapTimeline(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -390,8 +352,6 @@ func TestLenButtonsNoOverlapTimeline(t *testing.T) {
 	}
 }
 
-// TestLenButtonsAtRightEdge verifies the buttons are positioned at the right
-// edge of the timeline widget.
 func TestLenButtonsAtRightEdge(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
@@ -400,8 +360,7 @@ func TestLenButtonsAtRightEdge(t *testing.T) {
 
 	tl := dv.widgetRects[WidgetTimeline]
 	incR := dv.lenIncBtn.Rect()
-	// The buttons should be near the right edge of the timeline widget.
-	// Allow some margin for padding.
+	// Within a padding margin.
 	margin := incR.Max.X - tl.Max.X
 	if margin < -20 {
 		// negative margin means too far left; should be within 20px of the edge

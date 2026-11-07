@@ -4,9 +4,8 @@ package ui
 
 import "testing"
 
-// The go-to wheel's beat labels are 1-BASED for the user (step 0 = "Beat 1",
-// the same number the beat counter shows), with the subdivision as a reduced
-// fraction when the position is off the beat.
+// Beats are 1-BASED for the user (step 0 = "Beat 1", as the counter shows); off the beat the subdivision is a
+// reduced fraction.
 func TestFormatGotoBeat(t *testing.T) {
 	cases := []struct {
 		steps, div int
@@ -91,8 +90,7 @@ func TestGotoTimeModel(t *testing.T) {
 }
 
 func TestGotoConversionsRoundTrip(t *testing.T) {
-	// 120 BPM, div 8: Beat 13 (step 96, 12 beats in) is 6 s in; 6 s resolves
-	// back to Beat 13.
+	// 120 BPM, div 8: Beat 13 (step 96) is 6 s in, and back.
 	if s := gotoStepsToSeconds(96, 8, 120); s != 6 {
 		t.Errorf("steps→sec = %d", s)
 	}

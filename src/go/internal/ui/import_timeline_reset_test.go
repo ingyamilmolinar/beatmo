@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Regression test: importing a project must clear any previously committed
-// timeline history so re-added nodes are not masked by stale immutable entries.
+// Stale immutable entries would mask re-added nodes.
 func TestImportClearsTimelineHistory(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

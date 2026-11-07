@@ -13,10 +13,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/eventlogger"
 )
 
-// openLogsPanelWithErrors builds a game, pushes n error notifications (which land
-// on the ERROR-default filter), opens the logs panel, and draws one frame so the
-// MenuScroll is Configured and its thumb geometry is live. It fails the test if
-// the list does not overflow (a precondition for exercising the scrollbar).
+// Errors land on the ERROR-default filter; one drawn frame configures the MenuScroll so its thumb geometry is
+// live. Fails unless the list overflows.
 func openLogsPanelWithErrors(t *testing.T, n int) (*Game, *LogsComponent, *ebiten.Image) {
 	t.Helper()
 	setLogRing(t, n+50)
@@ -34,8 +32,7 @@ func openLogsPanelWithErrors(t *testing.T, n int) (*Game, *LogsComponent, *ebite
 	return g, c, dst
 }
 
-// seedInfoRing installs a fresh log ring with n INFO event records (newest-last
-// input; the model sorts newest-first) and restores the previous ring on cleanup.
+// Input is newest-last; the model sorts newest-first.
 func seedInfoRing(t *testing.T, n int) {
 	t.Helper()
 	ring := eventlogger.NewRingHistory(n + 100)
@@ -51,8 +48,6 @@ func seedInfoRing(t *testing.T, n int) {
 	}
 }
 
-// TestLogsPageCountMatchesRows: m == ceil(filtered/pageSize) for a spread of row
-// counts, exercised through the real INFO event stream.
 func TestLogsPageCountMatchesRows(t *testing.T) {
 	for _, n := range []int{0, 1, 49, 50, 51, 99, 100, 101, 250} {
 		seedInfoRing(t, n)
@@ -73,8 +68,7 @@ func TestLogsPageCountMatchesRows(t *testing.T) {
 	}
 }
 
-// TestLogsEveryPageHasContent: with m pages there must be no empty page — each
-// page 1..m yields at least one row (guards "m says 5 but pages are empty").
+// Guards "m says 5 but the pages are empty".
 func TestLogsEveryPageHasContent(t *testing.T) {
 	seedInfoRing(t, 220) // 5 pages of 50
 	g := newGameWithStart(t)
@@ -95,8 +89,6 @@ func TestLogsEveryPageHasContent(t *testing.T) {
 	}
 }
 
-// TestLogsPagesCoverAllRowsNoSkips: concatenating every page in order reproduces
-// the full filtered set with no gaps or overlaps — proves next never skips rows.
 func TestLogsPagesCoverAllRowsNoSkips(t *testing.T) {
 	seedInfoRing(t, 213)
 	g := newGameWithStart(t)
@@ -123,8 +115,6 @@ func TestLogsPagesCoverAllRowsNoSkips(t *testing.T) {
 	}
 }
 
-// TestLogsNextReachesLastPageThenClamps: next advances one page at a time to
-// exactly m, then greys (clamps) — driven through the real HandleInput dispatch.
 func TestLogsNextReachesLastPageThenClamps(t *testing.T) {
 	seedInfoRing(t, 220)
 	g := newGameWithStart(t)
@@ -156,9 +146,7 @@ func TestLogsNextReachesLastPageThenClamps(t *testing.T) {
 	}
 }
 
-// TestLogsLevelSwitchUpdatesPageCount: switching the level filter recomputes m
-// from THAT level's rows and resets to page 1 — pins the "m shows the previous
-// level's count" desync the user described (2/5 on a 2-page view).
+// m comes from the NEW level's rows and the page resets to 1, never the previous level's count.
 func TestLogsLevelSwitchUpdatesPageCount(t *testing.T) {
 	seedInfoRing(t, 220) // 220 INFO events → 5 pages on INFO
 	g := newGameWithStart(t)
@@ -174,8 +162,6 @@ func TestLogsLevelSwitchUpdatesPageCount(t *testing.T) {
 	if got := c.pageCountNow(); got != 5 {
 		t.Fatalf("INFO pageCount=%d want 5 (filtered=%d)", got, len(c.filtered))
 	}
-	// Navigate deep into INFO, then switch to ERROR: m MUST drop to 2 and page
-	// MUST reset to 1 — no stale "x / 5" while showing a 2-page ERROR set.
 	c.page = 4
 	c.setLevel(levelError)
 	c.Draw(dst)
@@ -187,9 +173,8 @@ func TestLogsLevelSwitchUpdatesPageCount(t *testing.T) {
 	}
 }
 
-// TestNotificationStoreClearPersistsEmpty: Clear empties the ring, bumps the
-// push counter (so memoizing consumers invalidate), and writes an EMPTY snapshot
-// through the persist sink so the cleared state survives a refresh.
+// The push counter bumps so memoising consumers invalidate, and an EMPTY snapshot is persisted so the clear
+// survives a refresh.
 func TestNotificationStoreClearPersistsEmpty(t *testing.T) {
 	s := newNotificationStore(100)
 	var persisted []notification
@@ -218,9 +203,6 @@ func TestNotificationStoreClearPersistsEmpty(t *testing.T) {
 	}
 }
 
-// TestLogsClearHistoryEmptiesEverything: clearHistory drops the event ring AND
-// the notifications, then the panel shows nothing on every level and the unread
-// badge reads 0.
 func TestLogsClearHistoryEmptiesEverything(t *testing.T) {
 	seedInfoRing(t, 120)
 	g := newGameWithStart(t)
@@ -267,8 +249,7 @@ func TestLogsClearHistoryEmptiesEverything(t *testing.T) {
 	}
 }
 
-// TestLogsClearHistorySurvivesRefresh: after clearing, re-seeding the store from
-// its persisted snapshot (what a page refresh does) yields nothing.
+// Re-seeding from the persisted snapshot is what a page refresh does.
 func TestLogsClearHistorySurvivesRefresh(t *testing.T) {
 	setLogRing(t, 200)
 	g := newGameWithStart(t)
@@ -293,8 +274,6 @@ func TestLogsClearHistorySurvivesRefresh(t *testing.T) {
 	}
 }
 
-// TestLogsClearButtonClickClears: clicking the Clear button through the real
-// HandleInput dispatch empties the history.
 func TestLogsClearButtonClickClears(t *testing.T) {
 	seedInfoRing(t, 80)
 	g := newGameWithStart(t)
@@ -318,12 +297,8 @@ func TestLogsClearButtonClickClears(t *testing.T) {
 	}
 }
 
-// TestLogsPaginationRefreshesInRealTime drives the REAL input paths — a level
-// chip click, a search edit, and clearing the search — and asserts that after
-// EACH the page count, current page, and scroll offset are immediately in sync
-// with the new results (no stale "n / m", no leftover scroll). This pins the
-// user-reported "2 / 5 with next greyed" symptom: a filter change that shrinks
-// the set must shrink m too, in the same frame.
+// After a level chip, a search edit and clearing the search, the page count, page and scroll are in sync with
+// the results in the same frame: a filter that shrinks the set shrinks m too.
 func TestLogsPaginationRefreshesInRealTime(t *testing.T) {
 	seedInfoRing(t, 220) // 5 pages on INFO
 	g := newGameWithStart(t)
@@ -343,8 +318,6 @@ func TestLogsPaginationRefreshesInRealTime(t *testing.T) {
 		t.Fatalf("setup: INFO pageCount=%d want 5", c.pageCountNow())
 	}
 
-	// 1) Click the ERROR chip through the real dispatch. m must drop to 2, page
-	//    reset to 1, scroll to 0 — all in the same frame.
 	ex, ey := rectCenter(c.levelBtns[levelError].Rect())
 	c.HandleInput(ex, ey, true)
 	c.HandleInput(ex, ey, false)
@@ -383,11 +356,8 @@ func TestLogsPaginationRefreshesInRealTime(t *testing.T) {
 	}
 }
 
-// TestLogsWheelScrollsRepeatedlyAfterTick pins the "scrollbar only worked once"
-// bug. MenuScroll.HandleWheel arms a per-notch cooldown that ONLY releases when
-// TickStep runs each frame (DrumView.tickMenuScrollCooldowns, driven by Update).
-// The logs panel's scroll was never registered there, so the wheel advanced one
-// item and then locked forever.
+// HandleWheel arms a per-notch cooldown released only by TickStep each frame; a scroll not registered with
+// tickMenuScrollCooldowns advances one item and locks.
 func TestLogsWheelScrollsRepeatedlyAfterTick(t *testing.T) {
 	g, c, dst := openLogsPanelWithErrors(t, 40)
 
@@ -398,8 +368,7 @@ func TestLogsWheelScrollsRepeatedlyAfterTick(t *testing.T) {
 		t.Fatalf("first wheel notch: VS.First=%d want 1", got)
 	}
 
-	// Advance the cooldown by driving real frames through Game.Update — the same
-	// path that calls tickMenuScrollCooldowns in production.
+	// Real Game.Update frames, the path that ticks the cooldown in production.
 	for i := 0; i < controlGridScrollCooldownFrames+1; i++ {
 		g.Update()
 	}
@@ -413,11 +382,7 @@ func TestLogsWheelScrollsRepeatedlyAfterTick(t *testing.T) {
 	}
 }
 
-// TestLogsScrollbarThumbDragCapturesAndMoves pins the other half of the wiring:
-// a press on the scrollbar thumb must CAPTURE (so the tree keeps routing drag
-// events to the panel) and dragging must move the list. Previously HandleInput
-// always returned InputConsumed and Capturing() was hardcoded false, so the tree
-// never captured and the thumb could not be dragged.
+// A thumb press must CAPTURE, or the tree never routes the drag to the panel.
 func TestLogsScrollbarThumbDragCapturesAndMoves(t *testing.T) {
 	_, c, dst := openLogsPanelWithErrors(t, 40)
 
@@ -449,8 +414,6 @@ func TestLogsScrollbarThumbDragCapturesAndMoves(t *testing.T) {
 	}
 }
 
-// TestLogsScrollNoOpWhenContentFits: with only a couple of rows the list fits,
-// so there is no scrollbar, the wheel is inert, and no gutter is reserved.
 func TestLogsScrollNoOpWhenContentFits(t *testing.T) {
 	setLogRing(t, 50)
 	g := newGameWithStart(t)
@@ -472,8 +435,7 @@ func TestLogsScrollNoOpWhenContentFits(t *testing.T) {
 	}
 }
 
-// TestLogsCapturingFalseAtRestAfterTap: a normal header-button tap must not leave
-// the panel in a captured state (only an active scroll gesture captures).
+// Only an active scroll gesture captures.
 func TestLogsCapturingFalseAtRestAfterTap(t *testing.T) {
 	_, c, _ := openLogsPanelWithErrors(t, 40)
 	// Tap the INFO level chip (a header button), press then release.
@@ -487,12 +449,9 @@ func TestLogsCapturingFalseAtRestAfterTap(t *testing.T) {
 	}
 }
 
-// TestLogsPageSwitchResetsScroll pins the UX rule: switching pages (prev/next)
-// snaps the scrollbar — and therefore the visible rows — back to the top, so a
-// new page never opens scrolled halfway down.
+// A new page never opens scrolled halfway down.
 func TestLogsPageSwitchResetsScroll(t *testing.T) {
-	// 80 error rows over a fixed 50/page = 2 pages, and page 1 overflows the body
-	// so the scroll can be non-zero.
+	// Two pages of 50, and page 1 overflows so the scroll can be non-zero.
 	_, c, dst := openLogsPanelWithErrors(t, 80)
 	if c.pageCountNow() < 2 {
 		t.Fatalf("need >1 page to switch; got %d", c.pageCountNow())
@@ -522,8 +481,6 @@ func TestLogsPageSwitchResetsScroll(t *testing.T) {
 	}
 }
 
-// TestLogsWheelClampsAtEnds proves the wheel cannot scroll past either end (guards
-// against an off-by-one when the cooldown fix lands).
 func TestLogsWheelClampsAtEnds(t *testing.T) {
 	g, c, dst := openLogsPanelWithErrors(t, 40)
 
@@ -553,8 +510,6 @@ func rectCenter(r image.Rectangle) (int, int) {
 	return r.Min.X + r.Dx()/2, r.Min.Y + r.Dy()/2
 }
 
-// setLogRing installs a fresh in-memory log ring for the test and restores the
-// previous sink on cleanup.
 func setLogRing(t *testing.T, cap int) eventlogger.LogHistory {
 	t.Helper()
 	prev := eventlogger.History()
@@ -587,9 +542,7 @@ func TestLogsComponentRebuildPaginates(t *testing.T) {
 	}
 }
 
-// TestLogsComponentDrawThenClickHitRects drives Draw (to populate the close /
-// prev / next hit rects) then feeds presses through HandleInput, closing the
-// Task-7 coverage gap for the interactive panel surface.
+// Draw populates the prev/next hit rects that HandleInput then tests.
 func TestLogsComponentDrawThenClickHitRects(t *testing.T) {
 	ring := setLogRing(t, 500)
 	base := time.Date(2026, 7, 19, 12, 0, 0, 0, time.Local)
@@ -618,8 +571,7 @@ func TestLogsComponentDrawThenClickHitRects(t *testing.T) {
 	if c.page != 1 {
 		t.Fatalf("prev click: page=%d want 1", c.page)
 	}
-	// (No close-button step: the logs panel has no × button; it toggles closed
-	// via the grid logs button — see TestLogsPanelTogglesViaLogsButton.)
+	// The panel has no ×; the grid logs button toggles it.
 }
 
 func TestLogsSearchNameFiltersList(t *testing.T) {
@@ -636,8 +588,6 @@ func TestLogsSearchNameFiltersList(t *testing.T) {
 	}
 }
 
-// TestLogsLevelChipClickSelects clicks the INFO level chip and asserts the
-// single-select level filter switches (mutually exclusive).
 func TestLogsLevelChipClickSelects(t *testing.T) {
 	setLogRing(t, 50)
 	g := newGameWithStart(t)
@@ -728,8 +678,7 @@ func TestLogsRangeFilterSpansTwoDays(t *testing.T) {
 		{tag: "a", msg: "jul19-10", at: d(19, 10)},
 		{tag: "a", msg: "jul20-06", at: d(20, 6)},
 	}
-	// Range Jul 18 09:00 → Jul 19 17:00 keeps only the two middle rows — proving
-	// the filter is DATE-aware (same clock times on other days are excluded).
+	// The same clock times on other days are excluded: the range is DATE-aware.
 	c.setTimeMode(tsModeRange)
 	c.setTimeSel(pickFrom, logsTimeSel{set: true, t: d(18, 9)})
 	c.setTimeSel(pickTo, logsTimeSel{set: true, t: d(19, 17)})
@@ -792,9 +741,7 @@ func TestLogsToggleClickSwitchesMode(t *testing.T) {
 	}
 }
 
-// TestUnreadBadgeCountsErrorsOnlyAndClears pins that the notification icon badge
-// counts ONLY unread errors (routine events + info notifications don't badge)
-// and clears when the panel is opened (markSeen).
+// Routine events and info notifications don't badge; opening the panel marks them seen.
 func TestUnreadBadgeCountsErrorsOnlyAndClears(t *testing.T) {
 	ring := setLogRing(t, 50)
 	g := newGameWithStart(t)
@@ -823,8 +770,6 @@ func TestUnreadBadgeCountsErrorsOnlyAndClears(t *testing.T) {
 	}
 }
 
-// TestLogsOpenDefaultsToErrorLevel pins that opening the panel defaults the
-// single-select level filter to ERROR, and only ERROR-level rows show.
 func TestLogsOpenDefaultsToErrorLevel(t *testing.T) {
 	setLogRing(t, 20)
 	g := newGameWithStart(t)
@@ -843,11 +788,7 @@ func TestLogsOpenDefaultsToErrorLevel(t *testing.T) {
 	}
 }
 
-// TestLogsCloseButtonFiresAfterReopen catches the close-button regression: the
-// button's press-lifecycle (held counter) must reset on RELEASE, or it fires
-// once and goes dead. Close after a reopen must still close.
-// TestLogsPanelTogglesViaLogsButton: the logs panel has no × button; tapping the
-// grid logs button toggles it closed, and that still works after a reopen.
+// The panel has no ×: the grid logs button toggles it closed, also after a reopen.
 func TestLogsPanelTogglesViaLogsButton(t *testing.T) {
 	setLogRing(t, 10)
 	g := newGameWithStart(t)

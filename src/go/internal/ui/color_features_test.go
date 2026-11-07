@@ -51,8 +51,7 @@ func TestColorButtonLayoutAndMenu(t *testing.T) {
 	if len(dv.rowColorBtns()) == 0 {
 		t.Fatalf("missing rowColorBtns")
 	}
-	// On desktop, edit/save/color buttons are hidden (empty rects) — they live
-	// in the overflow menu. Volume slider should have a non-empty rect.
+	// On desktop edit/save/color live in the overflow menu.
 	for _, name := range []string{"edit", "save", "color"} {
 		var r image.Rectangle
 		switch name {
@@ -181,8 +180,7 @@ func TestColorWheelClickSetsColor(t *testing.T) {
 	if !dv.IsColorMenuOpen() {
 		t.Fatalf("menu not open")
 	}
-	// Pick color near right edge of wheel via direct HandleInput.
-	// Hold is automatically cleared by the OnColorWheelOpen callback.
+	// The open callback clears the hold.
 	r := dv.colorWheelComp.InputBounds()
 	if r.Empty() {
 		t.Fatalf("colorWheelComp InputBounds is empty")
@@ -196,12 +194,7 @@ func TestColorWheelClickSetsColor(t *testing.T) {
 	}
 }
 
-// TestEnsureUniqueColorPaletteOnly verifies the core requirement: every
-// row/instrument color assigned by ensureUniqueColor is a member of the
-// curated instrument palette (no brighten/darken adjustments, no
-// pseudo-random generation). Uniqueness holds while the row count stays at
-// or below the palette size; beyond that, reuse is allowed but the color
-// must still be on-palette.
+// Always on the curated palette, with no brighten/darken or random colours; unique while rows ≤ palette size.
 func TestEnsureUniqueColorPaletteOnly(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testDiscard{}, game_log.LevelError)
@@ -217,10 +210,7 @@ func TestEnsureUniqueColorPaletteOnly(t *testing.T) {
 		inPalette[dv.colorKey(c)] = true
 	}
 
-	// Drive N rows, forcing every row to try the SAME base color so
-	// ensureUniqueColor must remap each one onto a distinct palette color.
-	// The uniqueness assertion below is the real check; N need only be large
-	// enough to exercise the remap path.
+	// Every row starts from the same colour, so each must be remapped.
 	const N = 14
 	base := palette[0]
 	for len(dv.Rows) < N {
@@ -239,8 +229,7 @@ func TestEnsureUniqueColorPaletteOnly(t *testing.T) {
 		seen[key]++
 	}
 
-	// Uniqueness must hold while N <= palette size. Re-run with exactly
-	// len(palette) rows and assert all colors are distinct.
+	// Exactly len(palette) rows, all distinct.
 	dv2 := NewDrumView(image.Rect(0, 0, 400, timelineHeight+20*24), graph, logger)
 	for len(dv2.Rows) < len(palette) {
 		dv2.AddRow()

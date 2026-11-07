@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-// TestPinchEndDoesNotCreateNode verifies that an asymmetric two-finger lift
-// (one finger lifts before the other) after a pinch gesture does not create
-// a node. This was a bug where the trailing single finger activated the
-// touch-to-mouse override, causing the editor to see a fresh left-press
-// transition and create a node.
+// The trailing single finger would activate the touch-to-mouse override and read as a fresh press.
 func TestPinchEndDoesNotCreateNode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -48,8 +44,6 @@ func TestPinchEndDoesNotCreateNode(t *testing.T) {
 	}
 }
 
-// TestPinchEndSymmetricDoesNotCreateNode verifies that both fingers lifting
-// on the same frame after a pinch does not create a node.
 func TestPinchEndSymmetricDoesNotCreateNode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -84,8 +78,6 @@ func TestPinchEndSymmetricDoesNotCreateNode(t *testing.T) {
 	}
 }
 
-// TestTwoFingerPanEndDoesNotCreateNode verifies that an asymmetric lift
-// after a two-finger pan gesture does not create a node.
 func TestTwoFingerPanEndDoesNotCreateNode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -122,13 +114,8 @@ func TestTwoFingerPanEndDoesNotCreateNode(t *testing.T) {
 	}
 }
 
-// TestPinchStartStaggeredDoesNotCreateNode verifies that when two fingers
-// land on separate frames (staggered arrival, as happens on real mobile),
-// no node is created. The first finger arrives alone and activates the
-// touch-to-mouse override (left=true), then the second finger arrives on
-// the next frame, deactivating the override (left=false). Without the
-// multi-touch guard in handleEditor(), this transition looks like a
-// mouse-release with pendingClick=true and creates a spurious node.
+// The first finger alone maps to a mouse press; the second arriving next frame drops the override, which reads as a
+// release with a pending click unless handleEditor's multi-touch guard holds.
 func TestPinchStartStaggeredDoesNotCreateNode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -141,12 +128,7 @@ func TestPinchStartStaggeredDoesNotCreateNode(t *testing.T) {
 	defer restore()
 	defer resetTouchOverride()
 
-	// Override the raw Ebiten cursor fallback so that when the touch override
-	// deactivates (2 fingers), cursorPosition() still returns a valid grid
-	// position (y >= gridTopOffset). On real mobile, gridTopOffset()=0 and
-	// Ebiten returns (0,0) which is in the grid area. Without this, the
-	// desktop fallback returns (0,0) from the stub which also happens to be
-	// in the grid — but let's be explicit.
+	// When the override deactivates, cursorPosition() must still land in the grid, as Ebiten's (0,0) does on mobile.
 	oldEbCursor := _ebCursorPosition
 	_ebCursorPosition = func() (int, int) { return 200, 100 }
 	defer func() { _ebCursorPosition = oldEbCursor }()
@@ -156,15 +138,12 @@ func TestPinchStartStaggeredDoesNotCreateNode(t *testing.T) {
 	// Frame N: first finger lands at a grid position.
 	mock.addTouch(1, 200, 100)
 	advanceFrames(g, 1)
-	// The touch override maps this single finger to left=true.
-	// handleEditor() sets pendingClick=true.
+	// The override maps this finger to left=true, and handleEditor sets pendingClick.
 
 	// Frame N+1: second finger arrives (staggered pinch start).
 	mock.addTouch(2, 400, 100)
 	advanceFrames(g, 1)
-	// The override deactivates (ActiveTouchCount=2), so left becomes false.
-	// Without the fix, handleEditor() sees left=false, leftPrev=true,
-	// pendingClick=true, !camDragged → tryAddNode() → BUG!
+	// Two touches drop the override: left becomes false with pendingClick set.
 
 	// Continue the pinch gesture for a few frames.
 	mock.moveTouch(1, 180, 100)
@@ -181,9 +160,6 @@ func TestPinchStartStaggeredDoesNotCreateNode(t *testing.T) {
 	}
 }
 
-// TestMultiTouchCooldownExpires verifies that the multi-touch cooldown
-// activates when a two-finger gesture ends, then clears after the
-// specified number of frames.
 func TestMultiTouchCooldownExpires(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()

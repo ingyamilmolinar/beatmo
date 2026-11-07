@@ -4,8 +4,7 @@ package ui
 
 import "testing"
 
-// fakeBarrelBinding is a minimal barrelBinding over an int counter, so the
-// editor can be exercised with no DrumView at all — proving it is generic.
+// Over an int counter, with no DrumView.
 type fakeBarrelBinding struct {
 	val  int
 	min  int
@@ -43,9 +42,8 @@ func (b *fakeBarrelBinding) canStep(dir int) bool {
 	return b.val > b.min
 }
 
-// TestArmedControlEditorIsPanelAgnostic proves ArmedControlEditor can be built
-// from arbitrary bindings plus an onEdit closure, with no DrumView — the seam
-// the Sampler needs. Keyboard steps must move the bound value and fire onEdit.
+// Built from bindings and an onEdit closure with no DrumView, the seam the Sampler uses; keyboard steps move the value
+// and fire onEdit.
 func TestArmedControlEditorIsPanelAgnostic(t *testing.T) {
 	val := &fakeBarrelBinding{val: 5, min: 0, max: 10, name: "v"}
 	res := &fakeBarrelBinding{val: 2, min: 0, max: 4, name: "r"}
@@ -76,9 +74,7 @@ func TestArmedControlEditorIsPanelAgnostic(t *testing.T) {
 	}
 }
 
-// TestArmedControlEditorNilResBindingHasNoResLane pins that a param with no
-// resolution ladder gets a single (value-only) lane — the synth's
-// discrete-param case, and the shape the sampler inherits.
+// No resolution ladder: a single value lane.
 func TestArmedControlEditorNilResBindingHasNoResLane(t *testing.T) {
 	val := &fakeBarrelBinding{val: 1, min: 0, max: 3, name: "v"}
 	e := newArmedControlEditor("", 0, val, nil, func() {})

@@ -1,19 +1,7 @@
 //go:build test
 
-// Structural guard for the platform input-dynamics boundary.
-//
-// The runaway-browser-wheel bug was not a typo — it was an ARCHITECTURAL gap.
-// The normalization helpers existed in wheel_js.go / wheel_nonjs.go, but
-// nothing stopped a call site from reading the raw wheel instead, and three of
-// them did: DrumViewTree's dispatch (menus scrolled ~100 rows per browser
-// notch), Camera zoom (~50x too fast in a browser), and TimelineZone's vertical
-// axis. Each was individually reasonable and collectively wrong.
-//
-// This test makes the boundary structural rather than a code-review habit:
-// raw platform wheel units may be read ONLY inside the two build-tagged shims,
-// which immediately convert them to detents. Everything else consumes detents.
-//
-// Mirrors the shape of zone_input_isolation_discipline_test.go.
+// Raw platform wheel units may be read ONLY in the two build-tagged shims, which convert them to detents at once;
+// everything else consumes detents. Call sites reading the raw wheel scrolled menus ~100 rows per browser notch.
 
 package ui
 
@@ -26,16 +14,13 @@ import (
 	"testing"
 )
 
-// wheelRawReaders are the only files permitted to call the raw wheel().
-// Both immediately convert to detents via wheelNotchesFromRaw.
 var wheelRawReaders = map[string]string{
 	"input.go":       "declares the wheel func var itself",
 	"wheel_js.go":    "browser half of the platform boundary",
 	"wheel_nonjs.go": "native half of the platform boundary",
 }
 
-// rawWheelCall matches a call to wheel() that is not part of a longer
-// identifier (wheelNotches(), wheelScrollSteps(), ...).
+// Not part of a longer identifier (wheelNotches(), wheelScrollSteps()…).
 var rawWheelCall = regexp.MustCompile(`(^|[^\w.])wheel\(\)`)
 
 func TestNoRawWheelReadsOutsidePlatformShims(t *testing.T) {
@@ -74,9 +59,7 @@ func TestNoRawWheelReadsOutsidePlatformShims(t *testing.T) {
 	}
 }
 
-// TestPlatformShimsAgreeOnTheDetentContract pins that both halves of the
-// boundary expose the same function, so neither can drift out of the contract
-// while the other build keeps compiling.
+// Neither half can drift while the other build keeps compiling.
 func TestPlatformShimsAgreeOnTheDetentContract(t *testing.T) {
 	for _, f := range []string{"wheel_js.go", "wheel_nonjs.go"} {
 		src, err := os.ReadFile(filepath.Clean(f))

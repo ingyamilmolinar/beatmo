@@ -83,12 +83,8 @@ func TestBuildRowWindow_PreservesPastFromPrevWindowWhenNoImmutableCommit(t *test
 	cfg := Config{
 		Offset: 0,
 		Length: 8,
-		// NextIdx is the per-row highlight boundary; ElapsedBeats is the visual
-		// playhead. Cells strictly left of the playhead are immutable past.
-		// ElapsedBeats=4 keeps [0,4) past (preserved from the prev window) and
-		// [4,8) genuine future (mirrors the predictor). A playhead beyond the
-		// window would make the whole window past — see
-		// TestBuildRowWindow_PastAnchoredToPlayheadNotLaggedHighlight.
+		// NextIdx is the highlight boundary, ElapsedBeats the visual playhead: [0,4) is past and [4,8) follows the
+		// predictor. A playhead beyond the window would make all of it past.
 		NextIdx:           4,
 		ElapsedBeats:      4,
 		FreezeLimit:       -1,

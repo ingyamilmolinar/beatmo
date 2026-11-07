@@ -10,24 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Regression: with a circuit playing for a while, SOLOING one instrument and
-// then DELETING a node must only change the FUTURE cells of the DrumView grid.
-// A cell the playhead has passed renders from the immutable played snapshot
-// (what it showed as it played), so no edit — on any row, audible or
-// solo-gated, and whether or not it removes a whole row — may rewrite it.
-//
-// Before the played snapshot existed, the past was only as immutable as the
-// highlight channel made it: a past cell without a Playback commit rendered
-// from the LIVE predictor and the LIVE path, and plenty of cells had none —
-// solo/mute-gated rows emitted no highlight at all, highlights drained a frame
-// late were discarded by applySequencerHighlight's late guard, off cells and
-// gap cells are never highlighted. And deleting a row (deleting its origin
-// node) left every index-keyed history store unshifted, so the row below read
-// its neighbour's past.
-//
-// Driven through real Game.Update frames (syncUIToTime, the in-test scheduler,
-// the hlCh drain and refreshDrumRow all run exactly as in production). Cells
-// are compared by row IDENTITY, so a row that moves index is still checked
+// A played cell renders from the played snapshot, so no edit (on any row, audible or solo-gated, removing a row
+// or not) rewrites it. Real Game.Update frames; rows compared by identity, so a row that moves index is checked
 // against its own past.
 func TestDrumView_PastImmutableAfterSoloThenNodeDelete(t *testing.T) {
 	deletes := []struct {
@@ -65,10 +49,7 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
-	// Each row is a closed loop with a straight run x0-x1-x2-x3: deleting x2
-	// reconnects x1->x3 (the row keeps playing a SHIFTED pattern); deleting
-	// the corner x4 breaks the loop (the row's future empties); deleting the
-	// origin x0 deletes the whole row.
+	// Deleting x2 reconnects x1→x3 (a shifted pattern), the corner x4 breaks the loop, the origin x0 deletes the row.
 	loop := func(i0, j0 int, rect [][2]int) []*uiNode {
 		ns := make([]*uiNode, len(rect))
 		for k, p := range rect {
@@ -103,8 +84,7 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 
-	// The finished circuit is the undo baseline: the node delete below is the
-	// only undoable step.
+	// The node delete is the only undoable step.
 	if g.undoManager != nil {
 		g.undoManager.OnExternalLoad()
 	}
@@ -115,8 +95,6 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 		g.Update()
 	}
 
-	// Run the circuit for a while with everything audible, solo one
-	// instrument, keep playing.
 	abs := 0
 	for ; abs < run/2; abs++ {
 		frame(abs)
@@ -175,10 +153,8 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 	preDelete, preDeletePlayhead := before, playhead
 	g.deleteNode(victim)
 	if undo {
-		// Play on under the EDITED circuit, then undo the delete mid-playback.
-		// Undo restores the document; it must neither wipe history nor
-		// re-derive the cells that played under the edit from the restored
-		// circuit. Re-baseline "before" to include that edited stretch.
+		// Undo restores the document and must neither wipe history nor re-derive the edited stretch from the restored
+		// circuit.
 		for k := 0; k < 16; k++ {
 			frame(abs + k)
 		}
@@ -190,9 +166,7 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 		if g.nodeByID(victim.ID) == nil {
 			t.Fatalf("undo did not restore the deleted node")
 		}
-		// Undo re-seeks to the start of the current beat, so [replayFrom,
-		// playhead) is genuinely played AGAIN with the restored circuit and
-		// re-records like any backward seek. Everything before it must hold.
+		// Undo re-seeks to the beat start, so [replayFrom, playhead) genuinely replays and re-records.
 		replayFrom = g.elapsedBeats
 		if replayFrom < playhead-g.grid.MaxDiv() {
 			t.Fatalf("undo seek target %d rewinds more than a beat before playhead %d", replayFrom, playhead)
@@ -207,14 +181,10 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 		t.Fatalf("rows after delete = %d, want %d", len(g.drum.Rows), wantRows)
 	}
 
-	// Non-vacuity: the edit must disagree with the rendered past somewhere, or
-	// this test could not observe a rewrite. For a node edit that is the
-	// edited row's new path; for a row removal it is the row that slides into
-	// the deleted index, whose past differs from the deleted row's.
+	// The edit must disagree with the rendered past somewhere, or a rewrite would be invisible.
 	disagree := 0
 	if undo && delKind == "origin" {
-		// The undo re-inserts the deleted row, so every row below it moves
-		// index: each must keep its own past, not inherit its neighbour's.
+		// Rows below the re-inserted one move index and keep their own past.
 		for r, row := range g.drum.Rows {
 			if old := rowsBeforeByOrigin(rowsBefore, row.Origin); old != nil && (r >= len(rowsBefore) || rowsBefore[r] != old) {
 				disagree++
@@ -254,9 +224,7 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 	frame(abs + 1)
 
 	after := snapshot()
-	// Undo rebuilds the rows (new *DrumRow values): map them by origin node,
-	// which a restore preserves. A row the undo re-creates (it did not exist
-	// while the edited stretch played) has no "before" to compare.
+	// Mapped by origin node, which a restore preserves; a row the undo re-creates has no "before".
 	for r, row := range g.drum.Rows {
 		old := row
 		if undo {
@@ -268,8 +236,7 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 			if a >= replayFrom {
 				continue
 			}
-			// The invariant behind the render: every played cell is frozen in
-			// the played snapshot exactly as it showed, and that is what renders.
+			// Every played cell is frozen exactly as it showed, and that renders.
 			if pv, pt, ok := g.timelineService().Played(r, a); !ok || pv != want.step || pt != want.typ {
 				t.Errorf("row %d (%s) PAST abs=%d played snapshot=(%v,%v,%v), want the cell as it played %+v",
 					r, row.Instrument, a, pv, pt, ok, want)
@@ -285,8 +252,7 @@ func runPastImmutableSoloDelete(t *testing.T, follow bool, run, soloRow, deleteR
 		}
 	}
 	if undo && delKind == "origin" {
-		// The re-created row gets back exactly the past it played before its
-		// delete.
+		// Exactly the past it played before its delete.
 		deleted := preDeleteRows[deleteRow]
 		r := -1
 		for i, row := range g.drum.Rows {

@@ -6,13 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Fix A contract: a path change during playback must bump parityGen, so the
-// scan's parityGen filter (Fix B) excludes any decision/audio recorded under
-// the old paths. Before this fix updateBeatInfos bumped only audioGen and
-// hand-cleared the buffers with seqMu released — a window in which the
-// background sequencer could record a decision under old paths that the
-// post-SetPaths predictor would then contradict, panicking the app on a live
-// graph edit.
+// A path change while playing must bump parityGen so nothing recorded under the old paths is compared against
+// the new predictor; clearing buffers with seqMu released left a window for exactly that.
 func TestUpdateBeatInfosBumpsParityGenOnLiveEdit(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

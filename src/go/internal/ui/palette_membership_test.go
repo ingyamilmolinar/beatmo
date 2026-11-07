@@ -8,10 +8,8 @@ import (
 	"testing"
 )
 
-// allowedPaletteHex is the COMPLETE set of colors any DESIGN.md `colors:` token
-// may take: the 35 Vice City ramp members, the neon-night neutrals, and the two
-// achromatic anchors (white/black, used only via alpha). Adding a color here is
-// a deliberate palette decision — do NOT widen it to make a rogue token pass.
+// Every colour any token may take. Adding one is a deliberate palette decision; never widen it to pass a rogue
+// token.
 var allowedPaletteHex = map[string]bool{
 	// sunset-gold
 	"FFE98A": true, "FFD319": true, "FFB30A": true, "FF9E1F": true, "F58A12": true,
@@ -60,8 +58,7 @@ func TestPaletteMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(string(raw), "\n")
-	// Only scan the `colors:` block: from the line `colors:` to the next
-	// top-level key (a line starting at column 0 that is not a comment).
+	// From `colors:` to the next top-level key (column 0, not a comment).
 	inColors := false
 	checked := 0
 	for _, ln := range lines {
@@ -90,17 +87,10 @@ func TestPaletteMembership(t *testing.T) {
 	}
 }
 
-// instrumentHexLineRe matches a `color:`/`hex:` value line inside an instrument
-// list block (e.g. `  - color: "#FF7A3D"` or `    hex: "#FFE98A"`).
 var instrumentHexLineRe = regexp.MustCompile(`^\s*(?:- )?(?:color|hex):\s*"#([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?"`)
 
-// TestInstrumentColorBlocksOnPalette closes the hole that TestPaletteMembership
-// alone leaves: the membership lock only scans the `colors:` block, so an
-// off-palette hex slipped into instrumentSwatches:/instrumentDefaults:/
-// instrumentFallbackPalette: would pass every test (the compliance tests
-// validate circuits AGAINST the swatch set, which is circular). This guard
-// asserts every hex declared in those three instrument blocks is itself a
-// legal Vice City palette member — the same allowedPaletteHex set.
+// The membership lock scans only `colors:`, and the compliance tests check circuits AGAINST the swatches, which
+// is circular: an off-palette hex in an instrument block would pass every other test.
 func TestInstrumentColorBlocksOnPalette(t *testing.T) {
 	raw, err := os.ReadFile(designMDPathForPalette(t))
 	if err != nil {
@@ -117,8 +107,6 @@ func TestInstrumentColorBlocksOnPalette(t *testing.T) {
 				continue
 			}
 			if inBlock {
-				// Leave the block at the next top-level key (column-0,
-				// non-comment, non-blank line).
 				if len(ln) > 0 && ln[0] != ' ' && ln[0] != '#' && ln[0] != '\t' {
 					break
 				}

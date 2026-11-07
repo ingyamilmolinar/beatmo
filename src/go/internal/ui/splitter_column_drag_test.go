@@ -11,9 +11,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestColumnDividerDragResizesWidgets verifies that pressing on the column
-// divider pill between the instrument panel (Col 0) and the timeline grid
-// (Col 1) and dragging it actually changes the column widths.
 func TestColumnDividerDragResizesWidgets(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -106,9 +103,6 @@ func TestColumnDividerDragResizesWidgets(t *testing.T) {
 	}
 }
 
-// TestColumnDividerNotVisibleOnMobile verifies that on mobile the layout
-// resize zone returns no hit areas (EnableLayoutResize=false) and dragging
-// at the column divider position has no effect.
 func TestColumnDividerNotVisibleOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -154,8 +148,6 @@ func TestColumnDividerNotVisibleOnMobile(t *testing.T) {
 
 	initialColW := dv.widgets.ColWidth(0)
 
-	// Attempt to drag at the approximate column divider position.
-	// Even if we press in the right spot, it should not resize.
 	approxX := dv.widgets.ColWidth(0) + dv.Bounds.Min.X
 	approxY := dv.Bounds.Min.Y + dv.Bounds.Dy()/2
 	restore = SetInputForTest(

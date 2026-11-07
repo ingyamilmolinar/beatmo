@@ -7,8 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Test that baseline edges remain visible once the connection animation
-// completes (t >= 1) in the default cached path.
+// Visible once the connection animation completes, on the cached path.
 func TestEdgeVisibleWithCache(t *testing.T) {
 	assertDefaultParityState(t)
 

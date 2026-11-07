@@ -5,11 +5,7 @@ import (
 	"testing"
 )
 
-// TestSceneCropEntriesDeclareSubject — every catalog scene whose Name
-// starts with the "crop_" prefix must declare a non-empty Subject. This
-// is the load-bearing invariant for the screenshot-cropping pipeline:
-// without a Subject, the cropped output would silently fall back to a
-// full-screen capture and the prefix would be a lie.
+// Without a Subject the crop silently falls back to a full-screen capture.
 func TestSceneCropEntriesDeclareSubject(t *testing.T) {
 	for _, s := range sceneCatalog {
 		if !strings.HasPrefix(s.Name, "crop_") {
@@ -21,11 +17,6 @@ func TestSceneCropEntriesDeclareSubject(t *testing.T) {
 	}
 }
 
-// TestSceneCropSubjectsResolveToVisibleRect — for every crop_* scene,
-// running its Setup followed by a few Update cycles must leave SubjectRect
-// returning ok=true with a non-empty rect that fits inside the framebuffer.
-// This is the strictly-larger-coverage replacement for visually inspecting
-// each crop output.
 func TestSceneCropSubjectsResolveToVisibleRect(t *testing.T) {
 	for _, s := range sceneCatalog {
 		if !strings.HasPrefix(s.Name, "crop_") {
@@ -41,8 +32,7 @@ func TestSceneCropSubjectsResolveToVisibleRect(t *testing.T) {
 			if err := RunScene(g, s.Name); err != nil {
 				t.Fatalf("RunScene(%q): %v", s.Name, err)
 			}
-			// Drive a handful of Update frames so caches/layout populate
-			// just like the screenshot harness's settle countdown does.
+			// Like the harness's settle countdown.
 			for i := 0; i < 8; i++ {
 				_ = g.Update()
 			}
@@ -58,10 +48,7 @@ func TestSceneCropSubjectsResolveToVisibleRect(t *testing.T) {
 			if rect.Min.X < 0 || rect.Min.Y < 0 || rect.Max.X > 1280 || rect.Max.Y > 720 {
 				t.Errorf("SubjectRect(%q) = %v escapes 1280x720 framebuffer", s.Subject, rect)
 			}
-			// Bound: a cropped subject should be smaller than the full
-			// screen by at least one dimension. If a crop equals the full
-			// screen exactly, the subject is mis-configured and the user
-			// gets nothing for the prefix.
+			// A crop equal to the full screen is mis-configured.
 			if rect.Dx() == 1280 && rect.Dy() == 720 {
 				t.Errorf("SubjectRect(%q) = %v fills the entire framebuffer; choose a tighter subject or remove the crop_ prefix",
 					s.Subject, rect)
@@ -70,13 +57,8 @@ func TestSceneCropSubjectsResolveToVisibleRect(t *testing.T) {
 	}
 }
 
-// TestSynthChipSceneSelectsIntendedStage — the synth chip-strip scenes drive
-// SelectSynthSectionByLabel through synthTabStageSetup, whose forced layouts go
-// through the tree (LayoutZoneNow), NOT a direct eqPanelZone.Layout (that would
-// trip TestZoneLayoutRoutesThroughTreeDiscipline). TestSceneCropSubjectsResolve
-// only checks the Subject *bounds*, so a silently-failed selection (chip strip
-// not built when SelectSynthSectionByLabel ran → default-stage fallback) would
-// pass it. This pins the actual selected stage for each chip scene.
+// The bounds check would pass a silently failed selection (chip strip not built yet → default stage), so the
+// selected stage is pinned. The forced layouts go through the tree, not a direct eqPanelZone.Layout.
 func TestSynthChipSceneSelectsIntendedStage(t *testing.T) {
 	cases := []struct {
 		scene     string
@@ -115,11 +97,7 @@ func TestSynthChipSceneSelectsIntendedStage(t *testing.T) {
 	}
 }
 
-// TestSceneCropScopeVariantsProduceDistinctState — each crop_scope_*
-// scene must move the scope zone into a state visibly different from
-// crop_chain_default. Without this check the scope variants would all
-// render pixel-identically (which we observed during validation: 4 of 5
-// scope crops were byte-identical because the setters silently no-op'd).
+// Setters that silently no-op would make every scope variant render identically.
 func TestSceneCropScopeVariantsProduceDistinctState(t *testing.T) {
 	type expect struct {
 		scene string
@@ -132,9 +110,7 @@ func TestSceneCropScopeVariantsProduceDistinctState(t *testing.T) {
 			}
 		}},
 		{"crop_chain_default", func(t *testing.T, z *ChainPanelZone) {
-			// Auto-gain used to need a scene of its own because it was
-			// opt-in. It is the default now, so the DEFAULT scene is where
-			// it is pinned.
+			// Auto-gain is the default, so the DEFAULT scene pins it.
 			if !z.AutoGain() {
 				t.Errorf("scope.AutoGain()=false in the default Chain scene")
 			}
@@ -176,10 +152,6 @@ func TestSceneCropScopeVariantsProduceDistinctState(t *testing.T) {
 	}
 }
 
-// TestSceneCropMobileSetupOptional — crop_* scenes with a non-nil
-// MobileSetup must still produce a visible Subject when applied via the
-// mobile pass. This enforces that any mobile branch we add later doesn't
-// silently break the cropped capture.
 func TestSceneCropMobileSetupOptional(t *testing.T) {
 	for _, s := range sceneCatalog {
 		if !strings.HasPrefix(s.Name, "crop_") {

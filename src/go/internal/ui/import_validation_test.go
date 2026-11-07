@@ -141,13 +141,8 @@ func intAbs2(x int) int {
 	return x
 }
 
-// TestImportRejectsVersionlessDoc pins the guard against the silent
-// project-wipe: a doc that parses as JSON but carries no "version" (an empty
-// {} or some unrelated app's JSON picked in the file dialog) must be rejected
-// with an error and must NOT touch the current project — import is
-// replace-not-merge, so letting it through replaced everything with an empty
-// project while returning success. Found by
-// src/js/wasm_bridge_error_paths.browser.test.js.
+// Import is replace-not-merge, so a JSON doc with no version (an empty {} or another app's file) must be
+// rejected before it touches the project, or it replaces everything with an empty one.
 func TestImportRejectsVersionlessDoc(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

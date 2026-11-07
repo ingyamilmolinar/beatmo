@@ -10,10 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestPlayPulseGated_NotDrawnWhenStopped verifies the play-pulse halo does
-// NOT render around the play button when playback is stopped. Regression
-// for the screenshot bug where an orange rectangular outline appeared
-// "behind" the play button.
 func TestPlayPulseGated_NotDrawnWhenStopped(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -31,10 +27,7 @@ func TestPlayPulseGated_NotDrawnWhenStopped(t *testing.T) {
 	}
 }
 
-// TestPlayPulseGated_IconMustBePauseToShowGlow verifies the halo is gated
-// on the actual visible icon (Pause) rather than just the isPlaying flag.
-// Defends against state drift: if isPlaying is true but the icon was left
-// as Play, we must NOT draw the orange ring (the screenshot bug class).
+// Gated on the visible icon, not the isPlaying flag, so state drift can't draw the ring around a Play icon.
 func TestPlayPulseGated_IconMustBePauseToShowGlow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -57,11 +50,8 @@ func TestPlayPulseGated_IconMustBePauseToShowGlow(t *testing.T) {
 	}
 }
 
-// TestPlayingIsActiveStateNotHalo verifies a running transport is the play
-// key's ACTIVE state (accent tint + 2 px bottom bar via Button.SetToggled —
-// DESIGN.md "Interaction states") and that NO halo outline is stroked around
-// it. The multi-pass halo stroked square rects outside a rounded key, which
-// read as a square frame around Pause.
+// A running transport is the play key's ACTIVE state (accent tint + bottom bar); a halo of square rects around a
+// rounded key reads as a square frame.
 func TestPlayingIsActiveStateNotHalo(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -91,16 +81,11 @@ func TestPlayingIsActiveStateNotHalo(t *testing.T) {
 	}
 }
 
-// captureGlowOutlinesNear intercepts unfilled drumGlow-coloured drawRect
-// calls whose rectangle contains the play button rect (i.e., halo passes
-// drawn around it).
 func captureGlowOutlinesNear(t *testing.T, btnRect image.Rectangle, fn func()) []drawnRect {
 	t.Helper()
 	var rects []drawnRect
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		// Keep only halo passes that bracket the entire play-button rect
-		// (i.e., r contains btnRect with some outset).
 		if !filled && isDrumGlowColor(c) &&
 			r.Min.X <= btnRect.Min.X && r.Min.Y <= btnRect.Min.Y &&
 			r.Max.X >= btnRect.Max.X && r.Max.Y >= btnRect.Max.Y {
@@ -117,10 +102,8 @@ func captureGlowOutlinesNear(t *testing.T, btnRect image.Rectangle, fn func()) [
 }
 
 func isDrumGlowColor(c color.Color) bool {
-	// drumGlow is published as color.RGBA but threaded through WithAlpha,
-	// which returns color.NRGBA. Convert via NRGBAModel so the raw RGB
-	// channels survive the round-trip (RGBAModel premultiplies and would
-	// distort low-alpha samples).
+	// drumGlow goes through WithAlpha, which returns NRGBA; NRGBAModel keeps the raw channels where RGBAModel would
+	// premultiply them.
 	n := color.NRGBAModel.Convert(c).(color.NRGBA)
 	return n.R == genColorDrumGlow.R && n.G == genColorDrumGlow.G && n.B == genColorDrumGlow.B
 }

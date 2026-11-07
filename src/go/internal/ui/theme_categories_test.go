@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// designMDColorTokenNames parses the `colors:` block of DESIGN.md and returns
-// every token key, in order.
 func designMDColorTokenNames(t *testing.T) []string {
 	t.Helper()
 	body, err := os.ReadFile("../../../../DESIGN.md")
@@ -36,9 +34,6 @@ func designMDColorTokenNames(t *testing.T) []string {
 	return names
 }
 
-// TestThemeCategoryTableComplete: every DESIGN.md color token is in exactly
-// one theme category, or in the fixed set, or is a raw palette entry; every
-// listed token and anchor exists.
 func TestThemeCategoryTableComplete(t *testing.T) {
 	seen := map[string]string{}
 	for _, c := range themeCategories {

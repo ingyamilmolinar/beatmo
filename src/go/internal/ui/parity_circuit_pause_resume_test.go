@@ -6,9 +6,7 @@ import (
 	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// Regression: repeated play/pause/play cycles on a multi-row circuit with logic
-// nodes (the stable test fixture, never the shipped startup demo) must not
-// trigger parity panics.
+// On the stable fixture, never the shipped startup demo.
 func TestCircuitPauseResumeParityStable(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

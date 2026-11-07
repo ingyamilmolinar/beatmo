@@ -6,18 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestSplitterDragKeepsDrumBoundsInSync reproduces the "dark band" lag when the
-// resize pill between the grid pane and the drum panel is dragged quickly.
-//
-// Within a single Update(): the drum's bounds were baked from the previous
-// frame's splitter Y, while the dispatcher moves the splitter Y later in the
-// same frame and the grid pane reads the divider live at draw time. The two
-// panes therefore disagree by one frame's worth of motion — opening an
-// uncovered (dark) band that trails the divider during a fast drag.
-//
-// The invariant: after the dispatcher has moved the splitter, the drum pane's
-// top edge must equal the live splitter position, so the grid and drum meet
-// exactly at the divider with no gap and no overlap.
+// The dispatcher moves the splitter mid-frame while the grid pane reads it live, so drum bounds baked from the
+// previous frame open a dark band behind a fast drag; the drum's top edge must equal the live splitter.
 func TestSplitterDragKeepsDrumBoundsInSync(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -58,8 +48,6 @@ func TestSplitterDragKeepsDrumBoundsInSync(t *testing.T) {
 	if !g.split.dragging {
 		t.Fatalf("expected splitter to be dragging after press on the handle")
 	}
-	// During the fast drag, the drum top must track the live divider — no stale
-	// one-frame lag (which renders as a dark band between the panes).
 	if got, want := g.drum.Bounds.Min.Y, g.split.Y; got != want {
 		t.Fatalf("drum top %d lags live splitter Y %d during drag: %d px dark band",
 			got, want, want-got)

@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Regression: parity scans must ignore audio events from prior audio generations
-// (e.g., stop/replay) so stale audio doesn't trigger highlight/audio panics.
+// Audio from an earlier generation (stop/replay) must not trigger highlight/audio panics.
 func TestParityIgnoresStaleAudioGeneration(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)

@@ -11,22 +11,12 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Both pickers share one interaction rule: SELECTING APPLIES, RE-SELECTING
-// CONFIRMS.
-//
-// A single click (or Enter) applies the value and leaves the picker OPEN, so a
-// user auditioning notes or colours can try several without reopening the
-// panel between each. Activating the value that is ALREADY current is the
-// confirm gesture and closes it.
-//
-// The rule is deliberately positional, not time-based: no double-click timer to
-// tune, and it behaves identically for pointer and keyboard.
+// Both pickers: selecting applies and keeps the picker open for auditioning; activating the value already current
+// confirms and closes. Positional, not a double-click timer, so pointer and keyboard behave identically.
 
 // ─── Note matrix ───────────────────────────────────────────────────────────
 
-// clickMatrixCellForPitch clicks the cell that selects the given pitch,
-// scrolling it into view first so the test exercises the click rather than
-// skipping whenever the row happens to be outside the window.
+// Scrolled into view first, so the click is exercised rather than skipped when the row is outside the window.
 func clickMatrixCellForPitch(t *testing.T, g *Game, pitch float64) bool {
 	t.Helper()
 	m := g.sidebar.noteMatrix
@@ -89,8 +79,6 @@ func TestNoteMatrix_SecondClickOnSameCellCloses(t *testing.T) {
 	}
 }
 
-// Several different notes in a row: each applies, the picker stays open
-// throughout — the actual point of the feature.
 func TestNoteMatrix_AuditionSeveralNotesWithoutReopening(t *testing.T) {
 	g, node := openMatrixForKeys(t)
 
@@ -108,8 +96,7 @@ func TestNoteMatrix_AuditionSeveralNotesWithoutReopening(t *testing.T) {
 	}
 }
 
-// The highlight must follow the newly applied note while the picker stays open,
-// or the user cannot see what they just selected.
+// Otherwise the user cannot see what they just selected.
 func TestNoteMatrix_SelectionHighlightFollowsWhileOpen(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
 
@@ -137,8 +124,6 @@ func TestNoteMatrix_SelectionHighlightFollowsWhileOpen(t *testing.T) {
 	}
 }
 
-// Enter follows the same rule: the first Enter on a different note applies and
-// keeps the picker open; a second Enter confirms.
 func TestNoteMatrix_EnterAppliesThenConfirms(t *testing.T) {
 	g, node := openMatrixForKeys(t)
 
@@ -202,8 +187,6 @@ func swatchColorAt(dv *DrumView, i int) color.RGBA {
 	return SuggestedInstrumentSwatches[i].RGBA
 }
 
-// A first click on a DIFFERENT swatch applies it and leaves the picker open,
-// so several colours can be tried without reopening.
 func TestColorPicker_FirstClickAppliesAndStaysOpen(t *testing.T) {
 	dv := openColorPicker(t)
 
@@ -284,8 +267,7 @@ func TestColorPicker_AuditionSeveralColoursWithoutReopening(t *testing.T) {
 	}
 }
 
-// The selected ring must follow the newly applied colour while the picker
-// stays open — its props were seeded at open time and would otherwise go stale.
+// Its props were seeded at open time and would otherwise go stale.
 func TestColorPicker_SelectedRingFollowsWhileOpen(t *testing.T) {
 	dv := openColorPicker(t)
 
@@ -314,9 +296,7 @@ func TestColorPicker_SelectedRingFollowsWhileOpen(t *testing.T) {
 	}
 }
 
-// Pointer and keyboard must stay coherent: after clicking a cell, the keyboard
-// cursor sits on it, so Enter CONFIRMS that note rather than re-applying
-// whatever the cursor was left pointing at.
+// After a click the cursor sits on the cell, so Enter confirms it rather than re-applying wherever the cursor was.
 func TestNoteMatrix_CursorFollowsAPointerPickSoEnterConfirms(t *testing.T) {
 	g, node := openMatrixForKeys(t)
 

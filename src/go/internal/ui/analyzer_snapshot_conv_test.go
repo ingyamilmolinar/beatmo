@@ -159,10 +159,7 @@ func TestSynthesizeScopeState_StageMapping(t *testing.T) {
 	}
 }
 
-// TestSynthesizeScopeState_AllSixStagesBridged pins the new contract: every
-// scope.Stage has a real source in ScopeStageSnapshots. AntiPop deliberately
-// shares the Synth snapshot (per the WASM AntiPop design decision); the
-// other five stages each have their own dedicated source.
+// Every stage has a real source; AntiPop shares Synth's snapshot by design.
 func TestSynthesizeScopeState_AllSixStagesBridged(t *testing.T) {
 	mkSnap := func(tag string) audio.AnalyzerSnapshot {
 		// Make each snapshot trivially distinguishable by its waveform contents.
@@ -213,13 +210,7 @@ func TestSynthesizeScopeState_InactiveOnEmpty(t *testing.T) {
 	}
 }
 
-// TestSynthesizeScopeState_PerInstrumentSplitActive pins the contract the
-// original Chn-tab bug violated: when the WASM bridge returns a non-empty
-// Synth snapshot AND a non-empty PreEQ snapshot for the same per-instrument
-// id, both TapA (Synth) and TapB (InsertFX) must surface as Active so the
-// renderer draws both traces. The bug was that EnableSynthAnalyzer was
-// never called for per-instrument ids, so Synth came back empty; this test
-// is the floor the WASM bridge has to clear once the analyser is wired.
+// With both snapshots non-empty for one instrument, both taps are Active, so both traces draw.
 func TestSynthesizeScopeState_PerInstrumentSplitActive(t *testing.T) {
 	synth := audio.AnalyzerSnapshot{
 		Peak: 0.6, RMS: 0.42,
@@ -242,9 +233,7 @@ func TestSynthesizeScopeState_PerInstrumentSplitActive(t *testing.T) {
 	if st.TapA.InstID != channel.Of(roster.Kick) || st.TapB.InstID != channel.Of(roster.Kick) {
 		t.Fatalf("InstID lost in synthesise: A=%q B=%q", st.TapA.InstID, st.TapB.InstID)
 	}
-	// Pin the bug-shaped failure mode too: with an empty Synth slot the
-	// renderer drops trace A (active=false) and the Chn legend loses its
-	// "A:" line — exactly the screenshot symptom.
+	// An empty Synth slot drops trace A and the legend's "A:" line.
 	stBroken := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
 		Synth: audio.AnalyzerSnapshot{},
 		PreEQ: preEQ,

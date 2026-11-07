@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstrumentMenuActiveRowTintsToInstrumentColor verifies the currently-
-// selected instrument row's active stripe is rendered in that instrument's own
-// color, so the picker's highlight matches its swatch (colors informational and
-// consistent) instead of the fixed azure accent.
+// The active stripe takes the instrument's own colour so the highlight matches its swatch.
 func TestInstrumentMenuActiveRowTintsToInstrumentColor(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -46,8 +43,7 @@ func TestInstrumentMenuActiveRowTintsToInstrumentColor(t *testing.T) {
 	img := ebiten.NewImage(400, 700)
 	rects := collectFilledRects(t, func() { comp.Draw(img) })
 
-	// The active stripe is a thin, full-row-height bar at a row's left edge.
-	// Require Dy tall enough to exclude the swatch's rounded-corner slivers.
+	// A thin full-row-height bar; the height excludes the swatch's rounded-corner slivers.
 	found := false
 	for _, dr := range rects {
 		if dr.Color == want && dr.Rect.Dx() <= accentStripeW()+1 && dr.Rect.Dy() >= 12 {

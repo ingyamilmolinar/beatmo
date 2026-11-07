@@ -8,18 +8,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The colour picker must OWN the keyboard while it is open, and handle the
-// arrows itself — not let them fall through to the grid's arrow-pan.
-//
-// keyboard_focus.go defines the contract: a surface implements
-// KeyboardClaimant, compPortalOverlay forwards it, and handleGlobalShortcuts
-// yields every gated grid shortcut. Every sibling overlay (subdivision,
-// instrument, navigation, logs, rename) already does this; the colour picker
-// was the one that did not, so one arrow press both moved nothing in the
-// picker AND panned the camera underneath it.
+// While open the picker claims the keyboard and handles the arrows itself, like every sibling overlay, so an arrow
+// never also pans the camera beneath it.
 
-// openColorPickerInGame opens the row-0 colour picker on a real Game so input
-// can be driven through Game.Update.
+// On a real Game, driven through Game.Update.
 func openColorPickerInGame(t *testing.T) *Game {
 	t.Helper()
 	g := newTestGameForUndo(t)
@@ -115,8 +107,7 @@ func TestColorPicker_ArrowKeysMoveTheCursor(t *testing.T) {
 	}
 }
 
-// Enter applies the highlighted swatch and — per the shared picker rule —
-// leaves the picker open; a second Enter on the same swatch confirms.
+// Enter applies and keeps the picker open; a second Enter on the same swatch confirms.
 func TestColorPicker_EnterAppliesThenConfirms(t *testing.T) {
 	g := openColorPickerInGame(t)
 	c := g.drum.colorWheelComp
@@ -147,8 +138,7 @@ func TestColorPicker_EnterAppliesThenConfirms(t *testing.T) {
 	}
 }
 
-// The cursor must start on the swatch already applied, so the first arrow moves
-// relative to the current colour.
+// So the first arrow moves relative to the current colour.
 func TestColorPicker_CursorStartsOnAppliedSwatch(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(1280, 720)

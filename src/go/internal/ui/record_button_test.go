@@ -188,12 +188,7 @@ func TestTransportZoneDesktopLayoutColumnCount(t *testing.T) {
 	}
 }
 
-// TestTransportZoneRecordButtonMobileLayout verifies that the mobile
-// layout exposes the record button. Previously the mobile layout hid
-// the record button entirely (`recordBtn.SetRect({})`), which left
-// recording state invisible on touch devices. The button now sits in
-// the row-0 transport cluster (Play | Stop | Record | BPM | …) so the
-// pulsing red record icon is reachable on mobile.
+// Recording state must be visible on touch devices.
 func TestTransportZoneRecordButtonMobileLayout(t *testing.T) {
 	z, _ := newTestTransportZone()
 	z.layoutMobile(image.Rect(0, 0, 400, 80), 2, MobileTopBarSpec())
@@ -209,16 +204,12 @@ func TestTransportZoneRecordButtonMobileLayout(t *testing.T) {
 	}
 }
 
-// TestDrawRecordIcon verifies drawRecordIcon executes cleanly. Real
-// pixel rendering is exercised by icon_visual_consistency_test.go in
-// the non-test build (the test stub's vector package is no-op).
+// The stub's vector package is a no-op; pixels are checked in the real build.
 func TestDrawRecordIcon(t *testing.T) {
 	img := ebiten.NewImage(32, 32)
 	r := image.Rect(0, 0, 32, 32)
 	col := color.RGBA{200, 50, 50, 255}
 	drawRecordIcon(img, r, col)
-	// Should not panic; pixel-output guarantees live in the
-	// non-test-build visual consistency suite.
 }
 
 // TestDrawRecordIconEmpty verifies no panic on empty rect.

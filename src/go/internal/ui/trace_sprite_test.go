@@ -11,30 +11,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Stub-backend only (mirrors audio_panel_render_pixels_test.go's gate), for
-// two independent reasons — both of which make these assertions meaningless,
-// not merely unavailable, under the real Ebiten backend `make test-real`
-// uses:
-//
-//  1. Pixel reads. The blit assertions call dst.At(), and real Ebiten's
-//     ReadPixels panics outright ("cannot be called before the game starts")
-//     because there is no started game loop / graphics driver to read back
-//     from. Verifying pixels via At() on an offscreen image is a capability
-//     the ebitestub backend deliberately provides (see the SubImage note in
-//     drumview_tree.go's Draw doc) and real Ebiten deliberately does not.
-//     Being a panic rather than a failure, it also aborted the whole
-//     internal/ui binary, masking every test ordered after it.
-//
-//  2. The alloc budget. TestTraceSpriteSteadyStateDoesNotAllocate's "<=1
-//     alloc/op" ceiling is calibrated against the stub's DrawImage; real
-//     Ebiten's allocates 3/op, so the number only means anything here.
-//
-// The cache's logic (render-once-per-key, throttle, invalidate/release,
-// RENDER_SAFE bypass) is backend-independent pure Go, so it loses no real
-// coverage by running against the stub alone.
+// Stub only: real Ebiten's ReadPixels panics with no running game (aborting the whole binary), and the alloc
+// ceiling is calibrated to the stub's DrawImage. The cache logic is backend-independent pure Go.
 
-// countingRender returns a render func that fills its rect with a solid
-// color and counts invocations.
 func countingRender(calls *int, col color.RGBA) func(img *ebiten.Image, r image.Rectangle) {
 	return func(img *ebiten.Image, r image.Rectangle) {
 		*calls++
@@ -82,13 +61,11 @@ func TestTraceSpriteThrottleTrailingEdge(t *testing.T) {
 		s.Draw(dst, rect, i, render)
 		now = now.Add(16 * time.Millisecond)
 	}
-	// At a 33ms cap: renders at t=0 (cold), t=48 (first frame ≥33 after),
-	// then t=96 would be next — expect exactly 2 within the churn window.
+	// With a 33 ms cap: renders at t=0 and t=48 within the churn window.
 	if calls != 2 {
 		t.Fatalf("throttled churn: want 2 renders, got %d", calls)
 	}
-	// Trailing edge: the final key (5) was never rendered during churn; the
-	// first Draw after the interval elapses must render it exactly once.
+	// The trailing edge: the last key, never rendered during churn, renders exactly once after the interval.
 	now = now.Add(40 * time.Millisecond)
 	s.Draw(dst, rect, 5, render)
 	if calls != 3 {
@@ -223,8 +200,7 @@ func TestTraceSpriteSteadyStateDoesNotAllocate(t *testing.T) {
 	avg := testing.AllocsPerRun(200, func() {
 		s.Draw(dst, rect, "k", render)
 	})
-	// The key literal is a constant string (no boxing allocation); the blit
-	// itself must be alloc-free.
+	// A constant key literal does not box; the blit itself must not allocate.
 	if avg > 1 {
 		t.Fatalf("steady-state Draw allocates %.1f allocs/op (want <=1)", avg)
 	}

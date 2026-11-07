@@ -14,11 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §2.7 (user decision): Save and Reset are gone from the
-// Synth and Sampler tabs; Save As is the only save. Its confirm button says
-// what will happen: the name of the instrument being edited saves a new
-// version of it (nothing overwritten), a new name makes a new instrument, and
-// another instrument's name — in any language — is refused.
+// Save As is the only save. Its confirm says what happens: the edited instrument's name saves a new version of it,
+// a new name makes a new instrument, and another instrument's name, in any language, is refused.
 
 func menuLabels(items []actionMenuItem) []string {
 	out := make([]string, len(items))
@@ -186,10 +183,8 @@ func TestSaveAsFailureKeepsLibraryAndNotifies(t *testing.T) {
 	}
 }
 
-// TestSaveOverAnInstanceSavesItsLibraryInstrument: a copy ("kick--2") whose
-// document names no origin saves over the instrument the dialog names and the
-// circuit-open rule resolves — its instance base — never a library entry for
-// the instance id.
+// A copy whose document names no origin saves over its instance base, the instrument the circuit-open rule
+// resolves, never a library entry for the instance id.
 func TestSaveOverAnInstanceSavesItsLibraryInstrument(t *testing.T) {
 	withPrivateInstrumentLibrary(t)
 	copyID, err := instrument.Instance(roster.Kick, 2)

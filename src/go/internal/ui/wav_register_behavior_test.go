@@ -37,11 +37,7 @@ func TestRegisterInstrumentNewDoesNotChangeSelection(t *testing.T) {
 	}
 }
 
-// TestWAVNamedAfterABuiltinIsItsOwnInstrument: a WAV the user names "Snare"
-// becomes a new user-sample instrument labelled "Snare". It never takes the
-// built-in snare's id, so the rows playing the snare keep the synth, and the
-// built-in stays in the menu beside it. (Before, the typed name WAS the id:
-// "Snare" matched "snare" and the WAV replaced the shipped snare.)
+// The name is a label, never the id: the rows playing the built-in keep the synth and both stay in the menu.
 func TestWAVNamedAfterABuiltinIsItsOwnInstrument(t *testing.T) {
 	withDefaultAudio(t)
 	logger := game_log.New(nil, game_log.LevelError)

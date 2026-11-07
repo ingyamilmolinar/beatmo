@@ -8,10 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestWASMInputNotSkippedInFastPath verifies that input polling happens
-// even when fastPath is enabled (the default on WASM). This is a regression
-// test for a bug where fastPath=true caused input to be skipped entirely,
-// breaking all click and drag interactions on WASM builds.
+// fastPath is the WASM default; skipping input under it broke every click and drag.
 func TestWASMInputNotSkippedInFastPath(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -59,8 +56,6 @@ func TestWASMInputNotSkippedInFastPath(t *testing.T) {
 	}
 }
 
-// TestWASMDrumViewUpdateCalledInFastPath ensures that drum.Update() is called
-// even when fastPath is enabled, so drum view buttons process input correctly.
 func TestWASMDrumViewUpdateCalledInFastPath(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -108,9 +103,7 @@ func TestWASMDrumViewUpdateCalledInFastPath(t *testing.T) {
 	}
 }
 
-// TestWASMInputStateNotCorrupted verifies that leftPrev is properly maintained
-// even when fastPath is enabled, preventing the state corruption that caused
-// clicks to never register (because left && !leftPrev was always false).
+// A stale leftPrev makes `left && !leftPrev` always false, so clicks never register.
 func TestWASMInputStateNotCorrupted(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -157,10 +150,7 @@ func TestWASMInputStateNotCorrupted(t *testing.T) {
 	}
 }
 
-// TestWASMCameraPanningWorksInFastPath verifies that camera panning works
-// when fastPath is enabled (the default on WASM). This is a regression test
-// for a bug where fastPath=true caused the camera handling code to be skipped,
-// freezing the grid on WASM builds.
+// fastPath is the WASM default; skipping the camera under it froze the grid.
 func TestWASMCameraPanningWorksInFastPath(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -224,8 +214,6 @@ func TestWASMCameraPanningWorksInFastPath(t *testing.T) {
 	}
 }
 
-// TestAllControlButtonsClickableInFastPath ensures all main control buttons
-// respond to clicks when fastPath is enabled.
 func TestAllControlButtonsClickableInFastPath(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

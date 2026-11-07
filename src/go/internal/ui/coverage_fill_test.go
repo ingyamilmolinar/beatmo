@@ -10,20 +10,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// coverage_fill_test.go closes coverage gaps in helper / accessor files
-// that have no behavior of their own beyond reading or mutating Game/Drum
-// state. The tests favor breadth (many files touched) over depth: each
-// case is a few lines that drive the function's full body so the cover
-// tool sees it.
+// Helper and accessor files with no behaviour of their own: breadth over depth, each body driven once.
 
 // ─── theme_tokens.go — pure color accessors ───────────────────────────────
 
 func TestThemeTokenAccessorsReturnConfiguredColors(t *testing.T) {
 	t.Helper()
 
-	// Every Token* accessor must agree with the underlying col* package
-	// constant. Catch silent renames or rebindings that would let the
-	// design system drift without the drift-test catching it.
+	// Every Token* agrees with its col* constant, so a silent rebinding cannot drift the design system.
 	cases := []struct {
 		name string
 		got  color.RGBA
@@ -57,9 +51,7 @@ func TestThemeTokenAccessorsReturnConfiguredColors(t *testing.T) {
 }
 
 func TestThemeTokenBordersStripOutPremultiply(t *testing.T) {
-	// TokenBorderSubtle/Medium re-pack the underlying colBorder* (NRGBA)
-	// through the color.Color RGBA() interface and back to NRGBA. The
-	// returned NRGBA must round-trip through the same unpack.
+	// The NRGBA round-trips through RGBA().
 	for _, c := range []struct {
 		name string
 		got  color.NRGBA
@@ -96,8 +88,6 @@ func TestWithAlphaVariants(t *testing.T) {
 		t.Errorf("WithAlphaNRGBA: got %#v", gotN)
 	}
 
-	// WithAlphaFromColor accepts any color.Color. Use a generic RGBA
-	// that round-trips through the standard RGBA() method.
 	gotG := WithAlphaFromColor(color.RGBA{R: 100, G: 110, B: 120, A: 255}, 77)
 	if gotG != (color.NRGBA{R: 100, G: 110, B: 120, A: 77}) {
 		t.Errorf("WithAlphaFromColor: got %#v", gotG)
@@ -145,9 +135,7 @@ func TestRuntimeFlagsForwardsToProfile(t *testing.T) {
 
 // ─── event_helpers.go — emit* functions publish to the global hooks bus ──
 
-// awaitEvent subscribes to k, runs do(), and returns the first received
-// event or nil on timeout. Uses a short timeout so a buggy emitter
-// produces a fast, clear failure rather than hanging the suite.
+// nil on a short timeout, so a broken emitter fails fast instead of hanging.
 func awaitEvent(t *testing.T, k hooks.Kind, do func()) hooks.Event {
 	t.Helper()
 	got := make(chan hooks.Event, 1)
@@ -169,8 +157,7 @@ func awaitEvent(t *testing.T, k hooks.Kind, do func()) hooks.Event {
 }
 
 func TestEmitNodeAddedNilSafe(t *testing.T) {
-	// Spec: emitNodeAdded must be a no-op when the node pointer is nil.
-	// Subscribe and verify nothing arrives within a short window.
+	// A no-op for a nil node.
 	got := make(chan hooks.Event, 1)
 	unsub := hooks.Subscribe(hooks.EventNodeAdded, func(e hooks.Event) {
 		select {
@@ -358,8 +345,7 @@ func TestSceneCatalogListersAreSorted(t *testing.T) {
 		}
 	}
 
-	// Mobile-only filter excludes mobile_* scenes; the desktop list
-	// must still contain at least the transport_idle baseline.
+	// The desktop list still has the transport_idle baseline.
 	desktop := SceneNames(false)
 	if len(desktop) == 0 {
 		t.Fatalf("desktop SceneNames is empty")
@@ -449,8 +435,7 @@ func TestSetCameraOffsetsAndScale(t *testing.T) {
 	}
 	_ = prev
 
-	// CenterCamera clears the centered flag so the next layout pass
-	// recenters.
+	// So the next layout recentres.
 	g.centered = true
 	g.CenterCamera()
 	if g.centered {
@@ -488,8 +473,7 @@ func TestOpenSidebarForUnknownNodeIDIsNoOp(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	// Calling with an ID that doesn't exist must not panic and must
-	// leave the sidebar closed.
+	// No panic, sidebar stays closed.
 	g.OpenSidebarForNodeID(999_999)
 }
 
@@ -542,8 +526,7 @@ func TestTransportGettersReflectStateMutation(t *testing.T) {
 	// LastProg has no public setter; just smoke that the getter runs.
 	_ = g.LastProg()
 
-	// JustPaused is part of the state-machine flow; toggle by going
-	// from playing → not-playing via SetPlaying(false).
+	// playing → not playing.
 	g.SetPlayingForTest(true)
 	g.SetPlaying(false)
 	g.ClearJustResumed()
@@ -570,8 +553,7 @@ func TestTouchStateBasics(t *testing.T) {
 		t.Errorf("RecentMultiTouch must be false on fresh state")
 	}
 
-	// Inject points directly so we exercise the lookup paths without
-	// needing real Ebiten input.
+	// Injected directly, with no real Ebiten input.
 	ts.points[1] = &TouchPoint{ID: 1, X: 10, Y: 20, StartTime: time.Now()}
 	ts.points[2] = &TouchPoint{ID: 2, X: 30, Y: 40, StartTime: time.Now().Add(time.Millisecond)}
 

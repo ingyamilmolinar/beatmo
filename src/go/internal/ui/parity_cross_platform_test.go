@@ -24,8 +24,6 @@ type parityRowData struct {
 
 const parityHorizon = 64
 
-// computeParityResult imports a fixture, settles the predictor, and
-// queries VisibleAt/AudibleAt/TriggeredAt for all rows over the horizon.
 func computeParityResult(t *testing.T, fixturePath string) parityResult {
 	t.Helper()
 	data, err := os.ReadFile(fixturePath)
@@ -70,8 +68,6 @@ func computeParityResult(t *testing.T, fixturePath string) parityResult {
 	return result
 }
 
-// writeGoldenFile writes the parity result as a golden JSON file for
-// cross-platform comparison. Creates the testdata directory if needed.
 func writeGoldenFile(t *testing.T, result parityResult, name string) {
 	t.Helper()
 	dir := "testdata"
@@ -111,8 +107,6 @@ func verifyParityResult(t *testing.T, result parityResult) {
 	}
 }
 
-// verifyGoldenMatch reads an existing golden file and compares it to
-// the computed result.
 func verifyGoldenMatch(t *testing.T, result parityResult, goldenPath string) {
 	t.Helper()
 	data, err := os.ReadFile(goldenPath)
@@ -196,8 +190,7 @@ func TestCrossPlatformParity_Probability(t *testing.T) {
 	result := computeParityResult(t, fixturePath("parity_fixture_probability.json"))
 	verifyParityResult(t, result)
 
-	// Probability nodes use deterministic hash — results should be stable
-	// across runs. Verify some beats are visible and some are not.
+	// Probability nodes hash deterministically, so some beats are visible and some not, stably across runs.
 	for _, rd := range result.Data {
 		visCount := 0
 		for _, v := range rd.Visible {

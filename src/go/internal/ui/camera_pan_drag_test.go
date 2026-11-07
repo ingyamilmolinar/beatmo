@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestCameraPanDrag moves the camera by dragging and verifies that node and
-// edge screen positions translate by the same delta across the full Update path.
+// Nodes and edges translate by the same delta through the full Update path.
 func TestCameraPanDrag(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

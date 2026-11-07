@@ -10,9 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// navigateToInstrumentsMode opens the instrument menu on a mobile-sized game and
-// drills into instruments mode (where the search box lives). Returns the live
-// component. Mirrors the navigation in inst_menu_mobile_search_test.go.
 func navigateToInstrumentsMode(t *testing.T, g *Game) *InstrumentMenuComponent {
 	t.Helper()
 	dv := g.drum
@@ -42,19 +39,8 @@ func navigateToInstrumentsMode(t *testing.T, g *Game) *InstrumentMenuComponent {
 	return comp
 }
 
-// TestInstMenuMobileSearchFiltersFromNativeInput reproduces the reported bug:
-// on real mobile, the instrument-menu search bar opens the native keyboard and
-// accepts typed text, but the menu list never filters/highlights because no Go
-// code reads the live native-input value back into the menu's search state.
-//
-// The native <input> value is exposed to Go via mobileInputGetValue("inst-search")
-// (live, non-consuming). The InstrumentMenuComponent.Update() loop only polls the
-// ebiten-keyboard-backed searchBox (desktop path) and never consults the mobile
-// native input, so state.searchText stays empty and the list never rebuilds.
-//
-// This test injects a live native-input value and drives the real Game.Update()
-// loop (which runs the menu's portal updateFn → component Update). It asserts the
-// search query propagated into the menu's filter state.
+// The native <input> value reaches Go only through mobileInputGetValue("inst-search"); the menu must poll it
+// every frame, or the phone keyboard types into a list that never filters.
 func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -75,9 +61,7 @@ func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 		t.Fatal("no instruments available in instruments mode")
 	}
 
-	// Type the full label of a real instrument so the fuzzy filter is guaranteed
-	// to keep at least that one — derived from the fixture so the test does not
-	// depend on a specific instrument catalog.
+	// A real label from the fixture, so the fuzzy filter keeps at least that one whatever the catalogue holds.
 	target := baseline[0]
 	label := comp.state.displayLabelByID[target]
 	if label == "" {
@@ -85,9 +69,7 @@ func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 	}
 	query := strings.ToLower(label)
 
-	// Simulate the user typing into the native keyboard. The JS bridge
-	// (_mobileInputGetValue) returns the live <input>.value; the stub returns the
-	// injected value for the registered id.
+	// The stub returns the injected value for the registered id, as the bridge returns the live <input>.value.
 	feedNativeSearch(t, g, query)
 
 	if comp.state.searchText != query {
@@ -108,8 +90,7 @@ func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 		t.Fatalf("expected fuzzy-search highlights for query %q, got none", query)
 	}
 
-	// Real-time narrowing: a query that matches nothing empties the list as the
-	// user keeps typing (proves the value is re-read every frame, not once).
+	// A query matching nothing empties the list: the value is re-read every frame, not once.
 	feedNativeSearch(t, g, "zzqxjkvw")
 	if n := len(comp.state.filteredInsts); n != 0 {
 		t.Fatalf("expected empty list for non-matching query, got %d: %v",
@@ -124,9 +105,6 @@ func TestInstMenuMobileSearchFiltersFromNativeInput(t *testing.T) {
 	}
 }
 
-// feedNativeSearch injects v as the live native-input value for the
-// instrument-menu search field and drives a few update frames so the component
-// picks it up.
 func feedNativeSearch(t *testing.T, g *Game, v string) {
 	t.Helper()
 	testMobileInputValue["inst-search"] = v

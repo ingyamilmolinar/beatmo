@@ -1,30 +1,7 @@
 //go:build test
 
-// Per-frame cost discipline for the open File/Templates overflow menu.
-//
-// Bug (2026-09-02): opening the File menu's Templates page dropped the frame
-// rate and made input feel laggy while the scrollbar menu was on screen. The
-// cause was not drawing — it was that the menu's ITEM MODEL was rebuilt from
-// scratch on every access:
-//
-//   - overflowItems() ran 12x per frame. On the template page each run built a
-//     32-entry map[string]assets.Template, a ~40-element []overflowItem, 32
-//     onClick closures and 32 strconv.Itoa BPM captions.
-//   - overflowPopupWidth() ran 6x per frame, each re-measuring StyledTextWidth
-//     over ~40 long "Artist - Song" labels (~240 text measurements per frame).
-//
-// Measured cost of one full Game.Update+Draw frame (1280x720, stub backend):
-//
-//	File page (5 items):      ~303 allocs /   9.8 KB per frame
-//	Templates page (40 items): ~1515 allocs / 237.4 KB per frame   <-- 24x the bytes
-//
-// 237 KB/frame is ~14 MB/s of garbage at 60 fps, which is what starved the
-// single-threaded WASM build.
-//
-// The invariant these tests pin: an open menu's per-frame cost must scale with
-// what it DRAWS, not with how many times per frame something asks it for its
-// item list. Rebuilding the model is a function of menu STATE (page, search
-// query, selection, locale), so it must be memoized on that state.
+// An open menu's per-frame cost must scale with what it DRAWS, not with how often something asks for its item
+// list: the item model is a function of menu STATE (page, query, selection, locale) and is memoised on it.
 
 package ui
 
@@ -39,23 +16,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Budgets are calibrated against the post-fix measurement plus headroom; they
-// catch order-of-magnitude regressions, not micro-churn. See the numbers above
-// for the pre-fix baseline these replaced.
+// Calibrated with headroom: they catch order-of-magnitude regressions, not micro-churn.
 const (
-	// A single frame with the Templates page open must not allocate more than
-	// this. Post-fix baseline 285 allocs; cap = baseline x ~1.35.
-	// (Pre-fix: 1515.) RATCHET: lower this if you reduce real allocations;
-	// never raise it to make a regression pass.
+	// A ratchet: lower it when real allocations drop; never raise it to pass a regression.
 	templateMenuFrameAllocBudget = 385
-	// Bytes per frame. Post-fix baseline ~6.6 KB; cap = baseline x ~1.8 to
-	// absorb GC/host variance while still catching the 237 KB regression by 20x.
+	// Headroom absorbs GC and host variance.
 	templateMenuFrameByteBudget = 12 << 10
 )
 
-// openOverflowFrameCost drives real Game.Update + Game.Draw frames with the
-// overflow menu open on the given page and reports the per-frame allocation
-// count and byte churn.
 func openOverflowFrameCost(t *testing.T, page int) (allocs float64, bytesPerFrame uint64) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -69,8 +37,7 @@ func openOverflowFrameCost(t *testing.T, page int) (allocs float64, bytesPerFram
 	}
 
 	scratch := ebiten.NewImage(1280, 720)
-	// Settle: first frames pay one-off layout/portal/button-build costs that
-	// would otherwise skew the steady-state measurement.
+	// The first frames pay one-off layout, portal and button-build costs.
 	for i := 0; i < 30; i++ {
 		_ = g.Update()
 		g.Draw(scratch)
@@ -95,9 +62,6 @@ func openOverflowFrameCost(t *testing.T, page int) (allocs float64, bytesPerFram
 	return allocs, bytesPerFrame
 }
 
-// TestTemplateMenuFrameCost pins the per-frame cost of the open Templates page.
-// It fails when the menu's item model (items, closures, BPM captions, label
-// width measurements) is rebuilt per access instead of memoized on menu state.
 func TestTemplateMenuFrameCost(t *testing.T) {
 	allocs, bytesPerFrame := openOverflowFrameCost(t, 1)
 	t.Logf("templates page: %.0f allocs/frame, %d bytes/frame", allocs, bytesPerFrame)
@@ -117,10 +81,7 @@ func TestTemplateMenuFrameCost(t *testing.T) {
 	}
 }
 
-// TestTemplateMenuCostNearFileMenu pins the RELATIVE invariant: the 40-row
-// Templates page must not cost dramatically more per frame than the 5-row File
-// page. Both draw a clipped popup of the same on-screen size; the only reason
-// Templates could cost 24x more is per-frame model rebuilding.
+// Both draw a clipped popup of the same size; only per-frame model rebuilding could make Templates cost much more.
 func TestTemplateMenuCostNearFileMenu(t *testing.T) {
 	fileAllocs, fileBytes := openOverflowFrameCost(t, 0)
 	tmplAllocs, tmplBytes := openOverflowFrameCost(t, 1)
@@ -141,8 +102,6 @@ func TestTemplateMenuCostNearFileMenu(t *testing.T) {
 	}
 }
 
-// countMenuRowDraws runs fn with drawMenuRow intercepted and reports how many
-// rows were rendered.
 func countMenuRowDraws(t *testing.T, fn func()) int {
 	t.Helper()
 	n := 0
@@ -156,14 +115,8 @@ func countMenuRowDraws(t *testing.T, fn func()) int {
 	return n
 }
 
-// TestTemplateMenuCullsOffscreenRows pins the second half of the frame-cost
-// bug: drawOverflowMenu iterated EVERY item and called drawMenuRow on it, so
-// the 40-row Templates page rendered ~40 rows per frame (each a background,
-// an icon blit and a label sprite blit) into a popup that only shows ~6. The
-// off-screen rows were discarded by the GPU clip — every blit was wasted work,
-// and it showed up as DrawImage dominating the menu's frame time.
-//
-// Per-frame draw work must scale with what is VISIBLE, not with list length.
+// Draw work scales with the VISIBLE rows: rows outside the popup are discarded by the clip, so drawing them is
+// wasted blits.
 func TestTemplateMenuCullsOffscreenRows(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -193,8 +146,7 @@ func TestTemplateMenuCullsOffscreenRows(t *testing.T) {
 
 	drawn := countMenuRowDraws(t, func() { g.Draw(scratch) })
 
-	// +2 for the partially-visible rows at the top and bottom edges of the
-	// viewport, which must still render.
+	// Partially visible rows at both edges still render.
 	budget := visibleRows + 2
 	t.Logf("templates page: %d items, %d visible rows, %d menu rows drawn (budget %d)",
 		len(items), visibleRows, drawn, budget)
@@ -207,10 +159,7 @@ func TestTemplateMenuCullsOffscreenRows(t *testing.T) {
 	}
 }
 
-// TestOverflowItemsCacheInvalidates pins the correctness half of the memo: the
-// cached item model MUST be rebuilt whenever any input in overflowItemsKey
-// changes. A stale cache here would show the wrong page, ignore the search
-// query, mis-mark the active template, or keep stale-locale labels on screen.
+// A stale memo would show the wrong page, ignore the query, mis-mark the active template or keep old-locale labels.
 func TestOverflowItemsCacheInvalidates(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)

@@ -10,11 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// The navigation menu's go-to wheel (docs/superpowers/specs/2026-10-03-value-
-// wheel-and-text-field-design.md §2): scrolling PREVIEWS (a ghost on the
-// timeline, no seek); Go / Enter seek once; Esc / tap-away cancel. Every input
-// here goes through the real Game.Update path (makeHoldTap, the shortcut
-// router) or the component's own hit handler.
+// Scrolling only PREVIEWS (a timeline ghost, no seek); Go / Enter seek once; Esc and a tap away cancel. All input
+// goes through Game.Update or the component's own hit handler.
 
 func newGotoGame(t *testing.T) (*Game, *NavigationMenuComponent, func(x, y, frames int)) {
 	t.Helper()
@@ -246,9 +243,8 @@ func TestClosedNavMenuClaimsNoKeys(t *testing.T) {
 	}
 }
 
-// Review I2: when the nav card crosses the pane divider it is repainted above
-// it — and the jump-size picker stacked ON the card must be repainted after it,
-// or the picker is hidden while still taking taps.
+// A card crossing the pane divider is repainted above it; the picker stacked on it must be repainted after, or
+// it is hidden while still taking taps.
 func TestNavCardRepaintKeepsTheStackedJumpPickerVisible(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -1,16 +1,7 @@
 //go:build test
 
-// Phase 3C — data-structure bound assertions.
-//
-// One sub-test per growable structure on the per-Update / per-Draw path.
-// Each ceiling is derived from the existing module bound (predictor
-// window cap, parity audio max, timeline archive cap, etc.), NOT
-// invented; failure messages cite the bound's source-file constant so a
-// regressor knows exactly where to look.
-//
-// Drives the same TabMeters scaffold the long-session canary uses, but
-// keeps the iteration count modest (5 000 frames) so this test runs in
-// a few seconds for CI. The 1 M-iteration canary lives separately.
+// Every growable structure on the per-frame path stays under its module's own bound (the failure names the
+// constant), over the TabMeters soak scaffold at a CI-sized iteration count.
 
 package ui
 
@@ -24,17 +15,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// boundsCanaryFrames is the per-test iteration budget. Smaller than the
-// 60 000-frame heap canary because here we only need each structure to
-// observe steady-state pruning; we don't need to reproduce the OOM
-// timing.
+// Enough for each structure to reach steady-state pruning.
 const boundsCanaryFrames = 5_000
 
-// runBoundsCanary builds the standard 6-row × 8-node soak scene with
-// the EQ panel set to TabMeters and the metrics-only callback wired
-// the way Phase 2A landed it. Returns a Game that has been driven
-// through boundsCanaryFrames Update+Draw cycles. Callers then snapshot
-// whichever data structure they're asserting against.
+// 6 rows × 8 nodes, TabMeters with the metrics-only callback, driven through the iteration budget.
 func runBoundsCanary(t *testing.T) *Game {
 	t.Helper()
 	withDefaultAudio(t)
@@ -50,8 +34,7 @@ func runBoundsCanary(t *testing.T) *Game {
 	g.drum.SetBPM(240)
 	buildSoakScene(t, g, 6, 8)
 
-	// Wire the same callbacks the production drumview ctor produces;
-	// the metrics-only path is what we're verifying stays bounded.
+	// The production metrics-only path.
 	if g.drum.eqPanelZone == nil {
 		t.Fatal("eqPanelZone nil; harness assumption broken")
 	}
@@ -77,22 +60,12 @@ func runBoundsCanary(t *testing.T) *Game {
 	return g
 }
 
-// TestDataStructureBounds asserts every growable structure stays under
-// its named ceiling after the canary scaffold finishes. The ceilings
-// come from the module's existing constants (parityAudioMax,
-// paritySeqDecisionsPerRowMax, archiveDefaultMaxEntries, etc.) so a
-// regression that loosens the bound also has to update this test
-// in lockstep — the assertion message names the file:constant.
+// Ceilings come from the modules' constants, so loosening a bound means updating this too.
 func TestDataStructureBounds(t *testing.T) {
 	g := runBoundsCanary(t)
 
 	t.Run("timeline_archives_per_row", func(t *testing.T) {
-		// internal/timeline/archive.go: archiveDefaultMaxEntries =
-		// 2_000_000 per row. We can't import the constant from this
-		// package without the cycle — but we can assert the per-row
-		// count stays well under at the canary horizon (5k frames at
-		// BPM 240 / 16 subdiv ≈ 1300 abs steps, all should fit in the
-		// live immutables sidecar before migration kicks in).
+		// archiveDefaultMaxEntries per row; it cannot be imported here without a cycle.
 		const ceiling = 2_000_000
 		for r := 0; r < len(g.drum.Rows); r++ {
 			got := g.timeline.ArchiveLenForTest(r)
@@ -133,10 +106,7 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("audio_channel_capacity", func(t *testing.T) {
-		// audioCh is a buffered channel; cap is fixed at construction
-		// (game_new.go). Test that len never exceeds cap and that cap
-		// stays at the documented size — a regression that bumps cap
-		// without justification is suspicious.
+		// A buffered channel whose cap is fixed at construction; an unexplained bump is suspicious.
 		got := len(g.audioCh)
 		if got > cap(g.audioCh) {
 			t.Errorf("audioCh len=%d > cap=%d — channel overflow impossible "+
@@ -150,9 +120,7 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("audio_scheduler_pending", func(t *testing.T) {
-		// Scheduler heap should not accumulate entries past the
-		// lookahead horizon. At BPM 240, 16 subdiv, 6 rows, lookahead
-		// 0.1s: ≈ (240/60)*16*6*0.1 = 38 entries plus generous slack.
+		// Nothing past the lookahead: at 240 BPM, 16 subdiv, 6 rows, 0.1 s that is ~38 entries plus slack.
 		if g.audioScheduler == nil {
 			t.Skip("audioScheduler not initialised in this build")
 		}
@@ -165,9 +133,7 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("predictor_window_cap", func(t *testing.T) {
-		// internal/ui/runtime_profile.go: PredictorWindowCap = 4096.
-		// Predictor.WindowBoundsForTest exposes the live window length
-		// AND the active cap; both must hold the documented bound.
+		// PredictorWindowCap; both the live length and the cap hold.
 		ws, we, windowCap := g.engine.Predictor.WindowBoundsForTest()
 		length := we - ws
 		const ceiling = 4096
@@ -183,9 +149,7 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("highlighted_beats", func(t *testing.T) {
-		// internal/ui/game_highlight_state.go:114 —
-		// highlightAbsRetentionSlack = 64. Visible window + slack is
-		// the upper bound; clearExpiredHighlights runs every frame.
+		// The visible window + highlightAbsRetentionSlack; cleared every frame.
 		got := len(g.highlightedBeats)
 		bound := g.drum.Length + highlightAbsRetentionSlack + 1
 		if got > bound {
@@ -197,8 +161,7 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("last_triggered_per_row_bounded_by_graph", func(t *testing.T) {
-		// lastTriggeredByRow[row] is keyed by NodeID; bounded by graph
-		// node count (no graph mutation during canary).
+		// Keyed by NodeID, so bounded by the node count.
 		nodeCount := len(g.engine.Graph.Nodes)
 		g.triggerMu.RLock()
 		defer g.triggerMu.RUnlock()
@@ -225,23 +188,11 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("images_by_tag_cache_bounded", func(t *testing.T) {
-		// internal/ui/image_metrics.go:30 — imagesByTag is keyed by a
-		// short stable string passed to newTrackedImage("rowsLayer", …).
-		// Every call site uses a compile-time-constant string, so the
-		// map size is bounded by the number of newTrackedImage call
-		// sites in the source. A regression that passes a dynamic key
-		// (row index, instrument id, …) would blow this bound.
+		// Keyed by compile-time constant tags, so bounded by the call-site count; a dynamic key would blow it.
 		imagesByTagMu.Lock()
 		got := len(imagesByTag)
 		imagesByTagMu.Unlock()
-		// Current call-site inventory: bgCache, edgeCache, gridCache,
-		// gridTile, nodeLayer, rowCache.empty, rowCacheScratch,
-		// rowRackZone.controlsCache, rowsLayer, rowsLayerScratch,
-		// rowSprite, timelineZone.hlSpriteMute,
-		// timelineZone.hlSpriteReg, timelineZone.TlCache,
-		// transport.barCache, transportZone.toolbarCache → 16 tags.
-		// 32 leaves headroom for legitimate new call sites without
-		// hiding a leak.
+		// Headroom over the current call sites without hiding a leak.
 		const ceiling = 32
 		if got > ceiling {
 			t.Errorf("imagesByTag = %d entries (cap %d, "+
@@ -253,11 +204,7 @@ func TestDataStructureBounds(t *testing.T) {
 	})
 
 	t.Run("analyzer_bridge_calls_per_frame", func(t *testing.T) {
-		// In the WASM build, audio.AnalyzerBridgeStats reports the
-		// number of JS↔Go bridge calls. The Meters tab should make 1
-		// call per channel per frame (master + every populated row).
-		// In -tags test the stub returns 0; assertion only meaningful
-		// when calls > 0 (i.e. on the WASM side once Phase 2C lands).
+		// Meters makes one bridge call per channel per frame; the stub reports 0, so this only bites in WASM.
 		calls, reads := audio.AnalyzerBridgeStats()
 		if calls == 0 {
 			t.Logf("AnalyzerBridgeStats: stub build, no bridge activity (expected under -tags test)")
@@ -271,8 +218,7 @@ func TestDataStructureBounds(t *testing.T) {
 				"explosion; check getAnalyzerStateForTab memo wiring",
 				gotPerFrame, maxPerFrame)
 		}
-		// elementReads / calls: scalar path = 0 reads, full path = N reads.
-		// Phase 2C target: ≤ 8 reads/call (bulk transfer).
+		// The scalar path reads 0; a bulk transfer stays under this.
 		const maxReadsPerCall = 8
 		if calls > 0 {
 			ratio := float64(reads) / float64(calls)

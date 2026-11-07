@@ -6,10 +6,7 @@ import (
 	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// Regression: starting/stopping/restarting a multi-row circuit with logic nodes
-// (the stable test fixture, never the shipped startup demo) repeatedly must not
-// trigger parity panics. This mirrors the manual repro flow first reported on
-// the bundled demo.
+// On the stable fixture, never the shipped startup demo.
 func TestCircuitReplayParityStable(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

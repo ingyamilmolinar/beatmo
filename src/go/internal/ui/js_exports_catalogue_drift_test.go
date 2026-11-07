@@ -2,24 +2,8 @@
 
 package ui
 
-// Drift guard for the WASM bridge export catalogue.
-//
-// src/js/wasm_bridge_smoke.browser.test.js is the canonical catalogue of the
-// JS bridge surface (see CLAUDE.md § JS Test Charter): every Go-registered
-// export must have an entry there. The smoke test itself can only check
-// catalogue→globalThis (its "ghost" pass) — it cannot enumerate what Go
-// registers. This test closes the other direction at Go-source level: it
-// scans every js.Global().Set("name", ...) registration in this package and
-// fails when a name has no catalogue entry, so a new export cannot ship
-// untracked.
-//
-// Reverse direction: every catalogue entry must either be a Go registration
-// or appear in jsNativeCatalogueEntries (functions defined in src/js/audio.js
-// rather than Go) — so deleting a Go export with a stale catalogue entry also
-// fails here.
-//
-// Intentionally-private debug exports use a double-underscore prefix
-// (__synthEvtTrace, __wasmReady, ...) and are exempt: they are internal
+// The smoke test can only check catalogue → globalThis; this closes the other direction from the Go source,
+// so no export ships untracked and no stale entry outlives its export. Double-underscore names are private
 // diagnostics, not bridge surface.
 
 import (
@@ -31,9 +15,7 @@ import (
 	"testing"
 )
 
-// jsNativeCatalogueEntries are catalogue names implemented directly in
-// src/js/audio.js (the sampler tab's JS-side surface), not registered from
-// Go. Adding a name here requires the function to exist in audio.js.
+// Each must exist in audio.js.
 var jsNativeCatalogueEntries = map[string]bool{
 	"captureInstrumentPCM": true,
 	// The Synth-tab graph render (audio.RenderDocForGraph's browser half).
@@ -43,45 +25,31 @@ var jsNativeCatalogueEntries = map[string]bool{
 	"idbGetAllSamples":  true,
 	"idbPutSample":      true,
 	"registerSamplePCM": true,
-	// Parity timing-sync: WebAudio emission-timing ring lives in audio.js
-	// (window.getTimingTraces / window.resetTimingTraces), pulled by the
-	// //go:build js Stage-D drain — no Go-side js.Global().Set registration.
+	// Read by the js-only Stage-D drain with no Go registration.
 	"getTimingTraces":   true,
 	"resetTimingTraces": true,
-	// Playback probe + insert-effect host diagnostics: audio.js-only (no Go
-	// registration); consumed by the browser benches.
+	// Used by the browser benches only.
 	"startAudioProbe":   true,
 	"stopAudioProbe":    true,
 	"audioProbeRaw":     true,
 	"audioProbeReport":  true,
 	"insertEffectHosts": true,
-	// WebAudio graph churn counters + the in-place insert-FX param edit and
-	// the DSP-state reset Go calls from internal/audio/insert_effects_wasm.go
-	// (out of this scan).
+	// Called from package audio, outside this scan.
 	"audioGraphStats":    true,
 	"retuneInsertEffect": true,
 	"resetDSPState":      true,
-	// Audio lane: audio.js functions called from internal/audio/lane_wasm.go
-	// (a different package, out of this file's scan).
+	// Called from package audio, outside this scan.
 	"cancelLaneVoices":      true,
 	"stopLaneAt":            true,
 	"cancelAllLaneFuture":   true,
 	"laneVoiceStateForTest": true,
-	// Playback-readiness warm-up gate bridge: these three live in audio.js and
-	// are read via js.Global().Get from internal/audio/voice_prewarm_js.go
-	// (a different package, out of this file's scan), not js.Global().Set
-	// from internal/ui.
+	// Read through js.Global().Get from package audio, outside this scan.
 	"warmInstrumentBatch":   true,
 	"voiceCachedFor":        true,
 	"isMelodicInstrumentJS": true,
-	// flushPendingChannelOps: forces the AudioContext + drains
-	// pendingChannelOps. Read via js.Global().Get from
-	// internal/audio/audio_graph_ready_js.go (EnsureAudioGraphReady), a
-	// different package, out of this file's scan.
+	// Read through js.Global().Get from package audio, outside this scan.
 	"flushPendingChannelOps": true,
-	// Instrument documents: audio.js receives each instrument's flattened
-	// param block from internal/audio/instrument_docs_wasm.go (a different
-	// package, out of this file's scan).
+	// Called from package audio, outside this scan.
 	"setInstrumentBlock":   true,
 	"clearInstrumentBlock": true,
 }
@@ -113,8 +81,7 @@ func TestJSExportCatalogueDrift(t *testing.T) {
 	smokePath := filepath.Join("..", "..", "..", "src", "js", "wasm_bridge_smoke.browser.test.js")
 	smokeRaw, err := os.ReadFile(smokePath)
 	if err != nil {
-		// Fall back to the repo-root-relative layout used when the package
-		// path resolves differently (defensive; both layouts exist in CI).
+		// Both layouts exist in CI.
 		smokePath = filepath.Join("..", "..", "..", "js", "wasm_bridge_smoke.browser.test.js")
 		smokeRaw, err = os.ReadFile(smokePath)
 	}

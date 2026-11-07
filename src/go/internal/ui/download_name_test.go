@@ -16,10 +16,8 @@ import (
 // stampedNameRe matches "<slug>-YYYY-MM-DD_HHMMSS<ext>".
 var stampedNameRe = regexp.MustCompile(`^[a-z0-9-]+-\d{4}-\d{2}-\d{2}_\d{6}\.[a-z.-]+$`)
 
-// browserUniquifiers are the suffixes a download manager invents when the page
-// asks for a name that already exists in the Downloads folder. Chrome writes
-// " (1)", Firefox "(1)", Safari " 2" — the page cannot pin which one it gets,
-// so a name that can collide is a name that renders differently per browser.
+// Chrome, Firefox and Safari each invent a different suffix for a taken name, so a name that can collide renders
+// differently per browser.
 var browserUniquifiers = []string{" (1)", "(1)", " 2"}
 
 func assertCollisionFreeName(t *testing.T, got string) {
@@ -50,9 +48,7 @@ func TestStampedFileNameIsUniquePerSecond(t *testing.T) {
 	}
 }
 
-// TestExportDownloadNameNeverCollides drives the real Export path twice and
-// asserts each save asks for its own filename, so the browser's collision
-// resolver never runs and Chrome/Firefox/Safari all land the same name.
+// Each save asks for its own name, so no browser's collision resolver ever runs.
 func TestExportDownloadNameNeverCollides(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -95,11 +91,8 @@ func TestExportDownloadNameNeverCollides(t *testing.T) {
 	}
 }
 
-// TestEveryDownloadNameIsStamped is the discipline guard: a future export site
-// that hands saveJSON a literal name reintroduces the collision, and the bug is
-// invisible in tests because it only shows up on the *second* save, in the
-// user's real Downloads folder, spelled differently per browser. Every call
-// must route its name through a stamping helper.
+// Every saveJSON name goes through a stamper: a literal collides only on the second save, in the user's real
+// Downloads folder.
 func TestEveryDownloadNameIsStamped(t *testing.T) {
 	stampers := map[string]bool{
 		"stampedFileName":    true,
@@ -137,9 +130,7 @@ func TestEveryDownloadNameIsStamped(t *testing.T) {
 					return true
 				}
 			case *ast.Ident:
-				// A local variable: require it to be assigned from a stamper in
-				// the same file (cheap textual check, kept honest by the two
-				// behavioural tests above).
+				// A local must be assigned from a stamper in the same file; a cheap textual check the behavioural tests keep honest.
 				src, err := os.ReadFile(n)
 				if err == nil && strings.Contains(string(src), arg.Name+" := stampedFileName(") {
 					return true

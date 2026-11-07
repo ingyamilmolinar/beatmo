@@ -7,14 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: after a play → stop → play cycle, the second playback must
-// rebuild the drum row slate just like the first — the timeline must not
-// stay all-grey, and highlights must keep following the playhead.
-//
-// Reported manually as: "after running the circuit for a while, and then
-// clicking stop, the timeline shows all grey and with no highlight following
-// the current drum view alongside the timeline (as it was working during the
-// first playback)."
+// The second playback rebuilds the slate like the first: the timeline must not stay grey and highlights keep
+// following the playhead.
 func TestStopReplayKeepsSlateAndHighlights(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -45,8 +39,6 @@ func TestStopReplayKeepsSlateAndHighlights(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Track highlight callback invocations so we can assert the highlight
-	// cursor advances during each play burst.
 	type hlEvent struct{ row, idx int }
 	var firstHL, secondHL []hlEvent
 	captureHL := func(target *[]hlEvent) {
@@ -82,9 +74,7 @@ func TestStopReplayKeepsSlateAndHighlights(t *testing.T) {
 	if g.Playing() || g.Paused() {
 		t.Fatalf("expected stopped after stop")
 	}
-	// After Stop: while not playing, refreshDrumRow may be skipped (only fires on
-	// dirty/playing). Force a refresh so the slate reflects the post-stop state
-	// the user is staring at — it MUST show the predictor's pattern, not all-grey.
+	// Stopped, refreshDrumRow may be skipped; the forced refresh must show the predictor's pattern, not all grey.
 	g.refreshDrumRow()
 	postStopActive := countActiveSteps(g, 0)
 	if postStopActive == 0 {
@@ -115,8 +105,7 @@ func TestStopReplayKeepsSlateAndHighlights(t *testing.T) {
 		t.Fatalf("second playback: highlight cursor stopped following the playhead "+
 			"(no highlightHook callbacks). first had %d events", len(firstHL))
 	}
-	// The two playbacks should produce roughly the same amount of active
-	// cells; allow some tolerance for window/offset drift.
+	// Window/offset drift allows some tolerance.
 	if secondActive < firstActive/2 {
 		t.Fatalf("second playback active cells %d much lower than first %d "+
 			"(expected ~equal; this means the predictor/timeline didn't recover "+
@@ -137,17 +126,9 @@ func countActiveSteps(g *Game, row int) int {
 	return n
 }
 
-// TestStopReplayAfterPathEditsKeepsSlate covers the most likely path the user
-// hit: they played the circuit "for a while", *edited it during playback*
-// (which sets pathChangeBeatByRow[row] = elapsedBeats — a high abs index),
-// then pressed Stop and Play again. Without resetting pathChangeBeatByRow,
-// the safety-net loop in refreshDrumRow (game_refresh_drum_row.go ≈ 207-228)
-// would skip writing released commits for any abs < pathChangeBeat, which
-// after stop+replay translates to "every freshly-played cell is below the
-// stale path-change watermark, so no released commit is ever written."
-// On its own that's bookkeeping, but combined with stale lastTriggeredByRow
-// it can drop the highlight-fallback path in highlightVisual and leave the
-// timeline empty.
+// An edit while playing sets pathChangeBeatByRow high; if Stop keeps it, every replayed cell sits below the stale
+// watermark, so the safety-net loop writes no released commit and the highlight fallback can leave the timeline
+// empty.
 func TestStopReplayAfterPathEditsKeepsSlate(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -176,8 +157,6 @@ func TestStopReplayAfterPathEditsKeepsSlate(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Play for a while, then mutate the circuit mid-playback so the
-	// pathChangeBeatByRow watermark gets set to a non-zero value.
 	pressPlay(t, g.drum)
 	if err := g.Update(); err != nil {
 		t.Fatalf("update during play: %v", err)
@@ -219,10 +198,7 @@ func TestStopReplayAfterPathEditsKeepsSlate(t *testing.T) {
 	if g.Playing() || g.Paused() {
 		t.Fatalf("expected stopped after stop")
 	}
-	// pathChangeBeatByRow MUST be reset on Stop. If it persists at the high
-	// elapsedBeats value from mid-play, the safety-net commit loop will skip
-	// every freshly-played cell on replay (because j < stalePathChangeBeat
-	// for low j), corrupting timeline reconciliation.
+	// Kept, the stale watermark would skip every freshly played cell on replay.
 	if len(g.pathChangeBeatByRow) > 0 && g.pathChangeBeatByRow[0] > 0 {
 		t.Fatalf("Stop did not reset pathChangeBeatByRow; row 0 still at %d "+
 			"(was %d before stop). This stale watermark will mask released "+
@@ -253,13 +229,7 @@ func TestStopReplayAfterPathEditsKeepsSlate(t *testing.T) {
 	}
 }
 
-// TestPauseStopReplayKeepsSlateAndHighlights covers a sibling regression: the
-// user pauses, then stops, then replays. The pause→stop transition is the path
-// covered by stop_from_paused_clears_visuals_test.go; this adds the replay leg
-// to ensure the second playback recovers the slate and highlights the same way
-// as the first. The internal state on entry to second-Play differs from a
-// pure play→stop→play cycle (state.justPaused was set, etc.), so this guards
-// the alternate path.
+// Entering the second Play from pause → stop leaves different internal state (justPaused…) than a plain stop.
 func TestPauseStopReplayKeepsSlateAndHighlights(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

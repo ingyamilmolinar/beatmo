@@ -10,12 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestImportResetsAudioChannelToMaster reproduces the reported bug: when an
-// instrument channel is selected in an audio-panel tab (e.g. Wave) and the user
-// loads a different circuit, the channel selector must snap back to "Master".
-// Before the fix, Import only re-synced the EQ when the active channel already
-// was "main", so a per-instrument selection survived the document swap and the
-// panel kept showing a channel from the previous (now gone) circuit.
+// A per-instrument channel selected in an audio tab must not survive the document swap: it names a channel of
+// a circuit that is gone.
 func TestImportResetsAudioChannelToMaster(t *testing.T) {
 	assertDefaultParityState(t)
 

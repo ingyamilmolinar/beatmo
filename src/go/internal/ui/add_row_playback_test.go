@@ -8,15 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestAddRowDuringPlayback_SchedulingContinues verifies that adding a drum row
-// while playing does not halt audio scheduling for existing rows. Regression
-// test for two bugs:
-//   - game_update.go did not set needsBeatInfos on row addition, leaving the
-//     path snapshot stale (wrong row count), causing the sequencer gate to
-//     return early every tick.
-//   - game_graph_update_beat_infos.go reallocated pathSigByRow without copying
-//     old entries, making every existing row appear path-changed and triggering
-//     audio.Stop() for all instruments.
+// Adding a row mid-play keeps every existing row scheduling: the path snapshot follows the row count, and existing
+// rows are not mistaken for changed paths (which stops their instruments).
 func TestAddRowDuringPlayback_SchedulingContinues(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -87,17 +80,12 @@ func TestAddRowDuringPlayback_SchedulingContinues(t *testing.T) {
 			g.seqNextIdxs[0], preAddIdx)
 	}
 
-	// Verify that existing row 0's path was NOT marked as changed during the
-	// add-row updateBeatInfos. If pathSigByRow were naively reallocated without
-	// copying, row 0 would appear changed and audio.Stop would fire for it.
+	// Row 0's path is not marked changed, so audio.Stop never fires for it.
 	if len(g.rowsPathChanged) > 0 && g.rowsPathChanged[0] {
 		t.Fatalf("row 0 incorrectly marked as path-changed after adding row")
 	}
 }
 
-// TestAddRowDuringPlayback_NoStopExistingInstrument verifies that adding a row
-// does not call audio.Stop for an existing row's instrument via false path
-// change detection.
 func TestAddRowDuringPlayback_NoStopExistingInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)

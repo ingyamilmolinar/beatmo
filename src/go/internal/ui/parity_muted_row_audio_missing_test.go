@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: muting (or solo-gating) a row in the instrument panel suppresses
-// audio scheduling, so parityScan must not report an audio_missing mismatch for
-// beats that were intentionally silenced.
+// Mute and solo suppress scheduling, so silenced beats are not missing audio.
 func TestParityScanSkipsAudioMissingWhenRowMuted(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -36,12 +34,10 @@ func TestParityScanSkipsAudioMissingWhenRowMuted(t *testing.T) {
 	setRowMuted(t, g.drum, 0, true)
 	g.SetPlaying(true)
 
-	// Drive the sequencer to abs=0. With the row muted it should not enqueue
-	// audio, but it still records a seq decision for parity checks.
+	// Muted: no audio, but a seq decision still recorded.
 	scheduleAbsForMuteTest(g, 0)
 
-	// Force the seq decision beyond the grace window so parityScan would flag
-	// audio_missing if it didn't account for mute/solo gating.
+	// Past the grace window, so only the mute/solo gating can keep it from flagging.
 	g.parityMu.Lock()
 	if m, ok := g.paritySeqDecisions[0]; ok {
 		if dec, ok2 := m[0]; ok2 {

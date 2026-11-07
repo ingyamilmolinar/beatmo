@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// knobModel is the WheelModel adapter that keeps the Sampler / EQ wheels on
-// their existing Knob + KnobStepBadge semantics. These tests pin the contract
-// the ValueWheel view relies on; the byte-exact behaviour is pinned separately
-// by TestWheelCharacterizationTape.
+// The contract the ValueWheel view relies on; byte-exact behaviour is pinned by the characterisation tape.
 
 func TestKnobModelSelectRowLandsOnTheLabelItShows(t *testing.T) {
 	def := audio.ParamDef{Name: "eq_band_gain", Min: -12, Max: 12, Unit: "dB"}

@@ -11,21 +11,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// TestLongSessionHeapBoundedAtOneMillionAbs is the end-to-end canary for
-// the OOM-prevention plan. It drives synthetic playback to abs = 1 000 000
-// (~5× the production OOM horizon at 7h) and asserts both heap ceilings
-// AND historical-replay correctness:
-//
-//  1. HeapAlloc stays under 200 MB after a 1 M-abs run.
-//  2. TotalAlloc delta stays under 600 MB (catches GC-reclaimable churn).
-//  3. Pre-seeded playback commits at five abs anchors (1, 1024, 8192,
-//     65 536, 500 000) — all evicted from the live timeline immutables
-//     sidecar by the time abs reaches 1 M — still resolve via the
-//     Phase 3 cold archive.
-//
-// The canary is the single end-to-end check that Phases 1-5 collectively
-// prevent the user's 7 h OOM. -short skips it on fast paths; nightly runs
-// without -short.
+// Drives playback to abs 1 000 000, far past the horizon where a long session ran out of memory: the heap
+// and allocation stay bounded, and commits evicted from the live tier still resolve from the cold archive.
+// -short skips it.
 func TestLongSessionHeapBoundedAtOneMillionAbs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("long canary skipped under -short; run via nightly")
@@ -45,9 +33,7 @@ func TestLongSessionHeapBoundedAtOneMillionAbs(t *testing.T) {
 	g.SetPlaying(true)
 	advanceFrames(g, 5)
 
-	// Pre-seed playback commits at sample anchors via the timeline service
-	// so scroll-back assertions don't depend on whether the synthetic
-	// playback path actually fires nodes at those abs.
+	// Seeded directly, so the scroll-back checks don't depend on whether playback fires a node at those abs.
 	sampleAnchors := []int{1, 1024, 8192, 65_536, 500_000}
 	const windowLen = 64
 	for _, anchor := range sampleAnchors {
@@ -64,10 +50,7 @@ func TestLongSessionHeapBoundedAtOneMillionAbs(t *testing.T) {
 
 	for i := 1; i <= N; i++ {
 		setPlayStartForAbs(g, i)
-		// Drive predictor.Ensure(i+1) directly so the windowing path is
-		// exercised on every step — Update is heavier and only needs to run
-		// periodically to catch integration regressions in refresh +
-		// reconcileFrozen + highlight retention.
+		// Ensure every step exercises the windowing; the heavier Update runs only periodically for integration.
 		g.engine.Predictor.Ensure(i + 1)
 		if i%4096 == 0 {
 			_ = g.Update()
@@ -78,10 +61,8 @@ func TestLongSessionHeapBoundedAtOneMillionAbs(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&post)
 
-	// Delta, not absolute: this test runs in a shared test binary where
-	// prior tests (TestSoakHeapBounded_*, TestParityDecisionsBounded*) can
-	// leave 300+ MB of unreclaimable residue. The contract is "this loop
-	// doesn't accumulate state," which delta captures and absolute does not.
+	// A delta, not an absolute: earlier tests in the shared binary leave unreclaimable residue, and the contract is
+	// that this loop accumulates nothing.
 	const heapAllocCap = 200 << 20
 	if delta := post.HeapAlloc - pre.HeapAlloc; delta > heapAllocCap {
 		t.Fatalf("HeapAlloc delta=%d MB after 1M abs (cap %d MB) — runtime state is leaking",
@@ -93,11 +74,8 @@ func TestLongSessionHeapBoundedAtOneMillionAbs(t *testing.T) {
 			delta>>20, totalAllocDeltaCap>>20)
 	}
 
-	// Historical replay — every pre-seeded anchor must still resolve. By the
-	// time abs reaches 1M, all five anchors are below (latestAbs −
-	// immutablesPerRowMax = 1024) and have been migrated from the live
-	// sidecar into the cold archive (Phase 3). If any miss, the archive
-	// migration or read-tier integration is broken.
+	// By abs 1M every anchor is far below the live tier and has moved into the cold archive; a miss means the
+	// migration or the read tier is broken.
 	for _, anchor := range sampleAnchors {
 		_, _, kind, ok := g.timelineCommittedWithKind(0, anchor)
 		if !ok {

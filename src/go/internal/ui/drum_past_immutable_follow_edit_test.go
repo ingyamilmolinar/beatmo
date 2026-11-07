@@ -8,21 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: editing the circuit during playback must not mutate any
-// already-rendered PAST cell of the DrumView grid, even when the row's
-// highlight/scheduler index lags the visual playhead.
-//
-// In production that lag is normal: highlights are delivered asynchronously
-// over hlCh and the stale-info guard in applySequencerHighlight drops every
-// in-flight highlight the instant an edit changes the row's beat path (which
-// also rewinds seqNextIdxs down to the lagged nextBeatIdxs). The immutable-past
-// boundary must be the VISUAL PLAYHEAD (elapsedBeats), not that lagged index —
-// otherwise the cells in [next, playhead] follow the edited predictor and the
-// already-played past visibly changes under the user.
-//
-// This test reproduces that lagged state directly (mirroring the state
-// construction in import_readd_playback_test.go) and drives the real
-// refreshDrumRow, asserting the rendered past Steps/CellTypes stay frozen.
+// Highlights arrive asynchronously and an edit drops the in-flight ones, so the row's index lags the playhead; the
+// immutable boundary is the VISUAL playhead, or cells in [lagged, playhead] follow the edited predictor.
 func TestDrumView_PastImmutableWhenHighlightLagsPlayheadDuringEdit(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -79,10 +66,7 @@ func TestDrumView_PastImmutableWhenHighlightLagsPlayheadDuringEdit(t *testing.T)
 		t.Fatalf("expected a block of visible past cells, got %d (off=%d playhead=%d)", len(pastSteps), off, playhead)
 	}
 
-	// Force the post-edit lag state: the row's highlight + scheduler indices
-	// trail the playhead (as they do after a circuit edit drops in-flight
-	// highlights and rewinds seqNextIdxs), while elapsedBeats stays at the
-	// playhead. The cells in [lagged, playhead] are the vulnerable gap.
+	// The post-edit lag: indices behind the playhead, elapsedBeats at it.
 	const lagged = 6
 	if len(g.nextBeatIdxs) <= row || len(g.seqNextIdxs) <= row {
 		t.Fatalf("missing per-row indices")
@@ -90,8 +74,7 @@ func TestDrumView_PastImmutableWhenHighlightLagsPlayheadDuringEdit(t *testing.T)
 	g.nextBeatIdxs[row] = lagged
 	g.seqNextIdxs[row] = lagged
 
-	// Edit the circuit: detour b->c through a new node so the predictor for the
-	// (real) future changes. Past must not follow it.
+	// A detour through a new node changes the real future; the past must not follow.
 	n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.deleteEdge(b, c)
 	g.addEdge(b, n1)

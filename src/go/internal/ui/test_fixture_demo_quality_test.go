@@ -8,8 +8,6 @@ import (
 	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// Ensure the embedded test fixture demo attaches known instruments and avoids
-// overlapping regular-node coordinates across different circuits (rows).
 func TestTestFixtureDemoQuality(t *testing.T) {
 	assertDefaultParityState(t)
 	data := assets_pkg.TestFixtureDemoJSON
@@ -35,9 +33,7 @@ func TestTestFixtureDemoQuality(t *testing.T) {
 		}
 	}
 
-	// Build per-row sets of regular-node coordinates from beat paths and
-	// assert rows don't share regular-node coordinates (avoid overlapping
-	// circuits in the demo for clearer UX).
+	// Rows sharing regular-node coordinates would overlap circuits on screen.
 	type coord struct{ I, J int }
 	coordsByRow := make([]map[coord]bool, len(g.drum.Rows))
 	for i := range g.drum.Rows {
@@ -60,8 +56,6 @@ func TestTestFixtureDemoQuality(t *testing.T) {
 	}
 }
 
-// Ensure the test fixture demo includes at least one node using built-in logic to
-// showcase features like probability or every-n.
 func TestTestFixtureDemoIncludesLogicNodes(t *testing.T) {
 	assertDefaultParityState(t)
 	data := assets_pkg.TestFixtureDemoJSON

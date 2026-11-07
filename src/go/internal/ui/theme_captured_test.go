@@ -11,9 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// A theme applied AFTER widgets were built (the normal case: a circuit theme
-// arrives on import, an editor pick happens mid-session) must still reach
-// styles and colors that were COPIED into widgets at construction.
+// A theme normally arrives after the widgets exist (circuit import, a mid-session pick), so values copied at
+// construction must still follow it.
 func TestCapturedStylesAndColorsFollowLaterTheme(t *testing.T) {
 	// Captured before the theme, exactly like transport_zone.go / eq_panel_zone.go do.
 	btnStyle := InstButtonStyle
@@ -59,8 +58,7 @@ func TestCapturedStylesAndColorsFollowLaterTheme(t *testing.T) {
 	}
 }
 
-// The layout profile caches token colors at build time; a theme change must
-// rebuild it so the transport re-copies live icon tints.
+// The profile caches token colours at build time, so the transport re-copies its icon tints only after a rebuild.
 func TestProfileRebuiltOnThemeChange(t *testing.T) {
 	g := newGameWithStart(t)
 	t.Cleanup(func() { ApplyTheme(theme.Doc{}) })

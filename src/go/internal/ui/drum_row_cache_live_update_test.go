@@ -12,17 +12,14 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// When a circuit that feeds a particular drum row changes during playback,
-// only that row's sprite cache should be invalidated and rebuilt. Other rows
-// keep their caches intact.
+// Only that row's cache is invalidated.
 func TestRowCacheLiveUpdate_PerRowInvalidation(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(800, 600)
 
-	// Build two disjoint loops and assign them to row 0 and row 1.
-	// Row 0: rectangle A->B->C->D->A
+	// Two disjoint loops on rows 0 and 1.
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	B := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	C := g.tryAddNode(2, 2, model.NodeTypeRegular)
@@ -82,17 +79,14 @@ func TestRowCacheLiveUpdate_PerRowInvalidation(t *testing.T) {
 	}
 }
 
-// Changing only a cell's type (e.g., regular -> mute) without changing the
-// boolean Steps must still invalidate the row sprite cache so rendering stays
-// correct (mute cells are tinted differently).
+// A type change with unchanged Steps still invalidates: mute cells are tinted.
 func TestRowCacheLiveUpdate_CellTypeChangeInvalidatesRowCache(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(800, 600)
 
-	// Build two disjoint loops and assign them to row 0 and row 1.
-	// Row 0: rectangle A->B->C->D->A
+	// Two disjoint loops on rows 0 and 1.
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	B := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	C := g.tryAddNode(2, 2, model.NodeTypeRegular)
@@ -133,8 +127,7 @@ func TestRowCacheLiveUpdate_CellTypeChangeInvalidatesRowCache(t *testing.T) {
 	beforeSteps := append([]bool(nil), g.drum.Rows[0].Steps...)
 	beforeTypes := append([]model.NodeType(nil), g.drum.Rows[0].CellTypes...)
 
-	// Live edit: convert node B to mute. With no hold/logic, this should not
-	// change boolean Steps (still "on") but must update CellTypes.
+	// Steps stay "on"; CellTypes changes.
 	nodeB, ok := g.graph.GetNodeByID(B.ID)
 	if !ok {
 		t.Fatalf("node B missing")
@@ -165,9 +158,7 @@ func TestRowCacheLiveUpdate_CellTypeChangeInvalidatesRowCache(t *testing.T) {
 	}
 }
 
-// When the window offset shifts during playback in the same frame a row's
-// contents change, the cache must rebuild fully. Incremental reuse would drag
-// the old sprite forward, leaving stale steps on screen.
+// A shift in the same frame as a content change rebuilds fully; reuse would drag stale steps forward.
 func TestRowCacheLiveUpdate_ShiftDuringContentChange(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 480, 240), nil, logger)
@@ -185,8 +176,7 @@ func TestRowCacheLiveUpdate_ShiftDuringContentChange(t *testing.T) {
 	}
 	gen0 := dv.rowCacheGen[0]
 
-	// Playback advances by one subdivision while the row's visible steps change
-	// (e.g., probability edit). The old cache must not be shifted forward.
+	// One subdivision while the visible steps change.
 	dv.Offset = 1
 	dv.markRowsShiftDirty()
 	dv.Rows[0].Steps = make([]bool, dv.Length)

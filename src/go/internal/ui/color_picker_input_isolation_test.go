@@ -10,8 +10,7 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// fireContextMenuItemByIcon finds the open context menu item whose leading icon
-// matches `icon` and fires its onClick (mirrors a real tap landing on it).
+// As a real tap landing on it.
 func fireContextMenuItemByIcon(t *testing.T, dv *DrumView, row int, icon string) {
 	t.Helper()
 	for _, it := range dv.ContextMenuItemsForTest(row) {
@@ -25,11 +24,8 @@ func fireContextMenuItemByIcon(t *testing.T, dv *DrumView, row int, icon string)
 	t.Fatalf("context menu item with icon %q not found", icon)
 }
 
-// TestMobileColorPickerIsolatesInput verifies that once the color picker is open
-// on mobile, input is isolated on the z-axis: there is no lingering native-input
-// TRIGGER (e.g. the rename trigger from the context menu it replaced) overlapping
-// the picker, and the picker owns a full-bounds hit region so taps inside it are
-// consumed rather than passing through to controls beneath.
+// No native-input trigger left over from the context menu overlaps the open picker, and the picker owns a
+// full-bounds hit region, so taps inside it never pass through.
 func TestMobileColorPickerIsolatesInput(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -38,11 +34,7 @@ func TestMobileColorPickerIsolatesInput(t *testing.T) {
 	logger := gamelog.New(testLogOutput(), gamelog.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 700), nil, logger)
 
-	// Open the context menu, then tap "Color" — this is the exact path the user
-	// follows (overflow ⋯ → Color). It closes the context menu and opens the
-	// swatch picker. dv.Update() (not recalcButtons alone) drives the full frame
-	// — recalcButtons, rootTree.Update (z-order gating), and syncNativeGestures
-	// (nativeInputCandidates → dv.lastNativeRects) — matching the real loop.
+	// The user's path (⋯ → Color) through a full dv.Update, which also syncs the native gestures.
 	dv.OpenContextMenu(0)
 	dv.Update()
 	fireContextMenuItemByIcon(t, dv, 0, "color")
@@ -60,14 +52,12 @@ func TestMobileColorPickerIsolatesInput(t *testing.T) {
 		t.Fatal("color picker bounds empty — no hit region to isolate input")
 	}
 
-	// The picker must own a full-bounds input region (its portal hit area) so
-	// taps inside it are consumed, not passed through to lower-z controls.
+	// Its portal hit area covers it, so taps are consumed.
 	if got := dv.colorWheelComp.InputBounds(); got != pickerRect {
 		t.Errorf("color picker InputBounds = %v, want full panel %v", got, pickerRect)
 	}
 
-	// No native-input trigger may overlap the open picker — otherwise the JS
-	// touchend handler would open a hidden text input behind the swatches.
+	// Otherwise the JS touchend handler opens a hidden text input behind the swatches.
 	for _, r := range dv.lastNativeRects {
 		if r.Intent.Channel != NativeTextInput {
 			continue

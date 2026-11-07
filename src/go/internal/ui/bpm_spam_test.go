@@ -9,8 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestBPMSpamCoalesces verifies that rapid BPM changes while the audio layer
-// is busy are coalesced and do not stall the game loop.
+// Coalesced while the audio layer is busy, never stalling the loop.
 func TestBPMSpamCoalesces(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -25,8 +24,7 @@ func TestBPMSpamCoalesces(t *testing.T) {
 			close(block)
 		}
 	})
-	// last is written on the bpmLoop goroutine (via the hook) and read on the
-	// test goroutine, so it must be atomic.
+	// Written on the bpmLoop goroutine, read here.
 	var last atomic.Int64
 	prevSetBPM := audio.BPMFuncForTest()
 	audio.SetBPMFuncForTest(func(b int) { last.Store(int64(b)); <-block })

@@ -4,9 +4,7 @@ package ui
 
 import "testing"
 
-// TestNavMenuIsSeparatePortal asserts the navigation menu (opened by tapping the
-// beat counter) is its own portal component and does NOT open the overflow
-// (file) menu.
+// Its own portal, never the file menu.
 func TestNavMenuIsSeparatePortal(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenNavigation()
@@ -18,8 +16,7 @@ func TestNavMenuIsSeparatePortal(t *testing.T) {
 	}
 }
 
-// TestNavMenuAnchoredUnderBeatCounter asserts the nav menu card drops from the
-// beat counter (its trigger), per the DESIGN.md menu-adjacency rule.
+// Drops from its trigger, per the menu-adjacency rule.
 func TestNavMenuAnchoredUnderBeatCounter(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenNavigation()
@@ -37,8 +34,6 @@ func TestNavMenuAnchoredUnderBeatCounter(t *testing.T) {
 	}
 }
 
-// TestFileMenuHasFileRows asserts the file menu (opened by the grid folder
-// button) lists the file actions.
 func TestFileMenuHasFileRows(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenFileMenu()

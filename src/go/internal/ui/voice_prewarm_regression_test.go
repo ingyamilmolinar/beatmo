@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestOverduePanicFixed_OrganAtMinus2WarmedBeforeDispatch is the functional
-// proof for the overdue/absmax crash: a circuit whose organ row fires a node at
-// pitch -2 (the exact crash pitch) must have that voice WARMED by the time the
-// sequencer would dispatch it — so dispatch is a cache hit and no beat lands
-// overdue. Drives the real graph->updateBeatInfos->enumeration path.
+// The voice must be warm before the sequencer dispatches it, or the beat lands overdue. Through the real graph →
+// updateBeatInfos → enumeration path.
 func TestOverduePanicFixed_OrganAtMinus2WarmedBeforeDispatch(t *testing.T) {
 	g := newTestGameWithOrganAtPitch(t, roster.OrganChurch, -2)
 

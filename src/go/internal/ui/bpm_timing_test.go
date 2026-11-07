@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestBPMFunctional60 verifies that, for a 1-beat-per-edge loop, scheduled
-// indices for regular nodes advance by one beat (MaxDiv subdivisions) at BPM=60.
+// At 60 BPM on a 1-beat-per-edge loop each scheduled regular node advances one beat (MaxDiv subdivisions).
 func TestBPMFunctional60(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -47,8 +46,7 @@ func TestBPMFunctional60(t *testing.T) {
 	}
 }
 
-// TestBPMStressShortSegmentsHighBPM ensures short segments at high BPM don't
-// skip indices; each scheduled event should advance by 1 subdivision.
+// Each event advances exactly one subdivision, skipping none.
 func TestBPMStressShortSegmentsHighBPM(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -100,16 +98,14 @@ func TestBPMStressShortSegmentsHighBPM(t *testing.T) {
 	}
 }
 
-// TestHighlightAudioSync25ms validates that scheduled indices and UI highlight
-// indices stay aligned for a simple loop (index parity, not wall time).
+// Index parity, not wall time.
 func TestHighlightAudioSync25ms(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(800, 600)
 
-	// Use a subdivision loop where every index is a regular node so
-	// scheduler and highlight indices should stay aligned.
+	// Every index is a regular node.
 	buildSubdivLoop(g)
 	bpm := 90
 	g.drum.SetBPM(bpm)

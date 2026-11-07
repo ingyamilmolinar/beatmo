@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// instMenuFindAlternateInst returns the index of an instrument button whose
-// instrument id differs from cur, or -1. Mapping is parallel: InstBtns()[i]
-// corresponds to VisibleInstIDs()[i].
+// InstBtns()[i] corresponds to VisibleInstIDs()[i].
 func instMenuFindAlternateInst(comp *InstrumentMenuComponent, cur string) (idx int, id string) {
 	ids := comp.VisibleInstIDs()
 	for i := range comp.InstBtns() {
@@ -21,10 +19,8 @@ func instMenuFindAlternateInst(comp *InstrumentMenuComponent, cur string) (idx i
 	return -1, ""
 }
 
-// openInstMenuInstrumentsMode opens the instrument menu via a row-label click
-// and navigates into instruments mode (selecting the first category if the menu
-// opened in categories mode). Setup-only: category selection goes through the
-// same input path on both platforms, so it is robust to the behavior under test.
+// Setup only: category selection takes the same input path on both platforms, so it does not depend on the
+// behaviour under test.
 func openInstMenuInstrumentsMode(t *testing.T, dv *DrumView, cx, cy, w, h int) *InstrumentMenuComponent {
 	t.Helper()
 	clickDrumViewAt(t, dv, cx, cy, w, h)
@@ -54,15 +50,8 @@ func openInstMenuInstrumentsMode(t *testing.T, dv *DrumView, cx, cy, w, h int) *
 	return comp
 }
 
-// TestInstMenuDesktopInstrumentSelectsOnPress reproduces the "instrument menu
-// doesn't respond to clicks well" bug on desktop.
-//
-// The instrument menu routes ALL input — including desktop mouse — through the
-// mobile touch / deferred-tap state machine (drumview_overlay_inst_comp.go
-// HandleInput), so a desktop click only fires on RELEASE. Every other desktop
-// menu (context menu, overflow) fires immediately on the PRESS edge via
-// Button.HandleInputResult. This test asserts the canonical desktop behavior:
-// pressing an instrument button selects it on the press edge.
+// Every desktop menu fires on the PRESS edge; routing this one through the touch deferred-tap machine made a
+// desktop click fire only on release.
 func TestInstMenuDesktopInstrumentSelectsOnPress(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -81,8 +70,6 @@ func TestInstMenuDesktopInstrumentSelectsOnPress(t *testing.T) {
 	tx := r.Min.X + r.Dx()/2
 	ty := r.Min.Y + r.Dy()/2
 
-	// PRESS only — no release yet. On desktop the selection must register on
-	// the press edge, just like the context/overflow menus.
 	rel := pressDrumView(dv, tx, ty, W, H)
 	dv.Update()
 	rel()
@@ -94,12 +81,8 @@ func TestInstMenuDesktopInstrumentSelectsOnPress(t *testing.T) {
 	}
 }
 
-// TestInstMenuDesktopClickWithDriftSelects reproduces the other half of the
-// bug: a desktop click whose pointer drifts a few pixels between press and
-// release (common with a real mouse / trackpad) is swallowed entirely because
-// the touch-scroll dead zone (tapMaxMovePx = 10) commits a "scroll" and cancels
-// the deferred tap. On desktop there is no content-drag scrolling, so a
-// press-drag-release on a list item must still select it.
+// A real mouse drifts a few pixels between press and release; desktop has no content-drag scrolling, so the
+// touch scroll dead zone must not swallow the click.
 func TestInstMenuDesktopClickWithDriftSelects(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -118,8 +101,7 @@ func TestInstMenuDesktopClickWithDriftSelects(t *testing.T) {
 	tx := r.Min.X + r.Dx()/2
 	ty := r.Min.Y + r.Dy()/2
 
-	// Press, drift downward ~14px over a couple frames (past the 10px dead
-	// zone), then release near the drifted position — a slightly-sloppy click.
+	// Drifts past the 10 px dead zone: a slightly sloppy click.
 	rel := pressDrumView(dv, tx, ty, W, H)
 	dv.Update()
 	rel()
@@ -140,10 +122,8 @@ func TestInstMenuDesktopClickWithDriftSelects(t *testing.T) {
 	}
 }
 
-// TestInstMenuMobileSelectsViaMouseUpdate drives the full DrumView.Update loop
-// on mobile using MOUSE-simulated input (SetInputForTest), which suppresses the
-// touch override. This passes — proving the deferred-tap logic itself is sound;
-// the real-touch path (TestInstMenuMobileSelectsViaRealTouch) is what breaks.
+// SetInputForTest suppresses the touch override, so this checks the deferred-tap logic apart from the real
+// touch path.
 func TestInstMenuMobileSelectsViaMouseUpdate(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -169,10 +149,7 @@ func TestInstMenuMobileSelectsViaMouseUpdate(t *testing.T) {
 	}
 }
 
-// realTouchTapGame simulates a real single-finger tap at (x,y) through the full
-// Game.Update loop: finger down for holdFrames, then lift, then settle frames.
-// Uses the mock touch state (NOT SetInputForTest), so the touch→mouse override
-// and gesture/tap-injection path in game_update.go are exercised for real.
+// Mock touch state, not SetInputForTest, so the touch→mouse override and tap injection run for real.
 func realTouchTapGame(t *testing.T, g *Game, x, y, holdFrames int) {
 	t.Helper()
 	mock := newMockTouchState()
@@ -192,11 +169,7 @@ func realTouchTapGame(t *testing.T, g *Game, x, y, holdFrames int) {
 	}
 }
 
-// TestInstMenuMobileSelectsViaRealTouch reproduces the reported bug: on mobile,
-// tapping an instrument button with a REAL touch (through globalTouchState +
-// the touch override + gesture/tap-injection in game_update.go) does not select
-// the instrument. Mouse-simulated taps work (see ...ViaMouseUpdate); real touch
-// does not.
+// Through globalTouchState, the touch override and tap injection, where mouse-simulated taps hid the failure.
 func TestInstMenuMobileSelectsViaRealTouch(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -259,13 +232,8 @@ func TestInstMenuMobileSelectsViaRealTouch(t *testing.T) {
 	}
 }
 
-// TestInstMenuMobileJitteryTapSelects reproduces the real-iPhone-Safari bug:
-// a tap with small diagonal finger jitter (8px on each axis) is classified as a
-// TAP by the gesture detector (per-axis dx<=10 && dy<=10, gesture.go) but the
-// menu's deferred-tap scroll dead zone (TouchScroller.Move) uses EUCLIDEAN
-// distance (sqrt(8^2+8^2)=11.3 >= 10), so it COMMITS a scroll and cancels the
-// deferred tap — the instrument is never selected. Headless CDP taps have zero
-// jitter, so this only manifests with a real finger.
+// The gesture detector judges a tap per axis (dx, dy <= 10) while the menu's scroll dead zone is EUCLIDEAN: an
+// (8,8) jitter is a tap to one and a scroll to the other, so the pick was lost. CDP taps have no jitter.
 func TestInstMenuMobileJitteryTapSelects(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -285,8 +253,7 @@ func TestInstMenuMobileJitteryTapSelects(t *testing.T) {
 	tx := r.Min.X + r.Dx()/2
 	ty := r.Min.Y + r.Dy()/2
 
-	// Jittery tap: press, drift (8,8) — within the gesture detector's per-axis
-	// 10px tap box but past the Euclidean dead zone — then release.
+	// Inside the per-axis tap box, past the Euclidean dead zone.
 	comp.HandleInput(tx, ty, true)
 	comp.HandleInput(tx+8, ty+8, true)
 	comp.HandleInput(tx+8, ty+8, false)

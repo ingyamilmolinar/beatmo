@@ -116,16 +116,8 @@ func TestTapRejectedWithMovement(t *testing.T) {
 	}
 }
 
-// TestTapRejectedAfterMoveAndReturn is the regression guard for the mobile
-// "a pan sometimes creates a node" bug. A finger that drags well past the tap
-// slop and then wanders BACK to within tapMaxMovePx of its start point used to
-// be (mis)classified as a GestureTap on release — because the tap check only
-// looked at the net start→end displacement, ignoring that the gesture had
-// already committed to a drag. handleTapInGrid then created a spurious node at
-// the lift point even though the user was panning. The fix routes the tap
-// decision through the same movedBeyondTap latch that already disqualifies a
-// moved gesture from long-press: once a touch crosses the slop it is a drag for
-// the rest of its life, never a tap.
+// Once a touch crosses the tap slop it is a drag for the rest of its life: a pan that wanders back near its start
+// must not create a node on lift.
 func TestTapRejectedAfterMoveAndReturn(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -234,8 +226,7 @@ func TestTwoFingerPanDeltaCalculation(t *testing.T) {
 	mock.addTouch(2, 200, 200)
 	ts.Update()
 
-	// Move both fingers in same direction (pan, not pinch)
-	// Keep distance the same but move center
+	// Same distance, moved centre: a pan, not a pinch.
 	mock.moveTouch(1, 110, 210)
 	mock.moveTouch(2, 210, 210)
 	gesture := ts.Update()
@@ -335,9 +326,6 @@ func TestSingleFingerDrag(t *testing.T) {
 	}
 }
 
-// TestLongPressOnlyFiresOnce verifies that long-press fires exactly once,
-// not on every frame. This was a critical bug where long-press would fire
-// 60+ times per second, blocking input and opening menus repeatedly.
 func TestLongPressOnlyFiresOnce(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -374,8 +362,6 @@ func TestLongPressOnlyFiresOnce(t *testing.T) {
 	}
 }
 
-// TestDragAfterLongPress verifies that drag detection works after a long-press
-// has fired. Previously, once long-press fired, drag detection was blocked.
 func TestDragAfterLongPress(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -410,9 +396,6 @@ func TestDragAfterLongPress(t *testing.T) {
 	}
 }
 
-// TestSustainedDragAfter500ms verifies that drag continues working after
-// 500ms+ of contact. Previously, drags would stop working after ~500ms
-// because the long-press condition kept firing and blocking drag detection.
 func TestSustainedDragAfter500ms(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -429,8 +412,7 @@ func TestSustainedDragAfter500ms(t *testing.T) {
 		pt.StartTime = time.Now().Add(-time.Duration(longPressThresholdMS+200) * time.Millisecond)
 	}
 
-	// Move finger beyond the tap threshold to mark this as a drag gesture
-	// (this should prevent long-press from firing since we've moved)
+	// Moving past the tap threshold marks a drag, which disqualifies long-press.
 	mock.moveTouch(1, 100+tapMaxMovePx+20, 100+tapMaxMovePx+20)
 	gesture := ts.Update()
 
@@ -461,16 +443,8 @@ func TestSustainedDragAfter500ms(t *testing.T) {
 	}
 }
 
-// TestLongPressNotFiredOnSlowDragAtTapBoundary is a regression guard for the
-// mobile "single-finger drag doesn't pan the camera" bug (touch_gestures.browser.test.js
-// Test 1, flaky under parallel-job CPU load). A single-finger drag over/near a node
-// on a throttled game loop can have the finger sitting exactly tapMaxMovePx from its
-// start at the instant the 500 ms long-press timer elapses. The instantaneous dx/dy
-// check alone (dx <= tapMaxMovePx) is satisfied at that boundary, so a spurious
-// long-press used to fire, open the quick-action popup, flip panOK false, and freeze
-// the pan for the rest of the gesture. The movedBeyondTap latch (set at >= tapMaxMovePx,
-// checked in Update BEFORE gesture detection) disqualifies the touch from long-press
-// once it has moved. Expect a drag, never a long-press.
+// On a throttled loop the finger can sit exactly tapMaxMovePx away when the 500 ms timer elapses; the movedBeyondTap
+// latch, checked before gesture detection, must still rule out long-press, or its popup freezes the pan.
 func TestLongPressNotFiredOnSlowDragAtTapBoundary(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -487,8 +461,7 @@ func TestLongPressNotFiredOnSlowDragAtTapBoundary(t *testing.T) {
 		pt.StartTime = time.Now().Add(-time.Duration(longPressThresholdMS+100) * time.Millisecond)
 	}
 
-	// Finger now sits EXACTLY tapMaxMovePx from the start — the worst-case boundary
-	// where the old instantaneous dx <= tapMaxMovePx check still passes.
+	// The worst-case boundary: an instantaneous dx <= tapMaxMovePx check alone would pass here.
 	mock.moveTouch(1, 100+tapMaxMovePx, 100)
 	gesture := ts.Update()
 
@@ -500,17 +473,13 @@ func TestLongPressNotFiredOnSlowDragAtTapBoundary(t *testing.T) {
 		t.Fatalf("expected GestureSingleFingerDrag, got %v", gesture)
 	}
 
-	// The disqualification is sticky: even if a later frame reads the finger back
-	// within tapMaxMovePx of the start, no long-press may fire.
+	// The disqualification is sticky.
 	mock.moveTouch(1, 100+tapMaxMovePx-2, 100)
 	if g2 := ts.Update(); g2 != nil && g2.Kind == GestureLongPress {
 		t.Fatalf("long-press fired after finger returned within tap threshold; movedBeyondTap must latch")
 	}
 }
 
-// TestLongPressFiredResetOnTouchEnd verifies that the longPressFired flag
-// is properly reset when the touch ends, allowing the next touch to fire
-// long-press again.
 func TestLongPressFiredResetOnTouchEnd(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -548,8 +517,6 @@ func TestLongPressFiredResetOnTouchEnd(t *testing.T) {
 
 // ─── Pinch-to-zoom direct scale mapping tests ────────────────────────────────
 
-// TestPinchDirectScaleMapping verifies 1:1 ratio: 1.5x finger spread = 1.5x
-// camera zoom, 2.0x = 2.0x, 0.5x = 0.5x. Also verifies baseline reset.
 func TestPinchDirectScaleMapping(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -635,8 +602,6 @@ func TestPinchClampLimits(t *testing.T) {
 	}
 }
 
-// TestPinchAnchorPreservation verifies that the world coordinate under the
-// pinch center stays fixed after zoom (anchor behavior).
 func TestPinchAnchorPreservation(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -670,8 +635,6 @@ func TestPinchAnchorPreservation(t *testing.T) {
 
 // ─── Touch override tests ───────────────────────────────────────────────────
 
-// TestTouchOverrideSingleTouch verifies that a single active touch sets the
-// override so cursorPosition() and isMouseButtonPressed() return touch data.
 func TestTouchOverrideSingleTouch(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -699,8 +662,7 @@ func TestTouchOverrideSingleTouch(t *testing.T) {
 	}
 }
 
-// TestTouchOverrideMultiTouch verifies that 2+ touches do NOT activate
-// the single-touch override (multi-touch gestures are handled separately).
+// Multi-touch gestures are handled separately, so 2+ touches never map onto the mouse.
 func TestTouchOverrideMultiTouch(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -721,8 +683,7 @@ func TestTouchOverrideMultiTouch(t *testing.T) {
 	}
 }
 
-// TestTouchTapInjection verifies the 2-frame tap injection cycle:
-// frame 0 → position+left=true, frame 1 → position+left=false, then cleared.
+// A tap is two frames: the press, then the release on the next frame.
 func TestTouchTapInjection(t *testing.T) {
 	defer resetTouchOverride()
 
@@ -756,8 +717,6 @@ func TestTouchTapInjection(t *testing.T) {
 	}
 }
 
-// TestTouchOverrideDisabledDuringTest verifies that inputForTestActive
-// suppresses the touch override so test mocks work unimpeded.
 func TestTouchOverrideDisabledDuringTest(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -781,8 +740,6 @@ func TestTouchOverrideDisabledDuringTest(t *testing.T) {
 	}
 }
 
-// TestTouchStateResetClearsLongPressFired verifies that Reset() clears
-// the longPressFired flag.
 func TestTouchStateResetClearsLongPressFired(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()
@@ -810,8 +767,6 @@ func TestTouchStateResetClearsLongPressFired(t *testing.T) {
 	}
 }
 
-// TestLongPressDeletesNode verifies that long-pressing a node opens the
-// quick-action popup (which includes a Delete button) and closes any open menu.
 func TestLongPressDeletesNode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -851,8 +806,6 @@ func TestLongPressDeletesNode(t *testing.T) {
 	}
 }
 
-// TestLongPressEmptySpaceNoOp verifies that long-pressing on empty grid
-// space does nothing (no node created, no crash).
 func TestLongPressEmptySpaceNoOp(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

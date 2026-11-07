@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// feedTemplateNativeSearch injects a live native-input value for the template
-// search field and drives real frames (portal updateFn → updateTemplateSearch).
 func feedTemplateNativeSearch(t *testing.T, g *Game, v string) {
 	t.Helper()
 	testMobileInputValue[templateSearchMobileInputID] = v

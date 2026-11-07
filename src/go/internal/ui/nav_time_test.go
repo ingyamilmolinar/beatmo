@@ -40,8 +40,7 @@ func TestFormatClock(t *testing.T) {
 }
 
 func TestFormatBeatTime(t *testing.T) {
-	// Internal beat 60 at 120 BPM (0.5 s/beat) → 30 s elapsed, shown to the
-	// user as the 1-based "Beat 61".
+	// Internal beat 60 at 0.5 s/beat is 30 s, shown as the 1-based "Beat 61".
 	p := playheadPosAt(60, 0.5, 8)
 	if got := formatBeatTime(p); got != "Beat 61 · 0:30" {
 		t.Fatalf("formatBeatTime=%q want %q", got, "Beat 61 · 0:30")

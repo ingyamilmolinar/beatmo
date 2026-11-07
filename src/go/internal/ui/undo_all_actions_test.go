@@ -16,9 +16,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// undoCase is one row of the per-action undo sweep. kind is the user-action
-// hooks.Kind the case exercises; TestEveryUndoableKindHasActionCase cross-checks
-// the set of kinds against the registry so no undoable action goes uncovered.
+// kind is cross-checked against the registry so no undoable action goes uncovered.
 type undoCase struct {
 	name   string
 	kind   hooks.Kind
@@ -37,11 +35,7 @@ func pickOtherInstrumentFor(g *Game) (string, bool) {
 	return "", false
 }
 
-// undoActionCases is the single source of truth for the per-action undo sweep:
-// both TestUndoAllActionsRoundTripAndAtomic (which proves the 3 round-trip
-// properties) and TestEveryUndoableKindHasActionCase (which proves the registry
-// coverage) read this one list. Adding a new undoable kind to the registry MUST
-// add a case here or the coverage test fails.
+// The one list both the round-trip sweep and the registry-coverage test read: a new undoable kind needs a case here.
 func undoActionCases() []undoCase {
 	return []undoCase{
 		{
@@ -57,8 +51,7 @@ func undoActionCases() []undoCase {
 				b := g.tryAddNode(6, 3, model.NodeTypeRegular)
 				g.addEdge(a, b)
 			},
-			// Placing a node on the existing A-B edge splits it (edge-delete +
-			// two edge-adds + node-add) — must be ONE step.
+			// Placing a node on the A-B edge splits it (edge delete, two edge adds, node add): ONE step.
 			mutate: func(t *testing.T, g *Game) { g.tryAddNode(4, 3, model.NodeTypeRegular) },
 		},
 		{
@@ -139,9 +132,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors the node-type change commit path (event_helpers.go
-			// emitNodeTypeChanged → recordUndo). Add a Regular node, then flip it
-			// to Silent on the graph and emit — the node's exported "type" changes.
+			// The node-type commit path: flipping Regular to Silent changes the exported "type".
 			name: "node-type-changed",
 			kind: hooks.EventNodeTypeChanged,
 			setup: func(t *testing.T, g *Game) {
@@ -163,10 +154,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors js_exports_graph_ui.go setStartNodeGrid: assign a row's origin
-			// to a node, then emitStartNodeChanged. Use a non-zero row so we don't
-			// also rewrite g.start / graph.StartNodeID. The instrument's exported
-			// Origin changes.
+			// The setStartNodeGrid path, on a non-zero row so g.start is not rewritten too.
 			name: "start-node-changed",
 			kind: hooks.EventStartNodeChanged,
 			setup: func(t *testing.T, g *Game) {
@@ -200,11 +188,7 @@ func undoActionCases() []undoCase {
 			kind: hooks.EventRowDeleted,
 			setup: func(t *testing.T, g *Game) {
 				g.drum.AddRow()
-				// Give the added row a distinct instrument. Two rows sharing one
-				// instrument trip a SEPARATE import-fidelity issue (import's
-				// EnsureUniqueRowColors reshuffles colliding same-instrument row
-				// colors instead of trusting the stored hex), which is orthogonal
-				// to undo correctness and tracked separately.
+				// A distinct instrument: two rows sharing one hit an unrelated import colour reshuffle.
 				if other, ok := pickOtherInstrumentFor(g); ok {
 					g.drum.selRow = len(g.drum.Rows) - 1
 					g.drum.SetInstrument(instrument.ID(other))
@@ -225,25 +209,17 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors the DrumView rename closure (drumview_ctor.go): rename is now a
-			// METADATA-ONLY operation. The instrument id never changes; only the
-			// display-name override (and the row's Name, which the exported doc reads)
-			// is updated. renameInstrumentTo emits EventInstrumentRenamed.
+			// Rename is metadata only: the id never changes, only the display-name override and the row's Name.
 			name: "instrument-renamed",
 			kind: hooks.EventInstrumentRenamed,
 			setup: func(t *testing.T, g *Game) {
-				// renameInstrumentTo sets a PROCESS-GLOBAL display-name override; clear
-				// it after this subtest so later cases keyed on the original id render
-				// the canonical name.
+				// The display-name override is PROCESS-GLOBAL; cleared so later cases render the canonical name.
 				id := g.drum.Rows[0].Instrument
 				t.Cleanup(func() { audio.ClearInstrumentDisplayName(id) })
 			},
 			mutate: func(t *testing.T, g *Game) {
-				// Rename undo works ONLY because Game.Update wraps every frame in
-				// beginGroup/endGroup (game_update.go:76-77), deferring the snapshot to
-				// frame end after the row's Name is updated. Mirror that bracket here so
-				// the case tests the REAL mechanism. renameInstrumentTo does the emit
-				// (taps recordUndo) and sets Rows[0].Name from the display override.
+				// Rename undo works only because Update wraps each frame in beginGroup/endGroup, deferring the snapshot until the
+				// row's Name is updated; the bracket is mirrored so the real mechanism is tested.
 				beginUndoGroup("rename instrument")
 				g.drum.renameInstrumentTo(0, "Renamed Display")
 				endUndoGroup()
@@ -292,9 +268,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors the EQ-tab HPF/LPF toggle (toggleHPF → commitEQFilter →
-			// emitEQFilterToggled + recordUndoStep). Enabling the master HPF
-			// makes the exported master-EQ block appear.
+			// Enabling the master HPF makes the exported master-EQ block appear.
 			name: "eq-filter-toggle",
 			kind: hooks.EventEQFilterToggled,
 			setup: func(t *testing.T, g *Game) {
@@ -322,10 +296,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors drumview_fx_panel.go FX add menu (audio.AddInsertEffect +
-			// emitInsertEffectAdded). export.go reads audio.GetInsertEffects, so the
-			// added slot changes the exported instrument; Undo re-imports the
-			// effect-free baseline (ClearAllInsertEffectsAndNotify) to clear it.
+			// The FX add path; Undo re-imports the effect-free baseline to clear the slot.
 			name: "insert-effect-added",
 			kind: hooks.EventInsertEffectAdded,
 			setup: func(t *testing.T, g *Game) {
@@ -353,9 +324,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors drumview_fx_panel.go commitFXSlider (audio.SetInsertEffectParam
-			// + emitInsertEffectParam + recordUndoStep). emitInsertEffectParam does
-			// NOT tap recordUndo on its own, so the commit site records explicitly.
+			// emitInsertEffectParam does not record on its own, so the commit site records explicitly.
 			name: "insert-effect-param",
 			kind: hooks.EventInsertEffectParam,
 			setup: func(t *testing.T, g *Game) {
@@ -386,8 +355,6 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors js_exports_insert_effects.go toggleInsertEffect (audio.Toggle
-			// + emit + recordUndoStep).
 			name: "insert-effect-toggled",
 			kind: hooks.EventInsertEffectToggled,
 			setup: func(t *testing.T, g *Game) {
@@ -403,9 +370,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors js_exports_insert_effects.go moveInsertEffect (audio.Move +
-			// emit + recordUndoStep). Two distinct effect types so the reorder is
-			// observable in the exported chain.
+			// Two distinct effect types so the reorder shows in the exported chain.
 			name: "insert-effect-moved",
 			kind: hooks.EventInsertEffectMoved,
 			setup: func(t *testing.T, g *Game) {
@@ -422,10 +387,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors synth_panel_zone.go knob release (audio.SetInstrumentParam +
-			// emitInstrumentParamsCommitted + recordUndoStep). export.go folds the
-			// effective-vs-shipped delta into synth_params, so a changed param value
-			// changes the exported instrument.
+			// A knob release: the changed value changes the exported document.
 			name: "instrument-params-committed",
 			kind: hooks.EventInstrumentParamsCommitted,
 			setup: func(t *testing.T, g *Game) {
@@ -444,9 +406,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors recipe_save_sink.go resetRecipeForInstrument (library Reset +
-			// ResetInstrumentParams + emitInstrumentParamsReset + recordUndo). Setup
-			// commits a synth param change so the reset has something to revert.
+			// Setup commits a synth change so the reset has something to revert.
 			name: "instrument-params-reset",
 			kind: hooks.EventInstrumentParamsReset,
 			setup: func(t *testing.T, g *Game) {
@@ -467,10 +427,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors sampler_panel_zone.go samplerSave (audio.SetSampleEdit +
-			// recordUndoStep(EventSampleEditChanged)). export.go reads
-			// audio.SampleEditFor; Undo re-imports the edit-free baseline
-			// (ClearSampleEdit) to revert it.
+			// Undo re-imports the edit-free baseline to revert it.
 			name: "sample-edit-changed",
 			kind: hooks.EventSampleEditChanged,
 			setup: func(t *testing.T, g *Game) {
@@ -489,9 +446,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors game_marquee.go's handleMarquee release path:
-			// graph.CreateGroup followed by emitGroupCreated (which calls
-			// recordUndo synchronously — no enqueueUI/Update needed).
+			// emitGroupCreated records synchronously; no Update needed.
 			name: "group-created",
 			kind: hooks.EventGroupCreated,
 			setup: func(t *testing.T, g *Game) {
@@ -510,10 +465,7 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors game_group_menu.go's writeRule (graph.SetGroupRules +
-			// emitGroupChanged), exercised directly (not via the deferred
-			// enqueueUI-wrapped GroupMenu method) so the mutation is visible
-			// to undoCapture() immediately.
+			// Directly, not through the deferred GroupMenu method, so undoCapture sees the mutation at once.
 			name: "group-rule-changed",
 			kind: hooks.EventGroupChanged,
 			setup: func(t *testing.T, g *Game) {
@@ -543,8 +495,6 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors game_group_menu.go's deleteGroup (graph.DeleteGroup +
-			// emitGroupDeleted).
 			name: "group-deleted",
 			kind: hooks.EventGroupDeleted,
 			setup: func(t *testing.T, g *Game) {
@@ -580,10 +530,7 @@ func instrumentOriginForTest(id string) string {
 	return string(d.Origin)
 }
 
-// pickSynthParam finds a param of instrument id that, when written via
-// audio.SetInstrumentParam, actually changes the exported document (the value
-// differs from the library value after sanitize/clamp). It writes the change
-// as a side effect and returns the param name. ok=false means no param stuck.
+// Writes the change as a side effect; ok=false means no candidate value survived the clamp.
 func pickSynthParam(g *Game, id string) (string, bool) {
 	audio.ResetInstrumentParams(instrument.ID(id))
 	shipped := map[string]float64{}
@@ -595,12 +542,10 @@ func pickSynthParam(g *Game, id string) (string, bool) {
 	sort.Strings(names)
 	for _, name := range names {
 		cur := shipped[name]
-		// Try a few candidate values; SetInstrumentParam clamps to the param's
-		// range, so some candidates may collapse back to the current value.
+		// The clamp can collapse a candidate back to the current value.
 		for _, cand := range []float64{cur + 0.5, cur - 0.5, 0.75, 0.25, cur + 1, cur - 1} {
 			audio.ResetInstrumentParams(instrument.ID(id))
-			// Re-apply any baseline already established by the caller would be
-			// lost here; callers reset first and rely on a single change.
+			// Callers reset first and rely on a single change.
 			audio.SetInstrumentParam(instrument.ID(id), name, cand)
 			eff := audio.MergedInstrumentParamsRO(instrument.ID(id))
 			if s, ok := shipped[name]; !ok || (eff[name]-s > 1e-9 || s-eff[name] > 1e-9) {
@@ -612,18 +557,9 @@ func pickSynthParam(g *Game, id string) (string, bool) {
 	return "", false
 }
 
-// TestUndoAllActionsRoundTripAndAtomic is the thorough per-action sweep the
-// undo feature is judged against. For EVERY undoable user action it proves three
-// properties through the real export serializer:
-//
-//  1. the action changes the exported document (it actually does something),
-//  2. it records EXACTLY ONE undo step (compound gestures are atomic — no
-//     partial intermediate steps), and
-//  3. one Undo restores the pre-action document byte-for-byte, and one Redo
-//     re-applies the post-action document byte-for-byte.
-//
-// setup builds any prerequisite state; the undo baseline is taken AFTER setup so
-// only the action under test is measured.
+// For EVERY undoable action, through the real export serializer: it changes the document, records EXACTLY ONE
+// step (compound gestures are atomic), and one Undo / one Redo restore the before / after documents byte for byte.
+// The baseline is taken after setup.
 func TestUndoAllActionsRoundTripAndAtomic(t *testing.T) {
 	for _, tc := range undoActionCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -646,23 +582,15 @@ func TestUndoAllActionsRoundTripAndAtomic(t *testing.T) {
 				t.Fatalf("%s recorded %d undo steps, want exactly 1 (atomic)", tc.name, steps)
 			}
 
-			// Undo is the strong check: it must restore the pre-action document
-			// byte-for-byte. (This is what caught the master-EQ import bug — undo
-			// to a no-EQ snapshot must actually clear the EQ.)
+			// Byte-for-byte: undo to a no-EQ snapshot must actually clear the EQ.
 			g.undoManager.Undo()
 			if got := g.undoCapture(); string(got) != string(before) {
 				t.Fatalf("%s: Undo not byte-identical to pre-action document", tc.name)
 			}
 
-			// Redo must restore the post-action document. exportBytes is not
-			// byte-canonical across a node delete — a removed node leaves a gap in
-			// the raw node-id sequence that the import path (which restore rides)
-			// compacts. That renumbering is invisible to the user, so compare Redo
-			// against the import-normalised form of `after` rather than the raw
-			// in-memory bytes. Both restore flags are set, exactly as undoRestore
-			// sets them, so the normalisation neither records a step nor clears
-			// history, and re-imports the documents verbatim (not as a circuit
-			// OPEN, where the user's Saves would trump the file's).
+			// A node delete leaves a gap in the raw id sequence that import compacts, invisibly to the user, so Redo is compared
+			// against the import-normalised `after`; both restore flags are set, as undoRestore sets them, so it records nothing
+			// and re-imports verbatim rather than as a circuit open.
 			normalize := func(b []byte) string {
 				g.undoManager.restoring, g.undoRestoring = true, true
 				_ = g.Import(b)
@@ -679,13 +607,8 @@ func TestUndoAllActionsRoundTripAndAtomic(t *testing.T) {
 	}
 }
 
-// TestEveryUndoableKindHasActionCase machine-checks that the per-action undo
-// sweep in undoActionCases() covers EVERY undoable kind the action registry
-// declares — and that every kind a case claims is genuinely undoable. This is
-// the guard that turns the round-trip sweep from a hand-maintained list into a
-// registry-backed contract: add a new undoable kind to hooks.ActionRegistry and
-// this test fails until a real case (exercising the production commit path)
-// lands in undoActionCases().
+// Every kind the registry declares undoable has a case on its production commit path, and every claimed kind is
+// undoable.
 func TestEveryUndoableKindHasActionCase(t *testing.T) {
 	covered := map[hooks.Kind]bool{}
 	for _, c := range undoActionCases() {

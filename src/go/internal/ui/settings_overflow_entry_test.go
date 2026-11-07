@@ -2,9 +2,7 @@ package ui
 
 import "testing"
 
-// Settings is reached exclusively via the grid pane's top-right gear button on
-// every platform. The overflow ("ellipsis") menu must NOT carry a duplicate
-// Settings entry.
+// Settings is reached only through the gear.
 func TestOverflowMenuHasNoSettingsEntry(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(1200, 800)

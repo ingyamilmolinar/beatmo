@@ -11,9 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Templates pin every row's instrument to a pack document by content hash, so
-// a template sounds the same whatever the user has saved over its instruments.
-
 func TestEveryTemplateRefResolves(t *testing.T) {
 	for _, tp := range assets.Templates() {
 		var f projectFile
@@ -59,10 +56,8 @@ func TestTemplateImportExpandsToFullCopies(t *testing.T) {
 	}
 }
 
-// A template is a circuit like any other: when the user has SAVED their own
-// version of one of its instruments, that version plays (the user's Save
-// trumps every circuit's document for the same instrument), and the template's
-// PINNED document is what Reset returns to.
+// A template is a circuit like any other: the user's saved version of one of its instruments plays over its pinned
+// document.
 func TestUserSaveTrumpsTemplateInstruments(t *testing.T) {
 	g := newDocsGame(t)
 	tp := assets.Templates()[0]

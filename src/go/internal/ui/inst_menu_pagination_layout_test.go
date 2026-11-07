@@ -11,13 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// A long instrument list must stay fully inside the menu panel and rely on
-// scrolling — no auxiliary chrome may lay out below fullRect. Regression:
-// the retired pagination strip was laid out at fullRect.Max.Y — entirely
-// outside the drawn panel — so it rendered as a detached floating row
-// (desktop) or was clipped off the bottom screen edge (mobile bottom
-// sheet). The strip is gone; this pins the invariant that killing it
-// restored: everything the menu lays out lives inside its own bounds.
+// Everything the menu lays out lives inside its own bounds: a long list scrolls, and no chrome may sit below
+// fullRect, where it floats detached on desktop and is clipped off the bottom sheet on mobile.
 func TestInstrumentMenuLongListStaysInsidePanel(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 

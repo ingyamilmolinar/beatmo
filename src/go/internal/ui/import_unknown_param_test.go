@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestImportRejectsUnknownDocumentValue: a project whose instrument document
-// names a value the engine does not know (post_enabled, retired in Phase C) is
-// rejected with the name and its path — never imported with the key silently
-// dropped — and the current circuit is untouched.
+// Rejected with the value's name and path, never imported with the key dropped, and the current circuit is untouched.
 func TestImportRejectsUnknownDocumentValue(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	before := mustExport(t, g)
@@ -33,9 +30,7 @@ func TestImportRejectsUnknownDocumentValue(t *testing.T) {
 	}
 }
 
-// TestBundleImportValidatesEveryDocFirst: a bundle whose SECOND instrument is on
-// a dead base registers NOTHING — the first doc used to be registered, bound and
-// persisted before the second one failed.
+// A bundle whose SECOND instrument is invalid registers NOTHING.
 func TestBundleImportValidatesEveryDocFirst(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	snare, _ := audio.ShippedDoc(roster.Snare)

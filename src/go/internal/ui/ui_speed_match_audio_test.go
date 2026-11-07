@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Verifies that under the time-based visual path, the UI subdivision index
-// (elapsedBeats) keeps up with the audio timebase within 1 subdivision.
 func TestUISpeedMatchesAudioNoLag(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

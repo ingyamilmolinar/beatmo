@@ -10,18 +10,14 @@ import (
 	"unicode"
 )
 
-// i18nCleanFiles are source files whose user-facing labels are fully migrated to
-// the i18n catalog. This ratchet keeps them clean: a new bare English label
-// literal here fails the build — wrap it in i18n.T(i18n.KeyXxx) instead. Add a
-// file to this list once its chrome strings are migrated.
+// A ratchet: a bare English label in a listed file fails; wrap it in i18n.T. Add a file once its chrome is migrated.
 var i18nCleanFiles = []string{
 	"drumview_context_menu.go",
 	"audio_panel_legend.go",
 	"plain_english.go",
 }
 
-// i18nDriftAllowlist holds exact label literals intentionally left un-translated
-// in a clean file (justify each). Prefer empty.
+// Each entry needs its justification. Prefer empty.
 var i18nDriftAllowlist = map[string]bool{}
 
 func hasLetterLongerThan1(s string) bool {

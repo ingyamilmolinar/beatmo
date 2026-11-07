@@ -14,9 +14,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// newGlobalSearchComp builds an instrument-menu component that opens in
-// categories mode with a favorites store wired — the fixture for the global
-// (categories-level) search bar.
 func newGlobalSearchComp(t *testing.T) (*InstrumentMenuComponent, *InMemoryFavoritesStore) {
 	t.Helper()
 	store := NewInMemoryFavoritesStore()
@@ -44,8 +41,7 @@ func newGlobalSearchComp(t *testing.T) (*InstrumentMenuComponent, *InMemoryFavor
 	return comp, store
 }
 
-// compUpdateFrames drives comp.Update() n frames with idle input (the real
-// per-frame polling path that syncs the search box into the filter state).
+// The real per-frame polling that syncs the search box into the filter state.
 func compUpdateFrames(comp *InstrumentMenuComponent, n int) {
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -61,10 +57,7 @@ func compUpdateFrames(comp *InstrumentMenuComponent, n int) {
 	}
 }
 
-// TestInstMenuGlobalSearch_CategoriesModeHasSearchBar: the categories view
-// (below the "Categories" title strip) must host a search field, wired for
-// both desktop (TextInput) and mobile (SearchRect drives the native-input
-// registration in drumview_layout.go).
+// Desktop types into the TextInput; on mobile SearchRect drives the native-input registration.
 func TestInstMenuGlobalSearch_CategoriesModeHasSearchBar(t *testing.T) {
 	comp, _ := newGlobalSearchComp(t)
 	if comp.SearchBox() == nil {
@@ -81,9 +74,7 @@ func TestInstMenuGlobalSearch_CategoriesModeHasSearchBar(t *testing.T) {
 	}
 }
 
-// TestInstMenuGlobalSearch_RealTimeTypingFilters: typing into the categories
-// search box must filter in real time through the same per-frame polling the
-// instruments-mode search uses.
+// Through the same per-frame polling as the instruments-mode search.
 func TestInstMenuGlobalSearch_RealTimeTypingFilters(t *testing.T) {
 	comp, _ := newGlobalSearchComp(t)
 	if comp.SearchBox() == nil {
@@ -101,9 +92,7 @@ func TestInstMenuGlobalSearch_RealTimeTypingFilters(t *testing.T) {
 	}
 }
 
-// TestInstMenuGlobalSearch_MixedCategoryAndInstrumentResults: the result list
-// mixes matching categories (drill-in rows) and matching instruments (each
-// labelled with the category it lives in).
+// Category rows drill in; instrument rows are labelled with their category.
 func TestInstMenuGlobalSearch_MixedCategoryAndInstrumentResults(t *testing.T) {
 	comp, _ := newGlobalSearchComp(t)
 
@@ -139,9 +128,7 @@ func TestInstMenuGlobalSearch_MixedCategoryAndInstrumentResults(t *testing.T) {
 	}
 }
 
-// TestInstMenuGlobalSearch_FavoritesOnTop: a ★-favorited instrument that
-// matches the query must be the FIRST result row — above matching categories
-// and above better-scoring non-favorite instruments.
+// Every search shows Favorites on top: above matching categories and better-scoring non-favourites.
 func TestInstMenuGlobalSearch_FavoritesOnTop(t *testing.T) {
 	comp, store := newGlobalSearchComp(t)
 	store.Set(roster.SingingBowl, true)
@@ -170,9 +157,6 @@ func TestInstMenuGlobalSearch_FavoritesOnTop(t *testing.T) {
 	}
 }
 
-// TestInstMenuGlobalSearch_CategoryResultDrillsInAndClearsQuery: tapping a
-// category row in the global results enters that category (instruments mode)
-// with a fresh, unfiltered list.
 func TestInstMenuGlobalSearch_CategoryResultDrillsInAndClearsQuery(t *testing.T) {
 	comp, _ := newGlobalSearchComp(t)
 	comp.SetSearchText("str")
@@ -200,8 +184,6 @@ func TestInstMenuGlobalSearch_CategoryResultDrillsInAndClearsQuery(t *testing.T)
 	}
 }
 
-// TestInstMenuGlobalSearch_InstrumentResultSelects: tapping an instrument row
-// in the global results selects it (audition), exactly like instruments mode.
 func TestInstMenuGlobalSearch_InstrumentResultSelects(t *testing.T) {
 	comp, _ := newGlobalSearchComp(t)
 	var selected instrument.ID
@@ -220,9 +202,7 @@ func TestInstMenuGlobalSearch_InstrumentResultSelects(t *testing.T) {
 	}
 }
 
-// TestInstMenuSearch_FavoritesFirstInInstrumentsMode: the instruments-mode
-// search must also rank ★-favorited matches above better-scoring
-// non-favorites ("all searches always show Favorites on top").
+// Every search shows Favorites on top, instruments mode included.
 func TestInstMenuSearch_FavoritesFirstInInstrumentsMode(t *testing.T) {
 	store := NewInMemoryFavoritesStore()
 	comp := NewInstrumentMenuComponent()
@@ -257,9 +237,7 @@ func TestInstMenuSearch_FavoritesFirstInInstrumentsMode(t *testing.T) {
 	}
 }
 
-// TestInstMenuGlobalSearch_MobileNativeInputRealtime: on mobile the categories
-// search bar reads the native <input> value live, exactly like the
-// instruments-mode search (same "inst-search" bridge id).
+// The same "inst-search" bridge id as the instruments-mode search.
 func TestInstMenuGlobalSearch_MobileNativeInputRealtime(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -280,8 +258,7 @@ func TestInstMenuGlobalSearch_MobileNativeInputRealtime(t *testing.T) {
 	if comp == nil || !comp.IsOpen() {
 		t.Fatal("instrument menu should be open")
 	}
-	// Navigate to the categories view via the production breadcrumb-root path
-	// when the menu opened directly in instruments mode.
+	// Through the production breadcrumb-root path when the menu opened in instruments mode.
 	if comp.Mode() != InstMenuModeCategories {
 		comp.popBreadcrumbTo(0)
 		for i := 0; i < 3; i++ {

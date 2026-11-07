@@ -10,8 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// hasSheetHandlePill reports whether fn draws the standard 36×4 drag-handle
-// pill near the top of sheetRect.
 func hasSheetHandlePill(t *testing.T, sheetRect image.Rectangle, fn func()) bool {
 	t.Helper()
 	origRR := drawRoundedRect
@@ -29,13 +27,8 @@ func hasSheetHandlePill(t *testing.T, sheetRect image.Rectangle, fn func()) bool
 	return found
 }
 
-// The File (overflow) menu is NOT a bottom sheet: on every screen size it
-// anchors as a floating card in the grid pane, exactly like the node pop-up,
-// Settings, and Logs cards. Those cards carry no drag handle, so neither does
-// File — the handle read as a stray horizontal line at the top of the card
-// (2026-07-22 card-consistency pass). This asserts the handle is gone on
-// mobile; the context menu and instrument picker (true bottom sheets) keep
-// their handle via drawSheetDragHandle.
+// The File menu is a floating card in the grid pane, not a bottom sheet, and cards carry no drag handle; on a card
+// it reads as a stray line. True bottom sheets keep theirs.
 func TestOverflowMenuHasNoDragHandleOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)

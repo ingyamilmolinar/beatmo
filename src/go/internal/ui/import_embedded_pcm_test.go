@@ -14,12 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestImportEmbeddedPCM reproduces the reported failure: a freshly-exported
-// project file with embedded gzipped PCM (the Sampler-tab "sound travels inside
-// the file" feature) fails to import into a brand-new game instance. The fixture
-// is the real exported beatmo.json (6 instruments, 4 with embedded PCM, 53 nodes,
-// subdiv=8). This test pins the exact failure mode (panic vs. error vs. wrong
-// state vs. slow) before any fix is applied.
+// A real exported file with embedded gzipped PCM must import into a brand-new game.
 func TestImportEmbeddedPCM(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)
@@ -32,9 +27,7 @@ func TestImportEmbeddedPCM(t *testing.T) {
 	}
 	t.Logf("fixture size: %d bytes", len(data))
 
-	// Catch a panic in Import and surface it with the stack — the browser symptom
-	// ("nothing happens", no error toast) is consistent with a panic freezing the
-	// WASM Update() goroutine.
+	// A panic in Import freezes the WASM Update goroutine with no error shown, so it is caught and reported with its stack.
 	var importErr error
 	start := time.Now()
 	func() {
@@ -63,8 +56,6 @@ func TestImportEmbeddedPCM(t *testing.T) {
 		t.Errorf("StartNodeID is InvalidNodeID after import")
 	}
 
-	// Each embedded-PCM instrument must be registered as a user sample.
-	//
 	for _, id := range []instrument.ID{roster.KickSnap, roster.Snare, roster.Hihat, roster.FmEpianoDrive} {
 		if !audio.IsUserSample(id) {
 			t.Errorf("instrument %q: embedded PCM not registered (IsUserSample=false)", id)
@@ -76,8 +67,7 @@ func TestImportEmbeddedPCM(t *testing.T) {
 		}
 	}
 
-	// Every row's origin must resolve to a real node (import.go:423/431 leaves it
-	// unset on a miss and only logs a warning).
+	// Import leaves an origin unset on a miss and only logs a warning.
 	for i, r := range g.drum.Rows {
 		if r.Origin == model.InvalidNodeID {
 			t.Errorf("row %d (%q): origin unresolved after import", i, r.Name)
@@ -96,11 +86,7 @@ func TestImportEmbeddedPCM(t *testing.T) {
 		g.SetPlaying(false)
 	}()
 
-	// Performance budget: this file must load quickly on the fast path.
-	// Skip under coverage instrumentation (`make coverage-go`): the embedded-PCM
-	// gunzip is CPU-heavy, and per-statement coverage counters inflate wall-clock
-	// time well past the budget even though the real fast-path cost is fine.
-	// Timing assertions are meaningless when the binary is instrumented.
+	// Skipped under coverage: counters inflate the CPU-heavy gunzip far past the budget.
 	if testing.CoverMode() == "" {
 		const budget = 250 * time.Millisecond
 		if elapsed > budget {

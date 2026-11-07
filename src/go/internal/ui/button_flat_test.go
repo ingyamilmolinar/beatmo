@@ -10,15 +10,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// lumOf is a test-local luminance proxy used to assert the direction of the
-// hover/press brightness deltas.
 func lumOf(c color.Color) int {
 	r, g, b, _ := c.RGBA()
 	return int(r>>8) + int(g>>8) + int(b>>8)
 }
 
-// A flat body is exactly one FILLED rounded rect at the full control rect —
-// no border stroke, no keycap wall inset, no contact shadow.
+// One filled rounded rect at the full control rect: no stroke, wall inset or shadow.
 func TestFlatButtonBodyIsSingleFilledRect(t *testing.T) {
 	dst := ebiten.NewImage(200, 200)
 	r := image.Rect(10, 10, 90, 40)
@@ -36,8 +33,7 @@ func TestFlatButtonBodyIsSingleFilledRect(t *testing.T) {
 	}
 }
 
-// A fully transparent fill paints nothing — this is what makes button-quiet
-// free at rest.
+// Which makes button-quiet free at rest.
 func TestFlatButtonBodyTransparentPaintsNothing(t *testing.T) {
 	dst := ebiten.NewImage(200, 200)
 	calls := captureRoundedRectCalls(t, func() {
@@ -48,8 +44,7 @@ func TestFlatButtonBodyTransparentPaintsNothing(t *testing.T) {
 	}
 }
 
-// The bottom selection bar is flatSelectionBarPx tall and flush with the
-// control's bottom edge.
+// flatSelectionBarPx tall, flush with the bottom edge.
 func TestFlatSelectionBarBottomEdge(t *testing.T) {
 	dst := ebiten.NewImage(200, 200)
 	r := image.Rect(10, 10, 110, 40)
@@ -71,8 +66,7 @@ func TestFlatSelectionBarBottomEdge(t *testing.T) {
 	}
 }
 
-// Partial frac grows the bar outward from the center, so a hover fade reads as
-// the indicator emerging rather than sliding in from one side.
+// A partial bar grows from the centre, so a hover fade reads as the indicator emerging.
 func TestFlatSelectionBarFractionalWidthCentered(t *testing.T) {
 	dst := ebiten.NewImage(200, 200)
 	r := image.Rect(10, 10, 110, 40) // 100 wide
@@ -124,8 +118,7 @@ func TestFlatSelectionBarZeroFracDrawsNothing(t *testing.T) {
 	}
 }
 
-// Rest returns the base untouched; hover lifts; press dims; disabled collapses
-// to the container surface.
+// Rest unchanged, hover lifts, press dims, disabled collapses to the container surface.
 func TestFlatStateFillDeltas(t *testing.T) {
 	base := colSurface2
 	if got := flatStateFill(base, ComponentState{}); lumOf(got) != lumOf(base) {

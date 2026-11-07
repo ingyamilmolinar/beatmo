@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestDrawRoundedRect_CornerShape verifies that drawRoundedRect produces a
-// convex corner arc: fill widths must increase monotonically from tip (row 0)
-// to base (row radius-1). A concave/inverted arc would have widths decrease.
+// Fill widths grow from the tip row to the base; an inverted arc would shrink them.
 func TestDrawRoundedRect_CornerShape(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -40,9 +38,6 @@ func TestDrawRoundedRect_CornerShape(t *testing.T) {
 	}
 }
 
-// TestDrawRoundedRect_StrokedCornerShape verifies that the stroked variant
-// traces a convex arc path: stroke insets must decrease monotonically from
-// large (row 0) to 0 (row radius-1).
 func TestDrawRoundedRect_StrokedCornerShape(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -50,9 +45,7 @@ func TestDrawRoundedRect_StrokedCornerShape(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			insets := strokeCornerInsets(t, radius)
 
-			// Row 0 (tip) may have no stroke pixel within the corner region
-			// because the correct convex arc places it at x=radius. Skip it.
-			// Last row should have inset near 0 (base of arc near the edge).
+			// The convex arc puts the tip's stroke pixel at x=radius, outside the corner region, so row 0 is skipped.
 			last := insets[radius-1]
 			if last < 0 {
 				t.Fatalf("radius=%d: no stroke pixel at last row", radius)
@@ -77,8 +70,6 @@ func TestDrawRoundedRect_StrokedCornerShape(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupButtonsRounded verifies that the long-press popup uses
-// drawRoundedButton (not square drawButton) for all three action buttons.
 func TestLongPressPopupButtonsRounded(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -122,8 +113,7 @@ func TestLongPressPopupButtonsRounded(t *testing.T) {
 		if rec.hasSquareButton(btn.rect) {
 			t.Errorf("%s button uses square drawButton at %v, want a rounded body", btn.name, btn.rect)
 		}
-		// Flat-tonal paints the body via drawFlatButtonBody -> drawRoundedRect
-		// (filled), not the drawRoundedButton fill+border composite.
+		// The flat body is a filled drawRoundedRect, not the fill+border composite.
 		var rounded bool
 		for _, c := range rec.calls {
 			if c.Kind == drawCallRoundedRect && c.Filled && c.Rect == btn.rect && c.Radius > 0 {
@@ -140,15 +130,6 @@ func TestLongPressPopupButtonsRounded(t *testing.T) {
 	rec.assertNoSquareButtons(t, g.longPressPopupRect)
 }
 
-// TestLongPressPopupButtonColors verifies that Move/Connect buttons use
-// colDropdown fill and Delete uses colDeleteFill on the cap face.
-//
-// After the keycap restyle each button renders as a raised keycap:
-//   - drawKeycapShell paints the socket at the full hit rect (shell = adjustColor(fill,-45))
-//   - drawRoundedButton paints the cap face at keycapCapRect(hitRect, 0, true)
-//     with the semantic fill color
-//
-// We therefore check the cap-face rect, not the hit rect.
 func TestLongPressPopupButtonColors(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -180,9 +161,7 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 	expectDropdown := color.RGBAModel.Convert(colDropdown).(color.RGBA)
 	expectDelete := color.RGBAModel.Convert(colDeleteFill).(color.RGBA)
 
-	// Flat-tonal: the body IS the hit rect (no inset cap face), painted by
-	// drawFlatPanelButton -> drawFlatButtonBody -> drawRoundedRect. We look for
-	// a filled rounded rect at the button rect whose fill is the semantic color.
+	// The flat body IS the hit rect, so the semantic fill is looked for there.
 	for _, btn := range []struct {
 		name      string
 		hitRect   image.Rectangle
@@ -207,9 +186,7 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 	}
 }
 
-// TestLongPressPopup_KeycapsHaveIconRoom verifies each quick-action keycap is
-// tall enough to hold a leading/top icon (IconSizeMD) stacked above a
-// RoleBody label, per the icon+label keycap draw upgrade.
+// Room for an IconSizeMD icon stacked above a RoleBody label.
 func TestLongPressPopup_KeycapsHaveIconRoom(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

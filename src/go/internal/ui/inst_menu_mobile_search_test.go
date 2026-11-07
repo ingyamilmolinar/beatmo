@@ -6,15 +6,8 @@ import (
 	"testing"
 )
 
-// TestInstMenuMobileSearchRegistersNativeInput reproduces the reported bug:
-// on mobile, the instrument-menu search bar never opens the native keyboard.
-// The native keyboard is wired by arming the search field's rect on the
-// NativeTextInput channel (dv.nativeInputCandidates, synced by
-// dv.syncNativeGestures, formerly a direct mobileInputRegister("inst-search",
-// ...) call in drumview_layout.go). That registration is gated on
-// dv.instSearchRect being non-empty — but dv.instSearchRect is never populated
-// from the menu component, so it stays the zero rect and the field is never
-// registered (no keyboard).
+// The phone keyboard opens only for a field armed with a non-empty rect, so the menu must publish its search
+// rect to the DrumView.
 func TestInstMenuMobileSearchRegistersNativeInput(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })

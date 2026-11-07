@@ -7,12 +7,7 @@ import (
 	"testing"
 )
 
-// TestSynthControlUndoButtonReactsSameFrame proves the transport Undo button reacts
-// to a Synth-tab value edit in REAL TIME. Task-9 value edits go through the ARMED
-// value lane (arm the control, then spin its value lane); the single undo step
-// commits when the debounce elapses (inside an Update's synthTabUpdate). On the
-// very frame the commit lands, that frame's Draw must already render the button
-// lit — not one or more frames later.
+// The step commits when the debounce elapses inside an Update; that same frame's Draw must already show Undo lit.
 func TestSynthControlUndoButtonReactsSameFrame(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -32,8 +27,7 @@ func TestSynthControlUndoButtonReactsSameFrame(t *testing.T) {
 		t.Fatal("knob rect empty")
 	}
 
-	// Arm the control (Task 9: a value edit now requires arming first — the
-	// not-armed wheel scrolls the row instead of nudging the value).
+	// An unarmed wheel scrolls the row instead of changing the value.
 	dv.armSynthControl(instID, idx)
 	e := dv.instEditorArmedEditor
 	if e == nil {
@@ -53,8 +47,7 @@ func TestSynthControlUndoButtonReactsSameFrame(t *testing.T) {
 		t.Fatalf("precondition: undo should be greyed before any edit, got %v", iconColorOf(tz.undoBtn))
 	}
 
-	// Spin a few wheel notches on the armed value lane (mutates live audio,
-	// records nothing yet).
+	// Mutates live audio and records nothing yet.
 	for s := 0; s < 3; s++ {
 		dv.eqPanelZone.Invalidate()
 		if res := h.OnWheel(vx, vy, +1); res != InputConsumed {
@@ -65,8 +58,7 @@ func TestSynthControlUndoButtonReactsSameFrame(t *testing.T) {
 	if g.undoManager.CanUndo() {
 		t.Fatal("undo step must NOT be recorded mid-spin (before the debounce elapses)")
 	}
-	// Settle the kinetic barrel so the value lane actually crosses a detent
-	// (SHARED FACTS: ImpulseNotch only resolves into a value change via Tick).
+	// An impulse notch turns into a value change only through Tick.
 	for i := 0; i < 240 && e.Tick(); i++ {
 	}
 

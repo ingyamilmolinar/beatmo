@@ -55,8 +55,7 @@ func TestFilterRowsByLevel(t *testing.T) {
 }
 
 func TestFilterRowsHighlightsAreMsgRelative(t *testing.T) {
-	// name matches inside msg; the highlight positions must index into msg,
-	// not the "tag " prefix. tag "row" (len 3 + space = prefix 4). msg "kick vol".
+	// Positions index into msg, not the "tag " prefix.
 	rows := []logRow{{level: levelInfo, tag: "row", msg: "kick vol", at: logTm(1, 0, 0)}}
 	got := filterRows(rows, "kick", levelInfo, tsModeAt, logsTimeSel{}, logsTimeSel{}, logsTimeSel{})
 	if len(got) != 1 {

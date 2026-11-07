@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// End-to-end: building a Game registers an i18n.OnChange listener that
-// invalidates the DrumView's row caches on a locale switch.
 func TestLocaleSwitchInvalidatesDrumViewCaches(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)

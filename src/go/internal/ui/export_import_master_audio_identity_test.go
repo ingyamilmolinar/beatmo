@@ -2,24 +2,9 @@
 
 package ui
 
-// export → import MASTER-MIX audio identity.
-//
-// The contract these tests pin: a project file is a COMPLETE description of
-// everything that can be heard. Load a circuit, edit it, render N seconds of
-// the master bus, export, wipe every global audio store, import, render again —
-// the two renders must be byte-identical. Not "close", not "same RMS":
-// identical, because every stage from the voice to the limiter is a pure
-// function of configuration plus a seeded PRNG.
-//
-// Why the MASTER bus and not per-instrument voices: a per-voice comparison
-// (export_import_playback_fidelity_test.go and friends) cannot see channel
-// volume, insert-effect chains, per-channel EQ, master EQ, the master
-// compressor or the limiter. Those are where a
-// dropped field is loudest and where a per-voice test is blind.
-//
-// Real build only — see the harness file for why `-tags test` cannot host this.
-//
-// Harness: export_import_master_audio_harness_test.go.
+// A project file describes everything audible: render, export, wipe every global, import, render again —
+// byte-identical, since every stage is a pure function of config plus a seeded PRNG. The master bus, because a
+// per-voice test cannot see channel volume, inserts, EQ or the limiter.
 
 import (
 	"encoding/json"
@@ -38,9 +23,7 @@ import (
 
 // ─────────────────────────── audible-state snapshot ──────────────────────────
 
-// audibleState is every engine-held value that can change the master mix for
-// one instrument. The export must be able to reconstruct all of it; anything
-// added to the engine that affects sound belongs here too.
+// Anything added to the engine that affects sound belongs here too.
 type audibleState struct {
 	Origin      string             // the library entry the document came from
 	Effective   map[string]float64 // the instrument document's owned fields
@@ -71,8 +54,6 @@ func captureAudibleState(id instrument.ID) audibleState {
 	return st
 }
 
-// diff returns a human-readable list of every field that changed, empty when
-// the two snapshots are equal.
 func (a audibleState) diff(b audibleState) []string {
 	var out []string
 	if a.Origin != b.Origin {
@@ -155,11 +136,7 @@ func captureMasterState(g *Game) masterState {
 
 // ───────────────────────────── global reset ──────────────────────────────────
 
-// wipeGlobalAudioState returns every process-global audio store the import must
-// repopulate to a known-wrong state. Anything the file fails to carry shows up
-// as an audible difference instead of silently surviving in a global the test
-// never cleared — the failure mode that lets a "round-trip" test pass while the
-// file is lossy.
+// To a known-wrong state, so anything the file fails to carry is an audible difference, not a survivor.
 func wipeGlobalAudioState(t *testing.T, ids []instrument.ID) {
 	t.Helper()
 	audio.ClearAllInsertEffectsAndNotify()
@@ -174,9 +151,7 @@ func wipeGlobalAudioState(t *testing.T, ids []instrument.ID) {
 	audio.SetMainVolume(1)
 }
 
-// wipeToCleanMachine is wipeGlobalAudioState plus the state a DIFFERENT machine
-// would not have: an empty user library (no Save, no Save As). The file alone
-// must then rebuild the tone.
+// Plus an empty user library, so the file alone must rebuild the tone.
 func wipeToCleanMachine(t *testing.T, ids []instrument.ID) {
 	t.Helper()
 	if err := audio.LoadUserInstrumentLibrary(&memInstrumentLibrary{}, nil); err != nil {
@@ -187,10 +162,7 @@ func wipeToCleanMachine(t *testing.T, ids []instrument.ID) {
 
 // ───────────────────────────── the circuit ───────────────────────────────────
 
-// editedProject is the headline circuit: every audible determinant edited
-// (editedProjectUnsaved), then the Synth tab's Save and Save As pressed on top
-// of those live edits, then MORE live edits nobody saves — the order a user
-// actually works in. Returns the game and the instrument ids in row order.
+// Everything edited, then Save and Save As, then more unsaved edits, in the order a user works.
 func editedProject(t *testing.T) (*Game, []instrument.ID) {
 	t.Helper()
 	g, ids := editedProjectUnsaved(t)
@@ -200,13 +172,8 @@ func editedProject(t *testing.T) (*Game, []instrument.ID) {
 	return g, ids
 }
 
-// applySynthTabSaves presses the Synth tab's Save on rows 0 and 1 and Save As
-// on row 2, each through the button's own entry point with that row's channel
-// selected (the Synth tab edits the selected channel). Save copies the
-// instrument's document into the user library; Save As writes a new user
-// instrument and repoints the row's document at it. Neither may change a single
-// sample of what is heard. The library is the test's private one
-// (editedProjectUnsaved). Returns the Save-As instrument id.
+// Through the buttons' entry points with each row's channel selected; neither may change a sample. Returns the
+// Save-As id.
 func applySynthTabSaves(t *testing.T, g *Game, ids []instrument.ID) string {
 	t.Helper()
 	for _, id := range ids[:2] {
@@ -220,21 +187,13 @@ func applySynthTabSaves(t *testing.T, g *Game, ids []instrument.ID) string {
 	if d, _ := audio.InstrumentDoc(ids[2]); userID == "" || d.Origin != userID {
 		t.Fatalf("Synth-tab Save As on %q: got %q, document origin %q", ids[2], userID, d.Origin)
 	}
-	// Back to Master: the master-EQ edits in editedProjectUnsaved went through
-	// the panel's Master view, and the file must see them there.
+	// The master-EQ edits went through the Master view.
 	g.drum.selectAudioChannel(channel.Master)
 	return string(userID)
 }
 
-// applyPostSaveEdits makes the edits a user makes AFTER saving and never saves:
-// knobs on a Saved instrument and a Sampler edit. The export must carry them
-// anyway — exporting is the save that matters.
-//
-// The knobs are ones the Synth tab actually OFFERS for the instrument (a fixed
-// stride through the schema used to land on unused gen slots, i.e. edits no
-// user can make and no render reads). The Sampler edit is process-global, so it
-// is cleared in Cleanup — left behind, the next test's "saved" render already
-// carried it and re-applying it changed nothing.
+// Never saved, yet the export must carry them. Knobs the Synth tab really offers; the Sampler edit is
+// process-global, so it is cleared on Cleanup.
 func applyPostSaveEdits(t *testing.T, g *Game, ids []instrument.ID) {
 	t.Helper()
 	defs := audio.InstrumentParamDefs(ids[0])
@@ -261,8 +220,7 @@ func applyPostSaveEdits(t *testing.T, g *Game, ids []instrument.ID) {
 	if edited == 0 {
 		t.Fatalf("post-save edits: the Synth tab offers no numeric knob on %q", ids[0])
 	}
-	// A Synth-tab MACRO DIAL on another row: a lens whose edits are plain
-	// param writes, so they must travel in instrument_docs like any knob edit.
+	// A dial's edits are plain param writes and travel like any knob.
 	turnHeadlineDial(t, g, ids[1])
 	// The Sampler tab's Save writes a non-destructive edit descriptor.
 	audio.SetSampleEdit(ids[3], audio.SampleEditFromFields(map[string]float64{
@@ -275,15 +233,10 @@ func applyPostSaveEdits(t *testing.T, g *Game, ids []instrument.ID) {
 // headlineChordInst is the headline row whose second node is a chord node.
 const headlineChordInst = roster.OrganChurch
 
-// headlineDial is the dial the headline circuit turns (on ids[1], the snare):
-// Length, which turns both ways on a snare (its decay rates up, FINISH Length
-// down) — Bright there is down-only since FINISH Crisp left the dial.
+// Length turns both ways on a snare.
 const headlineDialCard, headlineDialID = "length", "length"
 
-// turnHeadlineDial opens the Synth tab on inst and turns one macro dial
-// through its real input handler (press → drag → release, which applies live
-// and commits once). Returns the instrument's params from before the turn, so
-// a caller can take the dial edit back out.
+// Through its real input handler; returns the pre-turn params so a caller can undo it.
 func turnHeadlineDial(t *testing.T, g *Game, inst instrument.ID) audio.RecipeParams {
 	t.Helper()
 	dv := g.drum
@@ -310,9 +263,7 @@ func turnHeadlineDial(t *testing.T, g *Game, inst instrument.ID) audio.RecipePar
 	return before
 }
 
-// editedProjectUnsaved builds a multi-row circuit and then edits EVERY audible
-// determinant through the same engine entry points the UI uses. Returns the
-// game and the instrument ids in row order.
+// Through the UI's engine entry points.
 func editedProjectUnsaved(t *testing.T) (*Game, []instrument.ID) {
 	t.Helper()
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -320,10 +271,7 @@ func editedProjectUnsaved(t *testing.T) (*Game, []instrument.ID) {
 	g.Layout(1280, 720)
 
 	ids := []instrument.ID{roster.Kick, roster.Snare, roster.Hihat, roster.OrganChurch}
-	// The instrument documents and the user library are process-global: start
-	// from a private, empty library and the shipped documents so a sibling test
-	// that edited or saved one of these instruments cannot change what this test
-	// is measuring.
+	// A private empty library and the shipped documents, so sibling tests cannot change what is measured.
 	withPrivateInstrumentLibrary(t)
 	audio.ResetInstrumentDocs()
 	restoreLibraryCopies(t, ids...)
@@ -383,8 +331,7 @@ func editedProjectUnsaved(t *testing.T) (*Game, []instrument.ID) {
 			audio.SetInstrumentParam(id, k, owned[k]+0.25+0.1*float64(i))
 		}
 
-		// Insert-effect chain, including a disabled slot (which must survive as
-		// disabled, not be dropped) and non-default params.
+		// A disabled slot must survive as disabled.
 		audio.SetInsertEffects(id, []audio.EffectSlot{
 			{Type: "distortion", Enabled: true, Params: map[string]float64{"drive": 1.7 + 0.3*float64(i), "mix": 0.45, "tone": 3200}},
 			{Type: "tremolo", Enabled: i%2 == 0, Params: map[string]float64{"depth": 0.6, "rate": 4.5, "mix": 1, "shape": 1.2}},
@@ -424,9 +371,7 @@ func editedProjectUnsaved(t *testing.T) (*Game, []instrument.ID) {
 
 // ───────────────────────────────── tests ─────────────────────────────────────
 
-// TestMasterMixRenderIsDeterministic pins the premise everything else rests on:
-// the same configuration renders to the same bytes. If this fails, no identity
-// assertion downstream means anything — a "difference" could just be noise.
+// Without it, any difference downstream could be noise.
 func TestMasterMixRenderIsDeterministic(t *testing.T) {
 	g, _ := editedProject(t)
 	a := renderLiveMasterMix(t, g, masterRenderSeconds)
@@ -445,10 +390,7 @@ func TestMasterMixRenderIsDeterministic(t *testing.T) {
 	t.Logf("%d samples, peak %.4f", len(a), peak)
 }
 
-// TestSynthTabSaveDoesNotChangeTheMasterMix: Save and Save As copy the tone the
-// user is ALREADY hearing into the library. If either moves a single sample, the
-// user's edit and the saved/exported sound are two different things — and the
-// export → import comparison would faithfully reproduce the wrong one.
+// Save copies what the user already hears; a moved sample would make the saved sound differ from the edit.
 func TestSynthTabSaveDoesNotChangeTheMasterMix(t *testing.T) {
 	g, ids := editedProjectUnsaved(t)
 	before := renderLiveMasterMix(t, g, masterRenderSeconds)
@@ -457,12 +399,8 @@ func TestSynthTabSaveDoesNotChangeTheMasterMix(t *testing.T) {
 	assertMasterPCMIdentical(t, before, after, "Synth-tab Save + Save As")
 }
 
-// TestHeadlineEditsAreAudible pins the premise of the identity tests below: an
-// identity assertion passes just as happily when an edit is IGNORED on both
-// sides, so every post-Save edit must actually move the master mix. This is
-// what exposed the pitched-voice cache serving the unedited organ after a
-// Sampler edit (the edit never reached a single sample, so export → import
-// "matched").
+// An identity passes just as well when an edit is ignored on both sides, so every post-Save edit must move the
+// mix.
 func TestHeadlineEditsAreAudible(t *testing.T) {
 	g, ids := editedProjectUnsaved(t)
 	applySynthTabSaves(t, g, ids)
@@ -477,8 +415,7 @@ func TestHeadlineEditsAreAudible(t *testing.T) {
 	if _, _, n := pcmIdentical(edited, unedited); n == 0 {
 		t.Errorf("the Sampler edit on %q is inaudible in the master mix", ids[3])
 	}
-	// The macro dial alone must be audible too: turn it once more on top of
-	// everything, then put exactly its pre-turn params back.
+	// Then exactly its pre-turn params back.
 	beforeDial := turnHeadlineDial(t, g, ids[1])
 	withDial := renderLiveMasterMix(t, g, masterRenderSeconds)
 	for k, v := range beforeDial {
@@ -488,8 +425,7 @@ func TestHeadlineEditsAreAudible(t *testing.T) {
 	if _, _, n := pcmIdentical(withDial, withoutDial); n == 0 {
 		t.Errorf("the macro dial %s/%s on %q is inaudible in the master mix", headlineDialCard, headlineDialID, ids[1])
 	}
-	// The chord node's quality must be audible (an identity test is only as
-	// good as the proof that its edits are audible).
+	// The chord quality must be audible too.
 	var chordID model.NodeID = model.InvalidNodeID
 	for nid, n := range g.graph.Nodes {
 		if n.Type == model.NodeTypeChord {
@@ -510,20 +446,8 @@ func TestHeadlineEditsAreAudible(t *testing.T) {
 	}
 }
 
-// TestExportImportMasterMixIsByteIdentical is the headline contract: edit
-// everything, export, wipe every global, import, and hear exactly the same
-// four seconds of master bus.
-//
-// Two import targets: the SAME session (the Synth-tab Saves are still in the
-// user library) and a CLEAN machine (an empty library — only the file). They fail differently: the first hides a file that relies on the
-// session, the second hides a session that disagrees with the file.
-//
-// A user's Save trumps the document a circuit carries for the same instrument
-// on every open (audio.OpenCircuitInstrumentDocs), so in the same session the
-// unsaved post-Save edits would come back as the SAVED tone — by design
-// (TestSynthSaveTrumpsTheCircuitOnTheNextOpen). The same-session variant
-// therefore Saves those edits too before exporting: the import then rebuilds
-// the Saved instruments from the LIBRARY, and must still be byte-identical.
+// Into the same session and a clean machine, which fail differently. A Save trumps a circuit's document on open,
+// so the same-session variant re-saves its post-Save edits first and must still be byte-identical.
 func TestExportImportMasterMixIsByteIdentical(t *testing.T) {
 	for _, clean := range []bool{false, true} {
 		name := "same-session"
@@ -566,8 +490,7 @@ func exportImportMasterMixIdentity(t *testing.T, cleanMachine bool) {
 		t.Fatalf("import: %v", err)
 	}
 
-	// Config completeness first: a named field tells you WHAT was dropped,
-	// whereas the PCM assertion only tells you that something was.
+	// A named field says WHAT was dropped; the PCM only says that something was.
 	for _, id := range ids {
 		if d := beforeInst[id].diff(captureAudibleState(id)); len(d) > 0 {
 			t.Errorf("instrument %q config not restored by import:\n  - %v", id, d)
@@ -585,8 +508,7 @@ func exportImportMasterMixIdentity(t *testing.T, cleanMachine bool) {
 	assertMasterPCMIdentical(t, before, after, "export -> wipe -> import")
 }
 
-// resaveSavedInstruments presses Save again on the rows applySynthTabSaves
-// Saved, so the user library holds their live (post-Save edited) tone.
+// So the library holds their live tone.
 func resaveSavedInstruments(t *testing.T, g *Game, ids []instrument.ID) {
 	t.Helper()
 	for _, id := range ids[:2] {
@@ -598,14 +520,8 @@ func resaveSavedInstruments(t *testing.T, g *Game, ids []instrument.ID) {
 	g.drum.selectAudioChannel(channel.Master)
 }
 
-// TestExportImportMasterMixIsByteIdenticalAcrossReExport guards the fixed
-// point: exporting the imported project must produce a file that renders the
-// same again. A field that survives one hop but is re-serialized differently
-// (a default re-elided, a map re-ordered into a different clamp) decays across
-// repeated save/load cycles — this is what catches that. A property of the
-// FILE, so both hops land on a clean machine: with the session's Saves in the
-// library the first import would (by design) bring the Saved tones back over
-// the file's unsaved edits.
+// Exporting the import renders the same again: a field re-serialised differently decays over repeated save/load.
+// Both hops on a clean machine, since session Saves would bring the saved tones back over unsaved edits.
 func TestExportImportMasterMixIsByteIdenticalAcrossReExport(t *testing.T) {
 	g, ids := editedProject(t)
 	first, err := g.drum.exportBytes()
@@ -636,9 +552,7 @@ func TestExportImportMasterMixIsByteIdenticalAcrossReExport(t *testing.T) {
 	after := renderLiveMasterMix(t, g3, masterRenderSeconds)
 	assertMasterPCMIdentical(t, before, after, "export -> import -> export -> import")
 
-	// The second export must equal the first byte-for-byte: a stable fixed
-	// point is what makes repeated save/load lossless rather than merely
-	// lossy-by-a-little each time.
+	// A stable fixed point makes repeated save/load lossless.
 	if string(first) != string(second) {
 		t.Errorf("re-export is not byte-identical to the first export (%d vs %d bytes)", len(first), len(second))
 	}
@@ -659,8 +573,7 @@ func assertNoteSchedulesEqual(t *testing.T, want, got []audio.SongRenderNote) {
 	}
 }
 
-// reflect_DeepEqualMaster compares masterState without pulling in reflect for
-// one call site; the slices are short and fixed-length.
+// Short fixed-length slices, no reflect needed.
 func reflect_DeepEqualMaster(a, b masterState) bool {
 	if a.MainVolume != b.MainVolume || a.BPM != b.BPM || a.Subdiv != b.Subdiv ||
 		a.HPFOn != b.HPFOn || a.LPFOn != b.LPFOn || a.HPFHz != b.HPFHz || a.LPFHz != b.LPFHz ||

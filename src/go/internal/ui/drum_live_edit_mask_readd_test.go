@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Regression: deleting a node during playback freezes a past entry; re‑adding
-// the same node (restoring the path shape) must clear the frozen mask so the
-// DrumView window matches the engine predictor.
+// Re-adding a node deleted mid-play clears its frozen mask, so the window matches the predictor.
 func TestDrumView_ReaddClearsFrozenMaskEvenIfPathUnchanged(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -85,10 +83,7 @@ func TestDrumView_ReaddClearsFrozenMaskEvenIfPathUnchanged(t *testing.T) {
 	}
 }
 
-// Repro for the row=4/abs=86 mismatch observed in TIMELINE_TRACE logs:
-// remove a node during playback, advance far enough to seed frozen history,
-// then re-add the node. A seeded invisible commit before the path-change beat
-// should be overridden by the predictor, but the current logic keeps it masked.
+// A seeded invisible commit before the path-change beat is overridden by the predictor after a re-add.
 func TestDrumView_InvisibleSeedMasksReaddedNode(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -117,8 +112,7 @@ func TestDrumView_InvisibleSeedMasksReaddedNode(t *testing.T) {
 	g.refreshDrumRow()
 
 	targetAbs := 86
-	// Simulate playback having advanced past the target so history seeding
-	// will cover abs=86. Freeze the past and set elapsed beats accordingly.
+	// Past the target, so history seeding covers it.
 	g.SetPlaying(true)
 	// Advance far enough that the invisible stale gate is exceeded.
 	behind := g.grid.MaxDiv()*2 + 10
@@ -126,8 +120,7 @@ func TestDrumView_InvisibleSeedMasksReaddedNode(t *testing.T) {
 	g.nextBeatIdxs = []int{g.elapsedBeats}
 	g.frozenUpToByRow = []int{g.elapsedBeats + 50}
 
-	// Manually seed a frozen invisible commit before the path-change beat,
-	// matching the trace where history seeding masked a re-added node.
+	// Before the path-change beat, as the trace showed.
 	g.recordTimelineCommitKind(0, targetAbs, false, model.NodeTypeInvisible, timeline.CommitKindSeeded)
 	g.pathChangeBeatByRow = []int{targetAbs + 10} // change beat after target
 	g.refreshDrumRow()
@@ -151,9 +144,7 @@ func TestDrumView_InvisibleSeedMasksReaddedNode(t *testing.T) {
 	}
 }
 
-// Tail-of-log regression: frozen invisible commit at abs=134 (later 166)
-// remains masked because the path-change beat lies ahead and the stale gate
-// is large, so DrumView disagrees with the predictor.
+// A frozen invisible commit must not stay masked when the path-change beat lies ahead with a large stale gate.
 func TestDrumView_InvisibleFrozenPastStaysMaskedAfterPathChange(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

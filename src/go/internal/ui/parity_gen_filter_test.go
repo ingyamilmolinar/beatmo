@@ -7,13 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: parityScan must filter BOTH seq decisions AND audio events by the
-// current parityGen, so an entry recorded under a prior structural generation
-// (before a live edit bumped parityGen) never participates in a comparison
-// against the post-mutation predictor. This is the symmetric generation filter
-// the design promises (game_parity_state.go gen-bump contract); without it a
-// stale decision recorded just before a graph/length/instrument edit panics the
-// app against the new predictor truth.
+// Both seq decisions and audio events are filtered by the current parityGen, so nothing recorded before a live
+// edit is compared against the post-edit predictor.
 func TestParityScanFiltersStaleParityGenDecision(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -36,8 +31,7 @@ func TestParityScanFiltersStaleParityGenDecision(t *testing.T) {
 	g.nextBeatIdxs = []int{2} // pastExclusive=2 => current beat abs=1
 	g.seqNextIdxs = []int{2}
 
-	// Simulate a structural mutation having advanced parityGen AFTER this beat's
-	// decision was recorded (the decision carries the prior generation).
+	// The decision carries the generation from before the mutation.
 	staleGen := g.parityGen.Load()
 	g.parityGen.Add(1)
 
@@ -51,9 +45,7 @@ func TestParityScanFiltersStaleParityGenDecision(t *testing.T) {
 			Audible:  true,
 			NodeType: model.NodeTypeRegular,
 			Missing:  false,
-			// Not enqueued AND stale generation: under the current generation
-			// this would be a genuine audio_missing, but it belongs to a prior
-			// structural generation and must be filtered out entirely.
+			// Not enqueued, which under the current generation would be a real audio_missing; stale, so it is filtered.
 			Enqueued:   false,
 			ParityGen:  staleGen,
 			RecordedAt: time.Unix(0, 0).Add(-250 * time.Millisecond),
@@ -69,8 +61,7 @@ func TestParityScanFiltersStaleParityGenDecision(t *testing.T) {
 	}
 }
 
-// Counterpart: a decision at the CURRENT parityGen is still compared (the
-// filter must not be so broad it stops detecting real issues).
+// The filter must not be so broad that it stops detecting real issues.
 func TestParityScanKeepsCurrentParityGenDecision(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -7,11 +7,8 @@ import (
 	"testing"
 )
 
-// TestTemplateLoadIsUndoable drives the real user-facing load path
-// (drum.onImport -> pendingImportData -> Game.Update drain -> Game.Import) and
-// asserts the pre-load circuit is preserved as a single undo step. Loading a
-// template must never silently destroy the current circuit: one Ctrl+Z restores
-// it. Regression guard for the "import clears undo history" data-loss bug.
+// Through the real path (onImport → pendingImportData → Update drain → Import): loading a template must never
+// silently destroy the current circuit; one Ctrl+Z restores it.
 func TestTemplateLoadIsUndoable(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -25,12 +22,10 @@ func TestTemplateLoadIsUndoable(t *testing.T) {
 	}
 	beforeNodes := len(g.nodes)
 
-	// The loaded template is a distinct 2-node circuit, so the swap is
-	// observable regardless of the default demo's size.
+	// A distinct 2-node circuit, so the swap shows whatever the demo's size.
 	tmpl := buildSimpleImportJSON(t)
 
-	// Real path: the menu row calls dv.onImport; Game queues it and drains it
-	// after seqMu.Unlock() inside Update().
+	// Game queues the import and drains it after seqMu.Unlock() inside Update.
 	if g.drum.onImport == nil {
 		t.Fatal("onImport not wired")
 	}

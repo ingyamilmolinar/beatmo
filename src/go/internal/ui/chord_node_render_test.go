@@ -16,9 +16,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// interceptChordIcon counts drawChordIcon calls (the ebitestub does not
-// rasterise vector icon paths, so pixels cannot show an icon; the PNG capture
-// in the scene catalog is the visual proof).
+// The stub does not rasterise vector icons; the scene PNG is the visual proof.
 func interceptChordIcon(t *testing.T) *int {
 	t.Helper()
 	calls := new(int)
@@ -55,8 +53,7 @@ func countNonTransparent(img *ebiten.Image) int {
 	return n
 }
 
-// A chord node carries the chord glyph on the grid; a regular node gets no
-// state overlay at all.
+// A regular node gets no overlay.
 func TestNodeStateOverlayMarksChordNodes(t *testing.T) {
 	g := newTestGameForUndo(t)
 	calls := interceptChordIcon(t)
@@ -91,8 +88,6 @@ func TestCoordBadgeNamesTheChord(t *testing.T) {
 	}
 }
 
-// A sounding chord cell in the drum view carries a mark a regular cell does
-// not.
 func TestDrumCellMarksChordCells(t *testing.T) {
 	fill := color.NRGBA{200, 120, 80, 255}
 	reg := ebiten.NewImage(20, 24)
@@ -125,9 +120,7 @@ func TestDrumCellMarksChordCells(t *testing.T) {
 	}
 }
 
-// The played tier freezes a chord cell AS a chord (its type byte), through
-// the real playback path: play past the chord cell, then collapse the node —
-// the past keeps its chord mark.
+// Through real playback: played past, then collapsed, the past keeps its chord mark.
 func TestPlayedTierKeepsChordCellType(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	id := chordTestNodeAt(t, g, 2)

@@ -10,17 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestSettingsLanguagePillRealClickDispatch guards the FULL real-click dispatch
-// path for the Settings language pills: a real press at the Español pill's
-// reported rect must flow through the tree's shared HitIndex (which the portal
-// publishes into) → the overlay's hit handler → onPick → i18n.SetLocale.
-//
-// The earlier settings_overlay_test.go called hit.Handler.OnPress(...) directly
-// and so never exercised real dispatch — it passed while the pills were
-// unclickable in the app. Root cause: the portal flattens every overlay hit
-// area's ZIndex to 300+stackPos, so a full-panel catch-all registered before
-// the pills won the equal-z stable-sort tiebreak and consumed the press. This
-// test reproduces that bug through Game.Update().
+// Through the shared HitIndex, not hit.Handler.OnPress: the portal flattens every overlay hit area to
+// 300+stackPos, so a full-panel catch-all registered before the pills won the equal-z tie and the pills were
+// unclickable while a direct call passed.
 func TestSettingsLanguagePillRealClickDispatch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)
@@ -58,8 +50,6 @@ func TestSettingsLanguagePillRealClickDispatch(t *testing.T) {
 	}
 }
 
-// TestSettingsEnglishPillRealClickDispatch is the mirror for the English pill:
-// from a Spanish start, a real click on the English pill switches back to EN.
 func TestSettingsEnglishPillRealClickDispatch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	assertDefaultParityState(t)

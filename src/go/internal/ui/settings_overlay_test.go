@@ -17,11 +17,7 @@ func findHitAreaByTag(areas []HitArea, tag string) (HitArea, bool) {
 	return HitArea{}, false
 }
 
-// TestSettingsOverlayPanelRoutesToPills checks per-pill routing: pressing a
-// pill's own hit area picks that language via its Button.OnClick; a press on
-// panel background is consumed by the catch-all without picking. (The full
-// real-dispatch path is covered by TestSettingsLanguageButtonRealClickDispatch —
-// this is the unit-level router check.)
+// A press on the panel background is consumed by the catch-all without picking.
 func TestSettingsOverlayPanelRoutesToPills(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)
@@ -81,14 +77,10 @@ func TestSettingsOverlayDrawDoesNotPanic(t *testing.T) {
 	o.Draw(nil) // Draw guards a nil screen and returns early.
 }
 
-// TestSettingsOverlayShortcutsScroll pins that when the panel is height-clamped
-// (a short pane), the desktop shortcuts list becomes scrollable and the shared
-// smooth wheel path advances it — instead of silently truncating rows past the
-// bottom edge with no way to reach them.
+// A height-clamped panel scrolls its shortcuts list rather than truncating unreachable rows.
 func TestSettingsOverlayShortcutsScroll(t *testing.T) {
 	o := NewSettingsOverlay(func(i18n.Locale) {})
-	// A short pane forces the ~350px panel to clamp so the 8-row shortcuts list
-	// cannot fit — the list must scroll.
+	// Short enough that the list cannot fit.
 	screen := image.Rect(0, 0, 1200, 240)
 	o.Layout(screen, screen)
 

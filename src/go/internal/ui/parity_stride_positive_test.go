@@ -6,14 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestParityStrideEventuallyFiresMismatch guards against a stride bug that
-// permanently skips a mismatching abs when parityScanStride > 1 rotates the
-// row-scan phase across successive "refresh" scans. A single parityScan call
-// with reason=="refresh" only visits abs values congruent to the current
-// phase mod stride (game_parity_diff_scan.go:356-371); parityScanPhase
-// auto-rotates by one on every such call (game_parity_diff_scan.go:187-189).
-// A persistent mismatch planted at a single abs must therefore surface
-// within one full stride cycle, not be skipped forever.
+// A "refresh" scan visits only abs congruent to the rotating phase mod stride, so a persistent mismatch must
+// surface within one full cycle rather than be skipped forever.
 func TestParityStrideEventuallyFiresMismatch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -23,8 +17,7 @@ func TestParityStrideEventuallyFiresMismatch(t *testing.T) {
 	g.parityWatch = parityWatchLog
 	g.ClearParityMismatches()
 
-	// Self-looping single node so the predictor considers every abs visible
-	// (mirrors the setup in parity_cached_view_test.go).
+	// A self-loop makes every abs visible.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.start = a
 	g.graph.StartNodeID = a.ID
@@ -44,10 +37,7 @@ func TestParityStrideEventuallyFiresMismatch(t *testing.T) {
 		t.Fatalf("expected step 7 to be visible pre-corruption")
 	}
 
-	// parityScan bails out early on "refresh" when not playing
-	// (game_parity_diff_scan.go:176-179), and reason=="refresh" is required
-	// to activate the stride/phase logic at all (stride is forced to 1 for
-	// any other reason string).
+	// Only a "refresh" scan uses the stride, and it bails out when not playing.
 	g.SetPlaying(true)
 
 	const stride = 3
@@ -55,10 +45,7 @@ func TestParityStrideEventuallyFiresMismatch(t *testing.T) {
 	g.parityScanPhase = 0
 
 	const plantedRow, plantedAbs = 0, 7
-	// Plant a persistent mismatch: predictor says visible, slate disagrees.
-	// parityScan never mutates the slate, so this stays corrupted across
-	// every iteration below; re-assert it defensively each pass in case a
-	// future refactor makes some scan path rebuild the row in between.
+	// parityScan never mutates the slate; re-asserted each pass in case a scan path ever rebuilds the row.
 	g.drum.Rows[plantedRow].Steps[plantedAbs] = false
 
 	found := false

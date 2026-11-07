@@ -9,33 +9,14 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestImportLargeTemplateNoUndoCaptureStorm reproduces the WASM-mobile
-// crash/hang when loading a large built-in template.
-//
-// Root cause: every tryAddNode / addEdge / AddRow during Import fires the undo
-// tap (endUndoGroup -> commitNow -> undoCapture -> DrumView.exportBytes), which
-// serializes the ENTIRE growing document to indented JSON. For an N-node
-// template that is O(N^2) full-document serializations — 7s on native for the
-// the largest beethoven-quartet-op18 template, a multi-second single-frame freeze on
-// single-threaded WASM mobile (the "hang"). The undo history is dropped at the
-// end of Import (OnExternalLoad) anyway, so every one of those captures is
-// wasted work.
-//
-// This is a machine-independent guard: it counts document serializations during
-// Import and requires them to be bounded (not proportional to node count).
-// Before the fix the count equals roughly the node+edge+row count (thousands);
-// after the fix Import performs no per-mutation captures.
+// Every mutation during Import fired the undo tap, which serialised the whole growing document: O(N²) work,
+// a multi-second freeze on single-threaded WASM, for history Import drops anyway. Counting serialisations is
+// machine-independent.
 func TestImportLargeTemplateNoUndoCaptureStorm(t *testing.T) {
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
 	defer restore()
 
-	// The largest shipped template is the worst case a user can trigger from
-	// the template menu on mobile. Pick it by SIZE rather than by name: this
-	// named beethoven-quartet-op18, which was the biggest only because a
-	// measure-range defect was splicing all four movements of the quartet into
-	// one circuit. Fixing that shrank it to 83 nodes and left this guard
-	// unable to tell O(N) from O(1) — a perf guard must not depend on a
-	// fixture whose size was itself a bug.
+	// Picked by SIZE, not name: a perf guard must not depend on a fixture whose size could itself be a bug.
 	var tpl assets.Template
 	for _, tp := range assets.Templates() {
 		if len(tp.Bytes) > len(tpl.Bytes) {
@@ -61,9 +42,7 @@ func TestImportLargeTemplateNoUndoCaptureStorm(t *testing.T) {
 		t.Fatalf("import failed: %v", err)
 	}
 
-	// A correct import performs at most a small constant number of document
-	// serializations (ideally zero — history is cleared at the end regardless).
-	// It must NOT scale with the node count.
+	// Ideally zero, never proportional to the node count.
 	nodeCount := len(g.graph.Nodes)
 	if nodeCount < 100 {
 		t.Fatalf("test fixture too small (%d nodes) to distinguish O(N) from O(1)", nodeCount)

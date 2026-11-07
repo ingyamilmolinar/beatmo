@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// buildRectangleWithLogic creates a rectangular loop with invisible pass-throughs
-// and mixed logic rules across audible nodes.
 func buildRectangleWithLogic(g *Game) *uiNode {
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	inv1 := g.tryAddNode(1, 0, model.NodeTypeInvisible)
@@ -58,8 +56,6 @@ func buildRectangleWithLogic(g *Game) *uiNode {
 	return A
 }
 
-// TestSeqScheduleTimeAdvancesUnderHeavyPrediction verifies the time-based
-// sequencer keeps advancing even when predictor Ensure() is busy.
 func TestSeqScheduleTimeAdvancesUnderHeavyPrediction(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -8,8 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Open the Save As dialog on the Synth tab and drive Left/Right through the real
-// Game.Update loop: the caret moves and the grid must NOT pan.
+// Through the real Game.Update: the caret moves, the grid does not pan.
 func TestFunctional_ArrowKeys_SaveAsDialog(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)

@@ -7,9 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: parityScan's audio_missing check must not be skipped simply
-// because the beat became "past" while waiting out the 120ms grace window.
-// Otherwise, missing-audio events at ~125ms/step cadences can evade detection.
+// A beat that becomes past while waiting out the grace window must still be checked, or missing audio at
+// fast step rates evades detection.
 func TestParityDetectsMissingAudioJustBehindPlayhead(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -30,9 +29,7 @@ func TestParityDetectsMissingAudioJustBehindPlayhead(t *testing.T) {
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 
-	// Simulate the UI playhead being two steps ahead (so abs=0 is now behind the
-	// "current beat" floor) while the sequencer previously decided abs=0 should
-	// have been audible but no audio event was recorded.
+	// An Audible decision for abs=0 with no audio event recorded.
 	g.nextBeatIdxs = []int{2} // pastExclusive=2 => current beat abs=1
 	g.seqNextIdxs = []int{2}
 
@@ -46,10 +43,7 @@ func TestParityDetectsMissingAudioJustBehindPlayhead(t *testing.T) {
 			Audible:  true,
 			NodeType: model.NodeTypeRegular,
 			Missing:  false,
-			// Match the current parity generation so the scan's gen filter does
-			// not discard this directly-injected decision. Production code path
-			// is recordSeqDecision which captures gen; tests that bypass it must
-			// stamp gen explicitly.
+			// recordSeqDecision stamps the generation; a directly injected decision must too, or the scan discards it.
 			ParityGen:  g.parityGen.Load(),
 			RecordedAt: time.Unix(0, 0).Add(-250 * time.Millisecond), // past the grace window
 		},

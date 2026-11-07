@@ -9,9 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §2.8 (user decision, "sound only"): opening a circuit plays
-// the newest saved version's DOCUMENT of each of its instruments — instances
-// included — while the circuit keeps its own EQ / FX / Sampler settings.
+// Opening a circuit plays each instrument's newest saved DOCUMENT, instances included, while the circuit keeps its own
+// EQ, FX and Sampler settings.
 
 func circuitWithKickAndInstance(t *testing.T) (*Game, instrument.ID) {
 	t.Helper()

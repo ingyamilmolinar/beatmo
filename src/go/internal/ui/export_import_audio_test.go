@@ -54,8 +54,7 @@ func TestExportIncludesInsertEffects(t *testing.T) {
 	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
-	// Install through the audio layer — the single source of truth export
-	// reads (r.Effects is only the UI mirror and can lag slider edits).
+	// Through the audio layer, which export reads; r.Effects is a UI mirror that can lag.
 	audio.SetInsertEffects(g.drum.Rows[0].Instrument, []audio.EffectSlot{
 		{Type: "distortion", Enabled: true, Params: map[string]float64{"drive": 0.5}},
 		{Type: "delay", Enabled: false, Params: map[string]float64{"time": 0.3, "feedback": 0.4}},
@@ -295,12 +294,7 @@ func TestExportIncludesMasterVolume(t *testing.T) {
 	}
 }
 
-// TestExportAlwaysWritesMasterVolume retargets the old
-// TestExportOmitsMasterVolumeWhenDefault: export used to omit master_volume
-// at 1.0 ("the default"), but fresh sessions now start at 0.5 headroom, so
-// omitting any value bakes a stale default into the file — the funk-hop
-// investigation (2026-07-14) traced audible master hard-clipping to a file
-// that round-tripped back at 1.0. New contract: files are self-describing.
+// Always written: sessions start at 0.5 headroom, so omitting a "default" bakes a stale value into the file.
 func TestExportAlwaysWritesMasterVolume(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -325,10 +319,7 @@ func TestExportAlwaysWritesMasterVolume(t *testing.T) {
 	}
 }
 
-// TestMasterVolumeZeroRoundTrips pins the omitempty bug: a muted master
-// (0) was dropped from the JSON by float64+omitempty and re-imported at the
-// legacy 1.0 default — a silent project came back at FULL volume. The field
-// is now a pointer so 0 survives.
+// A pointer, so a muted master (0) is not dropped by omitempty and re-imported at full volume.
 func TestMasterVolumeZeroRoundTrips(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

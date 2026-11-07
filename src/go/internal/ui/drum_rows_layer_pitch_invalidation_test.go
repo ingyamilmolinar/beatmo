@@ -8,18 +8,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowsLayerInvalidatesOnLengthChange verifies that mutating dv.Length via
-// SetLength forces a rowsLayer full rebuild and updates rowsLayerLength.
-//
-// Before the fix in drumview_transport.go, SetLength only set bgDirty=true
-// and relied on the per-row sprite cache's needsRowRebuild() safety net to
-// trigger an indirect full rebuild. After the fix, SetLength explicitly
-// invalidates row caches and marks all rows dirty so the rowsLayer cannot
-// retain stale-pitch pixels via its shift-and-fill path.
-//
-// This test also verifies the new rowsLayerLength field tracks dv.Length
-// after every rebuild — the contract that drumview_cache_rows_layer.go's
-// canReuse/needFull predicates depend on.
+// SetLength invalidates the row caches and marks every row dirty, so the shift path cannot keep stale-pitch pixels,
+// and rowsLayerLength tracks dv.Length for the reuse predicates.
 func TestRowsLayerInvalidatesOnLengthChange(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -63,14 +53,7 @@ func TestRowsLayerInvalidatesOnLengthChange(t *testing.T) {
 	}
 }
 
-// TestRowsLayerInvalidatesOnTimelineWidthChange verifies that mutating
-// timelineRect.Dx() (e.g. when right-side controls expand and squeeze the
-// timeline area) forces a rowsLayer rebuild, even when Bounds and baseX
-// remain unchanged.
-//
-// This exercises the canReuse/needFull predicate gap (Gap 1) that drumview_
-// cache_rows_layer.go's canReuse check originally missed: it only validated
-// Bounds W/H, rowOff, baseX — not rowWidth.
+// A narrower timeline forces a rebuild even with Bounds and baseX unchanged: reuse must check rowWidth.
 func TestRowsLayerInvalidatesOnTimelineWidthChange(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -95,10 +78,7 @@ func TestRowsLayerInvalidatesOnTimelineWidthChange(t *testing.T) {
 		t.Fatalf("test requires cellGridRect.Dx() > 200, got %d", originalWidth)
 	}
 
-	// Shrink the timeline rect's right edge by 200px without touching Bounds
-	// or Min.X. This simulates right-side controls expanding into the timeline
-	// area mid-session — the exact scenario that bypassed the old canReuse
-	// check, since baseX (= timelineRect.Min.X - Bounds.Min.X) stays put.
+	// The right edge shrinks while baseX stays put.
 	g.drum.cellGridRect.Max.X -= 200
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if g.drum.rowsLayerGen == gen0 {
