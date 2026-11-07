@@ -108,3 +108,26 @@ func TestInstrumentStoreKeepsDocumentsSavedBeforeVersioning(t *testing.T) {
 		t.Fatal("the library was not persisted")
 	}
 }
+
+type failingBackend struct{}
+
+func (failingBackend) read() ([]byte, error) { return nil, nil }
+func (failingBackend) write([]byte) error  { return fmt.Errorf("disk full") }
+
+// A save that cannot be stored reports it and leaves the store as it was, so
+// the UI's KeySaveFailed fires instead of a success the next launch disproves.
+func TestSavesThatCannotBeStoredReturnTheirErrorAndChangeNothing(t *testing.T) {
+	s := &instrumentStore{backend: failingBackend{}}
+	if err := s.SaveSampleEdit(roster.Kick, map[string]float64{"gain_db": -3}); err == nil {
+		t.Error("SaveSampleEdit reported success for a write that failed")
+	}
+	if se, _ := s.LoadSampleEdits(); len(se) != 0 {
+		t.Errorf("a failed SaveSampleEdit still changed the store: %v", se)
+	}
+	if err := s.SaveWavRegistry([]byte(`{"kick.wav":[]}`)); err == nil {
+		t.Error("SaveWavRegistry reported success for a write that failed")
+	}
+	if raw, _ := s.LoadWavRegistry(); raw != nil {
+		t.Errorf("a failed SaveWavRegistry still changed the store: %s", raw)
+	}
+}
