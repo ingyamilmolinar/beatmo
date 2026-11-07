@@ -98,9 +98,7 @@ func fontFaceBold(size float64) font.Face {
 	return face
 }
 
-// measureKey identifies one measurement: the string, the face (size + weight)
-// and the font generation — keyed like the sprite caches, so a locale switch
-// to another font never serves a stale width.
+// Keyed by font generation too, so a locale switch to another font never serves a stale width.
 type measureKey struct {
 	s    string
 	size int // size*100
@@ -108,14 +106,11 @@ type measureKey struct {
 	gen  int64
 }
 
-// measureCacheMax bounds the width cache: the beat readout adds a string per
-// second of playback; a full cache is simply dropped and refilled.
+// The beat readout adds a string per second of playback; a full cache is dropped and refilled.
 const measureCacheMax = 4096
 
-// measuredWidths memoizes text advance widths. font.MeasureString walks every
-// glyph's advance and kerning through the opentype face, and layout asks for
-// the same strings every frame (tab pills, the beat readout, band labels) —
-// on WASM that re-measuring was a third of the audio panel's per-frame layout.
+// MeasureString walks every glyph's advance and kerning, and layout asks for the same strings every frame: on
+// WASM re-measuring was a third of the audio panel's layout.
 var (
 	measureMu      sync.RWMutex
 	measuredWidths = map[measureKey]int{}
@@ -139,12 +134,8 @@ func textAdvance(s string, size float64, bold bool) int {
 	if face == nil {
 		return len([]rune(s)) * debugCharW
 	}
-	// Use the glyph ADVANCE, not text.BoundString's INK bounding box. A space has
-	// no ink, so BoundString(" ").Dx()==0 and it drops leading/trailing-space
-	// advances entirely — which made a leading space invisible: the caret (placed
-	// at x+TextWidth(prefix)) never moved past it and the text never shifted, so
-	// typing a space at the start looked like "nothing happened". MeasureString
-	// sums per-glyph advances (the real layout width) and counts spaces.
+	// The glyph ADVANCE, not BoundString's ink box: a space has no ink, so a leading space was invisible and the
+	// caret never moved past it.
 	w = font.MeasureString(face, s).Ceil()
 	measureMu.Lock()
 	if len(measuredWidths) >= measureCacheMax {
@@ -155,14 +146,12 @@ func textAdvance(s string, size float64, bold bool) int {
 	return w
 }
 
-// measureTextWidth returns the pixel width of s rendered at the given size.
-// Uses bold face to match the bold rendering in textSpriteRenderer.
+// Bold, to match textSpriteRenderer.
 func measureTextWidth(s string, size float64) int {
 	return textAdvance(s, size, true)
 }
 
-// measureTextHeight returns the line height for the given size.
-// Uses bold face to match the bold rendering in textSpriteRenderer.
+// Bold, to match textSpriteRenderer.
 func measureTextHeight(size float64) int {
 	face := fontFaceBold(size)
 	if face == nil {
@@ -187,22 +176,8 @@ func measureStyled(s string, size float64, bold bool) (int, int) {
 	return textAdvance(s, size, bold), (m.Ascent + m.Descent).Ceil()
 }
 
-// textSpriteLayout computes the SHARED text-sprite geometry: pixel width/height,
-// the horizontal pen origin, and the baseline row. This is the single source of
-// truth every text input, label and button depends on for absolute positioning.
-//
-// Height and baseline come from the FIXED font metrics (ascent/descent), NOT the
-// per-string ink bounds. That makes the text's vertical position ABSOLUTE and
-// content-independent: a baseline-resting glyph sits at the same row whether or
-// not the string also contains a taller uppercase/ascender glyph, so deleting a
-// leading capital can no longer shift the whole string up or down.
-//
-// The pen origin is x=0, so the layout START coincides with the sprite's left
-// edge — which is exactly the point DrawTextAt blits to screen (x,y). A caret
-// drawn at x+TextWidth(prefix) therefore lands precisely on the glyph boundary,
-// not 1px off. Width covers the layout advance (so a trailing space and the
-// end-of-string caret have room), widened to the ink's right edge for the rare
-// glyph that overhangs its advance.
+// Height and baseline come from FIXED font metrics, never the string's ink, so deleting a capital cannot shift
+// the text; the pen origin is 0 so a caret at x+TextWidth(prefix) lands on the glyph boundary.
 func textSpriteLayout(face font.Face, s string) (w, h, penX, baseline int) {
 	m := face.Metrics()
 	baseline = m.Ascent.Ceil()
@@ -221,8 +196,6 @@ func textSpriteLayout(face font.Face, s string) (w, h, penX, baseline int) {
 	return
 }
 
-// renderTextSprite creates an image containing the text rendered with TrueType,
-// laid out via textSpriteLayout (fixed metric box + zero pen origin).
 func renderTextSprite(s string, size float64, bold bool) *ebiten.Image {
 	var face font.Face
 	if bold {

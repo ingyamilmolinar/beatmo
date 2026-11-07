@@ -7,22 +7,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
-// NotificationHistorySink is the UI-side persistence surface for the
-// notification history. The live DrumView ring writes through Save after
-// every push and seeds itself from Load at construction. Mirrors the
-// FavoritesStore global-sink pattern so persistence I/O stays off the UI
-// goroutine (the userprefs backend owns its own async pool).
+// The ring writes through Save after every push and seeds from Load; the backend's own pool keeps I/O off the
+// UI goroutine.
 type NotificationHistorySink interface {
-	// Load returns persisted notifications oldest..newest (never panics;
-	// returns nil when none exist).
+	// Oldest first; nil when none, never a panic.
 	Load() []notification
-	// Save replaces the persisted history with the given oldest..newest
-	// snapshot (the backend bounds + persists asynchronously).
+	// The backend bounds and persists asynchronously.
 	Save([]notification)
 }
 
-// noopNotifHistory is the default sink: no persistence. Keeps
-// NotificationHistory() non-nil so callers never need a nil check.
+// Keeps NotificationHistory() non-nil.
 type noopNotifHistory struct{}
 
 func (noopNotifHistory) Load() []notification { return nil }
@@ -33,10 +27,7 @@ var (
 	notifHistorySink  NotificationHistorySink = noopNotifHistory{}
 )
 
-// SetNotificationHistoryStore registers the global notification-history
-// sink. Production wiring calls this once at startup with a
-// userprefs-backed adapter; tests call it within t.Cleanup-restored scopes.
-// A nil sink resets to the no-op default.
+// nil resets to the no-op default.
 func SetNotificationHistoryStore(s NotificationHistorySink) {
 	notifHistoryGuard.Lock()
 	defer notifHistoryGuard.Unlock()
@@ -54,9 +45,6 @@ func NotificationHistory() NotificationHistorySink {
 	return notifHistorySink
 }
 
-// persistedNotifHistory adapts a userprefs.NotificationHistoryStore to the
-// UI-side NotificationHistorySink, converting between the UI notification
-// struct and the persisted NotificationRecord shape.
 type persistedNotifHistory struct {
 	backend userprefs.NotificationHistoryStore
 }

@@ -7,10 +7,7 @@ import (
 	"syscall/js"
 )
 
-// threeStageLatencyJSObject converts a ScheduleMetricsSnapshot to a JS
-// object exposing all three latency stages. NaN values are converted to
-// JS null so callers can use idiomatic `?? fallback` semantics. Returns
-// JS null entirely if no observations have been recorded yet.
+// NaN becomes null so callers can use `??`; null before any observation.
 func threeStageLatencyJSObject(s ScheduleMetricsSnapshot) js.Value {
 	if s.Count == 0 && s.BridgeCount == 0 && s.SeqFireCount == 0 {
 		return js.Null()

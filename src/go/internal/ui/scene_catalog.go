@@ -26,8 +26,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// sceneCatalog enumerates every UI surface the screenshots-all target captures.
-// Names are kebab-case and stable; tooling and tests refer to them by name.
+// Names are kebab-case and stable: tooling and tests refer to them.
 var sceneCatalog = []Scene{
 	// ─── transport / baseline ─────────────────────────────────────
 	{Name: "transport_idle", Description: "default boot, no playback", Mobile: true, Setup: func(g *Game) {}},
@@ -83,8 +82,7 @@ var sceneCatalog = []Scene{
 		SettleFrames: 8,
 		Setup: func(g *Game) {
 			g.drum.notifyInfo("Loaded demo.json")
-			// Enough ERROR rows to overflow the page body and show the
-			// MenuScroll scrollbar (default filter is ERROR).
+			// Enough ERROR rows (the default filter) to overflow the page and show the scrollbar.
 			for i := 0; i < 30; i++ {
 				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
 			}
@@ -118,8 +116,7 @@ var sceneCatalog = []Scene{
 				dst := ebiten.NewImage(1280, 720)
 				c.Draw(dst)
 				c.page = 2 // pretend the user had paged forward
-				// Typing a query must narrow the results AND refresh pagination
-				// back to page 1 in the same frame (real-time reapply).
+				// A query must narrow the results AND reset pagination to page 1 in the same frame.
 				c.searchBox.SetText("token 3")
 				c.Update()
 				c.Draw(dst)
@@ -167,9 +164,7 @@ var sceneCatalog = []Scene{
 			if c := g.drum.logsComp; c != nil {
 				dst := ebiten.NewImage(1280, 720)
 				c.Draw(dst) // Configure the MenuScroll before wheeling
-				// Drive real wheel notches through the shared smooth wheel path
-				// (continuous, magnitude-respecting, no cooldown lock — the same
-				// path every list menu now uses), advancing the list mid-page.
+				// Real notches through the shared smooth wheel path every list menu uses.
 				for k := 0; k < 12; k++ {
 					c.HandleWheel(0, 0, -1)
 					c.Draw(dst)
@@ -186,8 +181,7 @@ var sceneCatalog = []Scene{
 			if c := g.drum.logsComp; c != nil {
 				dst := ebiten.NewImage(1280, 720)
 				c.Draw(dst) // Configure the scroll
-				// Scroll page 1 partway down, then advance a page: the scroll must
-				// snap back so page 2 opens at its first row.
+				// Scrolled partway, then the next page: it must open at its first row.
 				c.scroll.ScrollBehavior().VS.First = 6
 				c.Draw(dst)
 				c.pageNext()
@@ -218,10 +212,7 @@ var sceneCatalog = []Scene{
 		Subject: SubjectWarmupToast,
 		Setup:   toastCircuitLoadingSceneSetup},
 
-	// ─── EQ tabs ──────────────────────────────────────────────────
-	// Mobile pass enters SetMobileEQMode so the panel is actually visible;
-	// without it the audio surface stays collapsed and the screenshot
-	// duplicates mobile_default.
+	// The mobile pass enters SetMobileEQMode, or the panel stays collapsed and duplicates mobile_default.
 	{Name: "eq_tab_eq", Description: "EQ tab active", Mobile: true,
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("eq") },
 		MobileSetup: mobileAudioPanelSetup("eq")},
@@ -286,9 +277,7 @@ var sceneCatalog = []Scene{
 	{Name: "instrument_menu_snare_acoustic", Description: "instrument selector global-searched for \"acoustic\" — shows the reference-matched Snare Acoustic row", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) {
 			ensureRow(g, 0)
-			// Categories mode is the GLOBAL (cross-category) search path, so a
-			// query surfaces the whole snare family rather than filtering
-			// within whichever category the menu happened to open on.
+			// Categories mode is the GLOBAL search path, so the query surfaces the whole snare family.
 			g.drum.instMenuForceCategories = true
 			g.drum.OpenInstrumentMenu(0)
 			if c := g.drum.instMenuComp; c != nil && c.SearchBox() != nil {
@@ -312,8 +301,7 @@ var sceneCatalog = []Scene{
 				return
 			}
 			c.ClearHold()
-			// Place the cursor deterministically a couple of swatches away from
-			// the applied one; the scene only needs the resulting visual state.
+			// Placed deterministically; the scene needs only the visual state.
 			c.KeyNav().BindHost(colorWheelNavHost{c: c})
 			c.KeyNav().SetSelected(colorSwatchCols + 2)
 		}},
@@ -364,9 +352,7 @@ var sceneCatalog = []Scene{
 			g.drum.OpenFXPanel(0)
 		}},
 
-	// Overflowing FX list — enough effects that the content exceeds the clamped
-	// panel, so the shared MenuScroll scrollbar (pixel mode) must render. Guards
-	// the FX-scroll migration onto the shared list-menu engine.
+	// Enough effects that the list overflows the clamped panel and the shared scrollbar must render.
 	{Name: "fx_panel_scrollbar", Description: "FX list overflows so the shared scrollbar shows", SettleFrames: 150,
 		Setup: func(g *Game) {
 			ensureRow(g, 0)
@@ -409,8 +395,7 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) {
 			n := g.tryAddNode(3, 1, model.NodeTypeRegular)
 			g.updateBeatInfos()
-			// Pan so the tapped node sits near the bottom of the grid pane, where a
-			// window-clamped card would spill past the split into the drum panel.
+			// Near the bottom of the grid pane, where a window-clamped card would spill into the drum panel.
 			g.cam.OffsetY = float64(g.split.GridH(g.winH)) - 80
 			if n != nil && g.sidebar != nil {
 				g.sidebar.Open(n)
@@ -440,10 +425,7 @@ var sceneCatalog = []Scene{
 				g.coordBadgeFrame = g.frame
 			}
 		}},
-	// The badge and the sidebar note chip both read nodeNoteLabel, which needs
-	// the node to resolve to a row carrying a PITCHED instrument. Every other
-	// node scene places an off-circuit node, so neither surface had ever been
-	// captured with a note actually present.
+	// nodeNoteLabel needs a row with a PITCHED instrument, which no other node scene provides.
 	{Name: "coord_badge_note", Description: "coordinate badge on a pitched node — badge must lead with the sounding note (e.g. \"A3 · (0:1/2, 0:1/2)\")", Mobile: true, KeepCoordBadge: true,
 		Setup:       pitchedNodeBadgeSetup(false),
 		MobileSetup: pitchedNodeBadgeSetup(true)},
@@ -459,7 +441,6 @@ var sceneCatalog = []Scene{
 	{Name: "note_matrix_keycursor", Description: "note matrix with the KEYBOARD cursor moved off the current note — focus ring must be distinguishable from the selected-note ring", Mobile: true,
 		Setup:       noteMatrixKeyCursorSetup(false),
 		MobileSetup: noteMatrixKeyCursorSetup(true)},
-	// Chord nodes (docs/superpowers/specs/2026-10-09-chord-nodes-design.md).
 	{Name: "node_chord_sidebar", Description: "node sidebar on a CHORD node (Cmaj7/E-style) — wide chord chip in the Pitch row, Chord section with Inv / Spread steppers and a Single note row, Audible row reads Chord", Mobile: true,
 		Setup:       chordNodeSidebarSetup(false),
 		MobileSetup: chordNodeSidebarSetup(true)},
@@ -479,9 +460,7 @@ var sceneCatalog = []Scene{
 		MobileSetup: chordNodeBadgeSetup(true)},
 	{Name: "crop_chord_drum_row", Description: "drum rows with a chord node in the circuit — chord cells carry three stacked ticks", Subject: SubjectDrumRows,
 		Setup: chordNodeBadgeSetup(false)},
-	// Universal note display (2026-09-13): percussion names a note too. These
-	// are the regression surface for it — before, every one of these rows drew
-	// a bare "+0" and the note chip was absent entirely.
+	// Percussion names a note too: these rows once drew a bare "+0" with no note chip.
 	{Name: "drum_note_matrix_kick", Description: "note matrix open on a KICK row — a kick's base is 55 Hz, so the columns run into the sub-contra octaves (A0 and below) that the old piano-range clamp collapsed", Mobile: true,
 		Setup:       noteMatrixSetupFor(false, roster.Kick),
 		MobileSetup: noteMatrixSetupFor(true, roster.Kick)},
@@ -576,10 +555,7 @@ var sceneCatalog = []Scene{
 	{Name: "nav_menu_open", Description: "navigation menu under the beat/time counter", SettleFrames: 120,
 		Setup:       func(g *Game) { g.drum.OpenNavigation() },
 		MobileSetup: func(g *Game) { g.SetForceMobileProfile(true); g.drum.OpenNavigation() }},
-	// Playhead parked mid-beat (30 subdivisions == beat 3.75) so the nav menu's
-	// position title and the beat counter above it are both off zero and can be
-	// read against each other: both must show the SAME "Beat N · M:SS", since
-	// both render the transport's resolved PlayheadPos.
+	// Mid-beat so the nav title and the beat counter are both off zero: they must read the SAME "Beat N · M:SS".
 	{Name: "nav_menu_position_sync", Description: "navigation menu + beat counter at a mid-beat playhead — both readouts must agree", SettleFrames: 120,
 		Setup: func(g *Game) {
 			g.drum.RequestSeekSteps(30, hooks.SeekCounter)
@@ -590,22 +566,17 @@ var sceneCatalog = []Scene{
 			g.drum.RequestSeekSteps(30, hooks.SeekCounter)
 			g.drum.OpenNavigation()
 		}},
-	// Go-to wheel (docs/superpowers/specs/2026-10-03-value-wheel-and-text-field-
-	// design.md §2): the navigation menu with its inline wheel scrolled four
-	// beats past a mid-beat playhead — the pending position previews as a ghost
-	// on the timeline, nothing seeks. Labels are 1-based ("Beat 8 · 3/4").
+	// The wheel scrolled four beats ahead: the pending position previews as a ghost and nothing seeks. Labels 1-based.
 	{Name: "nav_goto_beat", Description: "navigation menu go-to wheel (beat mode) scrolled to a pending position — timeline ghost, no seek", SettleFrames: 120,
 		Setup:       func(g *Game) { sceneGotoWheel(g, false) },
 		MobileSetup: func(g *Game) { g.SetForceMobileProfile(true); sceneGotoWheel(g, false) }},
 	{Name: "nav_goto_time", Description: "navigation menu go-to wheel in Time mode (M:SS) with the resolved beat in the footer", SettleFrames: 120,
 		Setup:       func(g *Game) { sceneGotoWheel(g, true) },
 		MobileSetup: func(g *Game) { g.SetForceMobileProfile(true); sceneGotoWheel(g, true) }},
-	// The pending go-to position far enough right (two 16-beat detents) that
-	// its ghost on the timeline ribbon clears the card: line + 1-based chip.
+	// Two 16-beat detents ahead, so the ghost clears the card.
 	{Name: "nav_goto_preview_ghost", Description: "go-to wheel scrolled 32 beats ahead — the timeline ghost marks the pending position (1-based chip); playhead unmoved", SettleFrames: 120,
 		Setup: func(g *Game) { sceneGotoWheelAt(g, false, 3, 2) }},
-	// Shared value wheel (spec §3): the BPM readout and the node sidebar's value
-	// pills open it instead of a type-in box.
+	// The BPM readout and the sidebar value pills open the shared wheel, never a type-in box.
 	{Name: "bpm_wheel_open", Description: "BPM value wheel open under the BPM readout (±1/±5/±10/±50 ladder), stepped to 124", SettleFrames: 120,
 		Setup: func(g *Game) {
 			if b := g.drum.bpmBox(); b != nil {
@@ -635,20 +606,15 @@ var sceneCatalog = []Scene{
 				g.drum.valueWheelPopup.StepValue(-1)
 			}
 		}},
-	// The navigation card crosses the pane divider on a short drum pane and is
-	// repainted above it; the jump-size picker stacked on it must stay on top.
-	// Capture at a small window (e.g. -win-w 640 -win-h 480).
+	// The jump-size picker stacked on a card that crosses the pane divider must stay on top; capture small
+	// (-win-w 640 -win-h 480).
 	{Name: "nav_jump_picker_short_pane", Description: "nav card + stacked jump-size picker in a short drum pane (card repainted above the divider, picker still on top)", SettleFrames: 120,
 		Setup: func(g *Game) { g.drum.OpenNavigation(); g.drum.OpenJumpMenu() }},
 	{Name: "crop_nav_goto", Description: "navigation menu card cropped (go-to wheel)", SettleFrames: 120, Subject: SubjectNavMenu,
 		Setup:       func(g *Game) { sceneGotoWheel(g, false) },
 		MobileSetup: func(g *Game) { g.SetForceMobileProfile(true); sceneGotoWheel(g, false) }},
-	// Spanish locale with a menu open. The shipped Inter faces are SUBSETS
-	// (internal/assets/font_embed.go): a codepoint dropped from the subset
-	// renders as a tofu box, and es-419 is the only shipped locale whose
-	// strings leave ASCII -- accents, tilde, diaeresis and the inverted
-	// marks ¿ ¡. fonts_coverage_test.go asserts the glyphs EXIST; this
-	// scene is the proof they actually DRAW.
+	// The Inter faces are SUBSETS and es-419 is the one locale beyond ASCII: fonts_coverage_test proves the glyphs
+	// exist, this scene that they DRAW.
 	{Name: "locale_es_nav_menu", Description: "navigation menu in Spanish — accented glyph coverage of the subset font", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) {
 			i18n.SetLocale(i18n.LocaleES)
@@ -666,8 +632,7 @@ var sceneCatalog = []Scene{
 			g.drum.overflowPage = 1
 			g.drum.OpenOverflowMenu()
 		}},
-	// Keyboard cursor in the subdiv picker: the SubdivMenuComponent render path
-	// is separate from the overflow menu's, so it needs its own visual proof.
+	// The subdiv menu renders separately from the overflow menu, so it needs its own proof.
 	{Name: "subdiv_menu_keynav", Description: "subdivision menu with the keyboard cursor on a row", SettleFrames: 120,
 		Setup: func(g *Game) {
 			g.drum.OpenSubdivMenu()
@@ -675,44 +640,30 @@ var sceneCatalog = []Scene{
 			nav.BindHost(g.drum.subdivMenuComp)
 			nav.SetSelected(2)
 		}},
-	// Keyboard cursor on a template row: proves the arrow-key highlight actually
-	// RENDERS (a nav that moves an invisible cursor passes every unit test).
+	// Proves the highlight RENDERS: an invisible cursor passes every unit test.
 	{Name: "template_menu_keynav", Description: "template menu with the keyboard cursor on a row (arrow-key highlight)", Mobile: true, SettleFrames: 120,
 		Setup:       keyNavTemplateMenuSetup(false),
 		MobileSetup: keyNavTemplateMenuSetup(true)},
-	// Scrolled mid-list: exercises the row-culling edges in drawOverflowMenu
-	// (rows above the viewport are skipped, the partially-visible top and
-	// bottom rows must still render). Regression surface for the template-menu
-	// frame-cost fix — see template_menu_frame_cost_test.go.
+	// Mid-list, exercising the row-culling edges (partly visible top and bottom rows must render).
 	{Name: "template_menu_scrolled", Description: "template menu scrolled mid-list (row culling top/bottom edges)", Mobile: true, SettleFrames: 120,
 		Setup:       scrolledTemplateMenuSetup(false),
 		MobileSetup: scrolledTemplateMenuSetup(true)},
-	// Scrolled to the Lied and French sections, which hold the LONGEST template
-	// titles in the library ("Clara Schumann — Ich stand in dunklen Träumen",
-	// "Lili Boulanger — D'un matin de printemps"). Title width is the one thing
-	// a menu row cannot absorb: the row also right-aligns a BPM readout, so an
-	// over-long title either collides with it or gets clipped. Kept as the
-	// regression surface for that collision.
+	// The longest titles: a row also right-aligns a BPM readout, so an over-long title collides or clips.
 	{Name: "template_menu_long_titles", Description: "template menu at the longest titles (title vs BPM readout collision)", Mobile: true, SettleFrames: 120,
 		Setup:       longTitleTemplateMenuSetup(false),
 		MobileSetup: longTitleTemplateMenuSetup(true)},
-	// A groove template loaded into the grid: the visual proof that generated
-	// templates with DRUM rows lay out correctly at one grid unit per step
-	// (exported subdiv 4) — rows half a beat apart, nodes on sixteenth steps,
-	// swung offbeats carrying their groove. Mobile shows the row rack.
+	// Drum rows at one grid unit per step: half a beat apart, nodes on sixteenths, swung offbeats.
 	{Name: "template_groove_funk", Description: "groove template (James Brown — Funky Drummer) loaded: drum rows under an original tune", Mobile: true, SettleFrames: 120,
 		Setup:       loadTemplateScene("funky-drummer", false),
 		MobileSetup: loadTemplateScene("funky-drummer", true)},
-	// The widest groove template (11 rows: a seven-voice 808 pattern under
-	// lead, sequencer and pad) — proof the row rack holds a full drum machine.
+	// The widest groove template (11 rows): the rack must hold a full drum machine.
 	{Name: "template_groove_emc2", Description: "groove template (Giorgio Moroder — E=MC²) loaded: 808 kick, rim, snare, clap, hats, congas under an original tune", Mobile: true, SettleFrames: 120,
 		Setup:       loadTemplateScene("e-mc2", false),
 		MobileSetup: loadTemplateScene("e-mc2", true)},
 	{Name: "template_groove_salsa", Description: "groove template (Salsa — son clave 2-3) loaded, rack scrolled to the drum rows: campana, congas, clave, cáscara", SettleFrames: 120,
 		Setup: func(g *Game) {
 			loadTemplateScene("salsa-clave", false)(g)
-			// Scroll the rack to Bass and the kit rows below it, through the
-			// same pair the setRowOffset JS export writes.
+			// Through the pair the setRowOffset JS export writes.
 			g.drum.rowOffset = 2
 			if g.drum.rowRackZone != nil {
 				g.drum.rowRackZone.SetRowOffset(2)
@@ -745,17 +696,12 @@ var sceneCatalog = []Scene{
 		Description: "mobile bottom action bar with vol/segmented-view-switch/overflow + EQ peek sparkline + horizontal BPM stepper",
 		Mobile:      true, SettleFrames: 60,
 		Setup: func(g *Game) {
-			// Default mobile boot already shows the new bottom bar + peek strip.
-			// Boost EQ band 0 by +12dB so the peek sparkline shows visible
-			// motion (otherwise it's a flat line).
+			// A +12 dB band so the peek sparkline is not a flat line.
 			g.SetForceMobileProfile(true)
 			g.SetEQBandGain(channel.Master, 0, 12.0)
 		}},
 
-	// ─── mobile UI consistency pass (Themes 1–5) ──────────────────
-	// One scene per audio sub-view so visual regression catches the
-	// bottom-nav-driven panel state for every tab. Bottom bar must
-	// be visible and the segmented selection must match the tab.
+	// One scene per audio sub-view: the bottom bar is visible and its selection matches the tab.
 	{Name: "mobile_bottom_nav_pads", Description: "mobile Pads (rows) with bottom-nav strip visible", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
@@ -776,12 +722,8 @@ var sceneCatalog = []Scene{
 			g.SetForceMobileProfile(true)
 			g.drum.setViewMode(viewModeSpectrum)
 		}},
-	// Spectrum banner finding states. The collision scene is a REAL one: a DnB
-	// kick (49 Hz) and a sub bass (46 Hz) both sound their fundamental in ISO
-	// band 1 (44-88 Hz), which is the classic low-end pile-up a beginner cannot
-	// see in a bar graph but can read in a sentence. Driving actual instruments
-	// rather than a synthesized analyzer state keeps the scene honest: it
-	// exercises the same bridge (pitch info -> band) production uses.
+	// A REAL collision: a DnB kick (49 Hz) and a sub bass (46 Hz) share ISO band 1. Real instruments, so the scene
+	// exercises the production pitch → band bridge.
 	{Name: "spectrum_finding_collision", Description: "Spectrum banner: two instruments fighting in one band", SettleFrames: 150,
 		Setup:       spectrumCollisionSetup,
 		Mobile:      true,
@@ -820,10 +762,7 @@ var sceneCatalog = []Scene{
 			g.SetForceMobileProfile(true)
 			g.drum.setViewMode(viewModeSampler)
 		}},
-	// Regression scene for the Pads-after-EQ leak (screenshot.png 2026-05-10):
-	// after a visit to the EQ tab, the EQ panel's Master/HP/LP pill strip
-	// must NOT be visible above the bottom nav in Pads view. Locks in the
-	// tab-system-owns-visibility invariant.
+	// After a visit to EQ its pill strip must not leak above the bottom nav in Pads view.
 	{Name: "mobile_pads_after_eq", Description: "mobile Pads tab after a visit to EQ — EQ pills must not leak", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
@@ -845,17 +784,14 @@ var sceneCatalog = []Scene{
 				g.drum.transportZone.SetFollow(false)
 			}
 		}},
-	// Timeline-length chips — extreme states show the visible-beat range.
-	// The +/− chips at the bottom of the row rack grow / shrink the
-	// active drum view's beat span (mirrors the desktop length +/− pair).
+	// The extreme states of the length chips.
 	{Name: "mobile_length_max", Description: "mobile timeline expanded to its maximum visible beat span via repeated + chip taps", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			if g.drum == nil {
 				return
 			}
-			// Drive the chip handler enough times to saturate against the
-			// `clampLength` cell-width-derived max.
+			// Enough presses to saturate against clampLength's max.
 			for i := 0; i < 64; i++ {
 				g.drum.rowZoomIncBtn.OnClick()
 				g.Update()
@@ -879,10 +815,7 @@ var sceneCatalog = []Scene{
 			g.drum.OpenOverflowMenu()
 		}},
 
-	// ─── playback overlays ────────────────────────────────────────
-	// Capture menus/popups while playback is running so visual diffs
-	// surface any beat-highlight or transport-state regressions that
-	// hide behind overlay chrome.
+	// Overlays while playing, so beat-highlight or transport regressions behind chrome show up.
 	{Name: "playback_context_menu_open", Description: "playback running + context menu open", SettleFrames: 120,
 		Setup: func(g *Game) {
 			ensureRow(g, 0)
@@ -927,26 +860,19 @@ var sceneCatalog = []Scene{
 			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
 		}},
-	// Muting a row is the discontinuity the Spectrum readout has to survive:
-	// the sentence, the emphasised lane, the held bars and the dB anchor all
-	// have to come from the post-mute mix. When the mute leaves exactly one
-	// audible row the panel also auto-focuses that instrument's channel,
-	// which is the programmatic switch that used to skip the re-baseline.
+	// A mute is the discontinuity the readout must survive; when it leaves one audible row the panel also
+	// auto-focuses that channel, the programmatic switch that once skipped the re-baseline.
 	{Name: "spectrum_after_mute", Description: "Spectrum after muting a row mid-playback (readout re-based on the new mix)",
 		Mobile: true, SettleFrames: 150,
 		Setup: sceneSpectrumAfterMute,
 		MobileSetup: func(g *Game) {
-			// Setup alone leaves the mobile audio panel invisible and the
-			// crop falls back to the pads view (see CLAUDE.md).
+			// Setup alone leaves the mobile audio panel invisible.
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
 			sceneSpectrumAfterMute(g)
 		}},
-	// A SINGLE INSTRUMENT's channel is the hard case for the Spectrum tab:
-	// it is silent between transients, so a live-tracked axis has nothing to
-	// measure at the moment the channel is picked and the plot came up
-	// empty. 260 settle frames so the capture lands after the channel has
-	// settled on its measured level (spectrumChannelSettle).
+	// One instrument's channel is silent between hits, the hard case for the axis; 260 frames lets it settle on its
+	// measured level.
 	{Name: "spectrum_instrument_channel", Description: "Spectrum on one instrument's channel (kick) — axis pinned to that channel",
 		Mobile: true, SettleFrames: 260,
 		Setup: sceneSpectrumInstrumentChannel,
@@ -955,14 +881,8 @@ var sceneCatalog = []Scene{
 			g.drum.SetMobileEQMode(true)
 			sceneSpectrumInstrumentChannel(g)
 		}},
-	// THE tiny-bar trigger, cropped so the defect is one glance: mute a row,
-	// then select that row's own channel. The settle window then elapses on
-	// silence, and committing there froze the pre-rendered ESTIMATE (the raw
-	// voice at unity, far above what the channel measures) — every bar after
-	// that was a stub against a ceiling the channel never reaches, for the
-	// rest of the session. Unmutes partway so the capture shows the axis it
-	// finally commits to. If this ever regresses the bars go flat again and
-	// the crop shows it without reading a single number.
+	// The tiny-bar trigger: the channel is picked while muted, the settle elapses on silence, and freezing there
+	// would leave every later bar a stub. Unmutes partway so the capture shows the axis it commits to.
 	{Name: "crop_spectrum_muted_channel_pick", Description: "Spectrum: channel picked while silent, signal arrives after the settle",
 		Mobile: true, SettleFrames: 290, Subject: SubjectEQTabSpectrum,
 		Setup: sceneSpectrumMutedChannelPick,
@@ -971,26 +891,8 @@ var sceneCatalog = []Scene{
 			g.drum.SetMobileEQMode(true)
 			sceneSpectrumMutedChannelPick(g)
 		}},
-	// The same channel, CROPPED — and unlike crop_spectrum_muted_channel_pick
-	// it feeds no synthetic spectrum, so it is the only subject-level scene
-	// that exercises the real analyser bridge end to end. That is exactly
-	// where the browser-only blank plot lived: the bridge delivered 64
-	// linear bins (375 Hz apart at 48 kHz) and the four lowest ISO bands —
-	// all a kick has — held no bin at all, so they reported the reference
-	// floor. Desktop ran its own 43 Hz-per-bin FFT and looked correct, so
-	// only the BROWSER pass of this scene can show a regression. See
-	// analyzer.SpectrumFFTSize.
-	//
-	// READ THE BROWSER CAPTURE FOR *WHICH BANDS*, NOT FOR BAR HEIGHT. The
-	// desktop pass is frame-driven and lands on the same beat every time;
-	// the browser pass runs on wall-clock audio, so it lands wherever the
-	// kick happens to be and a capture in the gap between hits shows
-	// peak-hold ticks over near-floor bars. That is a correct reading of a
-	// quiet moment. The tell is WHERE the marks are: bass (31/62/125/250)
-	// means the low bands are receiving bins, and under the defect there
-	// was nothing below 500 Hz at all, in any frame. The gated assertion
-	// lives in xplat_spectrum_channel_data.browser.test.js, which samples
-	// ten frames and keeps the loudest.
+	// The only subject scene on the REAL analyser bridge, where the browser-only blank plot lived. Judge the BROWSER
+	// capture by WHICH bands carry marks (bass must), not bar height: it lands on wall-clock audio, between hits or not.
 	{Name: "crop_spectrum_instrument_channel", Description: "Spectrum on one instrument's channel, live analyser (no injected data)",
 		Mobile: true, SettleFrames: 260, Subject: SubjectEQTabSpectrum,
 		Setup: sceneSpectrumInstrumentChannel,
@@ -1107,11 +1009,7 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) {
 			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
-			// EQ-band tweaks alone are invisible on the Chain tab (it renders
-			// scope traces, not the EQ plot), so the variant must also change
-			// the Chain surface itself: assign distinct A/B taps and run
-			// playback so the trace area fills. Without this the scene
-			// rendered identically to the bare eq_tab_chain base.
+			// EQ edits are invisible on Chain, so the variant also sets A/B taps and plays, or it matches the base scene.
 			if z := chainZoneOf(g); z != nil {
 				z.SetTapA(scope.StageSynth)
 				z.SetTapB(scope.StageMaster)
@@ -1259,9 +1157,7 @@ var sceneCatalog = []Scene{
 			g.SetPlaying(true)
 		}},
 
-	// ─── armed grid modes (helper banner + blink/ghost + dialog) ──
-	// SettleFrames 60 keeps the move-mode blink in an ON half-period
-	// (phase 60 → index 4, even) so the subject highlight is captured.
+	// SettleFrames 60 keeps the blink in an ON half-period so the subject highlight is captured.
 	{Name: "mode_move_banner", Description: "move mode armed — helper banner, blinking subject, chain A->N->B", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			a := g.tryAddNode(2, 2, model.NodeTypeRegular)
@@ -1300,11 +1196,7 @@ var sceneCatalog = []Scene{
 			g.beginBreakConfirm(n, 10, 5)
 		}},
 
-	// ─── subject-cropped variants (Phase 5) ──────────────────────
-	// Each crop_* scene declares a Subject so the screenshot harness
-	// emits a PNG cropped to that surface's bounds. Setup is reused
-	// from the matching full-screen scene wherever possible — the
-	// only difference is the Subject field.
+	// A crop_* scene reuses its full-screen Setup and adds a Subject.
 	{Name: "crop_theme_editor", Description: "theme editor panel, subject-cropped", Subject: SubjectThemeEditor,
 		Setup: func(g *Game) { g.toggleThemeOverlay() }},
 	{Name: "crop_main_grid_default", Description: "main grid pane, default circuit",
@@ -1352,11 +1244,7 @@ var sceneCatalog = []Scene{
 	{Name: "crop_eq_tab_eq", Description: "EQ panel cropped — EQ tab",
 		Subject: SubjectEQTabEQ,
 		Setup:   func(g *Game) { _ = g.SetActiveEQTab("eq") }},
-	// The EQ tab's live backdrop bars had NO visual regression surface: the
-	// bars read an audio.AnalyzerSnapshot that is empty in the screenshot
-	// binary, so every EQ capture showed the curve over an empty plot. This
-	// injects a deterministic spectrum so the backdrop is actually visible —
-	// it is the surface for the shared dB window the bars now map through.
+	// The screenshot binary's analyser snapshot is empty, so this injects a spectrum: the backdrop's only visual surface.
 	{Name: "crop_eq_tab_eq_live", Description: "EQ panel with a live spectrum backdrop behind the curve",
 		Mobile: true, SettleFrames: 60, Subject: SubjectEQTabEQ,
 		Setup:       sceneEQLiveBackdrop,
@@ -1373,11 +1261,7 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectEQTabLevels,
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("levels"); g.SetPlaying(true) },
 		MobileSetup: mobileAudioPanelPlaySetup("levels")},
-	// Synth-tab redesign scenes — each opens the per-instrument pipeline
-	// panel on a different recipe so the unified section layout (VOICE/OSC/
-	// FM/ENVELOPE/FILTER/POST, empty sections pruned) renders realistic
-	// mixes. Hihat exercises a pruned-section case; FM exercises the
-	// FM-voice (FM stage collision-pruned) row.
+	// A different recipe each, so the unified sections render realistic mixes (hihat: pruned sections; FM: FM-voice).
 	{Name: "crop_synth_tab_drum", Description: "Synth tab cropped — drum-snare recipe (VOICE+stage sections, unified layout)",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabSceneSetup(""),
@@ -1477,9 +1361,6 @@ var sceneCatalog = []Scene{
 	{Name: "crop_synth_snare_voice_tone2_armed", Description: "Synth tab — snare VOICE stage with Tone2 Freq ARMED: the single-grid-row stage must still EXPAND the card (2-column footprint + both barrel lanes), not collapse to one in-place cell",
 		Subject: SubjectSynthPanel,
 		Setup:   synthSnareVoiceTone2ArmedSceneSetup()},
-	// Beginner MACRO drill-down layer (synth_macro_render.go): melodic AND
-	// percussion instruments show plain-English concept cards at the Basic root;
-	// tapping one drills into its params with a "Basic" pill to climb back.
 	{Name: "crop_synth_macro_root", Description: "Synth tab — beginner macro layer at the Basic root: plain-English concept cards (Sound/Brightness/Attack/Length/…) for a melodic instrument (violin)",
 		Subject:     SubjectSynthPanel,
 		Setup:       macroSceneSetup(roster.Violin, ""),
@@ -1488,8 +1369,7 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       macroSceneSetup(roster.Violin, "brightness"),
 		MobileSetup: mobileMacroSceneSetup(roster.Violin, "brightness")},
-	// Percussion macro layer: a kick row shows the drum-friendly concept set
-	// (Punch/Boom/Tone/Length/Source/Grit) instead of the melodic one.
+	// A kick row gets the drum concept set, not the melodic one.
 	{Name: "crop_synth_macro_perc_root", Description: "Synth tab — beginner macro layer at the Basic root for a PERCUSSION instrument (808 kick): Punch/Boom/Tone/Length/Source concept cards",
 		Subject:     SubjectSynthPanel,
 		Setup:       macroSceneSetup(roster.Kick808, ""),
@@ -1498,11 +1378,7 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       macroSceneSetup(roster.Kick808, "boom"),
 		MobileSetup: mobileMacroSceneSetup(roster.Kick808, "boom")},
-	// MACRO DIALS (synth_dials.go): up to three dials per root card, each a
-	// vector over existing params (internal/assets/synth_dials.json).
-	// RENDERED-AUDIO GRAPH (synth_graph_pane.go, spec 2026-10-24): one view
-	// per kind, each a focused dial (Turn ends as ghosts), on an instrument
-	// where the dial is live.
+	// One graph view per kind, each a focused dial on an instrument where it is live.
 	{Name: "crop_synth_view_overview", Description: "Synth graph — the 808 kick's overview (nothing focused): the rendered note, its colour strip, note end, summary readout",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthViewSceneSetup(roster.Kick808, "", "", -1, false),
@@ -1666,11 +1542,8 @@ var sceneCatalog = []Scene{
 	{Name: "crop_synth_macro_arming", Description: "Synth tab — macro layer MID grow animation (armGrowT≈0.35): the armed card is partway to its 2×2 block and neighbours are sliding to their reflowed slots",
 		Subject: SubjectSynthPanel,
 		Setup:   macroArmingMidSceneSetup(roster.Violin, "brightness")},
-	// FULL-SCREEN (no Subject) on purpose: the bug this guards against sent a
-	// neighbour flying toward the SCREEN ORIGIN, i.e. outside the synth panel — a
-	// panel-cropped capture could not show it. Capture short/narrow (e.g.
-	// -win-w 900 -win-h 1000) so the grid has a single visible row and the
-	// neighbour's reflowed row is genuinely off-window.
+	// FULL-SCREEN on purpose: the bug sent a neighbour toward the SCREEN ORIGIN, outside any panel crop. Capture short
+	// (-win-w 900 -win-h 1000) so the reflowed row is genuinely off-window.
 	{Name: "synth_macro_arming_offwindow", Description: "Synth tab — macro layer MID grow animation on a SHORT panel: the neighbour whose reflowed row is OFF-WINDOW slides DOWN under the grid's bottom edge instead of flying up-left to the screen origin",
 		Setup: macroArmingMidSceneSetup(roster.Violin, "brightness")},
 	{Name: "crop_synth_tab_detail_envelope", Description: "Synth tab — chip strip with the ENVELOPE stage expanded into the detail pane (full-size knobs, untruncated captions)",
@@ -1681,10 +1554,7 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabStageSetup(roster.Modular, "FILTER", "filter_enabled"),
 		MobileSetup: mobileSynthTabStageSetup(roster.Modular, "FILTER", "filter_enabled")},
-	// Focus-graph crops: one per property-native domain. Each selects a
-	// specific knob in a stage so the single big focus graph renders that
-	// knob's domain (replaces the old per-knob concept bands). The mirror
-	// scene exercises the de-crammed "Your sound" pane.
+	// One per property domain: each selects a knob so the focus graph renders its domain.
 	{Name: "crop_synth_focus_filter", Description: "Synth tab focus graph: FILTER stage, Cutoff knob selected (frequency-domain picture)",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabFocusControlSetup(roster.Modular, "FILTER", "filter_cutoff"),
@@ -1697,8 +1567,7 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabFocusControlSetup(roster.Modular, "POST", "drive"),
 		MobileSetup: mobileSynthTabFocusControlSetup(roster.Modular, "POST", "drive")},
-	// bass-fm plays the FM OSCILLATOR (osc.fm source), whose module owns the FM
-	// stage's operators; the bare modular voice's sine oscillator has none.
+	// bass-fm plays the FM oscillator, whose module owns the FM operators.
 	{Name: "crop_synth_focus_fm", Description: "Synth tab (developer): FM stage, Op2 Depth knob selected on bass-fm (FM oscillator) — the harmonics view",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabFocusControlSetup(roster.BassFm, "FM", "fm_op2_depth"),
@@ -1719,12 +1588,8 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabFocusControlSetup(roster.Modular, "BURST", "burst1_amp"),
 		MobileSetup: mobileSynthTabFocusControlSetup(roster.Modular, "BURST", "burst1_amp")},
-	// Config-first CONVERTED families at the Synth-tab root: the category cards
-	// must claim the gen-bank knobs (which the family-stage registry, not the
-	// hand-written tables, now assigns) and must show the registry's LABELS
-	// rather than a prettified raw id. tom is percussive (Punch/Boom/Tone/…
-	// table) and fm-bass melodic (Sound/Body/Brightness/… table), so the pair
-	// covers both category vocabularies.
+	// Converted families: the cards must claim the gen-bank knobs and show the registry's labels; tom and fm-bass
+	// cover both vocabularies.
 	{Name: "crop_synth_root_tom", Description: "Synth tab root: TOM (config-first, gen source 6) — category cards claiming the registry's gen1_tom_* knobs",
 		Subject: SubjectSynthPanel,
 		Setup:   synthTabSceneSetup(roster.Tom)},
@@ -1781,10 +1646,7 @@ var sceneCatalog = []Scene{
 	{Name: "crop_levels_single_channel", Description: "Levels tab single-channel detail",
 		SettleFrames: 120, Subject: SubjectEQTabLevels,
 		Setup: func(g *Game) { _ = g.SetActiveEQTab("levels"); g.SetPlaying(true) }},
-	// The B-unset state is the one the legibility pass most changed: before it,
-	// a user with only A assigned had NOTHING on screen telling them a second
-	// trace existed or how to set it. The legend now shows a dimmed B slot
-	// reading "tap a stage", and the hint reads NEXT TAP SETS B.
+	// With only A set, the legend must still show a dimmed B slot and "NEXT TAP SETS B".
 	{Name: "crop_chain_tap_b_unset", Description: "Chain panel with only Tap A set — B slot invites a tap",
 		SettleFrames: 150, Subject: SubjectChain,
 		Setup: func(g *Game) {
@@ -1805,19 +1667,13 @@ var sceneCatalog = []Scene{
 				cz.SetTapB(scope.StageEQ)
 			}
 		}},
-	// The ONLY Chain scene that puts an actual waveform on screen. Every
-	// other one captures an empty scope, because the desktop screenshot
-	// binary never starts the scope service — which is how a full-height
-	// trigger marker ended up being the sole mark in the viewport and read
-	// as a stray object. This scene is the regression surface for BOTH
-	// halves of that fix: the marker is present here (it has a trace to
-	// anchor) and it is drawn exactly once.
+	// The ONLY Chain scene with a real waveform (the binary never starts the scope service): the trigger marker must
+	// anchor to it and draw exactly once.
 	{Name: "crop_chain_live_traces", Description: "Chain panel with real A/B traces — trigger marker anchors a waveform",
 		Mobile: true, SettleFrames: 150, Subject: SubjectChain,
 		Setup: sceneChainLiveTraces,
 		MobileSetup: func(g *Game) {
-			// Setup alone leaves the mobile audio panel invisible, so the crop
-			// silently falls back to the pads view (see CLAUDE.md).
+			// Setup alone leaves the mobile audio panel invisible.
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
 			sceneChainLiveTraces(g)
@@ -1878,17 +1734,11 @@ var sceneCatalog = []Scene{
 				z.SetDisplayMode("diff")
 			}
 		}},
-	// This scene captures the mobile-only segmented OVR/SPL/DIF control, so
-	// it must be marked Mobile:true — otherwise it never enters the mobile
-	// capture pass (-list-mobile-scenes filters on Mobile) and the desktop
-	// Setup renders the desktop display-mode pills instead of the segmented
-	// control, i.e. "renders desktop".
+	// Mobile:true, or it never enters the mobile pass and captures the desktop pills.
 	{Name: "crop_chain_segmented_mobile", Description: "Chain mobile segmented OVR/SPL/DIF control",
 		Mobile: true, SettleFrames: 150, Subject: SubjectChain,
 		Setup: func(g *Game) {
-			// Desktop fallback Setup still forces the mobile profile so even a
-			// desktop-pass capture shows the segmented control rather than the
-			// desktop pills.
+			// Forces mobile even on the desktop pass so the capture shows the segmented control.
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
 			activateScopeTab(g)
@@ -1915,9 +1765,7 @@ var sceneCatalog = []Scene{
 
 // ─── helpers ──────────────────────────────────────────────────────
 
-// sceneEQLiveBackdrop opens the EQ tab over an injected analyser reading: a
-// spectrum tilted down toward the treble, i.e. the shape of ordinary program
-// material rather than a flat test tone.
+// Tilted down toward the treble, like ordinary program material rather than a flat tone.
 func sceneEQLiveBackdrop(g *Game) {
 	_ = g.SetActiveEQTab("eq")
 	const n = 256
@@ -1930,17 +1778,8 @@ func sceneEQLiveBackdrop(g *Game) {
 	g.drum.eqTestSnapshot = &snap
 }
 
-// sceneSpectrumMutedChannelPick reproduces the tiny-bar defect deterministically:
-// a per-instrument channel is selected while that channel is SILENT, the
-// silence outlasts the axis settle window, and only then does the signal
-// arrive — with no further channel change to trigger a re-pin.
-//
-// It scripts the analyser rather than muting a row, for two reasons found the
-// hard way: muting changes the audible set, so reconcileChannelWithAudibleSet
-// bounces the selector back to Master on the way out (re-picking the channel
-// and hiding the bug), and zeroing the row's volume does not silence the
-// per-instrument analyser tap at all. Scripting the seam removes both
-// accidents and the dependence on where the beat happens to fall.
+// Scripts the analyser instead of muting: a mute makes the selector bounce back to Master (hiding the bug), and
+// zero volume does not silence the analyser tap.
 func sceneSpectrumMutedChannelPick(g *Game) {
 	_ = g.SetActiveEQTab("spectrum")
 	g.SetPlaying(true)
@@ -1955,8 +1794,7 @@ func sceneSpectrumMutedChannelPick(g *Game) {
 			start := time.Now()
 			const silentFor = 2 * time.Second // outlasts spectrumChannelSettle
 			z.callbacks.AnalyzerState = func() *analyzer.State {
-				// A fresh State per call: the pointer is the zone's
-				// "data refreshed" signal.
+				// A fresh State per call: the pointer is the "data refreshed" signal.
 				st := &analyzer.State{}
 				det := sceneKickSpectrum(time.Since(start) >= silentFor)
 				st.Detail = det
@@ -1967,14 +1805,8 @@ func sceneSpectrumMutedChannelPick(g *Game) {
 	})
 }
 
-// sceneKickSpectrum returns a low-heavy spectrum (a kick) when live, or the
-// analyser's silence reading when not. -Inf is what a real silent bin
-// reports, which is also the value the band maths has to survive.
-//
-// Bin spacing matters: the ISO bands the tab draws start at 22-44 Hz, so a
-// coarse synthetic spectrum leaves the bass bands EMPTY and the picture is
-// a lie about the renderer rather than about the fixture. 1024 bins to
-// Nyquist is ~23 Hz apart, the resolution a real analyser reports.
+// -Inf is what a silent bin reports. 1024 bins (~23 Hz apart, like a real analyser): a coarse fixture leaves the
+// bass bands empty and lies about the renderer.
 func sceneKickSpectrum(live bool) *analyzer.ChannelMetrics {
 	const n = 1024
 	const nyquist = 24000.0
@@ -1995,8 +1827,6 @@ func sceneKickSpectrum(live bool) *analyzer.ChannelMetrics {
 	return ch
 }
 
-// sceneSpectrumInstrumentChannel plays the circuit and focuses the first
-// row's own channel, the case where the analyser is silent between hits.
 func sceneSpectrumInstrumentChannel(g *Game) {
 	_ = g.SetActiveEQTab("spectrum")
 	g.SetPlaying(true)
@@ -2009,9 +1839,6 @@ func sceneSpectrumInstrumentChannel(g *Game) {
 	})
 }
 
-// sceneSpectrumAfterMute starts playback on the Spectrum tab and mutes the
-// first row once layout exists, so the capture shows the readout re-based on
-// the post-mute mix.
 func sceneSpectrumAfterMute(g *Game) {
 	_ = g.SetActiveEQTab("spectrum")
 	g.SetPlaying(true)
@@ -2020,8 +1847,6 @@ func sceneSpectrumAfterMute(g *Game) {
 	})
 }
 
-// sceneChainLiveTraces opens the Chain tab on two stages and feeds it a
-// synthetic two-tap trace. Shared by the desktop and mobile setups.
 func sceneChainLiveTraces(g *Game) {
 	_ = g.SetActiveEQTab("chain")
 	g.SetChainVisible(true)
@@ -2034,9 +1859,7 @@ func sceneChainLiveTraces(g *Game) {
 	}
 }
 
-// sceneScopeStateWithTraces builds a two-tap scope.State carrying a decaying
-// sine on each tap — a stand-in for what the live scope service delivers, so
-// a screenshot can show the trace layer and not just the graticule.
+// A stand-in for the live scope service, so the capture shows the trace layer.
 func sceneScopeStateWithTraces() *scope.State {
 	mk := func(decay, period float64) []float64 {
 		out := make([]float64, 512)
@@ -2053,10 +1876,7 @@ func sceneScopeStateWithTraces() *scope.State {
 	})
 }
 
-// chainZoneOf returns the scope panel zone reachable from the EQ panel zone,
-// or nil if either is not yet wired. Used by crop_scope_* setups to drive
-// the same state the AG/freeze/swatch buttons toggle, without synthesizing
-// click events.
+// For crop_scope_* setups to drive the toggle state without synthesizing clicks.
 func chainZoneOf(g *Game) *ChainPanelZone {
 	if g == nil || g.drum == nil || g.drum.eqPanelZone == nil {
 		return nil
@@ -2064,11 +1884,7 @@ func chainZoneOf(g *Game) *ChainPanelZone {
 	return g.drum.eqPanelZone.ChainZone()
 }
 
-// activateScopeTab applies the canonical Scope-tab visibility setup (tab +
-// service visible), assigns default A/B taps so traces actually draw, and
-// starts playback so the scope ring buffers fill during the screenshot
-// settle countdown. Without taps the trace area renders empty regardless
-// of toggle state, making variants visually indistinguishable.
+// Without taps the trace area is empty and every variant looks the same.
 func activateScopeTab(g *Game) {
 	_ = g.SetActiveEQTab("chain")
 	g.SetChainVisible(true)
@@ -2079,22 +1895,7 @@ func activateScopeTab(g *Game) {
 	g.SetPlaying(true)
 }
 
-// synthTabSceneSetup returns a Setup function for the synth-tab crop
-// scenes. The optional override forces row 0's instrument to a specific
-// builtin id (e.g. "fm-bell", "hihat") so the section layout exercises a
-// recipe other than the embedded startup-demo's row 0 default. Empty
-// override uses whatever the demo's row 0 carries (snare in the embedded
-// demo).
-//
-// The demo is built synchronously via g.buildDemo() before the row
-// rewrite. Without that, the scene Setup runs against an empty Rows[]
-// because buildDemo is normally deferred to the first Update() — the
-// scene Setup runs BEFORE the first Update(), so without forcing the
-// demo here the row rewrite is a no-op and the captured PNG shows the
-// embedded demo's row 0 instead of the requested override.
-// synthTabStageSceneSetup extends synthTabSceneSetup by opening a specific stage,
-// so a screenshot can show that stage's knobs (and its Advanced expander) instead
-// of the default landing stage.
+// Opens a specific stage on top of synthTabSceneSetup, so the capture shows that stage's knobs.
 func synthTabStageSceneSetup(instrument instrument.ID, section synthSectionID) func(*Game) {
 	base := synthTabSceneSetup(instrument)
 	return func(g *Game) {
@@ -2109,18 +1910,12 @@ func synthTabStageSceneSetup(instrument instrument.ID, section synthSectionID) f
 	}
 }
 
-// synthTabStageExpandedSceneSetup opens a stage. Advanced (fine-tuning) knobs
-// are now always laid out below an in-grid divider row — there is no expander to
-// open — so this is just the stage-selection setup (kept as a distinct name for
-// the scenes that specifically showcase the Advanced tier, e.g. violin OSC).
+// Kept as its own name for the scenes that showcase the Advanced tier.
 func synthTabStageExpandedSceneSetup(instrument instrument.ID, section synthSectionID) func(*Game) {
 	return synthTabStageSceneSetup(instrument, section)
 }
 
-// synthTabStageDividerSceneSetup opens a stage and scrolls its card grid so the
-// "— ADVANCED · N —" divider row (and the first advanced cards below it) are in
-// view — a screenshot of the divider scene must actually show the divider, not
-// just the essential row above the fold.
+// Scrolled so the ADVANCED divider is actually in view.
 func synthTabStageDividerSceneSetup(instrument instrument.ID, section synthSectionID) func(*Game) {
 	base := synthTabStageSceneSetup(instrument, section)
 	return func(g *Game) {
@@ -2150,13 +1945,6 @@ func synthTabStageDividerSceneSetup(instrument instrument.ID, section synthSecti
 	}
 }
 
-// spectrumCollisionSetup points the first two rows at instruments whose
-// fundamentals share one ISO band, so the Spectrum banner reports a real
-// collision. Instruments are set through SetInstrument (never a raw
-// Rows[i].Instrument write) so the row label and every dependent of the row's
-// instrument id follow — a direct field write leaves them on the previous
-// instrument and the capture stops showing what it claims.
-// spectrumControlsOf reaches the Spectrum tab's control header, or nil.
 func spectrumControlsOf(g *Game) *spectrumControls {
 	if g == nil || g.drum == nil || g.drum.eqPanelZone == nil {
 		return nil
@@ -2192,32 +1980,21 @@ func synthTabSceneSetup(instrumentOverride instrument.ID) func(*Game) {
 	return func(g *Game) {
 		g.buildDemo()
 		if instrumentOverride != "" && len(g.drum.Rows) > 0 {
-			// Go through SetInstrument, not a raw Rows[0].Instrument write: the
-			// direct field assignment skips the sync notifier, so the row label
-			// (and anything else keyed off the row's instrument) stays on the
-			// PREVIOUS instrument while the panel shows the new one — the
-			// capture then can't be trusted to show what it claims.
+			// Through SetInstrument: a raw field write skips the sync notifier and the row label stays on the old instrument.
 			g.drum.selRow = 0
 			g.drum.SetInstrument(instrumentOverride)
 		}
 		_ = g.SetActiveEQTab("synth")
 		if g.drum != nil && g.drum.eqPanelZone != nil && len(g.drum.Rows) > 0 {
-			// Select Rows[0]'s instrument as the active channel. The Synth tab
-			// requires a single-instrument context — Master is now blocked for
-			// it — so pick the row explicitly (previously this relied on
-			// synthTabActiveInstrument falling back to Rows[0] under Master).
+			// The Synth tab needs a single-instrument context.
 			g.drum.eqPanelZone.SetActiveChannel(channel.Of(g.drum.Rows[0].Instrument))
 		}
 		settleSynthTab(g)
 	}
 }
 
-// settleSynthTab lays the audio panel out through the tree, then renders the
-// Synth graph synchronously. Its renders are pool-rendered (async) in
-// production, so a scene that shows the Synth tab must land them before
-// capture or two captures of the same scene differ by whether the worker
-// finished — which the theme-drift guard
-// (TestRuntimeThemeSwitchMatchesBootEveryScene) reads as a theme diff.
+// The graph renders on a pool in production; a scene must land it or two captures differ, which the theme-drift
+// guard reads as a theme diff.
 func settleSynthTab(g *Game) {
 	if g.drum == nil {
 		return
@@ -2228,11 +2005,7 @@ func settleSynthTab(g *Game) {
 	g.drum.settleSynthGraphNow()
 }
 
-// synthTabMasterChooserSetup opens the Synth tab and then opens the
-// channel chooser dropdown so the capture actually shows the chooser
-// surface (the scene's whole point). The panel must be laid out through
-// the tree first so its portal exists before OpenChannelDropdown builds
-// the dropdown entry.
+// The panel is laid out through the tree first so its portal exists.
 func synthTabMasterChooserSetup() func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup("")(g)
@@ -2254,10 +2027,6 @@ func mobileSynthTabMasterChooserSetup() func(*Game) {
 	}
 }
 
-// synthTabNoSynthSceneSetup points the active row at a WAV-sample
-// instrument with no synth recipe so the synth tab renders its single
-// "this instrument does not use the synth" banner instead of the section
-// grid. Mirrors the user-reported state for a loaded WAV.
 func synthTabNoSynthSceneSetup() func(*Game) {
 	return func(g *Game) {
 		g.buildDemo()
@@ -2265,20 +2034,15 @@ func synthTabNoSynthSceneSetup() func(*Game) {
 			g.drum.Rows[0].Instrument = "wav-sample"
 			g.drum.Rows[0].Name = "Kick-1"
 		}
-		// A fresh id has no instrument document, so the tab shows the
-		// "does not use the synth" banner.
+		// A fresh id has no document, so the tab shows the no-synth banner.
 		_ = g.SetActiveEQTab("synth")
 		if g.drum != nil && g.drum.eqPanelZone != nil {
-			// Select the WAV-sample instrument itself as the active channel so
-			// the Synth tab renders its "no synth" banner. Master is blocked
-			// for the Synth tab, so we can't use "main" here anymore.
+			// Master is blocked for the Synth tab.
 			g.drum.eqPanelZone.SetActiveChannel(channel.Of("wav-sample"))
 		}
 	}
 }
 
-// mobileSynthTabNoSynthSetup is the mobile counterpart of
-// synthTabNoSynthSceneSetup.
 func mobileSynthTabNoSynthSetup() func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -2287,8 +2051,6 @@ func mobileSynthTabNoSynthSetup() func(*Game) {
 	}
 }
 
-// mobileSynthTabSetup is the mobile counterpart. Forces mobile profile,
-// expands the mobile audio panel, then applies the synth-tab setup.
 func mobileSynthTabSetup(instrumentOverride instrument.ID) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -2297,11 +2059,7 @@ func mobileSynthTabSetup(instrumentOverride instrument.ID) func(*Game) {
 	}
 }
 
-// restoreShippedMenuSceneSetup saves an edit over the shipped kick-snap (into a
-// memory-only library, so a capture never writes the developer's
-// instruments.json) and opens the Synth ⋯ menu, which then offers Restore
-// shipped. Mobile opens it through the sticky bar's ⋯ button, desktop through
-// the Synth header's ⋯ button.
+// A memory-only library, so a capture never writes the developer's instruments.json.
 func restoreShippedMenuSceneSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -2318,8 +2076,7 @@ func restoreShippedMenuSceneSetup(mobile bool) func(*Game) {
 			}
 			return
 		}
-		// Desktop: press the header's ⋯ button through its own OnClick (the
-		// same handler a click reaches).
+		// The button's own OnClick, the handler a click reaches.
 		for _, b := range g.drum.SynthTabButtons() {
 			if b != nil && b.Icon == string(IconOverflow) && b.OnClick != nil {
 				b.OnClick()
@@ -2330,10 +2087,7 @@ func restoreShippedMenuSceneSetup(mobile bool) func(*Game) {
 	}
 }
 
-// savedToneReopenedSceneSetup turns the first category dial of the startup
-// circuit's row-0 instrument to 90, presses Save (into a memory-only library,
-// so a capture never writes the developer's instruments.json), then reopens
-// the startup circuit — the user's Save must trump the circuit's document.
+// The user's Save must trump the circuit's document on reopen. Memory-only library.
 func savedToneReopenedSceneSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		open := synthTabSceneSetup("")
@@ -2372,12 +2126,7 @@ func savedToneReopenedSceneSetup(mobile bool) func(*Game) {
 	}
 }
 
-// saveAsPromptSceneSetup opens the Synth tab on the violin (a memory-only
-// library, so a capture never writes the developer's instruments.json) and
-// presses Save As: the desktop header button's own OnClick, or on mobile the
-// ⋯ menu's Save As item (the same handler a tap reaches).
-// saveAsPromptSceneSetup opens Save As over the violin; typed ("" = keep the
-// prefilled name) is then typed into it.
+// Memory-only library; typed "" keeps the prefilled name.
 func saveAsPromptSceneSetup(mobile bool, typed string) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -2408,13 +2157,7 @@ func saveAsPromptSceneSetup(mobile bool, typed string) func(*Game) {
 	}
 }
 
-// macroSceneSetup / mobileMacroSceneSetup drive the Synth tab into the beginner
-// macro layer for `instrument`, optionally drilled into concept `open` ("" = the
-// Basic root of concept cards). Shared by the crop_synth_macro_* scenes so desktop
-// and the mobile pass exercise the same state.
-// modalSceneSetup shows the WAV-clone stages: tubular bells' project copy
-// becomes the generated demo modal document (synth_modal_demo.go), then the
-// root (open == "") or a drilled concept.
+// Tubular bells' copy becomes the generated demo modal document.
 func modalSceneSetup(mobile bool, open string) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -2458,8 +2201,7 @@ func applyMacroSceneState(g *Game, open string) {
 	g.drum.settleSynthGraphNow()
 }
 
-// synthDialSceneTurns is the "turned" dial scenes' state: card/dial → the
-// ABSOLUTE reading (0…100) to set, through the same Turn a drag uses.
+// ABSOLUTE readings, set through the same Turn a drag uses.
 var synthDialSceneTurns = map[string]int{
 	"brightness/bright": 85, "brightness/edge": 60, "length/length": 30, "length/tail": 20,
 }
@@ -2478,9 +2220,7 @@ func mobileDialSceneSetup(instrument instrument.ID, turns map[string]int, open s
 	}
 }
 
-// dialFocusSceneSetup opens the Synth root on instrument with card scrolled
-// into the root grid's window (untouched values: every dial reads the shipped
-// sound).
+// Untouched values: every dial reads the shipped sound.
 func dialFocusSceneSetup(instrument instrument.ID, card string, mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -2502,8 +2242,7 @@ func dialFocusSceneSetup(instrument instrument.ID, card string, mobile bool) fun
 	}
 }
 
-// applyDialSceneState turns dials and optionally opens one dial's wheel, both
-// through the same calls a drag / tap makes.
+// Through the same calls a drag or tap makes.
 func applyDialSceneState(g *Game, turns map[string]int, open string) {
 	dv := g.drum
 	if dv == nil {
@@ -2522,9 +2261,7 @@ func applyDialSceneState(g *Game, turns map[string]int, open string) {
 			dv.setSynthDialReading(inst, d, turns[k])
 		}
 	}
-	// Bring the scene's subject card into the root grid's window: the mobile
-	// root shows one card at a time, so without this the turned dials and the
-	// tapped one sit below the fold (and a tap on an off-window card is a no-op).
+	// The mobile root shows one card at a time, and a tap on an off-window card is a no-op.
 	focus := open
 	if focus == "" && len(keys) > 0 {
 		focus = keys[0]
@@ -2549,8 +2286,6 @@ func applyDialSceneState(g *Game, turns map[string]int, open string) {
 	}
 }
 
-// synthStageSceneSetup drills into pipeline stage `section` (what a tap on the
-// strip's pill does); mobileSynthStageSceneSetup is the mobile pass.
 func synthStageSceneSetup(instrument instrument.ID, section synthSectionID) func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(instrument)(g)
@@ -2584,8 +2319,7 @@ func synthMoreSceneSetup(instrument instrument.ID, concept string) func(*Game) {
 	}
 }
 
-// synthMoreScrolledSceneSetup is synthMoreSceneSetup scrolled to the END of the
-// drilled grid, so the Advanced cards below the More divider are on screen.
+// Scrolled to the END so the cards below the More divider show.
 func synthMoreScrolledSceneSetup(instrument instrument.ID, concept string) func(*Game) {
 	return func(g *Game) {
 		synthMoreSceneSetup(instrument, concept)(g)
@@ -2599,8 +2333,7 @@ func synthMoreScrolledSceneSetup(instrument instrument.ID, concept string) func(
 	}
 }
 
-// withInstrumentParamSceneSetup sets one synth param on inst BEFORE the wrapped
-// setup lays the Synth tab out, so a scene can show a user edit's effect.
+// Set BEFORE the layout, so the scene shows the edit's effect.
 func withInstrumentParamSceneSetup(inst instrument.ID, param string, value float64, next func(*Game)) func(*Game) {
 	return func(g *Game) {
 		audio.SetInstrumentParam(inst, param, value)
@@ -2608,11 +2341,7 @@ func withInstrumentParamSceneSetup(inst instrument.ID, param string, value float
 	}
 }
 
-// physicalKickSceneSetup switches the 808 kick to the physical drumhead
-// variant (gen1_kick_variant 8) BEFORE the drill, so the variant-only knobs
-// (Body Hold, Air) are laid out. No shipped instrument uses variant 8 yet; a
-// user reaches it through the Variant control. `focus` selects that knob so
-// the signal-graph header shows its plain-English gloss.
+// Variant 8 only exists behind the Variant control, so its knobs need it set before the drill.
 func physicalKickSceneSetup(next func(*Game), focus string) func(*Game) {
 	return func(g *Game) {
 		audio.SetInstrumentParam(roster.Kick808, "gen1_kick_variant", 8)
@@ -2651,9 +2380,6 @@ func applyMoreSceneState(g *Game) {
 	}
 }
 
-// macroArmedSceneSetup drills into `concept` and ARMS its first on-window
-// continuous control so the capture shows the grown card + two barrel lanes —
-// the edit affordance a tap/click produces on desktop and mobile.
 func macroArmedSceneSetup(instrument instrument.ID, concept string) func(*Game) {
 	return func(g *Game) {
 		macroSceneSetup(instrument, concept)(g)
@@ -2677,8 +2403,7 @@ func armFirstDrilledControl(g *Game, concept string) {
 	if len(idxs) == 0 {
 		return
 	}
-	// Prefer a continuous control (non-nil step badge) that is on-window (non-empty
-	// rect) so both the resolution and value lanes render; fall back to the first.
+	// A continuous, on-window control so both lanes render.
 	idx := idxs[0]
 	for _, kIdx := range idxs {
 		if kIdx >= 0 && kIdx < len(g.drum.instEditorStepBadges) &&
@@ -2688,9 +2413,7 @@ func armFirstDrilledControl(g *Game, concept string) {
 		}
 	}
 	g.drum.armSynthControl(inst, idx)
-	// Settle the grow animation so the capture shows the fully-grown 2×2 block +
-	// the reflowed neighbours (the animation advances in synthTabUpdate in the app;
-	// scenes drive it directly).
+	// The animation advances in synthTabUpdate in the app; scenes drive it.
 	for i := 0; i < 50 && g.drum.advanceArmGrow(); i++ {
 		if g.drum.audioTree != nil {
 			g.drum.audioTree.LayoutZoneNow("eq-panel")
@@ -2702,9 +2425,7 @@ func armFirstDrilledControl(g *Game, concept string) {
 	g.drum.settleSynthGraphNow()
 }
 
-// macroArmingMidSceneSetup captures a MID-animation frame: the armed control is
-// partway grown (armGrowT ≈ 0.35) so the neighbours are caught sliding to their
-// reflowed slots.
+// Partway grown, so the neighbours are caught sliding.
 func macroArmingMidSceneSetup(instrument instrument.ID, concept string) func(*Game) {
 	return func(g *Game) {
 		macroSceneSetup(instrument, concept)(g)
@@ -2725,8 +2446,7 @@ func macroArmingMidSceneSetup(instrument instrument.ID, concept string) func(*Ga
 			}
 		}
 		g.drum.armSynthControl(inst, idx)
-		// Freeze mid-grow for a deterministic capture: T == target means
-		// advanceArmGrow (run by the harness's settle frames) leaves it put.
+		// T == target, so the harness's settle frames leave it put.
 		g.drum.armGrowT = 0.35
 		g.drum.armGrowTarget = 0.35
 		if g.drum.audioTree != nil {
@@ -2736,11 +2456,7 @@ func macroArmingMidSceneSetup(instrument instrument.ID, concept string) func(*Ga
 	}
 }
 
-// synthTabStageSetup is synthTabSceneSetup + opening a specific stage in the
-// chip strip's detail pane. disableParam (optional) toggles a stage off
-// first so the scene shows a ghost chip — and, when the disabled stage is
-// also the selected one, the bypass scrim. Drives SelectSynthSectionByLabel,
-// the same path a real chip tap takes.
+// disableParam turns a stage off first, showing a ghost chip (and the bypass scrim when it is the selected one).
 func synthTabStageSetup(instrumentOverride instrument.ID, stageLabel, disableParam string) func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(instrumentOverride)(g)
@@ -2750,17 +2466,13 @@ func synthTabStageSetup(instrumentOverride instrument.ID, stageLabel, disablePar
 				audio.SetInstrumentParam(inst, disableParam, 0)
 			}
 		}
-		// Layout once so the chip strip exists, then select + re-layout. Route
-		// the forced layouts through the tree (LayoutZoneNow) — a direct
-		// eqPanelZone.Layout bypasses the hit-area republish and trips the
-		// chokepoint discipline guard (TestZoneLayoutRoutesThroughTreeDiscipline).
+		// Through the tree: a direct Layout skips the hit-area republish and trips the chokepoint guard.
 		if g.drum != nil && g.drum.audioTree != nil {
 			g.drum.audioTree.LayoutZoneNow("eq-panel")
 			g.drum.SelectSynthSectionByLabel(stageLabel)
 			g.drum.audioTree.LayoutZoneNow("eq-panel")
 		}
-		// Land the graph synchronously so it is deterministic at capture time
-		// (it is pool-rendered in production).
+		// Pool-rendered in production, so land it for a deterministic capture.
 		if g.drum != nil {
 			g.drum.settleSynthGraphNow()
 		}
@@ -2776,13 +2488,7 @@ func mobileSynthTabStageSetup(instrumentOverride instrument.ID, stageLabel, disa
 	}
 }
 
-// synthTabFocusControlSetup opens stageLabel for instrument and selects the knob
-// named knobParam so the focus graph shows that knob's property-native domain.
-// Builds on synthTabStageSetup (which selects the stage + renders the mirror),
-// then walks the selected section's knobs to find the one whose ParamDef.Name
-// matches knobParam and records it via setSynthSelectedControl. If the knob name
-// isn't present in the stage, the focus graph falls back to the section's main
-// knob — still renders, but pick correct names so the intended domain shows.
+// An unknown knob name falls back to the stage's main knob, so pick real names.
 func synthTabFocusControlSetup(instrumentOverride instrument.ID, stageLabel, knobParam string) func(*Game) {
 	return func(g *Game) {
 		synthTabStageSetup(instrumentOverride, stageLabel, "")(g)
@@ -2808,8 +2514,6 @@ func synthTabFocusControlSetup(instrumentOverride instrument.ID, stageLabel, kno
 	}
 }
 
-// mobileSynthTabFocusControlSetup is the mobile counterpart of
-// synthTabFocusControlSetup — exercises the mobile stacked focus band.
 func mobileSynthTabFocusControlSetup(instrumentOverride instrument.ID, stageLabel, knobParam string) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -2818,10 +2522,7 @@ func mobileSynthTabFocusControlSetup(instrumentOverride instrument.ID, stageLabe
 	}
 }
 
-// synthTabFocusControlParamSetup builds on synthTabFocusControlSetup and additionally
-// pins one live param (e.g. drive to 70% of its 0..1 range) before the final
-// mirror render so the focus graph and the "Your sound" pane reflect the driven
-// value, not the recipe default.
+// The param is pinned before the final render so the graph shows the driven value, not the default.
 func synthTabFocusControlParamSetup(instrumentOverride instrument.ID, stageLabel, knobParam, setParam string, setVal float64) func(*Game) {
 	return func(g *Game) {
 		synthTabFocusControlSetup(instrumentOverride, stageLabel, knobParam)(g)
@@ -2837,12 +2538,7 @@ func synthTabFocusControlParamSetup(instrumentOverride instrument.ID, stageLabel
 	}
 }
 
-// synthControlArmedSceneSetup opens the Synth tab on the modular voice and
-// arms a control in the currently-selected section so the card expands
-// in-place with the kinetic barrel editor. Prefers a knob that carries a
-// resolution lane (a non-nil step badge, i.e. a continuous param) over the
-// section's first knob so BOTH lanes render — a discrete param would only
-// show the value lane.
+// Prefers a continuous knob so BOTH lanes render.
 func synthControlArmedSceneSetup() func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(roster.Modular)(g)
@@ -2858,20 +2554,13 @@ func synthControlArmedSceneSetup() func(*Game) {
 				g.drum.audioTree.LayoutZoneNow("eq-panel")
 			}
 		}
-		// Select the ENVELOPE stage: its essential (on-window) controls are
-		// continuous (they carry a resolution ladder), so an armed control there
-		// renders BOTH barrels — the left resolution lane and the right value
-		// lane. (The default OSC stage's on-window controls are discrete, so
-		// arming one would show only the value lane.)
+		// ENVELOPE's on-window controls are continuous, so both barrels render; OSC's are discrete.
 		g.drum.setSelectedSynthSection(inst, synthSectionEnvelope)
 		relayout()
 		sec := g.drum.synthSelectedSection()
 		if sec == nil || len(sec.knobIdxs) == 0 {
 			return
 		}
-		// Arm the first control that is BOTH on-window (non-empty rect, so its
-		// grown card actually renders) AND continuous (non-nil step badge, so the
-		// resolution lane exists). Fall back to the section's main knob.
 		idx := sec.knobIdxs[0]
 		for _, kIdx := range sec.knobIdxs {
 			if kIdx < 0 || kIdx >= len(g.drum.instEditorStepBadges) {
@@ -2883,20 +2572,14 @@ func synthControlArmedSceneSetup() func(*Game) {
 			}
 		}
 		g.drum.armSynthControl(inst, idx)
-		// Layout again through the tree so the armed card's grown bounds and
-		// lane rects are published before capture.
+		// So the grown card's lane rects are published before capture.
 		relayout()
 		g.drum.settleSynthGraphNow()
 	}
 }
 
-// mobileSynthControlArmedSceneSetup is the mobile counterpart of
-// synthControlArmedSceneSetup.
-// synthControlArmedLastInRowSceneSetup drills the violin "brightness" macro (its
-// controls fill the grid's columns) and ARMS the RIGHTMOST control in the top row
-// — the last-column case the in-place-anchor fix targets: before, the grown 2×2
-// block dropped to the row below; now the clicked cell stays put as the block's
-// right column (block grows LEFT) and the left neighbour reflows down.
+// The last-column case: the clicked cell stays as the block's right column (it grows LEFT) and the left
+// neighbour reflows down.
 func synthControlArmedLastInRowSceneSetup() func(*Game) {
 	return func(g *Game) {
 		macroSceneSetup(roster.Violin, "brightness")(g)
@@ -2904,11 +2587,7 @@ func synthControlArmedLastInRowSceneSetup() func(*Game) {
 	}
 }
 
-// synthSnareVoiceTone2ArmedSceneSetup reproduces the reported bug exactly: the
-// snare VOICE stage with "Tone2 Freq" (a continuous two-lane control) ARMED. This
-// stage renders a single grid row, so the armed 2×2 block's lower cells are
-// off-window — the card must still EXPAND (grow to the 2-column, taller footprint
-// with both barrel lanes) rather than collapse to a single in-place cell.
+// A single-row stage, so the block's lower cells are off-window: the card must still EXPAND, not collapse to one cell.
 func synthSnareVoiceTone2ArmedSceneSetup() func(*Game) {
 	return func(g *Game) {
 		synthTabStageSceneSetup(roster.Snare, synthSectionVoice)(g)
@@ -2942,13 +2621,8 @@ func synthSnareVoiceTone2ArmedSceneSetup() func(*Game) {
 	}
 }
 
-// synthControlArmedBottomRowSceneSetup ARMS the bottom-most visible control of a
-// SCROLLING stage (the FM stage of the modular voice, whose op knobs overflow a
-// short/narrow panel) — the "Voice Tone2 Freq expands the control above and much
-// larger" case: the 2×2 block's lower row is off-window, so the block must grow
-// UPWARD (clicked control = block's bottom row) instead of unioning an off-window
-// corner into a giant origin-anchored rect. Capture at a narrow window (e.g.
-// -win-w 560) so the FM stage scrolls.
+// A scrolling stage's bottom control, its block's lower row off-window: it must not union an off-window corner into
+// a giant rect. Capture narrow (-win-w 560).
 func synthControlArmedBottomRowSceneSetup() func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(roster.Modular)(g)
@@ -2997,9 +2671,6 @@ func synthControlArmedBottomRowSceneSetup() func(*Game) {
 	}
 }
 
-// armLastInRowDrilledControl arms the rightmost on-window control in the top row
-// of the drilled concept grid, then settles the grow animation (mirrors
-// armFirstDrilledControl's settle loop).
 func armLastInRowDrilledControl(g *Game, concept string) {
 	if g.drum == nil {
 		return
@@ -3051,8 +2722,6 @@ func mobileSynthControlArmedSceneSetup() func(*Game) {
 	}
 }
 
-// mobileSynthTabFocusControlParamSetup is the mobile counterpart of
-// synthTabFocusControlParamSetup.
 func mobileSynthTabFocusControlParamSetup(instrumentOverride instrument.ID, stageLabel, knobParam, setParam string, setVal float64) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -3061,10 +2730,7 @@ func mobileSynthTabFocusControlParamSetup(instrumentOverride instrument.ID, stag
 	}
 }
 
-// synthTabDrumRevoicedSetup points row 0 at the snare drum, re-voices it with
-// the bare modular voice's document switched to a Saw waveform (osc_type=1),
-// and plays — so the capture shows a drum row re-voiced through the full
-// modular pipeline.
+// A drum row re-voiced through the full modular pipeline.
 func synthTabDrumRevoicedSetup() func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(roster.Snare)(g)
@@ -3074,9 +2740,7 @@ func synthTabDrumRevoicedSetup() func(*Game) {
 	}
 }
 
-// revoiceWithModularForScene gives id a copy of the bare modular voice's
-// document (Origin = modular): the drum keeps its row, its sound is the
-// modular pipeline.
+// The drum keeps its row; its sound is the modular pipeline.
 func revoiceWithModularForScene(id instrument.ID) {
 	if d, ok := audio.LibraryDoc(roster.Modular); ok {
 		d.Origin = roster.Modular
@@ -3092,9 +2756,7 @@ func mobileSynthTabDrumRevoicedSetup() func(*Game) {
 	}
 }
 
-// synthTabModularPlaySetup opens the modular voice's Synth tab during playback
-// so the capture shows the per-stage enable pills + generator step with the
-// live trigger-pulse borders. Mirrors mobileAudioPanelPlaySetup's SetPlaying.
+// During playback, so the stage pills show their live trigger-pulse borders.
 func synthTabModularPlaySetup() func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(roster.Modular)(g)
@@ -3110,9 +2772,6 @@ func mobileSynthTabModularPlaySetup() func(*Game) {
 	}
 }
 
-// synthTabModularNoiseSetup additionally selects the Noise Pink generator and
-// bypasses the Filter stage so the capture exercises the new noise oscillator
-// and a dimmed/bypassed section card + preview plot.
 func synthTabModularNoiseSetup() func(*Game) {
 	return func(g *Game) {
 		synthTabSceneSetup(roster.Modular)(g)
@@ -3130,13 +2789,8 @@ func mobileSynthTabModularNoiseSetup() func(*Game) {
 	}
 }
 
-// samplerTabSceneSetup returns a Setup function for the sampler-tab crop
-// scenes. It builds the demo synchronously (the scene Setup runs before the
-// first Update), activates the Sampler tab, and captures the active
-// instrument's one-shot into the working buffer so the waveform card renders
-// a real trace instead of the empty placeholder. The optional capture flags
-// drive trim + a toggle so the trimmed-region shading and active-toggle
-// chrome are exercised by the screenshot.
+// Builds the demo synchronously (Setup runs before the first Update) and captures a one-shot so the waveform card
+// shows a trace, not the placeholder.
 func samplerTabSceneSetup(captured bool) func(*Game) {
 	return func(g *Game) {
 		g.buildDemo()
@@ -3146,25 +2800,20 @@ func samplerTabSceneSetup(captured bool) func(*Game) {
 			return
 		}
 		if dv.eqPanelZone != nil && len(dv.Rows) > 0 {
-			// The Sampler tab needs a single-instrument context (Master is now
-			// blocked for it); select Rows[0]'s instrument explicitly rather
-			// than relying on the old Master→Rows[0] fallback.
+			// The Sampler needs a single-instrument context.
 			dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 		}
 		if !captured {
 			return
 		}
 		dv.sampler.captureFromSynth(dv.samplerActiveInstrument())
-		// Trim to the middle 70% and enable Normalize so the scene shows the
-		// trimmed-away shading, both drag handles, and an active toggle.
+		// Shows the trimmed-away shading, both handles and an active toggle.
 		dv.sampler.startFrac = 0.15
 		dv.sampler.endFrac = 0.85
 		dv.sampler.normalize = true
 	}
 }
 
-// mobileSamplerTabSetup is the mobile counterpart. Forces mobile profile,
-// expands the mobile audio panel, then applies the sampler-tab setup.
 func mobileSamplerTabSetup(captured bool) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -3173,12 +2822,8 @@ func mobileSamplerTabSetup(captured bool) func(*Game) {
 	}
 }
 
-// samplerWheelOpenSetup captures a sample, then opens the value-wheel popup on
-// one sampler knob — the surface that owns BOTH wheel directions: the value
-// barrel (larger values above the center selector) and the resolution ladder
-// (coarsest rung at the top). Deliberately NOT subject-cropped: the popup is a
-// modal over the whole screen, and the point of the capture is that the two
-// stacks read in the same direction.
+// Not cropped: the popup is modal over the screen, and the point is that the value and resolution stacks read in
+// the same direction.
 func samplerWheelOpenSetup(base func(*Game)) func(*Game) {
 	return func(g *Game) {
 		base(g)
@@ -3186,8 +2831,7 @@ func samplerWheelOpenSetup(base func(*Game)) func(*Game) {
 		if dv == nil {
 			return
 		}
-		// The popup anchors on the knob's rect, which only exists once the panel
-		// has laid out — mirrors armFirstDrilledControl's LayoutZoneNow priming.
+		// The popup anchors on the knob's rect, which exists only after the panel lays out.
 		if dv.audioTree != nil {
 			dv.audioTree.LayoutZoneNow("eq-panel")
 		}
@@ -3195,13 +2839,7 @@ func samplerWheelOpenSetup(base func(*Game)) func(*Game) {
 	}
 }
 
-// samplerWheelKeyStepSetup opens the same popup and then applies the steps the
-// ARROW KEYS apply (StepValue / StepResolution — the exact methods
-// MobileWheelPopup.HandleClaimedKeys calls), so the capture shows that keyboard
-// editing actually moves what is rendered: the value barrel off its opening row
-// and the resolution ladder onto a coarser rung. The key ROUTING that gets those
-// methods called instead of panning the grid is pinned in Go by
-// popup_control_keys_test.go.
+// Applies what the ARROW KEYS apply, so the capture shows keyboard edits move what is rendered.
 func samplerWheelKeyStepSetup(base func(*Game)) func(*Game) {
 	open := samplerWheelOpenSetup(base)
 	return func(g *Game) {
@@ -3217,10 +2855,7 @@ func samplerWheelKeyStepSetup(base func(*Game)) func(*Game) {
 	}
 }
 
-// mobileAudioPanelSetup returns a Setup that forces mobile profile,
-// expands the mobile audio (EQ/Wave/Spec/Meters/Scope) panel, and sets
-// the requested tab. Used as the MobileSetup for desktop EQ scenes so
-// their mobile capture exercises a real route to the panel.
+// The MobileSetup for desktop EQ scenes, a real route to the panel.
 func mobileAudioPanelSetup(tab string) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -3229,10 +2864,7 @@ func mobileAudioPanelSetup(tab string) func(*Game) {
 	}
 }
 
-// blockedWarmBackend reports nothing cached and never completes a warm, so a
-// screenshot scene can hold the readiness gate open (Play button disabled)
-// and the progress toast frozen at a stable frame — see
-// newBlockedWarmBackendForScene / toastCircuitLoadingSceneSetup.
+// Never completes, so a scene holds Play disabled and the toast frozen.
 type blockedWarmBackend struct{}
 
 func (blockedWarmBackend) Cached(instrument.ID, float64) bool  { return false }
@@ -3240,16 +2872,8 @@ func (blockedWarmBackend) Warm(instrument.ID, float64, func()) {}
 
 func newBlockedWarmBackendForScene() warmBackend { return blockedWarmBackend{} }
 
-// toastCircuitLoadingSceneSetup drives the circuit-loading progress toast
-// into a stable mid-progress frame for both the full-screen and cropped
-// scenes. The demo circuit is built synchronously first (buildWarmSet reads
-// beatInfosByRow, which buildDemo populates via updateBeatInfos — Setup runs
-// before the first Update(), so without this the warm set would be empty).
-// The readiness gate is then armed against a backend that never completes,
-// so Play stays visibly disabled for the whole capture window. Finally the
-// toast's own done/total are pinned to 42/100 directly — independent of
-// whatever the demo's actual warm-set size turns out to be — so the capture
-// reads a deterministic "42/100" regardless of which built-in demo loads.
+// The demo is built first (the warm set reads beatInfosByRow); the gate is held open, and the toast pinned to
+// 42/100 so the capture is deterministic whatever demo loads.
 func toastCircuitLoadingSceneSetup(g *Game) {
 	g.buildDemo()
 	g.warmup = newWarmupController(g, newBlockedWarmBackendForScene())
@@ -3260,12 +2884,7 @@ func toastCircuitLoadingSceneSetup(g *Game) {
 	g.drum.logsToast.updateTask(42)
 }
 
-// toastCircuitLoadingMobileSceneSetup is the MobileSetup for
-// toast_circuit_loading: put the bottom nav on an audio tab (NOT Pads) so
-// the grid pane is offscreen and the DrumToastLayer fallback
-// (layer_drum_toast.go) is the ONLY thing that can show the toast — proves
-// the mobile placement rule Task 9 added — then apply the same shared
-// warm-up + toast state as the desktop scene.
+// On an audio tab so the grid pane is offscreen and the drum-pane toast is the only one that can show.
 func toastCircuitLoadingMobileSceneSetup(g *Game) {
 	g.SetForceMobileProfile(true)
 	g.drum.SetMobileEQMode(true)
@@ -3273,9 +2892,7 @@ func toastCircuitLoadingMobileSceneSetup(g *Game) {
 	toastCircuitLoadingSceneSetup(g)
 }
 
-// mobileAudioPanelPlaySetup is mobileAudioPanelSetup + SetPlaying(true),
-// for crop_* scenes that need both the panel exposed AND playback running
-// so the analyzer ring buffers fill before the screenshot fires.
+// Playback too, so the analyser buffers fill before the shot.
 func mobileAudioPanelPlaySetup(tab string) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
@@ -3285,13 +2902,7 @@ func mobileAudioPanelPlaySetup(tab string) func(*Game) {
 	}
 }
 
-// ensureMultiRow guarantees the rack has at least n distinct rows for the
-// multi-row scenes. It builds the demo synchronously first: buildDemo is
-// otherwise deferred to the first Update(), and if it ran AFTER the scene
-// appended rows it would import-replace them, collapsing the rack back to
-// the demo's row count (the "shows one row" capture bug). Building it here
-// flips demoBuilt so the subsequent settle Updates leave the added rows
-// intact.
+// Builds the demo first: a deferred buildDemo would import-replace the added rows and collapse the rack.
 func ensureMultiRow(g *Game, n int) {
 	if g.drum == nil {
 		return
@@ -3302,9 +2913,7 @@ func ensureMultiRow(g *Game, n int) {
 	}
 }
 
-// sceneRowRackStates seeds seven rows covering every rack-control state and
-// gives the drum pane more height than the rows need, so the add-row slot and
-// any background lane around the rack are visible.
+// Extra pane height so the add-row slot and the lane around the rack are visible.
 func sceneRowRackStates(g *Game) {
 	ensureMultiRow(g, 7)
 	if g.drum == nil || len(g.drum.Rows) < 7 {
@@ -3327,17 +2936,8 @@ func ensureRow(g *Game, idx int) {
 	}
 }
 
-// openEmptyFavoritesView drives the instrument menu into the state that
-// exposed the stale-star bug: browse a populated category (one star laid out
-// per row), pop back to the category list, then open Favorites with an empty
-// ★ store so the list collapses to the onboarding placeholder. The stars from
-// the category listing must not survive into this frame.
-//
-// Note it swaps the process-global FavoritesStore for an empty one — the menu
-// reads props.Favorites from Favorites(), so a dev with saved ★s would
-// otherwise capture a populated list. Equivalent to the package default
-// (an empty InMemoryFavoritesStore); tests that need their own store install
-// it with a t.Cleanup restore.
+// The stale-star state: a populated category, then an empty Favorites view, whose placeholder must carry no
+// leftover stars. Swaps in an empty store so a developer's saved ★s do not show.
 func openEmptyFavoritesView(g *Game) {
 	ensureRow(g, 0)
 	if g.drum == nil {
@@ -3369,16 +2969,8 @@ func sceneSetBPM(g *Game, bpm int) {
 	g.drum.SetBPM(bpm)
 }
 
-// sceneDragMenuGrip drives a grid-pane menu card through a grip drag by delta,
-// using the same PopupDragHandle entry points the real press/move/release path
-// uses — so the captured scene reflects genuine drag state (pinned placement,
-// dragging tint) rather than a hand-set origin. Mirrors the ScopePanelZone
-// SetFrozen/SetAutoGain scene-setter pattern.
-//
-// Pick delta with the card's clamped edges in mind: both cards can open already
-// welded to a pane edge, and a delta pushing further into that edge nets zero
-// movement — the capture would then show an undragged card and silently prove
-// nothing.
+// Through the real drag entry points, so the capture shows genuine drag state. Pick a delta away from the edge a
+// card opens welded to, or it nets zero movement and proves nothing.
 func sceneDragMenuGrip(g *Game, panel image.Rectangle, h *PopupDragHandle, delta image.Point) {
 	if panel.Empty() || h == nil {
 		return
@@ -3391,10 +2983,7 @@ func sceneDragMenuGrip(g *Game, panel image.Rectangle, h *PopupDragHandle, delta
 	h.End()
 }
 
-// sceneGroupMenuSetup builds three adjacent connected nodes, groups them the
-// way a marquee release does (provisional group + one pitch rule), and opens
-// the GroupMenu beside the group — the exact post-marquee UI including the
-// Save button and member rings.
+// The exact post-marquee UI, Save button and member rings included.
 func sceneGroupMenuSetup(g *Game) {
 	a := g.tryAddNode(2, 1, model.NodeTypeRegular)
 	b := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -3405,8 +2994,7 @@ func sceneGroupMenuSetup(g *Game) {
 	g.addEdge(a, b)
 	g.addEdge(b, c)
 	g.updateBeatInfos()
-	// A committed group elsewhere gives the provisional menu one merge-chip
-	// candidate, so the capture shows the "Add to group" section too.
+	// A committed group elsewhere gives the menu a merge candidate, so "Add to group" shows.
 	if d := g.tryAddNode(8, 6, model.NodeTypeRegular); d != nil {
 		_, _ = g.graph.CreateGroup("Drums", []model.NodeID{d.ID})
 	}
@@ -3419,12 +3007,7 @@ func sceneGroupMenuSetup(g *Game) {
 	g.groupMenu.OpenAtProvisional(gid, int(sx2)+24, int(sy1))
 }
 
-// sceneGroupBadgesSetup builds two spatially-separated committed groups
-// ("Alpha" {a,b} near the top, "Beta" {c,d} several rows below) so their
-// floating badges (task-group-badges) render without overlapping, then opens
-// the GroupMenu for the second group so the capture shows: both badges (each
-// tinted with its own group's color), the open menu's tinted chrome, and both
-// ring colors (Alpha faint, Beta strong on its own members).
+// Two separated groups so both badges render apart, each in its group's colour, with the second group's menu open.
 func sceneGroupBadgesSetup(g *Game) {
 	a := g.tryAddNode(2, 1, model.NodeTypeRegular)
 	b := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -3447,13 +3030,8 @@ func sceneGroupBadgesSetup(g *Game) {
 	g.groupMenu.OpenAt(gid2, int(sx2)+24, int(sy1))
 }
 
-// sceneNodeSidebarGroupsSetup builds a→b→c with node b in two committed
-// groups ("Drums" {a,b}, "Melody" {b,c}) — 2 full-width open-only chip
-// rows — plus a third group ("Extra" {a} only) so b also has exactly one
-// add-candidate and the "Add to group" row shows, alongside the "Remove
-// from group" row (b has >=1 membership). Both dropdowns are left closed
-// (portal/dropdown overlay screenshots are flaky per CLAUDE.md); the closed
-// grpadd/grpremove rows are enough for visual verification.
+// Node b in two groups plus one add-candidate, so both group rows show. Dropdowns stay closed: their overlay
+// captures are flaky.
 func sceneNodeSidebarGroupsSetup(g *Game) {
 	a := g.tryAddNode(2, 1, model.NodeTypeRegular)
 	b := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -3475,17 +3053,11 @@ func sceneNodeSidebarGroupsSetup(g *Game) {
 	}
 	g.sidebar.Open(b)
 	g.sidebar.sectionOpen[secGrp] = true
-	// The Group section is the sidebar's last section; on the short desktop
-	// grid pane its rows sit below the scroll fold. Scroll to the bottom so
-	// the capture shows the chips/remove/add controls (layout clamps First
-	// to the real max).
+	// The Group section sits below the fold on the short desktop pane; layout clamps First.
 	g.sidebar.scroll.VS.First = 1 << 20
 }
 
-// scrolledTemplateMenuSetup opens the template page and wheel-scrolls it well
-// into the list so both culling edges are on screen.
-// longTitleTemplateMenuSetup scrolls far enough to reach the Lied · Song and
-// French · Americas groups, where the longest titles live.
+// Far enough to reach the groups with the longest titles.
 func longTitleTemplateMenuSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3500,8 +3072,7 @@ func longTitleTemplateMenuSetup(mobile bool) func(*Game) {
 	}
 }
 
-// loadTemplateScene imports a built-in template exactly as the template menu
-// does (the same embedded bytes through Game.Import).
+// The same embedded bytes through Game.Import, exactly as the menu does.
 func loadTemplateScene(stem string, mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3520,40 +3091,24 @@ func loadTemplateScene(stem string, mobile bool) func(*Game) {
 	}
 }
 
-// pitchedNode places a node on row 0 and points that row at a melodic
-// instrument, so nodeNoteLabel can resolve node → row → instrument and yield a
-// real note. organ-church is a modular melodic instrument present in the
-// default demo, so this needs no synthetic recipe binding.
+// organ-church is melodic and already in the demo, so no synthetic binding is needed.
 func pitchedNode(g *Game, i, j int) *uiNode {
 	return pitchedNodeWithInstrument(g, i, j, roster.OrganChurch)
 }
 
-// pitchedNodeWithInstrument is pitchedNode for an explicit instrument, so the
-// drum scenes can prove that percussion names a note too — the whole point of
-// making note display universal. A kick is the sharpest subject: its
-// fundamental is 55 Hz, so it exercises the octave range below A0 where the
-// old piano-range clamp used to collapse every note to "A0".
+// A kick (55 Hz) exercises the octaves below A0 where the old piano clamp collapsed every note to "A0".
 func pitchedNodeWithInstrument(g *Game, i, j int, instrumentID instrument.ID) *uiNode {
 	n := g.tryAddNode(i, j, model.NodeTypeRegular)
 	g.updateBeatInfos()
 	if n == nil || len(g.drum.Rows) == 0 {
 		return nil
 	}
-	// Route through SetInstrument rather than assigning Rows[0].Instrument:
-	// the setter also refreshes the row's display name and runs the sync
-	// notifier that dependents key off. Writing the field directly left the
-	// sidebar header still reading "Dnb Kick" while the note chip already
-	// showed the organ's pitch — exactly the stale-dependent split CLAUDE.md
-	// warns about for this field.
+	// Through SetInstrument: a raw field write left the sidebar header on the old instrument.
 	prev := g.drum.selRow
 	g.drum.selRow = 0
 	g.drum.SetInstrument(instrumentID)
 	g.drum.selRow = prev
-	// Map the node onto row 0 directly. The node is off-circuit, so the real
-	// path walk would not assign it a row and nodeNoteLabel would return "";
-	// this is a fixture shortcut that exercises the identical render path a
-	// genuinely on-circuit node takes, without building a whole loop here.
-	// Same shortcut noteTestNode uses in the unit tests.
+	// A fixture shortcut: the off-circuit node gets row 0 directly, the same render path an on-circuit node takes.
 	g.nodeRows[n.ID] = 0
 	return n
 }
@@ -3577,25 +3132,18 @@ func pitchedNodeBadgeSetupFor(mobile bool, instrumentID instrument.ID) func(*Gam
 		n.Selected = true
 		g.coordBadgeNode = n
 		g.coordBadgeFrame = g.frame
-		// drawGridCoordBadge gates the badge on OPPOSITE sidebar states per
-		// platform: desktop shows it only while the node's sidebar is open,
-		// mobile only while it is closed (there the sidebar sheet would cover
-		// it). So the desktop capture has to open the sidebar to see anything.
+		// Desktop shows the badge only with the sidebar open, mobile only with it closed.
 		if !mobile && g.sidebar != nil {
 			g.sidebar.Open(n)
 			g.sidebar.layout()
-			// The sidebar is node-anchored, so with it open it lands directly
-			// over the badge — correct z-order (grid_coord_badge_zorder_test
-			// pins the sidebar painting above it) but a capture showing only
-			// the panel. Drag the panel clear so the badge is actually visible.
+			// The node-anchored sidebar lands over the badge, so it is dragged clear.
 			sceneDragMenuGrip(g, g.sidebar.rects[sbPanel], &g.sidebar.drag, image.Pt(150, 120))
 			g.sidebar.layout()
 		}
 	}
 }
 
-// noteMatrixAfterPickSetup opens the picker and applies ONE note, so the
-// capture shows the post-pick state: still open, highlight moved.
+// Still open after a pick, highlight moved.
 func noteMatrixAfterPickSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		noteMatrixSetup(mobile)(g)
@@ -3610,13 +3158,7 @@ func noteMatrixAfterPickSetup(mobile bool) func(*Game) {
 	}
 }
 
-// noteMatrixKeyCursorSetup opens the picker and walks the keyboard cursor a
-// few cells off the current note, so the capture shows the focus ring and the
-// selected-note ring at once.
-// instMenuKeyCursorSetup opens the instrument menu and parks the keyboard
-// cursor on a row that is NOT the applied instrument, which is the state that
-// makes the two highlights distinguishable: the applied row keeps its active
-// treatment while the cursor row carries the focus ring.
+// The cursor on a row that is NOT the applied instrument, so both highlights are distinguishable.
 func instMenuKeyCursorSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3628,23 +3170,13 @@ func instMenuKeyCursorSetup(mobile bool) func(*Game) {
 		if c == nil || !c.IsOpen() {
 			return
 		}
-		// The row list is built by rebuildMenu, which needs the laid-out anchor,
-		// so it is still EMPTY at this point. Drive real frames first or
-		// SetSelected has nothing to select and the scene captures no ring.
+		// rebuildMenu needs the laid-out anchor, so the list is empty until real frames run.
 		for i := 0; i < 4 && len(c.FilteredInstIDsForTest()) == 0; i++ {
 			g.Update()
 		}
 		nav := c.MenuKeyNavForTest()
 		nav.BindHost(c)
-		// Place the cursor deterministically rather than synthesising key edges:
-		// the scene only needs the resulting visual state.
-		//
-		// It must land NEXT TO the applied instrument, not at row 0: the menu
-		// auto-scrolls to reveal the current instrument on open, so an absolute
-		// index near the top is scrolled out of the viewport and draws no ring
-		// at all. Adjacent also puts both treatments — the active-row highlight
-		// and the focus ring — on screen together, which is the whole point of
-		// the capture.
+		// NEXT TO the applied instrument: the menu opens scrolled to it, so a row near the top would be off-screen.
 		ids := c.FilteredInstIDsForTest()
 		applied := c.ActiveInstrumentID()
 		at := -1
@@ -3662,13 +3194,7 @@ func instMenuKeyCursorSetup(mobile bool) func(*Game) {
 		case at > 0:
 			nav.SetSelected(at - 1)
 		}
-		// SetSelected does not scroll (it is the hover entry point), and the
-		// menu opens auto-scrolled to the current instrument — so the row next
-		// to it can still be one past the visible page. Reveal brings the cursor
-		// onto the page and the rebuild refreshes the rows the ring is drawn
-		// against, exactly as the live keyboard path does — including the
-		// userScrolled flag, without which rebuildMenu re-biases the scroll
-		// straight back onto the current instrument.
+		// SetSelected does not scroll; Reveal does, setting userScrolled so rebuildMenu does not re-bias back.
 		nav.Reveal(c)
 		c.state.userScrolled = true
 		c.rebuildMenu()
@@ -3683,8 +3209,6 @@ func noteMatrixKeyCursorSetup(mobile bool) func(*Game) {
 		}
 		nav := g.sidebar.noteMatrixNav()
 		host := noteMatrixNavHost{sb: g.sidebar}
-		// Place the cursor deterministically rather than synthesising key
-		// edges: the scene only needs the resulting visual state.
 		for i := 0; i < host.MenuItemCount(); i++ {
 			if host.MenuItemSelectable(i) {
 				nav.SetSelected(i)
@@ -3700,10 +3224,7 @@ func sceneMakeChord(g *Game, n *uiNode) {
 	g.setNodeChord(n.ID, model.ChordSpec{Quality: "maj7", Inversion: 1})
 }
 
-// sceneCircuitNode is a non-origin node on row 0's circuit (the demo's
-// pitched Organ Church row), so the node keeps its row — and its notes —
-// across the type change's updateBeatInfos. (The pitched-node helpers fake
-// an off-circuit node's row, which a structural rebuild drops.)
+// On the circuit, so the node keeps its row and notes across the type change's rebuild.
 func sceneCircuitNode(g *Game) *uiNode {
 	if len(g.drum.Rows) == 0 {
 		return nil
@@ -3736,9 +3257,7 @@ func chordNodeSidebarSetup(mobile bool) func(*Game) {
 	}
 }
 
-// nodeTypeRotateToChordSetup opens a regular node's card with only Audible
-// expanded, then presses the type button once (Regular → Chord) through the
-// same keepUnderPointer path the button's click runs.
+// Through the same keepUnderPointer path the button's click runs.
 func nodeTypeRotateToChordSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3770,8 +3289,6 @@ func chordMatrixSetup(mobile bool, page int) func(*Game) {
 	}
 }
 
-// chordNodeBadgeSetup selects a chord node so the coordinate badge shows
-// (desktop: with the sidebar open and dragged clear; mobile: sidebar closed).
 func chordNodeBadgeSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3794,8 +3311,6 @@ func chordNodeBadgeSetup(mobile bool) func(*Game) {
 	}
 }
 
-// noteMatrixSetup opens the node sidebar on a pitched node and then opens the
-// note-matrix picker from its Pitch-section chip.
 func noteMatrixSetup(mobile bool) func(*Game) {
 	return noteMatrixSetupFor(mobile, roster.OrganChurch)
 }
@@ -3816,8 +3331,6 @@ func pitchedNodeSidebarSetup(mobile bool) func(*Game) {
 	return pitchedNodeSidebarSetupFor(mobile, roster.OrganChurch)
 }
 
-// pitchedNodeSidebarSetupFor is pitchedNodeSidebarSetup for an explicit
-// instrument.
 func pitchedNodeSidebarSetupFor(mobile bool, instrumentID instrument.ID) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3847,8 +3360,6 @@ func scrolledTemplateMenuSetup(mobile bool) func(*Game) {
 	}
 }
 
-// keyNavTemplateMenuSetup opens the template menu and parks the shared keyboard
-// cursor on a template row, so the screenshot shows the arrow-key highlight.
 func keyNavTemplateMenuSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -3859,15 +3370,13 @@ func keyNavTemplateMenuSetup(mobile bool) func(*Game) {
 		g.drum.configureOverflowScroll()
 		nav := g.drum.OverflowKeyNavForTest()
 		nav.BindHost(overflowNavHost{dv: g.drum})
-		// Step down to a real template row (past the pinned title/search/Back
-		// rows and the first group header).
+		// Past the pinned title/search/Back rows and the first group header.
 		items := g.drum.overflowItems()
 		picked := 0
 		for i := range items {
 			if !items[i].header && !items[i].search && items[i].iconID == IconTemplate {
 				picked++
-				// Second template row, so the highlight is clearly distinct from
-				// the "Back" row above the first group header.
+				// The second template row, clearly apart from Back.
 				if picked == 2 {
 					nav.SetSelected(i)
 					break
@@ -3877,11 +3386,7 @@ func keyNavTemplateMenuSetup(mobile bool) func(*Game) {
 	}
 }
 
-// sceneAtDraw runs fn on the first Update once the screenshot harness has
-// counted n draws — the same counter that times the capture, so a step can be
-// placed a fixed number of frames before the shot. Updates outpace draws under
-// xvfb, so an Update count alone drifts. Outside screenshot mode no draws are
-// counted; fn then fires after 4n updates.
+// Draws, not Updates: Updates outpace draws under xvfb. Outside screenshot mode fn fires after 4n updates.
 func sceneAtDraw(g *Game, n int, fn func(*Game)) {
 	var updates int
 	var poll func(*Game)
@@ -3896,10 +3401,7 @@ func sceneAtDraw(g *Game, n int, fn func(*Game)) {
 	g.QueueAction(poll)
 }
 
-// sceneSoloThenDeletePastImmutable plays the circuit, solos row 0, keeps
-// playing, then — shortly before the capture — deletes a corner node on the
-// solo-gated row 1. That breaks the row's loop, so everything right of the
-// playhead empties; the hits left of it already played and must stay.
+// The deletion breaks the row's loop: right of the playhead empties, the hits already played must stay.
 func sceneSoloThenDeletePastImmutable(g *Game) {
 	g.SetPlaying(true)
 	sceneAtDraw(g, 100, func(g *Game) {
@@ -3908,8 +3410,7 @@ func sceneSoloThenDeletePastImmutable(g *Game) {
 		}
 		g.drum.toggleSolo(0)
 	})
-	// SettleFrames is 300: delete ~15 draws before the capture so the
-	// pre-delete history is still inside the visible window.
+	// ~15 draws before the capture, so the pre-delete history is still in view.
 	sceneAtDraw(g, 285, func(g *Game) {
 		if victim := sceneLoopBreakingNode(g, 1); victim != nil {
 			g.deleteNode(victim)
@@ -3917,9 +3418,7 @@ func sceneSoloThenDeletePastImmutable(g *Game) {
 	})
 }
 
-// sceneLoopBreakingNode returns a node on row's beat path (not its origin)
-// whose predecessor and successor are NOT on a shared grid line, so deleting
-// it cannot reconnect them and the row's loop breaks.
+// Its neighbours share no grid line, so the delete cannot reconnect them.
 func sceneLoopBreakingNode(g *Game, row int) *uiNode {
 	if row < 0 || row >= len(g.beatInfosByRow) || row >= len(g.drum.Rows) {
 		return nil
@@ -3954,11 +3453,7 @@ func sceneLoopBreakingNode(g *Game, row int) *uiNode {
 	return nil
 }
 
-// sceneGotoWheel parks the playhead mid-beat (step 30 = Beat 4 · 3/4), opens
-// the navigation menu and scrolls its go-to wheel `detents` detents up at rung
-// `rung` (-1 = default) so the pending position shows its timeline ghost;
-// timeMode switches the wheel to M:SS first. The seek is a request applied on
-// the next frame, so the wheel is seated on step 30 explicitly.
+// The seek applies next frame, so the wheel is seated on step 30 explicitly.
 func sceneGotoWheel(g *Game, timeMode bool) { sceneGotoWheelAt(g, timeMode, -1, 4) }
 
 func sceneGotoWheelAt(g *Game, timeMode bool, rung, detents int) {
@@ -3980,11 +3475,7 @@ func sceneGotoWheelAt(g *Game, timeMode bool, rung, detents int) {
 	}
 }
 
-// synthViewSceneSetup opens the Synth root on inst and focuses card/dial
-// through the same call a dial press makes (which snapshots the BEFORE
-// ghost); turn >= 0 then turns the dial there through the drag's own Turn and
-// commit, so the graph shows NOW against BEFORE. card == "" leaves nothing
-// focused (the overview). Every render is settled before capture.
+// Focused through a dial press (which snapshots BEFORE), so the graph shows NOW against BEFORE; card "" = overview.
 func synthViewSceneSetup(inst instrument.ID, card, dial string, turn int, mobile bool) func(*Game) {
 	return func(g *Game) {
 		if mobile {
@@ -4013,8 +3504,7 @@ func synthViewSceneSetup(inst instrument.ID, card, dial string, turn int, mobile
 	}
 }
 
-// synthGlowSceneSetup is the pitch-drop scene frozen 60 ms after a trigger
-// (an injected clock), so the capture shows the glow at full strength.
+// An injected clock freezes it 60 ms after a trigger, at full glow.
 func synthGlowSceneSetup(mobile bool) func(*Game) {
 	return func(g *Game) {
 		synthViewSceneSetup(roster.Kick808, "pitchdrop", "drop", -1, mobile)(g)
@@ -4029,8 +3519,6 @@ func synthGlowSceneSetup(mobile bool) func(*Game) {
 	}
 }
 
-// sceneInstrumentEQ opens the EQ tab on row 0's instrument and gives that
-// instrument two band moves and a high-pass.
 func sceneInstrumentEQ(g *Game) {
 	_ = g.SetActiveEQTab("eq")
 	id := g.drum.Rows[0].Instrument
@@ -4042,9 +3530,7 @@ func sceneInstrumentEQ(g *Game) {
 	g.drum.setEQActiveChannel(channel.Of(id)) // reload the panel from the instrument
 }
 
-// scenePickQuestion gives row 0's instrument an EQ and saves a version of
-// another instrument with a different EQ (memory-only library), then picks
-// that instrument for row 0 — or applies a kit holding it.
+// A memory-only library.
 func scenePickQuestion(g *Game, kit bool) {
 	audio.SetInstrumentLibrarySink(nil)
 	row := g.drum.Rows[0].Instrument

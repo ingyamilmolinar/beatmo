@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// readWavFileBytes reads a WAV file from a local filesystem path (the `file`
-// WavSource). Desktop-only; the browser build returns false.
 func readWavFileBytes(path string) ([]byte, bool) {
 	if path == "" {
 		return nil, false
@@ -22,9 +20,7 @@ func readWavFileBytes(path string) ([]byte, bool) {
 	return data, true
 }
 
-// fetchWavURLBytes fetches WAV bytes over HTTP(S) (the `url` WavSource). Bounded
-// by a timeout; any error / non-200 → not resolved. Bytes are hash-verified
-// against the pin by ResolveWavRef before they are trusted.
+// Bytes are trusted only after ResolveWavRef checks them against the pin.
 func fetchWavURLBytes(url string) ([]byte, bool) {
 	if url == "" {
 		return nil, false

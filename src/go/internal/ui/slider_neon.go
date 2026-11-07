@@ -7,11 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// drawSliderRail renders a rounded neon rail: a dim full-length base, then a
-// neon fill covering the value (0..1) fraction, plus one subtle glow stroke.
-// horizontal: fill grows left->right; vertical: fill grows bottom->top. fillCol
-// is the accent (cyan for popup/param slider, the row instrument color for the
-// in-row indicator). value<=0 draws the base rail only.
+// Horizontal fills left→right, vertical bottom→top; value <= 0 draws the base rail only.
 func drawSliderRail(dst *ebiten.Image, rail image.Rectangle, value float64, horizontal bool, fillCol color.RGBA) {
 	if rail.Empty() {
 		return
@@ -22,9 +18,7 @@ func drawSliderRail(dst *ebiten.Image, rail image.Rectangle, value float64, hori
 	if value > 1 {
 		value = 1
 	}
-	// A slider rail is a CAPSULE, not an over-rounded button: its ends are
-	// semicircles by design. drawCapsule derives the radius from the rect and
-	// is exempt from the anti-pill ceiling — see DESIGN.md "Shapes".
+	// A rail is a CAPSULE by design, so drawCapsule is exempt from the anti-pill ceiling.
 	drawCapsule(dst, rail, genColorSurface3, true)
 	if value <= 0 {
 		return
@@ -44,30 +38,20 @@ func drawSliderRail(dst *ebiten.Image, rail image.Rectangle, value float64, hori
 		fill = image.Rect(rail.Min.X, rail.Max.Y-fh, rail.Max.X, rail.Max.Y)
 	}
 	drawCapsule(dst, fill, fillCol, true)
-	// Matte rail — no outer glow stroke (retro-analogue restyle 2026-06-17).
 }
 
-// drawSliderThumb renders a matte cap thumb centered at center. A neutral edge
-// rim conveys depth; active strengthens that rim (during drag) while calm
-// halves it (used by many-on-screen param sliders so they don't shimmer). No
-// specular highlight, no cyan rim, no bloom — matte retro-analogue restyle
-// (2026-06-17).
+// Matte: active strengthens the rim while dragging; calm halves it so many on-screen sliders do not shimmer.
 func drawSliderThumb(dst *ebiten.Image, center image.Point, diameter int, active, calm bool) {
 	if diameter < 2 {
 		return
 	}
 	rad := diameter / 2
 	r := image.Rect(center.X-rad, center.Y-rad, center.X+rad, center.Y+rad)
-	// A thumb is a CIRCLE — a capsule whose axes are equal — not a rounded
-	// button, so it draws through drawCapsule and is exempt from the anti-pill
-	// ceiling. See DESIGN.md "Shapes".
-	// Contact shadow 1px below → reads as a raised cap.
+	// A thumb is a circle, a capsule with equal axes, so drawCapsule. The 1 px contact shadow makes it read raised.
 	drawCapsule(dst, image.Rect(r.Min.X, r.Min.Y+1, r.Max.X, r.Max.Y+1),
 		WithAlphaFromColor(color.Black, 64), true)
 	// Matte body — no specular highlight.
 	drawCapsule(dst, r, genColorOnSurface, true)
-	// Neutral edge rim: stronger while dragging (active), halved when calm. No
-	// cyan accent.
 	ringAlpha := genAlphaMedium
 	if active {
 		ringAlpha = genAlphaStrong

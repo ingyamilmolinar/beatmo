@@ -8,9 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// debugApply logs the final on-screen corners of the line rectangle by applying
-// the composed transform. This uses ebiten.GeoM.Element which is not available
-// under our test stub, so it lives behind a !test build tag.
+// ebiten.GeoM.Element is missing from the test stub, hence !test.
 func debugApply(m ebiten.GeoM, px, py float64) (sx, sy float64) {
 	a := m.Element(0, 0)
 	b := m.Element(0, 1)

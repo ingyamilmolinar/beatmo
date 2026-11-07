@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// ensureActionMenu lazily builds the shared "⋯" overflow menu used by the
-// mobile Synth/Sampler action clusters.
 func (dv *DrumView) ensureActionMenu() *actionMenuComponent {
 	if dv.actionMenu == nil {
 		dv.actionMenu = newActionMenuComponent()
@@ -15,15 +13,11 @@ func (dv *DrumView) ensureActionMenu() *actionMenuComponent {
 	return dv.actionMenu
 }
 
-// openActionMenu opens the shared overflow menu anchored under `anchor` with the
-// given items, through the same OverlayPortal path as the subdiv menu.
 func (dv *DrumView) openActionMenu(id string, anchor image.Rectangle, items []actionMenuItem) {
 	dv.openActionMenuEntry(id, anchor, items, false, nil)
 }
 
-// openQuestion opens the same menu as a must-answer question stacked over an
-// open menu (the instrument menu): its items are the answers; closing it any
-// other way (×, Esc, a tap outside) runs onCancel.
+// A must-answer question stacked over an open menu: closing it any other way (×, Esc, outside tap) runs onCancel.
 func (dv *DrumView) openQuestion(id string, anchor image.Rectangle, items []actionMenuItem, onCancel func()) {
 	answered := false
 	for i := range items {
@@ -57,8 +51,7 @@ func (dv *DrumView) openActionMenuEntry(id string, anchor image.Rectangle, items
 	m.Open()
 	dv.portal().Open(PortalEntry{
 		ID: id,
-		// updateFn pumps the keyboard cursor every frame; without it
-		// MenuKeyNav.Update never runs and the arrows are dead.
+		// Without updateFn MenuKeyNav.Update never runs and the arrows are dead.
 		Overlay: &compPortalOverlay{comp: m, tag: id, updateFn: m.UpdateKeyNav},
 		Modal:   mustAnswer,
 		Scrim:   true, // menu — backdrop dims so modality is visible
@@ -72,8 +65,6 @@ func (dv *DrumView) openActionMenuEntry(id string, anchor image.Rectangle, items
 	})
 }
 
-// openSynthActionMenu opens the Synth "⋯" overflow: Save As… and the portable
-// Export/Import instrument (*.beatmo-inst.json).
 func (dv *DrumView) openSynthActionMenu(anchor image.Rectangle) {
 	dv.openActionMenu("synth-action-menu", anchor, dv.synthActionMenuItems())
 }
@@ -91,8 +82,6 @@ func (dv *DrumView) samplerActionMenuItems() []actionMenuItem {
 	return dv.instrumentActionMenuItems(dv.samplerSaveAs)
 }
 
-// instrumentActionMenuItems builds the shared "⋯" item set for both tabs: the
-// tab's Save As plus the portable Export/Import actions.
 func (dv *DrumView) instrumentActionMenuItems(saveAs func()) []actionMenuItem {
 	return []actionMenuItem{
 		{Label: i18n.T(i18n.KeySaveAs), OnSelect: saveAs},
@@ -101,9 +90,6 @@ func (dv *DrumView) instrumentActionMenuItems(saveAs func()) []actionMenuItem {
 	}
 }
 
-// synthPanelMobileActions / samplerPanelMobileActions are the DrumView
-// forwarders EQPanelZone uses to hand the sticky bar the active tab's trailing
-// action buttons on mobile.
 func (dv *DrumView) synthPanelMobileActions() []*Button {
 	return dv.synp().MobileActionButtons()
 }

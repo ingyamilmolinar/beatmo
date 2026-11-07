@@ -8,10 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// sceneRealTouchTap drives one REAL single-finger tap at p through the touch
-// pipeline (globalTouchState → touch override → gesture detector →
-// Game.Update), so a scene reproduces exactly what a phone does — including the
-// release-time GestureTap the grid acts on.
+// A REAL tap through the whole touch pipeline, including the release-time GestureTap the grid acts on.
 func sceneRealTouchTap(g *Game, p image.Point) {
 	down := true
 	restore := SetTouchForTest(
@@ -33,8 +30,7 @@ func sceneRealTouchTap(g *Game, p image.Point) {
 	}
 }
 
-// sceneEmptyGridPointOutside returns an empty grid-pane point near the middle
-// of the canvas, outside avoid, the top-right cluster, nodes and group badges.
+// Clear of avoid, the top-right cluster, nodes and group badges.
 func sceneEmptyGridPointOutside(g *Game, avoid image.Rectangle) (image.Point, bool) {
 	grid := g.split.GridRect(g.winW, g.winH)
 	midY := (gridTopOffset() + grid.Max.Y) / 2
@@ -56,10 +52,7 @@ func sceneEmptyGridPointOutside(g *Game, avoid image.Rectangle) (image.Point, bo
 	return image.Point{}, false
 }
 
-// menuOutsideTapGridSceneSetup opens the Theme editor from its top-right grid
-// button with a real touch, then taps the empty grid canvas outside the menu.
-// Contract (popup_outside_press.go): the tap closes the menu and creates NO
-// node — before the fix a node appeared where the finger lifted.
+// The tap must close the menu and create NO node.
 func menuOutsideTapGridSceneSetup(g *Game) {
 	_ = g.Update()
 	r := g.gridThemeButtonRect()

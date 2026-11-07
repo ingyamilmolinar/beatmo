@@ -10,13 +10,10 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// analyzerDBFloor is the minimum dB value we report for silent/zero signals.
-// Matches the rendering floor used by drawAnalyzerSpectrum (spectrumMinDB = -80).
+// Must match the spectrum renderer's floor (spectrumMinDB).
 const analyzerDBFloor = -80.0
 
-// LinearToDBSafe converts a linear amplitude to dB, clamping to analyzerDBFloor.
-// A non-positive input returns the floor instead of -Inf so downstream renderers
-// can draw predictable bars.
+// The floor instead of -Inf, so renderers draw predictable bars.
 func LinearToDBSafe(v float64) float64 {
 	if v <= 0 {
 		return analyzerDBFloor
@@ -28,20 +25,8 @@ func LinearToDBSafe(v float64) float64 {
 	return db
 }
 
-// freqBinsCache memoizes the Hz label array, which is a pure function of
-// (bin count, sample rate) and therefore identical on every call for the
-// life of a session.
-//
-// Rebuilding it per call was affordable while the WASM bridge downsampled
-// the spectrum to 64 bins. It stopped being so when the bridge started
-// carrying the analyser's full bin count — which it must, or the low
-// display bands hold no bins at all (analyzer.SpectrumFFTSize): at 1024
-// bins the labels alone were 8 KB per channel per state rebuild, ~30 times
-// a second, for numbers that never change.
-//
-// The returned slice is SHARED and must be treated as read-only by
-// consumers — the same contract SnapshotToChannelMetrics already documents
-// for Waveform. Renderers only ever index it.
+// A pure function of (bins, rate), memoized: at the full bin count the bridge must carry, rebuilding it was
+// 8 KB per channel ~30 times a second. The slice is SHARED and read-only.
 var freqBinsCache sync.Map // freqBinsKey -> []float64
 
 type freqBinsKey struct {
@@ -63,12 +48,7 @@ func freqBinsFor(n, sampleRate int) []float64 {
 	return freq
 }
 
-// SpectrumLinearToDBBins converts a linear-magnitude spectrum into the paired
-// (FFTBins in dB, FreqBins in Hz) arrays the spectrum renderer expects.
-// FreqBins[i] = i * (sampleRate/2) / n, matching a standard FFT bin-to-Hz mapping.
-// Returns nil,nil when the input is empty.
-//
-// The FreqBins half is memoized and SHARED across calls; see freqBinsCache.
+// The FreqBins half is memoized and SHARED. nil,nil for an empty input.
 func SpectrumLinearToDBBins(spec []float64, sampleRate int) ([]float64, []float64) {
 	n := len(spec)
 	if n == 0 {
@@ -81,8 +61,6 @@ func SpectrumLinearToDBBins(spec []float64, sampleRate int) ([]float64, []float6
 	return fft, freqBinsFor(n, sampleRate)
 }
 
-// snapshotIsActive returns true when the snapshot carries any signal —
-// used to drive the `Active` flag on both channel and instrument metrics.
 func snapshotIsActive(s audio.AnalyzerSnapshot) bool {
 	if s.Peak > 0 || s.RMS > 0 {
 		return true
@@ -100,19 +78,8 @@ func snapshotIsActive(s audio.AnalyzerSnapshot) bool {
 	return false
 }
 
-// SnapshotToChannelMetrics converts a raw WASM AnalyzerSnapshot into the
-// analyzer.ChannelMetrics struct the UI renderers consume. RMS/Peak come in
-// as linear amplitudes on WASM and must be converted to dB to match desktop.
-//
-// SAFETY: the returned Waveform slice shares its backing array with
-// s.Waveform. The audio.AnalyzerSnapshot owner is the per-channel cache
-// in internal/audio/analyzer_snapshot_cache.go, which mutates the slice
-// only on TTL-driven refresh; the upstream BuildAnalyzerStateFromSnapshots
-// State cache pins the snapshot for the same TTL window, so within one
-// State lifetime no mutation can occur. Consumers must not retain or
-// modify the returned slice past the State's TTL. Removing the previous
-// `append([]float64(nil), s.Waveform...)` copy eliminated ~4 KB per
-// channel-per-state-rebuild on the WASM hot path.
+// WASM levels arrive linear and are converted to dB to match desktop. Waveform SHARES s.Waveform's backing
+// array: it is stable for the State cache's TTL, and consumers must not keep or modify it past that.
 func SnapshotToChannelMetrics(id channel.ID, name string, s audio.AnalyzerSnapshot, sr int) analyzer.ChannelMetrics {
 	fft, freq := SpectrumLinearToDBBins(s.Spectrum, sr)
 	return analyzer.ChannelMetrics{
@@ -127,8 +94,6 @@ func SnapshotToChannelMetrics(id channel.ID, name string, s audio.AnalyzerSnapsh
 	}
 }
 
-// SnapshotToInstrumentMetrics returns the lightweight per-instrument record
-// the meter bridge draws.
 func SnapshotToInstrumentMetrics(id channel.ID, name string, s audio.AnalyzerSnapshot) analyzer.InstrumentMetrics {
 	return analyzer.InstrumentMetrics{
 		ID:     id,
@@ -139,19 +104,13 @@ func SnapshotToInstrumentMetrics(id channel.ID, name string, s audio.AnalyzerSna
 	}
 }
 
-// RowSnapshot pairs a row's identity with its analyzer snapshot so
-// SynthesizeAnalyzerState can build per-instrument metrics in one pass.
 type RowSnapshot struct {
 	ID   channel.ID
 	Name string
 	Snap audio.AnalyzerSnapshot
 }
 
-// SynthesizeAnalyzerState assembles a full analyzer.State from the master
-// snapshot, a list of row snapshots, and an optional detail snapshot (used when
-// the EQ panel has an instrument selected for detailed waveform/spectrum).
-//
-// Pure function — no build tags, no platform calls — so it is directly testable.
+// Pure (no build tags, no platform calls), so it is directly testable.
 func SynthesizeAnalyzerState(
 	masterID channel.ID, masterName string,
 	masterSnap audio.AnalyzerSnapshot,
@@ -168,12 +127,8 @@ func SynthesizeAnalyzerState(
 		detail, detailID, detailName, sampleRate)
 }
 
-// SynthesizeAnalyzerStateWithInstruments is SynthesizeAnalyzerState for
-// callers that already hold the per-instrument metrics — e.g. the WASM
-// builder, which reads rows through the scalar-only bridge call rather than
-// pulling a full snapshot per row just to take two numbers off it.
-//
-// Pure function — no build tags, no platform calls — so it is directly testable.
+// For callers that already hold the per-row metrics, like the WASM builder reading rows through the
+// scalar-only bridge call.
 func SynthesizeAnalyzerStateWithInstruments(
 	masterID channel.ID, masterName string,
 	masterSnap audio.AnalyzerSnapshot,
@@ -194,19 +149,8 @@ func SynthesizeAnalyzerStateWithInstruments(
 	}
 }
 
-// ScopeStageSnapshots groups the four per-stage WASM analyzer snapshots used
-// by scopeTapFromSnapshot. Two helpers (synth + master) plus the existing
-// preEQ/postEQ pair give us coverage for all six scope.Stage values.
-//
-//   - Synth   → channel ingress, before any inserts. Also reused for AntiPop:
-//     the per-source anti-pop GainNode envelope is applied at the source
-//     before the bus, so by the time the signal arrives at ingress it has
-//     already passed through anti-pop. Tapping ingress is therefore the
-//     correct WASM representation for both StageSynth and StageAntiPop.
-//   - PreEQ   → channel preEQAnalyser (post-inserts, pre-EQ). Feeds
-//     StageInsertFX.
-//   - PostEQ  → channel main analyser (post-EQ). Feeds StageEQ.
-//   - Master  → main channel analyser. Feeds StageMaster.
+// Ingress serves both Synth and AntiPop: the anti-pop envelope is applied at the source before the bus.
+// PreEQ feeds InsertFX, PostEQ feeds EQ, Master feeds Master.
 type ScopeStageSnapshots struct {
 	Synth  audio.AnalyzerSnapshot
 	PreEQ  audio.AnalyzerSnapshot
@@ -214,10 +158,7 @@ type ScopeStageSnapshots struct {
 	Master audio.AnalyzerSnapshot
 }
 
-// scopeTapFromSnapshot builds a TapData for a given stage using the per-stage
-// snapshots. Returns an inactive tap (Active=false, no Samples) when the
-// chosen stage's snapshot has no signal — that's how the renderer detects
-// "JS bridge hasn't enabled this analyser yet" and skips drawing a trace.
+// An inactive tap is how the renderer detects an analyser the JS bridge has not enabled yet.
 func scopeTapFromSnapshot(stage scope.Stage, instID channel.ID, snaps ScopeStageSnapshots) scope.TapData {
 	var snap audio.AnalyzerSnapshot
 	switch stage {
@@ -232,10 +173,7 @@ func scopeTapFromSnapshot(stage scope.Stage, instID channel.ID, snaps ScopeStage
 	default:
 		return scope.TapData{Stage: stage, InstID: instID, Active: false}
 	}
-	// Same shared-slice contract as SnapshotToChannelMetrics: snap.Waveform
-	// is owned by the per-channel snapshot cache and stable for the State
-	// cache's TTL window. Removing the previous fresh-slice copy eliminated
-	// ~4 KB per tap-per-state-rebuild.
+	// Same shared-slice contract as SnapshotToChannelMetrics.
 	return scope.TapData{
 		Stage:   stage,
 		InstID:  instID,
@@ -246,9 +184,6 @@ func scopeTapFromSnapshot(stage scope.Stage, instID channel.ID, snaps ScopeStage
 	}
 }
 
-// SynthesizeScopeState builds a scope.State with two taps fed from WASM
-// per-stage snapshots. The caller supplies the zone-local tapA/tapB stage
-// selection and the four+1 per-stage snapshots (see ScopeStageSnapshots).
 func SynthesizeScopeState(
 	instID channel.ID,
 	tapA, tapB scope.Stage,

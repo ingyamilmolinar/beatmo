@@ -28,35 +28,22 @@ type exportInstrument struct {
 	Path    string             `json:"path,omitempty"`    // local cache path or object URL for custom samples
 	EQ      *exportEQ          `json:"eq,omitempty"`      // per-instrument EQ settings
 	Effects []audio.EffectSlot `json:"effects,omitempty"` // per-instrument insert effect chain
-	// SampleEdit carries the non-destructive Sampler edit applied to the
-	// recipe render at trigger time (audio.SampleEdit as a flat field map,
-	// bools 0/1). Additive + omitempty: present only when the user saved a
-	// Sampler edit over a synth source. The synth stays the source of
-	// truth — this is a post-render transform, not baked PCM.
+	// A post-render transform, not baked PCM: the synth stays the source of truth. Present only for a saved edit.
 	SampleEdit map[string]float64 `json:"sample_edit,omitempty"`
-	// Phase 6: explicit kit-role tag (kick/snare/hat/…). Empty means
-	// kit application falls back to the audio.RoleForInstrument
-	// heuristic. Additive — old files have no Role and migrate cleanly.
+	// Empty falls back to the audio.RoleForInstrument heuristic.
 	Role instrument.Role `json:"role,omitempty"`
-	// PCM carries the embedded baked sample for Sampler-tab instruments
-	// (synth-capture or WAV-load). Additive + omitempty: old loaders ignore
-	// it; when present it supersedes Path (the sound travels inside the
-	// project file). Version stays 1.
+	// Supersedes Path when present, so the sound travels inside the project file.
 	PCM *exportSamplePCM `json:"pcm,omitempty"`
 }
 
-// exportSamplePCM is the inline PCM payload for a Sampler-created instrument:
-// little-endian float32 frames, base64-encoded.
+// Little-endian float32 frames, base64.
 type exportSamplePCM struct {
 	SampleRate int    `json:"sample_rate"`
 	Frames     int    `json:"frames"`
 	DataB64    string `json:"data_b64"`
 }
 
-// encodeSamplePCM serializes a SampleRecord to the embedded export shape using
-// portable little-endian float32 bytes (deterministic across platforms),
-// gzip-compressed before base64 so embedded one-shots don't bloat beatmo.json
-// (the bytes stay opaque; the file Version stays 1).
+// Portable little-endian bytes (deterministic across platforms), gzipped so embedded one-shots do not bloat the file.
 func encodeSamplePCM(rec audio.SampleRecord) *exportSamplePCM {
 	buf := make([]byte, len(rec.PCM)*4)
 	for i, v := range rec.PCM {
@@ -73,9 +60,7 @@ func encodeSamplePCM(rec audio.SampleRecord) *exportSamplePCM {
 	}
 }
 
-// decodeSamplePCM reverses encodeSamplePCM. Returns ok=false for a nil/empty or
-// malformed payload so import can fall back to the path/catalog strategies.
-// The payload is gzip (0x1f 0x8b magic) over little-endian float32 bytes.
+// !ok for an empty or malformed payload, so import falls back to the path/catalog strategies.
 func decodeSamplePCM(p *exportSamplePCM) ([]float32, int, bool) {
 	if p == nil || p.DataB64 == "" || p.Frames <= 0 {
 		return nil, 0, false
@@ -115,19 +100,8 @@ type exportGroupRule struct {
 	AnchorIdx int              `json:"anchor_idx,omitempty"`
 }
 
-// exportGroup mirrors model.NodeGroup for JSON persistence.
-//
-// RulesEnabled is a *bool (task-enabled-status brief, Part C), not a plain
-// bool: a plain bool + omitempty can't distinguish "key absent" (a legacy
-// file written before this field existed) from "explicitly false" (a
-// disabled group with configured deltas, saved by this task's new
-// semantics) after JSON decode — both would leave the Go field at its zero
-// value. import.go's backward-compat rule (RulesEnabled = len(rules)>0
-// when the key was never present) depends on that distinction. Export always
-// sets a non-nil pointer, so every document this build writes carries the
-// flag explicitly (omitempty on a pointer only omits a nil pointer, never
-// based on the pointed-to value) — only genuinely pre-existing files decode
-// with a nil pointer.
+// RulesEnabled is a *bool: a plain bool + omitempty cannot tell "key absent" from "explicitly false". Export
+// always writes it, so only foreign or hand-written files decode nil.
 type exportGroup struct {
 	ID           int               `json:"id"`
 	Name         string            `json:"name,omitempty"`
@@ -156,9 +130,7 @@ type exportNode struct {
 	GroovePct  float64          `json:"groove_pct,omitempty"`
 	// Per-node effect overrides (V1: model-only, no UI)
 	EffectOverrides []model.EffectOverride `json:"effect_overrides,omitempty"`
-	// Chord spec (docs/superpowers/specs/2026-10-09-chord-nodes-design.md).
-	// Written whenever the node carries one, for ANY type: a chord collapsed
-	// to a single note keeps its spec, and undo replays this file.
+	// Written for ANY node type carrying one: a chord collapsed to one note keeps its spec, and undo replays the file.
 	Chord *exportChord `json:"chord,omitempty"`
 }
 
@@ -187,9 +159,7 @@ type exportEQ struct {
 	LPFCutoffHz float64      `json:"lpf_cutoff_hz,omitempty"` // LPF cutoff frequency
 }
 
-// instrumentKind says how a project row's instrument is made: the synth
-// (its document) or a sample (embedded PCM, a WAV path, or a catalog WAV the
-// reading machine may or may not have). Derived on export, checked on import.
+// Derived on export, checked on import.
 type instrumentKind int
 
 const (
@@ -233,8 +203,7 @@ func (dv *DrumView) Export() error {
 // Save function indirection for platform and tests.
 var saveJSON = saveJSONDefault
 
-// currentMaxDiv returns the smallest subdivision per beat for export. Game sets
-// this to the live grid's MaxDiv; default to 32.
+// Game points it at the live grid's MaxDiv.
 var currentMaxDiv = func() int { return 32 }
 
 // exportBytes builds the export JSON without saving to disk.
@@ -308,8 +277,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		}
 		nodes = append(nodes, en)
 	}
-	// Node groups. Invisible nodes are not exported, so filter members to
-	// exported node ids; a group that empties after filtering is skipped.
+	// Invisible nodes are not exported, so members are filtered; a group that empties is skipped.
 	exportedID := make(map[int]bool, len(nodes))
 	for _, en := range nodes {
 		exportedID[en.ID] = true
@@ -356,8 +324,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 				ei.Path = meta.Path
 			}
 		}
-		// Sampler-created instruments embed their baked PCM directly; this
-		// supersedes any path so the sound travels inside the project file.
+		// Embedded PCM supersedes any path, so the sound travels inside the file.
 		if rec, ok := audio.UserSamplePCM(r.Instrument); ok && len(rec.PCM) > 0 {
 			ei.Path = ""
 			ei.PCM = encodeSamplePCM(rec)
@@ -400,22 +367,16 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 			eq.LPFEnabled, eq.LPFCutoffHz = req.LPF, req.LPFHz
 			ei.EQ = &eq
 		}
-		// The instrument's document (everything its synth voice depends on)
-		// travels in the file's instrument_docs map, keyed by instrument id.
 		if d, ok := audio.InstrumentDoc(r.Instrument); ok {
 			if docs == nil {
 				docs = map[instrument.ID]projectDoc{}
 			}
 			docs[r.Instrument] = projectDoc{Doc: d}
 		}
-		// Non-destructive Sampler edit: travels with the project so the saved
-		// chop reproduces on import while the recipe binding above keeps the
-		// synth editable.
+		// Travels with the project so the chop reproduces on import while the synth stays editable.
 		if e, ok := audio.SampleEditFor(r.Instrument); ok {
 			ei.SampleEdit = e.Fields()
 		}
-		// Phase 6: per-row explicit kit role tag. Omitted when empty so
-		// pre-Phase-6 projects stay byte-identical to their old export.
 		if r.Role != instrument.RoleNone {
 			ei.Role = r.Role
 		}
@@ -427,38 +388,25 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	file.Instruments = insts
 	file.Nodes = nodes
 	file.Groups = groups
-	// Circuit theme (the circuit's OWN scheme, never the user's effective
-	// theme); omitted when the circuit sets nothing.
+	// The circuit's OWN scheme, never the user's effective theme.
 	if g := dv.game; g != nil && !g.circuitTheme.IsEmpty() {
 		cp := g.circuitTheme.Clone()
 		file.Theme = &cp
 	}
 	file.InstrumentDocs = docs
-	// Phase 6: embed every registered kit. KitsForExport returns a
-	// defensive copy; the field stays omitempty so projects with no
-	// kits round-trip identically to the pre-Phase-6 shape.
+	// KitsForExport returns a defensive copy.
 	if kits := audio.KitsForExport(); len(kits) > 0 {
 		file.Kits = kits
 	}
 	if pins := dv.exportPinnedInstrumentIDs(); len(pins) > 0 {
 		file.PinnedInstruments = pins
 	}
-	// Export the master volume unconditionally. The old `omit when 1.0`
-	// guard treated 1.0 as "the default", but fresh sessions now start at
-	// 0.5 (loudness-normalization headroom, channels.go) — omitting any
-	// value bakes a stale default into the file, and the funk-hop
-	// investigation (2026-07-14) traced audible master hard-clipping to a
-	// file that round-tripped back at 1.0.
+	// Always exported: sessions start at 0.5 (headroom), so omitting a "default" bakes a stale value into the file
+	// and a 1.0 round-trip hard-clipped the master.
 	mv := audio.MainVolume()
 	file.MasterVolume = &mv
-	// Export master EQ if any band has non-zero gain, is muted, or filters enabled.
-	//
-	// masterEQBandState, NOT eqBandGainsDB: the latter is the audio panel's
-	// working copy of whatever channel is on screen. Reading it here meant the
-	// file's master EQ was decided by the channel pill — select any instrument
-	// and the project exported that instrument's curve as the master, or
-	// (a flat instrument) dropped the master EQ block entirely. One click,
-	// silent data loss. Guard: TestMasterEQSurvivesExportImportWithAnInstrumentChannelSelected.
+	// masterEQBandState, NOT eqBandGainsDB: the panel's working copy follows the channel pill, and exporting it gave
+	// the master whatever curve the selected instrument had.
 	masterGains, masterMuted := dv.masterEQBandState()
 	masterHasNonZeroGain := false
 	for _, g := range masterGains {

@@ -9,12 +9,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// perfLogEnabled caches os.Getenv("PERF_LOG") == "1" at init time to avoid
-// a per-frame syscall (expensive on WASM where it goes through JS interop).
+// Cached: a per-frame Getenv goes through JS interop on WASM.
 var perfLogEnabled = os.Getenv("PERF_LOG") == "1"
 
-// PerfStats is a snapshot of recent performance metrics gathered in Game.
-// Values are approximate and reset periodically.
+// Approximate; reset periodically.
 type PerfStats struct {
 	Frames      int64   // number of Update() calls sampled
 	FPSAvg      float64 // frames per second over the sample period
@@ -38,9 +36,7 @@ type PerfStats struct {
 	HeapObjects uint64 // live heap objects
 	Goroutines  int    // number of live goroutines
 
-	// GC metrics over the sample window (see gc_metrics.go). Populated by
-	// PerfSnapshot from Game.gcMetrics — independent of the 2 s PERF_LOG reset
-	// so they span the whole run, not just the last window.
+	// Independent of the 2 s PERF_LOG reset, so they span the whole run.
 	GCPauses     int64   // STW pauses in the window
 	GCCycles     int64   // GC cycles in the window
 	GCForced     int64   // forced runtime.GC() calls (ForceGCInterval) in the window
@@ -59,8 +55,7 @@ type PerfStats struct {
 	SchedMetrics ScheduleMetricsSnapshot // per-event audio scheduling lead/lag
 }
 
-// perfTrimOutliers is how many top outlier samples to exclude from the
-// trimmed update average (covers GC/scheduling spikes in WASM).
+// Covers GC/scheduling spikes on WASM.
 const perfTrimOutliers = 3
 
 type perfCounters struct {
@@ -69,9 +64,7 @@ type perfCounters struct {
 	updFrames int64 // frames that contributed to updSumNS (post-warmup)
 	updSumNS  int64
 	updMaxNS  int64
-	// updTopNS holds the top perfTrimOutliers update durations (descending).
-	// Used to compute a trimmed mean that excludes GC/scheduling spikes.
-	// Accessed only from the main goroutine (onUpdate + snapshot).
+	// Main goroutine only.
 	updTopNS [perfTrimOutliers]int64
 	started  time.Time
 	nextLog  time.Time
@@ -86,8 +79,7 @@ type perfCounters struct {
 	aCallSumNS int64
 	aCallMaxNS int64
 
-	// aDrops uses atomic.Int64 (not bare int64 like the other fields) because
-	// sendLatest increments it directly via pointer from the scheduling goroutine.
+	// Atomic because the scheduling goroutine increments it directly.
 	aDrops atomic.Int64
 
 	// draw
@@ -107,12 +99,7 @@ func (p *perfCounters) reset() {
 	atomic.StoreInt64(&p.updSumNS, 0)
 	atomic.StoreInt64(&p.updMaxNS, 0)
 	p.updTopNS = [perfTrimOutliers]int64{}
-	// Draw accumulators were previously NOT reset here, so DrawAvgMS
-	// (= drawSumNS / (frames-warmup)) reported cumulative-since-page-load
-	// draw time divided by per-reset frames — inflating monotonically across
-	// every resetPerfStats() call and making drawAvg/drawMax unusable in any
-	// test that resets between phases (perf_e2e, fx_chain_stress). frames is
-	// reset above, so drawSumNS/drawMaxNS must be too.
+	// Reset with frames, or drawAvg divides a cumulative sum by per-reset frames and climbs on every reset.
 	atomic.StoreInt64(&p.drawSumNS, 0)
 	atomic.StoreInt64(&p.drawMaxNS, 0)
 	atomic.StoreInt64(&p.aEnq, 0)

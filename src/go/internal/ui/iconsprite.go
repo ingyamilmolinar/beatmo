@@ -16,11 +16,7 @@ type iconSpriteKey struct {
 
 var iconSpriteCache = map[iconSpriteKey]*ebiten.Image{}
 
-// iconSprite returns a cached white-on-transparent sprite for the named icon
-// at the given dimensions. Returns nil for unknown icon names or when running
-// in a go test binary (to allow icon draw function var overrides). The sprite
-// is rendered once and reused; callers tint it to the target color via
-// ColorScale.
+// White-on-transparent, tinted via ColorScale. nil under go test so the icon var overrides keep working.
 func iconSprite(name string, w, h int) *ebiten.Image {
 	if runningUnderGoTest() || w <= 0 || h <= 0 {
 		return nil

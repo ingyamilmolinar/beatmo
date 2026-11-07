@@ -2,20 +2,8 @@ package ui
 
 import "image"
 
-// Shared geometry for anchored "labelled cell grid" pickers.
-//
-// Two pickers present the same shape: a popup panel anchored to the control
-// that opened it, containing a header band, a left gutter of row labels, and a
-// fixed cols × rows grid of square-ish cells. The colour picker
-// (ColorWheelComponent) lays 5 shade columns × 7 hue-family rows with family
-// names in the gutter; the note-matrix picker (NoteMatrixComponent) lays
-// octave columns × 12 pitch-class rows with note names in the gutter.
-//
-// The fiddly parts are identical and were worth having exactly once: solving a
-// cell edge from the available width, flooring it at the touch minimum on
-// mobile, clamping the panel inside its container, and then RE-DERIVING the
-// cell size from the final rects so a clamped panel yields smaller cells that
-// still tile the body rather than collapsing into the header.
+// The colour picker and the note matrix share this shape; solved once: the cell edge from width, the mobile touch
+// floor, the clamp into the container, and a RE-DERIVED cell size so a clamped panel still tiles its body.
 
 // swatchGridSpec is the input to solveSwatchGrid.
 type swatchGridSpec struct {
@@ -29,18 +17,14 @@ type swatchGridSpec struct {
 	Header     int // header band height (title + close)
 	CellMin    int // desktop minimum cell edge; mobile floors at TouchMinTarget
 
-	// DesktopMaxW caps the panel width on desktop so it does not span the
-	// whole container. 0 leaves it uncapped.
+	// 0 = uncapped.
 	DesktopMaxW int
 
-	// BandH reserves a caption band off the TOP of the cell region (e.g. the
-	// colour picker's "Light … Deep" hint). 0 for none.
+	// 0 for none.
 	BandH int
 }
 
-// swatchGridLayout is the solved geometry. Cells are laid out and hit-tested
-// over Cells (NOT Grid) so the label gutter is never a hit area; producers and
-// hit-testers must both use Cells.
+// Lay out and hit-test over Cells, never Grid, so the label gutter is never a hit area.
 type swatchGridLayout struct {
 	Panel image.Rectangle
 	Title image.Rectangle
@@ -59,9 +43,7 @@ func solveSwatchGrid(s swatchGridSpec) swatchGridLayout {
 	}
 	bounds := s.Bounds
 
-	// Cell edge: floor at the touch minimum on mobile so every cell is a real
-	// tap target, at CellMin on desktop. Grow to use available width when the
-	// container is roomy.
+	// The touch minimum on mobile so every cell is a real tap target.
 	cellMin := s.CellMin
 	if tm := TouchMinTarget(); Profile().IsMobile() && tm > cellMin {
 		cellMin = tm
@@ -87,8 +69,7 @@ func solveSwatchGrid(s swatchGridSpec) swatchGridLayout {
 		panelH = bounds.Dy()
 	}
 
-	// Position near the anchor, preferring whichever vertical direction has
-	// more room, then clamp fully inside bounds.
+	// The roomier vertical direction first, then clamped fully inside bounds.
 	rect := image.Rect(0, 0, panelW, panelH)
 	if Profile().UseBottomSheet {
 		cx := bounds.Min.X + (bounds.Dx()-panelW)/2
@@ -116,8 +97,7 @@ func solveSwatchGrid(s swatchGridSpec) swatchGridLayout {
 	}
 	out.Panel = rect
 
-	// Header and padding adapt down when the panel was clamped short, so the
-	// grid body keeps a usable height instead of collapsing into the header.
+	// Shrinks with a clamped panel so the grid keeps a usable height.
 	header := s.Header
 	if maxHeader := rect.Dy() / 3; header > maxHeader {
 		header = maxHeader
@@ -147,9 +127,7 @@ func solveSwatchGrid(s swatchGridSpec) swatchGridLayout {
 	}
 	out.Cells = image.Rect(out.Grid.Min.X+labelW, out.Grid.Min.Y, out.Grid.Max.X, out.Grid.Max.Y)
 
-	// Carve the optional caption band off the top of the CELL region only, so
-	// it never collides with the gutter labels. Suppressed when reserving it
-	// would starve the cells.
+	// From the CELL region only so it never collides with the gutter labels; skipped when it would starve the cells.
 	if s.BandH > 0 && out.Cells.Dy()-s.BandH >= s.Rows*20 {
 		out.Band = image.Rect(out.Cells.Min.X, out.Cells.Min.Y, out.Cells.Max.X, out.Cells.Min.Y+s.BandH)
 		out.Cells.Min.Y += s.BandH
@@ -175,9 +153,7 @@ func (l swatchGridLayout) CellRect(col, row, gap int) image.Rectangle {
 	return image.Rect(x0, y0, x0+l.CellW, y0+l.CellH)
 }
 
-// CellAtPoint maps a point to a (col, row), tolerating the inter-cell gaps so
-// gap pixels still resolve to a neighbouring cell rather than a dead gutter.
-// ok is false when the point is outside the cell region entirely.
+// Gap pixels resolve to a neighbouring cell, never a dead gutter.
 func (l swatchGridLayout) CellAtPoint(x, y, cols, rows, gap int) (col, row int, ok bool) {
 	if !image.Pt(x, y).In(l.Cells) {
 		return 0, 0, false

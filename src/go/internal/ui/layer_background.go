@@ -6,12 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// BackgroundLayer paints the drum-pane background and the per-widget
-// surface fills. On mobile it also paints the bottom-action-bar sheet
-// surface so the toolbar buttons hosted in the bar render on top of it.
-//
-// Z = ZBackground (50) — first thing drawn into the drum pane. Every
-// other layer composites on top.
+// On mobile it also paints the bottom action bar's sheet, so the buttons in it render on top.
 type BackgroundLayer struct {
 	dv *DrumView
 }
@@ -34,11 +29,8 @@ func (l *BackgroundLayer) Draw(dst *ebiten.Image) {
 		if r.Empty() {
 			continue
 		}
-		// The drum pane is ONE bed (rack-bed, Background category): the rack,
-		// the area under the rows and the header row — transport strip and
-		// the timeline header band right of the beat counter — all share it.
-		// The header used to take the base background, a black band running
-		// the width of the pane above the lighter rack.
+		// The drum pane is ONE bed (rack-bed): rack, under-rows area and header share it, so no dark band runs above
+		// the rack.
 		fill := colRackSurface
 		if mobile && kind == WidgetTransport {
 			fill = colTransportSurface
@@ -53,10 +45,7 @@ func (l *BackgroundLayer) Draw(dst *ebiten.Image) {
 		drawRect(dst, r, colEQBg, true)
 	}
 
-	// Mobile bottom action bar sheet surface. The transport widget's
-	// clip rect at the top excludes this rect, so it must be painted
-	// here (before the transport zone, so vol/view/overflow buttons
-	// hosted in the bar render on top of the surface).
+	// The transport's clip excludes this rect, so it is painted here, before the buttons hosted in the bar.
 	if !dv.bottomActionBarRect.Empty() {
 		drawBottomSheetPanel(dst, dv.bottomActionBarRect)
 	}

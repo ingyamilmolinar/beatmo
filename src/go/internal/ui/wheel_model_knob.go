@@ -2,13 +2,8 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/audio"
 
-// knobModel adapts a Knob + KnobStepBadge + ParamDef — the synth / sampler /
-// EQ value model — to WheelModel. It reproduces the wheel's historical
-// semantics exactly (pinned by TestWheelCharacterizationTape): continuous
-// params move one StepMul per detent through Knob.NudgeEndless, enum or
-// stepped params move one item through applyKnobSteps, rows walk the
-// DISTINCT formatted labels at the active resolution, and every ladder move
-// keeps Knob.StepMul in sync with the badge.
+// Reproduces the wheel's historical semantics exactly (TestWheelCharacterizationTape); every ladder move keeps
+// Knob.StepMul in sync with the badge.
 type knobModel struct {
 	k        *Knob
 	b        *KnobStepBadge // nil = no resolution ladder
@@ -33,8 +28,7 @@ func (m *knobModel) Restore(v float64) {
 	}
 }
 
-// step is the active resolution in real param units (StepMul, falling back to
-// span/200), shared by the centre readout and the row walk.
+// StepMul, else span/200; shared by the readout and the row walk.
 func (m *knobModel) step() float64 { return knobStepResolution(m.k, m.def) }
 
 func (m *knobModel) CenterLabel() string {
@@ -59,9 +53,7 @@ func (m *knobModel) RowLabel(offset int) (string, bool) {
 	return lbl, ok
 }
 
-// walk advances one StepMul at a time from the current value until the
-// formatted label changes, |offset| times — the distinct-label sequence the
-// barrel draws. Returns the value and label of the offset-th row.
+// Walks one StepMul at a time until the label changes, |offset| times: the distinct-label sequence the barrel draws.
 func (m *knobModel) walk(offset int) (float64, string, bool) {
 	def := m.def
 	span := def.Max - def.Min
@@ -127,8 +119,7 @@ func (m *knobModel) Step(n int) bool {
 	if m.discrete {
 		applyKnobSteps(m.k, n)
 	} else {
-		// One detent == one StepMul: NudgeEndless(knobEndlessPxPerNotch) is
-		// exactly one StepMul.
+		// knobEndlessPxPerNotch is exactly one StepMul.
 		m.k.NudgeEndless(n * knobEndlessPxPerNotch)
 	}
 	return m.k.Value != before

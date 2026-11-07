@@ -11,14 +11,11 @@ import (
 
 func main() {
 	logger := game_log.New(nil, game_log.LevelError)
-	// Disable default demo/start behavior in this harness so tests control
-	// the state explicitly via exported JS helpers.
+	// Tests set up state explicitly through the JS helpers.
 	ui.SetDefaultStartForTest(false)
 	g := ui.New(logger)
 	g.Layout(1280, 720)
-	// Drive the UI Update loop at ~60Hz so JS helpers (startPlay,
-	// incrementBPM, currentBeat) reflect live behavior without running the
-	// full Ebiten game.
+	// ~60 Hz so the JS helpers see live behaviour without the full Ebiten game.
 	go func() {
 		ticker := time.NewTicker(time.Second / 60)
 		defer ticker.Stop()

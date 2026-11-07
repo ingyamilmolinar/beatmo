@@ -14,8 +14,7 @@ const logsDatePickerID = "logs-datetime"
 // setTimeMode switches the timestamp filter between At and Range and re-applies.
 func (c *LogsComponent) setTimeMode(m timestampMode) { c.tsMode = m; c.reapply() }
 
-// setTimeSel writes a picked (or cleared) moment to the target field and
-// re-applies. It is the picker's onCommit callback.
+// The picker's onCommit.
 func (c *LogsComponent) setTimeSel(target logsPickTarget, sel logsTimeSel) {
 	switch target {
 	case pickFrom:
@@ -79,8 +78,6 @@ func (c *LogsComponent) fieldButton(target logsPickTarget) *Button {
 	}
 }
 
-// openPicker opens the date/time picker (a stacked modal portal) for target,
-// seeded from that field and anchored below its button.
 func (c *LogsComponent) openPicker(target logsPickTarget) {
 	if c.dv == nil || c.dv.tree == nil {
 		return
@@ -103,15 +100,12 @@ func (c *LogsComponent) IsDatePickerOpen() bool {
 	return c.dv != nil && c.dv.tree != nil && c.dv.portal().Has(logsDatePickerID)
 }
 
-// drawTimeControls draws the At|Range toggle (pill buttons) + the active field
-// button(s) in the right half of the search row.
 func (c *LogsComponent) drawTimeControls(dst *ebiten.Image, r image.Rectangle, y, h int) {
 	c.ensureTimeButtons()
 	x := r.Min.X + r.Dx()/2 + SpaceSM
 	maxX := r.Max.X - SpaceMD
 
-	// drawPillTabAt renders btn.Text (not the TextKey), so set the resolved,
-	// locale-aware label each frame.
+	// drawPillTabAt renders btn.Text, so the localized label is set each frame.
 	atLabel := i18n.T(i18n.KeyLogsTimeAt)
 	rangeLabel := i18n.T(i18n.KeyLogsTimeRange)
 	c.atModeBtn.Text = atLabel
@@ -137,8 +131,7 @@ func (c *LogsComponent) drawTimeControls(dst *ebiten.Image, r image.Rectangle, y
 	}
 }
 
-// drawTimeField draws one value button (opens the picker on click). Off-strip
-// buttons get an empty rect so they can't be hit. Returns the next x.
+// An off-strip button gets an empty rect so it cannot be hit.
 func (c *LogsComponent) drawTimeField(dst *ebiten.Image, btn *Button, label string, x, y, h, maxX int) int {
 	w := TextWidth(label) + 2*SpaceSM
 	if x+w > maxX {
@@ -151,10 +144,7 @@ func (c *LogsComponent) drawTimeField(dst *ebiten.Image, btn *Button, label stri
 	return x + w + SpaceXS
 }
 
-// handleTimeInput routes a pointer event (press AND release) to the At|Range
-// toggle + the field buttons. Release events must reach the buttons too so their
-// press-lifecycle (held counter) resets — otherwise a button fires only once.
-// Returns true when a press was consumed by one of them.
+// Releases must reach the buttons too, or each fires only once.
 func (c *LogsComponent) handleTimeInput(x, y int, pressed bool) bool {
 	consumed := false
 	for _, b := range []*Button{c.atModeBtn, c.rangeModeBtn, c.atFieldBtn, c.fromFieldBtn, c.toFieldBtn} {

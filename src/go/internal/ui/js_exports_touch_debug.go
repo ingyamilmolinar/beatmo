@@ -5,8 +5,7 @@ package ui
 import "syscall/js"
 
 func (g *Game) initJSTouchDebug() {
-	// setTouchDebug(enabled) -> nil
-	// Enables or disables touch event logging for debugging.
+	// setTouchDebug(enabled)
 	js.Global().Set("setTouchDebug", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 {
 			return nil
@@ -15,8 +14,7 @@ func (g *Game) initJSTouchDebug() {
 		return nil
 	}))
 
-	// touchDebugState() -> {count, touches: [{id, x, y}], lastGesture, lastPos, dpr, enabled}
-	// Returns the current touch debug state snapshot.
+	// touchDebugState() -> {count, touches:[{id,x,y}], lastGesture, lastPos, dpr, enabled}
 	js.Global().Set("touchDebugState", jsFn(func(args jsArgs) any {
 		snap := GetTouchDebugSnapshot()
 		obj := js.Global().Get("Object").New()
@@ -46,8 +44,7 @@ func (g *Game) initJSTouchDebug() {
 		return obj
 	}))
 
-	// touchEventLog() -> [{timestamp, kind, touchId, x, y}]
-	// Returns the last 50 touch events for debugging.
+	// touchEventLog() -> the last 50 [{timestamp,kind,touchId,x,y}]
 	js.Global().Set("touchEventLog", jsFn(func(args jsArgs) any {
 		events := GetTouchEventLog()
 		arr := js.Global().Get("Array").New(len(events))
@@ -63,21 +60,16 @@ func (g *Game) initJSTouchDebug() {
 		return arr
 	}))
 
-	// clearTouchEventLog() -> nil
-	// Clears the touch event log.
 	js.Global().Set("clearTouchEventLog", jsFn(func(args jsArgs) any {
 		ClearTouchEventLog()
 		return nil
 	}))
 
-	// getDevicePixelRatio() -> number
-	// Returns the current device pixel ratio.
 	js.Global().Set("getDevicePixelRatio", jsFn(func(args jsArgs) any {
 		return js.ValueOf(getDevicePixelRatio())
 	}))
 
 	// getTouchScreenSize() -> {width, height}
-	// Returns the current screen size used for touch calculations.
 	js.Global().Set("getTouchScreenSize", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		obj.Set("width", touchScreenWidth)
@@ -86,8 +78,7 @@ func (g *Game) initJSTouchDebug() {
 		return obj
 	}))
 
-	// isSmallScreenMode() -> bool
-	// Returns whether the UI is using touch-friendly sizing.
+	// isSmallScreenMode() -> bool: touch-friendly sizing.
 	js.Global().Set("isSmallScreenMode", jsFn(func(args jsArgs) any {
 		return js.ValueOf(Profile().IsMobile())
 	}))

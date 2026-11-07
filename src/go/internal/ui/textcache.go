@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Font size constants for the type scale. Defined here (not in fontcache.go)
-// so they are accessible in both production and test builds.
+// Here, not fontcache.go, so test builds see them.
 const (
 	FontSizeCaption float64 = 10
 	FontSizeSmall   float64 = 12
@@ -21,17 +20,11 @@ const (
 	FontSizeHeading float64 = 20
 )
 
-// textSpriteRenderer is the pluggable function that creates text sprite images.
-// When a TrueType font is available (non-test builds), fontcache.go replaces
-// this with a proper font renderer. Test builds use the debug font fallback.
+// fontcache.go installs the TrueType renderer; test builds use the debug font.
 var textSpriteRenderer func(s string) *ebiten.Image
 
-// textMeasureWidth measures the pixel width of text. Replaced by fontcache.go
-// in non-test builds for proper font metrics.
 var textMeasureWidth func(s string) int
 
-// textMeasureHeight returns the line height of body text. Replaced by
-// fontcache.go in non-test builds for proper font metrics.
 var textMeasureHeight func() int
 
 // TextWidth returns the rendered width of s in pixels at body text size.
@@ -50,20 +43,14 @@ func TextHeight() int {
 	return debugCharH
 }
 
-// Simple text sprite cache. Keyed by exact string + font generation so a
-// locale switch to a different font face (which bumps the generation) never
-// serves a stale sprite.
+// Keyed by font generation too, so a locale switch to another face never serves a stale sprite.
 type textKey struct {
 	s   string
 	gen int64
 }
 
-// textCacheMaxEntries bounds both sprite caches. A text input caches one sprite
-// per DISTINCT string, so typing/searching produces thousands of transient
-// strings over a session; without a cap the caches grow without bound. The
-// working set of stable UI labels is well under this, so eviction (a full clear
-// on overflow — sprites are cheap to re-render and the set re-populates in a
-// frame or two) is rare in practice.
+// A text input caches a sprite per DISTINCT string, so typing would grow the caches without bound; a full clear on
+// overflow is cheap and rare.
 const textCacheMaxEntries = 4096
 
 var (
@@ -84,12 +71,7 @@ func styledCacheLen() int {
 	return len(styledSprites)
 }
 
-// TextSprite returns a cached image containing the provided text rendered
-// using TrueType fonts (when available) or Ebiten's debug font as fallback.
-// textSpriteHook, when non-nil, sees every string any text draw path renders
-// (all of them resolve their sprite through TextSprite or StyledTextSprite on
-// every draw). Test-only seam (zero cost when nil): the showcase tour's
-// no-"tetris" guard reads every string drawn during the tour through it.
+// Test seam (zero cost when nil): every drawn string passes through it; the tour's no-"tetris" guard reads it.
 var textSpriteHook func(string)
 
 func TextSprite(s string) *ebiten.Image {
@@ -121,13 +103,8 @@ func TextSprite(s string) *ebiten.Image {
 		if h < 1 {
 			h = 1
 		}
-		// The TrueType renderer is unavailable, which only happens if the
-		// embedded font failed to initialise -- a state in which no glyph
-		// source exists to draw from. Emit a correctly-sized blank sprite
-		// rather than importing ebitenutil, whose sibling NewImageFromURL
-		// drags net/http + crypto/tls (~4 MiB) into the browser build. Under
-		// -tags test this path was already a no-op stub (ebitestub's
-		// DebugPrintAt), so behaviour there is unchanged.
+		// Only when the embedded font failed. A blank sprite instead of ebitenutil, whose NewImageFromURL drags net/http +
+		// crypto/tls (~4 MiB) into the browser build.
 		img = ebiten.NewImage(w, h)
 	}
 
@@ -150,10 +127,7 @@ func ClearTextCacheForTest() {
 	styledCacheMu.Unlock()
 }
 
-// TextRole is a semantic typography role. Each role maps to a true pixel size
-// and weight; StyledText* renders at that size directly (no GeoM upscale), so
-// glyphs stay crisp and the panel-title/section-header/body/caption hierarchy
-// is real. Phase 12 aligns DESIGN.md's typography block (font family + px sizes) to these roles.
+// Each role is a true pixel size, rendered without GeoM upscaling, so glyphs stay crisp.
 type TextRole int
 
 const (
@@ -181,13 +155,10 @@ func (r TextRole) size() float64 {
 
 func (r TextRole) bold() bool { return r != RoleCaption && r != RoleMicro }
 
-// styledLineHeightFallback is the build-agnostic line-height estimate used
-// under -tags test (no TTF available). Monotonic in size so the role
-// hierarchy holds without a font backend.
+// Monotonic in size so the role hierarchy holds without a font backend.
 func styledLineHeightFallback(size float64) int { return int(size*1.25) + 1 }
 
-// styledTextSpriteRenderer / styledTextMeasure are wired by fontcache.go in
-// non-test builds. nil under -tags test → debug-font / arithmetic fallback.
+// nil under -tags test (debug-font / arithmetic fallback).
 var (
 	styledTextSpriteRenderer func(s string, size float64, bold bool) *ebiten.Image
 	styledTextMeasure        func(s string, size float64, bold bool) (int, int)
@@ -254,8 +225,7 @@ func StyledTextSprite(s string, role TextRole) *ebiten.Image {
 	return img
 }
 
-// DrawTextStyled draws s at (x,y) in the given role, tinted with col. The
-// sprite is rendered at true px size — blit 1:1, no GeoM scaling.
+// Blitted 1:1, no scaling.
 func DrawTextStyled(dst *ebiten.Image, s string, x, y int, role TextRole, col color.Color) {
 	if drawTextStyledHook != nil {
 		drawTextStyledHook(s)
@@ -282,8 +252,7 @@ func DrawTextAt(dst *ebiten.Image, s string, x, y int) {
 	dst.DrawImage(spr, &op)
 }
 
-// DrawTextColorAt draws cached text at screen position (x,y) tinted with col.
-// Text sprites are white-on-transparent, so color scaling tints them.
+// The sprites are white-on-transparent, so ColorScale tints them.
 func DrawTextColorAt(dst *ebiten.Image, s string, x, y int, col color.Color) {
 	spr := TextSprite(s)
 	var op ebiten.DrawImageOptions
@@ -296,9 +265,7 @@ func DrawTextColorAt(dst *ebiten.Image, s string, x, y int, col color.Color) {
 	dst.DrawImage(spr, &op)
 }
 
-// DrawTextAtScale draws cached text at screen position (x,y) scaled by the
-// given factor. Reuses the existing sprite cache — scaling is applied at blit
-// time via GeoM.Scale so no extra allocations occur.
+// Scaling at blit time, so the existing sprite is reused.
 func DrawTextAtScale(dst *ebiten.Image, s string, x, y int, scale float64) {
 	spr := TextSprite(s)
 	var op ebiten.DrawImageOptions
@@ -307,24 +274,16 @@ func DrawTextAtScale(dst *ebiten.Image, s string, x, y int, scale float64) {
 	dst.DrawImage(spr, &op)
 }
 
-// drawTextColorAtScaleHook, when non-nil, is invoked with each string passed
-// to DrawTextColorAtScale. Test-only observation seam (zero cost when nil).
+// Test seam, zero cost when nil.
 var drawTextColorAtScaleHook func(string)
 
-// drawTextStyledHook, when non-nil, is invoked with each string passed to
-// DrawTextStyled — the styled-path sibling of drawTextColorAtScaleHook, so
-// tests that observe rendered strings keep working as call sites migrate
-// off the legacy scaled-bitmap path. Test-only seam (zero cost when nil).
+// Test seam (zero cost when nil), the styled-path sibling of drawTextColorAtScaleHook.
 var drawTextStyledHook func(string)
 
-// drawTextStyledPosHook is the positional sibling of drawTextStyledHook: it
-// also receives the draw origin, so a test can assert WHERE a label landed and
-// not merely that it was drawn. Needed by the barrel-lane direction guards,
-// which are entirely about vertical ordering. Test-only seam (zero cost when nil).
+// Test seam (zero cost when nil) with the draw origin, for the barrel-lane ordering guards.
 var drawTextStyledPosHook func(s string, x, y int)
 
-// DrawTextColorAtScale draws cached text at (x,y) scaled and tinted with col.
-// Combines GeoM.Scale for size and ColorScale for tint in a single blit.
+// Scale and tint in one blit.
 func DrawTextColorAtScale(dst *ebiten.Image, s string, x, y int, col color.Color, scale float64) {
 	if drawTextColorAtScaleHook != nil {
 		drawTextColorAtScaleHook(s)

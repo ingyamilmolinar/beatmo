@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// initJSScenes registers every public opener/closer and the runScene/listScenes
-// bridge. All mutations route through QueueAction so they take effect on the
-// next Update tick after seqMu is released — JS must never enter UI code
-// synchronously while drum.Update holds the per-frame lock.
+// Every mutation is queued for the next Update: JS must never enter UI code while drum.Update holds seqMu.
 func (g *Game) initJSScenes() {
 	// ─── menus ──────────────────────────────────────────────────
 	js.Global().Set("openContextMenu", jsFn(func(args jsArgs) any {
@@ -32,12 +29,7 @@ func (g *Game) initJSScenes() {
 		return nil
 	}))
 
-	// menuKeyNavState(menu) -> {selected,count} | null
-	//
-	// Exposes a list menu's shared keyboard cursor (menu_keynav.go) so browser
-	// tests can drive REAL key events at the canvas and observe the highlight.
-	// `menu` is "overflow" (File/Templates), "subdiv", "jump", "context" or
-	// "instrument".
+	// menuKeyNavState(menu) -> {selected,count} | null; menu is overflow/subdiv/jump/context/instrument.
 	js.Global().Set("menuKeyNavState", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
@@ -84,13 +76,8 @@ func (g *Game) initJSScenes() {
 		return map[string]any{"selected": nav.Selected(), "count": count}
 	}))
 
-	// overflowMenuScrollState() -> {first,total,visible} | null
-	//
-	// Exposes the open overflow/template menu's scroll position so browser
-	// tests can measure how far ONE real wheel notch moves the list. That is
-	// only observable from the browser: the platform wheel-unit boundary
-	// (input_dynamics.go) differs precisely because ebiten.Wheel() is stubbed
-	// under -tags test, so no native Go test can see the real DOM deltas.
+	// overflowMenuScrollState() -> {first,total,visible} | null: only a browser sees real DOM wheel deltas
+	// (ebiten.Wheel is stubbed under -tags test).
 	js.Global().Set("overflowMenuScrollState", jsFn(func(args jsArgs) any {
 		if g.drum == nil || !g.drum.IsOverflowMenuOpen() {
 			return nil
@@ -202,21 +189,14 @@ func (g *Game) initJSScenes() {
 			obj.Set("description", s.Description)
 			obj.Set("mobile", s.Mobile)
 			obj.Set("subject", string(s.Subject))
-			// settleFrames lets the browser capture runner wait proportionally
-			// (frames/60 → seconds) for the same settle the desktop binary honors
-			// via screenshotThreshold. 0 means "use the default" (90 frames).
+			// Frames at 60/s; 0 = the default 90.
 			obj.Set("settleFrames", s.SettleFrames)
 			arr.SetIndex(i, obj)
 		}
 		return arr
 	}))
 
-	// ─── subject bounds for cropped capture ────────────────────
-	// subjectRectJS(name) returns {x, y, w, h, visible} for the named
-	// subject at the current laid-out frame. The empty name resolves to
-	// the full framebuffer. Browser screenshot harness reads this after
-	// runScene + forceDraw have settled and forwards the rect to
-	// page.screenshot({clip}).
+	// subjectRectJS(name) -> {x,y,w,h,visible}; "" is the full framebuffer. Read after runScene + forceDraw.
 	js.Global().Set("subjectRectJS", jsFn(func(args jsArgs) any {
 		name := args.StrOr(0, "")
 		obj := js.Global().Get("Object").New()
@@ -235,8 +215,7 @@ func (g *Game) initJSScenes() {
 		return obj
 	}))
 
-	// listSubjects() returns every named subject (excludes the
-	// empty/full-screen one). Used by the bridge-smoke test catalogue.
+	// listSubjects(): every named subject (not the full-screen one).
 	js.Global().Set("listSubjects", jsFn(func(args jsArgs) any {
 		subs := AllSubjects()
 		arr := js.Global().Get("Array").New(len(subs))
@@ -247,12 +226,8 @@ func (g *Game) initJSScenes() {
 	}))
 }
 
-// jsArgInt returns args[idx].Int() or def if missing or not a number.
-// The type check matters: js.Value.Int() panics on a non-number value, and a
-// panic inside a js.FuncOf callback kills the whole WASM runtime — a stray
-// string argument from the console or a test harness must degrade to def,
-// not take the app down. (Type-check instead of Truthy: 0 is falsy but is a
-// perfectly valid index.)
+// Type-checked: Int() panics on a non-number, and a panic in a js.FuncOf callback kills the WASM runtime.
+// (Not Truthy: 0 is a valid index.)
 func jsArgInt(args []js.Value, idx, def int) int {
 	if idx >= len(args) || args[idx].Type() != js.TypeNumber {
 		return def

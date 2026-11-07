@@ -2,8 +2,7 @@ package ui
 
 import "math"
 
-// ToSub converts beat units to smallest subdivision units using the grid's
-// MaxDiv factor. Uses proper rounding for negative values as well.
+// Rounds correctly for negative values too.
 func ToSub(g *Grid, beats float64) int { return int(math.Round(beats * float64(g.MaxDiv()))) }
 
 // PointBeats converts (bx,by) beat coordinates into subdivision-space coords.

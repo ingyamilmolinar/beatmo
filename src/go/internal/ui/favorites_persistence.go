@@ -7,12 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
-// persistedFavorites adapts a userprefs.Store to the UI-side
-// FavoritesStore interface. The constructor warms an in-memory mirror
-// from the backend so Get/Keys never block on disk; Set updates the
-// mirror synchronously and schedules an async save via the backend's
-// own pool (lazy-acquired on first save). Persistence I/O does not
-// reach the UI goroutine.
+// Get/Keys read a mirror warmed at construction; Set updates it synchronously and saves on the backend's
+// pool, so persistence I/O never reaches the UI goroutine.
 type persistedFavorites struct {
 	backend userprefs.Store
 
@@ -20,10 +16,7 @@ type persistedFavorites struct {
 	set map[instrument.ID]struct{}
 }
 
-// NewPersistedFavoritesStore wraps a userprefs.Store. Loading happens
-// once on construction; subsequent Get reads the in-memory mirror and
-// is allocation-free. The caller retains ownership of the Store and
-// must Close() it at shutdown to drain any pending writes.
+// The caller keeps the Store and must Close() it at shutdown to drain pending writes.
 func NewPersistedFavoritesStore(backend userprefs.Store) FavoritesStore {
 	s := &persistedFavorites{
 		backend: backend,
@@ -79,9 +72,7 @@ func (s *persistedFavorites) Keys() []instrument.ID {
 	return out
 }
 
-// snapshotLocked builds a fresh id → bool map from the internal set;
-// caller holds s.mu. Returned to the backend so it can mutate the map
-// without affecting the mirror.
+// Caller holds s.mu. A fresh map so the backend can mutate it without touching the mirror.
 func (s *persistedFavorites) snapshotLocked() map[instrument.ID]bool {
 	out := make(map[instrument.ID]bool, len(s.set))
 	for k := range s.set {

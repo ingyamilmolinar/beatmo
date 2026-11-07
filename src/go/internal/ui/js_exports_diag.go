@@ -1,11 +1,6 @@
 //go:build js && !test
 
-// Package ui — diagnostic JS exports for runtime memory inspection.
-//
-// memSizes() and analyzerBridgeStats() let an operator (or a long-running
-// browser test) sample heap state and analyzer-bridge call counts from
-// DevTools without rebuilding the WASM. Pure read-only; no behaviour
-// change. Added under the OOM-prevention plan as Phase 1A diagnostics.
+// Read-only heap and analyzer-bridge counters, sampled from DevTools or long browser tests without a rebuild.
 
 package ui
 
@@ -17,9 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// initJSDiag wires memSizes() and analyzerBridgeStats() onto the JS
-// global so DevTools and Playwright tests can sample heap + bridge-call
-// counters at any moment. Called once from initJS().
 func (g *Game) initJSDiag() {
 	js.Global().Set("memSizes", jsFn(func(args jsArgs) any {
 		var ms runtime.MemStats
@@ -32,10 +24,7 @@ func (g *Game) initJSDiag() {
 		obj.Set("gcCount", float64(ms.NumGC))
 		obj.Set("nextGC", float64(ms.NextGC))
 		obj.Set("pauseTotalNs", float64(ms.PauseTotalNs))
-		// forcedGCRuns is a heapProbeTick-side counter that bumps once per
-		// runtime.GC() invocation via ForceGCIntervalFrames; lets soak tests
-		// distinguish "trigger never fired" from "trigger fired but
-		// runtime.NumGC didn't advance" (single-threaded WASM GC edge case).
+		// Tells "trigger never fired" from "fired but NumGC did not advance" (a single-threaded WASM GC edge case).
 		obj.Set("forcedGCRuns", float64(ForcedGCRunsForTest()))
 		if g != nil {
 			obj.Set("frame", float64(g.frame))
@@ -105,9 +94,7 @@ func (g *Game) initJSDiag() {
 		obj := js.Global().Get("Object").New()
 		obj.Set("calls", float64(calls))
 		obj.Set("elementReads", float64(reads))
-		// Heuristic: each float64 read is 8 bytes copied into the Go
-		// heap. Lets the operator estimate the Go-side analyzer churn
-		// without instrumenting allocations directly.
+		// Each float64 read copies 8 bytes into the Go heap: an estimate without instrumenting allocations.
 		obj.Set("bytesCopiedEstimate", float64(reads*8))
 		return obj
 	}))
@@ -117,11 +104,7 @@ func (g *Game) initJSDiag() {
 		return nil
 	}))
 
-	// __envProbe returns os.Getenv(name). Test-only diagnostic (double-
-	// underscore prefix exempts it from the bridge-surface catalogue, per
-	// the convention set by __synthEvtTrace / __wasmReady) used by
-	// wasm_env.browser.test.js to prove window.__beatmoEnv set before
-	// go.run() actually reaches Go's os.Getenv via go.env in index.html.
+	// Test-only (the __ prefix exempts it from the bridge catalogue): proves window.__beatmoEnv reaches os.Getenv.
 	js.Global().Set("__envProbe", jsFn(func(args jsArgs) any {
 		return os.Getenv(args.Str(0))
 	}))
@@ -132,9 +115,7 @@ func rowKey(r int) string {
 	return "row" + itoaSmall(r)
 }
 
-// itoaSmall is a tiny non-allocating integer-to-string for non-negative
-// values up to ~999. The diagnostics object only ever has a few rows, so
-// avoiding strconv keeps the export lean.
+// Non-allocating, for the few diagnostic rows; avoids strconv.
 func itoaSmall(n int) string {
 	if n < 0 {
 		n = -n

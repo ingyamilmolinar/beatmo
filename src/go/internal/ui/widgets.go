@@ -11,27 +11,11 @@ import (
 
 const Tile = 40 // world-space pixels per grid step (before camera scale)
 
-/* ------------------------------------------------------------------
-   cache 1×1 images per colour
-   ------------------------------------------------------------------ */
-
 var pixelCache = map[uint32]*ebiten.Image{}
 
 func packRGBA(c color.Color) uint32 {
-	// RGBA() returns premultiplied 16-bit channels. The old packing ORed
-	// those 16-bit values into 8-bit slots, overlapping adjacent channels
-	// and collapsing whole color families into one cache key — e.g.
-	// pixel(color.White) could return whichever color happened to be
-	// cached first for the same colliding bucket, tinting every icon
-	// sprite. Shift each channel down to 8 bits first.
-	//
-	// Call c.RGBA() directly instead of routing through
-	// color.RGBAModel.Convert: Convert boxes its color.RGBA result into a
-	// color.Color interface, costing one heap allocation on EVERY
-	// pixel()/drawRect call (the dominant per-frame alloc source on the
-	// audio-panel tabs). Convert(c).RGBA()>>8 is bit-identical to
-	// c.RGBA()>>8 — Convert truncates the same 16-bit channels to 8 bits
-	// and RGBA() re-expands them by ×0x101, which >>8 undoes exactly.
+	// Shift each 16-bit channel down first: ORing them into 8-bit slots collided whole colour families onto one key.
+	// c.RGBA() directly, not RGBAModel.Convert, which boxes and allocates on every drawRect; the result is bit-identical.
 	r, g, b, a := c.RGBA()
 	return uint32(r>>8) | uint32(g>>8)<<8 | uint32(b>>8)<<16 | uint32(a>>8)<<24
 }
@@ -47,12 +31,6 @@ func pixel(c color.Color) *ebiten.Image {
 	return img
 }
 
-/*
-------------------------------------------------------------------
-
-	DrawLineCam – world-coords → line with camera transform
-	------------------------------------------------------------------
-*/
 var lineOpt ebiten.DrawImageOptions
 var debugGeom = (os.Getenv("DEBUG_GEOM") == "1")
 
@@ -76,15 +54,11 @@ func DrawLineCam(dst *ebiten.Image,
 	lineOpt.GeoM.Concat(*cam)
 
 	dst.DrawImage(pixel(col), &lineOpt)
-	// Log final on-screen rectangle if available (non-test builds)
-	// This helps correlate the visual with numeric endpoints.
-	// In test builds, logLineFinal is not linked and this call is a no-op.
+	// A no-op in test builds, where logLineFinal is stubbed.
 	logLineFinal(lineOpt.GeoM, thick)
 
 	if debugGeom {
-		// Log the world-space endpoints; screen-space can be inferred from
-		// [DRAW-CAM] logs (camScale/offX/offY) without depending on GeoM internals.
-		// This keeps tests (which stub ebiten) buildable.
+		// World-space only, so tests (stubbed ebiten) stay buildable.
 		fmt.Printf("[DRAW-LINE] world=(%.2f,%.2f)->(%.2f,%.2f) thick=%.3f\n", x1, y1, x2, y2, thick)
 	}
 }

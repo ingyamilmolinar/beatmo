@@ -2,9 +2,7 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/i18n"
 
-// ThemePreset is a first-party, curated theme: one swatch per category
-// (theme_categories.go). Presets are the primary way users pick a look; the
-// per-category chips under "Adjust colors" customize on top of one.
+// The primary way to pick a look; the "Adjust colors" chips customise on top.
 type ThemePreset struct {
 	ID         string
 	NameKey    i18n.Key
@@ -12,14 +10,11 @@ type ThemePreset struct {
 	Categories map[string]string
 }
 
-// themePresets is the single table (order = editor order; first = default).
-// Every preset keeps the dark, readable structure: the KeepLightness
-// categories only take a hue/tint from their swatch.
+// Order is editor order; the first is the default. KeepLightness categories only take a hue/tint, so every preset
+// stays dark and readable.
 var themePresets = []ThemePreset{
 	{ID: "vice-city", NameKey: i18n.KeyThemePresetViceCity, GlossKey: i18n.KeyThemePresetViceCityGloss, Categories: map[string]string{
-		// The shipped DESIGN.md palette, with one refinement: the focus ring is
-		// hot-pink-400 (#EE00DD), the Vice City signature magenta the palette
-		// spec names, instead of the lighter -300.
+		// The shipped palette, but with the hot-pink-400 focus ring the palette spec names.
 		"background": "orchid-500", "surfaces": "orchid-500", "text": "orchid-100", "accent": "sunset-gold-300",
 		"focus": "hot-pink-400", "grid": "orchid-500", "nodes": "orchid-500", "dividers": "orchid-100", "viz": "sunset-gold-300"}},
 	{ID: "ocean", NameKey: i18n.KeyThemePresetOcean, GlossKey: i18n.KeyThemePresetOceanGloss, Categories: map[string]string{

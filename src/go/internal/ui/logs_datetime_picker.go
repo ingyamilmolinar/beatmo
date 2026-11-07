@@ -41,10 +41,7 @@ func weekdayKey(wd time.Weekday) i18n.Key {
 	return keys[int(wd)%7]
 }
 
-// logsDateTimePicker is the calendar + time popup for the Logs panel's
-// timestamp filter. It commits an absolute logsTimeSel back to the owner via
-// onCommit. Control elements (month nav, time steppers, footer) are real keycap
-// Buttons; the calendar day cells are flat tappable cells (selected = accent).
+// The calendar days are flat tappable cells; every other control is a real keycap Button.
 type logsDateTimePicker struct {
 	overlayBase
 	onCommit func(logsPickTarget, logsTimeSel)
@@ -62,15 +59,13 @@ type logsDateTimePicker struct {
 
 	monthPrev, monthNext        *Button
 	setBtn, clearBtn, cancelBtn *Button
-	// HH and MM are two compact inline value wheels (wrapping clock fields)
-	// in place of the four ± steppers they replaced.
+	// Wrapping clock fields.
 	hourWheel, minuteWheel ValueWheel
 	hourModel, minuteModel *NumberModel
 	ctrls                  []*Button // cached control-button list (no per-call alloc)
 }
 
-// newLogsDateTimePicker builds a closed picker. onCommit receives the target +
-// the chosen selection (set) or an unset selection (Clear).
+// Clear commits an unset selection.
 func newLogsDateTimePicker(onCommit func(logsPickTarget, logsTimeSel)) *logsDateTimePicker {
 	p := &logsDateTimePicker{overlayBase: newOverlayBase(), onCommit: onCommit}
 	p.monthPrev = NewSpecButton("", ComponentButtonSecondary, p.prevMonth)
@@ -161,14 +156,11 @@ const (
 	logsPickPad  = SpaceSM
 )
 
-// layout computes the panel rect + all button/cell rects, anchored below the
-// field and clamped into the parent bounds.
 func (p *logsDateTimePicker) layout() {
 	rowH := TextHeight() + SpaceSM
 	gridW := 7 * logsPickCell
 	w := gridW + 2*logsPickPad
-	// title + monthnav + weekday + 6 grid rows + gap + time wheels + footer.
-	// The SpaceSM gap keeps the wheels clear of the last calendar row's cells.
+	// SpaceSM keeps the wheels clear of the last calendar row.
 	timeGap := SpaceSM
 	timeH := logsTimeWheelHeight()
 	h := logsPickPad + rowH + logsPickCell + rowH + 6*logsPickCell + timeGap + timeH + rowH + logsPickPad*2
@@ -225,8 +217,6 @@ func (p *logsDateTimePicker) Capturing() bool {
 }
 func (p *logsDateTimePicker) Update() {}
 
-// logsTimeWheelRows is how many rows the compact HH / MM wheels show (a pair
-// of inline clock fields — DESIGN.md "Menu sizing & layout": 3 rows).
 const logsTimeWheelRows = 3
 
 func logsTimeWheelHeight() int {
@@ -257,8 +247,6 @@ func (p *logsDateTimePicker) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// HandleInput routes a gesture a time wheel owns to that wheel, then presses to
-// the control buttons and the day cells.
 func (p *logsDateTimePicker) HandleInput(x, y int, pressed bool) InputResult {
 	if p.hourModel != nil {
 		for _, w := range []*ValueWheel{&p.hourWheel, &p.minuteWheel} {

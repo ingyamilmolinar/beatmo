@@ -6,12 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TooltipOverlay is a lightweight, decorative portal overlay that renders a
-// caption-scaled tooltip below an anchor rectangle. It is used by the
-// ChainPanelZone hover-dwell flow (and any other UI that needs a passive
-// tooltip on a control). The overlay never registers hit areas — it is purely
-// presentational and dismissed by the owner via Close() (or by ShouldClose()
-// being polled by the OverlayPortal).
+// Presentational: no hit areas; the owner closes it.
 type TooltipOverlay struct {
 	text   string
 	anchor image.Rectangle
@@ -19,8 +14,7 @@ type TooltipOverlay struct {
 	closed bool
 }
 
-// NewTooltipOverlay builds a tooltip displaying text. Layout must be called
-// before Draw to position the rect.
+// Layout must run before Draw.
 func NewTooltipOverlay(text string) *TooltipOverlay {
 	return &TooltipOverlay{text: text}
 }
@@ -28,8 +22,7 @@ func NewTooltipOverlay(text string) *TooltipOverlay {
 // Close marks the overlay for removal on the next portal sweep.
 func (o *TooltipOverlay) Close() { o.closed = true }
 
-// Layout positions the tooltip just below the anchor, clamping to
-// screenBounds and flipping above when there is no room below.
+// Flips above when there is no room below.
 func (o *TooltipOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	tw := StyledTextWidth(o.text, RoleCaption) + 8
 	th := StyledTextHeight(RoleCaption) + 6
@@ -65,6 +58,4 @@ func (o *TooltipOverlay) Draw(screen *ebiten.Image) {
 	DrawTextStyled(screen, o.text, o.rect.Min.X+4, o.rect.Min.Y+3, RoleCaption, colTextSecondary)
 }
 
-// ShouldClose reports whether Close() has been invoked. Polled by
-// OverlayPortal.CleanupClosed each frame.
 func (o *TooltipOverlay) ShouldClose() bool { return o.closed }

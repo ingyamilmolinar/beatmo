@@ -2,25 +2,8 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/env"
 
-// applyEnvProfileOverride applies BEATMO_* environment overrides on top of a
-// builder-produced profile. Phase F bench sweeps use these to flip individual
-// knobs without recompiling.
-//
-// This file carries no build tags: env vars now work on WASM too (the JS
-// bootstrap populates go.env from window.__beatmoEnv), so the browser and
-// desktop profiles share one override path. The bespoke
-// window.__beatmoProfileOverride reader that runtime_profile_js.go used to
-// carry is retired in favor of __beatmoEnv.
-//
-// Each assignment is guarded on IsSet so an unset variable leaves the
-// builder's value untouched — matching the (value, ok) helpers this
-// replaced.
-//
-// Fourteen fields are covered, not thirteen: MinDispatchLeadSec was
-// reachable ONLY through window.__beatmoProfileOverride's
-// "minDispatchLeadSec" key before this task — no env var ever set it. It is
-// included here so retiring that reader doesn't silently drop the ability to
-// sweep it (see env.MinDispatchLeadSec's doc comment).
+// Shared by both builds: the JS bootstrap fills go.env from window.__beatmoEnv. Each field is guarded on IsSet so
+// an unset variable leaves the builder's value.
 func applyEnvProfileOverride(p *RuntimeProfile) {
 	if env.EdgeCachePad.IsSet() {
 		p.EdgeCachePad = env.EdgeCachePad.Get()
@@ -67,9 +50,7 @@ func applyEnvProfileOverride(p *RuntimeProfile) {
 	if env.PredictorBackoff.IsSet() {
 		p.PredictorBackoffOnSlowDraw = env.PredictorBackoff.Get()
 	}
-	// BEATMO_FORCE_GC_INTERVAL_MS in milliseconds; 0 disables the cooperative
-	// forced GC. Desktop default is 0 (off); the GC-tuning sweep uses this to
-	// probe whether forced GC helps desktop too.
+	// Milliseconds; 0 disables the forced GC.
 	if env.ForceGCInterval.IsSet() {
 		p.ForceGCInterval = env.ForceGCInterval.Get()
 	}

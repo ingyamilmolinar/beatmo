@@ -6,16 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// ── Surface hierarchy (3 distinct background levels + raised) ────────────
-//
-// Surface, accent, text, semantic-state, and viz colors are aliased from
-// design_tokens.gen.go (which mirrors DESIGN.md). To change a hex value,
-// edit DESIGN.md and run `make gen-design-tokens` — never edit the
-// genColor* symbols or these aliases directly.
-// Every semantic alias / style below is DECLARED here and DERIVED in
-// rebuildThemeAliases() from the live genColor* tokens. The derivation runs
-// once at init and again after ApplyTheme (theme_runtime.go) overwrites the
-// tokens — a var initialiser would be evaluated only once and go stale.
+// Every alias is DERIVED in rebuildThemeAliases from the live tokens, at init and after ApplyTheme: a var initialiser
+// runs once and goes stale. Hex values are edited in DESIGN.md, never here.
 var (
 	colBGTop                    color.RGBA
 	colBGBottom                 color.RGBA
@@ -154,9 +146,7 @@ var (
 	DrumCellUI                  DrumCellStyle
 )
 
-// Runtime STATE, not theme derivation — initialised once and NEVER touched
-// by rebuildThemeAliases (a theme change must not wipe user-assigned custom
-// instrument colors).
+// Runtime STATE, never touched by rebuildThemeAliases: a theme change must not wipe custom instrument colours.
 var (
 	instColors      = buildInstColors()
 	customPalette   = buildCustomPalette()
@@ -166,18 +156,11 @@ var (
 
 func init() { rebuildThemeAliases() }
 
-// rebuildThemeAliases derives every semantic color alias and every
-// spec-backed style from the CURRENT genColor* token variables. Runs once at
-// init and again from ApplyTheme after a theme overwrites tokens. Order
-// matters: rebuildComponentSpecs() must have run first, since the
-// *StyleFromSpec calls below copy from the spec table.
+// rebuildComponentSpecs() must have run first: the *StyleFromSpec calls copy from the spec table.
 func rebuildThemeAliases() {
 	// Level 0 (base): deepest background — grid pane, timeline
 	colBGTop = genColorBackground
 	colBGBottom = genColorBackground
-	// Sunset horizon: warm magenta-violet at the bottom edge of the grid
-	// pane; the pane grades from colBGTop (top) to this (bottom). See
-	// DESIGN.md colors.grid-horizon.
 	colGridHorizon = genColorGridHorizon
 
 	// Level 1 (surface): main surfaces — row rack, transport bg
@@ -189,8 +172,6 @@ func rebuildThemeAliases() {
 	// Level 3 (raised): hover states, active surfaces
 	colSurface3 = genColorSurface3
 
-	// ── Grid colors (brightened slightly for visibility against Level 0) ──
-	// Sourced from DESIGN.md grid-* color tokens.
 	colGridLine = genColorGridLine
 	colGridHalf = genColorGridHalf
 	colGridQuarter = genColorGridQuarter
@@ -210,9 +191,7 @@ func rebuildThemeAliases() {
 	colAccent = genColorPrimary
 	colAccentBright = genColorPrimaryBright
 	colAccentDim = genColorPrimaryDim
-	// colAccentSubtle composes primary with the panel-border bucket (20).
-	// 20 sits between subtle (8) and faint (25); reusing the panel-border
-	// bucket here keeps every "20-alpha overlay" decision in one place.
+	// The panel-border bucket (20) keeps every "20-alpha overlay" in one place.
 	colAccentSubtle = WithAlpha(genColorPrimary, genAlphaBorderPanel)
 
 	// ── Accent (Secondary — Semantic) ───────────────────────────────────
@@ -244,21 +223,13 @@ func rebuildThemeAliases() {
 	// Row label brighter color
 	colRowLabel = colTextPrimary
 
-	// Splitter handle colors (handle indicator on divider lines). One cyan
-	// color on every platform (desktop + mobile share it). Sourced from the
-	// DESIGN.md splitter-handle token at the strong alpha bucket.
-	// `splitter-handle-hover` reuses the universal white `border` token at
-	// the splitter-hover bucket; the role is "splitter handle at hover", the
-	// hex is white (no separate token needed since border already names it).
+	// One handle colour on every platform; the hover reuses the white `border` token at its own bucket.
 	colSplitterHandle = WithAlpha(genColorSplitterHandle, genAlphaStrong)
 	colSplitterHandleHover = WithAlpha(genColorBorder, genAlphaSplitterHover)
 
 	// Rack surface: Level 1 for visual separation
 	colRackSurface = genColorRackBed // Background-category bed (DESIGN.md rack-bed), NOT the surface-1 control surface
 
-	// Panel/popup surface colors — unified component kit.
-	// Both panel BG and modal scrim now name their own alpha buckets
-	// (`alpha.panel-near-opaque`, `alpha.scrim`) — no more inline 250/150.
 	colPanelBG = WithAlpha(genColorSurfaceOverlay, genAlphaPanelNearOpaque) // surface-overlay @ alpha.panel-near-opaque (250)
 	colPanelBorder = WithAlpha(genColorBorder, genAlphaBorderPanel)         // panel chrome border @ alpha.border-panel (20)
 	colScrim = WithAlpha(genColorDimBlack, genAlphaScrim)                   // backdrop scrim @ alpha.scrim (150)
@@ -268,10 +239,6 @@ func rebuildThemeAliases() {
 	colDeleteBorder = genColorDestructiveBorder
 	colDeleteText = colStopRed // red text for delete items (less aggressive than red bg)
 
-	// Context menu group container backgrounds.
-	// Both groups now use named tokens × named alpha buckets — the
-	// menu-delete-tint TODO that previously kept this inline is resolved
-	// (see DESIGN.md `colors.menu-delete-tint`).
 	colMenuGroupBG = WithAlpha(genColorBorder, genAlphaBorderThin)                  // group container bg @ alpha.border-thin (8)
 	colMenuGroupDeleteBG = WithAlpha(genColorMenuDeleteTint, genAlphaBorderDefault) // delete-row warning tint @ alpha.border-default (15)
 	colMenuIcon = colTextDisabled                                                   // icon tint
@@ -286,19 +253,12 @@ func rebuildThemeAliases() {
 	// Beat grouping: alternate column tint for visual beat separation
 	colBeatGroupAlt = WithAlpha(genColorBorder, genAlphaBeatGroupAlt)
 
-	// Timeline strip palette — sourced from DESIGN.md timeline-* tokens.
-	// Amber accent family is intentional (data-canvas color, not chrome —
-	// see "Single chrome accent" invariant exemption for `viz-*` family).
+	// Amber on purpose: a data canvas, exempt from the single chrome accent.
 	colTimelineTotal = genColorTimelineTotalBg
 	colTimelineView = WithAlpha(genColorTimelineView, genAlphaSubtle) // view region @ alpha.subtle (60)
 	colTimelineViewHi = genColorTimelineViewHi
 	colTimelineCursor = genColorTimelineCursor
 	colTimelineBeat = genColorTimelineBeat
-	// viz-bg/curve/wave-b carry intentional non-255 alpha; sourced from
-	// generated symbols and composed via WithAlpha + named buckets. The
-	// previous "stays inline" exemption for WaveTraceDry / EQ zero-line /
-	// EQ curve-fill is now resolved (alpha.wave-trace-dry, alpha.eq-zero-line,
-	// alpha.eq-curve-fill in DESIGN.md).
 	colEQBg = WithAlpha(genColorVizBg, genAlphaOverlay) // viz-bg @ alpha.overlay (220)
 	colEQBar = genColorVizBar
 	colEQBarPeak = genColorVizBarPeak
@@ -315,16 +275,11 @@ func rebuildThemeAliases() {
 	colEQFilterHandleActive = genColorVizBarPeak                      // active state reuses viz-bar-peak
 	colEQFilterLine = WithAlpha(genColorVizBar, genAlphaSubtle)       // filter line @ alpha.subtle (60)
 
-	// Spectrum frequency-group tinting (warm = bass, neutral = mids, cool
-	// = treble). Sourced from DESIGN.md `viz-bass` / `viz-mids` /
-	// `viz-treble`. Used by the Spectrum tab's Bass/Mids/Treble bracket
-	// strip + group highlight fills.
+	// Warm bass, neutral mids, cool treble.
 	colVizBass = genColorVizBass
 	colVizMids = genColorVizMids
 	colVizTreble = genColorVizTreble
 
-	// Graph-pane node / signal / edge — colors + geometry both sourced
-	// from DESIGN.md (Phase 1 colors + Phase 4 geometry now extended).
 	NodeUI = NodeStyle{Radius: float32(genGeomNodeRadius), Fill: genColorNodeFill, Border: genColorNodeBorder}
 	SignalUI = SignalStyle{Radius: float32(genGeomSignalRadius), Color: colAccent}
 	EdgeUI = EdgeStyle{Color: WithAlpha(genColorEdgeColor, genAlphaEdgeDefault)} // edge @ alpha.edge-default (100)
@@ -357,12 +312,7 @@ func rebuildThemeAliases() {
 	colSoloActive = genColorPrimaryBright       // primary-bright coral #FFB498
 	colSoloActiveBdr = genColorSoloActiveBorder // solo-active-border #FFB498
 
-	// Phase M2 (post-refactor cleanup): every var below sources its
-	// fill/border from a generated ComponentSpec. The hand-coded literals
-	// they used to carry are now in DESIGN.md; this file is the legacy-
-	// surface compatibility shim until call sites migrate to NewSpecButton
-	// directly. Drift between DESIGN.md and the runtime is caught by
-	// TestComponentSpecsDrift; byte-equivalence is asserted there.
+	// Spec-backed; TestComponentSpecsDrift asserts byte-equivalence with DESIGN.md.
 	PlayButtonStyle = ButtonStyleFromSpec(ComponentButtonPlayDesktop)
 	StopButtonStyle = ButtonStyleFromSpec(ComponentButtonStopDesktop)
 	BPMBoxStyle = TextInputStyleFromSpec(ComponentInputField, color.White)
@@ -371,8 +321,7 @@ func rebuildThemeAliases() {
 	BPMIncStyle = ButtonStyleFromSpec(ComponentButtonStepper)
 	LenDecStyle = ButtonStyleFromSpec(ComponentButtonStepper)
 	LenIncStyle = ButtonStyleFromSpec(ComponentButtonStepper)
-	// The timeline band's keycaps (length ±, lock) carry the control radius:
-	// ButtonStyleFromSpec leaves Radius 0, which draws a legacy style square.
+	// ButtonStyleFromSpec leaves Radius 0, which draws square.
 	LenDecStyle.Radius = RadiusControl
 	LenIncStyle.Radius = RadiusControl
 	InstButtonStyle = ButtonStyleFromSpec(ComponentButtonRowControl)
@@ -390,9 +339,7 @@ func rebuildThemeAliases() {
 	SoloActiveStyle = ButtonStyleFromSpec(ComponentButtonRowControlSoloActive)
 	FXActiveStyle = ButtonStyleFromSpec(ComponentButtonRowControlFxActive)
 
-	// Context menu items: transparent — container provides visual boundary.
-	// No spec is byte-equivalent to a fully-transparent fill, so this stays
-	// hand-coded; future migration could add a `transparent-button` spec.
+	// No spec is a fully transparent fill, so this stays hand-coded.
 	ContextMenuItemStyle = ButtonStyle{Fill: color.RGBA{0, 0, 0, 0}, Border: color.NRGBA{0, 0, 0, 0}}
 
 	// EQ band mute / filter buttons.
@@ -425,20 +372,9 @@ func rebuildThemeAliases() {
 		Border:    colStepBorder,
 	}
 
-	// instColors and customPalette are now sourced from DESIGN.md's
-	// `instrumentDefaults:` and `instrumentFallbackPalette:` blocks
-	// (Phase 3 PR2). Editing the palette is now a one-file edit in
-	// DESIGN.md; the runtime aliases below preserve the historical
-	// `map[string]color.Color` / `[]color.Color` shape so consumers
-	// (drumview.go, drumview_colors.go) don't need to change.
+	// The historical map/slice shapes over the generated palettes, so consumers are unchanged.
 
-	// ── Folded per-file derivations (Task 3 of the theme-editor plan) ──
-	// These used to be package-level initialisers in render_chain.go,
-	// render_meters.go, render_spectrum.go, render_waveform.go,
-	// scrollbar_style.go, synth_view_draw.go, uigrid.go, audio_sticky_bar.go
-	// and button_styles.go. Evaluated once at init they went stale after
-	// ApplyTheme; here they re-derive with the rest. Guard:
-	// TestNoTopLevelDerivedColorsOutsideTheme.
+	// Package-level derivations from other files live here so they re-derive after ApplyTheme.
 
 	// render_chain.go — scope traces / grid / trigger / frozen border.
 	colScopeA = WithAlpha(genColorVizScopeTraceA, 180)
@@ -461,10 +397,7 @@ func rebuildThemeAliases() {
 
 	// render_spectrum.go / render_waveform.go — trace-derived fills.
 	colSpectrumCurveFill = WithAlpha(colWaveTrace, AlphaFaint)
-	// Emphasis lane behind the ISO band the Spectrum banner's sentence refers
-	// to, so the words and the picture point at the same place. Visualizers
-	// family, never the chrome accent — a theme that separates Accent from
-	// Visualizers must keep this with the bars it highlights.
+	// Visualizers family, never the chrome accent: it must move with the bars it highlights.
 	colSpectrumBandEmphasis = WithAlpha(colWaveTrace, AlphaFaint)
 	colSpectrumBarTop = WithAlpha(colWaveTrace, AlphaOverlay)
 	colSpectrumBarMid = WithAlpha(colWaveTrace, AlphaStrong)
@@ -494,8 +427,7 @@ func rebuildThemeAliases() {
 		live:       scrollbarLiveDropdown,
 	}
 
-	// synth_view_draw.go — the Synth tab's Visualizers accent (graphs, dials,
-	// cards): a data canvas, so the viz family, never the chrome accent.
+	// A data canvas: the viz family, never the chrome accent.
 	colConceptFill = WithAlpha(colWaveTrace, AlphaSubtle)
 	colConceptStroke = WithAlpha(colWaveTrace, AlphaStrong)
 
@@ -512,8 +444,7 @@ func rebuildThemeAliases() {
 	// uigrid.go — fuzzy-match highlight.
 	colFuzzyHighlight = WithAlpha(genColorPrimary, genAlphaSubtle)
 
-	// audio_sticky_bar.go — pill tab palette (pre-boxed color.Color so
-	// drawPillTabAt stays allocation-free).
+	// Pre-boxed so drawPillTabAt allocates nothing.
 	pillCapFillInactive = colSurface2
 	pillCapBorderInact = colButtonBorder
 	pillTextInactive = colTextSecondary
@@ -532,11 +463,7 @@ func rebuildThemeAliases() {
 
 }
 
-// buildInstColors lifts genInstrumentDefaults (typed as
-// map[string]color.RGBA by the generator) into the historical
-// map[string]color.Color shape that drumview.go expects. Done at
-// package init via the var initialiser above; cost is one map copy
-// at startup.
+// One map copy at startup.
 func buildInstColors() map[instrument.ID]color.Color {
 	out := make(map[instrument.ID]color.Color, len(genInstrumentDefaults))
 	for id, c := range genInstrumentDefaults {
@@ -545,9 +472,6 @@ func buildInstColors() map[instrument.ID]color.Color {
 	return out
 }
 
-// buildCustomPalette lifts genInstrumentFallbackPalette ([]color.RGBA)
-// into []color.Color so drumview.go's existing fallback-cycle logic
-// keeps working unchanged.
 func buildCustomPalette() []color.Color {
 	out := make([]color.Color, len(genInstrumentFallbackPalette))
 	for i, c := range genInstrumentFallbackPalette {

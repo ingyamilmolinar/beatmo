@@ -8,18 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// All 31 IconID bodies, defined in the unified Lucide-style visual language.
-//
-// Each function takes a bounding rect; it composes itself in the 24-unit
-// logical grid via icon_renderer.go's helpers and the iconCanvas mapping.
-// Function-var pattern preserved so test overrides (icon_render_test.go)
-// keep working.
-//
-// Visual primitives:
-//   - Stroke weight: IconStrokeWeight (1.75 logical units, ≥1 px floor)
-//   - Caps/joins: round
-//   - Corner radius: IconCornerRadius (2 logical units) where applicable
-//   - Antialiasing: always on
+// One Lucide-style language on a 24-unit grid: 1.75-unit round strokes, 2-unit corners, always antialiased.
+// Function vars so tests can override them.
 
 // ── Transport (4) ──────────────────────────────────────────────────────
 
@@ -82,9 +72,7 @@ var drawPencilIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 		return
 	}
 	c := newIconCanvas(r)
-	// Tip (5,19) → bottom-left guide, body shaft from bottom-left up to
-	// upper-right tip, then a separate cross-stroke marks the bevel on
-	// the eraser-end ferrule. Closed for a solid pencil silhouette.
+	// Closed for a solid pencil silhouette.
 	iconStrokePolyline(dst, c, [][2]float32{{5, 19}, {5, 15}, {15, 5}, {19, 9}, {9, 19}, {5, 19}}, col)
 	iconStrokeLine(dst, c, 13, 7, 17, 11, col)
 }
@@ -120,9 +108,7 @@ var drawOverflowIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Colo
 	iconFillCircle(dst, c, 12, 18, 1.5, col)
 }
 
-// drawGripIcon paints the drag-handle affordance: a 2×3 dot matrix, the
-// conventional "grab me" texture. Mirrors drawOverflowIcon's dot geometry
-// (r=1.5 on the shared 24×24 icon canvas) so the two read as one family.
+// The same dot geometry as drawOverflowIcon so the two read as one family.
 var drawGripIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -225,9 +211,7 @@ var drawChevronLeftIcon = func(dst *ebiten.Image, r image.Rectangle, col color.C
 	iconStrokePolyline(dst, c, [][2]float32{{15, 6}, {9, 12}, {15, 18}}, col)
 }
 
-// starPathPoints lists the 10 vertices of a 5-pointed star inscribed in
-// the icon's 24×24 canvas. Outer radius 9, inner radius 3.5, centered
-// at (12,12). Points alternate outer/inner clockwise from the top.
+// Outer radius 9, inner 3.5, centred at (12,12), alternating clockwise from the top.
 var starPathPoints = [][2]float32{
 	{12.00, 3.00},  // top outer
 	{14.06, 9.17},  // upper-right inner
@@ -261,9 +245,7 @@ var drawStarFilledIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Co
 
 // ── Track / state (2) ──────────────────────────────────────────────────
 
-// Padlock, closed = "tracking" (timeline follows the playhead). Lucide "lock":
-// an outlined rounded body with the shackle seated into it and a keyhole dot
-// — the same 1.75-unit stroke language as every other chrome icon.
+// Closed padlock = "tracking": the timeline follows the playhead.
 var drawTrackIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -276,9 +258,7 @@ var drawTrackIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) 
 	iconFillCircle(dst, c, 12, 16, 1.25, col)
 }
 
-// Padlock, open = "free" (timeline scrolls independently of the playhead).
-// Same outlined body as the closed lock; the shackle's free leg lifts away
-// (Lucide "lock-open" silhouette) instead of seating into the body.
+// Open padlock = "free": the timeline scrolls on its own.
 var drawTrackOffIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -330,13 +310,7 @@ var drawExportIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	iconStrokePolyline(dst, c, [][2]float32{{7, 9}, {12, 4}, {17, 9}}, col)
 }
 
-// ── Undo / Redo (2) ─────────────────────────────────────────────────────
-//
-// A curved arrow over the top of the canvas with a downward arrowhead at one
-// terminus: left terminus = Undo (counter-clockwise / "back"), right terminus
-// = Redo (clockwise / "forward"). Vector-drawn so the narrow desktop transport
-// cells render a glyph instead of collapsing a "Undo"/"Redo" text label to the
-// bare "..." ellipsis.
+// Undo/Redo as curved arrows, so narrow transport cells show a glyph instead of a label collapsed to "...".
 
 var drawUndoIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
@@ -409,8 +383,6 @@ var drawMuteIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	}
 	c := newIconCanvas(r)
 	iconSpeakerCone(dst, c, col)
-	// Diagonal slash through the cone — round caps + the icon-stroke
-	// width make this read as a unified "muted" mark.
 	iconStrokeLine(dst, c, 4, 4, 20, 20, col)
 }
 
@@ -450,8 +422,6 @@ var drawTargetIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	iconStrokeLine(dst, c, 15, 12, 20, 12, col)
 }
 
-// Gear: a body ring with a small hub and eight short radial teeth. Used for the
-// Settings entry that replaces the grid "?" affordance.
 var drawSettingsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -494,8 +464,6 @@ var drawCircleIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	iconFillCircle(dst, c, 12, 12, 8, col)
 }
 
-// Headroom — a horizontal ceiling bar with a downward arrow indicating the
-// space below the limit. Used in the Levels icon-row cascade.
 var drawHeadroomIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -520,8 +488,6 @@ var drawClipCountIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Col
 	iconFillCircle(dst, c, 12, 18, 1, col)
 }
 
-// Loudest — a peak indicator: rising bars topped by a horizontal peak-hold
-// line. Used to mark the loudest channel readout in the icon-row cascade.
 var drawLoudestIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -533,9 +499,6 @@ var drawLoudestIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color
 	iconStrokeLine(dst, c, 3, 5, 20, 5, col)
 }
 
-// drawSearchIcon renders a magnifier: a circle lens in the upper-left of the
-// live area with a handle stroking toward the lower-right corner. The leading
-// affordance of every menu search field (see DESIGN.md "Menu anatomy").
 var drawSearchIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -545,10 +508,7 @@ var drawSearchIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	iconStrokeLine(dst, c, 15.2, 15.2, 20, 20, col)
 }
 
-// drawTemplateIcon renders a template/preset card: a rounded-rect chassis
-// with two content rules and a leading note dot. Deliberately distinct
-// from IconRows (three bare lines = the rows VIEW) so "Load template"
-// carries its own glyph per the one-icon-one-role rule.
+// Distinct from IconRows (the rows VIEW): one icon, one role.
 var drawTemplateIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -560,9 +520,7 @@ var drawTemplateIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Colo
 	iconFillCircle(dst, c, 9, 16.5, 1.2, col)
 }
 
-// drawFolderIcon renders a folder: a body rounded-rect with a raised left tab.
-// Distinct from IconTemplate (a card with content rules) so the file-menu
-// affordance carries its own glyph per the one-icon-one-role rule.
+// Distinct from IconTemplate: one icon, one role.
 var drawFolderIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -587,8 +545,6 @@ var drawCalendarIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Colo
 	iconStrokeLine(dst, c, 16, 3, 16, 6, col)                                           // right binding
 }
 
-// Logs: a document (rounded rect) with three horizontal "text" lines — the
-// list-of-log-lines glyph for the grid-pane Logs button.
 var drawLogsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -602,8 +558,6 @@ var drawLogsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	iconStrokeLine(dst, c, 8, 16, 13, 16, col)
 }
 
-// Palette: a painter's palette — a rounded disc with a thumb notch and three
-// paint dots. The grid-pane Theme button glyph.
 var drawPaletteIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -616,8 +570,6 @@ var drawPaletteIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color
 	iconFillCircle(dst, c, 8.5, 14.5, 1.6, col)
 }
 
-// Move: a four-way arrow cross centered in the icon box — the universal
-// "move / reposition" glyph. Central plus stem with four arrowheads.
 var drawMoveIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -633,9 +585,7 @@ var drawMoveIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	iconStrokePolyline(dst, c, [][2]float32{{17, 9}, {20, 12}, {17, 15}}, col)
 }
 
-// Copy: two offset rounded squares (the "duplicate" glyph) — both stroked in
-// `col` only (no background-color fill), so the icon renders correctly on any
-// keycap surface. Back sheet upper-right, front sheet lower-left.
+// Stroked only, no background fill, so it renders on any keycap surface.
 var drawCopyIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -645,8 +595,6 @@ var drawCopyIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	iconStrokeOpenRoundedRect(dst, c, 4, 9, 11, 11, 1.5, "", col) // front sheet
 }
 
-// Connect: two nodes joined by a link — two small circles at opposite
-// corners with a connecting bar, the "wire two nodes" glyph.
 var drawConnectIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return

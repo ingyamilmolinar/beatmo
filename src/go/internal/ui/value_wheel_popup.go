@@ -5,23 +5,16 @@ import (
 	"strconv"
 )
 
-// The shared value-wheel popup (dv.valueWheelPopup): a MobileWheelPopup over a
-// NumberModel for values that are not synth knobs — the transport BPM and the
-// node sidebar's volume / duration / logic / groove values. Every one of them
-// applies LIVE on each detent and commits ONCE on close (Enter, tap-away,
-// re-tapping the opener); Esc restores the opening value and commits nothing.
+// The shared wheel for non-knob values (BPM, node values): live per detent, ONE commit on close; Esc restores the
+// opening value and commits nothing.
 
 const valueWheelPortalID = "value-wheel-popup"
 
-// openValueWheel opens the shared popup over anchor (inside the drum pane)
-// with binding b.
 func (dv *DrumView) openValueWheel(b WheelBinding, anchor image.Rectangle) {
 	dv.openValueWheelIn(b, anchor, dv.Bounds)
 }
 
-// openValueWheelIn opens the shared popup over anchor, kept inside bounds —
-// the window for openers in the grid pane (the node sidebar), whose popup is
-// then repainted above the pane divider (Game.drawThemeOverlaysAboveDivider).
+// For grid-pane openers (the sidebar), whose popup is then repainted above the pane divider.
 func (dv *DrumView) openValueWheelIn(b WheelBinding, anchor, bounds image.Rectangle) {
 	if dv.valueWheelPopup == nil {
 		return
@@ -36,8 +29,7 @@ func (dv *DrumView) openValueWheelIn(b WheelBinding, anchor, bounds image.Rectan
 		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.valueWheelPopup, tag: valueWheelPortalID},
 		Modal:   true,
 		Scrim:   true,
-		// Persist-on-dismiss chokepoint: Accept commits a pending edit and
-		// no-ops when the popup already closed (Enter / Esc).
+		// Accept commits a pending edit and no-ops once closed.
 		OnClose: func() { dv.valueWheelPopup.Accept() },
 	})
 }
@@ -73,9 +65,7 @@ func (dv *DrumView) openBPMWheel(anchor image.Rectangle) {
 	}, anchor)
 }
 
-// applyBPMState mirrors a tempo into DrumView (the live half of a BPM change;
-// commitBPM / the ± path announce it). A tempo change renders nothing: a
-// voice is render.seconds long at every tempo.
+// The live half; commitBPM announces. A tempo renders nothing: a voice is render.seconds at every tempo.
 func (dv *DrumView) applyBPMState(bpm int) {
 	dv.bpm = bpm
 	dv.secPerBeat = 60.0 / float64(bpm)

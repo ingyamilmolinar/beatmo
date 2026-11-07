@@ -2,50 +2,27 @@ package ui
 
 import "image"
 
-// TextField is the single way to put an editable text box on screen.
-//
-// The editing core is TextInput (caret, selection, navigation, filters). What
-// NewTextField adds is the box's NATIVE KEYBOARD WIRING, which every surface
-// used to hand-wire — and two (the Save As dialogs and the FX "add effect"
-// search) never did, so they had no keyboard on a phone:
-//
-//   - desktop browser: the hidden soft-keyboard proxy, which buffers every key
-//     so a short press between two slow frames is never dropped;
-//   - mobile: a real native <input> overlaid on the box (the soft keyboard
-//     can only be raised by a native element inside the user's gesture).
-//
-// A field is LIVE while its owner keeps calling Update (every frame it is on
-// screen) or while its native input is open. syncNativeGestures arms the
-// native rect of every live field (textFieldRegistry.live), so a new text box
-// gets a keyboard on both platforms with no edit to native_gesture.go.
+// The single way to put an editable box on screen: TextInput plus the box's native keyboard wiring (desktop proxy,
+// mobile <input>). A field is LIVE while its owner calls Update, and syncNativeGestures arms every live one.
 type TextField = TextInput
 
 // TextFieldSpec is a text box's native identity.
 type TextFieldSpec struct {
-	// ID is the stable native-input id ("inst-search", "wav-name", …). It
-	// keys the mobile <input> and the result/value polls. Declare it as a
-	// *MobileInputID constant (TestTextFieldIDsAreUnique).
+	// Declare it as a *MobileInputID constant; it keys the mobile input and its polls.
 	ID string
-	// Owner is the DrumViewTree owner tag of the surface the box lives on;
-	// the native rect is armed only while that owner is topmost at the box.
+	// The native rect is armed only while that owner is topmost at the box.
 	Owner string
-	// ProxyOnMobile also focuses the soft-keyboard proxy on mobile (the
-	// rename and WAV-name boxes historically did; searches do not, because
-	// their native input already raises the keyboard).
+	// Searches leave it off: their native input already raises the keyboard.
 	ProxyOnMobile bool
-	// TriggerRect, when set, is where a mobile tap opens the native input
-	// (default: the box rect). InputRect, when set, is where the native
-	// input is placed (default: the trigger rect).
+	// Defaults: the box rect, then the trigger rect.
 	TriggerRect func() image.Rectangle
 	InputRect   func() image.Rectangle
 }
 
-// textFieldLiveTicks is how many sync ticks a field stays live after its last
-// Update — slack for Update/Draw cadence differences.
+// Slack for Update/Draw cadence differences.
 const textFieldLiveTicks = 2
 
-// textFieldRegistry tracks a DrumView's text fields. advance is called once
-// per syncNativeGestures (the per-frame native projection).
+// advance runs once per syncNativeGestures.
 type textFieldRegistry struct {
 	tick   uint64
 	fields []*TextInput
@@ -71,9 +48,7 @@ func (r *textFieldRegistry) markLive(f *TextInput) {
 	}
 }
 
-// live returns the fields updated within the last textFieldLiveTicks ticks or
-// whose native input is open, pruning the rest (a pruned field re-lists on
-// its next Update).
+// A pruned field re-lists on its next Update.
 func (r *textFieldRegistry) live() []*TextInput {
 	if r == nil {
 		return nil
@@ -94,8 +69,7 @@ func (r *textFieldRegistry) live() []*TextInput {
 	return kept
 }
 
-// NewTextField builds a text box with its native keyboard wiring. reg is the
-// owning DrumView's registry (dv.textFields); maxLen caps the rune count.
+// maxLen caps the rune count.
 func NewTextField(reg *textFieldRegistry, spec TextFieldSpec, maxLen int) *TextInput {
 	f := NewTextInput(image.Rectangle{}, BPMBoxStyle)
 	f.MaxLen = maxLen
@@ -118,9 +92,7 @@ func NewTextField(reg *textFieldRegistry, spec TextFieldSpec, maxLen int) *TextI
 // NativeID returns the box's native-input id ("" for a box without one).
 func (t *TextInput) NativeID() string { return t.native.ID }
 
-// NativeLiveValue returns the mobile native input's current value when it
-// differs from the box (searches mirror it every frame). ok=false on desktop,
-// when no native input is open, or when nothing changed.
+// !ok on desktop, with no native input open, or when nothing changed.
 func (t *TextInput) NativeLiveValue() (string, bool) {
 	if t.native.ID == "" || !Profile().IsMobile() {
 		return "", false
@@ -175,10 +147,7 @@ func (dv *DrumView) textFieldNativeInputCandidates() []NativeRectCandidate {
 	return out
 }
 
-// newReadoutBox builds a DISPLAY-ONLY box in a text-input style: a value
-// readout drawn like a field (the transport BPM readout) that is never updated,
-// so it never takes focus or keystrokes and has no native keyboard wiring. Its
-// value is set by its owner through SetText.
+// DISPLAY-ONLY: never updated, so it never takes focus or keystrokes.
 func newReadoutBox(style TextInputStyle) *TextInput {
 	return NewTextInput(image.Rectangle{}, style)
 }

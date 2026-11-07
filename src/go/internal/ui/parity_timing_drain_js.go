@@ -4,21 +4,8 @@ package ui
 
 import "syscall/js"
 
-// drainEmissionReports pulls the browser emission traces recorded by audio.js
-// (the `timingTraces` ring, pushed at every real `BufferSource.start(when)`
-// call for a sequencer-identified note — see audio.js's timingTraces.push
-// call sites) and closes the matching Go-side trace opened by
-// openTimingTrace at schedule time (see game_audio_schedule.go).
-//
-// Drift formula: on WASM, audio.Now() == AudioContext.currentTime (see
-// engine_wasm.go's Now()), so the Go trace's idealWhen (= baseNow, recorded
-// in ctx-clock seconds at schedule time) and the JS trace's startWhen (the
-// `when` argument passed to BufferSource.start, also ctx-clock seconds)
-// share the same clock. The emitted wall-time fed to Stage-D is therefore
-// simply startWhen — closeTimingTrace computes startWhen - idealWhen, i.e.
-// how much later the actual scheduled start landed vs the ideal grid time
-// (positive = late). This mirrors the desktop drain's semantics exactly,
-// just sourced from the WebAudio clock instead of the device-clock ring.
+// On WASM audio.Now() is AudioContext.currentTime, so the Go trace's idealWhen and the JS startWhen share one
+// clock and drift is simply startWhen - idealWhen (positive = late), as on desktop.
 func (g *Game) drainEmissionReports() {
 	arr := js.Global().Call("getTimingTraces")
 	if !arr.Truthy() {

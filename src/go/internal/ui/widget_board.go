@@ -31,8 +31,6 @@ type WidgetPlacement struct {
 	Editable bool // whether the user may move/remove this widget
 }
 
-// LayoutSnapshot captures the current grid ratios and widget placements so
-// callers (tests/JS) can persist or assert layout.
 type LayoutSnapshot struct {
 	Cols    []float64
 	Rows    []float64
@@ -40,8 +38,7 @@ type LayoutSnapshot struct {
 	Bounds  image.Rectangle
 }
 
-// WidgetBoard manages a simple weighted grid and widget placements. It is not
-// concerned with drawing; DrumView owns rendering.
+// Layout only; DrumView draws.
 type WidgetBoard struct {
 	bounds     image.Rectangle
 	offset     image.Point
@@ -54,9 +51,7 @@ type WidgetBoard struct {
 	pad        int
 	placements map[WidgetKind]WidgetPlacement
 	pixelRows  bool
-	// userColSized is set once the user drags a column divider; DrumView then
-	// stops content-sizing the rack column so the drag sticks. SetWeights
-	// (a profile change) clears it.
+	// Once the user drags a column divider the rack stops content-sizing so the drag sticks; SetWeights clears it.
 	userColSized bool
 }
 
@@ -178,8 +173,7 @@ func (wb *WidgetBoard) recalc() {
 	if sumRows == 0 {
 		sumRows = 1
 	}
-	// Cumulative rounding: compute each boundary as Round(totalW * cumWeight/sumCols)
-	// so row/col positions tile exactly without gaps or overlaps.
+	// Cumulative rounding so positions tile with no gap or overlap.
 	wb.colPos = make([]int, len(wb.cols)+1)
 	totalW := wb.bounds.Dx()
 	cumCol := 0.0
@@ -287,9 +281,7 @@ func (wb *WidgetBoard) RowHeight(row int) int {
 	return wb.rowPos[row+1] - wb.rowPos[row]
 }
 
-// ResizeAxis nudges a split by deltaPx. axis="col" adjusts the split between
-// column idx and idx+1; axis="row" adjusts row boundaries. deltaPx may be
-// positive (expand left/top) or negative (shrink).
+// Positive expands left/top.
 func (wb *WidgetBoard) ResizeAxis(axis string, idx int, deltaPx int) {
 	switch axis {
 	case "col":
@@ -312,8 +304,7 @@ func (wb *WidgetBoard) ResizeAxis(axis string, idx int, deltaPx int) {
 		if idx < 0 || idx >= len(wb.rows)-1 {
 			return
 		}
-		// If we're still using weights, convert all rows to pixel heights once so only
-		// the two adjacent rows change while others keep their current pixel sizes.
+		// Converts weights to pixels once, so only the two adjacent rows change.
 		if !wb.pixelRows {
 			sumRows := 0.0
 			for _, v := range wb.rows {
@@ -405,8 +396,6 @@ func (wb *WidgetBoard) ToggleWidget(id WidgetKind, visible bool) {
 	wb.placements[id] = p
 }
 
-// LayoutGroup creates a LayoutGroup whose bounds match the widget's Rect().
-// cols and rows define the grid subdivision within the widget cell.
 func (wb *WidgetBoard) LayoutGroup(id WidgetKind, cols, rows []float64) *LayoutGroup {
 	return NewLayoutGroup(string(id), wb.Rect(id), cols, rows)
 }

@@ -2,14 +2,9 @@ package ui
 
 import "image"
 
-// ui_style.go — One-call constructors for the four button categories
-// (Primary, Secondary, RowControl, Destructive) and overlay specs
-// (PanelSpec, MenuSpec). Follow DESIGN.md §4–7.
-
 // ── Button constructors ───────────────────────────────────────────────────
 
-// IconOnlyButton creates a Button with no text label, only an icon.
-// Use for any slot where DESIGN.md §5 specifies icon-mandatory.
+// For slots where DESIGN.md makes the icon mandatory.
 func IconOnlyButton(id IconID, style ButtonVisual) *Button {
 	b := NewButton("", style, nil)
 	b.Icon = string(id)
@@ -17,16 +12,12 @@ func IconOnlyButton(id IconID, style ButtonVisual) *Button {
 	return b
 }
 
-// RowControlButton creates a row-control button (mute/solo/fx/origin/delete)
-// using InstButtonStyle and the given icon. The caller wires OnClick.
 func RowControlButton(id IconID) *Button {
 	b := IconOnlyButton(id, InstButtonStyle)
 	b.IconColor = colTextSecondary
 	return b
 }
 
-// ActiveRowControl updates a row-control button's style to reflect its active
-// state. Call whenever mute/solo/fx state changes before drawing.
 // id must match the icon passed to RowControlButton.
 func ActiveRowControl(b *Button, active bool) {
 	if b == nil {
@@ -56,8 +47,7 @@ func ActiveRowControl(b *Button, active bool) {
 	}
 }
 
-// DestructiveButton creates a delete-row button: red fill, trash icon,
-// ConsumeOnPress = true so rapid clicks don't cascade through layout changes.
+// ConsumeOnPress, so rapid clicks cannot cascade through the layout change.
 func DestructiveButton() *Button {
 	b := NewButton("", DeleteButtonStyle, nil)
 	b.Icon = string(IconTrash)
@@ -66,40 +56,23 @@ func DestructiveButton() *Button {
 	return b
 }
 
-// AddButton creates an icon-only "+" button using IconPlus and InstButtonStyle.
-// Use for "Add row", "Add Effect", etc. — never the raw "+" character.
+// Never the raw "+" character.
 func AddButton() *Button {
 	return IconOnlyButton(IconPlus, InstButtonStyle)
 }
 
-// CloseButton creates an icon-only close (×) button.
-// Pass into panel headers; the caller sets the OnClick handler.
 func CloseButton() *Button {
 	b := IconOnlyButton(IconClose, TransportMiscStyle)
 	b.IconColor = colTextSecondary
 	return b
 }
 
-// desktopCloseVisible is the SINGLE source of truth for the "does this pop-up
-// show an in-panel close (×) button?" decision. On mobile (UseBottomSheet) the
-// answer is always no — a bare tap-away / bottom-sheet dismiss keeps the mobile
-// UI clean, so every menu and pop-up drops its × there. Desktop keeps the × as
-// a discoverable dismiss affordance alongside Esc + click-outside.
-//
-// Every floating menu — including the top-right toggle menus (File, Settings,
-// Logs, Theme), whose grid button ALSO opens and closes them — carries the ×
-// through the shared MenuCard frame (menu_card.go), so the dismiss affordance
-// reads the same everywhere.
+// The SINGLE answer to "does this pop-up show a close ×?": never on mobile (tap-away keeps it clean), always on
+// desktop beside Esc and click-outside, through the shared MenuCard.
 func desktopCloseVisible() bool { return !Profile().UseBottomSheet }
 
-// newPopupCloseButton builds the shared pop-up close (×) button wired to
-// onClose, or nil on mobile (see desktopCloseVisible). It centralizes the
-// canonical recipe every floating menu/pop-up used to hand-roll — IconClose
-// glyph, closeIconColor tint, PopupButtonStyle chrome, ConsumeOnPress so a
-// rapid double-tap can't cascade through the teardown. Position the returned
-// button with closeButtonRect(panelRect, pad); callers keep their existing
-// `if btn != nil` guards for layout/draw/hit, so the × simply vanishes on
-// mobile with no other branch.
+// nil on mobile, so callers' existing nil guards make the × vanish there. ConsumeOnPress so a double tap cannot
+// cascade through the teardown.
 func newPopupCloseButton(onClose func()) *Button {
 	if !desktopCloseVisible() {
 		return nil
@@ -113,16 +86,12 @@ func newPopupCloseButton(onClose func()) *Button {
 
 // ── Panel spec ────────────────────────────────────────────────────────────
 
-// PanelSpec describes an overlay panel geometry. Use drawPanel(dst, r) for
-// the chrome. Panels follow DESIGN.md §6: rounded corners, shadow, border.
 type PanelSpec struct {
 	Title     string
 	Width     int
 	MinHeight int
 }
 
-// HeaderRect returns the title-bar rect for a panel anchored at origin.
-// Height = Profile().PopupBtnH + 2*SpaceSM.
 func (s PanelSpec) HeaderRect(origin image.Point) image.Rectangle {
 	h := Profile().PopupBtnH + 2*SpaceSM
 	return image.Rect(origin.X, origin.Y, origin.X+s.Width, origin.Y+h)

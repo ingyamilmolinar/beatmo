@@ -4,12 +4,10 @@ package ui
 
 import "syscall/js"
 
-// selectJSONAsync invokes the browser file picker and calls cb with the file
-// contents when ready. It must be called synchronously from a user gesture.
+// Must be called synchronously from a user gesture.
 func selectJSONAsync(cb func([]byte, string, error)) {
 	g := js.Global()
-	// lastImportName reads the filename openJSONFile stashed on the global (its
-	// resolved value stays a string for back-compat); "" when unavailable.
+	// "" when unavailable.
 	lastImportName := func() string {
 		if n := g.Get("__lastImportName"); n.Truthy() {
 			return n.String()

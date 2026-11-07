@@ -2,12 +2,8 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/i18n"
 
-// undoActionLabelKeys maps each undoable action's English label (the
-// hooks.ActionRegistry Label stored verbatim in the undo step) to its i18n key,
-// so undo/redo notifications are fully localized — both the "Undo:"/"Redo:"
-// prefix AND the action name. TestEveryUndoableActionHasLocalizedLabel asserts
-// every undoable hooks.Kind's label has an entry here, so a new undoable action
-// forces a translation rather than silently falling back to English.
+// Keyed by the registry's English label stored in the step, so both prefix and action name localize; a new
+// undoable action without an entry fails TestEveryUndoableActionHasLocalizedLabel.
 var undoActionLabelKeys = map[string]i18n.Key{
 	"change BPM":           i18n.KeyActionChangeBPM,
 	"change subdivision":   i18n.KeyActionChangeSubdivision,
@@ -44,11 +40,8 @@ var undoActionLabelKeys = map[string]i18n.Key{
 	"delete group":         i18n.KeyActionDeleteGroup,
 }
 
-// notifyUndoRedo raises a localized undo/redo notification. prefixKey is
-// KeyNotifUndo or KeyNotifRedo; englishLabel is the action's English registry
-// label. The action name is stored as an "@<i18n key>" arg so it retranslates
-// with the locale (display() resolves the nested key); an unmapped label falls
-// back to the literal English label so the message is never empty.
+// The action name is an "@<key>" arg so it retranslates with the locale; an unmapped label falls back to English,
+// never empty.
 func (dv *DrumView) notifyUndoRedo(prefixKey i18n.Key, englishLabel string) {
 	if k, ok := undoActionLabelKeys[englishLabel]; ok {
 		dv.notifyInfoKey(prefixKey, "@"+string(k))
@@ -57,12 +50,7 @@ func (dv *DrumView) notifyUndoRedo(prefixKey i18n.Key, englishLabel string) {
 	dv.notifyInfoKey(prefixKey, englishLabel)
 }
 
-// notifyUndoRedoDetail raises a localized undo/redo notification that names the
-// changed parameter and its from → to values (e.g. "Undo: Volume 100% → 90%").
-// prefixKey is KeyNotifUndoDetail / KeyNotifRedoDetail. The parameter label may
-// be a literal ("BPM", a synth-param key) or an "@<i18n key>" reference that
-// display() localizes; the values are locale-neutral (%, st, x). Used by
-// performUndo/performRedo when the snapshot diff resolves to one scalar change.
+// "Undo: Volume 100% → 90%"; the label may be literal or "@<key>", the values are locale-neutral.
 func (dv *DrumView) notifyUndoRedoDetail(prefixKey i18n.Key, d changeDetail) {
 	dv.notifyInfoKey(prefixKey, d.param, d.old, d.new)
 }

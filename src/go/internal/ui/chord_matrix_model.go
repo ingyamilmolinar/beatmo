@@ -5,11 +5,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// chordMatrixModel is the chord matrix's cell mapping
-// (docs/superpowers/specs/2026-10-09-chord-nodes-design.md §3): 12 root ROWS
-// (pitch classes C…B, top to bottom) × the five quality COLUMNS of one page of
-// model.ChordQualities. Five columns is what fits a phone at the touch
-// minimum; the pages (Triads · 7ths · Ext · Sus) carry the rest.
+// Five quality columns is what fits a phone at the touch minimum; pages carry the rest.
 type chordMatrixModel struct {
 	page       int             // index into model.ChordPages
 	rootPitch  float64         // the node's Pitch (the chord root)
@@ -39,8 +35,7 @@ func (m chordMatrixModel) CellLabel(col, row int) string {
 	return model.ChordName(row, model.ChordSpec{Quality: qs[col].ID})
 }
 
-// CellSelectable: every cell is reachable — PickAt folds the root by an
-// octave rather than leaving the legal pitch range.
+// Every cell: PickAt folds the root by an octave rather than leaving the legal range.
 func (m chordMatrixModel) CellSelectable(col, row int) bool {
 	return col >= 0 && col < m.Cols() && row >= 0 && row < 12
 }
@@ -76,10 +71,8 @@ func (m chordMatrixModel) Title() string {
 	return model.ChordName(m.rootMIDI(), m.spec)
 }
 
-// PickAt is what picking (col, row) does: the root moves to that pitch class
-// IN THE CURRENT ROOT'S OCTAVE (folded by an octave to stay inside
-// NodePitchMin/Max), the quality becomes the column's, the inversion is
-// re-clamped to it and the spread is kept.
+// The root stays in the CURRENT root's octave (folded to stay in range); the inversion is re-clamped and the
+// spread kept.
 func (m chordMatrixModel) PickAt(col, row int) (pitch float64, spec model.ChordSpec) {
 	qs := m.qualities()
 	if col < 0 || col >= len(qs) {

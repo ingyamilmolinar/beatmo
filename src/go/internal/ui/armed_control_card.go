@@ -6,24 +6,15 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// armed_control_card.go — the ARMED control's grown card, shared by the Synth
-// and Sampler tabs so an armed card is pixel-identical on both at equal size.
-//
-// Layout mirrors ArmedControlEditor.SetCardRect exactly: a header band one
-// wheel row tall carrying the param name, then the body split into an optional
-// left resolution lane and a wider right value lane with a gutter between them.
-// `r` is the GROWN rect the caller's grow/reflow pass already assigned.
-//
-// This bypasses the per-card ParamCard sprite cache on purpose: the lanes
-// animate every frame, and a cached sprite would freeze mid-scroll.
+// Shared by the Synth and Sampler tabs so an armed card is pixel-identical; mirrors SetCardRect's layout.
+// Bypasses the ParamCard sprite cache on purpose: the lanes animate every frame.
 func drawArmedControlCard(dst *ebiten.Image, r image.Rectangle, name string,
 	e *ArmedControlEditor, valB, resB barrelBinding) {
 	if e == nil || r.Empty() {
 		return
 	}
 	rad := RadiusControl
-	// Flat-tonal armed card: one filled body plus the accent bar marking it as
-	// the armed control. No shell/bevel/rim.
+	// Flat-tonal: one filled body plus the accent bar marking it armed.
 	capR := r
 	drawFlatButtonBody(dst, capR, TokenSurface3(), rad)
 	drawFlatSelectionBar(dst, capR, colConceptStroke, selectionEdgeBottom, 1)
@@ -47,8 +38,7 @@ func drawArmedControlCard(dst *ebiten.Image, r image.Rectangle, name string,
 	if rr := e.ResLaneRect(); !rr.Empty() && resB != nil {
 		drawBarrelLane(dst, rr, e.res(), resB, style)
 	}
-	// A subtle 1px hairline in the gutter between the two lanes so their label
-	// stacks read as two distinct columns rather than merging.
+	// A hairline in the gutter so the two label stacks read as separate columns.
 	if gap := e.LaneGapRect(); !gap.Empty() {
 		divX := gap.Min.X + gap.Dx()/2
 		div := image.Rect(divX, gap.Min.Y+SpaceXS, divX+1, gap.Max.Y-SpaceXS)

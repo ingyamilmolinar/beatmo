@@ -17,8 +17,7 @@ type Camera struct {
 
 func NewCamera() *Camera { return &Camera{Scale: 2.0} }
 
-// Reset restores the default zoom and recenters the view (the keyboard "0"
-// shortcut). Default scale matches NewCamera (2.0).
+// The keyboard "0" shortcut; scale 2.0 as in NewCamera.
 func (c *Camera) Reset() {
 	c.Scale = 2.0
 	c.OffsetX = 0
@@ -26,8 +25,6 @@ func (c *Camera) Reset() {
 	c.Snap()
 }
 
-// ScreenPos converts world coordinates to screen-space using the current
-// camera transform.
 func (c *Camera) ScreenPos(x, y float64) (sx, sy float64) {
 	sx = x*c.Scale + c.OffsetX
 	sy = y*c.Scale + c.OffsetY
@@ -42,9 +39,7 @@ func (c *Camera) GeoM() ebiten.GeoM {
 	return m
 }
 
-// GeoMRounded returns a matrix like GeoM but rounds the translation
-// to integer pixels. This keeps grid lines and nodes aligned when
-// the camera moves with fractional offsets.
+// Integer translation keeps grid lines and nodes aligned under fractional offsets.
 func (c *Camera) GeoMRounded() ebiten.GeoM {
 	var m ebiten.GeoM
 	m.Scale(c.Scale, c.Scale)
@@ -52,10 +47,7 @@ func (c *Camera) GeoMRounded() ebiten.GeoM {
 	return m
 }
 
-// Snap clamps the camera offsets to integer pixels and limits their magnitude
-// so panning across huge distances doesn't accumulate floating-point error.
-// Snapping keeps grid lines aligned with world coordinates and avoids
-// precision loss when the camera moves very far from the origin.
+// Bounded offsets stop far pans from accumulating floating-point error.
 func (c *Camera) Snap() {
 	c.OffsetX = math.Round(c.OffsetX)
 	c.OffsetY = math.Round(c.OffsetY)
@@ -72,16 +64,12 @@ func (c *Camera) Snap() {
 	}
 }
 
-// HandleMouse mutates Scale / Offset by reading Ebiten’s mouse state.
-// When allowPan is false (e.g. cursor over drum view) the camera ignores
-// both wheel zoom and dragging so drum interactions don’t affect the grid.
+// allowPan false (cursor over the drum view) ignores wheel and drag so drum input never moves the grid.
 func (c *Camera) HandleMouse(allowPan bool) bool {
 	dragging := false
 	debugGeom := (os.Getenv("DEBUG_GEOM") == "1")
 	if allowPan {
-		// Detents, not raw platform units — see input_dynamics.go. Reading the
-		// raw wheel here made browser zoom ~50x too fast (one notch is ~100 in
-		// DOM_DELTA_PIXEL but +/-1 on native GLFW).
+		// Detents, not raw units: raw browser wheel values are ~100× native ones.
 		if _, wheelY := wheelNotches(); wheelY != 0 {
 			mx, my := cursorPosition()
 			wx := (float64(mx) - c.OffsetX) / c.Scale
@@ -112,14 +100,8 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 			x, y := cursorPosition()
 			switch {
 			case !camDrag.active:
-				// Press edge: anchor here, but pan nothing yet. Movement under
-				// the tap slop (tapMaxMovePx) is treated as a stationary tap so
-				// a click/tap that jitters a few pixels neither pans the grid
-				// nor suppresses node creation (handleEditor gates node-add on
-				// !camDragged; the touch path gates it on movedBeyondTap). Pan
-				// commits only once the pointer crosses the same slop that
-				// classifies a touch tap-vs-drag — one threshold for the whole
-				// gesture model.
+				// Pans nothing until the pointer crosses the tap slop, so a jittery click neither pans nor suppresses node
+				// creation: one threshold for the whole gesture model.
 				camDrag = dragTracker{active: true, startX: x, startY: y, lastX: x, lastY: y}
 			case camDrag.committed:
 				if x != camDrag.lastX || y != camDrag.lastY {
@@ -129,10 +111,7 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 				}
 				camDrag.lastX, camDrag.lastY = x, y
 			case abs(x-camDrag.startX) >= tapMaxMovePx || abs(y-camDrag.startY) >= tapMaxMovePx:
-				// Crossed the slop deadzone. Commit and pan by the full travel
-				// from the press anchor (not just this frame's delta) so no
-				// motion is lost when an entire drag lands in one frame — a fast
-				// flick, or a single-step programmatic move in a test.
+				// Pan by the full travel from the press anchor, so a drag that lands in one frame loses nothing.
 				c.OffsetX += float64(x - camDrag.startX)
 				c.OffsetY += float64(y - camDrag.startY)
 				dragging = true
@@ -151,12 +130,7 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 
 /* ─── internal helpers ─── */
 
-// dragTracker is the per-gesture pan state for a single held pointer/touch.
-// It replaces the old raw prev-position delta so the camera can apply a slop
-// deadzone: a gesture pans only after the pointer travels at least tapMaxMovePx
-// from where the button went down. Package-level (one active pointer at a time);
-// reset when the button releases so a stale anchor never leaks into the next
-// gesture.
+// Package-level (one active pointer), reset on release so a stale anchor never leaks into the next gesture.
 type dragTracker struct {
 	active    bool // button is currently held
 	committed bool // travelled past the slop → panning

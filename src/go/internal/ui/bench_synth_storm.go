@@ -1,8 +1,6 @@
 package ui
 
-// benchStormScenario selects the opt-in synth param-mutation pattern the
-// desktop bench replays during its measure window. Default (off) leaves the
-// existing bench output unchanged.
+// Off by default, leaving the bench output unchanged.
 type benchStormScenario int
 
 const (
@@ -25,13 +23,9 @@ func parseBenchStormScenario(s string) benchStormScenario {
 	}
 }
 
-// ParseBenchStormScenario is the exported entry point for cmd/, which cannot
-// see the unexported benchStormScenario parser directly.
 func ParseBenchStormScenario(s string) benchStormScenario { return parseBenchStormScenario(s) }
 
-// benchStormName returns the canonical scenario name emitted into the
-// [bench_json] line's "stormScenario" field. Inverse of parseBenchStormScenario
-// for the non-alias spellings ("ctrl-sweep" rather than "ctrl").
+// The canonical (non-alias) spelling.
 func benchStormName(sc benchStormScenario) string {
 	switch sc {
 	case benchStormToggle:
@@ -45,15 +39,12 @@ func benchStormName(sc benchStormScenario) string {
 	}
 }
 
-// benchStormMutation is a single param write the bench applies via
-// audio.SetInstrumentParam(instrumentID, Param, Value).
 type benchStormMutation struct {
 	Param string
 	Value float64
 }
 
-// benchStormMutationsForTick returns the param writes for a given storm tick.
-// Deterministic (no time/random) so the unit test and the live bench agree.
+// Deterministic (no time or random) so the unit test and the live bench agree.
 func benchStormMutationsForTick(sc benchStormScenario, tick int) []benchStormMutation {
 	switch sc {
 	case benchStormToggle:

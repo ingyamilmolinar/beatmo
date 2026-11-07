@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// Theme editor panel geometry. Width matches the Settings card so the two
-// corner-button panels read as siblings.
+// The Settings card's width, so the corner-button panels read as siblings.
 const (
 	themeRowH          = 44 // one list row (preset / category chip row)
 	themeChipSize      = 28 // desktop chip edge; floored at TouchMinTarget() on mobile
@@ -37,10 +36,7 @@ type themeRow struct {
 	rect image.Rectangle
 }
 
-// ThemeOverlay is the Theme editor: a MenuCard whose body holds the scope
-// pills, the override toggle, the FIRST-PARTY PRESET list, and a collapsed
-// "Adjust colors" section with the per-category chips. Every pick applies
-// live through Game.recomputeEffectiveTheme.
+// Every pick applies live.
 type ThemeOverlay struct {
 	g      *Game
 	closed bool
@@ -63,8 +59,7 @@ type ThemeOverlay struct {
 	chipRects  map[string]image.Rectangle
 	rows       []themeRow
 
-	// onChip is invoked with the category id when its swatch chip is pressed
-	// (theme_picker.go wires it to the swatch picker). Nil-safe.
+	// Nil-safe.
 	onChip func(categoryID string)
 
 	scroll     *MenuScroll
@@ -72,12 +67,10 @@ type ThemeOverlay struct {
 	rowsView   image.Rectangle
 	rowH       int
 
-	// lastAnchor/lastBounds replay Layout when the row set changes (Adjust
-	// toggled): the portal lays an overlay out only on open, while it
-	// republishes HitAreas every frame.
+	// The portal lays an overlay out only on open but republishes HitAreas every frame, so a changed row set replays
+	// Layout.
 	lastAnchor, lastBounds image.Rectangle
-	// nav is the shared keyboard cursor (menu_keynav.go): arrows/Enter/Home/End
-	// over the SAME row list the mouse sees. Lazily created by keyNav().
+	// Over the SAME row list the mouse sees; lazy.
 	nav *MenuKeyNav
 }
 
@@ -109,10 +102,7 @@ func NewThemeOverlay(g *Game) *ThemeOverlay {
 	return o
 }
 
-// initialThemeScope opens the editor on the document that is actually in
-// effect, so the highlighted preset row matches what the user sees: the
-// circuit's theme when the circuit carries one and the profile does not
-// override it, else the profile.
+// The document actually in effect, so the highlighted preset matches what the user sees.
 func initialThemeScope(g *Game) hooks.ThemeScope {
 	if g != nil && !g.userTheme.OverrideCircuits && !g.circuitTheme.IsEmpty() {
 		return hooks.ThemeScopeCircuit
@@ -120,8 +110,7 @@ func initialThemeScope(g *Game) hooks.ThemeScope {
 	return hooks.ThemeScopeUser
 }
 
-// SetPositioner injects an owner-supplied positioner (desktop: anchored under
-// the grid palette button). nil → centered on screenBounds.
+// nil centres it.
 func (o *ThemeOverlay) SetPositioner(place func(w, h int) image.Rectangle) { o.place = place }
 
 // SetMaxHeight injects the height budget the positioner can honour.
@@ -173,19 +162,13 @@ func (o *ThemeOverlay) SetAdjustExpanded(on bool) {
 	if !o.lastBounds.Empty() {
 		o.Layout(o.lastAnchor, o.lastBounds)
 	}
-	// The list changed shape below the header; a cursor that was on a chip
-	// row now points past the end, so it clears rather than landing on
-	// whatever row slid under it. A cursor on the header keeps its index.
+	// A cursor past the end clears rather than landing on whatever row slid under it.
 	if o.keyNav().Selected() >= len(o.rowList()) {
 		o.keyNav().Reset()
 	}
 }
 
-// --- MenuKeyNavHost (menu_keynav.go) --------------------------------------
-//
-// Every virtual row is actionable — a preset row applies the preset, the
-// Adjust header toggles the chips, a chip row opens the swatch picker — so
-// there is no unselectable chrome to step over.
+// Every row is actionable, so there is no unselectable chrome to skip.
 
 func (o *ThemeOverlay) keyNav() *MenuKeyNav {
 	if o.nav == nil {
@@ -226,8 +209,7 @@ func (o *ThemeOverlay) MenuScrollBehavior() *ScrollBehavior {
 	return o.scroll.ScrollBehavior()
 }
 
-// ClaimsKeyboard implements KeyboardClaimant: while the editor is open its
-// arrows move the row cursor, not the grid camera.
+// Its arrows move the cursor, not the camera.
 func (o *ThemeOverlay) ClaimsKeyboard() bool { return !o.closed }
 
 // MenuKeyNavForTest exposes the keyboard cursor for tests.
@@ -258,8 +240,7 @@ func (o *ThemeOverlay) scopeDoc() theme.Doc {
 	return o.g.userTheme.Doc
 }
 
-// activePresetID is the preset row shown active for the active scope: the
-// scope's own preset, else the shipped default.
+// The scope's own preset, else the shipped default.
 func (o *ThemeOverlay) activePresetID() string {
 	if id := o.scopeDoc().Preset; id != "" {
 		return id
@@ -267,8 +248,6 @@ func (o *ThemeOverlay) activePresetID() string {
 	return defaultThemePresetID
 }
 
-// customized reports whether the active scope tweaked categories/tokens on
-// top of its preset.
 func (o *ThemeOverlay) customized() bool {
 	d := o.scopeDoc()
 	return len(d.Categories) > 0 || len(d.Tokens) > 0
@@ -285,9 +264,7 @@ func (o *ThemeOverlay) pickPreset(id string) {
 	}
 }
 
-// chipState reports whether the active scope explicitly sets the category
-// (ring) and, if not, whether the shown color is inherited from the other
-// source rather than the default.
+// set: the scope sets it (ring); inherited: the shown colour comes from the other source.
 func (o *ThemeOverlay) chipState(id string) (set, inherited bool) {
 	if _, ok := o.scopeDoc().Categories[id]; ok {
 		return true, false
@@ -296,8 +273,7 @@ func (o *ThemeOverlay) chipState(id string) (set, inherited bool) {
 	return false, inherited
 }
 
-// chipColor is the category's EFFECTIVE principal color — the live value of
-// its first token (background → the canvas, accent → primary…).
+// The live value of its first token.
 func (o *ThemeOverlay) chipColor(id string) color.RGBA {
 	var none color.RGBA
 	c, ok := themeCategoryByID(id)
@@ -310,9 +286,7 @@ func (o *ThemeOverlay) chipColor(id string) color.RGBA {
 	return none
 }
 
-// chipSwatch is the swatch currently driving the category — what the picker
-// rings as "current": the scope's pick, else the active preset's, else the
-// category anchor.
+// What the picker rings as current: the scope's pick, the preset's, else the anchor.
 func (o *ThemeOverlay) chipSwatch(id string) color.RGBA {
 	if name, ok := ActiveTheme().Categories[id]; ok {
 		if c, ok := swatchRGBA(name); ok {
@@ -340,8 +314,7 @@ func (o *ThemeOverlay) resetCategory(id string) {
 	}
 }
 
-// onResetAll is a two-tap confirm (first tap arms the destructive button,
-// second within themeResetAllArmMs fires), mirroring the row Delete button.
+// Two taps (arm, then fire within the window), like the row Delete button.
 func (o *ThemeOverlay) onResetAll() {
 	now := nowUnixMilli()
 	if !o.resetAllArmed || now-o.resetAllArmedAt > themeResetAllArmMs {
@@ -372,8 +345,6 @@ func (o *ThemeOverlay) chipSize() int {
 	return themeChipSize
 }
 
-// rowList rebuilds the virtual row list: presets, the Adjust header, and
-// (when expanded) one row per category.
 func (o *ThemeOverlay) rowList() []themeRow {
 	rows := make([]themeRow, 0, len(themePresets)+1+len(themeCategories))
 	for _, p := range themePresets {
@@ -392,8 +363,6 @@ func (o *ThemeOverlay) cardSpec() MenuCardSpec {
 	return MenuCardSpec{Title: i18n.T(i18n.KeyThemeTitle), IconID: IconPalette, Footer: []*Button{o.resetAllBtn}}
 }
 
-// Layout sizes the panel, hands the frame to the MenuCard, and positions the
-// pills, the override toggle and the scrolling row list inside the body.
 func (o *ThemeOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	o.lastAnchor, o.lastBounds = anchor, screenBounds
 	b := screenBounds
@@ -440,8 +409,7 @@ func (o *ThemeOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	if vis < 1 {
 		vis = 1
 	}
-	// The portal re-Layouts every frame; keep the scroll (and its offset)
-	// unless the row stride changed.
+	// Re-laid every frame: keep the scroll unless the row stride changed.
 	if o.scrollRowH != o.rowH {
 		o.scroll = NewMenuScroll(DropdownScrollbarStyle, o.rowH)
 		o.scrollRowH = o.rowH
@@ -477,8 +445,7 @@ func (o *ThemeOverlay) layoutRows() {
 	}
 }
 
-// Update re-lays rows while scroll momentum runs (PortalUpdater) and lets a
-// stale Reset-all arm time out.
+// Lets a stale Reset-all arm time out.
 func (o *ThemeOverlay) Update() {
 	if o.scroll != nil && o.scroll.UpdateMomentum() {
 		o.layoutRows()
@@ -507,9 +474,7 @@ func (o *ThemeOverlay) HoverAt(mx, my int) {
 	}
 }
 
-// themePanelHandler is the full-panel catch-all + scroll owner (mirrors
-// settingsPanelHandler). Chip presses are resolved here by rect so a chip
-// needs no Button of its own.
+// Chips are hit-tested here by rect, so a chip needs no Button.
 type themePanelHandler struct{ o *ThemeOverlay }
 
 func (h themePanelHandler) OnPress(x, y int) InputResult {
@@ -546,9 +511,8 @@ func (h themePanelHandler) OnWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// HitAreas: frame controls (close ×, footer) and every Button FIRST (they win
-// the equal-z stable sort), the panel catch-all LAST. List rows are clipped
-// to the rows viewport so a scrolled-away row cannot be pressed.
+// Buttons FIRST (they win the equal-z sort), the catch-all LAST; rows clip to the viewport so a scrolled-away row
+// cannot be pressed.
 func (o *ThemeOverlay) HitAreas() []HitArea {
 	if o.rect.Empty() {
 		return nil
@@ -580,8 +544,7 @@ func (o *ThemeOverlay) HitAreas() []HitArea {
 	return append(areas, o.card.CatchAll(ZOverlayMin, "theme", themePanelHandler{o: o}))
 }
 
-// presetSwatchStrip paints the five-square strip that identifies a preset at
-// a glance: background, surfaces, accent, viz, text.
+// Background, surfaces, accent, viz, text.
 func presetSwatchStrip(dst *ebiten.Image, r image.Rectangle, p ThemePreset) {
 	order := [themeStripCount]string{"background", "surfaces", "accent", "viz", "text"}
 	x := r.Min.X
@@ -596,9 +559,6 @@ func presetSwatchStrip(dst *ebiten.Image, r image.Rectangle, p ThemePreset) {
 // presetStripW is the strip's total width.
 func presetStripW() int { return themeStripCount*themeStripSwatch + (themeStripCount-1)*2 }
 
-// Draw paints the frame through the MenuCard, then the body: pills, override
-// toggle, the scrolling list (preset rows with strip + name + gloss, the
-// Adjust header, the chip rows) and the scrollbar.
 func (o *ThemeOverlay) Draw(screen *ebiten.Image) {
 	if screen == nil || o.rect.Empty() {
 		return
@@ -606,8 +566,7 @@ func (o *ThemeOverlay) Draw(screen *ebiten.Image) {
 	o.DrawPanel(screen) // the portal paints the scrim (menuCardEntry: Scrim)
 }
 
-// DrawPanel paints the panel WITHOUT the scrim. Game.Draw re-runs it after
-// the pane dividers so the window-bounded panel is never crossed by them.
+// Re-run after the pane dividers so they never cross the window-bounded panel.
 func (o *ThemeOverlay) DrawPanel(screen *ebiten.Image) {
 	if screen == nil || o.rect.Empty() {
 		return
@@ -634,8 +593,7 @@ func (o *ThemeOverlay) DrawPanel(screen *ebiten.Image) {
 		if !r.rect.Overlaps(o.rowsView) {
 			continue
 		}
-		// Keyboard cursor on a header/chip row: the same hover tint every
-		// menu row uses, so arrows show where Enter will land.
+		// The menu-row hover tint, so the arrows show where Enter lands.
 		if i == sel && r.kind != themeRowPreset {
 			drawMenuItemBackgroundAccent(rows, r.rect, menuItemHover, colAccent)
 		}
@@ -689,9 +647,7 @@ func (o *ThemeOverlay) DrawPanel(screen *ebiten.Image) {
 // windowRect is the whole window in screen coordinates.
 func (g *Game) windowRect() image.Rectangle { return image.Rect(0, 0, g.winW, g.winH) }
 
-// openThemeOverlay opens the theme editor (grid gear-cluster sibling of
-// Settings) through the shared menuCardEntry: non-modal + scrim, so Esc, the
-// close × and a tap outside all close it like every other menu.
+// Through menuCardEntry, so Esc, × and an outside tap close it like every menu.
 func (dv *DrumView) openThemeOverlay() {
 	if dv.tree == nil {
 		return
@@ -704,9 +660,7 @@ func (dv *DrumView) openThemeOverlay() {
 	anchor := image.Rectangle{}
 	if g := dv.game; g != nil {
 		anchor = g.gridThemeButtonRect()
-		// Window-bounded (unlike the pane-clamped Settings/Logs): the preset
-		// list needs the height, and the scrim already covers both panes. It
-		// still drops under the palette button and clears the corner cluster.
+		// Window-bounded, unlike Settings/Logs: the preset list needs the height, and the scrim covers both panes.
 		ov.SetPositioner(func(w, h int) image.Rectangle {
 			return anchoredPopupRect(g.gridThemeButtonRect(), w, h, g.windowRect(), GridAnchorOpts{Avoid: []image.Rectangle{g.gridTopButtonsReservedRect()}})
 		})

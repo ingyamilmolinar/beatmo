@@ -6,11 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// portal returns the SINGLE global OverlayPortal, owned by the top-of-z
-// overlay subtree. Every popup — whether opened by DrumView directly
-// (drumview_portal_open.go) or by a zone via SetPortal — routes here, so all
-// overlays composite and hit-test above every base zone in every subtree. This
-// is the one place that answers "where do popups live?".
+// The SINGLE global portal, owned by the top-of-z overlay subtree, so every popup composites and hit-tests
+// above every base zone.
 func (dv *DrumView) portal() *OverlayPortal {
 	if dv == nil || dv.overlayTree == nil {
 		return nil
@@ -18,9 +15,6 @@ func (dv *DrumView) portal() *OverlayPortal {
 	return dv.overlayTree.Portal()
 }
 
-// dvOverlayPortal wraps a DrumView-owned overlay (ContextMenu, FXPanel,
-// Overflow, Naming) as a PortalOverlay. Each instance delegates to existing
-// DrumView methods via function fields.
 type dvOverlayPortal struct {
 	id       string
 	isOpenFn func() bool
@@ -31,16 +25,11 @@ type dvOverlayPortal struct {
 	updateFn func()           // optional per-frame update (momentum, animation)
 	hoverFn  func(mx, my int) // optional per-frame plain-hover refresh (portalHoverer)
 	escapeFn func() bool      // optional Esc handler; true → keep portal open
-	// claimsKeyboardFn, when set and true, marks this overlay as owning the
-	// keyboard (KeyboardClaimant) so the grid's keyboard shortcuts yield while
-	// it is open — required for any overlay hosting a focused text input (e.g.
-	// the overflow menu's template search box). See keyboard_focus.go.
+	// Required for any overlay hosting a focused text input, so the grid's shortcuts yield while it is open.
 	claimsKeyboardFn func() bool
 }
 
-// ClaimsKeyboard implements KeyboardClaimant: reports whether this overlay owns
-// keyboard input while open, so DrumView.KeyboardClaimed() gates the grid's
-// keyboard shortcuts off (arrows reach the caret, not the camera).
+// Arrows then reach the caret, not the camera.
 func (o *dvOverlayPortal) ClaimsKeyboard() bool {
 	return o.claimsKeyboardFn != nil && o.claimsKeyboardFn()
 }
@@ -52,16 +41,13 @@ func (o *dvOverlayPortal) Update() {
 	}
 }
 
-// HoverAt implements portalHoverer: forwards the plain cursor position so the
-// wrapped overlay can refresh its buttons' hovered flags each frame.
 func (o *dvOverlayPortal) HoverAt(mx, my int) {
 	if o.hoverFn != nil {
 		o.hoverFn(mx, my)
 	}
 }
 
-// HandleEscape implements portalEscapeHandler: lets the wrapped overlay clear
-// its own field (e.g. a search query) before the universal handler closes it.
+// Lets the overlay clear its own field (a search query) before the universal handler closes it.
 func (o *dvOverlayPortal) HandleEscape() bool {
 	if o.escapeFn != nil {
 		return o.escapeFn()

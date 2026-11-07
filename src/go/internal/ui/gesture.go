@@ -14,9 +14,7 @@ const (
 	panMinCenterMove     = 5   // min center movement for two-finger pan
 )
 
-// mouseHoldPopupFrames is the desktop mouse equivalent of the touch
-// long-press threshold, in Update ticks (60 TPS): click-and-hold a node this
-// long without moving opens the quick-action popup.
+// In Update ticks (60 TPS).
 const mouseHoldPopupFrames = longPressThresholdMS * 60 / 1000
 
 // GestureKind identifies the type of detected gesture.
@@ -62,24 +60,15 @@ func (ts *TouchState) detectGesture(endedTouches []*TouchPoint, now time.Time) *
 			ts.twoFingerStarted = false
 		}
 
-		// Check for tap (single touch ended quickly with minimal movement).
-		// Skip if multi-touch cooldown is active — the ended touch was the
-		// trailing finger of a pinch/pan, not an intentional tap.
+		// Not during the multi-touch cooldown: the ended touch was a pinch's trailing finger.
 		if len(endedTouches) == 1 && touchCount == 0 && ts.multiTouchCooldown == 0 {
 			pt := endedTouches[0]
 			duration := now.Sub(pt.StartTime).Milliseconds()
 			dx := abs(pt.X - pt.StartX)
 			dy := abs(pt.Y - pt.StartY)
 
-			// A gesture that ever crossed the tap slop is a drag (pan) for the
-			// rest of its life, never a tap — even if the finger wanders back to
-			// within tapMaxMovePx of the start before lifting. The net start→end
-			// displacement (dx/dy) alone is not enough: a pan that returns near
-			// its origin would otherwise be misread as a tap and create a
-			// spurious node at the lift point. movedBeyondTap is the same latch
-			// that disqualifies a moved gesture from long-press (mirrors the
-			// !pt.movedBeyondTap guard below), so tap/long-press/drag all agree
-			// on one threshold.
+			// A gesture that ever crossed the tap slop stays a drag even if it wanders back: a pan returning near its origin
+			// would otherwise create a node at the lift point. The same latch disqualifies long-press.
 			if duration <= tapMaxDurationMS && dx <= tapMaxMovePx && dy <= tapMaxMovePx && !pt.movedBeyondTap {
 				return &GestureEvent{
 					Kind: GestureTap,
@@ -115,8 +104,7 @@ func (ts *TouchState) detectGesture(endedTouches []*TouchPoint, now time.Time) *
 			// Long-press already fired - fall through to check for drag
 		}
 
-		// Single finger drag (after initial threshold)
-		// This is now reachable even after long-press fires, allowing drag-after-long-press
+		// Reachable after a long-press too, so a drag can follow one.
 		if duration > 50 { // Small delay to distinguish from tap
 			deltaX := pt.X - pt.PrevX
 			deltaY := pt.Y - pt.PrevY

@@ -11,8 +11,7 @@ func daysInMonth(year int, m time.Month) int {
 	return time.Date(year, m+1, 0, 0, 0, 0, 0, time.Local).Day()
 }
 
-// firstCellDate is the Sunday on/before the 1st of (year, m), at local midnight
-// — grid cell 0 of a Sunday-first month view.
+// Cell 0 of a Sunday-first month view.
 func firstCellDate(year int, m time.Month) time.Time {
 	first := time.Date(year, m, 1, 0, 0, 0, 0, time.Local)
 	return first.AddDate(0, 0, -int(first.Weekday())) // Sunday == 0

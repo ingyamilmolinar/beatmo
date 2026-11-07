@@ -35,21 +35,13 @@ func expandHome(p string) string {
 	return p
 }
 
-// buildDemo loads the launch circuit: a BEATMO_DEMO_CONFIG / BEATMO_CONFIG
-// override when set, otherwise the embedded startup_demo.json.
 func (g *Game) buildDemo() {
 	if g.demoBuilt || g.drum == nil || g.graph == nil {
 		return
 	}
 
-	// The initial demo circuit is NOT a user action. Whichever construction path
-	// runs below (env config / embedded startup JSON), the
-	// build emits node/row/edge changes (Import) that
-	// would otherwise be recorded as the first undo step — leaving the transport
-	// Undo button lit at launch instead of greyed. Suppress undo recording for the
-	// whole build (the same flag undo-restore uses), then establish the freshly
-	// built document as the clean, empty-history baseline. The early-return above
-	// runs first, so a redundant buildDemo call never wipes real user history.
+	// The startup circuit is not a user action: undo recording is suppressed for the whole build and the result
+	// becomes the empty-history baseline, so Undo is not lit at launch.
 	if g.undoManager != nil {
 		g.undoManager.restoring = true
 		defer func() {
@@ -58,8 +50,6 @@ func (g *Game) buildDemo() {
 		}()
 	}
 
-	// Optional override: when BEATMO_DEMO_CONFIG (or BEATMO_CONFIG) is set,
-	// load that JSON as the initial circuit.
 	cfg := os.Getenv("BEATMO_DEMO_CONFIG")
 	if cfg == "" {
 		cfg = os.Getenv("BEATMO_CONFIG")
@@ -70,9 +60,7 @@ func (g *Game) buildDemo() {
 		if data, err := os.ReadFile(path); err == nil {
 			if err := g.Import(data); err == nil {
 				g.logger.Infof("[demo] Imported env config: rows=%d nodes=%d start=%v", len(g.drum.Rows), len(g.graph.Nodes), g.graph.StartNodeID)
-				// If the imported config lacks instruments, create a sensible
-				// default drum row and set a start node so playback and the
-				// drum view work out of the box.
+				// A config without instruments gets one default row and a start node, so playback works out of the box.
 				if len(g.drum.Rows) == 0 {
 					// Pick the lowest non-invisible node id as origin.
 					minID := model.InvalidNodeID
@@ -117,11 +105,8 @@ func (g *Game) buildDemo() {
 		}
 	}
 
-	// The startup demo comes EXCLUSIVELY from the embedded startup_demo.json:
-	// nothing is built, recolored or tuned on top of it here. demoBuilt is set
-	// even when the import fails so a broken asset is reported once instead of
-	// being retried every frame; the layout's empty-grid fallback then gives
-	// the user a single start node.
+	// Nothing is built or tuned on top of the startup JSON. demoBuilt is set even on failure, so a broken asset is
+	// reported once instead of every frame.
 	g.demoBuilt = true
 	if err := g.Import(assets_pkg.StartupDemoJSON); err != nil {
 		g.logger.Errorf("[demo] Failed to import the embedded startup demo: %v", err)
@@ -143,10 +128,7 @@ func (g *Game) RunDemo() {
 	}()
 }
 
-// RunBenchmark configures the game to auto-play the demo circuit at the given
-// BPM for the specified duration, then exit cleanly via ebiten.Termination.
-// storm/stormInst are an opt-in synth param-mutation storm (benchStormOff +
-// "" leaves the existing bench behavior unchanged).
+// Exits via ebiten.Termination. benchStormOff + "" leaves the bench unchanged.
 func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario, stormInst instrument.ID) {
 	g.benchBPM = bpm
 	g.benchDuration = dur
@@ -155,9 +137,7 @@ func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario
 	g.demoScheduled = true
 }
 
-// RunRecordBenchmark is RunBenchmark plus simultaneous audio recording.
-// Captured WAV files and a perf snapshot land in outDir; outDir must
-// already exist.
+// outDir must exist.
 func (g *Game) RunRecordBenchmark(bpm int, dur time.Duration, outDir string) {
 	g.benchBPM = bpm
 	g.benchDuration = dur

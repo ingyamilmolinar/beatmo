@@ -8,10 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// legacyNotifKeys is the set of notification message keys whose English
-// rendering may have been persisted as a frozen string (notification.text with
-// no key) by an older build or a prior English session. resolveLegacyNotif
-// matches such a string back to its key so the history retranslates.
+// Keys whose English text an older build or English session may have persisted frozen, matched back so the
+// history retranslates.
 var legacyNotifKeys = []i18n.Key{
 	i18n.KeyNotifUndo, i18n.KeyNotifRedo, // arg'd; matched before others is fine (distinct prefixes)
 	i18n.KeyNotifRenamedInstrument, i18n.KeyNotifErrLoadJSON,
@@ -39,8 +37,7 @@ var (
 func buildLegacyNotifMatchers() {
 	for _, k := range legacyNotifKeys {
 		tmpl := i18n.EN(k)
-		// Build a regex from the English template: escape literal segments,
-		// replace each %s/%d/%v with a non-greedy capture group.
+		// Literal segments escaped, each verb a non-greedy capture.
 		parts := legacyNotifVerb.Split(tmpl, -1)
 		for i := range parts {
 			parts[i] = regexp.QuoteMeta(parts[i])
@@ -54,11 +51,7 @@ func buildLegacyNotifMatchers() {
 	}
 }
 
-// resolveLegacyNotif reverse-maps a frozen English notification string back to
-// its i18n key + args so historical/persisted entries retranslate when drawn.
-// For undo/redo, the captured action name is itself mapped back to its action
-// key (as an "@key" arg) so it retranslates too. ok=false when nothing matches
-// (the string is shown verbatim).
+// An undo/redo's captured action name maps back to its key ("@key") so it retranslates too; !ok shows verbatim.
 func resolveLegacyNotif(text string) (i18n.Key, []string, bool) {
 	legacyNotifOnce.Do(buildLegacyNotifMatchers)
 	for _, m := range legacyNotifMatchers {

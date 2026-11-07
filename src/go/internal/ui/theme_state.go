@@ -5,16 +5,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// theme_state.go — the two theme sources a Game holds (user profile theme and
-// the open circuit's theme) and the precedence that merges them.
-
-// effectiveTheme merges the user profile theme and the circuit theme, per
-// category and per explicit token:
-//
-//	override && user has it → user
-//	else circuit has it     → circuit
-//	else user has it        → user
-//	else                    → default (absent)
+// Per category and per token: override && user → user; else circuit; else user; else the default.
 func effectiveTheme(user theme.UserDoc, circuit theme.Doc) theme.Doc {
 	pick := func(u, c map[string]string) map[string]string {
 		out := map[string]string{}
@@ -52,8 +43,7 @@ func effectivePresetID(user theme.UserDoc, circuit theme.Doc) string {
 	}
 }
 
-// setUserThemePreset makes id the profile theme, dropping any per-category
-// customization so the preset name stays truthful.
+// Customisation is dropped so the preset name stays truthful.
 func (g *Game) setUserThemePreset(id string) {
 	g.userTheme.Doc = theme.Doc{Preset: id}
 	g.recomputeEffectiveTheme()
@@ -68,8 +58,7 @@ func (g *Game) setCircuitThemePreset(id string) {
 	emitCircuitThemeChanged("preset", id)
 }
 
-// dropTokensOfCategory removes every explicit token override owned by the
-// category, so an editor pick is never shadowed by a stale hand-authored hex.
+// So a pick is never shadowed by a stale hand-authored hex.
 func dropTokensOfCategory(d *theme.Doc, id string) {
 	for tok := range d.Tokens {
 		if owner, ok := themeCategoryOfToken(tok); ok && owner == id {
@@ -78,9 +67,7 @@ func dropTokensOfCategory(d *theme.Doc, id string) {
 	}
 }
 
-// recomputeEffectiveTheme re-resolves precedence and applies only when the
-// document actually changed (an import of an unthemed circuit must not cost
-// a cache-rebuild burst).
+// Applies only on a real change: importing an unthemed circuit must not cost a cache-rebuild burst.
 func (g *Game) recomputeEffectiveTheme() {
 	eff := effectiveTheme(g.userTheme, g.circuitTheme)
 	if eff.Equal(ActiveTheme()) {

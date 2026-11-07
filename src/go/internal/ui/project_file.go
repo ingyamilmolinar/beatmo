@@ -14,62 +14,33 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// projectFile is the on-the-wire shape of a Beatmo project (beatmo.json).
-//
-// Export and import share ONE struct deliberately. They were previously two
-// field-identical declarations (exportFile / importFile) that had to be
-// edited in lockstep; when they drifted, a field written by the exporter was
-// silently dropped by the importer — that is exactly how authored kits and
-// node groups were lost before they were mirrored by hand.
+// ONE struct for export and import: two parallel declarations drifted and the importer silently dropped fields
+// the exporter wrote.
 type projectFile struct {
 	schema.Envelope
 
 	Subdiv int `json:"subdiv,omitempty"`
 	BPM    int `json:"bpm"`
-	// MasterVolume is a POINTER so a genuine 0 (silence) survives the
-	// round-trip: with a plain float64+omitempty, master=0 was dropped on
-	// export and restored as the legacy 1.0 default on import — a muted
-	// project came back at FULL volume. nil = field absent (legacy files,
-	// which imported at 1.0 long before the fresh-session default moved to
-	// 0.5 — that fallback must stay for their sake). Export now always
-	// writes the current value so new files are self-describing.
+	// A POINTER so a genuine 0 survives (omitempty dropped it and a muted project came back at full volume). nil means
+	// absent: a foreign file imports at 1.0. Export always writes it.
 	MasterVolume *float64           `json:"master_volume,omitempty"` // 0-1; nil = legacy file (imports as 1.0)
 	Instruments  []exportInstrument `json:"instruments"`
 	Nodes        []exportNode       `json:"nodes"`
 	EQ           *exportEQ          `json:"eq,omitempty"`
-	// PinnedInstruments holds project-scope instrument pins (tier 0 in the
-	// menu's PinSource). Distinct from per-user favorites which live in
-	// userprefs and never touch this file.
+	// Project-scope pins (tier 0); per-user favorites live in userprefs and never touch this file.
 	PinnedInstruments []instrument.ID `json:"pinned_instruments,omitempty"`
-	// Kits carries every kit registered in the audio package at export
-	// time.
-	Kits []audio.Kit `json:"kits,omitempty"`
-	// Groups carries node groups (batch pitch/volume/duration rules across a
-	// set of nodes). Invisible nodes are never exported, so group members
-	// are filtered to exported node ids; a group left empty after filtering
-	// is dropped.
+	Kits              []audio.Kit     `json:"kits,omitempty"`
+	// Invisible nodes are not exported, so members are filtered; an emptied group is dropped.
 	Groups []exportGroup `json:"groups,omitempty"`
-	// Theme is the circuit's own UI color scheme (see internal/theme and
-	// theme_categories.go). Optional; the user's profile theme may override
-	// it. Written only when the circuit sets something.
+	// The user's profile theme may override it; written only when set.
 	Theme *theme.Doc `json:"theme,omitempty"`
-	// InstrumentDocs carries the instrument document of every row's instrument
-	// (spec 2026-10-04 §6), keyed by instrument id: everything its synth voice
-	// depends on. The file is complete on its own — a clean machine, whose
-	// library has never seen a Save or a Save As, plays it exactly. Import
-	// replaces the session's copies with these (replace, not merge).
-	//
-	// A value is a full document or, in an EMBEDDED TEMPLATE only, a pack
-	// reference {"ref":"sha256:…"} (a ContentHash of a document in the
-	// instrument pack — shipped or pinned). Export never writes a ref; import
-	// resolves every ref in validateProjectDocs, before anything resets.
+	// Every row's document, so the file is complete on a clean machine. An EMBEDDED TEMPLATE may hold a pack
+	// reference {"ref":"sha256:…"} instead; export never writes one and import resolves them before any reset.
 	InstrumentDocs map[instrument.ID]projectDoc `json:"instrument_docs,omitempty"`
 }
 
-// circuitDigest is the circuit's version id (spec 2026-10-31 §2.2): the file
-// with each instrument document replaced by that instrument's version digest,
-// so the circuit points to the exact versions it plays. Rows carry their own
-// EQ / FX / Sampler edit, which stay part of the circuit's body.
+// The file with each document replaced by its version digest, so the circuit names the exact versions it plays;
+// rows' EQ/FX/Sampler edit stay in the body.
 func circuitDigest(f projectFile) string {
 	versions := make(map[instrument.ID]string, len(f.InstrumentDocs))
 	for id, pd := range f.InstrumentDocs {
@@ -82,8 +53,6 @@ func circuitDigest(f projectFile) string {
 	}{f, versions})
 }
 
-// projectDoc is one instrument_docs value: a full document, or (Ref != "") a
-// reference to the pack document with that content hash.
 type projectDoc struct {
 	instrument.Doc
 	Ref string
@@ -99,8 +68,7 @@ func (p projectDoc) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p.Doc)
 }
 
-// UnmarshalJSON reads {"ref":…} (and nothing else) as a reference, any other
-// object as a document.
+// {"ref":…} and nothing else is a reference; any other object is a document.
 func (p *projectDoc) UnmarshalJSON(b []byte) error {
 	var keys map[string]json.RawMessage
 	if err := json.Unmarshal(b, &keys); err != nil {
@@ -117,8 +85,7 @@ func (p *projectDoc) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(b, &p.Doc)
 }
 
-// fullDocs returns the file's documents as plain documents (refs resolved by
-// validateProjectDocs beforehand).
+// Refs were resolved by validateProjectDocs.
 func (f projectFile) fullDocs() map[instrument.ID]instrument.Doc {
 	if f.InstrumentDocs == nil {
 		return nil
@@ -130,17 +97,13 @@ func (f projectFile) fullDocs() map[instrument.ID]instrument.Doc {
 	return out
 }
 
-// newProjectFile returns a project document stamped with the current schema
-// version. Every writer must go through this rather than building a
-// projectFile literal, so no path can emit an unstamped document.
+// Every writer goes through this, so no path emits an unstamped document.
 func newProjectFile() projectFile {
 	return projectFile{Envelope: schema.Current()}
 }
 
-// validateProjectVersion applies the strict version rule: the current
-// schema_version or a rejection. It doubles as the foreign-JSON sniffer — an
-// empty {} or another app's file carries no schema_version, so it is rejected
-// instead of importing as an all-zero project (import is replace-not-merge).
+// Also the foreign-JSON sniffer: a {} or another app's file has no schema_version and would import as an empty
+// project (import is replace-not-merge).
 func (f projectFile) validateProjectVersion() error {
 	if f.SchemaVersion == "" {
 		return fmt.Errorf("not a beatmo project file: no %q", schema.Field)
@@ -148,19 +111,14 @@ func (f projectFile) validateProjectVersion() error {
 	return f.Validate("project")
 }
 
-// legacyInstrumentFields are the recipe-era synth fields of an instruments[]
-// row; a file carrying them predates instrument documents.
 type legacyInstrumentFields struct {
 	ID          string             `json:"id"`
 	Recipe      string             `json:"recipe"`
 	SynthParams map[string]float64 `json:"synth_params"`
 }
 
-// validateProjectDocs is the read boundary for the file's instrument
-// documents, run BEFORE anything is reset: each key must match its document's
-// id (an empty id takes the key), and each document is migrated and validated
-// in place. A file from before instrument documents (rows with recipe /
-// synth_params) is rejected — there is no migration before the first release.
+// Runs BEFORE any reset. Each key must match its document's id (an empty id takes the key); a pre-document file
+// (recipe / synth_params rows) is rejected, with no migration before the first release.
 func (f *projectFile) validateProjectDocs(raw []byte) error {
 	var legacy struct {
 		Instruments []legacyInstrumentFields `json:"instruments"`
@@ -197,9 +155,7 @@ func (f *projectFile) validateProjectDocs(raw []byte) error {
 	return nil
 }
 
-// validateNodeChords rejects a chord block that names an unknown quality or
-// an out-of-range inversion / spread (an empty quality with any other field
-// set included). Runs before Import resets anything.
+// Runs before Import resets anything.
 func (f *projectFile) validateNodeChords() error {
 	for _, n := range f.Nodes {
 		if n.Chord == nil {

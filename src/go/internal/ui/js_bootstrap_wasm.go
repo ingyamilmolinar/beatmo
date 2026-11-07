@@ -9,13 +9,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
-// Provide minimal JS hooks early so browser tests can proceed even before the
-// Game instance is fully constructed. Game.initJS will override these with the
-// real implementations once New() runs.
+// Minimal hooks before the Game exists, so browser tests can start; initJS replaces them.
 func init() {
-	// `?devtools=0` previews the production UI in a developer WASM (a release
-	// WASM has the developer surfaces off already). Read before ui.New builds
-	// the tab strip and the bottom nav from the available-tab lists.
+	// Read before ui.New builds the tab strip and bottom nav.
 	if loc := js.Global().Get("location"); loc.Truthy() {
 		if q := loc.Get("search"); q.Truthy() {
 			if params := js.Global().Get("URLSearchParams"); params.Truthy() {
@@ -35,31 +31,21 @@ func init() {
 	prefsStore := userprefs.NewBackingStore(userprefs.Options{})
 	SetFavoritesStore(NewPersistedFavoritesStore(prefsStore))
 
-	// Notification history: persist the in-band notification log across
-	// sessions so the history popup survives a reload.
 	if ns, ok := prefsStore.(userprefs.NotificationHistoryStore); ok {
 		SetNotificationHistoryStore(NewPersistedNotificationHistory(ns))
 	}
 
-	// The user's instrument LIBRARY (saved instrument documents, spec
-	// 2026-10-04 §6) lives in its OWN localStorage key, separate from
-	// beatmo.prefs. Loaded before the first project ResetInstruments so saved
-	// instruments are playable and listed (and pushed to audio.js by
-	// initJSSynthRecipe's PushAllInstrumentDocsToPlatform).
+	// Its own localStorage key, separate from prefs; loaded before the first project so saved instruments play.
 	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
 	audio.SetInstrumentLibrarySink(instStore)
-	// Sampler edits saved before versioning join their instrument's first
-	// version (read once, never written again).
+	// Pre-versioning Sampler edits join their instrument's first version (read once, never written).
 	oldEdits, _ := prefsStore.(audio.SampleEditSource)
 	if err := audio.LoadUserInstrumentLibrary(instStore, oldEdits); err != nil {
 		println("WARN [instruments]", err.Error())
 	}
 	audio.ResetInstruments()
 
-	// Sampler tab: cross-session user-sample persistence (IndexedDB on
-	// browser). Mirrors the recipe wiring above. ApplySavedSamples re-registers
-	// every persisted sample for playback before the first Layout reads the
-	// instrument picker.
+	// Saved samples re-register before the first Layout reads the instrument picker.
 	if ss, ok := prefsStore.(userprefs.SampleStore); ok {
 		adapter := NewSamplePersistAdapter(ss)
 		audio.SetSampleSink(adapter)
@@ -67,8 +53,7 @@ func init() {
 		audio.ApplySavedSamples(adapter)
 	}
 
-	// Knob step-rung persistence: remember each param's chosen step badge
-	// rung across reloads. Keyed by param name (global, not per-instrument).
+	// Keyed by param name, global rather than per instrument.
 	if ap, ok := prefsStore.(userprefs.AudioPanelStore); ok {
 		SetAudioPanelStateSink(ap)
 	}
@@ -76,8 +61,7 @@ func init() {
 		SetKnobStepSink(ks)
 	}
 
-	// UI language: apply the persisted locale before the first Layout so the
-	// first frame renders in the user's chosen language.
+	// Before the first Layout, so the first frame is in the chosen language.
 	if ls, ok := prefsStore.(userprefs.LanguageStore); ok {
 		SetLanguageSink(ls)
 		ApplyStoredLanguage()

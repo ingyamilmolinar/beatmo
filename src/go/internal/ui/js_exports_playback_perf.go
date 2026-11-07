@@ -22,9 +22,7 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
-	// warmupProgress reports the playback readiness gate's state to JS: the
-	// import-cold bench waits on it, and the re-import acceptance check asserts
-	// total==0 (everything already cached).
+	// The import-cold bench waits on it; the re-import check asserts total==0 (everything cached).
 	js.Global().Set("warmupProgress", jsFn(func(args jsArgs) any {
 		done, total := 0, 0
 		if g.warmup != nil {
@@ -81,11 +79,8 @@ func (g *Game) initJSPlaybackPerf() {
 		return o
 	}))
 
-	// syncHighlights() – drain pending highlight events and decay animations.
-	// Used by tests to process highlight state when Ebiten's Update() is starved.
-	// When playing, drives scheduling from the caller's thread so highlights
-	// stay current even if the sequencer goroutine's timer is delayed under
-	// CPU contention (e.g. parallel test runs).
+	// syncHighlights(): drains highlights when Update is starved, and drives scheduling from the caller's thread
+	// so highlights stay current when the sequencer timer is delayed.
 	js.Global().Set("syncHighlights", jsFn(func(args jsArgs) any {
 		if g.Playing() {
 			g.seqScheduleTime()
@@ -94,12 +89,8 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
-	// tickSequencer() — sub-frame sequencer drive. Called from a JS
-	// setInterval at the audio rate so the sequencer fires even when the
-	// Go goroutine ticker is starved by long RAF/Update spans. JS timers
-	// are queued onto the macro-task queue and run independently of the
-	// WASM Go runtime's cooperative scheduler, so this is the only drive
-	// that can fire sub-frame in WASM. No-op when not playing.
+	// tickSequencer(): JS timers run outside Go's cooperative scheduler, so a setInterval drive is the only one
+	// that fires sub-frame on WASM. No-op when stopped.
 	js.Global().Set("tickSequencer", jsFn(func(args jsArgs) any {
 		if g.Playing() {
 			g.seqScheduleTime()
@@ -163,17 +154,12 @@ func (g *Game) initJSPlaybackPerf() {
 		return obj
 	}))
 
-	// dumpHeapProbe() returns a CSV string of the heap-growth probe ring
-	// (one row per ~1-second sample for the past minute). Empty when the
-	// probe is disabled (set BEATMO_HEAP_PROBE=1 to enable).
+	// dumpHeapProbe() -> CSV, one row per second for the last minute; empty unless BEATMO_HEAP_PROBE=1.
 	js.Global().Set("dumpHeapProbe", jsFn(func(args jsArgs) any {
 		return HeapProbeSnapshot()
 	}))
 
-	// dumpLevelsLatch() returns the Levels-tab peak/RMS-hold state for
-	// debugging Phase 0a of the audio-panel redesign. Stays callable
-	// after the redesign lands; helps validate the bar-fills-between-
-	// hits invariant by exposing the latch fields the renderer reads.
+	// dumpLevelsLatch(): the hold fields the Levels renderer reads.
 	js.Global().Set("dumpLevelsLatch", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.eqPanelZone == nil {
@@ -191,9 +177,7 @@ func (g *Game) initJSPlaybackPerf() {
 		return obj
 	}))
 
-	// forceDraw() – render one frame into an offscreen image to build caches.
-	// Also reads current window.innerWidth/innerHeight and calls Layout() so
-	// that a preceding setViewportSize (Playwright) is reflected immediately.
+	// forceDraw(): also re-reads the window size so a preceding setViewportSize takes effect at once.
 	js.Global().Set("forceDraw", jsFn(func(args jsArgs) any {
 		win := js.Global().Get("window")
 		if !win.IsUndefined() {
@@ -272,9 +256,7 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("heapSysKB", int(s.HeapSysKB))
 		obj.Set("heapObjects", int(s.HeapObjects))
 		obj.Set("goroutines", s.Goroutines)
-		// GC metrics over the window since the last resetPerfStats() (see
-		// gc_metrics.go). On single-threaded WASM every GC is a pause on the
-		// audio-servicing thread, so these are the mechanism behind FPS dips.
+		// On single-threaded WASM every GC pauses the audio-servicing thread: these explain FPS dips.
 		obj.Set("gcPauses", int(s.GCPauses))
 		obj.Set("gcCycles", int(s.GCCycles))
 		obj.Set("gcForced", int(s.GCForced))
@@ -296,16 +278,14 @@ func (g *Game) initJSPlaybackPerf() {
 			obj.Set("updateMS", g.lastUpdateMS)
 			obj.Set("refreshMS", g.lastRefreshMS)
 		}
-		// Residency (spec 2026-10-31 §1.1): what Go holds; audio.js reports
-		// its side through audioGraphStats().
+		// What Go holds; audio.js reports its side through audioGraphStats().
 		obj.Set("mixerChannels", len(audio.InstrumentChannelIDs()))
 		obj.Set("registeredInstruments", len(audio.Instruments()))
 		obj.Set("liveImages", g.snapshotLiveImages())
 		obj.Set("imagesAllocatedTotal", float64(MetricImagesAllocatedTotal()))
 		obj.Set("drawCalls", float64(MetricDrawCallsTotal()))
 		obj.Set("imagesByTag", imagesByTagSnapshot())
-		// Three-stage latency: nested object so callers reading only the
-		// existing flat fields don't conflict with the new keys.
+		// Nested so readers of the flat fields see no new keys.
 		obj.Set("threeStage", threeStageLatencyJSObject(s.SchedMetrics))
 		return obj
 	}))
@@ -314,16 +294,12 @@ func (g *Game) initJSPlaybackPerf() {
 		g.gcMetrics.reset()
 		return nil
 	}))
-	// getThreeStageLatency() — returns Go-side schedule metrics covering
-	// all three stages of the real → scheduler → audio pipeline. This is
-	// orthogonal to the JS-side audio.js scheduleMetrics (which only sees
-	// Stage C). Returns null before any data is observed (count==0).
+	// getThreeStageLatency() -> metrics | null: Go's view of all three stages (audio.js sees only Stage C).
 	js.Global().Set("getThreeStageLatency", jsFn(func(args jsArgs) any {
 		s := g.PerfSnapshot()
 		o := threeStageLatencyJSObject(s.SchedMetrics)
 		if !o.IsNull() {
-			// The audio lane commits notes from the sequencer pass itself: it
-			// has no enqueue → audioLoop handoff, so Stage B stays empty.
+			// The lane commits from the sequencer pass itself, so Stage B stays empty.
 			o.Set("lane", g.audioLaneOn())
 		}
 		return o
@@ -333,10 +309,7 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
-	// forceGameTick(x, y) — Force one Update() tick with mouse at (x, y).
-	// Used by the agent test infrastructure to reliably process button clicks
-	// in headless Chromium where requestAnimationFrame fires infrequently.
-	// Without arguments, runs Update() with mouse unpressed at (0, 0).
+	// forceGameTick(x, y): one Update with the mouse there, for headless Chromium where rAF rarely fires.
 	js.Global().Set("forceGameTick", jsFn(func(args jsArgs) any {
 		mx, my := 0, 0
 		mouseLeft := false
@@ -359,12 +332,8 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
-	// forceDrag(x0,y0,x1,y1[,steps]) drives a REAL left-button drag through
-	// Update() with overridden input — press at (x0,y0), hold across interpolated
-	// points to (x1,y1), then release. Mirrors forceGameTick but for drags, which
-	// otherwise don't register in headless (rAF-throttled) because no equivalent
-	// forced-tick exists. Used by the agent's drag tool to move EQ band handles,
-	// synth knobs, and sliders deterministically.
+	// forceDrag(x0,y0,x1,y1[,steps]): a REAL left-button drag through Update, since drags do not register under
+	// throttled headless rAF.
 	js.Global().Set("forceDrag", jsFn(func(args jsArgs) any {
 		if args.Len() < 4 {
 			return nil

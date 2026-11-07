@@ -1,15 +1,7 @@
 package ui
 
-// cameraGesture collapses the per-frame camera mutations from
-// Camera.HandleMouse into one INFO line per finished gesture:
-//
-//   - pan  → emitted once on press→release, carrying the cumulative offset delta
-//     (measured from the camera position on the frame before the gesture started)
-//   - zoom → emitted each frame Scale changes (the eventlogger coalescer
-//     debounce-trails a continuous wheel/pinch burst into one trailing line)
-//
-// It holds no Ebiten state; game_update.go feeds it the post-HandleMouse
-// snapshot each frame.
+// One INFO line per gesture: pan on release with the total delta; zoom per frame, debounced by the
+// eventlogger coalescer.
 type cameraGesture struct {
 	panning   bool
 	startOffX float64
@@ -22,8 +14,6 @@ type cameraGesture struct {
 	emitZoom  func(factor float64)
 }
 
-// observe is called once per frame with the camera's drag flag and current
-// offset/scale (already mutated by HandleMouse this frame).
 func (g *cameraGesture) observe(panning bool, offX, offY, scale float64) {
 	// Zoom: any scale change this frame is a zoom tick.
 	if g.scaleInit && scale != g.lastScale && g.emitZoom != nil {
@@ -32,9 +22,7 @@ func (g *cameraGesture) observe(panning bool, offX, offY, scale float64) {
 	g.lastScale = scale
 	g.scaleInit = true
 
-	// Pan: track press→release, emit cumulative delta on release.
-	// startOffX/Y is captured from the idle frame before the gesture starts,
-	// so the delta measures the full camera travel of the gesture.
+	// The start offset is captured on the idle frame before the gesture, so the delta is the full travel.
 	switch {
 	case panning && !g.panning: // gesture start — snapshot the pre-drag position
 		g.startOffX, g.startOffY = g.prevOffX, g.prevOffY

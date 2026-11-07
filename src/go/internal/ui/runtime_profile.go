@@ -2,63 +2,17 @@ package ui
 
 import "time"
 
-// runtime_profile.go — Phase 5b of the design-system refactor.
-//
-// LayoutProfile (layout_profile.go) historically mixed two distinct
-// concerns: (a) profile-conditional design data — sizing, spacing, visual
-// style — and (b) profile-conditional runtime behavior — feature flags,
-// rendering modes, debug overlays. Phase 5a moved (a)'s dimensional
-// portion into DESIGN.md `profileOverrides:` (consumed via
-// design_profile.gen.go); Phase 5b documents the boundary for (b) and
-// gives those fields a dedicated accessor so future PRs can extract them
-// from LayoutProfile without breaking existing consumers.
-//
-// The fields below are NOT design tokens. They control behavior, not
-// appearance:
-//   - ShowLayoutGuides, ShowCursorLabel, ShowEscHint — debug overlays
-//   - EnableLayoutResize — interactivity toggle (touch can't resize)
-//   - ShowRackSurface — visibility toggle
-//   - DirectDrawRows — rendering optimization mode (mobile bypass)
-//   - UseBottomSheet — UX behavior (sheet vs floating panel)
-//   - DefaultTimelineBeats — initial state value
-//   - ReserveAddRowSpace — layout behavior
-//
-// They will never move to DESIGN.md — designers shouldn't be tweaking
-// "should we direct-draw rows" or "is the resize splitter active". They
-// belong in the Go runtime where they're tested with build tags + env
-// vars + integration tests.
-//
-// RuntimeFlags is the conceptual counterpart to the generated profile
-// values. For now it is a read-only view onto the same LayoutProfile
-// (zero-cost; no copies). A future PR may extract these fields into
-// their own struct, removing them from LayoutProfile entirely; until
-// then, the Runtime() accessor exists so new code can already document
-// intent ("I'm reading runtime behavior, not design").
+// These fields are runtime BEHAVIOUR, not design tokens, so they never move to DESIGN.md; RuntimeFlags is a
+// zero-cost read-only view so new code can state "I am reading behaviour, not appearance".
 
-// timingStageBounds is the per-stage tolerance envelope for the timing-parity
-// gate (see parityTimingCheck, added by a later task). All values are in
-// seconds; a bound of 0 disables that statistic for the stage.
-// timingStageBounds holds one stage's tolerances. WarnOnly demotes the whole
-// stage to log-only: a breach still emits a WARN dump but never panics, even
-// when the global gate is fatal. Bridge (Stage B) and EmitDrift (Stage D) are
-// WarnOnly on every platform because they measure internal scheduling proxies
-// (enqueue→dispatch queue-wait behind the per-beat synth render; device-clock
-// emission jitter) that the audio lookahead cushion absorbs — Stage C
-// (overdue) is the authoritative "audio is actually late" signal and stays
-// fatal. See the 2026-07 timing-gate calibration investigation: bridge
-// legitimately runs ~13-20ms (per-beat newRecipeAwareVoice render on the
-// dispatch goroutine) while overdue stays ~0, so a fatal bridge/emit bound
-// panics normal desktop playback on latency that never reaches the speakers.
+// In seconds; 0 disables a statistic. WarnOnly never panics: Bridge (B) and EmitDrift (D) measure internal proxies
+// the lookahead absorbs, while Stage C (overdue) is the authoritative "audio is late" signal and stays fatal.
 type timingStageBounds struct {
 	MeanMax, P99Max, StdDevMax, AbsMax float64
 	WarnOnly                           bool
 }
 
-// timingBounds is the full set of timing-gate tolerances for one platform
-// (desktop or browser). Desktop values are tight and enforced by default;
-// browser values are looser and log-only by default (WASM scheduling jitter
-// from the JS event loop + Go→JS bridge crossing means the same envelope
-// would false-positive constantly).
+// Browser values are looser and log-only: JS event-loop and bridge jitter would false-positive the desktop envelope.
 type timingBounds struct {
 	Enabled      bool
 	FatalDefault bool
@@ -68,19 +22,12 @@ type timingBounds struct {
 	Bridge       timingStageBounds
 	Overdue      timingStageBounds // Stage C; MeanMax=AvgLag, P99Max=LagP99, AbsMax=MaxLag; StdDevMax unused (0)
 	EmitDrift    timingStageBounds
-	// OverdueEmitFatalSec cross-checks Stage C against Stage D: an overdue
-	// breach (a scheduling-LEAD metric: dispatched with `when` in the past) is
-	// only FATAL when the ACTUAL sample emission also drifted at least this far
-	// late (Stage D emit.absMax). A transient scheduling blip that still emitted
-	// on-time (e.g. a UI action briefly stalling the audioLoop) is audibly fine,
-	// so it downgrades to a WARN instead of panicking. 0 disables the cross-check
-	// (overdue stays fatal on its own). See parityTimingCheck.
+	// An overdue breach is FATAL only if the real emission also drifted this late: a scheduling blip that still
+	// emitted on time is audibly fine and only WARNs. 0 = overdue is fatal alone.
 	OverdueEmitFatalSec float64
 }
 
-// RuntimeFlags exposes the feature/behavior toggle subset of the active
-// profile. Use this in new code instead of Profile() when the field
-// you're reading controls behavior, not appearance.
+// Use instead of Profile() when the field controls behaviour, not appearance.
 type RuntimeFlags struct {
 	p *LayoutProfile
 }
@@ -98,27 +45,10 @@ func (r RuntimeFlags) UseBottomSheet() bool      { return r.p.UseBottomSheet }
 func (r RuntimeFlags) DefaultTimelineBeats() int { return r.p.DefaultTimelineBeats }
 func (r RuntimeFlags) ReserveAddRowSpace() bool  { return r.p.ReserveAddRowSpace }
 
-// ────────────────────────────────────────────────────────────────────────────
-// RuntimeProfile — single source of truth for browser/desktop divergence.
-// ────────────────────────────────────────────────────────────────────────────
-//
-// Sibling to LayoutProfile (which owns dimensional/visual divergence between
-// mobile/desktop screen classes). RuntimeProfile owns runtime-behavior
-// divergence between the two BUILD targets: WASM/browser vs native desktop.
-//
-// Migrated from defaults_js.go / defaults_notjs.go (Phase B of the
-// WASM↔Desktop unification refactor). The build-tagged constants those
-// files used left a hole at GOOS=js && -tags test — RuntimeProfile closes it
-// because runtime_profile_js.go is //go:build js (no test exclusion).
-//
-// Rule: no new runtime.GOOS == "js" or runtime.GOARCH == "wasm" checks in
-// internal/ui/. Add a field here and read from RuntimeProf() instead.
-//
-// Tests may swap the entire profile via SetRuntimeProfileForTest, or write
-// individual fields directly on the value returned by RuntimeProf().
+// The single source of browser/desktop divergence (LayoutProfile owns screen class). Never add a runtime.GOOS or
+// GOARCH check in internal/ui: add a field here. Tests swap it with SetRuntimeProfileForTest or set fields directly.
 type RuntimeProfile struct {
-	// Cache pads (pixels). Larger pad → fewer rebuilds during pans, at the
-	// cost of slightly larger offscreen images.
+	// A larger pad rebuilds less during pans, for larger offscreen images.
 	EdgeCachePad int
 	GridCachePad int
 
@@ -133,31 +63,12 @@ type RuntimeProfile struct {
 	TimelineInfoThrottleMS int
 	AudioLookaheadSec      float64 // base audio lookahead at profile init
 
-	// MinDispatchLeadSec is the dispatch-time floor applied to
-	// sequencer-scheduled events (row >= 0) in audioLoop: req.when is bumped
-	// up to audioNow+MinDispatchLeadSec when it would otherwise slip into the
-	// past or the small-lead danger zone. It exists ONLY to survive the
-	// Go→JS PlayBatch crossing on WASM (the JS observer reads lead at
-	// .start() after the bridge delay, so the floor must exceed the bridge
-	// max to keep audioMetrics.minLead positive). 0 disables the clamp
-	// entirely — on desktop audio.Now() is the engine clock with no bridge,
-	// so scheduleSound's lookahead already provides lead and groove "rush"
-	// can legitimately schedule before the grid boundary.
+	// Exists ONLY to survive the Go→JS crossing on WASM (lead is read at .start() after the bridge delay); 0 on desktop,
+	// where scheduleSound's lookahead provides lead and groove rush may legitimately land before the grid.
 	MinDispatchLeadSec float64
 
-	// Audio lane (docs/superpowers/specs/2026-10-02-audio-lane-scheduling-
-	// horizon-design.md): commit audio up to AudioHorizonSec ahead of the
-	// playhead and reconcile it on edits, so a main-thread stall shorter than
-	// the horizon is inaudible.
-	//   AudioLaneEnabled        lane on; false = legacy grid-time dispatch
-	//   AudioHorizonSec         commit window H
-	//   AudioOffsetSec          constant audio offset vs the grid (AV relation)
-	//   CancelGuardSec          a note this close to its start counts as started
-	//   LateToleranceSec        a never-committed note this late still plays
-	//   LaneFullReconcileSec    safety-net full reconcile period
-	//   LaneVoiceRecommitMinSec min spacing of voice-revision (knob-drag) recommits
-	//   LaneVoiceNearSec        a voice-only edit re-commits this window at once; the
-	//                           rest of the horizon as it comes near (0 = all of it)
+	// The audio lane commits up to AudioHorizonSec ahead and reconciles on edits, so a main-thread stall shorter
+	// than the horizon is inaudible. LaneVoiceNearSec 0 = re-commit the whole horizon.
 	AudioLaneEnabled        bool
 	AudioHorizonSec         float64
 	AudioOffsetSec          float64
@@ -186,102 +97,44 @@ type RuntimeProfile struct {
 	ParityFatalDefault bool
 	ParityWatchDefault parityWatchMode
 
-	// Timing-parity gate tolerances. See parityTimingCheck. All values in
-	// seconds; a bound of 0 disables that statistic. Desktop values are tight
-	// (dev/test enforcement); browser values looser + log-only by default.
+	// In seconds; 0 disables a statistic.
 	Timing timingBounds
 
 	// Identity. Snapshotted at profile construction from runtime.GOOS == "js".
 	IsBrowser bool
 
-	// PredictorWindowCap bounds the predictor's per-row sliding-window size
-	// (in subdivisions). Reads at idx outside the window return false; the
-	// timeline cold archive answers historical queries beyond it. Default
-	// 4096 (≈8 visible windows of 512). Identical for browser and desktop;
-	// reserved as a knob in case WASM later needs a tighter ceiling under
-	// memory pressure.
+	// In subdivisions; reads outside return false and the cold archive answers history. A knob in case WASM needs a
+	// tighter ceiling under memory pressure.
 	PredictorWindowCap int
 
-	// RibbonBeatsPerPixel USED TO fix the timeline ribbon's horizontal
-	// scale for a fixed-beats-per-pixel sliding window centered on the
-	// playhead. Task 6 replaced the ribbon with a slim whole-song progress
-	// bar spanning [0, TimelineBeats()] (decoupled from the drum-grid
-	// pattern window) — (*TimelineZone).drawTimelineBar no longer reads
-	// this field. Left in place (unconsumed) rather than deleted so this
-	// is a one-line diff if a future "zoomed-in" ribbon mode wants it back;
-	// candidate for removal in a follow-up cleanup pass.
+	// Unread since the ribbon became a whole-song bar; a removal candidate.
 	RibbonBeatsPerPixel float64
-	// RibbonPlayheadFrac is still read by DrumView.TrackBeat (drumview_transport.go)
-	// to keep the drum-grid pattern window's auto-follow recenter column in
-	// sync with where the OLD ribbon cursor used to pin. The ribbon itself
-	// (drawTimelineBar) no longer uses this field post-Task-6 — its cursor
-	// is now `elapsedBeats / TimelineBeats()` of the whole-song bar width.
+	// Still read by DrumView.TrackBeat for the pattern window's recentre column.
 	RibbonPlayheadFrac float64
 
-	// AudioPanelHeightMultiplier scales the base eqPanelHeight to size
-	// the audio analysis panel. Spectrum / Levels / Chain / Synth all
-	// need substantial vertical real estate to be legible (the Synth
-	// tab clips knobs at 2×; spectrum bars need ~480 px for dB ticks
-	// to render). 3× gives ~360 px on a 720 px viewport (~50% of the
-	// screen) and lets every audio tab claim the same headroom — a
-	// user-draggable handle on the row strip still overrides.
-	// AudioPanelHeightScreenFrac is the hard upper bound expressed as
-	// a fraction of the framebuffer height; PanelHeight clamps to
-	// floor(screenH * frac) so the panel never crowds the grid.
+	// The analysis tabs need real height to be legible (Synth clips at 2×); the screen fraction caps it so the panel
+	// never crowds the grid, and a drag-resize still overrides.
 	AudioPanelHeightMultiplier int
 	AudioPanelHeightScreenFrac float64
 
-	// ForceGCInterval triggers runtime.GC() at most once per interval in
-	// heapProbeTick (wall-clock based, NOT frame-count based — under
-	// sustained load the browser frame rate drops so a frame-count interval
-	// would fire too rarely).
-	//
-	// HISTORY: the original 30s value was chosen to counter an apparent
-	// "single-threaded WASM GC starvation" — a 75s soak grew HeapAlloc
-	// 26.7 MB → 493 MB with gcCount=0. That was NOT starvation: automatic GC
-	// had been switched OFF process-wide by a latent bug in async.Snapshot
-	// (debug.SetGCPercent(-2) clamps to -1 = disable), fixed 2026-07-16. The
-	// forced runtime.GC() masked the bug because an explicit collection runs
-	// even when the pacer is disabled.
-	//
-	// With automatic GC restored, the heap self-bounds at ~35-43 MB on WASM
-	// (bench-results/gc_tuning_2026-07.md: 90s soak, forced GC fully off →
-	// heapHigh 42 MB, pauseMax 0.23 ms, overdue 0). Forced GC is therefore no
-	// longer load-bearing; it is now a working-set optimization. Browser
-	// default 10s (measured winner): trims heapHigh to ~33 MB with evenly
-	// spaced sub-2ms collections and overdue 0 — worthwhile on WASM where
-	// linear memory only grows. Desktop default 0 (off): the desktop runtime
-	// has a concurrent background collector (STW sub-ms), so cooperative help
-	// buys nothing.
+	// Wall-clock paced: under load the browser frame rate drops. Not load-bearing (automatic GC bounds the heap); the
+	// browser uses it to trim the working set, since WASM linear memory only grows. Desktop's concurrent GC gains nothing.
 	ForceGCInterval time.Duration
 
-	// VoiceCacheBudgetBytes is the ceiling on retained rendered-voice buffers
-	// (LRU eviction beyond it): audio's globalVoiceCache on desktop, audio.js's
-	// renderCache in the browser, where the renders of instruments a row plays
-	// (and of voices scheduled or playing) are never evicted. Bounds RAM so
-	// predictive neighborhood warming and menu auditions cannot hoard.
-	// Wired to audio.SetVoiceCacheBudgetBytes at startup.
+	// Beyond it the LRU evicts, never the renders a row plays or voices scheduled or playing, so warming and
+	// auditions cannot hoard RAM.
 	VoiceCacheBudgetBytes int64
 
-	// PredictiveWarmTicks is the ±N radius (in each control's resolution) of the
-	// predictive-neighborhood warm around the current value, so an immediate
-	// one-tick edit lands on a warm cache. 1 = warm the immediate neighbors;
-	// 0 disables neighborhood warming (exact values only).
+	// In each control's resolution, so a one-tick edit lands warm; 0 warms exact values only.
 	PredictiveWarmTicks int
 
-	// PrewarmWorkers is the audio.prewarm pool's worker count. It is the
-	// gated warm-up's wall-clock divisor: the measured desktop warm set is
-	// ~1.4 s of serial CGo for 96 pairs, so 4 workers put a cold import
-	// under the ~600 ms target. Browser keeps 1 — Go goroutines do not
-	// parallelise on js/wasm (NumCPU()==1); the browser parallelises in its
-	// own render-worker pool instead (see audio.js).
+	// The gated warm-up's wall-clock divisor. Browser 1: goroutines do not parallelise on js/wasm, and audio.js has
+	// its own render workers.
 	PrewarmWorkers int
 }
 
 var activeRuntimeProfile *RuntimeProfile
 
-// RuntimeProf returns the active runtime profile, lazily constructing it on
-// first access. Mirrors the LayoutProfile singleton pattern.
 func RuntimeProf() *RuntimeProfile {
 	if activeRuntimeProfile == nil {
 		activeRuntimeProfile = newRuntimeProfile()
@@ -289,19 +142,14 @@ func RuntimeProf() *RuntimeProfile {
 	return activeRuntimeProfile
 }
 
-// SetRuntimeProfileForTest replaces the active profile and returns a restore
-// function. Use in tests that need to exercise the opposite platform's
-// defaults; defer restore() in the same test.
+// defer restore() in the same test.
 func SetRuntimeProfileForTest(p *RuntimeProfile) (restore func()) {
 	prev := activeRuntimeProfile
 	activeRuntimeProfile = p
 	return func() { activeRuntimeProfile = prev }
 }
 
-// browserRuntimeProfile holds the browser/WASM defaults. Each divergence from
-// desktop carries a one-line bench citation justifying the divergence
-// (Phase F). Knobs that previously diverged but were unified/deleted by the
-// Phase F sweep now match desktop and are not listed in this comment block.
+// Each divergence from desktop carries the measurement that justifies it.
 func browserRuntimeProfile() *RuntimeProfile {
 	return &RuntimeProfile{
 		EdgeCachePad:                       64, // unified with desktop after Phase F sweep
@@ -312,18 +160,18 @@ func browserRuntimeProfile() *RuntimeProfile {
 		SimpleDrawAutoDisableFramesDefault: 0,
 		ScreenEdgesDefault:                 false,
 		TimelineInfoThrottleMS:             0,     // unified with desktop after Phase F sweep
-		AudioLookaheadSec:                  0.06,  // 60ms cushion; 2026-06 re-sweep showed overdue=0/smallLead=0 at 0.06 over 60s incl. forced-GC cycles, with adaptive +0.05 headroom and the dispatch floor absorbing Stage-B tails (bench-results/audio_lookahead_resweep_2026-06.md)
+		AudioLookaheadSec:                  0.06,  // overdue 0 / small-lead 0 over 60 s including forced-GC cycles
 		MinDispatchLeadSec:                 0.012, // 8ms Go-side clamp + ~4ms Go→JS PlayBatch crossing — keeps JS-observed minLead positive
-		AudioLaneEnabled:                   true,  // A/B 2026-10-02 (bench-results/audio_lane_ab_after_2026-10-02.md): arrivedLate 0 / late>20ms 0 in idle, stall-150/300, tab-synth, pan-storm, edits vs legacy 25-69 / 17-49; IOI p95 5-9.5 ms vs 76-287 ms
+		AudioLaneEnabled:                   true,  // A/B: no note arrived late vs 17–69 on legacy; IOI p95 5–9.5 ms vs 76–287 ms
 		AudioHorizonSec:                    1.0,   // headless software-GL frames 0.4-0.6 s (1.1 s under load) + an injected 300 ms stall (bench-results/audio_lane_ab_before_2026-10-02.md); edit latency does not depend on H
 		AudioOffsetSec:                     0.06,  // = AudioLookaheadSec: keeps today's AV relationship in steady state
 		CancelGuardSec:                     0.008, // > one 128-frame render quantum (2.7 ms) + start() delivery: a source closer than this may already be rendering
 		LateToleranceSec:                   0.025,
 		LaneFullReconcileSec:               0.25,
 		LaneVoiceRecommitMinSec:            0.03,
-		LaneVoiceNearSec:                   0.25,  // = the desktop horizon. A whole-horizon (1 s) re-commit per knob-drag tick was ~3000 WebAudio voice starts/s in webaudio_all_knob_bpm_stress (2026-10-28 CPU profile), near-due replacements queuing 3-24 ms behind far ones
-		AudioBatchMax:                      32, // Phase F: 256 regressed drawAvg 25% — keep
-		SequencerTickMS:                    4,  // Phase F: 1ms tick regressed fps 19% — keep
+		LaneVoiceNearSec:                   0.25, // = the desktop horizon; a whole-horizon re-commit per drag tick was ~3000 voice starts/s
+		AudioBatchMax:                      32,   // Phase F: 256 regressed drawAvg 25% — keep
+		SequencerTickMS:                    4,    // Phase F: 1ms tick regressed fps 19% — keep
 		ParityScanMinPeriod:                8,
 		AdaptivePanPad:                     true, // Phase F: disabling regressed drawAvg 23%
 		FastPanDetect:                      true, // Phase F: same — load-bearing
@@ -345,17 +193,13 @@ func browserRuntimeProfile() *RuntimeProfile {
 		VoiceCacheBudgetBytes:              24 << 20,         // 24 MB: tighter on browser (single 2 GB WASM heap ceiling)
 		PredictiveWarmTicks:                1,
 		PrewarmWorkers:                     1, // js/wasm is single-threaded; parallelism lives in audio.js workers
-		// Timing-gate tolerances; see plan Task 1.2. Looser than desktop and
-		// log-only by default: JS event-loop scheduling + Go→JS bridge
-		// crossing add jitter native desktop doesn't have. Starting values
-		// pending bench tuning (bench-results/).
+		// Looser and log-only: JS event-loop and bridge jitter that desktop lacks.
 		Timing: timingBounds{
 			Enabled:      true,
 			FatalDefault: false, // log-only on browser unless PARITY_TIMING_FATAL arms it
 			WatchDefault: parityWatchLog,
 			MinSamples:   128,
-			// SeqFire WarnOnly for the same reason as desktop: internal
-			// scheduling proxy; Stage C owns audible lateness.
+			// WarnOnly as on desktop: an internal proxy; Stage C owns audible lateness.
 			SeqFire:   timingStageBounds{MeanMax: 0.006, P99Max: 0.020, StdDevMax: 0.008, AbsMax: 0.060, WarnOnly: true},
 			Bridge:    timingStageBounds{MeanMax: 0.006, P99Max: 0.020, StdDevMax: 0.008, AbsMax: 0.060, WarnOnly: true},
 			Overdue:   timingStageBounds{MeanMax: 0.002, P99Max: 0.012, StdDevMax: 0, AbsMax: 0.040},
@@ -366,8 +210,6 @@ func browserRuntimeProfile() *RuntimeProfile {
 	}
 }
 
-// desktopRuntimeProfile mirrors the defaults previously in defaults_notjs.go,
-// plus the desktop branch of every runtime.GOOS / runtime.GOARCH check.
 func desktopRuntimeProfile() *RuntimeProfile {
 	return &RuntimeProfile{
 		EdgeCachePad:                       64,
@@ -378,15 +220,8 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		SimpleDrawAutoDisableFramesDefault: 0,
 		ScreenEdgesDefault:                 false,
 		TimelineInfoThrottleMS:             0,
-		// 60ms cushion, unified with the browser value (same bench basis:
-		// audio_lookahead_resweep_2026-06.md showed overdue=0/smallLead=0 at
-		// 0.06). The prior desktop 0.02 base (max 0.05 with the adaptive +0.03)
-		// sat BELOW real desktop scheduling jitter: 2026-07-13 fatal-gate bench
-		// dumps at 200/240/300 BPM recorded single 34-55ms overdue transients
-		// (sequencer goroutine wakeup delay under full-core load) with
-		// confirmed 44-62ms-late emissions — each one a real audible glitch the
-		// 20ms base could not absorb. 120 BPM was already clean at 0.02; 0.06
-		// absorbs the measured transient envelope at every benched tempo.
+		// Unified with the browser: a 20 ms base sat below real desktop jitter (34–55 ms overdue transients at 200–300 BPM,
+		// each an audible glitch); 60 ms absorbs the measured envelope at every benched tempo.
 		AudioLookaheadSec:          0.06,
 		MinDispatchLeadSec:         0,    // no Go→JS bridge on desktop; audio.Now() is the engine clock, so no dispatch-time floor is needed
 		AudioLaneEnabled:           true, // same code path as the browser (one lane, both platforms); browser A/B: bench-results/audio_lane_ab_after_2026-10-02.md
@@ -418,49 +253,24 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		ForceGCInterval:            0,        // off: desktop GC has its own scheduler thread
 		VoiceCacheBudgetBytes:      48 << 20, // 48 MB retained-voice ceiling (see field doc)
 		PredictiveWarmTicks:        1,
-		PrewarmWorkers:             4, // 96-pair warm set: 1.42s serial → ~0.4s (measured 2026-09-13)
-		// Timing-gate tolerances; see plan Task 1.2. Tight + enforced: no
-		// Go→JS bridge, dedicated 1ms sequencer tick. Starting values pending
-		// bench tuning (bench-results/).
+		PrewarmWorkers:             4, // 96-pair warm set: 1.42 s serial → ~0.4 s
+		// Tight and enforced: no bridge, a 1 ms sequencer tick.
 		Timing: timingBounds{
 			Enabled:      true,
 			FatalDefault: true,
 			WatchDefault: parityWatchPanic,
 			MinSamples:   64,
-			// Stage A: scheduler tick is 1ms desktop; fire-late should be tiny.
-			// WarnOnly: Stage A measures an internal scheduling proxy. Per-beat
-			// ideal baseNow (game_sequencer_schedule.go) means fire-lateness does
-			// NOT propagate into audio lateness — it only reduces Stage C lead —
-			// and a 300 BPM bench (2026-07-13) showed its p99 tripping on a single
-			// ~19ms Go-scheduler wakeup delay (execution trace: selectnbsend on
-			// hlCh readies the UI receiver and the sequencer goroutine waits for a
-			// P under draw-spike contention) while Stage C stayed at zero. Stage C
-			// (+ emit corroboration) is the authoritative fatal gate.
+			// WarnOnly: fire-lateness reduces Stage C lead but never makes audio late, and a single ~19 ms Go-scheduler
+			// wakeup tripped its p99 while Stage C stayed zero.
 			SeqFire: timingStageBounds{MeanMax: 0.003, P99Max: 0.010, StdDevMax: 0.004, AbsMax: 0.030, WarnOnly: true},
-			// Stage B: enqAt→dispatch queue-wait. The historical ~13-20ms average
-			// was the per-trigger oto ctx.Resume() serializing dispatch behind the
-			// ALSA writer's blocking snd_pcm_writei (fixed 2026-07-13; see
-			// engine_play.go). Post-fix steady state is ~1-3ms; spikes surface in
-			// the WARN dump. WarnOnly: a health signal, not a fatal gate — the
-			// lookahead cushion absorbs queue-wait (Stage C catches real lateness).
+			// WarnOnly: queue-wait is absorbed by the lookahead; a health signal, not a gate.
 			Bridge: timingStageBounds{MeanMax: 0.002, P99Max: 0.008, StdDevMax: 0.003, AbsMax: 0.030, WarnOnly: true},
-			// Stage C: overdue (lag) — the authoritative audible-lateness gate,
-			// fatal. Any sustained overdue is bad; dropout at AbsMax.
+			// The authoritative audible-lateness gate; fatal.
 			Overdue: timingStageBounds{MeanMax: 0.0005, P99Max: 0.006, StdDevMax: 0, AbsMax: 0.020},
-			// Stage D: realized emission vs the scheduler-intended 'when'.
-			// Desktop wall-vs-device-clock skew is a diagnostic proxy, not an
-			// audible defect on its own → WarnOnly (Stage C catches real lateness).
+			// Wall-vs-device skew is a diagnostic proxy, not audible alone.
 			EmitDrift: timingStageBounds{MeanMax: 0.003, P99Max: 0.010, StdDevMax: 0.004, AbsMax: 0.040, WarnOnly: true},
-			// Cross-check: an overdue breach panics only if the actual emission
-			// also drifted at least this late (real audible lateness). A
-			// transient scheduling-lead blip that emitted on-time -> WARN, not
-			// crash. MUST be >= EmitDrift.AbsMax: emission drift below that
-			// bound is calibrated as "not an audible defect on its own"
-			// (device-period quantization puts the NATURAL healthy emission
-			// tail at ~25ms — a 300 BPM bench showed emit.p99=25.5ms in an
-			// otherwise clean window), so a smaller threshold turns device
-			// noise into false corroboration. The confirmed-real crash this
-			// gate exists for measured emit.absMax=106ms.
+			// MUST be ≥ EmitDrift.AbsMax: device-period quantisation puts the healthy emission tail at ~25 ms, so a smaller
+			// threshold turns device noise into false corroboration.
 			OverdueEmitFatalSec: 0.040,
 		},
 	}

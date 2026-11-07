@@ -80,8 +80,7 @@ func (g *Game) initJSHarness() {
 		if g.drum.timelineRect.Dx() <= 0 || g.drum.timelineRect.Dy() <= 0 {
 			ok = false
 		}
-		// Require at least one drawable rows representation.
-		// On small screens, the direct draw path bypasses rowsLayer.
+		// On small screens the direct draw path bypasses rowsLayer.
 		if Profile().IsMobile() && g.drum.directDrawCount > 0 {
 			// Direct draw path is active — no layer needed.
 		} else if g.drum.rowsLayer == nil {
@@ -90,8 +89,7 @@ func (g *Game) initJSHarness() {
 		return js.ValueOf(ok)
 	}))
 
-	// buildPerfRect(rows, side) builds 'rows' disjoint 1-rectangle loops
-	// each with edges of length 'side' grid units to stress scheduling.
+	// buildPerfRect(rows, side): disjoint square loops to stress scheduling.
 	js.Global().Set("buildPerfRect", jsFn(func(args jsArgs) any {
 		start := time.Now()
 		rows := 1
@@ -133,8 +131,7 @@ func (g *Game) initJSHarness() {
 		return nil
 	}))
 
-	// setNodeLogicCallbackGrid(i, j, kind) – attach a built-in NodeLogic callback
-	// for browser harnesses. Kinds: "param_boost", "param_drop", "disable_even", "none".
+	// setNodeLogicCallbackGrid(i, j, kind): param_boost / param_drop / disable_even / none.
 	js.Global().Set("setNodeLogicCallbackGrid", jsFn(func(args jsArgs) any {
 		if args.Len() < 3 {
 			return nil
@@ -234,8 +231,7 @@ func (g *Game) initJSHarness() {
 		return nil
 	}))
 
-	// gridToScreen(i,j) -> {x,y} screen coordinates for a grid position,
-	// even if no node exists there. Useful for clicking empty grid cells.
+	// gridToScreen(i, j) -> {x,y}, even with no node there.
 	js.Global().Set("gridToScreen", jsFn(func(args jsArgs) any {
 		if args.Len() < 2 {
 			return nil
@@ -318,9 +314,7 @@ func (g *Game) initJSHarness() {
 		return nil
 	}))
 
-	// centerCamera() resets the centered flag and re-runs Layout so the camera
-	// re-centers on the current splitY. Useful after the demo circuit changes
-	// splitY post-init.
+	// centerCamera(): re-centres on the current splitY, which the demo may change after init.
 	js.Global().Set("centerCamera", jsFn(func(args jsArgs) any {
 		g.centered = false
 		g.Layout(g.winW, g.winH)
@@ -350,8 +344,7 @@ func (g *Game) initJSHarness() {
 		obj.Set("rowsAreaHeight", dv.rowsAreaHeight())
 		obj.Set("visibleRows", dv.visibleRows())
 		obj.Set("timelineRect", rectToJS(dv.timelineRect))
-		// Cell-indexed callers must use cellGridRect: the ribbon bar is
-		// narrowed by header-only chrome, the grid fills the full width.
+		// Cell-indexed callers must use cellGridRect: the ribbon is narrowed by header chrome.
 		obj.Set("cellGridRect", rectToJS(dv.cellGridRect))
 		obj.Set("rowHeight", dv.rowHeight())
 		obj.Set("rowOffset", dv.rowOffset)
@@ -399,9 +392,7 @@ func (g *Game) initJSHarness() {
 		return obj
 	}))
 
-	// debugDrumRender() -> object with per-frame render decision trace.
-	// Call forceDraw() first, then immediately call debugDrumRender() to
-	// inspect what happened in the most recent Draw().
+	// debugDrumRender(): the last Draw's decisions; call forceDraw() first.
 	js.Global().Set("debugDrumRender", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(nil)

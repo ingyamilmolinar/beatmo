@@ -6,30 +6,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// PlainEnglish returns a kid-readable, one-line gloss for a UI label that
-// otherwise carries an audio-engineering term (Attack, Cutoff, Q, etc.).
-// Always-on; callers render the result as a subtitle below the jargon
-// label at ~0.7× the body font size, the same way the Synth tab already
-// renders section subtitles via sectionSubtitle().
-//
-// Returns "" when the label has no plain-English mapping — callers treat
-// that as "no subtitle, skip the row". Lookup is case-insensitive and
-// trims a trailing " (dB)" / " (Hz)" / " %" suffix before matching so
-// renderers can pass display labels verbatim without stripping units.
-//
-// Mappings stay narrow and audio-pedagogy focused. Anything that turns
-// into a sentence longer than ~24 characters belongs in the per-tab
-// legend chip (see audio_panel_legend.go), not here.
+// "" when unmapped (callers skip the subtitle). Case- and unit-suffix-insensitive so display labels pass
+// verbatim; anything longer than ~24 chars belongs in the tab legend instead.
 func PlainEnglish(label string) string {
 	key := plainEnglishKey(label)
 	if k, ok := plainEnglishMap[key]; ok {
 		return i18n.T(k)
 	}
-	// Chain-tab pill codes (OVR / SPL / DIF / FRZ). Kept in their
-	// own table next to the Chain renderer that owns them, but resolved here
-	// so Chain answers to the same app-wide lookup as every other tab — it was
-	// previously the ONLY audio-panel tab whose labels PlainEnglish did not
-	// cover, which is why its codes sat on screen unexplained.
+	// Resolved here so the Chain codes answer to the same app-wide lookup as every tab.
 	for code, k := range chainPillGlosses() {
 		if plainEnglishKey(code) == key {
 			return i18n.T(k)
@@ -38,9 +22,6 @@ func PlainEnglish(label string) string {
 	return ""
 }
 
-// plainEnglishKey normalises a label for case- and units-insensitive
-// lookup. Strips leading/trailing whitespace, lowercases, and removes a
-// trailing " (dB)" / " (Hz)" / " %" suffix.
 func plainEnglishKey(label string) string {
 	s := strings.TrimSpace(strings.ToLower(label))
 	for _, suf := range []string{" (db)", " (hz)", " (khz)", " (s)", " (ms)", " %", " hz", " db", " khz", " ms"} {
@@ -51,14 +32,8 @@ func plainEnglishKey(label string) string {
 	return s
 }
 
-// plainEnglishMap stores the canonical kid-friendly gloss for each
-// supported jargon term. Keep entries short (≤ 24 chars), lowercase the
-// keys; the lookup normalises input case + units suffix.
-//
-// Section-card subtitles already live in sectionSubtitle() (synth_panel
-// _zone.go) — those are duplicated here so the same helper can serve
-// any callsite that wants to apply the gloss to an individual knob
-// label without going through the section-card path.
+// Keep entries ≤ 24 chars with lowercase keys. Section subtitles are duplicated here so a single knob label
+// can take the gloss without the section-card path.
 var plainEnglishMap = map[string]i18n.Key{
 	"sax blow":           i18n.KeyGlossSaxBlow,
 	"sax reed offset":    i18n.KeyGlossSaxReed,
@@ -159,9 +134,8 @@ var plainEnglishMap = map[string]i18n.Key{
 	// Phase-16 voice-realism knobs: ens_jitter (Roughness) + formant_dry (Dry Blend).
 	"roughness": i18n.KeyGlossRoughness,
 	"dry blend": i18n.KeyGlossDryBlend,
-	// Synth pipeline sections (Phase 8B unified Synth tab).
-	"voice": i18n.KeyGlossVoice,
-	"osc":   i18n.KeyGlossOsc,
+	"voice":     i18n.KeyGlossVoice,
+	"osc":       i18n.KeyGlossOsc,
 
 	// Pitch
 	"pitch":     i18n.KeyGlossPitch,
@@ -196,9 +170,7 @@ var plainEnglishMap = map[string]i18n.Key{
 	"limit":      i18n.KeyGlossLimit,
 	"crisp":      i18n.KeyGlossCrisp,
 
-	// FM family knobs (native-deprecation migration). Op-numbered labels
-	// normalise through plainEnglishKey verbatim (no unit suffix), so the
-	// keys carry the full lowercase label.
+	// Op-numbered labels have no unit suffix, so the keys carry the full lowercase label.
 	"base pitch":    i18n.KeyGlossBasePitch,
 	"pitch sweep":   i18n.KeyGlossPitchSweep,
 	"sweep time":    i18n.KeyGlossSweepTime,

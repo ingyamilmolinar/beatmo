@@ -1,33 +1,20 @@
 package ui
 
-// key_repeat.go — the shared hold-to-repeat cadence.
-//
-// This curve lived inline in Button.repeatTick (uigrid.go) and was reachable by
-// nothing else, which is why MenuKeyNav had no repeat at all: a held arrow moved
-// exactly one row. Copying the formula into the nav would have been a second
-// implementation free to drift — the parallel-implementations pattern that
-// produced the platform wheel bug.
-//
-// What is genuinely shared is the ACCELERATION RAMP (intervalAt). The FIRING
-// RULE is not, and deliberately so — see dueSince vs tickLegacyModulo below.
+// The shared hold-to-repeat ACCELERATION RAMP; MenuKeyNav had no repeat while the curve lived inside Button. The
+// firing rule is deliberately not shared: dueSince vs tickLegacyModulo.
 
-// repeatCurve describes a hold-to-repeat cadence in FRAMES. Ebiten runs a fixed
-// 60 TPS, so a frame count is a time: 30 frames == 0.5s.
+// In FRAMES: Ebiten runs a fixed 60 TPS, so 30 frames = 0.5 s.
 type repeatCurve struct {
-	// Delay is the frames held before the FIRST repeat. The press edge itself is
-	// the caller's business — this curve only describes repeats.
+	// The press edge itself is the caller's; this describes repeats only.
 	Delay int
 	// Interval is the starting gap between repeats.
 	Interval int
 	// AccelEvery is how often the gap shortens by one frame.
 	AccelEvery int
-	// MinInterval is the fastest gap. It is a floor, not a suggestion: an
-	// unclamped interval reaches 0 on a long hold and `step % 0` panics.
+	// A floor: an unclamped interval reaches 0 on a long hold and `step % 0` panics.
 	MinInterval int
 }
 
-// intervalAt is the ramp: the gap between repeats `step` frames after the delay
-// expired. This is the part both callers share.
 func (c repeatCurve) intervalAt(step int) int {
 	if c.AccelEvery <= 0 {
 		return c.Interval
@@ -42,14 +29,8 @@ func (c repeatCurve) intervalAt(step int) int {
 	return interval
 }
 
-// dueSince reports whether a control held for `held` frames, last fired on frame
-// `lastFired`, fires now. This is the rule MENUS use.
-//
-// It measures the gap from the LAST FIRE rather than testing the absolute frame
-// against a modulus, which is what makes the cadence monotonic. The modulus rule
-// (tickLegacyModulo) double-fires at every acceleration step: with the menu
-// tuning it produces gaps of 6, 6, 2, 5 — two rows jumping almost together and
-// then a pause, which reads as a stutter while steering a list.
+// The menu rule: measured from the LAST fire, so the cadence is monotonic. The modulus rule double-fires at every
+// acceleration step (gaps 6, 6, 2, 5), which stutters while steering a list.
 func (c repeatCurve) dueSince(held, lastFired int) bool {
 	if held <= c.Delay {
 		return false
@@ -62,12 +43,8 @@ func (c repeatCurve) dueSince(held, lastFired int) bool {
 	return held-lastFired >= c.intervalAt(step)
 }
 
-// tickLegacyModulo is the ORIGINAL Button.repeatTick rule, preserved exactly.
-//
-// It is kept because the BPM and timeline-length +/- buttons have shipped with
-// this cadence — including its double-fire at each acceleration step, which is
-// imperceptible while scrubbing a number and would be a gratuitous change in
-// feel to "fix". New callers should use dueSince.
+// Kept exactly for the BPM and length +/- buttons: its double-fire is imperceptible while scrubbing a number and
+// "fixing" it would change their feel. New callers use dueSince.
 func (c repeatCurve) tickLegacyModulo(held int) bool {
 	if held <= c.Delay {
 		return false
@@ -77,14 +54,9 @@ func (c repeatCurve) tickLegacyModulo(held int) bool {
 }
 
 var (
-	// buttonRepeat is the cadence the BPM and timeline-length +/- buttons have
-	// always had: 1.0s before it starts, 10/s accelerating to 60/s. Scrubbing a
-	// NUMBER wants to fly, so the floor is one frame.
+	// 1 s before it starts, 10/s accelerating to 60/s: a number wants to fly.
 	buttonRepeat = repeatCurve{Delay: 60, Interval: 6, AccelEvery: 30, MinInterval: 1}
 
-	// menuRepeat is deliberately gentler: 0.5s before it starts, 10 rows/s
-	// accelerating to 30 rows/s. A list is STEERED rather than scrubbed — at the
-	// button curve's 60 rows/second the whole 133-instrument roster passes in
-	// about two seconds, which cannot be aimed.
+	// Gentler (0.5 s, 10 rows/s to 30): a list is STEERED; at 60 rows/s the whole roster passes in two seconds.
 	menuRepeat = repeatCurve{Delay: 30, Interval: 6, AccelEvery: 20, MinInterval: 2}
 )

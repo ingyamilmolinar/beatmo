@@ -5,8 +5,6 @@ import (
 	"math"
 )
 
-// VerticalScroller encapsulates common scroll logic (wheel + drag) for vertical
-// lists with a fixed number of visible items inside a viewport.
 type VerticalScroller struct {
 	Total   int
 	Visible int
@@ -49,8 +47,7 @@ func (s *VerticalScroller) BarRect(width int) image.Rectangle {
 	return image.Rect(s.View.Max.X-width, s.View.Min.Y, s.View.Max.X, s.View.Max.Y)
 }
 
-// ThumbRect returns the scrollbar thumb rectangle. minH enforces a minimum
-// thumb height to keep it usable in small viewports.
+// minH keeps the thumb usable in small viewports.
 func (s *VerticalScroller) ThumbRect(width, minH int) image.Rectangle {
 	if !s.HasScroll() || s.View.Empty() {
 		return image.Rect(0, 0, 0, 0)
@@ -76,8 +73,7 @@ func (s *VerticalScroller) ThumbRect(width, minH int) image.Rectangle {
 	return image.Rect(bar.Min.X, y, bar.Max.X, y+thumbH)
 }
 
-// ScrollBy adjusts First by delta (positive scrolls down). It clamps and
-// reports whether the value changed.
+// Positive scrolls down.
 func (s *VerticalScroller) ScrollBy(delta int) bool {
 	prev := s.First
 	s.First += delta
