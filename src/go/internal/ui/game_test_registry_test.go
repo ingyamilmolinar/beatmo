@@ -9,12 +9,16 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 	"go.uber.org/goleak"
 )
 
 var (
 	testGamesMu sync.Mutex
 	testGames   []*Game
+	// The locale each live test Game started with: closing it restores that,
+	// so a scene or test that switches language never leaks into the next.
+	testGameLocales = map[*Game]i18n.Locale{}
 
 	defaultDrawRect      = drawRect
 	defaultDrawEdgeLine  = drawEdgeLine
@@ -34,6 +38,7 @@ func init() {
 		}
 		testGamesMu.Lock()
 		testGames = append(testGames, g)
+		testGameLocales[g] = i18n.ActiveLocale()
 		testGamesMu.Unlock()
 	}
 	unregisterGameForTest = func(g *Game) {
@@ -41,12 +46,17 @@ func init() {
 			return
 		}
 		testGamesMu.Lock()
-		defer testGamesMu.Unlock()
+		loc, tracked := testGameLocales[g]
+		delete(testGameLocales, g)
 		for i, q := range testGames {
 			if q == g {
 				testGames = append(testGames[:i], testGames[i+1:]...)
-				return
+				break
 			}
+		}
+		testGamesMu.Unlock()
+		if tracked && i18n.ActiveLocale() != loc {
+			i18n.SetLocale(loc)
 		}
 	}
 }
