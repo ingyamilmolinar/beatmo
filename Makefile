@@ -3,7 +3,10 @@ include ci/versions.env
 GO ?= $(shell if [ -x $(CURDIR)/.tools/go/bin/go ]; then echo $(CURDIR)/.tools/go/bin/go; else echo go; fi)
 WASM_OUT = ../js/main.wasm
 MA_JS = src/js/drums.single.js
-C_LIB = build/libdrums.a
+C_ARCHIVE = build/libdrums.a
+# What cgo consumers depend on: the archive plus its content hash keyed into the
+# cgo package, so Go relinks exactly when the archive's bytes change.
+C_LIB = src/go/internal/audio/clib_hash.gen.go
 C_SRC = src/c/drums.c src/c/miniaudio.c src/c/fmsynth.c src/c/insert_fx.c src/c/fx_host.c src/c/mix_dsp.c src/c/wavetable.c src/c/adsr.c src/c/noise.c src/c/modular.c src/c/modular_stages.c src/c/modal_bank.c src/c/gcov_flush.c
 # Test-only oracle shim (real ma_noise). Linked into the NATIVE archive so
 # noise_ma_parity_test.go can compare the transplant against miniaudio, but
@@ -61,18 +64,15 @@ build:
 build/%.o: src/c/%.c $(C_HDRS) | build
 	$(CC) -O2 $(MP3FLAG) -c $< -o $@
 
-$(C_LIB): $(C_OBJS)
-	ar rcs $@ $(C_OBJS)
-	@# The archive was (re)built, so a C source/header changed. Go links this static
-	@# lib via cgo LDFLAGS but keys its build cache on the .go sources + the LDFLAGS
-	@# STRING, NOT the .a's content — so it would silently reuse a stale cgo link.
-	@# Clear the Go build cache here so every downstream `go build`/`go test` relinks
-	@# against the freshly-built libdrums.a. (Without this, C edits don't take effect.)
-	$(GO) clean -cache
+$(C_ARCHIVE): $(C_OBJS)
+	ar rcsD $@ $(C_OBJS)
+
+$(C_LIB): $(C_ARCHIVE)
+	@scripts/clib-hash.sh --write >/dev/null
 
 clean:
 	rm -f build/drums.o build/fmsynth.o build/insert_fx.o build/fx_host.o build/mix_dsp.o build/wavetable.o build/adsr.o build/noise.o build/noise_ma_oracle.o build/modular.o build/modular_stages.o build/modal_bank.o build/gcov_flush.o
-	rm -f $(C_LIB)
+	rm -f $(C_ARCHIVE) $(C_LIB)
 	rm -f $(MA_JS)
 
 # Regenerate the synth ABI bridge from the Go schema. Cheap (no CGo); run on
@@ -124,7 +124,7 @@ gen-fonts:
 
 .PHONY: measure-loudness
 measure-loudness: ## Measure each instrument's loudness amplitude into its shipped document, then rebuild the pack
-	cd src/go && ../../.tools/go/bin/go run ./cmd/measure-loudness -write
+	cd src/go && $(GO) run ./cmd/measure-loudness -write
 	$(MAKE) asset-pack
 	@echo "updated render.amplitude in internal/assets/instruments/*.json + rebuilt the pack"
 
@@ -133,23 +133,23 @@ measure-loudness: ## Measure each instrument's loudness amplitude into its shipp
 .PHONY: synth-match synth-fingerprint fetch-refs refs-doctor refs-families refs-adopt refs-adopt-all refs-verify refs-check scores-verify scores-notice templates ab ab-list ab-all ab-notes wav-match wav-match-map wav-match-nuisance wav-match-validate wav-match-calibrate ab-match probe-sounds refs-validate song-timeline song-render song-compare
 
 synth-match: ## Tune a synth toward a reference WAV (INST=, REF=, [BUDGET=], [RESTARTS=], [DRY_RUN=1])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/synth-match -inst $(INST) -ref $(REF) \
+	cd src/go && $(GO) run ./cmd/synth-match -inst $(INST) -ref $(REF) \
 		$(if $(BUDGET),-budget $(BUDGET),) $(if $(RESTARTS),-restarts $(RESTARTS),) $(if $(DRY_RUN),-dry-run,)
 
 synth-fingerprint: ## Print the analysis fingerprint of a WAV (FILE=)
-	cd src/go && ../../.tools/go/bin/go run ./cmd/synth-analyze ref -file $(FILE)
+	cd src/go && $(GO) run ./cmd/synth-analyze ref -file $(FILE)
 
 fetch-refs: ## Fetch reference audio into the corpus ([TIER=instrument|song], [ID=], [INSTRUMENT=], [ONLY_MISSING=1], [FORCE=1])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs fetch \
+	cd src/go && $(GO) run ./cmd/refs fetch \
 		$(if $(TIER),-tier $(TIER),) $(if $(ID),-id $(ID),) \
 		$(if $(INSTRUMENT),-instrument $(INSTRUMENT),) \
 		$(if $(ONLY_MISSING),-only-missing,) $(if $(FORCE),-force,)
 
 refs-doctor: ## Report reference coverage for every instrument and template
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs doctor
+	cd src/go && $(GO) run ./cmd/refs doctor
 
 refs-families: ## List every instrument family, the reference its members are auditioned against, and the last ear verdict (INST=<family-or-instrument> for one)
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs families \
+	cd src/go && $(GO) run ./cmd/refs families \
 		$(if $(INST),-instrument '$(INST)',)
 
 # refs-adopt points ONE instrument at a recording of your own. The file is
@@ -161,7 +161,7 @@ refs-families: ## List every instrument family, the reference its members are au
 # never ships, so any recording you have will do -- there is no licence.
 refs-adopt: ## Point an instrument at your own WAV (WAV=, [INST=] defaults to the filename, [NOTE=], [ID=], [F0=] pins the fundamental past a bad detection, [START_SEC=], [MAX_SEC=])
 	@test -n "$(WAV)" || { echo "refs-adopt: WAV is required: a filename inside $(BEATMO_WAV_REFS)/sources, or any path -- or use \`make refs-adopt-all\`" >&2; exit 1; }
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs adopt \
+	cd src/go && $(GO) run ./cmd/refs adopt \
 		$(if $(INST),-instrument '$(INST)',) -wav '$(WAV)' $(if $(NOTE),-note '$(NOTE)',) \
 		$(if $(ID),-id '$(ID)',) $(if $(F0),-f0 $(F0),) \
 		$(if $(START_SEC),-start-sec $(START_SEC),) $(if $(MAX_SEC),-max-sec $(MAX_SEC),)
@@ -169,25 +169,25 @@ refs-adopt: ## Point an instrument at your own WAV (WAV=, [INST=] defaults to th
 # Bulk form: name each file after the instrument it is for (snare-lofi.wav,
 # kick-deep_take3.wav), drop them all in, run this once.
 refs-adopt-all: ## Adopt every resolvable WAV waiting in $(BEATMO_WAV_REFS)/sources ([NOTE=], [START_SEC=], [MAX_SEC=])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs adopt -scan $(if $(NOTE),-note '$(NOTE)',) \
+	cd src/go && $(GO) run ./cmd/refs adopt -scan $(if $(NOTE),-note '$(NOTE)',) \
 		$(if $(START_SEC),-start-sec $(START_SEC),) $(if $(MAX_SEC),-max-sec $(MAX_SEC),)
 
 refs-verify: ## Hash every local reference against the catalogue
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs verify
+	cd src/go && $(GO) run ./cmd/refs verify
 
 refs-check: ## Re-derive every corpus calibration (thresholds, organic range, f0 confidence, audition candidates) against the local refs and fail on drift ([CHECKS=a,b], [V=1]); never part of `go test`
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs check \
+	cd src/go && $(GO) run ./cmd/refs check \
 		$(if $(CHECKS),-only $(CHECKS),) $(if $(V),-v,)
 
 scores-verify: ## Re-fetch every reference SCORE upstream and check it against the catalogue hash
 	scripts/verify_scores.sh $(ID)
 
 scores-notice: ## Regenerate internal/scoreref/NOTICE-scores.md from the score catalogue
-	cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod \
+	cd src/go && $(GO) test -tags test -modfile=go.test.mod \
 		./internal/scoreref/ -run TestNoticeIsUpToDate -update
 
 templates: ## Regenerate the built-in template circuits from the committed reference scores
-	cd src/go && ../../.tools/go/bin/go run ./cmd/gen-showcase
+	cd src/go && $(GO) run ./cmd/gen-showcase
 
 # BEATMO_WAV_REFS is the corpus dir `refs compare` needs to resolve reference
 # audio; default it so `make ab` works out of the box, and export it so the
@@ -207,7 +207,7 @@ ab: ## A/B listen: real reference vs Beatmo's synthesized version, played sequen
 	@test -n "$(INST)" || { echo "ab: INST is required, e.g. \`make ab INST=oboe\` -- see \`make ab-list\` for valid ids" >&2; exit 1; }
 	@bash -c '\
 	  set -e; \
-	  PLAN="$$(cd src/go && ../../.tools/go/bin/go run ./cmd/refs compare -instrument $(INST) -sh)"; \
+	  PLAN="$$(cd src/go && $(GO) run ./cmd/refs compare -instrument $(INST) -sh)"; \
 	  eval "$$PLAN"; \
 	  echo "playing REAL then SYNTH, one after the other -- open/xdg-open hands off to a player and returns immediately, so we sleep the clip'"'"'s duration between the two"; \
 	  echo "▶ REAL  $$BEATMO_AB_REF -> $$BEATMO_AB_REAL"; \
@@ -223,7 +223,7 @@ ab: ## A/B listen: real reference vs Beatmo's synthesized version, played sequen
 probe-sounds: ## Play the isolated-property probe tones in order so you can name each property and where you first hear a difference (SET=<name> for one set; see `refs probe` for the list)
 	@bash -c '\
 	  set -e; \
-	  PLAN="$$(cd src/go && ../../.tools/go/bin/go run ./cmd/refs probe $(if $(SET),-set $(SET),) -sh)"; \
+	  PLAN="$$(cd src/go && $(GO) run ./cmd/refs probe $(if $(SET),-set $(SET),) -sh)"; \
 	  eval "$$PLAN"; \
 	  echo "playing $$BEATMO_PROBE_N probe clips in order -- all identical in pitch and loudness"; \
 	  echo "say what word you would use at each end of a set, and the first step where you hear a clear difference"; \
@@ -236,10 +236,10 @@ probe-sounds: ## Play the isolated-property probe tones in order so you can name
 	    sleep 0.5; \
 	    i=$$((i+1)); \
 	  done; \
-	  echo "done -- `cd src/go && ../../.tools/go/bin/go run ./cmd/refs probe` prints the measured value for every step"'
+	  echo "done -- `cd src/go && $(GO) run ./cmd/refs probe` prints the measured value for every step"'
 
 ab-list: ## List every instrument comparable via `make ab INST=...`
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs compare -list
+	cd src/go && $(GO) run ./cmd/refs compare -list
 
 # AUDITION_LOOP is the shared driver behind `ab-all` and `ab-notes`.
 #
@@ -275,7 +275,7 @@ ab-list: ## List every instrument comparable via `make ab INST=...`
 # render would fall through to playing an empty path. A bare assignment does
 # trip it.
 define AUDITION_LOOP
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-refs-audition ./cmd/refs
+	@cd src/go && $(GO) build -o /tmp/beatmo-refs-audition ./cmd/refs
 	@bash -c '\
 	  set -e; \
 	  BIN=/tmp/beatmo-refs-audition; \
@@ -357,7 +357,7 @@ ab-notes: ## Second pass over `make ab-all`: capture WHY a family sounds wrong a
 # byte-identical files are listed once.
 WAVS ?= $(HOME)/Downloads/*.wav
 wav-match: ## Rank every shipped instrument against your own WAVs and write level-matched clips of the closest ones (WAVS='<glob>[,<glob>...]' default ~/Downloads/*.wav, [TOP=3], [FORCE=1] re-analyses)
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs match -wavs '$(WAVS)' \
+	cd src/go && $(GO) run ./cmd/refs match -wavs '$(WAVS)' \
 		$(if $(TOP),-top $(TOP),) $(if $(FORCE),-force,)
 
 # wav-match-map: the coverage map, both ways round -- every recording's
@@ -370,16 +370,16 @@ wav-match: ## Rank every shipped instrument against your own WAVs and write leve
 # reference (`catalogue`; byte-identical files are matched once).
 MAP_WAVS ?= $(HOME)/Downloads/*.wav,catalogue
 wav-match-map: ## Map recordings <-> instruments: matches, fidelity gaps, stand-ins and uncovered instruments -> $$BEATMO_WAV_REFS/matches/MAP.md (MAP_WAVS='<glob>[,<glob>|catalogue...]' default downloads + catalogued refs, [FORCE=1])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs match -map -wavs '$(MAP_WAVS)' $(if $(FORCE),-force,)
+	cd src/go && $(GO) run ./cmd/refs match -map -wavs '$(MAP_WAVS)' $(if $(FORCE),-force,)
 
 wav-match-nuisance: ## Re-play shipped voices with ONE nuisance each (pitch +/-5, a note cut short, room, reverb, bright/dark mic) and report whether the matcher still finds the voice ([CASES=a,b | all])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs match -nuisance $(if $(CASES),-cases $(CASES),)
+	cd src/go && $(GO) run ./cmd/refs match -nuisance $(if $(CASES),-cases $(CASES),)
 
 wav-match-validate: ## Grade `refs match` on every catalogued reference (leave-one-out): own family #1 / top-3 / MRR and the broad KIND of the first-ranked voice
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs match -validate
+	cd src/go && $(GO) run ./cmd/refs match -validate
 
 wav-match-calibrate: ## Re-derive the matcher's hubness calibration (src/go/cmd/refs/testdata/match_hubness.json) over the catalogued references -- after retuning or adding instruments; checked by `make refs-check`
-	cd src/go && ../../.tools/go/bin/go run ./cmd/refs match -calibrate
+	cd src/go && $(GO) run ./cmd/refs match -calibrate
 
 # ab-match plays each recording, then its closest instrument (blocking player:
 # paplay/aplay/ffplay, or $$BEATMO_PLAYER), and asks y/p/n with a free-text note
@@ -390,12 +390,12 @@ wav-match-calibrate: ## Re-derive the matcher's hubness calibration (src/go/cmd/
 # ONLY is honoured only when YOU set it: the Makefile's own `ONLY ?= n,p`
 # (ab-notes' verdict-class filter) would otherwise match no filename at all.
 ab-match: ## Listen to each WAV next to its closest instrument and approve/reject it with notes (runs wav-match first; WAVS='<glob>', ONLY=<filename text>, RESUME=false re-asks answered files; answers -> src/go/internal/audio/testdata/wav_match_verdicts.jsonl)
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-refs-match ./cmd/refs
+	@cd src/go && $(GO) build -o /tmp/beatmo-refs-match ./cmd/refs
 	@cd src/go && /tmp/beatmo-refs-match match -listen -wavs '$(WAVS)' -resume=$(RESUME) \
 		$(if $(TOP),-top $(TOP),) $(if $(filter-out file,$(origin ONLY)),-only '$(ONLY)',)
 
 ab-session: ## Audition round: reference + current + two candidates per family, rated and described from ONE word salad shared by every instrument (FAMILIES=a,b; DEEP=1 also rates the instrument's own words 1-5; resumes at the first family not yet reviewed for its current candidates, RESUME=false asks all again; CLONE=1 adds each family's WAV clone as candidate K with a y/n/p accept; answers -> src/go/internal/audio/testdata/ear_sessions.jsonl)
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-refs-audition ./cmd/refs
+	@cd src/go && $(GO) build -o /tmp/beatmo-refs-audition ./cmd/refs
 	@cd src/go && /tmp/beatmo-refs-audition session -resume=$(RESUME) $(if $(FAMILIES),-families $(FAMILIES),) $(if $(CLONE),-clone,) $(if $(DEEP),-deep,)
 
 # tune / ab-tuned / tune-adopt: essence-driven candidates for the curated
@@ -411,46 +411,46 @@ ab-session: ## Audition round: reference + current + two candidates per family, 
 TUNE_WAVS ?= $(HOME)/Downloads/*.wav
 tune: ## Essence-tune ONE instrument into a candidate document (INST=<id>[,<id>], [GENS=40] [SEED=1] [HARMONICS=N] [TUNE_WAVS=<glob>]; writes $$BEATMO_WAV_REFS/tuned/<inst>/)
 	@test -n "$(INST)" || { echo "tune: INST is required (or \`make tune-picks\`)" >&2; exit 1; }
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-refs-tune ./cmd/refs
+	@cd src/go && $(GO) build -o /tmp/beatmo-refs-tune ./cmd/refs
 	@cd src/go && /tmp/beatmo-refs-tune tune -inst $(INST) -wavs '$(TUNE_WAVS)' \
 		$(if $(GENS),-gens $(GENS),) $(if $(SEED),-seed $(SEED),) $(if $(HARMONICS),-add-harmonics $(HARMONICS),)
 
 tune-picks: ## Essence-tune every curated pick (src/go/cmd/refs/testdata/tune_picks.json) into candidates, then listen with `make ab-tuned` ([PICKS=a,b] [GENS=40] [SEED=1])
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-refs-tune ./cmd/refs
+	@cd src/go && $(GO) build -o /tmp/beatmo-refs-tune ./cmd/refs
 	@cd src/go && /tmp/beatmo-refs-tune tune -picks $(if $(PICKS),-inst $(PICKS),) -wavs '$(TUNE_WAVS)' \
 		$(if $(GENS),-gens $(GENS),) $(if $(SEED),-seed $(SEED),)
 
 ab-tuned: ## A/B by ear: reference, then the CURRENT instrument, then its essence-tuned candidate T, per family; rate it, pick its words from the shared word salad, and y/n/p whether it ships ([FAMILIES=a,b] default every tuned candidate; DEEP=1 also rates the instrument's own words 1-5; resumes at the first family not yet reviewed for its current candidate, RESUME=false asks all again, a family in FAMILIES is always asked; answers are appended -> src/go/internal/audio/testdata/ear_sessions.jsonl)
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-refs-audition ./cmd/refs
+	@cd src/go && $(GO) build -o /tmp/beatmo-refs-audition ./cmd/refs
 	@cd src/go && /tmp/beatmo-refs-audition session -tuned -resume=$(RESUME) $(if $(FAMILIES),-families $(FAMILIES),) $(if $(DEEP),-deep,)
 
 tune-adopt: ## Ship a tuned candidate into internal/assets/instruments — ONLY after `make ab-tuned FAMILIES=<inst>` recorded y for that exact candidate (INST=<instrument>)
 	@test -n "$(INST)" || { echo "tune-adopt: INST is required" >&2; exit 1; }
-	@cd src/go && ../../.tools/go/bin/go run ./cmd/clone adopt -kind tuned -inst $(INST)
+	@cd src/go && $(GO) run ./cmd/clone adopt -kind tuned -inst $(INST)
 
 clone: ## Clone a struck/modal reference into a candidate instrument document: analysis → invert → CMA-ES refine (INST=<instrument>, [REF=] [WAV=] [F0=] [AS=<newid> | INTO=<id>] [NO_REFINE=1] [SEED=] [GENS=]; writes $$BEATMO_WAV_REFS/clones/<inst>/)
-	@cd src/go && ../../.tools/go/bin/go run ./cmd/clone -inst $(INST) $(if $(REF),-ref $(REF),) $(if $(WAV),-wav $(WAV),) $(if $(F0),-f0 $(F0),) \
+	@cd src/go && $(GO) run ./cmd/clone -inst $(INST) $(if $(REF),-ref $(REF),) $(if $(WAV),-wav $(WAV),) $(if $(F0),-f0 $(F0),) \
 		$(if $(AS),-as $(AS),) $(if $(INTO),-into $(INTO),) $(if $(NO_REFINE),-no-refine,) $(if $(SEED),-seed $(SEED),) $(if $(GENS),-gens $(GENS),)
 
 clone-adopt: ## Ship a clone into internal/assets/instruments — ONLY after `make ab-session FAMILIES=<inst> CLONE=1` recorded accept=y for that exact candidate (INST=<instrument>)
-	@cd src/go && ../../.tools/go/bin/go run ./cmd/clone adopt -inst $(INST)
+	@cd src/go && $(GO) run ./cmd/clone adopt -inst $(INST)
 
 # The slice-1 benchmark (spec §6b): local corpus only, never part of `go test`.
 CLONE_BENCH ?= tubular-bells kalimba glockenspiel cowbell marimba xylophone vibraphone tom conga
 clone-bench: ## Clone every slice-1 benchmark instrument and print the summary (CLONE_BENCH="a b" to choose; verdicts are the ear's — `make ab-session FAMILIES=… CLONE=1`)
-	@cd src/go && ../../.tools/go/bin/go build -o /tmp/beatmo-clone ./cmd/clone
+	@cd src/go && $(GO) build -o /tmp/beatmo-clone ./cmd/clone
 	@for i in $(CLONE_BENCH); do (cd src/go && /tmp/beatmo-clone -inst $$i $(if $(GENS),-gens $(GENS),)); done
 
 song-timeline: ## Second-by-second analysis of a WAV (FILE=, [HOP=], [CONFIG=], [OUT=])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/song-match timeline -file $(FILE) \
+	cd src/go && $(GO) run ./cmd/song-match timeline -file $(FILE) \
 		$(if $(HOP),-hop $(HOP),) $(if $(CONFIG),-config $(CONFIG),) $(if $(OUT),-out $(OUT),)
 
 song-render: ## Render a template to master.wav + per-instrument stems (TEMPLATE=, OUT=, [BARS=], [SR=])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/song-match render -template $(TEMPLATE) -out $(OUT) \
+	cd src/go && $(GO) run ./cmd/song-match render -template $(TEMPLATE) -out $(OUT) \
 		$(if $(BARS),-bars $(BARS),) $(if $(SR),-sr $(SR),)
 
 song-compare: ## Compare a template to a reference WAV (TEMPLATE=, REF=, [MANIFEST=], [CONFIG=], [TUNE=1], [DRY_RUN=1])
-	cd src/go && ../../.tools/go/bin/go run ./cmd/song-match compare -template $(TEMPLATE) -ref $(REF) \
+	cd src/go && $(GO) run ./cmd/song-match compare -template $(TEMPLATE) -ref $(REF) \
 		$(if $(MANIFEST),-manifest $(MANIFEST),) $(if $(CONFIG),-config $(CONFIG),) \
 		$(if $(TUNE),-tune,) $(if $(DRY_RUN),-dry-run,)
 
@@ -794,7 +794,7 @@ bench-synth-storm: $(C_LIB)
 # seeks + timeline edits during playback). Results assessed in
 # bench-results/seek_navigation_bench.md. Override BENCHTIME/COUNT.
 bench-seek:
-	cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod -run '^$$' \
+	cd src/go && $(GO) test -tags test -modfile=go.test.mod -run '^$$' \
 		-bench 'BenchmarkSeek|BenchmarkTimelineEdit' -benchmem \
 		-benchtime=$(or $(BENCHTIME),1s) -count=$(or $(COUNT),2) ./internal/ui/
 

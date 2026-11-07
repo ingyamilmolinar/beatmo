@@ -59,3 +59,4 @@ __pycache__/
 /src/go/synth-analyze
 /src/go/synth-match
 /src/go/*.test
+src/go/internal/audio/clib_hash.gen.go
