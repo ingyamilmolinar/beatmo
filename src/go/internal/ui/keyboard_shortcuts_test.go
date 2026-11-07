@@ -6,8 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The router must register exactly the six expected nodes with the expected
-// gating, in descending z for the gated tier.
+// Exactly six nodes, gated ones in descending z.
 func TestShortcutRouter_NodesRegistered(t *testing.T) {
 	g := newTestGameForUndo(t)
 	if g.keyboardRouter == nil {
@@ -37,9 +36,8 @@ func TestShortcutRouter_NodesRegistered(t *testing.T) {
 	}
 }
 
-// The keys owned by the nodes must be DISJOINT (so run-all == first-claim-wins)
-// and COMPLETE (the refactor drops no shortcut key). This is the contract that
-// lets the router run every node each frame without a precedence rule.
+// Disjoint, so running every node equals first-claim-wins with no precedence rule; complete, so no shortcut is
+// dropped.
 func TestShortcutKeysAreDisjointAndComplete(t *testing.T) {
 	g := newTestGameForUndo(t)
 	seen := map[ebiten.Key]string{}
@@ -51,7 +49,6 @@ func TestShortcutKeysAreDisjointAndComplete(t *testing.T) {
 			seen[k] = n
 		}
 	}
-	// COMPLETE: every shortcut key handled before Phase 3 is still owned.
 	want := []ebiten.Key{
 		ebiten.KeyZ, ebiten.KeyY, ebiten.KeyR, // undo/redo
 		ebiten.KeyC, ebiten.KeyX, ebiten.KeyV, // clipboard copy/cut/paste
@@ -112,8 +109,7 @@ func TestShortcutNodes_ClaimOwnKeys(t *testing.T) {
 	restore()
 }
 
-// The ungated tier (undo) fires even when a surface owns the keyboard, while the
-// gated tier does not — the Phase-3 tier split, end to end through the router.
+// Undo fires even while a surface owns the keyboard; the gated tier does not.
 func TestRouterTierGating(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.drum.tree.SetFocus("transport") // KeyboardClaimed() == true

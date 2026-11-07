@@ -14,10 +14,7 @@ type passthroughHandler struct{ mockHandler }
 
 func (p *passthroughHandler) PassesGesturesThrough() bool { return true }
 
-// TestInputDispatcher_PressEdgeDecidesGestureOwner pins the ownership latch:
-// the handler that consumes the press EDGE owns the gesture until the next
-// edge, wherever the pointer goes in between (held frames, the release frame,
-// frames routed around the dispatcher).
+// The handler that consumes the press EDGE owns the gesture until the next edge, wherever the pointer goes.
 func TestInputDispatcher_PressEdgeDecidesGestureOwner(t *testing.T) {
 	d := NewInputDispatcher()
 	btn := &mockHandler{bounds: image.Rect(0, 0, 10, 10), zIndex: 300, result: InputConsumed}
@@ -43,9 +40,8 @@ func TestInputDispatcher_PressEdgeDecidesGestureOwner(t *testing.T) {
 	}
 }
 
-// TestInputDispatcher_SkipFrameClearsStaleOwner: a press cycle that starts on a
-// frame routed around the dispatcher has no dispatcher owner — an earlier
-// gesture's owner must not swallow it.
+// A press cycle that starts on a frame routed around the dispatcher has no owner; an earlier one must not
+// swallow it.
 func TestInputDispatcher_SkipFrameClearsStaleOwner(t *testing.T) {
 	d := NewInputDispatcher()
 	btn := &mockHandler{bounds: image.Rect(0, 0, 10, 10), zIndex: 300, result: InputConsumed}
@@ -59,8 +55,7 @@ func TestInputDispatcher_SkipFrameClearsStaleOwner(t *testing.T) {
 	}
 }
 
-// TestInputDispatcher_PassthroughHandlerDoesNotOwnGesture: swallowing is the
-// default; a handler opts into passthrough explicitly.
+// Swallowing is the default; passthrough is opt-in.
 func TestInputDispatcher_PassthroughHandlerDoesNotOwnGesture(t *testing.T) {
 	d := NewInputDispatcher()
 	sb := &passthroughHandler{mockHandler{bounds: image.Rect(0, 0, 10, 10), zIndex: 200, result: InputCaptured, captured: true}}
@@ -75,10 +70,8 @@ func TestInputDispatcher_PassthroughHandlerDoesNotOwnGesture(t *testing.T) {
 	}
 }
 
-// TestEveryGridCornerButtonIsInTheTable: every top-right grid button field on
-// Game is a row of gridCornerButtons — the one table layout, draw, input,
-// toggle reconcile and menu exclusion iterate. A button added beside the table
-// is exactly how the theme button lost its toggle reconcile.
+// Every corner button field is a row of gridCornerButtons, the table layout, draw, input, reconcile and menu
+// exclusion iterate; a button beside the table loses one of them.
 func TestEveryGridCornerButtonIsInTheTable(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

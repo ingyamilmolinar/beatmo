@@ -11,10 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// After unification, EVERY node-sidebar control — dropdown LIST items, steppers,
-// selectors, and the close button — uses the shared menu keycap style
-// (DropdownStyle) so the node pop-up reads identically to the other menus. The
-// node's own color is layered on via tintBtnAccent (keycap face tint) / drawMenuRow's accent.
+// Every sidebar control uses DropdownStyle, so the pop-up reads like the other menus; the node colour is layered
+// on at draw.
 func TestNodeDropdownItemsUseDropdownStyle(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.tryAddNode(7, 7, model.NodeTypeRegular)
@@ -29,8 +27,6 @@ func TestNodeDropdownItemsUseDropdownStyle(t *testing.T) {
 	g.updateBeatInfos()
 	g.sidebar.layout()
 
-	// Every node control (a dropdown item, a stepper, a selector, the close
-	// button) must be DropdownStyle.
 	for _, id := range []sbID{sbLogicOption(model.LogicProbability), sbMinus(fieldVol), sbPlus(fieldVol), sbLogicSelect, sbClose} {
 		b := g.sidebar.btns[id]
 		if b == nil {
@@ -40,19 +36,14 @@ func TestNodeDropdownItemsUseDropdownStyle(t *testing.T) {
 		if !ok {
 			t.Fatalf("node button %q Style is not a ButtonStyle: %T", id, b.Style)
 		}
-		// Checked right after layout, before any Draw — tintBtnAccent only tints
-		// the cap face during Draw, so the base fill here is still DropdownStyle's
-		// (the cap-face spec that defines the keycap look).
+		// Before any Draw, so the base fill is still DropdownStyle's.
 		if bs.Fill != DropdownStyle.Fill {
 			t.Errorf("node button %q: Fill = %v, want DropdownStyle fill %v", id, bs.Fill, DropdownStyle.Fill)
 		}
 	}
 }
 
-// drawDropdownItem must route through drawMenuRow, which paints the node-color
-// active stripe for the SELECTED item (drawMenuItemBackgroundAccent → a filled
-// rect of exactly nodeAccent at the row's left edge). We intercept drawRect to
-// confirm a node-accent-colored fill lands inside the selected item's rect.
+// Through drawMenuRow, which paints the selected item's left stripe in exactly nodeAccent.
 func TestNodeDropdownItemDrawsNodeAccentStripe(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.tryAddNode(7, 7, model.NodeTypeRegular)
@@ -65,9 +56,7 @@ func TestNodeDropdownItemDrawsNodeAccentStripe(t *testing.T) {
 	g.sidebar.logicDropdownOpen = true
 	g.sidebar.grooveDropdownOpen = false
 	g.updateBeatInfos()
-	// Use a taller window so the logic dropdown items fall inside the viewport
-	// (with 800×600 the grid pane is only ~300px, putting the logic items just
-	// below its bottom edge and triggering the Skip below).
+	// At 800x600 the grid pane is ~300 px and the logic items fall below it.
 	g.Layout(800, 1200)
 	g.sidebar.layout()
 

@@ -10,20 +10,12 @@ import (
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
-// almostEqual compares floats with a small epsilon, needed because the
-// delta steppers accumulate via float64 arithmetic which isn't guaranteed
-// bit-identical to the literal constant.
+// The steppers accumulate in float64, not bit-identical to the literal.
 func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) < 1e-9
 }
 
-// clickMenuControl fails the test if the named GroupMenu control's rect is
-// missing/empty, else clicks its center through the REAL Game.Update input
-// path (gridClick). Per the house rule (functional tests drive Game.Update,
-// not isolated method calls), this is the only way the E2E suite below
-// exercises GroupMenu's buttons — mirroring the already-established fact
-// (zz_repro_groupmenu_click_test.go, superseded by this file) that rects are
-// live and clickable without any Draw() call in this harness.
+// Through the REAL Game.Update input path; the rects are live without a Draw in this harness.
 func clickMenuControl(t *testing.T, g *Game, id gmID) {
 	t.Helper()
 	r, ok := g.groupMenu.rects[id]
@@ -46,12 +38,8 @@ func findRule(rules []model.GroupRule, param model.GroupParam) *model.GroupRule 
 	return nil
 }
 
-// TestGroupMenuE2E_RuleOnOffClickTogglesRule drives the "ruleonoff" button
-// through real clicks (task-enabled-status brief, Part C): it toggles the
-// group's INDEPENDENT RulesEnabled status bit, never touching the configured
-// Rules — a pitch delta is configured via rdpit+ first (deltas alone must
-// NOT enable, per Part C), then ruleonoff flips the flag on/off while the
-// rule itself stays put throughout.
+// It flips the INDEPENDENT RulesEnabled bit and never touches Rules; the delta is set first since deltas
+// alone must not enable.
 func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -92,11 +80,7 @@ func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_DeltaStepClicksApplyIndependentlyPerParam verifies the
-// three independent per-param delta steppers (task-rule-anchor Part B,
-// replacing the old single delta+param-cycle control): pitch steps by 1.0
-// and volume steps by 0.05, and editing one param's delta must not disturb
-// another's.
+// Pitch steps 1.0, volume 0.05; one param's delta never disturbs another's.
 func TestGroupMenuE2E_DeltaStepClicksApplyIndependentlyPerParam(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -142,8 +126,6 @@ func TestGroupMenuE2E_DeltaStepClicksApplyIndependentlyPerParam(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_EveryNStepClickFloorsAtOne verifies n+/n- steppers,
-// including the EveryN floor at 1.
 func TestGroupMenuE2E_EveryNStepClickFloorsAtOne(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -178,10 +160,7 @@ func TestGroupMenuE2E_EveryNStepClickFloorsAtOne(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_SaveClickCommitsProvisionalGroup: a real marquee creates a
-// provisional group; a real "save" click must commit it as exactly 1 undo
-// step and keep the menu open (task-save-always Part 1 — Save no longer
-// closes the menu).
+// Exactly one undo step, and the menu stays open.
 func TestGroupMenuE2E_SaveClickCommitsProvisionalGroup(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	undoBefore := len(g.undoManager.undo)
@@ -205,9 +184,7 @@ func TestGroupMenuE2E_SaveClickCommitsProvisionalGroup(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_CloseClickDiscardsProvisionalGroup: a real "close" click
-// on a still-provisional (never-saved) group must silently discard it — no
-// undo step.
+// A never-saved group is discarded silently: no undo step.
 func TestGroupMenuE2E_CloseClickDiscardsProvisionalGroup(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	undoBefore := len(g.undoManager.undo)
@@ -228,23 +205,15 @@ func TestGroupMenuE2E_CloseClickDiscardsProvisionalGroup(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_DeleteClickRemovesCommittedGroup: a real "delete" click on
-// an already-committed (non-provisional) group deletes it and emits exactly
-// 1 undo step.
+// Exactly one undo step.
 func TestGroupMenuE2E_DeleteClickRemovesCommittedGroup(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
-	// Baseline the group's creation into the undo snapshot journal the same
-	// way a real Save would (emitGroupCreated) — a direct graph.CreateGroup
-	// call is untracked, so without this the journal's "committed" baseline
-	// never included the group in the first place, and deleting it would
-	// land back on that same untracked baseline (zero diff, no undo entry
-	// pushed by design — see UndoManager.commitNow). Baselining first isolates
-	// the delete-click's own step, matching how a real committed group
-	// reached this state.
+	// A direct CreateGroup is untracked, so the journal is baselined as a real Save would; otherwise the delete diffs
+	// against a baseline without the group and records nothing.
 	grp, _ := g.graph.Group(gid)
 	emitGroupCreated(gid, grp.Name, grp.NodeIDs)
 	advanceFrames(g, 2)
@@ -267,13 +236,8 @@ func TestGroupMenuE2E_DeleteClickRemovesCommittedGroup(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_ClickInsidePanelNoControlIsConsumed is the negative
-// click-through guard: a real click inside the panel bounds but on no
-// control (the "rulelabel" half-row, which has no button) must be consumed
-// — the menu stays open, no model change, no undo step, and (crucially) no
-// node gets created at that grid position, which would happen if the click
-// fell through to the grid beneath (see HandleInput's "opaque to z"
-// contract).
+// A click on no control (the label half-row) is consumed: no model change, no undo step, and no node created
+// beneath (the opaque-to-z contract).
 func TestGroupMenuE2E_ClickInsidePanelNoControlIsConsumed(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -320,11 +284,7 @@ func TestGroupMenuE2E_ClickInsidePanelNoControlIsConsumed(t *testing.T) {
 
 // ─── B. Playback-time edits ─────────────────────────────────────────────────
 
-// TestGroupMenuE2E_PlaybackRuleEditPreservesTriggerParity: enabling a group
-// rule via real clicks (two rdpit+ clicks) on a COMMITTED group during
-// playback must never alter trigger/audible decisions — mirrors
-// parity_group_rule_test.go's TestParityGroupRuleNeverAltersTriggerParity,
-// driven through the real click path instead of the model API directly.
+// Enabling a rule during playback never alters trigger/audible decisions, through real clicks.
 func TestGroupMenuE2E_PlaybackRuleEditPreservesTriggerParity(t *testing.T) {
 	assertDefaultParityState(t)
 	g, aID, bID := buildGroupLoopCircuit(t)
@@ -394,10 +354,7 @@ func TestGroupMenuE2E_PlaybackRuleEditPreservesTriggerParity(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_PlaybackMembershipRemovalRevertsBaseParams: removing a
-// node from a ruled group during playback (via the model API, per the brief)
-// must revert that node's effective pitch to base at future indices, while
-// the remaining member keeps the rule's effect.
+// The removed node reverts to base at future indices; the remaining member keeps the effect.
 func TestGroupMenuE2E_PlaybackMembershipRemovalRevertsBaseParams(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -458,9 +415,6 @@ func TestGroupMenuE2E_PlaybackMembershipRemovalRevertsBaseParams(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_PlaybackDeleteClickRevertsAllMembersToBase: a real
-// "delete" click on a ruled, committed group during playback must revert
-// every member's effective pitch to base at future indices.
 func TestGroupMenuE2E_PlaybackDeleteClickRevertsAllMembersToBase(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -524,9 +478,7 @@ func TestGroupMenuE2E_PlaybackDeleteClickRevertsAllMembersToBase(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_PlaybackSaveViaRealMarquee: a real marquee-created group
-// saved via a real click while playback is running must not panic, must emit
-// exactly 1 undo step, and playback must still be running afterward.
+// No panic, one undo step, and playback still running.
 func TestGroupMenuE2E_PlaybackSaveViaRealMarquee(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	g.SetPlaying(true)
@@ -559,11 +511,7 @@ func TestGroupMenuE2E_PlaybackSaveViaRealMarquee(t *testing.T) {
 
 // ─── C. Negative / API scenarios ────────────────────────────────────────────
 
-// TestGroupMenuE2E_ClickAfterAllMembersDeletedNoPanic: once a group's sole
-// member is deleted, the model auto-deletes the (now-empty) group and the
-// menu closes. A subsequent plain click at the panel's former screen
-// location must not panic, must not reopen the menu, and must not
-// resurrect the group.
+// The emptied group auto-deletes; a click where the panel was must not reopen it or resurrect the group.
 func TestGroupMenuE2E_ClickAfterAllMembersDeletedNoPanic(t *testing.T) {
 	g, aID, _ := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID})
@@ -606,12 +554,7 @@ func TestGroupMenuE2E_ClickAfterAllMembersDeletedNoPanic(t *testing.T) {
 	}
 }
 
-// TestGroupMenuE2E_SetRuleEnabledOnVanishedGroupIsNoop: deleting the group
-// out from under an open menu (bypassing the menu's own delete path) closes
-// the menu synchronously via the model's group-changed hook, but leaves
-// m.groupID pointing at the vanished id. Calling setRuleEnabled(true) after
-// that must be a no-op — no panic, no rule resurrection, no group
-// recreation — never duplicate core/model's own negative-path coverage.
+// The menu closes but keeps the vanished id; setRuleEnabled must then be a no-op, never recreating anything.
 func TestGroupMenuE2E_SetRuleEnabledOnVanishedGroupIsNoop(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})

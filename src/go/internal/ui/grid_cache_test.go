@@ -7,8 +7,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGridTileCacheRebuildOnScaleChange verifies the grid tile is cached
-// across pans but rebuilt when scale changes.
+// Cached across pans, rebuilt on a scale change.
 func TestGridTileCacheRebuildOnScaleChange(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

@@ -7,12 +7,8 @@ import (
 	"testing"
 )
 
-// TestDesktopTransportNoOverlap guards against the desktop transport "Stop
-// button collapses to a sliver" bug: the weighted top-bar grid produces
-// non-overlapping cells, but enforceMinSize used to center-expand play/stop/
-// record past their cells into each other at narrow desktop widths (~900-1440
-// px), leaving Stop a sliver wedged between Play and Record. Buttons must never
-// overlap at any desktop width.
+// Never overlapping at any desktop width: center-expanding to a minimum size once pushed play and record into
+// Stop until it was a sliver.
 func TestDesktopTransportNoOverlap(t *testing.T) {
 	assertDefaultParityState(t)
 	UpdateProfile()
@@ -47,8 +43,7 @@ func TestDesktopTransportNoOverlap(t *testing.T) {
 				}
 			}
 		}
-		// Stop must not collapse to a sliver: it should keep a usable width
-		// comparable to play (within the same cell-derived sizing).
+		// Comparable to play.
 		stopW := g.drum.stopBtn().Rect().Dx()
 		playW := g.drum.playBtn().Rect().Dx()
 		if stopW > 0 && playW > 0 && stopW < playW/2 {

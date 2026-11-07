@@ -65,8 +65,7 @@ func TestMenuCardEntryFlags(t *testing.T) {
 	}
 }
 
-// The swatch picker is the reference: its own solveSwatchGrid bands must equal
-// the card's, so adopting the card changed nothing on screen.
+// Adopting the card must change nothing on screen: the picker's own bands equal the card's.
 func TestMenuCardReproducesSwatchPickerFrame(t *testing.T) {
 	c := NewColorWheelComponent()
 	c.SetProps(ColorWheelProps{AnchorRect: image.Rect(300, 300, 340, 330), Bounds: image.Rect(0, 0, 1280, 720), RowHeight: 32})

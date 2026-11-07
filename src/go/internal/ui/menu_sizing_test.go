@@ -10,15 +10,8 @@ import (
 	"testing"
 )
 
-// TestMenusUseWidthClass is the ratchet for DESIGN.md "Menu sizing & layout":
-// a floating menu's desktop width comes from a ROLE class (menuWAction /
-// menuWList / menuWEditor / menuWWide), never a hand-picked pixel count.
-//
-// Every file that builds a menu card (NewMenuCard / menuCardEntry) must either
-// size it through a menuW* class or be listed in menuWidthClassPending. The
-// pending list may only SHRINK: a listed file that has adopted a class fails
-// until it is removed from the list, and a new menu file that is neither fails
-// immediately.
+// A menu's desktop width comes from a role class, never a hand-picked pixel count. The pending list may only
+// shrink: an adopter still listed fails, and so does a new menu file that is neither.
 var menuWidthClassPending = map[string]string{
 	"confirm_dialog.go":              "confirm dialog: fixed card sized to its message",
 	"drumview_context_menu.go":       "row context / overflow menu: hand-picked 160 / pad widths",

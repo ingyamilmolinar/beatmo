@@ -9,9 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestVolumePopupClickOutsideCloses verifies that clicking outside a volume
-// popup causes the portal to close it, and the sync in Update() closes the
-// underlying SliderPopup.
+// The portal closes it, and Update's sync closes the SliderPopup beneath.
 func TestVolumePopupClickOutsideCloses(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -73,8 +71,6 @@ func TestVolumePopupClickOutsideCloses(t *testing.T) {
 	}
 }
 
-// TestMasterVolumePopupClickOutsideCloses verifies click-outside closes
-// the master volume popup.
 func TestMasterVolumePopupClickOutsideCloses(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -128,9 +124,7 @@ func TestMasterVolumePopupClickOutsideCloses(t *testing.T) {
 	}
 }
 
-// TestSliderPopupClickOutsideUnblocksInput verifies that after a popup is
-// dismissed via click-outside, the input guard at drumview_update.go:584
-// no longer blocks.
+// Once dismissed, the input guard no longer blocks.
 func TestSliderPopupClickOutsideUnblocksInput(t *testing.T) {
 	assertDefaultParityState(t)
 

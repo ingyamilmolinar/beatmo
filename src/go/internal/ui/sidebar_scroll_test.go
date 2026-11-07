@@ -7,11 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// openSidebarWithScroll is a helper that creates a game with a small grid pane,
-// opens the sidebar with all sections expanded + logic dropdown open so content
-// overflows, and returns the game. Caller must t.Cleanup(g.CloseForTest).
-// NOTE: assertDefaultParityState is called internally, so forceSmallScreenForTest
-// must be false when calling this.
+// Calls assertDefaultParityState, so forceSmallScreenForTest must be false.
 func openSidebarWithScroll(t *testing.T, gridH int) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -33,10 +29,7 @@ func openSidebarWithScroll(t *testing.T, gridH int) *Game {
 	return g
 }
 
-// TestSidebarWheelScrollDirection verifies that mouse wheel scroll direction
-// matches user expectation: wheel down (steps=-1) scrolls content down
-// (VS.First increases), wheel up (steps=+1) scrolls content up (VS.First
-// decreases).
+// Wheel down (steps=-1) raises VS.First; up lowers it.
 func TestSidebarWheelScrollDirection(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -59,8 +52,7 @@ func TestSidebarWheelScrollDirection(t *testing.T) {
 	}
 }
 
-// TestSidebarScrollbarTrackClick verifies that clicking on the scrollbar track
-// (but not on the thumb) jumps the scroll position proportionally.
+// Proportionally.
 func TestSidebarScrollbarTrackClick(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -95,9 +87,7 @@ func TestSidebarScrollbarTrackClick(t *testing.T) {
 	}
 }
 
-// TestSidebarScrollMomentum verifies that momentum continues decaying after
-// touch ends, even when HandleInput is no longer called (finger lifted and
-// cursor moved away from sidebar).
+// Momentum keeps decaying after the finger lifts and HandleInput stops being called.
 func TestSidebarScrollMomentum(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -128,11 +118,8 @@ func TestSidebarScrollMomentum(t *testing.T) {
 	}
 }
 
-// TestSidebarTouchScrollMobile verifies touch scrolling works on mobile
-// (small screen) where content overflows the sidebar viewport.
 func TestSidebarTouchScrollMobile(t *testing.T) {
-	// Must set forceSmallScreenForTest AFTER assertDefaultParityState (called
-	// in openSidebarWithScroll), which asserts it is false.
+	// After assertDefaultParityState, which asserts it is false.
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -153,8 +140,7 @@ func TestSidebarTouchScrollMobile(t *testing.T) {
 		t.Fatal("scroll should be enabled when all sections expanded in small mobile pane")
 	}
 
-	// Simulate touch drag within sidebar HandleInput.
-	// Use coordinates within the panel bounds (not absolute screen coords).
+	// Panel-relative coordinates.
 	panel := g.sidebar.rects[sbPanel]
 	cx := panel.Min.X + panel.Dx()/2
 	startY := panel.Max.Y - 10 // near bottom of panel
@@ -174,8 +160,7 @@ func TestSidebarTouchScrollMobile(t *testing.T) {
 	}
 }
 
-// TestSidebarViewportClipping verifies that section headers and buttons
-// outside the visible viewport are not drawn (inViewport returns false).
+// Outside the viewport, inViewport is false and nothing is drawn.
 func TestSidebarViewportClipping(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -199,10 +184,7 @@ func TestSidebarViewportClipping(t *testing.T) {
 		t.Fatal("sec-vol should be outside viewport when scrolled to bottom")
 	}
 
-	// Find the last section that exists and verify it IS in viewport.
-	// "sec-grp" (task-sidebar-create: always laid out, last in layout()) is
-	// now the true bottom section on every platform; "sec-aud"/"sec-groove"
-	// are the prior (still-correct) desktop/mobile fallbacks.
+	// "sec-grp" is always laid out last; the others are fallbacks.
 	var lastSection sbID
 	for _, sec := range []sbID{sbSectionHeader(secGrp), sbSectionHeader(secAud), sbSectionHeader(secGroove)} {
 		if r, ok := g.sidebar.rects[sec]; ok && !r.Empty() {
@@ -220,8 +202,6 @@ func TestSidebarViewportClipping(t *testing.T) {
 	}
 }
 
-// TestSidebarTouchScrollDoesNotToggleSection verifies that a touch drag on
-// a section header scrolls the content without toggling the section.
 func TestSidebarTouchScrollDoesNotToggleSection(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -266,8 +246,6 @@ func TestSidebarTouchScrollDoesNotToggleSection(t *testing.T) {
 	}
 }
 
-// TestSidebarTapStillTogglesSection verifies that a quick tap on a section
-// header (press+release without moving) still toggles the section.
 func TestSidebarTapStillTogglesSection(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -290,8 +268,6 @@ func TestSidebarTapStillTogglesSection(t *testing.T) {
 	}
 }
 
-// TestSidebarButtonSuppressedDuringScroll verifies that button presses
-// are suppressed when a touch scroll gesture is in progress.
 func TestSidebarButtonSuppressedDuringScroll(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -331,23 +307,8 @@ func TestSidebarButtonSuppressedDuringScroll(t *testing.T) {
 	}
 }
 
-// TestSidebarGestureTapScrollDoesNotToggle verifies that when the sidebar
-// has committed scroll state (user dragged past dead zone), a release does
-// NOT toggle the section.
-//
-// This used to fire through handleTapInGrid, which special-cased the sidebar
-// (send only a release when scroll.TouchActive()/Dragging(), resolving via the
-// ScrollingCommitted path that cancels the deferred tap). Since the sidebar's
-// card is now rendered/hit-tested through the global OverlayPortal, opening it
-// makes modalOverlayActive() true, and handleTapInGrid bails out on its very
-// first line before ever reaching that sidebar-interaction branch — the
-// branch is unreachable while the sidebar is open (see game_input_touch.go's
-// gate at the top of handleTapInGrid). handleTapInGrid's sidebar block reduced
-// to exactly this call (`g.sidebar.HandleInput(x, y, false)` or, through
-// g.handleNodeMenuButtons, the same call with a leading press), so calling it
-// directly re-expresses the same invariant against NodeSidebar.HandleInput's
-// still-unchanged scroll/deferred-tap state machine, without depending on the
-// now-dead grid-tap wrapper.
+// A release after a committed scroll does not toggle; driven on HandleInput, the sidebar's own scroll and
+// deferred-tap state machine.
 func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -365,8 +326,7 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 	cx := (secRect.Min.X + secRect.Max.X) / 2
 	startY := (secRect.Min.Y + secRect.Max.Y) / 2
 
-	// Simulate InputDispatcher captured frames: press + drag past dead zone.
-	// This commits the scroll direction.
+	// Past the dead zone, committing the scroll direction.
 	g.sidebar.HandleInput(cx, startY, true)
 	for dy := 1; dy <= touchScrollDeadZone+5; dy++ {
 		g.sidebar.HandleInput(cx, startY+dy, true)
@@ -377,9 +337,6 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 		t.Fatal("scroll should be committed after dragging past dead zone")
 	}
 
-	// Resolve with a release, directly on the sidebar — the exact call
-	// handleTapInGrid used to make on this path before the sidebar's
-	// interaction branch there became unreachable (see comment above).
 	endY := startY + touchScrollDeadZone + 5
 	g.sidebar.HandleInput(cx, endY, false)
 
@@ -396,18 +353,7 @@ func TestSidebarGestureTapScrollDoesNotToggle(t *testing.T) {
 	}
 }
 
-// TestSidebarGestureTapStillToggles verifies that a true tap (0px movement)
-// still toggles sections when no scroll state is active.
-//
-// Previously driven through handleTapInGrid, whose sidebar-interaction branch
-// (no scroll/touch state active) forwarded to g.handleNodeMenuButtons — itself
-// a thin wrapper calling g.sidebar.HandleInput(x, y, left) for press then
-// release. That branch is unreachable now that the sidebar renders through the
-// global OverlayPortal (modalOverlayActive() gates handleTapInGrid's very
-// first line while the sidebar is open — see game_input_touch.go). Driving the
-// same underlying press+release pair directly against the sidebar
-// re-expresses the identical invariant against NodeSidebar.HandleInput, whose
-// section-header toggle logic is unchanged.
+// A zero-movement tap with no scroll state toggles, driven on HandleInput.
 func TestSidebarGestureTapStillToggles(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -420,9 +366,7 @@ func TestSidebarGestureTapStillToggles(t *testing.T) {
 
 	volBefore := g.sidebar.sectionOpen[secVol]
 
-	// Direct tap — no prior scroll state. Section headers toggle on the press
-	// edge (see NodeSidebar.HandleInput step 9); the release call mirrors what
-	// g.handleNodeMenuButtons used to send afterward.
+	// Headers toggle on the press edge.
 	g.sidebar.HandleInput(cx, cy, true)
 	g.sidebar.HandleInput(cx, cy, false)
 
@@ -431,14 +375,7 @@ func TestSidebarGestureTapStillToggles(t *testing.T) {
 	}
 }
 
-// TestSidebarScrollStateCleanAfterGestureTap verifies that after a gesture
-// tap resolves sidebar scroll state, no stale TouchActive or DeferredTap remains.
-//
-// Previously resolved via handleTapInGrid (see the comment on
-// TestSidebarGestureTapScrollDoesNotToggle above for why that path is now
-// unreachable while the sidebar is open). Resolving directly with the release
-// call handleTapInGrid used to make preserves the same invariant against
-// NodeSidebar.HandleInput's state machine.
+// No stale TouchActive or DeferredTap remains.
 func TestSidebarScrollStateCleanAfterGestureTap(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -466,17 +403,14 @@ func TestSidebarScrollStateCleanAfterGestureTap(t *testing.T) {
 	}
 }
 
-// TestScrollDeadZoneMatchesTapThreshold asserts that touchScrollDeadZone
-// matches tapMaxMovePx so all touch disambiguation uses the same threshold.
+// One threshold for all touch disambiguation.
 func TestScrollDeadZoneMatchesTapThreshold(t *testing.T) {
 	if touchScrollDeadZone != tapMaxMovePx {
 		t.Fatalf("touchScrollDeadZone (%d) != tapMaxMovePx (%d); they must match", touchScrollDeadZone, tapMaxMovePx)
 	}
 }
 
-// TestFXPanelScrollDoesNotFireButtons verifies that a scroll gesture
-// in the FX panel doesn't fire effect buttons (the FX panel uses the same
-// deferred-tap + TouchScroller pattern).
+// The FX panel shares the deferred-tap + TouchScroller pattern.
 func TestFXPanelScrollDoesNotFireButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -501,12 +435,9 @@ func TestFXPanelScrollDoesNotFireButtons(t *testing.T) {
 		t.Fatal("FX panel should be open")
 	}
 
-	// The FX panel uses fxScrollTS + fxPanelDeferredTap.
-	// Simulate: press inside viewport, drag past dead zone, release.
 	vp := g.drum.fxViewportRect
 	if vp.Empty() {
-		// FX panel may not have a scrollable viewport (no effects added).
-		// Just verify the panel is open and the pattern exists.
+		// With no effects there is nothing to scroll.
 		t.Skip("FX viewport empty — no scrollable content")
 	}
 	cx := (vp.Min.X + vp.Max.X) / 2

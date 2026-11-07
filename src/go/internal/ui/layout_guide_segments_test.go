@@ -30,8 +30,7 @@ func newZeroOriginDrumView(w, h int) *DrumView {
 	return dv
 }
 
-// TestColumnDividerLineRespectsWidgetSpan verifies that the column divider line
-// is NOT drawn through the Wave widget row (row 2), which spans both columns.
+// The column divider is not drawn through the Wave row, which spans both columns.
 func TestColumnDividerLineRespectsWidgetSpan(t *testing.T) {
 	dv := newZeroOriginDrumView(800, 400)
 	if dv.widgets == nil {
@@ -58,9 +57,7 @@ func TestColumnDividerLineRespectsWidgetSpan(t *testing.T) {
 
 	t.Logf("Column divider X=%d, Wave Y start=%d", colDivX, waveY0)
 
-	// A violating rect is a vertical line that starts ABOVE waveY0 and extends past it.
-	// This catches the full-height column divider line but not pill handle rects
-	// (which start near the vertical center, well below waveY0).
+	// A vertical line starting ABOVE waveY0 and crossing it; splitter pills start well below it.
 	for _, r := range rects {
 		cx := (r.Rect.Min.X + r.Rect.Max.X) / 2
 		if cx < colDivX-3 || cx > colDivX+3 {
@@ -73,8 +70,7 @@ func TestColumnDividerLineRespectsWidgetSpan(t *testing.T) {
 	}
 }
 
-// TestRowDivider1_2LineSuppressed verifies that no horizontal divider line
-// is drawn at the row 1/2 boundary because WidgetWave at row 2 is full-width.
+// The full-width Wave widget suppresses the row 1/2 divider.
 func TestRowDivider1_2LineSuppressed(t *testing.T) {
 	dv := newZeroOriginDrumView(800, 400)
 	if dv.widgets == nil {
@@ -109,9 +105,7 @@ func TestRowDivider1_2LineSuppressed(t *testing.T) {
 	}
 }
 
-// TestRowDividerLineRespectsWidgetSpan verifies that the row divider line
-// between row 0 and row 1 is NOT drawn through the Timeline column,
-// which spans rows 0-1.
+// The Timeline spans rows 0-1, so the row 0/1 divider is not drawn through its column.
 func TestRowDividerLineRespectsWidgetSpan(t *testing.T) {
 	dv := newZeroOriginDrumView(800, 400)
 	if dv.widgets == nil {
@@ -138,9 +132,7 @@ func TestRowDividerLineRespectsWidgetSpan(t *testing.T) {
 
 	t.Logf("Row divider Y=%d, Timeline starts at X=%d", rowDivY, timelineX0)
 
-	// A violating rect is a horizontal line that starts BEFORE timelineX0 and extends past it.
-	// This catches the full-width row divider line but not pill handle rects
-	// (which start near the horizontal center, well past timelineX0).
+	// A horizontal line starting BEFORE timelineX0 and crossing it; pills start well past it.
 	for _, r := range rects {
 		cy := (r.Rect.Min.Y + r.Rect.Max.Y) / 2
 		if cy < rowDivY-3 || cy > rowDivY+3 {

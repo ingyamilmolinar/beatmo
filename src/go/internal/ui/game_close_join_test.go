@@ -7,15 +7,7 @@ import (
 	"time"
 )
 
-// TestGameCloseJoin verifies that Game.Close() actually joins the bpmLoop
-// and audioLoop goroutines (via g.bgWG) before returning. The previous
-// implementation closed the channels and returned immediately, leaving the
-// receivers parked just long enough that goleak.VerifyTestMain panicked.
-//
-// We assert two properties:
-//  1. Close() returns within the documented closeJoinTimeout budget.
-//  2. After Close() returns, none of the package's named loops appear in a
-//     fresh goroutine stack dump.
+// Close must JOIN bpmLoop and audioLoop within closeJoinTimeout, or goleak sees parked receivers.
 func TestGameCloseJoin(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -37,9 +29,7 @@ func TestGameCloseJoin(t *testing.T) {
 		t.Fatalf("Close() did not return within %s; bgWG.Wait() never finished", closeJoinTimeout+100*time.Millisecond)
 	}
 
-	// Give the runtime a moment to settle the now-dead goroutines so the
-	// stack dump doesn't catch them mid-defer. This isn't waiting for an
-	// unblock — they already returned — just a yield to the scheduler.
+	// A yield so the dump does not catch an already-returned goroutine mid-defer.
 	runtime.Gosched()
 	time.Sleep(10 * time.Millisecond)
 
@@ -57,14 +47,12 @@ func TestGameCloseJoin(t *testing.T) {
 	}
 }
 
-// TestGameCloseIsIdempotent confirms the multi-call safety contract on
-// Game.Close — t.Cleanup paths in fixtures occasionally double-invoke it.
+// Fixture cleanups sometimes call it twice.
 func TestGameCloseIsIdempotent(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	g.Close()
-	// A second call must be a no-op; absent the early-return guard this
-	// would double-close audioQuit and panic.
+	// Without the early-return guard this double-closes audioQuit and panics.
 	g.Close()
 }
 

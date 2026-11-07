@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestRowRackWheelScrollChangesOffset verifies that scrolling the mouse wheel
-// over the row rack zone changes the row offset and that the offset persists
-// across subsequent Update frames (not overwritten back to 0).
+// And Update frames do not reset it to 0.
 func TestRowRackWheelScrollChangesOffset(t *testing.T) {
 	var mx, my int
 	var wy float64
@@ -66,8 +64,6 @@ func TestRowRackWheelScrollChangesOffset(t *testing.T) {
 	}
 }
 
-// TestRowRackWheelScrollMatchesTimeline verifies that scrolling via the rack
-// zone produces the same offset as scrolling via the timeline zone's callback.
 func TestRowRackWheelScrollMatchesTimeline(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()
@@ -99,8 +95,6 @@ func TestRowRackWheelScrollMatchesTimeline(t *testing.T) {
 	}
 }
 
-// TestRowRackTouchScrollMobile verifies that touch drag scrolling over the
-// rack area works on mobile.
 func TestRowRackTouchScrollMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -127,8 +121,7 @@ func TestRowRackTouchScrollMobile(t *testing.T) {
 		t.Fatalf("expected initial offset 0, got %d", z.RowOffset())
 	}
 
-	// Simulate a scroll-down wheel event (mobile touch scroll gets converted
-	// to wheel events by the platform layer in many cases).
+	// The platform often turns a touch scroll into wheel events.
 	scrollArea := findHitAreaByTagPrefix(z.HitAreas(), "row-rack-scroll")
 	if scrollArea == nil {
 		t.Fatal("expected row-rack-scroll hit area on mobile")
@@ -148,9 +141,6 @@ func TestRowRackTouchScrollMobile(t *testing.T) {
 	}
 }
 
-// TestRowRackScrollHitAdapterCallsOnScrollChanged verifies that the
-// OnScrollChanged callback is invoked when the scroll hit adapter handles
-// a wheel event.
 func TestRowRackScrollHitAdapterCallsOnScrollChanged(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()

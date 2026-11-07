@@ -8,27 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestGroupMenuAvoidsMemberNodes is task-enabled-status brief Part A test 1,
-// ported for task-placement-v2 (see task-placement-v2-report.md): the
-// GroupMenu panel must never cover any of its group's member nodes when a
-// clean anchor-adjacent placement exists. Anchoring the menu at the group's
-// badge position (bbox top-right corner — the ONLY anchor real badge clicks
-// ever produce, per openGroupMenuForBadge/groupBadgeRects) must nudge the
-// panel clear of every member; anchoring far away (no obstacle in play) must
-// leave the panel essentially where it was requested (no gratuitous move).
-// Exercised at both 800x600 and 1280x720.
-//
-// Ported: the pre-v2 version anchored dead-center ON a member's own rect and
-// asserted zero overlap via the OLD bbox-relative avoidRect, whose "left of
-// the FULL bbox" escape snaps exactly to the bbox's outer edge regardless of
-// where inside the bbox the anchor sits. placeGroupMenu deliberately tests
-// candidates relative to the ANCHOR point instead (fixing H1/H2 — see
-// grid_reserved_zone.go's placeGroupMenu doc comment), trading "always zero
-// overlap when ANY bbox-relative escape exists" for "always adjacent to the
-// label" per the brief's refined requirement. Anchoring dead-center on one
-// member of a multi-member cluster is not a scenario a real badge click can
-// produce (the badge always sits at the bbox's outer corner, never inside
-// it), so this test now anchors the same way production does.
+// Anchored at the badge (bbox top-right, the only anchor a real click produces), the panel must clear every
+// member when a clean placement exists; anchored far away it must not move.
 func TestGroupMenuAvoidsMemberNodes(t *testing.T) {
 	sizes := []struct{ w, h int }{{800, 600}, {1280, 720}}
 	for _, sz := range sizes {
@@ -38,10 +19,7 @@ func TestGroupMenuAvoidsMemberNodes(t *testing.T) {
 			t.Fatalf("%dx%d: CreateGroup: %v", sz.w, sz.h, err)
 		}
 
-		// Mirrors groupMemberScreenBBox's own float->int conversion
-		// (game_group_badges.go: Floor/Ceil) exactly, so a panel edge that
-		// exactly touches (but shares no pixel with) a member's screen rect
-		// isn't flagged as a false-positive overlap here.
+		// The same Floor/Ceil as groupMemberScreenBBox, so an edge that only touches is not an overlap.
 		memberRects := make([]image.Rectangle, 0, 3)
 		for _, id := range []model.NodeID{aID, bID, cID} {
 			x1, y1, x2, y2 := g.nodeScreenRect(g.nodesByID[id])
@@ -51,9 +29,7 @@ func TestGroupMenuAvoidsMemberNodes(t *testing.T) {
 			))
 		}
 
-		// Anchor at the group's badge position: the bbox top-right corner —
-		// exactly what openGroupMenuForBadge/groupBadgeRects feed layoutAt in
-		// production (game_group_badges.go).
+		// Exactly what a badge click feeds layoutAt.
 		bbox, ok := g.groupMemberScreenBBox([]model.NodeID{aID, bID, cID})
 		if !ok {
 			t.Fatalf("%dx%d: groupMemberScreenBBox: no members resolved", sz.w, sz.h)
@@ -69,10 +45,7 @@ func TestGroupMenuAvoidsMemberNodes(t *testing.T) {
 			}
 		}
 
-		// Anchor far away from every member — no obstacle should be in play,
-		// so the panel should land essentially at the requested anchor
-		// (allowing for the existing pane-clamp/gear-avoid behavior, but NOT
-		// perturbed by member avoidance).
+		// With no obstacle, the panel lands at the anchor (pane clamp and gear avoidance aside).
 		gridRect := g.split.GridRect(g.winW, g.winH)
 		farX, farY := gridRect.Dx()-5, gridRect.Dy()-5
 		g.groupMenu.OpenAtProvisional(gid, farX, farY)
@@ -86,11 +59,7 @@ func TestGroupMenuAvoidsMemberNodes(t *testing.T) {
 	}
 }
 
-// TestGroupMenuMemberAvoidRespectsGearZone is task-enabled-status brief Part
-// A test 2: with BOTH the member bounding box AND the settings-gear reserved
-// zone in play near the requested anchor, the final panel must clear the
-// gear's reserved zone (gear wins — it's the smaller, absolute exclusion,
-// re-applied last per layoutAt's ordering) as well as the member bbox.
+// The gear's reserved zone wins: the smaller, absolute exclusion, applied last.
 func TestGroupMenuMemberAvoidRespectsGearZone(t *testing.T) {
 	g, aID, bID, cID := buildGroupLoopCircuitSized(t, 800, 600)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID, cID})
@@ -113,14 +82,7 @@ func TestGroupMenuMemberAvoidRespectsGearZone(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// task-placement-v2: badge-click placement (see task-placement-v2-report.md
-// for the Phase-1 debugging evidence — H1/H2 confirmed, H3 not confirmed).
-// ---------------------------------------------------------------------------
-
-// groupMenuGeomCase is one placement-repro geometry: a window size, camera
-// zoom, and a set of member grid coordinates (wired into a loop and grouped).
-// camScale <= 0 keeps the default camera zoom.
+// camScale <= 0 keeps the default zoom.
 type groupMenuGeomCase struct {
 	name    string
 	winW    int
@@ -129,43 +91,21 @@ type groupMenuGeomCase struct {
 	coords  [][2]int
 }
 
-// groupMenuAvoidableGeomCases are the four repro geometries the brief calls
-// out by name — right-edge members, under-gear members, a wide bbox with an
-// internal per-member gap, and bottom-edge members — each hand-tuned (see
-// task-placement-v2-report.md) so an independently-computed clean
-// anchor-relative candidate genuinely exists, exercising the "overlaps no
-// member whenever avoidable" invariant instead of vacuously skipping it.
+// Each tuned so a clean anchor-relative candidate genuinely exists, so the invariant is never skipped vacuously.
 func groupMenuAvoidableGeomCases() []groupMenuGeomCase {
 	return []groupMenuGeomCase{
-		// Small 2-member cluster hugging the grid pane's right edge — the
-		// old avoidRect's "right of obstacle" candidate couldn't fit past
-		// the edge and its 4-candidate fallback could strand the panel
-		// overlapping the cluster (H1); placeGroupMenu's "left of anchor"
-		// candidate clears it instead.
+		// At the right edge "right of" cannot fit; "left of anchor" clears it.
 		{"right-edge members", 1280, 720, 20, [][2]int{{16, 4}, {16, 6}}},
-		// 2-member cluster positioned at the same screen height band as the
-		// settings-gear reserved zone (H2's territory — a candidate that
-		// clears the members can get pushed back onto them by the trailing
-		// gear-avoid re-application in the OLD code).
+		// In the gear's height band, where gear avoidance could push a clear panel back onto the members.
 		{"under-gear members", 1280, 720, 20, [][2]int{{-2, -4}, {0, -4}}},
-		// L-shaped 3-member layout (top-left, top-right, bottom-left) on a
-		// wide pane: the union bbox spans nearly the whole pane (blocking a
-		// bbox-only test on every side), but the bottom-right quadrant has
-		// no real member in it — only per-member testing finds the gap.
+		// An L shape whose union bbox blocks every side; only per-member testing finds the empty quadrant.
 		{"wide bbox with internal gap", 2000, 1200, 20, [][2]int{{-25, -8}, {25, -8}, {-25, 8}}},
-		// 3-member cluster hugging the grid pane's bottom edge — mirrors
-		// right-edge but on the vertical axis ("above anchor" is the clean
-		// escape here instead of "left of anchor").
+		// The vertical twin of right-edge: "above anchor" is the clean escape.
 		{"bottom-edge members", 1280, 720, 20, [][2]int{{-10, 4}, {10, 4}, {0, 3}}},
 	}
 }
 
-// buildGroupMenuGeometry builds a fresh Game for c, places a member node per
-// c.coords (wired into a closed loop so updateBeatInfos has a valid path),
-// and groups them all. Mirrors buildGroupLoopCircuitSized's shape but adds
-// camera-zoom control (needed to get member nodes with a real onscreen
-// footprint — NodeRadius scales with camera zoom, see grid.go) and an
-// arbitrary member count/layout instead of the fixed 3-node loop.
+// Camera zoom control, because NodeRadius scales with zoom and members need a real footprint.
 func buildGroupMenuGeometry(t *testing.T, c groupMenuGeomCase) (*Game, model.GroupID, []model.NodeID) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -198,17 +138,8 @@ func buildGroupMenuGeometry(t *testing.T, c groupMenuGeomCase) (*Game, model.Gro
 	return g, gid, ids
 }
 
-// groupMenuCleanCandidatePredicate is test 1's INDEPENDENT recomputation of
-// "does a clean anchor-relative candidate exist" — it does NOT call
-// placeGroupMenu; it reimplements the same 4-candidate loop inline so a bug
-// in placeGroupMenu's own orchestration (wrong loop order, wrong tie-break,
-// an off-by-one in the candidate list) is still caught rather than silently
-// agreeing with production. It DOES reuse the small shared primitives
-// (clampRectToPane/avoidReservedRect/rectIntersectArea) that placeGroupMenu
-// also uses — those are generic geometry helpers predating this task (or,
-// for rectIntersectArea, a 4-line area helper), not the chooser itself, and
-// re-deriving them independently would test arithmetic, not the actual bug
-// class this task fixes.
+// An INDEPENDENT recomputation, never calling placeGroupMenu, so a bug in its orchestration cannot agree with
+// itself. It reuses only the generic geometry primitives.
 func groupMenuCleanCandidatePredicate(g *Game, ids []model.NodeID) (anchor image.Point, size image.Point, anyClean bool, minOverlap int, members []image.Rectangle) {
 	gridW, gridH := g.split.GridW(g.winW), g.split.GridH(g.winH)
 	reserved := g.gridHelpReservedRect()
@@ -249,12 +180,7 @@ func groupMenuCleanCandidatePredicate(g *Game, ids []model.NodeID) (anchor image
 	return
 }
 
-// panelAdjacentToAnchor implements test 2's adjacency definition: the panel
-// rect must be within `size` px of the anchor point on AT LEAST ONE axis —
-// i.e. the gap between the anchor and the panel's nearest edge, along X or
-// along Y, is no more than the panel's own width/height respectively. This
-// bounds the menu to "one panel-dimension away, at most" rather than
-// "somewhere on screen" — it never teleports to a bbox-relative position.
+// Within one panel dimension of the anchor on at least one axis: adjacent, never teleported.
 func panelAdjacentToAnchor(panel image.Rectangle, anchor image.Point, size image.Point) bool {
 	axisDist := func(p, lo, hi int) int {
 		if p >= lo && p <= hi {
@@ -270,12 +196,7 @@ func panelAdjacentToAnchor(panel image.Rectangle, anchor image.Point, size image
 	return xDist <= size.X || yDist <= size.Y
 }
 
-// TestBadgeClickMenuNeverOverlapsMembersWhenAvoidable is the Phase-1
-// reproduction (task-placement-v2-report.md), promoted to the permanent
-// regression: across all four repro geometries (right-edge members,
-// under-gear members, a wide bbox with an internal per-member gap, and
-// bottom-edge members), the panel must overlap NO member whenever an
-// independently-computed clean anchor-relative candidate exists.
+// No member is overlapped whenever a clean candidate exists.
 func TestBadgeClickMenuNeverOverlapsMembersWhenAvoidable(t *testing.T) {
 	for _, c := range groupMenuAvoidableGeomCases() {
 		g, gid, ids := buildGroupMenuGeometry(t, c)
@@ -296,12 +217,7 @@ func TestBadgeClickMenuNeverOverlapsMembersWhenAvoidable(t *testing.T) {
 	}
 }
 
-// TestMenuStaysAdjacentToLabel is task-placement-v2 test 2: across the same
-// four geometries, the chosen panel must always stay adjacent to the anchor
-// (within one panel-dimension on at least one axis — panelAdjacentToAnchor)
-// regardless of whether a clean candidate existed or the min-overlap
-// fallback fired — the menu must never teleport to a bbox-relative position
-// far from the badge that opened it.
+// Adjacent whether or not a clean candidate existed: never teleported far from the badge.
 func TestMenuStaysAdjacentToLabel(t *testing.T) {
 	for _, c := range groupMenuAvoidableGeomCases() {
 		g, gid, ids := buildGroupMenuGeometry(t, c)
@@ -317,15 +233,8 @@ func TestMenuStaysAdjacentToLabel(t *testing.T) {
 	}
 }
 
-// TestMenuOverlapsOnlyWhenNoRoom is task-placement-v2 test 3: a tiny 400x300
-// window with members surrounding the anchor in all four quadrants — no
-// anchor-relative candidate can be clean (asserted via the same independent
-// predicate as a setup sanity check). The chooser must fall back to the
-// candidate with the smallest total member-overlap area (matching the
-// independently-computed minimum exactly), while STILL clearing the
-// settings-gear's reserved zone and staying adjacent to the anchor — the
-// only degradation the product spec allows is covering a member, never the
-// gear and never a teleport.
+// No clean candidate exists: the minimum total overlap wins, while still clearing the gear and staying adjacent.
+// Covering a member is the only allowed degradation.
 func TestMenuOverlapsOnlyWhenNoRoom(t *testing.T) {
 	c := groupMenuGeomCase{
 		name: "surrounded, tiny pane", winW: 400, winH: 300, camZoom: 20,
@@ -357,14 +266,7 @@ func TestMenuOverlapsOnlyWhenNoRoom(t *testing.T) {
 	}
 }
 
-// TestPlaceGroupMenuCandidateOrderDeterminism is a pure-function unit test
-// (no Game): with no members and an empty gear zone, placeGroupMenu must
-// return exactly the FIRST candidate (right of anchor — top-left at anchor)
-// unmodified. Placing a member that exactly covers the first candidate (but
-// not the second) must deterministically fall through to the second
-// candidate (left of anchor) — proving the priority order is fixed and
-// exercised in sequence, not e.g. randomized or reordered by overlap area
-// when a zero-overlap option is available.
+// The priority order is fixed: the first candidate when free, the second when a member covers exactly the first.
 func TestPlaceGroupMenuCandidateOrderDeterminism(t *testing.T) {
 	gridW, gridH := 2000, 2000
 	anchor := image.Pt(500, 500)
@@ -380,8 +282,6 @@ func TestPlaceGroupMenuCandidateOrderDeterminism(t *testing.T) {
 	})
 
 	t.Run("first candidate blocked: falls through to second in priority order", func(t *testing.T) {
-		// Covers candidate 1 (right of anchor, (500,500)-(800,700)) but not
-		// candidate 2 (left of anchor, (200,500)-(500,700)).
 		blocker := image.Rect(500, 500, 800, 700)
 		got := placeGroupMenu(anchor, size, []image.Rectangle{blocker}, noGear, gridW, gridH)
 		want := image.Rect(200, 500, 500, 700) // left of anchor
@@ -391,28 +291,16 @@ func TestPlaceGroupMenuCandidateOrderDeterminism(t *testing.T) {
 	})
 }
 
-// TestPlaceGroupMenuPerMemberNotBBox is a pure-function unit test (no Game)
-// directly exercising the brief's key differentiator: an L-shaped 3-member
-// layout (top-left, top-right, bottom-left corners of a 1000x1000 square)
-// whose union bbox is the FULL 1000x1000 square — a coarse bbox-overlap test
-// would reject a candidate placed near the square's center (it's inside the
-// bbox rectangle), but NO real member actually occupies that area.
-// placeGroupMenu must find and return that candidate (per-member testing),
-// not fall back to the old bbox-blocks-everything behavior.
+// The union bbox is the whole square, so a bbox test rejects a centre candidate no member occupies;
+// per-member testing must accept it.
 func TestPlaceGroupMenuPerMemberNotBBox(t *testing.T) {
 	gridW, gridH := 2000, 2000
 	var noGear image.Rectangle
 	tl := image.Rect(0, 0, 50, 50)
 	tr := image.Rect(950, 0, 1000, 50)
 	bl := image.Rect(0, 950, 50, 1000)
-	// mid sits INSIDE the first (right-of-anchor) candidate. This is what
-	// forces the two algorithms apart: per-member logic must reject the
-	// right candidate (it overlaps mid) and advance to the clean left
-	// candidate, while a bbox-only counterfactual sees every candidate
-	// equally buried in the coarse 1000x1000 bbox, falls to the min-overlap
-	// tie-break, and stays on candidate 0 (right). Review finding: the
-	// previous geometry let both implementations return the same rect, so
-	// the test couldn't catch a bbox-only regression.
+	// mid inside the first candidate forces the algorithms apart: per-member advances to the clean left candidate,
+	// while bbox-only stays on candidate 0.
 	mid := image.Rect(600, 550, 650, 600)
 	members := []image.Rectangle{tl, tr, bl, mid}
 	bbox := tl.Union(tr).Union(bl).Union(mid)
@@ -425,9 +313,7 @@ func TestPlaceGroupMenuPerMemberNotBBox(t *testing.T) {
 	right := image.Rect(500, 500, 800, 700) // candidate 0 (right of anchor)
 	left := image.Rect(200, 500, 500, 700)  // candidate 1 (left of anchor)
 
-	// Sanity: the right candidate overlaps the real member mid (so
-	// per-member logic must skip it); the left candidate overlaps the coarse
-	// bbox but NO real member (so only per-member logic can accept it).
+	// The right candidate overlaps a real member; the left only the coarse bbox.
 	if !right.Overlaps(mid) {
 		t.Fatalf("test setup: right candidate %v must overlap mid %v", right, mid)
 	}

@@ -9,8 +9,7 @@ import (
 
 // ─── Mobile ↔ Desktop Transition Tests ───────────────────────────
 
-// TestSmallScreenTransitionResetsUserSetSplitter verifies that crossing
-// the mobile ↔ desktop threshold clears userSet so auto-sizing takes over.
+// Crossing the threshold clears userSet so auto-sizing takes over.
 func TestSmallScreenTransitionResetsUserSetSplitter(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -44,8 +43,7 @@ func TestSmallScreenTransitionResetsUserSetSplitter(t *testing.T) {
 	}
 }
 
-// TestSmallScreenTransitionPreservesCellData verifies that Steps and CellTypes
-// data is preserved (not zeroed) when Length reclamps during transitions.
+// Steps and CellTypes survive a Length reclamp.
 func TestSmallScreenTransitionPreservesCellData(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -96,8 +94,7 @@ func TestSmallScreenTransitionPreservesCellData(t *testing.T) {
 	}
 }
 
-// TestSmallScreenTransitionMobileEQReInitializes verifies that leaving mobile
-// and re-entering causes the mobile EQ init to re-run (collapsing EQ again).
+// Re-entering mobile re-runs the mobile EQ init, collapsing it again.
 func TestSmallScreenTransitionMobileEQReInitializes(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -140,8 +137,6 @@ func TestSmallScreenTransitionMobileEQReInitializes(t *testing.T) {
 	}
 }
 
-// TestSmallScreenTransitionClearsEQMode verifies that mobileEQMode is cleared
-// when transitioning from mobile to desktop.
 func TestSmallScreenTransitionClearsEQMode(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -171,8 +166,6 @@ func TestSmallScreenTransitionClearsEQMode(t *testing.T) {
 	}
 }
 
-// TestSmallScreenRoundTripLayoutCorrectness cycles mobile→desktop→mobile→desktop
-// and verifies layout sanity at each step.
 func TestSmallScreenRoundTripLayoutCorrectness(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -231,8 +224,6 @@ func TestSmallScreenRoundTripLayoutCorrectness(t *testing.T) {
 	}
 }
 
-// TestSmallScreenTransitionCacheInvalidation verifies that caches are properly
-// invalidated after a mode transition.
 func TestSmallScreenTransitionCacheInvalidation(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true

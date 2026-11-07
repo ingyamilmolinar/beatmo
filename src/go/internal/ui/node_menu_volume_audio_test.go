@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestNodeMenuVolumePercentAdjustsAudio opens the popup, clicks VOL- once
-// (one perceptual −3 dB step, i.e. ÷nodeVolStepFactor), and verifies the next
-// playback uses the reduced volume.
+// One VOL- click is one −3 dB step (÷nodeVolStepFactor), and the next playback uses it.
 func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -644,10 +644,7 @@ func TestRowRackZoneVisibleRowsOverride(t *testing.T) {
 	z, _ := newTestRowRackZone(rows)
 	z.Layout(image.Rect(0, 0, 400, 300))
 
-	// Set override to a value that the natural row-height calculation would
-	// never produce for the viewport height (3 vs the natural ~7-10 for a
-	// 300 px tall rack). Keeps the test stable when the desktop row height
-	// token is tuned.
+	// 3 is a value the natural height maths never gives here, so a row-height token change cannot break the test.
 	z.SetVisibleRowsOverride(3)
 	if vis := z.VisibleRows(); vis != 3 {
 		t.Errorf("expected VisibleRows()=3 with override, got %d", vis)
@@ -907,8 +904,7 @@ func TestRowRack_DeleteButtonDisabledSingleRow(t *testing.T) {
 	tree := registerRowRackZone(z, image.Rect(0, 0, 400, 300))
 	tree.Update()
 
-	// With a single row, the delete button should have no OnClick and
-	// should use DisabledButtonStyle.
+	// The only row cannot be deleted.
 	delBtns := z.RowDeleteBtns()
 	if len(delBtns) != 1 {
 		t.Fatalf("expected 1 delete button, got %d", len(delBtns))
@@ -966,16 +962,12 @@ func TestRowRack_DeleteConfirmVisualTiming(t *testing.T) {
 	screen := ebiten.NewImage(800, 600)
 	z.Draw(screen)
 
-	// After drawing with delete confirm active within the window,
-	// the delete button for row 1 should show "!!" with danger style.
+	// "!!" while the confirm window is open.
 	delBtns := z.RowDeleteBtns()
 	if len(delBtns) < 2 {
 		t.Fatal("expected at least 2 delete buttons")
 	}
-	// The confirm state is distinguished by the "!!" warning glyph. (Its button
-	// style — DeleteConfirmButtonStyle — is visually identical to the resting
-	// DeleteButtonStyle by design: DESIGN.md unified destructive-confirm-fill /
-	// -border to the same hex as destructive, so the glyph carries the signal.)
+	// The glyph is the signal: confirm and resting styles share one destructive hex by design.
 	if delBtns[1].Text != "!!" {
 		t.Errorf("expected delete button text '!!' during confirm, got %q", delBtns[1].Text)
 	}
@@ -986,19 +978,14 @@ func TestRowRack_DeleteConfirmVisualTiming(t *testing.T) {
 	z.MarkDirty()
 	z.Draw(screen)
 
-	// After the confirm window expires, the button reverts to the close
-	// icon (text-label "X" was migrated to IconClose in the icon-system
-	// overhaul).
+	// Back to the close icon after the window expires.
 	if delBtns[1].Text != "" {
 		t.Errorf("expected delete button text empty after confirm expires, got %q", delBtns[1].Text)
 	}
 	if delBtns[1].Icon != string(IconClose) {
 		t.Errorf("expected delete button icon %q after confirm expires, got %q", IconClose, delBtns[1].Icon)
 	}
-	// The "!!" glyph clearing back to the close icon (asserted above) is the
-	// confirm-expiry signal. The button style is not asserted here because
-	// DeleteConfirmButtonStyle and DeleteButtonStyle resolve to identical
-	// visuals by design (see confirm-window assertion above).
+	// Style is not asserted: the two styles look identical by design.
 }
 
 func TestRowRack_LabelSkippedDuringRename(t *testing.T) {
@@ -1046,18 +1033,13 @@ func TestRowRack_LabelSkippedDuringRename(t *testing.T) {
 	z.Invalidate()
 	tree.Update()
 
-	// The label hit area for row 0 should now be excluded from hit areas
-	// because rebuildHitAreas skips it when renameRow == i.
-	// Clear the log and try clicking where the label was.
+	// The renamed row's label is left out of the hit areas.
 	log.instMenuOpens = nil
 	log.contextMenuOpens = nil
 
-	// After invalidation, the label for the renamed row should be excluded.
-	// Find any label areas and click the first one we see.
 	labelArea2 := findHitAreaByTagPrefix(z.HitAreas(), "row-rack-label")
 	if labelArea2 != nil {
-		// If there's still a label area, it should be for a different row.
-		// Click it to verify it works for non-renamed rows.
+		// Any remaining label is another row's, and still works.
 		mx = (labelArea2.Rect.Min.X + labelArea2.Rect.Max.X) / 2
 		my = (labelArea2.Rect.Min.Y + labelArea2.Rect.Max.Y) / 2
 		pressed = true
@@ -1071,8 +1053,7 @@ func TestRowRack_LabelSkippedDuringRename(t *testing.T) {
 		}
 	}
 
-	// Additionally, verify the label OnClick itself guards against rename.
-	// Manually invoke the label's OnClick for row 0 to confirm it no-ops.
+	// The label's OnClick itself no-ops during rename.
 	labels := z.RowLabels()
 	log.instMenuOpens = nil
 	log.contextMenuOpens = nil
@@ -1092,8 +1073,7 @@ func TestRowRack_MobileLayoutHidesControls(t *testing.T) {
 	z, _ := newTestRowRackZone(rows)
 	z.Layout(image.Rect(0, 0, 400, 300))
 
-	// On mobile the row strip surfaces vol slider + mute/solo/FX inline; only
-	// origin/delete/edit/save/color stay hidden (context menu opens via tap).
+	// Inline on mobile: volume, mute, solo, FX; origin/delete/edit/save/color stay hidden.
 	for i, e := range z.entries {
 		if e.muteBtn.Rect().Empty() {
 			t.Errorf("row %d: mute button should be visible inline on mobile", i)
@@ -1210,9 +1190,7 @@ func TestRowRack_EditSaveButtonCallbacks(t *testing.T) {
 	}
 }
 
-// TestRowRack_AddRowMobileFullWidthFooter verifies that on mobile the add-row
-// button is laid out as a full-width footer constrained to the rack panel
-// (not a corner FAB extending beyond it).
+// A full-width footer inside the rack panel, not a corner button outside it.
 func TestRowRack_AddRowMobileFullWidthFooter(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -1220,8 +1198,6 @@ func TestRowRack_AddRowMobileFullWidthFooter(t *testing.T) {
 	rows := makeTestRows(2)
 	z, _ := newTestRowRackZone(rows)
 
-	// Screen bounds wider than the rack panel; the button should still
-	// be constrained to the rack panel because it is a footer row.
 	screenBounds := image.Rect(0, 0, 1024, 768)
 	z.SetScreenBounds(screenBounds)
 
@@ -1351,9 +1327,7 @@ func TestRowRack_MobileEQModeHidesAll(t *testing.T) {
 
 	z.Layout(image.Rect(0, 0, 400, 300))
 
-	// VisibleRows should return 0 when mobile EQ mode is active
-	// because rebuildEntries sets vis=0 in that case.
-	// The Draw method returns early when IsMobileEQMode is true.
+	// In mobile EQ mode the rack lays out no rows and Draw returns early.
 	screen := ebiten.NewImage(800, 600)
 	z.Draw(screen) // should be a no-op, no panic
 

@@ -9,8 +9,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestMarkRowCellsDirtyDoesNotSetFullDirty verifies that markRowCellsDirty
-// sets rowDirty but NOT rowFullDirty, allowing the cheap cell-patch path.
 func TestMarkRowCellsDirtyDoesNotSetFullDirty(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -42,8 +40,6 @@ func TestMarkRowCellsDirtyDoesNotSetFullDirty(t *testing.T) {
 	}
 }
 
-// TestMarkRowDirtySetsFullDirty confirms that the existing markRowDirty sets
-// both flags (control test for TestMarkRowCellsDirtyDoesNotSetFullDirty).
 func TestMarkRowDirtySetsFullDirty(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -62,8 +58,7 @@ func TestMarkRowDirtySetsFullDirty(t *testing.T) {
 	}
 }
 
-// TestPlaybackBeatAdvanceUsesPatchPath simulates a beat advance where only 1-2
-// cells change and verifies that buildRowSprite returns rowRebuildPatch.
+// A beat advance changes 1–2 cells, so the row takes the cheap patch path.
 func TestPlaybackBeatAdvanceUsesPatchPath(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -100,8 +95,6 @@ func TestPlaybackBeatAdvanceUsesPatchPath(t *testing.T) {
 	}
 }
 
-// TestStructuralChangeStillUsesFullRebuild verifies that changes affecting many
-// cells use the full rebuild path (markRowDirty), not the patch path.
 func TestStructuralChangeStillUsesFullRebuild(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -122,8 +115,7 @@ func TestStructuralChangeStillUsesFullRebuild(t *testing.T) {
 	dv.markRowDirty(0)
 	dv.Draw(dst, nil, 0, nil, 0)
 
-	// rowCacheFull and rowCachePatch are per-frame counters (reset each Draw).
-	// A full rebuild means rowCacheFull > 0 and rowCachePatch == 0.
+	// Per-frame counters, reset each Draw.
 	if dv.rowCacheFull == 0 {
 		t.Fatalf("expected full rebuild (rowCacheFull > 0), got rowCacheFull=%d rowCachePatch=%d",
 			dv.rowCacheFull, dv.rowCachePatch)
@@ -169,8 +161,6 @@ func TestCountCellDiffs(t *testing.T) {
 	}
 }
 
-// TestOverdrawPathOnPatchedRows verifies that when all rebuilt rows use the
-// patch path, the rows layer uses the overdraw path instead of full recomposite.
 func TestOverdrawPathOnPatchedRows(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

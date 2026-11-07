@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestNodeMenuTapDoubleFire_LogicButton reproduces the mobile double-fire bug:
-// the touch-to-mouse override fires the logic button (toggling nodeLogicOpen
-// to true and setting suppressClicksUntilRelease), then handleTapInGrid fires
-// the same button again (toggling it back to false). The fix makes
-// handleTapInGrid skip the menu buttons when suppress is active.
+// On mobile the touch override fires the logic button and sets the suppression; the GestureTap at the same
+// point must not fire it again and toggle it back.
 func TestNodeMenuTapDoubleFire_LogicButton(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -43,12 +40,8 @@ func TestNodeMenuTapDoubleFire_LogicButton(t *testing.T) {
 	lx := (logicRect.Min.X + logicRect.Max.X) / 2
 	ly := (logicRect.Min.Y + logicRect.Max.Y) / 2
 
-	// --- Simulate Frame N: touch-to-mouse override fires logic button ---
-	// In the real flow, handleEditor calls handleNodeMenuButtons(x, y, left)
-	// which fires the logic button's OnClick and sets suppressClicksUntilRelease
-	// via ConsumeOnPress. Simulate this directly to avoid handleEditor's
-	// grid-pane gate check (irrelevant to the bug — the override sets cursor
-	// position to the button, which is always in the grid pane on real devices).
+	// What handleEditor does on the override frame, called directly to skip its grid-pane gate (the button is
+	// always in the grid pane on a device).
 	hit := g.handleNodeMenuButtons(lx, ly, true)
 	if !hit {
 		t.Fatal("handleNodeMenuButtons should hit the logic button")
@@ -67,9 +60,6 @@ func TestNodeMenuTapDoubleFire_LogicButton(t *testing.T) {
 		t.Fatal("expected suppressClicksUntilRelease=true after ConsumeOnPress button")
 	}
 
-	// --- Simulate Frame N (same frame or next): GestureTap fires at same position ---
-	// Before the fix, handleTapInGrid's brute-force loop would fire the logic
-	// button again, toggling nodeLogicOpen back to false.
 	g.handleTapInGrid(lx, ly)
 
 	// Drain any additional UI queue entries.
@@ -84,9 +74,7 @@ func TestNodeMenuTapDoubleFire_LogicButton(t *testing.T) {
 	}
 }
 
-// TestNodeMenuTapFallback_NoSuppress verifies that when suppress is NOT active
-// (e.g., an ultra-fast tap where the touch-to-mouse override missed the press),
-// handleTapInGrid correctly opens the logic dropdown via handleNodeMenuButtons.
+// With no suppression (an ultra-fast tap the override missed), the tap still opens the dropdown.
 func TestNodeMenuTapFallback_NoSuppress(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -106,8 +94,7 @@ func TestNodeMenuTapFallback_NoSuppress(t *testing.T) {
 	g.sel = n
 	n.Selected = true
 	g.sidebar.Open(n)
-	// Only expand the logic section (not all) so the button stays within the
-	// visible panel height on a 640x480 layout.
+	// Logic only, so the button stays inside the visible panel at 640x480.
 	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 
@@ -126,8 +113,6 @@ func TestNodeMenuTapFallback_NoSuppress(t *testing.T) {
 		t.Fatal("nodeLogicOpen should be false before tap")
 	}
 
-	// handleTapInGrid should fall through to handleNodeMenuButtons and fire
-	// the logic button.
 	g.handleTapInGrid(lx, ly)
 
 	// Drain the UI queue.

@@ -1,16 +1,7 @@
 //go:build test
 
-// Hold-to-repeat ("inertia") for the arrows, shared by every list menu.
-//
-// Before this, MenuKeyNav was rising-edge only: a held arrow moved exactly one
-// row, deliberately, so the list could not race away at 60 rows/second. Holding
-// now repeats on the menuRepeat curve (key_repeat.go) — 0.5s before it starts,
-// 10 rows/s accelerating to 30.
-//
-// The load-bearing tests here are the NEGATIVE ones. Enter must never repeat: a
-// held Enter would preview, confirm, close, and on some menus reopen; a
-// repeating Shift+Enter would flicker a favourite ★ on and off many times a
-// second.
+// Held arrows repeat on the menuRepeat curve. The load-bearing tests are the negative ones: a held Enter
+// would preview, confirm, close and reopen, and a held Shift+Enter would flicker a favourite ★.
 
 package ui
 
@@ -20,9 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// holdKeys drives n consecutive frames with the given keys held, returning the
-// frames (1-based, relative to the first held frame) on which `observe` saw a
-// change. One nav.Update per frame is exactly what a menu's per-frame hook does.
+// Frames are 1-based from the first held frame; one nav.Update per frame, as a menu's hook does.
 func holdKeys(t *testing.T, nav *MenuKeyNav, host MenuKeyNavHost, n int, observe func() int, keys ...ebiten.Key) []int {
 	t.Helper()
 	down := true
@@ -192,9 +181,7 @@ func TestMenuKeyNavRepeat_PageDownRepeats(t *testing.T) {
 
 // --- Clamping --------------------------------------------------------------
 
-// A held arrow at the end of the list must simply stop. MenuKeyNav clamps
-// rather than wraps (see step), and the repeat must not reintroduce wrapping or
-// spin the cursor past the end.
+// Clamps, never wraps, and never spins past the end.
 func TestMenuKeyNavRepeat_HeldArrowClampsAtTheLastRow(t *testing.T) {
 	host := &fakeNavHost{selectable: allSelectable(6)}
 	nav := NewMenuKeyNav()
@@ -205,12 +192,8 @@ func TestMenuKeyNavRepeat_HeldArrowClampsAtTheLastRow(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNavRepeat_ResetForgetsHeldKeys covers reopening a menu while an
-// arrow is still physically down.
-//
-// Reset clears the SELECTION; if it left the hold bookkeeping behind, the slot
-// would resume mid-hold on the next Update — so the reopened menu would skip the
-// press edge entirely and start repeating immediately, with no initial delay.
+// A menu reopened with an arrow still down must wait for a fresh edge and the initial delay, not resume
+// mid-hold.
 func TestMenuKeyNavRepeat_ResetForgetsHeldKeys(t *testing.T) {
 	host := &fakeNavHost{selectable: allSelectable(50)}
 	nav := NewMenuKeyNav()
@@ -235,8 +218,7 @@ func TestMenuKeyNavRepeat_ResetForgetsHeldKeys(t *testing.T) {
 
 // --- Grid menus ------------------------------------------------------------
 
-// gridRepeatHost is a MenuKeyNavGrid host: the shape the colour picker and the
-// note matrix use, where Up/Down move a whole ROW and Left/Right one cell.
+// The colour picker / note matrix shape: Up/Down move a row, Left/Right one cell.
 type gridRepeatHost struct {
 	fakeNavHost
 	cols int
@@ -244,10 +226,7 @@ type gridRepeatHost struct {
 
 func (h *gridRepeatHost) MenuGridCols() int { return h.cols }
 
-// TestMenuKeyNavRepeat_GridHorizontalRepeats covers the swatch grid and the note
-// matrix, which are not in the menuNavCases table (they are pickers, not list
-// menus) but ride the same MenuKeyNav. Left/Right are their primary axis, so a
-// repeat that only reached the vertical keys would leave them half-done.
+// Pickers ride the same MenuKeyNav with Left/Right as their main axis, so the repeat must reach those keys too.
 func TestMenuKeyNavRepeat_GridHorizontalRepeats(t *testing.T) {
 	host := &gridRepeatHost{fakeNavHost: fakeNavHost{selectable: allSelectable(96)}, cols: 12}
 	nav := NewMenuKeyNav()
@@ -265,8 +244,7 @@ func TestMenuKeyNavRepeat_GridVerticalMovesAWholeRowPerRepeat(t *testing.T) {
 	nav := NewMenuKeyNav()
 	nav.BindHost(host)
 
-	// From "nothing selected": the press edge enters the grid at cell 0, then
-	// exactly one repeat is due within this window.
+	// The press edge enters at cell 0, then exactly one repeat falls inside the window.
 	fired := holdKeys(t, nav, host, menuRepeat.Delay+menuRepeat.Interval+2,
 		selObserver(nav), ebiten.KeyArrowDown)
 	if len(fired) != 2 {

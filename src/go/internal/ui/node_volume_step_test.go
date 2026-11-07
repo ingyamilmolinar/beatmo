@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// TestStepNodeVolumeDb verifies each +/- click is a fixed 1 dB step, with no
-// upper cap and a mute floor that lets the value reach exactly 0.
+// A fixed 1 dB per click, no upper cap, and a mute floor that reaches exactly 0.
 func TestStepNodeVolumeDb(t *testing.T) {
 	approx := func(got, want float64) bool { return math.Abs(got-want) < 1e-6 }
 

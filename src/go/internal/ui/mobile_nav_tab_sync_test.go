@@ -4,11 +4,8 @@ package ui
 
 import "testing"
 
-// Programmatic audio-tab switches (scene catalog, JS exports, keyboard)
-// must keep the mobile bottom-nav segmented control in sync: the nav is a
-// DERIVED view of the panel tab state, not a second source of truth.
-// Regression: eq_tab_wave/spectrum/levels mobile screenshots showed Wave/
-// Spectrum/Levels content while the nav still highlighted "EQ".
+// The nav is a derived view of the panel tab, never a second source of truth, so programmatic switches move it
+// too.
 func TestMobileBottomNavTracksProgrammaticTabSwitch(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -34,8 +31,7 @@ func TestMobileBottomNavTracksProgrammaticTabSwitch(t *testing.T) {
 	}
 }
 
-// A background tab change while Pads owns the mobile screen must NOT
-// hijack the user into the audio view.
+// A background tab change must not pull the user out of Pads.
 func TestMobileBottomNavPadsNotHijackedByTabSwitch(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })

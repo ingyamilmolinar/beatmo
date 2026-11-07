@@ -11,8 +11,7 @@ import (
 	"testing"
 )
 
-// configScrollBehavior sets up a raw ScrollBehavior the way the context-menu and
-// EQ-channel dropdowns do (item-based, a list that overflows the viewport).
+// Item-based, overflowing the viewport, as the context menu and EQ-channel dropdowns use it.
 func configScrollBehavior(itemH, total, visible int) *ScrollBehavior {
 	sb := NewScrollBehavior(DropdownScrollbarStyle, itemH)
 	sb.VS.View = image.Rect(0, 0, 100, visible*itemH)
@@ -22,10 +21,7 @@ func configScrollBehavior(itemH, total, visible int) *ScrollBehavior {
 	return sb
 }
 
-// flingAndSettle simulates a fast upward finger fling on a ScrollBehavior and
-// then runs momentum to rest. Returns the offset at finger-release, the offset
-// at rest, and how many frames of inertia elapsed. Content scrolls DOWN (First
-// grows) as the finger moves up.
+// Content scrolls down (First grows) as the finger moves up.
 func flingAndSettle(sb *ScrollBehavior) (release, rest, frames int) {
 	sb.HandleTouchBegin(50, 90)
 	sb.HandleTouchMove(50, 60) // commits the vertical direction past the dead zone
@@ -40,13 +36,8 @@ func flingAndSettle(sb *ScrollBehavior) (release, rest, frames int) {
 	return release, rest, frames
 }
 
-// TestAllMenuScrolls_SmoothCadenceIdentical proves every scrollable list menu
-// scrolls with the EXACT same smooth cadence — the instrument-menu feel — via the
-// shared engine: the wheel RESPECTS magnitude (a 3-step notch moves three items
-// in one event) and has NO per-notch cooldown lock (an immediately-following
-// notch moves again on the same frame). Each case drives the menu's real
-// production wheel call and its scroll type. (The row rack and synth control
-// grids deliberately keep the clicky WheelStep path — they are not list menus.)
+// Every list menu scrolls the same smooth way: wheel magnitude respected, no per-notch cooldown. The rack and
+// synth grids deliberately keep the clicky WheelStep.
 func TestAllMenuScrolls_SmoothCadenceIdentical(t *testing.T) {
 	menuCase := func() (func() bool, func() int) {
 		m := NewMenuScroll(DropdownScrollbarStyle, 20)
@@ -83,10 +74,7 @@ func TestAllMenuScrolls_SmoothCadenceIdentical(t *testing.T) {
 	}
 }
 
-// TestAllMenuScrolls_MomentumIdentical proves every scrollable list menu carries
-// touch-fling inertia the same way: a fast flick keeps scrolling after the finger
-// lifts (momentum advances the offset past its position at release, then decays to
-// rest). Each case uses the menu's real scroll type.
+// A fast flick keeps scrolling past the release position, then decays to rest.
 func TestAllMenuScrolls_MomentumIdentical(t *testing.T) {
 	menuSB := func() *ScrollBehavior {
 		m := NewMenuScroll(DropdownScrollbarStyle, 20)
@@ -116,14 +104,8 @@ func TestAllMenuScrolls_MomentumIdentical(t *testing.T) {
 	}
 }
 
-// TestMenuWheelDisciplineNoClickyPath guards the "every list menu scrolls the same
-// smooth way" guarantee against regression. The two raw-ScrollBehavior list menus
-// (context menu, EQ-channel dropdown) must drive the wheel via the smooth,
-// magnitude-respecting ScrollBehavior.HandleWheel — NOT the clicky WheelStep that
-// threw away wheel magnitude and cooldown-locked the list. The row rack and synth
-// control grids keep WheelStep by design, so the ban is scoped to the two
-// list-menu scroll fields. MenuScroll-based menus are covered by asserting
-// MenuScroll.HandleWheel delegates to the smooth sb.HandleWheel.
+// The two raw-ScrollBehavior list menus must use the smooth HandleWheel, not WheelStep; MenuScroll menus are
+// covered by its delegation. The rack and synth grids keep WheelStep by design.
 func TestMenuWheelDisciplineNoClickyPath(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
 	banned := regexp.MustCompile(`\b(contextMenuScroll|channelScroll)\.WheelStep\(`)
@@ -141,9 +123,7 @@ func TestMenuWheelDisciplineNoClickyPath(t *testing.T) {
 		}
 	}
 
-	// MenuScroll.HandleWheel must delegate to the smooth sb.HandleWheel so
-	// overflow/subdiv/inst/logs stay smooth. If someone reverts it to WheelStep,
-	// those menus silently go clicky again.
+	// Reverted to WheelStep, the overflow, subdiv, inst and logs menus silently go clicky.
 	src, err := os.ReadFile("menu_scroll.go")
 	if err != nil {
 		t.Fatal(err)

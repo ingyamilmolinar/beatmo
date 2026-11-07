@@ -13,8 +13,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTouchScrollBasicDrag verifies that a vertical drag returns 0 within the
-// dead zone, then returns proportional deltas once past it.
+// 0 inside the dead zone, proportional past it.
 func TestTouchScrollBasicDrag(t *testing.T) {
 	var ts TouchScroller
 	ts.Begin(100, 100)
@@ -29,8 +28,7 @@ func TestTouchScrollBasicDrag(t *testing.T) {
 		t.Fatalf("expected 0 within dead zone, got %f", d)
 	}
 
-	// Move past dead zone vertically (distance = 50px from start).
-	// This locks direction to vertical but still returns 0 for the lock frame.
+	// Locks the direction to vertical; the lock frame itself returns 0.
 	d = ts.Move(100, 150)
 	if d != 0 {
 		t.Fatalf("expected 0 on direction-lock frame, got %f", d)
@@ -48,8 +46,7 @@ func TestTouchScrollBasicDrag(t *testing.T) {
 	}
 }
 
-// TestTouchScrollMomentum verifies that End() returns velocity and
-// UpdateMomentum() applies friction until the velocity drops below threshold.
+// Friction until the velocity drops below the threshold.
 func TestTouchScrollMomentum(t *testing.T) {
 	var ts TouchScroller
 	ts.Begin(100, 100)
@@ -129,8 +126,6 @@ func TestTouchScrollClamp(t *testing.T) {
 	}
 }
 
-// TestTouchScrollHorizontalIgnored verifies that a primarily horizontal drag
-// produces no vertical scroll and End() returns 0.
 func TestTouchScrollHorizontalIgnored(t *testing.T) {
 	var ts TouchScroller
 	ts.Begin(100, 100)
@@ -157,8 +152,7 @@ func TestTouchScrollHorizontalIgnored(t *testing.T) {
 	}
 }
 
-// TestTouchScrollDirectionLock verifies that once direction is locked to
-// vertical, subsequent horizontal movement still returns vertical-only deltas.
+// Once locked vertical, horizontal motion yields vertical-only deltas.
 func TestTouchScrollDirectionLock(t *testing.T) {
 	var ts TouchScroller
 	ts.Begin(100, 100)
@@ -169,8 +163,7 @@ func TestTouchScrollDirectionLock(t *testing.T) {
 		t.Fatalf("expected 0 on lock frame, got %f", d)
 	}
 
-	// Now move horizontally (but keep Y the same) — delta should be 0
-	// because Y didn't change, not because direction changed.
+	// 0 because Y did not change, not because the direction did.
 	d = ts.Move(130, 115)
 	if d != 0 {
 		t.Fatalf("expected delta=0 when Y unchanged, got %f", d)
@@ -183,8 +176,7 @@ func TestTouchScrollDirectionLock(t *testing.T) {
 	}
 }
 
-// TestTouchScrollInDrumView is an integration test that verifies the DrumView's
-// applyTouchScrollDelta method correctly adjusts rowOffset and clamps it.
+// Adjusts and clamps rowOffset.
 func TestTouchScrollInDrumView(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -193,9 +185,7 @@ func TestTouchScrollInDrumView(t *testing.T) {
 	g := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), g, logger)
 
-	// Add enough rows to require scrolling. With forceSmallScreenForTest=true,
-	// row height is 48px. The rows area is about 600-64-0=536px, so ~11 visible
-	// rows. We add 20 rows total to ensure scrolling is needed.
+	// At 48 px rows, ~11 fit in the ~536 px rows area, so 20 must scroll.
 	for len(dv.Rows) < 20 {
 		dv.Rows = append(dv.Rows, &DrumRow{
 			Name:       "Row",

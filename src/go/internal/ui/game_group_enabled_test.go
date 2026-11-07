@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestDeltaEditsDoNotEnable is task-enabled-status brief Part C test C1
-// (RED): stepping a delta on a fresh provisional group must NEVER flip
-// RulesEnabled — the toggle stays Disabled, but the delta is carried in
-// Rules regardless.
+// Deltas are carried in Rules but never flip RulesEnabled.
 func TestDeltaEditsDoNotEnable(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
@@ -33,10 +30,7 @@ func TestDeltaEditsDoNotEnable(t *testing.T) {
 	}
 }
 
-// TestEnableToggleDirtiesSave is task-enabled-status brief Part C test C2
-// (RED): a clean, committed, disabled group with deltas already present —
-// toggling Enable must dirty the Save button; Save commits exactly 1 undo
-// step, re-greys the button, and the model flag flips true.
+// Toggling dirties Save; Save commits one undo step and re-greys the button.
 func TestEnableToggleDirtiesSave(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := createCommittedGroup(t, g, "", []model.NodeID{aID, bID})
@@ -92,10 +86,7 @@ func TestEnableToggleDirtiesSave(t *testing.T) {
 	}
 }
 
-// TestNewGroupStartsDisabled is task-enabled-status brief Part C test C3
-// (RED): a marquee-created group's menu shows Disabled; Save (with no
-// toggle) keeps it Disabled — status persists as-is, not implicitly flipped
-// by the act of saving.
+// Save keeps the status as it is; saving never flips it.
 func TestNewGroupStartsDisabled(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
@@ -122,10 +113,7 @@ func TestNewGroupStartsDisabled(t *testing.T) {
 	}
 }
 
-// TestCancelRestoresEnabledFlag is task-enabled-status brief Part C test C6
-// (RED): opening a committed (clean, disabled) group, toggling Enable, then
-// closing WITHOUT Save must silently revert the flag — no emit, no undo
-// step.
+// Closing without Save reverts silently: no emit, no undo step.
 func TestCancelRestoresEnabledFlag(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := createCommittedGroup(t, g, "", []model.NodeID{aID, bID})

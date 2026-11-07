@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestNodeLogicDropdown_OpenSelectAndAdjust mirrors the instrument dropdown UX:
-// it opens the logic menu, selects a rule, and adjusts its parameter via +/-.
 func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -4,9 +4,7 @@ package ui
 
 import "testing"
 
-// TestGridFileButtonPresentBothPlatforms asserts the folder button exists on
-// both platforms, sits immediately left of the settings gear (same size,
-// disjoint), and carries the folder icon.
+// Immediately left of the gear, same size, disjoint, with the folder icon.
 func TestGridFileButtonPresentBothPlatforms(t *testing.T) {
 	check := func(t *testing.T, g *Game) {
 		if g.gridFileBtn == nil {
@@ -34,8 +32,6 @@ func TestGridFileButtonPresentBothPlatforms(t *testing.T) {
 	t.Run("mobile", func(t *testing.T) { check(t, newMobileGame(t)) })
 }
 
-// TestGridFileButtonOpensFileMenu asserts clicking the folder button opens the
-// shared overflow portal in File mode.
 func TestGridFileButtonOpensFileMenu(t *testing.T) {
 	g := newGameWithStart(t)
 	g.openFileMenu()
@@ -44,8 +40,7 @@ func TestGridFileButtonOpensFileMenu(t *testing.T) {
 	}
 }
 
-// TestFileMenuAnchoredUnderFolderButton asserts the file menu popup drops from
-// the grid folder button (its trigger), per the DESIGN.md menu-adjacency rule.
+// Drops from its trigger, per the DESIGN.md menu-adjacency rule.
 func TestFileMenuAnchoredUnderFolderButton(t *testing.T) {
 	g := newGameWithStart(t)
 	g.openFileMenu()
@@ -57,10 +52,8 @@ func TestFileMenuAnchoredUnderFolderButton(t *testing.T) {
 	if pop.Empty() {
 		t.Fatal("file popup rect empty")
 	}
-	// Horizontal spans overlap (popup in the folder button's column), and the
-	// popup is CONTAINED IN THE GRID PANE — it drops below the button when there
-	// is room and flips above to fit otherwise, but never spills past the split
-	// into the drum-view panel.
+	// In the button's column and inside the grid pane: below the button when it fits, above otherwise, never
+	// past the split.
 	if pop.Min.X > folder.Max.X || pop.Max.X < folder.Min.X {
 		t.Fatalf("file popup %v not horizontally adjacent to folder button %v", pop, folder)
 	}

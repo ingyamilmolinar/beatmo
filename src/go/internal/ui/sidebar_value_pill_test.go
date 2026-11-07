@@ -10,10 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRecessedPillIsDarkerWellWithInnerShadow pins the recessed value-readout
-// look: a fill DARKER than colSurface2 (sunk-in, not a flat raised tile) plus
-// an inner top-shadow band — the tactile opposite of the raised keycaps it
-// sits between. A regression to the old flat colSurface2 fill fails here.
+// Darker than colSurface2 with an inner top shadow: sunk in, the opposite of the keycaps around it.
 func TestRecessedPillIsDarkerWellWithInnerShadow(t *testing.T) {
 	r := image.Rect(20, 10, 80, 34)
 	dst := ebiten.NewImage(100, 50)

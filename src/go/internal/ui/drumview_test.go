@@ -157,8 +157,6 @@ func TestMainVolumeSliderAdjustsAudio(t *testing.T) {
 	}
 }
 
-// Ensure row labels and delete buttons sit beneath the control panel and align
-// to the left of their corresponding step rows.
 func TestDrumRowLayout(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 500, 200), nil, logger)
@@ -181,16 +179,12 @@ func TestDrumRowLayout(t *testing.T) {
 	if label.Max.X > stepStart {
 		t.Fatalf("label encroaches into step area: %v >= %d", label, stepStart)
 	}
-	// addRowBtn is anchored to the rack column's bottom edge — never to
-	// the last row — so its position is independent of row count
-	// (footer_button_anchor_test.go enforces this). Verify only that it
-	// sits BELOW the visible rows, not at a specific row-relative Y.
+	// Anchored to the rack's bottom edge, never the last row, so only "below the rows" is asserted.
 	if dv.addRowBtn().Rect().Min.Y < label.Min.Y+dv.rowHeight() {
 		t.Fatalf("add-row button must be at or below the first row's bottom: addRow=%v firstRow=%v",
 			dv.addRowBtn().Rect(), label)
 	}
-	// Only the row label is a text-bearing button now; the add-row "+"
-	// migrated to IconPlus and has no centered text glyph to assert.
+	// The add-row "+" is an icon with no text glyph.
 	for _, btn := range []*Button{dv.rowLabels()[0]} {
 		tr := btn.textRect()
 		r := btn.Rect()
@@ -269,8 +263,7 @@ func TestDrumViewLengthMinMax(t *testing.T) {
 		t.Errorf("Expected min drum view length to stay at 1, got %d", dv.Length)
 	}
 
-	// Max length is bounded by the screen-aware clamp in clampLength.
-	// After pressing +, the DrumView should not exceed the clamped max.
+	// clampLength bounds the maximum by the screen.
 	dv2 := NewDrumView(image.Rect(0, 0, 1200, 200), graph, logger)
 	dv2.Update()
 	// Set a large length so the next Inc will try to exceed the max.
@@ -372,25 +365,7 @@ func TestEQChannelBtnWidthFitsLongNames(t *testing.T) {
 	}
 }
 
-// TestTimelineViewRect used to assert the ribbon drew a "view rect"
-// highlighting the editable pattern window (dv.Offset -> dv.Offset+dv.Length)
-// mapped into a sliding fixed-beats-per-pixel window. Task 6 removed that
-// affordance entirely: the ribbon is now a slim whole-song progress bar
-// decoupled from the drum-grid pattern window, with no view-rect concept.
-// See TestRibbonCursorIndependentOfGridOffset below for the new invariant
-// this test's removal leaves unguarded (cursor position must NOT depend on
-// dv.Offset), and ribbon_progress_test.go for the drag-only click contract.
-
-// TestTimelineRibbonScrollsWithPlayhead used to assert the view rect's X
-// position slides with dv.Offset under the old fixed-beats-per-pixel
-// sliding-window ribbon. Superseded by TestRibbonCursorIndependentOfGridOffset
-// (Task 6: the ribbon is now decoupled from the drum-grid pattern window, so
-// changing Offset must NOT move anything on the ribbon).
-
-// TestRibbonCursorIndependentOfGridOffset asserts the whole-song progress
-// ribbon (Task 6) does not react to the drum-grid pattern window's Offset —
-// the two are explicitly decoupled, unlike the pre-Task-6 ribbon whose "view
-// rect" slid with Offset.
+// The whole-song ribbon is decoupled from the pattern window's Offset.
 func TestRibbonCursorIndependentOfGridOffset(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
@@ -410,12 +385,8 @@ func TestRibbonCursorIndependentOfGridOffset(t *testing.T) {
 	}
 	defer func() { drawRect = orig }()
 
-	// Draw at a NON-TRIVIAL mid-song playhead: under the old sliding-window
-	// ribbon the cursor position tracked the playhead relative to the grid
-	// Offset, so at beat 0 (cursor pinned to the left edge) this test would
-	// pass even against the old code. A mid-song elapsedBeats puts the cursor
-	// well off the left edge, so folding Offset back into the cursor math
-	// would move it — actually exercising the decoupling.
+	// Mid-song, so the cursor sits off the left edge and folding Offset into its math would move it; at beat 0 the
+	// test would pass vacuously.
 	const elapsed = 20.0
 
 	dv.Offset = 0
@@ -426,8 +397,7 @@ func TestRibbonCursorIndependentOfGridOffset(t *testing.T) {
 	dv.Draw(img, nil, 0, nil, elapsed)
 	moved := cursorX0
 
-	// Guard the guard: confirm the cursor really sat off the left edge, so a
-	// future change that pins it to 0 can't make this test vacuously pass.
+	// Guards the guard: the cursor really is off the left edge.
 	barLeft := dv.timelineZone.timelineBarRect.Min.X
 	if base <= barLeft+8 {
 		t.Fatalf("cursor did not advance off the bar's left edge at elapsed=%.0f (base=%d, barLeft=%d) — test would be vacuous", elapsed, base, barLeft)
@@ -463,12 +433,7 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubSeek was "ribbon press+release at the same point queues an
-// absolute seek". Task 6 makes the ribbon drag-only: a pure tap must NOT
-// queue a seek, and only a press-then-drag-to-a-different-beat commits one
-// on release. See TestRibbonSingleClickDoesNotSeek / TestRibbonDragStillSeeks
-// in ribbon_progress_test.go for the direct-adapter version of this
-// contract; this variant drives the real input dispatch (dv.Update()).
+// The ribbon is drag-only: a pure tap queues no seek. Through the real dispatch (dv.Update()).
 func TestTimelineScrubSeek(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
@@ -497,9 +462,7 @@ func TestTimelineScrubSeek(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubDrag drives a real press-then-move-then-release across the
-// ribbon via dv.Update() and asserts the resulting absolute seek snaps to the
-// nearest whole beat under the release point (Task 6: drag-only ribbon).
+// The seek snaps to the nearest whole beat under the release point.
 func TestTimelineScrubDrag(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
@@ -550,11 +513,7 @@ func TestTimelineScrubDrag(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubLongTimeline was "ribbon drag at the far edge clamps to
-// the full [0, TimelineBeats] range" driven by a press+release at the same
-// point; Task 6 requires an actual drag (different press/release X) to
-// commit a seek at all, so this now presses near the middle and drags to
-// the far edge before releasing.
+// A real drag is needed to commit a seek, so it presses mid-ribbon and drags to the far edge.
 func TestTimelineScrubLongTimeline(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
@@ -670,9 +629,7 @@ func TestDrumViewLooping(t *testing.T) {
 	g.addEdgeNoRefresh(node4, node2)
 	g.updateBeatInfos()
 
-	// Loop seam suppression only hides invisible bridge segments. With all
-	// endpoints regular in this path O->1->2->3->4->(back)->2, every audible
-	// step should remain visible except for the invisible pass-throughs.
+	// Seam suppression hides only invisible bridge segments; every audible step stays visible.
 	expectedSteps := []bool{true, true, true, true, true, false, true, true, true, false}
 	t.Logf("Generated drum row: %v", g.drum.Rows[0].Steps)
 	if len(g.drum.Rows[0].Steps) != len(expectedSteps) {
@@ -692,14 +649,7 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 
 	graph := model.NewGraph(logger)
 
-	// Circuit: [O] > [] > [X] > [X]
-	//                    ^     v
-	//                   [X] < [X]
-	// This translates to:
-	// node0 (0,0) -> node_inv1 (1,0) -> node1 (2,0)
-	// node1 (2,0) -> node_inv2 (2,1) -> node2 (2,2)
-	// node2 (2,2) -> node_inv3 (1,2) -> node3 (0,2)
-	// node3 (0,2) -> node_inv4 (0,1) -> node1 (2,0) (loop back to node1)
+	// [O] > [] > [X] > [X], with [X] < [X] below, looping back to node1; the [] are invisible pass-throughs.
 
 	node0 := graph.AddNode(0, 0, model.NodeTypeRegular)
 	node_inv1 := graph.AddNode(1, 0, model.NodeTypeInvisible)
@@ -752,9 +702,7 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
 
-	// Flat-tonal (2026-07-25): button bodies paint via drawFlatButtonBody ->
-	// drawRoundedRect(filled), not the drawButton fill+border primitive. Count
-	// filled rounded rects instead; the assertion below is unchanged.
+	// Bodies paint as filled rounded rects, not drawButton.
 	count := 0
 	orig := drawRoundedRect
 	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
@@ -765,12 +713,7 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawRoundedRect = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
-	// After zone refactoring: transport zone draws play, stop, bpm+/-, subdiv,
-	// len+/-, track, upload, import, export, viewSwitch. Row rack zone draws
-	// per-row label, M, S, FX, overflow. Add-row button uses custom style
-	// (dashed border) so it doesn't go through drawButton. EQ panel zone draws
-	// EQ toggle + channel + filter toggles + band mutes when visible.
-	// Count depends on visible rows, zone layout, and which controls are shown.
+	// The count depends on visible rows and layout, so only a floor is asserted.
 	if count < 20 {
 		t.Fatalf("expected at least 20 buttons drawn, got %d", count)
 	}
@@ -800,8 +743,7 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 				orig(dst, r, c, filled)
 				return
 			}
-			// Map rectangle center X proportionally into the step index so
-			// rounding distribution across cells doesn’t skew detection.
+			// Proportional mapping, so per-cell rounding does not skew detection.
 			startX := dv.CellGridRect().Min.X
 			totalW := dv.CellGridRect().Dx()
 			n := dv.Length
@@ -867,9 +809,7 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	}
 }
 
-// Even when the requested subdivisions vastly exceed the available pixels,
-// the drum view should render decimated vertical marker lines so users can
-// orient themselves. A horizontal baseline is intentionally omitted.
+// Decimated marker lines keep the user oriented even when subdivisions exceed the pixels; no horizontal baseline.
 func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -1032,9 +972,7 @@ func TestInstrumentMenuIncludesCustom(t *testing.T) {
 		}
 	}
 	if btn == nil {
-		// The menu opens pre-filtered to the row's instrument category ("Snare"),
-		// so the "Custom" instrument (category "Other") is not in the visible list.
-		// The instrument was already verified in instOptions above. Select directly.
+		// The menu opens filtered to the row's category, which "Custom" is not in.
 		dv.SetInstrument("custom")
 	} else {
 		btn.OnClick()
@@ -1167,8 +1105,7 @@ func TestDrumViewRenameInstrument(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
-	// Rename is metadata-only: it leaves a process-global display-name override
-	// keyed by the (unchanged) instrument id. Clear it so it can't leak.
+	// Rename leaves a process-global display-name override; cleared so it cannot leak.
 	id := dv.Rows[0].Instrument
 	t.Cleanup(func() { audio.ClearInstrumentDisplayName(id) })
 
@@ -1290,8 +1227,7 @@ func TestDrumViewRenameBoxBounds(t *testing.T) {
 	}
 	inset := int(float64(minDim) * 0.1)
 	want := image.Rect(expected.Min.X+inset, expected.Min.Y+inset, expected.Max.X-inset, expected.Max.Y-inset)
-	// Flat-tonal (2026-07-25): the rename box paints via drawFlatButtonBody ->
-	// drawRoundedRect(filled), not the drawButton primitive.
+	// The rename box paints as a filled rounded rect.
 	var rects []image.Rectangle
 	old := drawRoundedRect
 	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
@@ -1324,9 +1260,7 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 	origID := dv.Rows[0].Instrument
 	t.Cleanup(func() { audio.ClearInstrumentDisplayName(origID) })
 
-	// Open rename via the component path. Rename is now metadata-only: it routes
-	// through dv.renameInstrumentTo, which sets a display-name override and never
-	// changes the instrument id.
+	// Rename is metadata-only: a display-name override, never an id change.
 	dv.renameRow = 0
 	r := dv.rowLabels()[0].Rect()
 	committed := false
@@ -1366,8 +1300,6 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 	if !committed {
 		t.Fatal("rename OnCommit was not called")
 	}
-	// Metadata-only: the instrument id is unchanged; only the display label and
-	// row name follow the new override.
 	if dv.Rows[0].Instrument != origID {
 		t.Fatalf("rename changed instrument id: got %s want %s", dv.Rows[0].Instrument, origID)
 	}
@@ -1401,10 +1333,7 @@ func TestDrumViewOriginRequests(t *testing.T) {
 	}
 }
 
-// TestDrumViewInstrumentColor pins the pure-sequential color contract: the
-// initial row takes the first color of the canonical instrument series (by row
-// INDEX, not instrument id), and cycling the instrument does NOT change the
-// color — the color is bound to the row index.
+// The colour is bound to the row INDEX (the canonical series), not the instrument, so cycling it changes nothing.
 func TestDrumViewInstrumentColor(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	withDefaultAudio(t)
@@ -1454,12 +1383,7 @@ func TestCustomInstrumentColorsRotate(t *testing.T) {
 	if colorsEqual(col1, col2) {
 		t.Fatalf("expected different colors for custom instruments")
 	}
-	// Both rows must take real, on-palette instrument colors (from the canonical
-	// Vice City sequence), never a rogue off-palette placeholder. The historical
-	// check here compared against colStep, but colStep == primary == cyan-300 now
-	// legitimately coincides with instrumentSequence[1], so that sentinel produced
-	// a false positive. Membership in the swatch set is the correct, non-brittle
-	// intent: "custom instruments get genuine palette colors."
+	// Palette membership, not colStep: colStep now legitimately equals a sequence colour.
 	palette := viceCitySwatchSet()
 	if _, ok := palette[rgbKey(col1)]; !ok {
 		t.Fatalf("row 0 color %s is NOT a Vice City swatch", rgbKey(col1))
@@ -1473,9 +1397,7 @@ func TestRowControlsSpanLeftPanel(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
 	dv.calcLayout()
-	// On desktop, delete and origin buttons are hidden (empty rects) —
-	// they live in the overflow menu. Verify the overflow (menu) button is
-	// the rightmost visible control.
+	// On desktop delete and origin live in the overflow menu (empty rects).
 	del := dv.rowDeleteBtns()[0].Rect()
 	if !del.Empty() {
 		t.Fatalf("expected delete button rect empty on desktop, got %v", del)
@@ -1556,8 +1478,7 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 	if dv.Rows[0].Instrument == orig {
 		t.Fatalf("instrument not changed via dropdown: %s", dv.Rows[0].Instrument)
 	}
-	// Audition contract: the menu now stays open after selection so the user
-	// can rapidly try multiple instruments. See inst_menu_audition_test.go.
+	// The menu stays open after a pick, for auditioning.
 	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu must stay open after selection (audition contract)")
 	}
@@ -1670,9 +1591,7 @@ func TestInstrumentDropdownScrollbarDragToEnd(t *testing.T) {
 	targetID := filtered[len(filtered)-1]
 	btn := dv.instMenuBtns()[len(dv.instMenuBtns())-1]
 
-	// Click the last visible button directly. The button rect may not align
-	// with the scroll view due to layout shift, so use OnClick() instead of
-	// HandleInput coordinates.
+	// OnClick, since the button rect may not align with the scroll view after a layout shift.
 	if btn.OnClick == nil {
 		t.Fatalf("last button has no OnClick handler")
 	}
@@ -1717,9 +1636,7 @@ func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 	if len(dv.instMenuBtns()) < 2 { // back + snares
 		t.Fatalf("expected instrument list, got %d", len(dv.instMenuBtns()))
 	}
-	// Use the full filtered list (not just visible buttons) since canonical "Snare"
-	// category now includes built-in snares too, pushing staged items beyond the
-	// visible window.
+	// The full filtered list: the built-in snares push staged items past the visible window.
 	filtered := instMenuFilteredOptionsForTest(dv)
 	foundSnareCAT1 := false
 	for _, id := range filtered {
@@ -1733,8 +1650,6 @@ func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 	if !foundSnareCAT1 {
 		t.Fatalf("snare option missing after filter")
 	}
-	// Find or synthesize a button rect for the click test. Prefer visible button;
-	// fall back to scrolling to the item first.
 	for _, b := range dv.instMenuBtns() {
 		if b.Text == "Snare Cat 1" {
 			target = b
@@ -1792,9 +1707,7 @@ func TestInstrumentCategoryClickKeepsMenuOpenAndIsolated(t *testing.T) {
 		{ID: "snare-cat-1", Name: "Snare Cat 1", Group: "Snare"},
 	})
 	graph := model.NewGraph(logger)
-	// Tall enough for the categories view's title band + GLOBAL SEARCH row +
-	// at least two category rows (the global search bar consumes one row of
-	// vertical space that this fixture's original 220px height did not have).
+	// Tall enough for the title band, the global search row and two category rows.
 	dv := NewDrumView(image.Rect(0, 0, 260, 360), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.instMenuShowFavoritesCategory = false
@@ -1849,18 +1762,10 @@ func TestInstrumentCategoryClickKeepsMenuOpenAndIsolated(t *testing.T) {
 	}
 }
 
-// When the filtered list exceeds the visible rows, wheel scrolling should move
-// the menu without closing it or affecting other UI.
 func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	var entries []audio.SoundMeta
-	// Use enough entries to force scrolling regardless of rack height. The
-	// rack rect now spans the full rows-area (extension applied when EQ is
-	// collapsed in test mode), so the previous count of 10 fit without
-	// scrolling on tall fixtures. 30 ensures the list overflows even with
-	// a 400-px-tall drum view.
-	// Use IDs containing "snare" so canonical CategoryOf maps them to "Snare"
-	// (an early taxonomy entry that is always in the visible category list).
+	// 30 entries overflow even a 400 px view; "snare" ids map to the always-visible Snare category.
 	for i := 0; i < 30; i++ {
 		entries = append(entries, audio.SoundMeta{ID: instrument.ID(fmt.Sprintf("snare-samp-%02d", i)), Name: fmt.Sprintf("Snare Samp %02d", i), Group: "Snare"})
 	}
@@ -1907,8 +1812,6 @@ func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	}
 }
 
-// Regression: scrollbar must scroll the instrument list after selecting a category,
-// and the category list must not include an "All" entry.
 func TestInstrumentScrollAfterCategorySelect_NoAllCategory(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	var entries []audio.SoundMeta
@@ -1985,8 +1888,6 @@ func TestInstrumentScrollAfterCategorySelect_NoAllCategory(t *testing.T) {
 	}
 }
 
-// When instrument count exceeds the viewable rows, the scrollbar must appear and
-// the popup must remain inside the rack widget bounds.
 func TestInstrumentScrollbarAppearsAndClampedToRack(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	var entries []audio.SoundMeta
@@ -2000,8 +1901,7 @@ func TestInstrumentScrollbarAppearsAndClampedToRack(t *testing.T) {
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
-	// Use a narrow-ish window to force scrolling, but tall enough that
-	// the rack can fit the minimum menu (back + search + 1 instrument row).
+	// Narrow enough to scroll, tall enough for the minimum menu.
 	dv := NewDrumView(image.Rect(0, 0, 400, 300), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.instMenuShowFavoritesCategory = false
@@ -2285,10 +2185,7 @@ func TestInstrumentMenuShowsBackWithoutForcedCategories(t *testing.T) {
 	if len(dv.instMenuBtns()) == 0 || dv.instMenuBtns()[0].Text != "Back" {
 		t.Fatalf("back button missing when entering instruments directly")
 	}
-	// Canonical "Snare" category includes the built-in snare family (snare,
-	// snare-1, snare-2, rimshot, sidestick), so the filtered list has several
-	// entries — and must EXCLUDE non-snares like "kick", proving the filter ran
-	// (a guard against a regression that returns every instrument).
+	// It must EXCLUDE non-snares like "kick", proving the filter ran.
 	filtered := instMenuFilteredOptionsForTest(dv)
 	if len(filtered) < 2 {
 		t.Fatalf("expected snare family (>=2) under Snare filter, got %d: %v", len(filtered), filtered)
@@ -2416,8 +2313,7 @@ func TestInstrumentBackReturnsToCategoriesWithoutClosing(t *testing.T) {
 func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	var metas []audio.SoundMeta
-	// Samples NAMED as snares, so CategoryOf (which classifies a non-built-in
-	// by its display name) maps them to CatSnare.
+	// Named as snares: a non-built-in is classified by its display name.
 	for i := 0; i < 12; i++ {
 		id := fmt.Sprintf("snare-var-%02d", i)
 		metas = append(metas, audio.SoundMeta{ID: instrument.ID(id), Name: fmt.Sprintf("Snare %02d", i), Group: "Snare"})
@@ -2476,12 +2372,7 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 
 func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
-	// Categories are derived from the taxonomy — audio.Categories() filtered to
-	// the categories that own at least one instrument, keyed by CategoryOf() —
-	// NOT from the legacy SoundMeta.Category string, which the taxonomy refactor
-	// stopped consulting. The default kit spans well over four categories, so
-	// the list is scrollable; assert the visible window advances against the
-	// actually-derived list rather than fabricated category names.
+	// Categories derive from the taxonomy (audio.Categories() with at least one instrument), never fabricated names.
 	withDefaultAudio(t)
 
 	graph := model.NewGraph(logger)
@@ -2505,9 +2396,7 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	if len(dv.instCategoryBtns) == 0 {
 		t.Fatalf("no category buttons")
 	}
-	// Note: the initial visible window is biased to the selected row's category
-	// (buildCategoriesMode's active-category bias), so instCategoryBtns[0] is
-	// not necessarily cats[0]. We only assert the window MOVES on scroll.
+	// The initial window is biased to the selected row's category, so only movement is asserted.
 	firstLabel := dv.instCategoryBtns[0].Text
 
 	// Scroll down a few slots through the component (legacy path retired).
@@ -2636,11 +2525,7 @@ func TestSelectingInstrumentDoesNotAddRow(t *testing.T) {
 
 func TestInstrumentDropdownFitsBounds(t *testing.T) {
 	graph := model.NewGraph(testLogger)
-	// 200x400 so 3 rows fit in the rack rect (rackVisibleRows≥3); the
-	// previous 200x200 fixture relied on dv.visibleRows() over-
-	// estimating beyond the rack rect's actual height to give row 2's
-	// label a non-empty rect. The override now derives from the rack
-	// rect, so we size the fixture to genuinely fit all rows.
+	// Sized so 3 rows genuinely fit the rack rect, which the override now derives from.
 	dv := NewDrumView(image.Rect(0, 0, 200, 400), graph, testLogger)
 	dv.AddRow()
 	dv.AddRow()
@@ -2701,11 +2586,7 @@ func TestDropdownHoverHighlight(t *testing.T) {
 	// OnClick suppresses clicks until mouse-up; clear it so hover state can update.
 	suppressClicksUntilRelease = false
 	btn := dv.instMenuBtns()[0]
-	// Flat-tonal (2026-07-25): a button paints one FILLED rounded rect and no
-	// border, so hover is observable as a fill change only. The old border
-	// assertion (colDropdownEdge) tested chrome that no longer exists.
-	// A zero-radius button falls through drawFlatButtonBody to drawRect, so
-	// intercept both primitives.
+	// Hover is a fill change only; a zero-radius button falls through to drawRect, so both are intercepted.
 	img := ebiten.NewImage(10, 10)
 	var capture *color.Color
 	origRR, origR := drawRoundedRect, drawRect
@@ -2786,9 +2667,7 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	highlighted := [][]highlightEntry{{{idx: 1, val: 1}}}
 	g.drum.Draw(ebiten.NewImage(300, 240), highlighted, 0, g.beatInfos, 0)
 
-	// Invisible cells should use grey highlight (colMuteHighlight), not white.
-	// Convert to RGBA via the model so the test handles both color.RGBA and
-	// color.NRGBA call sites without depending on the runtime's concrete type.
+	// Invisible cells use the grey colMuteHighlight; compared through the model so RGBA vs NRGBA does not matter.
 	var highlightCount int
 	hlExpected := color.RGBAModel.Convert(colMuteHighlight).(color.RGBA)
 	for _, call := range calls {
@@ -2820,8 +2699,7 @@ func TestTimelineCursorMatchesHighlight(t *testing.T) {
 			if clr == colTimelineCursor {
 				cursorCount++
 			}
-			// Highlights use colHighlight (fallback when row Color is nil)
-			// or the row's Color when set.
+			// colHighlight when the row has no Color.
 			if clr == colHighlight && r.Min.Y >= timelineHeight {
 				highlightCount++
 			}
@@ -2890,15 +2768,12 @@ func TestVolumeSliderOpensPopup(t *testing.T) {
 	)
 	defer restore()
 	dv.Update()
-	// Desktop now opens volume popup instead of inline slider change.
-	// Volume should remain unchanged at the fresh default (0.5).
+	// Desktop opens the popup instead, so the volume stays at the 0.5 default.
 	if dv.Rows[0].Volume != 0.5 {
 		t.Fatalf("expected volume unchanged at 0.5 after click (popup opens), got %f", dv.Rows[0].Volume)
 	}
 }
 
-// Dragging a volume slider to its maximum and releasing over the delete button
-// should not remove the row.
 func TestVolumeDragReleaseDoesNotDeleteRow(t *testing.T) {
 	g := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
@@ -3022,11 +2897,7 @@ func TestTrackBeatCentersCurrent(t *testing.T) {
 		t.Fatalf("expected offset 0 near start, got %d", dv.Offset)
 	}
 
-	// TrackBeat recenters so the playhead column lands at
-	// `length * RibbonPlayheadFrac` (~70%), matching the timeline ribbon
-	// cursor. For length=8 that target column is round(8*0.70)=6, so cur=8
-	// becomes the first index past the dead-zone right edge and forces the
-	// offset to jump so cur ends up at column 6 (offset = 8-6 = 2).
+	// TrackBeat recentres so the playhead lands at length × RibbonPlayheadFrac: column 6 for 8, so offset 2.
 	dv.TrackBeat(8)
 	if dv.Offset != 2 {
 		t.Fatalf("offset=%d want 2", dv.Offset)
@@ -3188,10 +3059,7 @@ func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 	}
 }
 
-// isBodyPaintCall reports whether c paints a control's body. Flat-tonal
-// (2026-07-25) paints bodies via drawFlatButtonBody -> drawRoundedRect/drawRect
-// (filled) rather than the drawButton fill+border primitives; both forms are
-// accepted so this helper is agnostic to which path a control takes.
+// Either body path counts.
 func isBodyPaintCall(c drawCall) bool {
 	switch c.Kind {
 	case drawCallButton, drawCallRoundedButton:
@@ -3202,10 +3070,7 @@ func isBodyPaintCall(c drawCall) bool {
 	return false
 }
 
-// hasButtonInRegion checks if any control-body paint call was recorded in the
-// given region. It checks both screen-space coordinates
-// (drawRowControlsDirect path) and cache-local coordinates (drawRowControlsToCache
-// offsets by rowControlsCacheRect.Min).
+// Checks screen coordinates and cache-local ones (offset by rowControlsCacheRect.Min).
 func hasButtonInRegion(rec *drawCallRecorder, labelRect image.Rectangle, cacheOrigin image.Point) bool {
 	// Check screen-space (direct path).
 	for _, c := range rec.inRegion(labelRect) {
@@ -3240,8 +3105,7 @@ func TestRenameInvalidatesRowControlsCache(t *testing.T) {
 		t.Fatal("row controls cache should be valid after initial Draw")
 	}
 
-	// Click the edit button to open rename — this wires up the real OnCommit
-	// callback from drumview_layout.go.
+	// Wires the real OnCommit.
 	dv.rowEditBtns()[0].OnClick()
 
 	// Invoke the production OnCommit callback directly.

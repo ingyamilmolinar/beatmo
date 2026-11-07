@@ -9,9 +9,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Ensure no horizontal baseline is drawn that would visually split a row into
-// two cell bands. Previously a 1px line across the steps area made each row
-// look like two stacked cell strips; that line should no longer be drawn.
+// A 1 px baseline across the steps made each row look like two stacked strips.
 func TestDrumViewRows_NoBaselineSplit(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -22,8 +20,6 @@ func TestDrumViewRows_NoBaselineSplit(t *testing.T) {
 	dv.calcLayout()
 	dst := ebiten.NewImage(600, 220)
 
-	// Count 1px horizontal lines across the steps area using colTimelineBeat.
-	// Expect zero to avoid visual splitting of rows.
 	baseline := 0
 	orig := drawRect
 	drawRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {

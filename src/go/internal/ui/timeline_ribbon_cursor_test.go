@@ -6,21 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// newRibbonCursorGame builds a Game with deterministic input stubs, laid out
-// at the given size, with playback started at BPM 120. Shared by ribbon/timeline
-// rendering tests in this package (see vice_city_drumpane_test.go).
-//
-// The two tests that used to live in this file
-// (TestRibbonCursorStaysInViewRectWhileFollowing and
-// TestRibbonCursorInViewRectAfterBPMChange) asserted the playback cursor
-// never strayed outside the ribbon's "view rect" — the pattern-window
-// highlight that lived inside the old fixed-beats-per-pixel sliding-window
-// ribbon. Task 6 removed the view rect entirely and replaced the sliding
-// window with a slim whole-song progress bar (see (*TimelineZone).drawTimelineBar),
-// so that invariant no longer applies. See
-// TestTimelineRibbon_CursorAtWholeSongFraction in
-// timeline_zone_long_session_test.go for the replacement cursor-position
-// invariant.
+// Deterministic input stubs, playback started at BPM 120.
 func newRibbonCursorGame(t *testing.T, w, h int) (*Game, func()) {
 	t.Helper()
 	assertDefaultParityState(t)

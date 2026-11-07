@@ -9,12 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// guideClickAt simulates press+release at a fixed screen position through the
-// real Update loop (mirrors shiftDrag in game_marquee_test.go, without
-// Shift). Named distinctly from origin_select_test.go's clickAt (same
-// signature, different semantics: that one runs a single Update per phase
-// with no settle frames) to avoid a redeclaration collision — both files
-// compile together under -tags test.
+// Not clickAt: origin_select_test.go's runs a single Update per phase with no settle frames.
 func guideClickAt(g *Game, x, y int) {
 	down := false
 	restore := SetInputForTest(
@@ -82,11 +77,8 @@ func TestGuideClickNearNodeSelectsInsteadOfCreating(t *testing.T) {
 	}
 }
 
-// TestGuideMoveModeSnapsGhostTargetOffEdgeCancels: move placement is
-// edge-only, so a tap that the guide resolves to a free cell — even one
-// snapped precisely onto the grid in the same column as the moved node's own
-// edge — cancels the mode instead of placing there. (0,20) sits outside the
-// a→b span [0,12], so it is a GuideCell, not a GuideEdge interior point.
+// Move placement is edge-only: a tap the guide resolves to a free cell cancels the mode. (0,20) is outside the
+// a→b span, so it is a GuideCell.
 func TestGuideMoveModeSnapsGhostTargetOffEdgeCancels(t *testing.T) {
 	g, _, b := buildGuideCircuit(t, 12)
 	u := g.grid.Unit()
@@ -103,9 +95,7 @@ func TestGuideMoveModeSnapsGhostTargetOffEdgeCancels(t *testing.T) {
 	}
 }
 
-// dragTouch simulates a touch press at (x1,y1), drag to (x2,y2), release,
-// with the guide-aim touch seam armed (SetInputForTest forces the real touch
-// override off inside updateTouchOverride, so the seam stands in for it).
+// SetInputForTest forces the real touch override off, so the guide-aim seam stands in for it.
 func dragTouch(g *Game, x1, y1, x2, y2 int) {
 	restoreTouch := SetGuideAimTouchForTest(true)
 	defer restoreTouch()
@@ -129,14 +119,8 @@ func dragTouch(g *Game, x1, y1, x2, y2 int) {
 	advanceFrames(g, 2) // release edge: a moved gesture never places a node
 }
 
-// TestGuideAimDragPansInsteadOfPlacing pins the unified "movement = pan
-// everywhere" model. A drag that STARTS on/near a circuit element used to arm
-// the guide-aim gesture, suppress panning, and place a node at the aimed cell on
-// release. That contradicted "click-and-hold always pans" and made the
-// pan-vs-create-node behaviour depend on where the drag happened to start (over
-// content vs empty space) — half the reported mobile conflict. Now the aim is
-// visual only: the same drag pans the camera and places nothing. Precise
-// placement still works, but only via a stationary tap (see TestGuideTapInGridSnapsThroughGuide).
+// Movement pans everywhere: a drag starting near a circuit element pans and places nothing; precise
+// placement is a stationary tap.
 func TestGuideAimDragPansInsteadOfPlacing(t *testing.T) {
 	g, _, _ := buildGuideCircuit(t, 12)
 	u := g.grid.Unit()
@@ -161,8 +145,7 @@ func TestGuideDragFromEmptySpaceStillPans(t *testing.T) {
 	g, _, _ := buildGuideCircuit(t, 12)
 	u := g.grid.Unit()
 	r := g.guideSnapRadiusWorld()
-	// Horizontally clear of the circuit (perp > 3r from the I=0 edge) but at
-	// small y so the touch stays inside the grid pane regardless of Step.
+	// Clear of the I=0 edge (perp > 3r), at small y to stay inside the grid pane.
 	x1, y1 := guideScreenAt(g, 30*u+3*r, 2.0*u)
 	x2, y2 := x1-60, y1+20
 	before := len(g.nodes)
@@ -205,10 +188,8 @@ func TestGuideAimDoesNotArmOverOpenGroupMenu(t *testing.T) {
 	}
 }
 
-// TestGuideAimDisarmsMidGesture pins the mid-gesture disarm branch of
-// updateGuideAim. Simulating a literal second finger isn't feasible under
-// SetInputForTest, so this exercises the same disarm condition list via the
-// sidebar-open branch (added by item 1 alongside g.groupMenu.IsOpen()).
+// A second finger cannot be simulated under SetInputForTest, so the sidebar-open condition drives the same
+// disarm branch.
 func TestGuideAimDisarmsMidGesture(t *testing.T) {
 	g, _, _ := buildGuideCircuit(t, 12)
 	u := g.grid.Unit()

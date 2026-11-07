@@ -7,27 +7,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestRowsLayerDoesNotRecomposeEveryScrollDuringPlayback is the performance
-// regression guard for the "choppy audio while just playing" bug
-// (bench-results/choppy_audio_revisit_2026-06-13.md). During steady-state
-// follow-scroll playback the drum-row CONTENT does not change — the window
-// merely translates — yet the rows-layer cache was recomposited (a full
-// layer-sized shift-copy) on essentially every recenter (~every 2 cells).
-// On the single cooperatively-scheduled WASM thread that per-scroll copy is
-// pure waste that steals time from the sequencer goroutine.
-//
-// The deterministic fix is to cache a strip WIDER than the visible window and
-// blit a moving sub-rectangle each frame, recompositing only when the playhead
-// scrolls past the cached pad. This test pins the invariant: over a long
-// steady-state scroll the number of rows-layer recomposites must be a small
-// fraction of the number of scroll events (it scales with window/pad, not with
-// every cell of playhead travel).
-//
-// IMPORTANT: this drives the loop with SetTrackBeatForceRefreshForTest(false)
-// so TrackBeat behaves exactly as it does in the browser/desktop binary. The
-// default test behavior force-dirties the layer every frame "to satisfy
-// visibility assertions", which would mask the production scroll cadence this
-// test measures (see drumview_transport.go).
+// During follow-scroll the row content only translates, so the cache keeps a strip wider than the window and
+// recomposites only past its pad: on WASM's one thread a per-scroll copy steals time from the sequencer. Runs
+// with the production TrackBeat refresh, since the test default force-dirties every frame.
 func TestRowsLayerDoesNotRecomposeEveryScrollDuringPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -52,9 +34,7 @@ func TestRowsLayerDoesNotRecomposeEveryScrollDuringPlayback(t *testing.T) {
 
 	scr := ebiten.NewImage(900, 600)
 
-	// Advance well past the recenter point (70% of the window) so we measure
-	// the STEADY-STATE scrolling regime, not the recompose-free warmup while
-	// the playhead is still in the first 70% of the initial window.
+	// Past the 70% recenter point, so this measures steady-state scrolling, not the warm-up.
 	steps := 256
 	prevGen := g.drum.rowsLayerGen
 	prevOffset := g.drum.Offset
@@ -93,11 +73,7 @@ func TestRowsLayerDoesNotRecomposeEveryScrollDuringPlayback(t *testing.T) {
 		t.Fatalf("expected stable row content during steady playback, got %d content changes", contentChanges)
 	}
 
-	// The invariant: recomposites must be a SMALL fraction of scroll events.
-	// A windowed cache recomposites only when the playhead scrolls past the
-	// pad, so recomposites scale with (scroll distance / pad), not with every
-	// scroll event. Pre-fix the rows layer shift-copied on essentially every
-	// scroll (recomposites ≈ scrollEvents). Require at least a 4× reduction.
+	// Recomposites scale with scroll distance over the pad, not with scroll events; require a 4× reduction.
 	maxRecomposites := scrollEvents/4 + 2
 	if recomposites > maxRecomposites {
 		t.Fatalf("rows layer recomposited %d times over %d scroll events during steady playback "+

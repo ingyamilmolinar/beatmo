@@ -10,26 +10,8 @@ import (
 	"testing"
 )
 
-// TestGridRenderPipelineDiscipline asserts that the body of (*Game).drawGridPane
-// — the single grid-pane dispatch entry point — contains no draw-primitive
-// calls. After the GridTree split (Tasks 5-8) every byte that lands inside the
-// grid pane MUST originate inside a Layer registered with GridTree; drawGridPane
-// only computes per-frame setup, an optional debug-only g.drawGridBackground
-// call, Tracef logging, and the gridTree dispatch (SetBounds/EnsureLayouts/Draw).
-//
-// Adding a draw primitive (drawRect, drawRoundedRect, drawButton,
-// drawSparklineInRect, drawBottomSheetPanel, drawPanel,
-// DrawSplitterHandle, DrawTextAt, DrawTextColorAtScale, DrawIcon, DrawImage,
-// fillVerticalGradient, DrawTextStyled, DrawTextAtScale, drawScrim, …) directly
-// to (*Game).drawGridPane will fail this test. Method calls like
-// g.drawGridBackground(...) or g.gridTree.Draw(...) are SelectorExpr calls whose
-// trailing identifier ("drawGridBackground", "Draw") is NOT in the forbidden
-// set, so they remain allowed.
-//
-// The test parses game_draw_grid_pane.go with go/parser and walks the
-// drawGridPane FuncDecl body for *ast.CallExpr nodes whose name (Ident or
-// SelectorExpr.Sel) matches the forbidden set. callIdent is shared with
-// render_pipeline_discipline_test.go.
+// drawGridPane only sets up and dispatches; every pixel in the grid pane comes from a GridTree layer. A
+// selector call whose trailing name is not a draw primitive (g.gridTree.Draw) stays allowed.
 func TestGridRenderPipelineDiscipline(t *testing.T) {
 	forbidden := map[string]bool{
 		"drawRect":             true,
@@ -73,8 +55,7 @@ func TestGridRenderPipelineDiscipline(t *testing.T) {
 		if fd.Name.Name != fnNm {
 			continue
 		}
-		// Match the (*Game) receiver. drawGridPane is a method on Game; require
-		// a receiver so a future free function of the same name can't shadow it.
+		// Require the receiver, so a free function of the same name cannot shadow it.
 		if fd.Recv == nil || len(fd.Recv.List) != 1 {
 			continue
 		}

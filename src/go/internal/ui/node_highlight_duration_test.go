@@ -24,8 +24,7 @@ func stubGameForHighlightDuration(bpm int) *Game {
 		graph:            model.NewGraph(logger),
 		playFn:           func(instrument.ID, float64, ...float64) {},
 	}
-	// playbackSlate methods dereference this back-reference; struct literals
-	// that bypass New() must set it explicitly (mirrors New()).
+	// Struct literals bypassing New() must set the back-reference.
 	g.playbackSlate.g = g
 	g.drum = &DrumView{
 		Rows:   []*DrumRow{{}},
@@ -41,8 +40,7 @@ func TestHighlightDurationCapped(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlightDuration(120)
 
-	// Simulate a long sample (e.g., sub-bass at 2.0 seconds)
-	// audio.SampleSeconds returns 0 in stub mode, so we test the fallback capping
+	// SampleSeconds is 0 under the stub, so this is the capped fallback.
 	sec := g.expectedHighlightSeconds(roster.SubBass, 0, 1)
 
 	// Should be capped to maxHighlightSeconds (200ms)
@@ -173,15 +171,12 @@ func TestFastLoopHighlightsFlash(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlightDuration(120)
 
-	// Simulate fast loop: at 120 BPM with subdiv=16, each beat is ~31ms
-	// With maxHighlightSeconds=200ms, we can fit ~6 beats in one highlight window
-	// But with capping, each highlight should be short enough to show flashing
+	// 120 BPM, subdiv 16: ~8 beats per second.
 
 	beatsPerSecond := float64(120) / 60.0 * 16.0 / 4.0 // ~8 beats per second
 	beatDuration := 1.0 / beatsPerSecond               // ~125ms per beat
 
-	// With 200ms max highlight and ~125ms beat spacing, we should see flashing
-	// (highlight < 2x beat spacing ensures visible off periods)
+	// Under 2× the beat spacing, so off periods are visible.
 	if maxHighlightSeconds >= beatDuration*2 {
 		t.Logf("Warning: maxHighlightSeconds (%.3fs) may cause overlap at %.3fs beat spacing",
 			maxHighlightSeconds, beatDuration)
@@ -198,8 +193,7 @@ func TestHighlightDurationWithPitchShift(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlightDuration(120)
 
-	// Higher pitch = faster playback = shorter duration
-	// But still should be capped
+	// Higher pitch is shorter, still capped.
 	secNormal := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 	secHighPitch := g.expectedHighlightSeconds(roster.Kick, 12, 1) // +1 octave = 2x speed
 
@@ -223,8 +217,7 @@ func TestHighlightDurationWithDurationParam(t *testing.T) {
 	assertDefaultParityState(t)
 	g := stubGameForHighlightDuration(120)
 
-	// Longer duration param = slower playback = longer duration
-	// But still should be capped
+	// A longer duration is longer, still capped.
 	secNormal := g.expectedHighlightSeconds(roster.Kick, 0, 1)
 	secSlower := g.expectedHighlightSeconds(roster.Kick, 0, 0.5) // half speed
 

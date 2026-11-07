@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// openResLadderPopup opens a wheel popup over a continuous param that has a
-// full step ladder, so the resolution strip is laid out.
 func openResLadderPopup(t *testing.T) (*MobileWheelPopup, *KnobStepBadge) {
 	t.Helper()
 	def := audio.ParamDef{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"}
@@ -30,10 +28,7 @@ func openResLadderPopup(t *testing.T) (*MobileWheelPopup, *KnobStepBadge) {
 	return w, badge
 }
 
-// TestWheelResolutionLadderCoarsestOnTop pins the resolution strip to the same
-// orientation as the value barrel above it: bigger numbers on top. rungRects()
-// stays indexed by LADDER rung (fine→coarse), so the coarsest rung — the last
-// index — must occupy the TOP pill and each finer rung must sit lower.
+// Bigger numbers on top, like the barrel; rungRects stays indexed fine→coarse, so the last rung is the top pill.
 func TestWheelResolutionLadderCoarsestOnTop(t *testing.T) {
 	w, badge := openResLadderPopup(t)
 	rects := w.rungRects()
@@ -52,8 +47,7 @@ func TestWheelResolutionLadderCoarsestOnTop(t *testing.T) {
 	}
 }
 
-// TestWheelResolutionTopPillSelectsCoarsest proves the hit-test moved with the
-// pills: tapping the topmost pill selects the coarsest step, not the finest.
+// The hit test moved with the pills.
 func TestWheelResolutionTopPillSelectsCoarsest(t *testing.T) {
 	w, badge := openResLadderPopup(t)
 	rects := w.rungRects()

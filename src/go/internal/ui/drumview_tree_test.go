@@ -247,8 +247,6 @@ func TestTreeConsumedPress(t *testing.T) {
 	}
 }
 
-// TestTreeSuppressPropagation verifies that the tree propagates suppress
-// to the global flag when it handles input.
 func TestTreeSuppressPropagation(t *testing.T) {
 	tree := NewDrumViewTree()
 	z := newTestZone("test")
@@ -383,9 +381,7 @@ func TestTreeEndToEndTrivialZone(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeDispatchesToPortalWhenPopupOpen verifies the tree dispatches to
-// portal hit areas (z >= ZOverlayMin) when a portal overlay is open, rather
-// than yielding at the popupActive check.
+// It must dispatch to the portal's hit areas rather than yield.
 func TestTreeDispatchesToPortalWhenPopupOpen(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -445,9 +441,7 @@ func TestTreeDispatchesToPortalWhenPopupOpen(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeBlocksZoneButtonsWhenPortalOpen verifies that zone buttons (z < ZOverlayMin)
-// are blocked when a portal overlay is open. Clicking on a zone button position
-// should close the portal and suppress, not fire the zone handler.
+// A press on a zone button closes the portal and suppresses, never firing the zone.
 func TestTreeBlocksZoneButtonsWhenPortalOpen(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -517,8 +511,6 @@ func TestTreeBlocksZoneButtonsWhenPortalOpen(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeWheelDispatchIgnoresPopupActive verifies that wheel events dispatch
-// to portal overlays unconditionally (no popupActive guard).
 func TestTreeWheelDispatchIgnoresPopupActive(t *testing.T) {
 	var mx, my int
 	var wy float64
@@ -568,8 +560,6 @@ func TestTreeWheelDispatchIgnoresPopupActive(t *testing.T) {
 	}
 }
 
-// TestTreeClickOutsideAlwaysSuppresses verifies click-outside sets suppress
-// regardless of external popup state.
 func TestTreeClickOutsideAlwaysSuppresses(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -641,12 +631,6 @@ func (h *buttonHitHandler) OnDrag(x, y int)                     {}
 func (h *buttonHitHandler) OnRelease(x, y int)                  {}
 func (h *buttonHitHandler) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// ---------------------------------------------------------------------------
-// DrumViewTree integration gap tests
-// ---------------------------------------------------------------------------
-
-// TestTreeDraw_CallsAllZonesAndPortal verifies Draw() invokes Draw on every
-// registered zone and on the portal overlay.
 func TestTreeDraw_CallsAllZonesAndPortal(t *testing.T) {
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -695,8 +679,6 @@ func TestTreeDraw_CallsAllZonesAndPortal(t *testing.T) {
 	}
 }
 
-// TestTreeSetFocusKeyboardRouting verifies HandleKey is only routed to the
-// focused zone.
 func TestTreeSetFocusKeyboardRouting(t *testing.T) {
 	var keyDown ebiten.Key = -1
 	restore := SetInputForTest(
@@ -725,11 +707,7 @@ func TestTreeSetFocusKeyboardRouting(t *testing.T) {
 	keyDown = ebiten.KeyEnter
 	tree.Update()
 
-	// zone-a should have received the key via HandleKey. Since HandleKey
-	// returns the stored result, we verify indirectly that it was called
-	// by checking that zone-b's lastChars is still nil (zone-b never got input).
-	// zone-a HandleKey was called — the testZone returns InputConsumed.
-	// zone-b should not have received any key.
+	// Absence is checked through zone-b's lastChars, since a HandleKey call is hard to observe.
 	if zb.lastChars != nil {
 		t.Error("zone-b should NOT have received any char input")
 	}
@@ -737,8 +715,6 @@ func TestTreeSetFocusKeyboardRouting(t *testing.T) {
 	keyDown = -1
 }
 
-// TestTreeSetFocusCharsRouting verifies HandleChars is only routed to the
-// focused zone.
 func TestTreeSetFocusCharsRouting(t *testing.T) {
 	var chars []rune
 	restore := SetInputForTest(
@@ -800,16 +776,13 @@ func TestTreeSetFocusClear(t *testing.T) {
 	keyDown = ebiten.KeyEnter
 	tree.Update()
 
-	// With focus cleared, zone-a should NOT have received chars.
-	// (HandleKey is harder to verify absence — use chars as proxy.)
+	// Chars as a proxy: HandleKey's absence is hard to observe.
 	if za.lastChars != nil {
 		t.Error("zone-a should not receive char input when focus is cleared")
 	}
 	keyDown = -1
 }
 
-// TestTreeInputHandled verifies InputHandled is true only in the frame that
-// dispatched a press.
 func TestTreeInputHandled(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -854,8 +827,6 @@ func TestTreeInputHandled(t *testing.T) {
 	}
 }
 
-// TestTreeEscClosesTopPortal verifies that pressing Escape closes the topmost
-// portal overlay when no mouse button is pressed.
 func TestTreeEscClosesTopPortal(t *testing.T) {
 	var escPressed bool
 	restore := SetInputForTest(
@@ -908,8 +879,6 @@ func TestTreeEscClosesTopPortal(t *testing.T) {
 	escPressed = false
 }
 
-// TestTreeEscWithStackedPortals verifies ESC closes portals one at a time
-// from the top.
 func TestTreeEscWithStackedPortals(t *testing.T) {
 	var escPressed bool
 	restore := SetInputForTest(
@@ -970,8 +939,6 @@ func TestTreeEscWithStackedPortals(t *testing.T) {
 	escPressed = false
 }
 
-// TestTreeDragActiveBlocksNewPress verifies that when dragActive returns true,
-// new presses are not dispatched to handlers.
 func TestTreeDragActiveBlocksNewPress(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1013,9 +980,7 @@ func TestTreeDragActiveBlocksNewPress(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreePortalOverlayAbsorbsInputIgnored verifies that a portal overlay
-// handler returning InputIgnored is promoted to InputConsumed, setting both
-// InputHandled and Suppress to prevent click-through to underlying zones.
+// A portal's InputIgnored is promoted to Consumed (handled + suppress), so nothing clicks through.
 func TestTreePortalOverlayAbsorbsInputIgnored(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1081,9 +1046,6 @@ func TestTreePortalOverlayAbsorbsInputIgnored(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeDrawClipsToTreeBounds verifies that when tree.bounds is set,
-// zone.Draw receives a clipped sub-image so zones cannot render outside
-// the tree bounds.
 func TestTreeDrawClipsToTreeBounds(t *testing.T) {
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -1111,9 +1073,7 @@ func TestTreeDrawClipsToTreeBounds(t *testing.T) {
 	screen := ebiten.NewImage(800, 600)
 	tree.Draw(screen)
 
-	// The zone should receive a sub-image clipped to the tree bounds.
-	// In ebitenstub, SubImage creates an independent buffer with bounds
-	// starting at (0,0), so we verify dimensions match the clip rect.
+	// ebitenstub's SubImage starts at (0,0), so dimensions are compared.
 	expectedClip := screen.Bounds().Intersect(treeBounds)
 	expectedDx := expectedClip.Dx()
 	expectedDy := expectedClip.Dy()
@@ -1127,9 +1087,6 @@ func TestTreeDrawClipsToTreeBounds(t *testing.T) {
 	}
 }
 
-// TestTreeNonPortalInputIgnoredNotPromoted verifies that InputIgnored from a
-// regular zone handler (z < ZOverlayMin) is NOT promoted. InputHandled and
-// Suppress should remain false.
 func TestTreeNonPortalInputIgnoredNotPromoted(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1177,8 +1134,6 @@ func TestTreeNonPortalInputIgnoredNotPromoted(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeDragActiveAllowsWhenFalse verifies that presses are dispatched when
-// dragActive returns false.
 func TestTreeDragActiveAllowsWhenFalse(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1222,9 +1177,7 @@ func TestTreeDragActiveAllowsWhenFalse(t *testing.T) {
 
 // --- P2 gap tests ---
 
-// TestTree_SuppressStaleClearWhenNoPressCycle verifies that suppress set
-// outside a press cycle (e.g., Escape key closing portal) is cleared on the
-// next frame even without a press event.
+// Suppress set outside a press cycle (Esc closing a portal) must still clear next frame.
 func TestTree_SuppressStaleClearWhenNoPressCycle(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1246,8 +1199,6 @@ func TestTree_SuppressStaleClearWhenNoPressCycle(t *testing.T) {
 	tree.SetZoneRect("test", image.Rect(0, 0, 400, 300))
 	tree.Update() // initial layout
 
-	// Manually set suppress=true with wasPressed=false (simulates Escape
-	// key closing a portal outside a press cycle).
 	tree.suppress = true
 	// wasPressed should be false (no press cycle active).
 	if tree.wasPressed {
@@ -1262,8 +1213,6 @@ func TestTree_SuppressStaleClearWhenNoPressCycle(t *testing.T) {
 	}
 }
 
-// TestTree_WheelZOrderDispatch verifies that wheel events are dispatched to
-// the highest z-index handler first among overlapping hit areas.
 func TestTree_WheelZOrderDispatch(t *testing.T) {
 	var mx, my int
 	var wy float64
@@ -1323,8 +1272,6 @@ func TestTree_WheelZOrderDispatch(t *testing.T) {
 	}
 }
 
-// TestTree_WheelConsumedStopsTraversal verifies that when the top handler
-// returns InputConsumed on wheel, lower handlers do not receive the event.
 func TestTree_WheelConsumedStopsTraversal(t *testing.T) {
 	var mx, my int
 	var wy float64
@@ -1386,9 +1333,6 @@ func TestTree_WheelConsumedStopsTraversal(t *testing.T) {
 
 // --- P6: Tree auto-focus integration tests ---
 
-// TestTree_AutoFocusTransportWhenBPMBoxFocused verifies that when a
-// TransportZone is registered and its BPM box is focused, tree.Update()
-// sets focusedZone to "transport". When blurred, focus clears.
 func TestTree_AutoFocusTransportWhenBPMBoxFocused(t *testing.T) {
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -1430,9 +1374,6 @@ func TestTree_AutoFocusTransportWhenBPMBoxFocused(t *testing.T) {
 
 // --- Fall-through regression tests ---
 
-// TestTreeFallThrough_HigherZIgnoredFallsToLowerZ verifies that when the
-// highest-z handler returns InputIgnored, the press falls through to the
-// next hit in z-order.
 func TestTreeFallThrough_HigherZIgnoredFallsToLowerZ(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1482,8 +1423,6 @@ func TestTreeFallThrough_HigherZIgnoredFallsToLowerZ(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeFallThrough_HigherZCapturesBlocksLowerZ verifies that when the
-// highest-z handler returns InputCaptured, no fall-through occurs.
 func TestTreeFallThrough_HigherZCapturesBlocksLowerZ(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1530,9 +1469,6 @@ func TestTreeFallThrough_HigherZCapturesBlocksLowerZ(t *testing.T) {
 	tree.Update()
 }
 
-// TestTreeFallThrough_PortalIgnoredDoesNotFallThrough verifies that a portal
-// overlay returning InputIgnored is promoted to InputConsumed and does NOT
-// fall through to underlying zone handlers.
 func TestTreeFallThrough_PortalIgnoredDoesNotFallThrough(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -1598,9 +1534,6 @@ func TestTreeFallThrough_PortalIgnoredDoesNotFallThrough(t *testing.T) {
 	tree.Update()
 }
 
-// TestTree_CleanupClosedRemovesOverlay opens a portal overlay with
-// ShouldClose() returning true after a flag flip, and verifies that after
-// tree.Update() the overlay is removed and OnClose fires.
 func TestTree_CleanupClosedRemovesOverlay(t *testing.T) {
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },

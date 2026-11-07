@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestSidebarIncDecButtons verifies that after the sidebar is opened with a
-// node selected and all sections are expanded, the +/− stepper buttons use
-// icon-based drawing ("plus"/"minus") instead of hand-drawn glyph text.
+// Icons, not hand-drawn glyph text.
 func TestSidebarIncDecButtons(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.tryAddNode(7, 7, model.NodeTypeRegular)

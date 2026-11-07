@@ -249,8 +249,7 @@ func TestEQCurveFilterToggle(t *testing.T) {
 	// Curve should now include HPF band.
 	dv.eqCurveDirty = true
 	dv.eqCurveEnsure()
-	// Verify the low-frequency end is attenuated (HPF at 20 Hz is a no-op,
-	// so set a higher cutoff first).
+	// HPF at 20 Hz is a no-op, so raise the cutoff first.
 	dv.hpfCutoffHz = 200
 	dv.eqCurveDirty = true
 	dv.eqCurveEnsure()

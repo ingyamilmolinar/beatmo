@@ -6,14 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// buildMergeChipsFixture builds a Game with `extraComponents` independent
-// 2-node loops (component i lives at grid row 10*(i+1), columns 0/1) plus a
-// distinguished "selection" pair at row -10 (far from every other
-// component, mirroring TestMarqueeSubsetCreatesNewGroup's "node far away in
-// grid space so the marquee rect ... can never accidentally sweep it in"
-// pattern). The selection pair is what tests marquee-select to produce the
-// provisional group under test; the extra components are wired into their
-// own committed groups by the caller to populate merge-chip candidates.
+// The selection pair sits far from every other component so the marquee can never sweep them in.
 func buildMergeChipsFixture(t *testing.T, extraComponents int) (g *Game, selA, selB model.NodeID, comps [][2]model.NodeID) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -44,27 +37,14 @@ func buildMergeChipsFixture(t *testing.T, extraComponents int) (g *Game, selA, s
 	return g, selA, selB, comps
 }
 
-// marqueeSelectPair drives a real shift-drag enclosing exactly the two given
-// nodes (mirrors marqueeCreateGroup/shiftDrag in game_marquee_test.go) without
-// asserting on the resulting group count — callers of this helper already
-// have other groups in play, so marqueeCreateGroup's "exactly 1 group total"
-// assumption doesn't hold here.
-//
-// Presses from the BOTTOM-LEFT corner and releases at the TOP-RIGHT corner
-// (Canon() yields the identical final selection rect regardless of traversal
-// order) — mirroring TestMarqueeSameSetReusesGroup's exact rationale: a
-// candidate superset/other group's floating badge sits just outside the
-// bbox's TOP-RIGHT corner (groupBadgeRects), so a press starting there would
-// hit the badge (arming a badge click, not the marquee) instead of empty grid
-// space.
+// Pressed from the BOTTOM-LEFT: a candidate group's badge sits just outside the bbox's top-right corner, where a
+// press would arm a badge click instead of the marquee. No group-count assertion: other groups are in play.
 func marqueeSelectPair(g *Game, aID, bID model.NodeID) {
 	ax1, ay1, _, _ := g.nodeScreenRect(g.nodesByID[aID])
 	_, _, bx2, by2 := g.nodeScreenRect(g.nodesByID[bID])
 	shiftDrag(g, int(ax1)-20, int(by2)+20, int(bx2)+20, int(ay1)-20)
 }
 
-// mergeChipRects returns every "mergechip:*" key currently in the menu's
-// rects map.
 func mergeChipRects(g *Game) map[gmID]bool {
 	out := map[gmID]bool{}
 	for id := range g.groupMenu.rects {
@@ -75,20 +55,13 @@ func mergeChipRects(g *Game) map[gmID]bool {
 	return out
 }
 
-// TestMergeChipsShownOnlyWhenProvisionalWithCandidates is task-merge-chips
-// brief test 1: a committed (non-provisional) menu shows no merge chips at
-// all; a provisional menu shows one chip per OTHER existing group that does
-// NOT already contain every selected member, ascending by GroupID, capped at
-// mergeChipCandidateCap.
+// Provisional only, one chip per other group lacking some selected member, by GroupID, capped.
 func TestMergeChipsShownOnlyWhenProvisionalWithCandidates(t *testing.T) {
 	g, selA, selB, comps := buildMergeChipsFixture(t, 6)
 	compSuperExtra, compA, compB, compC, compD, compE := comps[0], comps[1], comps[2], comps[3], comps[4], comps[5]
 
-	// A group that already contains BOTH selection members plus an extra
-	// node (a superset, not an exact match — so marquee-selecting {selA,selB}
-	// below still creates a brand-new provisional group instead of reusing
-	// this one). Its chip must never appear: merging into it would be a
-	// no-op (nothing left to add).
+	// A strict superset of the selection, so the marquee still makes a new group; its chip must never appear (a
+	// no-op merge).
 	gidSuper, err := g.graph.CreateGroup("", []model.NodeID{selA, selB, compSuperExtra[0]})
 	if err != nil {
 		t.Fatalf("CreateGroup gidSuper: %v", err)
@@ -114,8 +87,6 @@ func TestMergeChipsShownOnlyWhenProvisionalWithCandidates(t *testing.T) {
 		t.Fatalf("CreateGroup gid5: %v", err)
 	}
 
-	// Committed menu (non-provisional): no merge chips at all, regardless of
-	// how many other groups exist.
 	g.groupMenu.OpenAt(gid1, 100, 100)
 	advanceFrames(g, 1)
 	if chips := mergeChipRects(g); len(chips) != 0 {
@@ -159,12 +130,8 @@ func TestMergeChipsShownOnlyWhenProvisionalWithCandidates(t *testing.T) {
 	}
 }
 
-// TestMergeChipAddsSelectionToExistingGroup is task-merge-chips brief test 2:
-// group A{a,b} committed; marquee {c,d} -> provisional; a real click on
-// mergechip:A must merge {c,d} into A as ONE undo step, discard the
-// provisional group (with its number released for reuse), and reopen the
-// menu on A non-provisional. Undoing must revert A to {a,b} while the
-// provisional group stays gone (it was never committed).
+// One undo step that merges, discards the provisional group (its number released) and reopens on A; undo
+// reverts A while the provisional group stays gone.
 func TestMergeChipAddsSelectionToExistingGroup(t *testing.T) {
 	g, selA, selB, comps := buildMergeChipsFixture(t, 1)
 	compA := comps[0]
@@ -173,10 +140,7 @@ func TestMergeChipAddsSelectionToExistingGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
-	// Baseline A's creation into the undo snapshot journal the same way a
-	// real Save would (mirrors TestGroupMenuE2E_DeleteClickRemovesCommittedGroup's
-	// setup): a direct graph.CreateGroup call is untracked, so without this
-	// the "before merge" undo snapshot wouldn't include A's own membership.
+	// Baselined as a real Save would: a direct CreateGroup is untracked.
 	grpA, _ := g.graph.Group(gidA)
 	emitGroupCreated(gidA, grpA.Name, grpA.NodeIDs)
 	advanceFrames(g, 2)
@@ -228,8 +192,7 @@ func TestMergeChipAddsSelectionToExistingGroup(t *testing.T) {
 		t.Fatalf("merge must emit exactly 1 undo step, got %d", got)
 	}
 
-	// Number release: the very next CreateGroup call must reuse provID (the
-	// lowest free id), same as any other discarded provisional group.
+	// The released number is the lowest free id.
 	reuseGid, err := g.graph.CreateGroup("", []model.NodeID{compA[0]})
 	if err != nil {
 		t.Fatalf("CreateGroup (number-reuse probe): %v", err)
@@ -259,10 +222,7 @@ func TestMergeChipAddsSelectionToExistingGroup(t *testing.T) {
 	}
 }
 
-// TestMergeChipOverlappingSelection is task-merge-chips brief test 3: A{a,b};
-// marquee {b,c} -> chip A is shown (c is addable even though b already
-// belongs to A); clicking it merges idempotently (b is a no-op re-add, c is
-// added) as one undo step.
+// Shown because c is addable though b is already in A; the merge is idempotent.
 func TestMergeChipOverlappingSelection(t *testing.T) {
 	g, selA, selB, comps := buildMergeChipsFixture(t, 1)
 	compA := comps[0]
@@ -277,8 +237,6 @@ func TestMergeChipOverlappingSelection(t *testing.T) {
 	advanceFrames(g, 2)
 	undoBefore := len(g.undoManager.undo)
 
-	// Marquee-select {selA, selB}: selA already belongs to A (overlap), selB
-	// does not.
 	marqueeSelectPair(g, selA, selB)
 	advanceFrames(g, 1)
 
@@ -314,10 +272,7 @@ func TestMergeChipOverlappingSelection(t *testing.T) {
 	}
 }
 
-// TestMergeChipRespectsTransactionalRules is task-merge-chips brief test 4:
-// rule edits made on the provisional group before the merge chip is tapped
-// must die with the provisional group (no leak into the target's rules); the
-// target's own rules are left completely unchanged by the merge.
+// Provisional rule edits die with the provisional group; the target's rules stay unchanged.
 func TestMergeChipRespectsTransactionalRules(t *testing.T) {
 	g, selA, selB, comps := buildMergeChipsFixture(t, 1)
 	compA := comps[0]
@@ -339,8 +294,6 @@ func TestMergeChipRespectsTransactionalRules(t *testing.T) {
 	marqueeSelectPair(g, selA, selB)
 	advanceFrames(g, 1)
 
-	// Dirty the provisional group's rules through the real menu (rdpit+ +
-	// ruleonoff), mirroring TestGroupMenuE2E_RuleOnOffClickTogglesRule.
 	clickMenuControl(t, g, gmPlus(gmStepPitch))
 	advanceFrames(g, 2)
 	clickMenuControl(t, g, gmRuleOnOff)
@@ -375,12 +328,7 @@ func TestMergeChipRespectsTransactionalRules(t *testing.T) {
 	}
 }
 
-// TestGroupMenuFitsWithinGridPaneWithMergeChips is task-merge-chips brief
-// test 6 (fit/placement): a provisional menu with 4 candidate merge chips at
-// 800x600 must still produce a panel that fits within the grid pane, with
-// every control rect (including all 4 "mergechip:*" rects) contained in the
-// panel — extending TestGroupMenuFitsWithinGridPane's provisional variant to
-// the taller (merge-chip-bearing) layout.
+// The taller chip-bearing layout must still fit the grid pane with every control inside the panel.
 func TestGroupMenuFitsWithinGridPaneWithMergeChips(t *testing.T) {
 	g, selA, selB, comps := buildMergeChipsFixture(t, 4)
 

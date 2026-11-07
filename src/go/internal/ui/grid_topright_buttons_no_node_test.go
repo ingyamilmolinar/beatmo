@@ -7,17 +7,8 @@ import (
 	"testing"
 )
 
-// TestTopRightButtonClusterBlocksNodeCreation pins that the whole top-right
-// grid-button cluster (settings gear + folder + logs) — including the gaps
-// BETWEEN the buttons and the immediate area around them — is a protected
-// no-create zone. A tap that misses a button by a few pixels (landing in a gap,
-// just below a button, or on the folder/logs button via the release-time
-// gesture-tap path) must NOT fall through to the grid and spawn a node there.
-//
-// Before the fix, blocksAt() and handleTapInGrid() guarded only the gear rect,
-// so a tap in the gear↔folder gap, the folder↔logs gap, just below a button, or
-// on the folder/logs buttons themselves created a stray node "below or in
-// between the buttons".
+// The whole cluster, gaps and surroundings included, is a no-create zone: a tap that misses a button by a few
+// pixels must not spawn a node.
 func TestTopRightButtonClusterBlocksNodeCreation(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -47,8 +38,7 @@ func TestTopRightButtonClusterBlocksNodeCreation(t *testing.T) {
 	}
 
 	for _, p := range probes {
-		// blocksAt is the desktop editor gate (game_update.go only calls
-		// handleEditor when !blocksAt). It must claim the whole cluster.
+		// blocksAt is the desktop editor gate.
 		if !g.blocksAt(p.x, p.y) {
 			t.Errorf("%s (%d,%d): blocksAt must be true so the desktop editor cannot create a node here", p.name, p.x, p.y)
 		}
@@ -61,8 +51,7 @@ func TestTopRightButtonClusterBlocksNodeCreation(t *testing.T) {
 		}
 	}
 
-	// Sanity: a tap well clear of the cluster (mid grid, away from the top-right
-	// corner) still creates a node — the block zone must not swallow open grid.
+	// The block zone must not swallow open grid.
 	clearX, clearY := 150, 250
 	if g.blocksAt(clearX, clearY) {
 		t.Fatalf("setup: reference point (%d,%d) should be outside the button zone", clearX, clearY)
@@ -74,10 +63,7 @@ func TestTopRightButtonClusterBlocksNodeCreation(t *testing.T) {
 	}
 }
 
-// TestTopRightButtonReservedZoneCoversAllThreeButtons pins that the popup-avoid
-// reserved zone spans the full cluster (gear + folder + logs), so no grid popup
-// can render on/under any of the three buttons. gridTopButtonsReservedRect is
-// the zone the sidebar and the button menus avoid.
+// The zone the sidebar and the button menus avoid spans the whole cluster.
 func TestTopRightButtonReservedZoneCoversAllThreeButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

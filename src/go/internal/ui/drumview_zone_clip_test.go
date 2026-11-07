@@ -9,11 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestDrumViewZoneClipRectsMatchWidgetRects asserts that each zone is clipped
-// to its own WidgetBoard cell — not to the entire DrumView bounds. This is
-// the layout-isolation invariant that prevents the timeline zone (cells)
-// from bleeding across the rack column (instrument labels) and similar
-// cross-widget overdraw.
+// Each zone clips to its own widget cell, so the timeline cannot paint across the rack column.
 func TestDrumViewZoneClipRectsMatchWidgetRects(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -42,10 +38,7 @@ func TestDrumViewZoneClipRectsMatchWidgetRects(t *testing.T) {
 	}
 }
 
-// TestDrumViewZoneClipRectFallsBackToBoundsWhenWidgetEmpty ensures the helper
-// degrades gracefully when a widget rect is unavailable (degenerate layouts
-// or unknown zones). This guards against silently producing empty SubImages
-// in tests that don't initialise the WidgetBoard fully.
+// Never an empty SubImage for a degenerate layout or unknown zone.
 func TestDrumViewZoneClipRectFallsBackToBoundsWhenWidgetEmpty(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -63,10 +56,7 @@ func TestDrumViewZoneClipRectFallsBackToBoundsWhenWidgetEmpty(t *testing.T) {
 	}
 }
 
-// TestDrumViewTimelineDrawStaysWithinTimelineRect runs a full DrumView.Draw
-// and asserts that no drawRect call issued during the timeline zone's draw
-// callback paints a row-stripe color into the rack column. This reproduces
-// the user-visible "yellow row band bleeding behind instrument labels" bug.
+// No row-stripe paint may land in the rack column (stripes bleeding behind labels).
 func TestDrumViewTimelineDrawStaysWithinTimelineRect(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -96,22 +86,11 @@ func TestDrumViewTimelineDrawStaysWithinTimelineRect(t *testing.T) {
 		if c.Color != stripeEven && c.Color != stripeOdd {
 			continue
 		}
-		// The drum-stripe tokens now alias the background/surface-1 tokens by
-		// design — row stripes are dark magenta-violet so empty cells recede
-		// into the background (DESIGN.md: drum-stripe-even == surface-1,
-		// drum-stripe-odd == background). That means legitimate full-zone
-		// background fills share the stripe RGBA and must NOT count as bleed.
-		// A real per-row stripe is exactly one rowHeight tall; zone/area
-		// backgrounds are much taller. Skip anything taller than a single row.
+		// Stripe tokens alias the background by design; only single-row-height fills can be bleed.
 		if c.Rect.Dy() > rh {
 			continue
 		}
-		// Row stripes drawn into the offscreen row-sprite buffer use
-		// sprite-internal coordinates (origin (0,0)) and never reach the
-		// screen except via the rowsLayer DrawImage blit. They appear in
-		// the recorder but don't represent screen-space bleed. Filter
-		// those out by requiring the call to overlap the rack widget rect
-		// — that is the user-visible bleed symptom in screen coordinates.
+		// Sprite-internal draws never reach the screen directly; only calls overlapping the rack are screen bleed.
 		if c.Rect.Overlaps(rack) {
 			t.Errorf("row stripe drawRect overlaps rack column (bleed): rect=%v color=%v rack=%v",
 				c.Rect, c.Color, rack)

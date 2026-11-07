@@ -129,10 +129,7 @@ func TestTextInput_MobileDrawSkip(t *testing.T) {
 	ti.MobileInputID = "bpm"
 	ti.SetText("120")
 
-	// Without active mobile input, Draw should not skip (no panic is success)
-	// We can't easily test pixel output, but we verify Draw() doesn't skip
-	// by checking it doesn't return early before the nil check — stubbed Ebiten
-	// will handle the nil dst gracefully in tests.
+	// Nothing to skip without active mobile input; no panic is success.
 
 	// With active mobile input, Draw should skip entirely
 	testMobileInputActive = map[string]bool{"bpm": true}

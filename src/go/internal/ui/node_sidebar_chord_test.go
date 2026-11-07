@@ -10,17 +10,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Real-input coverage for the chord builder in the node sidebar
-// (docs/superpowers/specs/2026-10-09-chord-nodes-design.md §3): every action
-// is a click through Game.Update (nmClick), never a direct method call.
+// Every action is a click through Game.Update, never a direct method call.
 
 func chordSidebarGame(t *testing.T, inst instrument.ID) (*Game, *uiNode) {
 	t.Helper()
 	g := newTestGameForUndo(t)
 	g.Layout(1280, 720)
 	g.drum.Rows[0].Instrument = inst
-	// A node ON row 0's circuit (a loop through the start node), so its row —
-	// and with it the instrument's pitchedness — survives updateBeatInfos.
+	// On row 0's loop, so its row (and the instrument's pitchedness) survives updateBeatInfos.
 	node := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	if node == nil || g.start == nil {
 		t.Fatal("fixture: no start node / test node")
@@ -81,8 +78,7 @@ func TestChordTypeCycleOrderOnPitchedRow(t *testing.T) {
 	}
 }
 
-// Review Focus 1: an unpitched row (hi-hat) has no notes to stack, so the
-// cycle skips Chord.
+// A hi-hat has no notes to stack, so the cycle skips Chord.
 func TestChordTypeCycleSkipsChordOnUnpitchedRow(t *testing.T) {
 	g, node := chordSidebarGame(t, roster.Hihat)
 	sidebarClick(t, g, sbAudible)
@@ -91,8 +87,7 @@ func TestChordTypeCycleSkipsChordOnUnpitchedRow(t *testing.T) {
 	}
 }
 
-// Entering Chord seeds a major triad; the spec then survives the whole
-// cycle (Chord → Silent → Mute → Regular → Chord).
+// Entering Chord seeds a major triad, and the spec survives the whole cycle.
 func TestChordSpecSurvivesTheTypeCycle(t *testing.T) {
 	g, node := chordSidebarGame(t, roster.OrganChurch)
 	sidebarClick(t, g, sbAudible)
@@ -196,8 +191,7 @@ func TestChordSingleNoteCollapsesAndKeepsTheSpec(t *testing.T) {
 	}
 }
 
-// Review Focus 1 (second half): a chord node whose row is switched to an
-// unpitched instrument keeps its type and keeps sounding a stack.
+// It keeps its type and keeps sounding a stack.
 func TestChordNodeOnRowSwitchedToUnpitchedKeepsPlaying(t *testing.T) {
 	g, node := chordSidebarGame(t, roster.OrganChurch)
 	sidebarClick(t, g, sbAudible)

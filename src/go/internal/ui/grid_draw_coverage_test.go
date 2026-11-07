@@ -10,15 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGridCachePadAreaCoveredAtMinZoom verifies that after drawGridPane at
-// minimum camera scale the grid cache pixel at (0,0) is non-zero.
-//
-// At cam.Scale=0.1 the tile width is 6px.  The old formula
-//
-//	startX = gridCachePad + phaseX - tileW  (= 64+0-6 = 58)
-//
-// leaves cache pixels x=0..57 untiled (blank), so At(0,0) == color.RGBA{}.
-// The fix ensures startX <= -1 via the modulo formula.
+// At cam.Scale=0.1 the tile is 6 px; startX must be ≤ -1, or cache columns 0..57 stay untiled.
 func TestGridCachePadAreaCoveredAtMinZoom(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -45,14 +37,7 @@ func TestGridCachePadAreaCoveredAtMinZoom(t *testing.T) {
 	}
 }
 
-// gridColumnCovered reports whether any pixel in cache column x within one
-// vertical tile period is non-zero. The stub's DrawImage performs faithful
-// per-pixel copies for unscaled blits (trace-sprite work, 2026-07-14), so a
-// TILED column carries the tile's lattice-line pixels somewhere within each
-// period, while a column left untiled by the old startX bug is fully
-// transparent. The previous probes read one fixed pixel and relied on the
-// stub's former first-pixel smear filling entire tile rects — an artifact,
-// not real rendering.
+// A tiled column carries the lattice lines somewhere in each period; an untiled one is fully transparent.
 func gridColumnCovered(cache *ebiten.Image, x, tilePeriod int) bool {
 	if tilePeriod < 1 {
 		tilePeriod = 1
@@ -65,12 +50,7 @@ func gridColumnCovered(cache *ebiten.Image, x, tilePeriod int) bool {
 	return false
 }
 
-// TestGridCacheGapZoneAbsentAtMinZoom verifies that the entire old gap zone
-// (x=0 to gapEnd, y=0) in the grid cache is covered with non-zero pixels
-// after drawGridPane at minimum scale.
-//
-// With the buggy formula, gapEnd = gridCachePad + phaseX - tileW - 1 = 57.
-// Pixels x=0..57 at y=0 are blank.  After the fix all are tiled.
+// Every pixel of the gap zone (x=0..57, y=0) must be tiled at minimum scale.
 func TestGridCacheGapZoneAbsentAtMinZoom(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -102,12 +82,7 @@ func TestGridCacheGapZoneAbsentAtMinZoom(t *testing.T) {
 	}
 }
 
-// TestGridCacheGapZoneAbsentAtDefaultZoom verifies the gap at cam.Scale=1.0
-// with a camera offset that maximises the buggy gap.
-//
-// With cam.OffsetX=50: phaseX=50, old startX = 64+50-60 = 54.
-// Cache pixels x=0..53 are blank with the old formula; x=53 should be
-// non-zero after the fix.
+// OffsetX=50 maximises the gap at scale 1 (startX would be 54).
 func TestGridCacheGapZoneAbsentAtDefaultZoom(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

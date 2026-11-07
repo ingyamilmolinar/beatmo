@@ -73,14 +73,8 @@ func TestWheelHandleWheelChangesValue(t *testing.T) {
 	w := NewMobileWheelPopup()
 	w.Open(*b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
 
-	// A DOWNWARD two-finger/wheel scroll raises the value (higher numbers descend to
-	// the center selector) — the "down = higher" barrel direction, matching the
-	// finger drag. The tree hands the popup ebiten.Wheel's raw int(wy) as steps.
-	// EMPIRICAL PLATFORM FACT (confirmed on the target device): a downward scroll
-	// arrives as POSITIVE int(wy) — so POSITIVE steps = scroll down = increase. (This
-	// is opposite to some in-repo scroll comments, which are natural-scroll/platform
-	// dependent; the barrel matches the user's device.) Scroll is paced, so issue a
-	// full notch of events.
+	// A downward scroll arrives as positive wy on the target device and raises the value, as the drag does.
+	// Scroll is paced, so a full notch of events.
 	cx := w.valRect.Min.X + 4
 	cy := (w.valRect.Min.Y + w.valRect.Max.Y) / 2
 	start := realValue(k)
@@ -103,12 +97,7 @@ func TestWheelHandleWheelChangesValue(t *testing.T) {
 	}
 }
 
-// TestWheelResolutionDragAndWheelAgree locks the resolution strip's gesture
-// direction: a DOWNWARD gesture (drag down / scroll down) must move the
-// resolution the SAME way for BOTH input paths — coarser (a bigger step number),
-// matching the value barrel where a downward gesture raises the shown number.
-// The bug: drag-down coarsened but scroll-down finened (the same drag-vs-wheel
-// inversion the value wheel had before it was fixed).
+// A downward drag and a downward scroll both coarsen the step, as a downward gesture raises the barrel's number.
 func TestWheelResolutionDragAndWheelAgree(t *testing.T) {
 	newPopup := func() (*MobileWheelPopup, *KnobStepBadge) {
 		def := audio.ParamDef{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"}

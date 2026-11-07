@@ -11,13 +11,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestStartOverflowImportTriggersPickerAndClosesMenu locks the JS→Go entry
-// point used by the mobile real-input file-picker overlay. When the user taps
-// the (real, transparent) <input type=file> over the Import row and picks a
-// file, the overlay's change handler calls _fpStartImport, which routes here.
-// It must close the overflow menu and fire the import picker flow exactly like
-// the overflow "Import" menu item — otherwise the picked file is dropped and
-// "tapping Import does nothing".
+// The JS overlay's change handler lands here when a file is picked through the transparent <input type=file>;
+// it must close the menu and start the import exactly like the Import item, or the file is dropped.
 func TestStartOverflowImportTriggersPickerAndClosesMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -58,12 +53,7 @@ func TestStartOverflowImportTriggersPickerAndClosesMenu(t *testing.T) {
 	}
 }
 
-// TestOverflowMenuRegistersFilePickerRects verifies that opening the overflow
-// menu on a small screen arms file-picker native rects (via the tree-owned
-// native-gesture sync, syncNativeGestures -> filePickerCandidates) for the
-// Import and Upload buttons, enabling the gesture-based file picker on
-// mobile. Re-pointed from the retired imperative registerFilePickerRects()
-// capture mechanism to dv.lastNativeRects, the new source of truth.
+// The native-gesture sync arms rects for Import and Upload, read from dv.lastNativeRects.
 func TestOverflowMenuRegistersFilePickerRects(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -74,8 +64,7 @@ func TestOverflowMenuRegistersFilePickerRects(t *testing.T) {
 	g.Layout(390, 844)
 	dv := g.drum
 
-	// Open the overflow menu on the File page — the tree-owned sync runs
-	// during g.Update() and arms the file-picker rects.
+	// The sync runs inside g.Update.
 	dv.OpenOverflowMenu()
 	dv.overflowPage = 0
 	g.Update()
@@ -113,12 +102,7 @@ func TestOverflowMenuRegistersFilePickerRects(t *testing.T) {
 	}
 }
 
-// TestOverflowMenuClearsFilePickerRectsOnClose verifies that closing the
-// overflow menu clears all armed file-picker native rects. Re-pointed from
-// the retired imperative filePickerClearRects() capture mechanism to
-// dv.lastNativeRects, the new source of truth: the tree-owned sync clears
-// the channel once filePickerCandidates() stops producing candidates
-// (menu closed), no explicit clear call needed.
+// The sync clears them once the closed menu stops producing candidates.
 func TestOverflowMenuClearsFilePickerRectsOnClose(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -156,14 +140,7 @@ func TestOverflowMenuClearsFilePickerRectsOnClose(t *testing.T) {
 	}
 }
 
-// TestFilePickerRectsNotRegisteredOnDesktop verifies that file picker rects
-// are NOT registered when the overflow menu opens on a large (desktop)
-// screen. The file-picker rect registry is a mobile-only trusted-touch-
-// gesture mechanism (desktop opens Upload/Import via normal button clicks,
-// not the JS touchend rect), so filePickerCandidates() must be gated on
-// Profile().IsMobile(). Checks the real source of truth, dv.lastNativeRects,
-// via the tree-owned native-gesture sync (mirrors
-// TestOverflowTemplatePage_NoFilePickerRectArmed's harness style).
+// The rect registry is a mobile trusted-touch mechanism; desktop opens Upload/Import with ordinary clicks.
 func TestFilePickerRectsNotRegisteredOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	// Do NOT call SetForceMobileProfile — a plain Layout() is desktop.
@@ -178,8 +155,6 @@ func TestFilePickerRectsNotRegisteredOnDesktop(t *testing.T) {
 	testCapturedNativeRects = &captured
 	t.Cleanup(func() { testCapturedNativeRects = prev })
 
-	// Open the overflow menu on the File page — on mobile this arms
-	// Upload+Import file-picker rects; on desktop it must not.
 	dv.OpenOverflowMenu()
 	dv.overflowPage = 0
 	g.Update()

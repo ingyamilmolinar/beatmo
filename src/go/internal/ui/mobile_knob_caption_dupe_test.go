@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// Mobile knob cells render a value PILL with a caption band below it. The
-// pill carries the VALUE; the caption must carry the parameter NAME — the
-// two used to both render the same string, so every mobile knob showed its
-// label twice ("Start 0%" / "Start 0%" on the Sampler, "Base" / "Base" on
-// the Synth tab — A9 in the 2026-07-04 critique).
+// The pill carries the value, the caption below it the parameter name; both once showed the same string.
 
 func TestSynthMobileControlCaptionIsParamName(t *testing.T) {
 	def := audio.ParamDef{Name: "wave", Min: 0, Max: 1, Enum: []string{"Base", "Saw"}}

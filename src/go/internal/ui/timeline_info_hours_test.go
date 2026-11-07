@@ -12,8 +12,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// makeHourTestDV returns a DrumView configured so that elapsedBeats maps
-// 1:1 to seconds (BPM=60 ⇒ secPerBeat=1.0, unitsPerBeat=1).
+// BPM 60, one unit per beat: beats are seconds.
 func makeHourTestDV(t *testing.T) *DrumView {
 	t.Helper()
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
@@ -25,8 +24,6 @@ func makeHourTestDV(t *testing.T) *DrumView {
 	return dv
 }
 
-// Under one hour the format must remain M:SS so existing callers/UX are
-// unchanged for short sessions.
 func TestTimelineInfoBelowHourStaysMinutesSeconds(t *testing.T) {
 	dv := makeHourTestDV(t)
 	// 65 beats == 65s == 1m 5s → "1:05"
@@ -36,8 +33,7 @@ func TestTimelineInfoBelowHourStaysMinutesSeconds(t *testing.T) {
 	}
 }
 
-// At exactly one hour (3600s) the format must switch to H:MM:SS so the
-// readout never shows a misleading "60:00" of minutes.
+// Never a misleading "60:00".
 func TestTimelineInfoAtHourBoundary(t *testing.T) {
 	dv := makeHourTestDV(t)
 	got := dv.timelineInfo(3600)
@@ -49,8 +45,7 @@ func TestTimelineInfoAtHourBoundary(t *testing.T) {
 	}
 }
 
-// Past an hour both minutes and seconds must be zero-padded so the readout
-// is monospace-stable: "1:02:03", not "1:2:3".
+// "1:02:03", not "1:2:3".
 func TestTimelineInfoAboveHourFormat(t *testing.T) {
 	dv := makeHourTestDV(t)
 	// 1h 2m 3s = 3723s
@@ -60,8 +55,7 @@ func TestTimelineInfoAboveHourFormat(t *testing.T) {
 	}
 }
 
-// Multi-hour values must also render correctly — guards against accidental
-// modulo-by-hour truncation if someone "fixes" with `curS%3600`.
+// Catches a curS%3600 truncation.
 func TestTimelineInfoMultipleHours(t *testing.T) {
 	dv := makeHourTestDV(t)
 	// 2h 30m 45s = 9045s
@@ -71,8 +65,7 @@ func TestTimelineInfoMultipleHours(t *testing.T) {
 	}
 }
 
-// The cached timeline-zone path is a separate call site and must use the
-// same hour-aware format. This is the regression that motivated the fix.
+// A separate call site that must share the format.
 func TestTimelineInfoCachedUsesHourFormat(t *testing.T) {
 	dv := makeHourTestDV(t)
 	dv.timelineZone.LastInfoText = "" // bypass cache

@@ -10,9 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// styleOf type-asserts a button's visual to the row-toggle visual so tests can
-// read the resolved fill. Fails the test if the style isn't one (the per-row
-// toggles and the kebab all resolve to it).
+// The per-row toggles and the kebab all resolve to this visual.
 func styleOf(t *testing.T, b *Button) ButtonStyle {
 	t.Helper()
 	st, ok := b.Style.(rowToggleVisual)
@@ -22,10 +20,7 @@ func styleOf(t *testing.T, b *Button) ButtonStyle {
 	return st.ButtonStyle
 }
 
-// TestRowMuteSoloFXShadesFollowInstrumentColor verifies that the per-row
-// mute / solo / FX controls are rendered as shades of each row's *instrument
-// color* (no longer a fixed magenta/cyan): mute darker than the hue, solo
-// brighter, and two differently-colored rows get distinct fills.
+// Shades of each row's instrument colour: mute darker, solo brighter, distinct between rows.
 func TestRowMuteSoloFXShadesFollowInstrumentColor(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -71,8 +66,7 @@ func TestRowMuteSoloFXShadesFollowInstrumentColor(t *testing.T) {
 			solo0.Fill, rows[0].Color)
 	}
 
-	// Inactive solo (row 1) is the NEUTRAL row-control body — identity at rest
-	// lives in the label swatch, not in idle chips — with a muted letter.
+	// At rest it wears the neutral body with a muted letter: identity lives in the label swatch.
 	solo1 := styleOf(t, z.entries[1].soloBtn)
 	if colorsEqual(solo0.Fill, solo1.Fill) {
 		t.Error("active and inactive solo fills must differ")
@@ -92,9 +86,7 @@ func TestRowMuteSoloFXShadesFollowInstrumentColor(t *testing.T) {
 	}
 }
 
-// TestRowKebabIsNeutral verifies the per-row ellipsis (kebab) chip wears the
-// neutral row-control body on every row: it has no state, so it carries no
-// instrument color (the row's identity is on its label swatch).
+// Stateless, so no instrument colour.
 func TestRowKebabIsNeutral(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false

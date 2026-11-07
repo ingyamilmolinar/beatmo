@@ -13,10 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSetPlayFunc_FutureWhenSchedulesNotSpawns verifies the migration:
-// scheduling many future-timestamped notes must not grow goroutine count
-// proportional to N (the old code did `go func() { time.Sleep(d); fn() }`
-// per call, which leaked under sustained playback).
+// Many future-timestamped notes must not grow the goroutine count: one scheduler goroutine serves them all.
 func TestSetPlayFunc_FutureWhenSchedulesNotSpawns(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -33,15 +30,12 @@ func TestSetPlayFunc_FutureWhenSchedulesNotSpawns(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	const N = 100
-	// Schedule N notes spread over 100ms (one per ms) — realistic for a
-	// sequencer's lookahead. The old code spawned a goroutine per note;
-	// the new code uses one scheduler goroutine + bounded pool.
+	// One per ms over 100 ms, a realistic sequencer lookahead.
 	for i := range N {
 		g.playFn(roster.Kick, 1.0, 0.020+float64(i)*0.001)
 	}
 
-	// Goroutine count must NOT grow with N. The scheduler owns one goroutine;
-	// any growth here would mean we leaked a goroutine per scheduled note.
+	// Any growth with N means a goroutine per scheduled note.
 	peak := runtime.NumGoroutine()
 	if delta := peak - before; delta > N/4 {
 		t.Fatalf("goroutine count grew by %d for %d scheduled notes (before=%d peak=%d); should not scale with N",
@@ -60,8 +54,7 @@ func TestSetPlayFunc_FutureWhenSchedulesNotSpawns(t *testing.T) {
 	}
 }
 
-// TestSetPlayFunc_PausedSkipsAtFireTime verifies that pausing the game
-// between schedule and fire causes the scheduled fn to be skipped.
+// Paused between schedule and fire, the fn is skipped.
 func TestSetPlayFunc_PausedSkipsAtFireTime(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -84,10 +77,7 @@ func TestSetPlayFunc_PausedSkipsAtFireTime(t *testing.T) {
 	}
 }
 
-// TestSetPlayFunc_ImmediateWhenBypassesScheduler verifies that 'when'
-// values within the 100µs epsilon dispatch synchronously (no scheduler
-// hop), preserving the behavior the old code relied on for "now"-ish
-// audio.
+// A when within 100 µs dispatches synchronously, with no scheduler hop.
 func TestSetPlayFunc_ImmediateWhenBypassesScheduler(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -7,16 +7,8 @@ import (
 	"testing"
 )
 
-// TestTrackBtnDoesNotOverlapTimelineBar guards a UI bug where the track/free
-// button was painted on top of the leftmost portion of the timeline progress
-// bar, hiding the initial seconds of playback progress from the user.
-//
-// Invariant: on desktop the track button must sit entirely to the LEFT of
-// where the timeline begins. The two rectangles must not share any X range.
-//
-// This is the spatial-isolation test the user explicitly requested: a guard
-// against the broader class of bugs where two unrelated UI components claim
-// the same screen real estate.
+// On desktop the track button sits wholly left of where the timeline begins, so it never hides the first
+// seconds of progress.
 func TestTrackBtnDoesNotOverlapTimelineBar(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, false)
@@ -32,8 +24,7 @@ func TestTrackBtnDoesNotOverlapTimelineBar(t *testing.T) {
 		t.Fatalf("timelineRect is empty — fixture invalid")
 	}
 
-	// The keycap sits in the counter band ABOVE the ruler; it must never paint
-	// over the bar (the ruler keeps its full width below it).
+	// In the counter band above the ruler, which keeps its full width.
 	if trackR.Overlaps(tlR) {
 		t.Fatalf("track button %v overlaps timeline bar %v (button paints over the start of the timeline, hiding initial progress)",
 			trackR, tlR)
@@ -44,14 +35,7 @@ func TestTrackBtnDoesNotOverlapTimelineBar(t *testing.T) {
 	}
 }
 
-// TestTimelineZoneButtonsDoNotOverlapBar generalises the rule to every button
-// the TimelineZone draws inside its rect: trackBtn (left), and lenInc/lenDec
-// (right). None of them may share X range with the timeline progress bar —
-// otherwise users lose visibility of either the initial or trailing portion
-// of the timeline progress.
-//
-// Adding a new button to TimelineZone? Either give it its own non-overlapping
-// X band, or this test will catch the regression.
+// No button in the zone shares X range with the progress bar; a new one needs its own band.
 func TestTimelineZoneButtonsDoNotOverlapBar(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, false)

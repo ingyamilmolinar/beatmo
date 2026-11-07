@@ -7,12 +7,8 @@ import (
 	"testing"
 )
 
-// TestRowRackScrollbarThumbVisibleDesktop guards the "instruments unreachable"
-// bug: when the kit has more rows than fit the (EQ-panel-squeezed) rack, the
-// scrollbar is the only cue the hidden rows exist. The shared desktop thumb at
-// alpha 40 read as invisible against the dark rack, so users could not tell the
-// rack scrolled. The rack thumb must be clearly visible while keeping the
-// pinned narrow desktop width (TestScrollbarWidthDesktop).
+// With more rows than fit, the scrollbar is the only sign hidden rows exist; at alpha 40 the thumb was
+// invisible on the dark rack. Clearly visible, at the pinned narrow width.
 func TestRowRackScrollbarThumbVisibleDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false

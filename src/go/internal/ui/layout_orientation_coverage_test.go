@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestLayoutPaneCoveragePortrait checks that GridRect + DrumRect cover the full
-// canvas in portrait mode with no gap or overlap.
+// Full canvas, no gap or overlap.
 func TestLayoutPaneCoveragePortrait(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -41,8 +40,7 @@ func TestLayoutPaneCoveragePortrait(t *testing.T) {
 	}
 }
 
-// TestLayoutPaneCoverageLandscape checks that GridRect + DrumRect cover the full
-// canvas in landscape mode (stacked on mobile — same as portrait).
+// Stacked in landscape too on mobile.
 func TestLayoutPaneCoverageLandscape(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -74,9 +72,7 @@ func TestLayoutPaneCoverageLandscape(t *testing.T) {
 	}
 }
 
-// TestLayoutPaneCoverageAfterLandscapeToPortrait is the primary regression test:
-// after rotating from landscape back to portrait, both panes must cover the full
-// window width. Before the fix, content was squeezed to ~40-50% of the width.
+// After rotating back to portrait both panes span the full width.
 func TestLayoutPaneCoverageAfterLandscapeToPortrait(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -138,8 +134,6 @@ func TestLayoutPaneCoverageAfterPortraitToLandscape(t *testing.T) {
 	}
 }
 
-// TestLayoutWidgetRectsWithinDrumBounds checks that after a L→P round-trip,
-// all widget rects (Transport, Rack, Timeline) are within drum.Bounds.
 func TestLayoutWidgetRectsWithinDrumBounds(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -166,8 +160,7 @@ func TestLayoutWidgetRectsWithinDrumBounds(t *testing.T) {
 	}
 }
 
-// TestLayoutButtonRectsValidAfterRotation checks that play/stop/bpm buttons
-// have non-empty rects within drum bounds after L→P rotation.
+// Non-empty and inside the drum bounds after rotating.
 func TestLayoutButtonRectsValidAfterRotation(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -202,8 +195,7 @@ func TestLayoutButtonRectsValidAfterRotation(t *testing.T) {
 	}
 }
 
-// TestLayoutInitialPortraitNoTopGap checks that the first Layout call in
-// portrait produces GridRect starting at Y=0 (no black gap at top).
+// No black gap at the top on the first portrait layout.
 func TestLayoutInitialPortraitNoTopGap(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -219,8 +211,6 @@ func TestLayoutInitialPortraitNoTopGap(t *testing.T) {
 	}
 }
 
-// TestLayoutInitialPortraitNoCoverageGap checks that there is no gap between
-// the grid and drum panes on initial layout.
 func TestLayoutInitialPortraitNoCoverageGap(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -238,8 +228,6 @@ func TestLayoutInitialPortraitNoCoverageGap(t *testing.T) {
 	}
 }
 
-// TestLayoutRapidRotationStress performs 10 rapid orientation changes and
-// verifies pane coverage remains valid after each.
 func TestLayoutRapidRotationStress(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -270,8 +258,7 @@ func TestLayoutRapidRotationStress(t *testing.T) {
 	}
 }
 
-// TestLayoutLandscapeToPortraitGridCacheRebuild checks that after L→P,
-// the grid cache dimensions no longer match the new layout, forcing a rebuild.
+// After rotating, the cache no longer matches the layout, which forces a rebuild.
 func TestLayoutLandscapeToPortraitGridCacheRebuild(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -296,9 +283,7 @@ func TestLayoutLandscapeToPortraitGridCacheRebuild(t *testing.T) {
 	}
 }
 
-// TestLayoutOrientationCacheInvalidation checks that the frame buffer is
-// TestLayoutZeroDimensionGuard checks that Layout handles zero-size calls
-// gracefully (returns at least 1x1, prevents zero-size splitter).
+// At least 1x1, so the splitter is never zero-sized.
 func TestLayoutZeroDimensionGuard(t *testing.T) {
 	setupMobileTest(t, true)
 

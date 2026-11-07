@@ -11,8 +11,7 @@ import (
 
 // --- helpers ---
 
-// newFullDrumView creates a fully initialized DrumView suitable for testing
-// open* portal functions that capture closures referencing DrumView internals.
+// Fully built, since the open* closures reach DrumView internals.
 func newFullDrumView(t *testing.T) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -31,10 +30,6 @@ func newTestSliderPopup() *SliderPopup {
 	sp.Open(image.Rect(100, 100, 140, 130), image.Rect(0, 0, 800, 600), 40)
 	return sp
 }
-
-// ============================================================
-// openOverflowMenuPortal
-// ============================================================
 
 func TestOpenOverflowMenuPortal(t *testing.T) {
 	dv := newFullDrumView(t)
@@ -81,10 +76,6 @@ func TestOpenOverflowMenuPortal_Idempotent(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openContextMenuPortal
-// ============================================================
-
 func TestOpenContextMenuPortal(t *testing.T) {
 	dv := newFullDrumView(t)
 
@@ -114,10 +105,6 @@ func TestOpenContextMenuPortal_CloseRoundtrip(t *testing.T) {
 		t.Error("portal 'context-menu' should be closed")
 	}
 }
-
-// ============================================================
-// openFXPanelPortal
-// ============================================================
 
 func TestOpenFXPanelPortal(t *testing.T) {
 	dv := newFullDrumView(t)
@@ -171,10 +158,6 @@ func TestOpenFXPanelPortal_OnClose(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openNamingPortal
-// ============================================================
-
 func TestOpenNamingPortal(t *testing.T) {
 	dv := newFullDrumView(t)
 
@@ -223,10 +206,6 @@ func TestOpenNamingPortal_OnClose(t *testing.T) {
 		t.Error("nameBox should be nil after OnClose")
 	}
 }
-
-// ============================================================
-// openVolPopupPortal
-// ============================================================
 
 func TestOpenVolPopupPortal(t *testing.T) {
 	dv, restore := setupPortalCloseTest(t)
@@ -286,10 +265,6 @@ func TestOpenVolPopupPortal_OnClose(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openMasterVolPopupPortal
-// ============================================================
-
 func TestOpenMasterVolPopupPortal(t *testing.T) {
 	dv, restore := setupPortalCloseTest(t)
 	defer restore()
@@ -348,10 +323,6 @@ func TestOpenMasterVolPopupPortal_OnClose(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openSubdivMenuPortal
-// ============================================================
-
 func TestOpenSubdivMenuPortal_NilTree(t *testing.T) {
 	dv := &DrumView{}
 	dv.subdivMenuComp = NewSubdivMenuComponent()
@@ -377,8 +348,7 @@ func TestOpenSubdivMenuPortal_BothNil(t *testing.T) {
 func TestOpenSubdivMenuPortal_HappyPath(t *testing.T) {
 	dv := newFullDrumView(t)
 
-	// The subdiv comp must be opened before the portal wraps it, because
-	// compPortalOverlay.ShouldClose() checks comp.IsOpen().
+	// compPortalOverlay.ShouldClose() checks comp.IsOpen(), so open it first.
 	dv.subdivMenuComp.Open()
 	dv.openSubdivMenuPortal()
 
@@ -402,10 +372,6 @@ func TestOpenSubdivMenuPortal_OnClose(t *testing.T) {
 		t.Error("subdivMenuComp should be closed after portal OnClose")
 	}
 }
-
-// ============================================================
-// openInstMenuPortal
-// ============================================================
 
 func TestOpenInstMenuPortal_NilTree(t *testing.T) {
 	dv := &DrumView{}
@@ -485,10 +451,6 @@ func TestOpenInstMenuPortal_OnClose(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openColorWheelPortal
-// ============================================================
-
 func TestOpenColorWheelPortal_NilTree(t *testing.T) {
 	dv := &DrumView{}
 	dv.colorWheelComp = NewColorWheelComponent()
@@ -551,10 +513,6 @@ func TestOpenColorWheelPortal_OnClose(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openRenamePortal
-// ============================================================
-
 func TestOpenRenamePortal_NilTree(t *testing.T) {
 	dv := &DrumView{}
 	dv.renameComp = NewRenameComponent()
@@ -601,10 +559,6 @@ func TestOpenRenamePortal_NegativeRow(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Multiple portals at once
-// ============================================================
-
 func TestOpenMultiplePortals(t *testing.T) {
 	dv := newFullDrumView(t)
 
@@ -650,10 +604,6 @@ func TestOpenPortal_TopID(t *testing.T) {
 		t.Errorf("expected TopID 'fx-panel', got %q", top)
 	}
 }
-
-// ============================================================
-// close* functions (0% coverage in drumview_portal_open.go)
-// ============================================================
 
 func TestCloseOverflowMenuPortal(t *testing.T) {
 	dv := newFullDrumView(t)
@@ -759,18 +709,11 @@ func TestCloseNamingPortal_NilTree(t *testing.T) {
 	dv.closeNamingPortal() // should not panic
 }
 
-// ============================================================
-// Overlay closure tests (exercise isOpenFn / ShouldClose / wheelFn)
-// ============================================================
-
 func TestOpenOverflowMenuPortal_ShouldClose(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	dv.openOverflowMenuPortal()
 
-	// The overlay's ShouldClose delegates to IsOverflowMenuOpen().
-	// Since the portal is open, IsOverflowMenuOpen() returns true,
-	// so ShouldClose() should return false.
 	if dv.IsOverflowMenuOpen() != true {
 		t.Error("IsOverflowMenuOpen should be true while portal is open")
 	}
@@ -827,10 +770,6 @@ func TestOpenNamingPortal_ShouldClose(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openInstMenuPortal anchor with valid row index
-// ============================================================
-
 func TestOpenInstMenuPortal_ValidRowAnchor(t *testing.T) {
 	dv := newFullDrumView(t)
 
@@ -847,10 +786,6 @@ func TestOpenInstMenuPortal_ValidRowAnchor(t *testing.T) {
 		t.Error("portal 'inst-menu' should be open with valid row anchor")
 	}
 }
-
-// ============================================================
-// openColorWheelPortal anchor with valid row index
-// ============================================================
 
 func TestOpenColorWheelPortal_ValidRowAnchor(t *testing.T) {
 	dv := newFullDrumView(t)
@@ -869,10 +804,6 @@ func TestOpenColorWheelPortal_ValidRowAnchor(t *testing.T) {
 	}
 }
 
-// ============================================================
-// openRenamePortal anchor with valid row index
-// ============================================================
-
 func TestOpenRenamePortal_ValidRowAnchor(t *testing.T) {
 	dv := newFullDrumView(t)
 
@@ -889,10 +820,6 @@ func TestOpenRenamePortal_ValidRowAnchor(t *testing.T) {
 		t.Error("portal 'rename' should be open with valid row anchor")
 	}
 }
-
-// ============================================================
-// Closure exercise tests — call overlay methods to cover closure bodies
-// ============================================================
 
 // portalEntryByID returns the PortalEntry with the given ID from the stack.
 func portalEntryByID(p *OverlayPortal, id string) *PortalEntry {
@@ -1033,8 +960,7 @@ func TestOpenNamingPortal_OverlayUpdate_NotOpen(t *testing.T) {
 	// Close the portal first so updateFn hits the early return.
 	dv.portal().Close("naming")
 
-	// Manually invoke Update on the overlay. Since the portal is closed,
-	// IsNamingOpen returns false and the updateFn early-returns.
+	// Closed, so updateFn returns early.
 	if u, ok := entry.Overlay.(PortalUpdater); ok {
 		u.Update()
 	}
@@ -1052,8 +978,6 @@ func TestOpenNamingPortal_OverlayUpdate_DesktopPath(t *testing.T) {
 		t.Fatal("entry not found")
 	}
 
-	// Call Update — exercises the desktop (non-mobile) code path which
-	// creates nameBox, saveBtn, and updates text input.
 	if u, ok := entry.Overlay.(PortalUpdater); ok {
 		u.Update()
 	}
@@ -1168,19 +1092,14 @@ func TestOpenFXPanelPortal_WheelFn_NoScroll(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *dvOverlayPortal")
 	}
-	// fxScrollMaxPx is 0, so the wheel handler should still return InputConsumed
-	// but not modify scroll.
+	// fxScrollMaxPx is 0: consumed, scroll unchanged.
 	result := overlay.wheelFn(0, 0, 1)
 	if result != InputConsumed {
 		t.Errorf("wheelFn should return InputConsumed, got %v", result)
 	}
 }
 
-// fxScrollValidWithinBounds asserts the FX scroll offset stays within [0, max]
-// after a wheel event. The wheel magnitude/clamp semantics now live in the shared
-// MenuScroll engine (unit-tested in menu_scroll_test.go / scroll tests), so these
-// portal tests assert only that the FX wheel drives that engine and never leaves
-// an out-of-range offset.
+// The clamp semantics live in the shared MenuScroll; this only asserts the offset stays in range.
 func fxScrollValidWithinBounds(t *testing.T, dv *DrumView) {
 	t.Helper()
 	off := dv.fxScrollOffset()
@@ -1291,10 +1210,6 @@ func TestOpenFXPanelPortal_InputFn(t *testing.T) {
 	}
 }
 
-// ============================================================
-// closeRenamePortal (not tested in the close test file)
-// ============================================================
-
 func TestCloseRenamePortal(t *testing.T) {
 	dv := newFullDrumView(t)
 
@@ -1316,10 +1231,6 @@ func TestCloseRenamePortal_NilTree(t *testing.T) {
 	dv := &DrumView{}
 	dv.closeRenamePortal() // should not panic
 }
-
-// ============================================================
-// Additional closure exercise tests
-// ============================================================
 
 func TestOpenContextMenuPortal_UpdateFn(t *testing.T) {
 	dv := newFullDrumView(t)
@@ -1406,8 +1317,6 @@ func TestOpenNamingPortal_DrawFn_WithExistingNameBox(t *testing.T) {
 		t.Fatal("entry not found")
 	}
 
-	// Pre-create nameBox and saveBtn, then draw again to cover the
-	// path where they already exist.
 	screen := ebiten.NewImage(800, 600)
 	entry.Overlay.Draw(screen) // first draw creates nameBox
 
@@ -1554,8 +1463,6 @@ func TestOpenNamingPortal_UpdateFn_EnterKey(t *testing.T) {
 	if u, ok := entry.Overlay.(PortalUpdater); ok {
 		u.Update()
 	}
-	// Enter with empty nameBox.Value() should be a no-op (id == "").
-	// This exercises the Enter key code path even if it doesn't trigger registerInstrument.
 }
 
 func TestOpenContextMenuPortal_WheelFn_WithScroll(t *testing.T) {
@@ -1589,8 +1496,6 @@ func TestOpenFXPanelPortal_UpdateFn_NoMomentum(t *testing.T) {
 		t.Fatal("entry not found")
 	}
 
-	// updateFn checks fxScrollTS.HasMomentum() which should be false
-	// by default. This exercises the early-exit path.
 	if u, ok := entry.Overlay.(PortalUpdater); ok {
 		u.Update()
 	}
@@ -1632,9 +1537,6 @@ func TestOpenFXPanelPortal_OverlayShouldClose_True(t *testing.T) {
 	// Close the portal. IsFXPanelOpen checks portal.Has().
 	dv.portal().Close("fx-panel")
 
-	// The overlay's isOpenFn still references dv.IsFXPanelOpen() which
-	// checks portal.Has("fx-panel"). Since we closed it, ShouldClose
-	// should return true.
 	if !overlay.ShouldClose() {
 		t.Error("ShouldClose should be true after portal is closed")
 	}

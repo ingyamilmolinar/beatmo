@@ -7,8 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestGripIconRegistered pins IconGrip into the icon dispatch switch. An icon
-// const with no switch entry silently draws nothing (DrawIcon returns false).
+// An icon with no switch entry silently draws nothing.
 func TestGripIconRegistered(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	r := image.Rect(0, 0, 24, 24)
@@ -17,15 +16,13 @@ func TestGripIconRegistered(t *testing.T) {
 	}
 }
 
-// pane/reserved fixtures shared by the geometry tests: a 800×400 grid pane
-// with a 120×40 button cluster welded to its top-right corner.
+// An 800×400 pane with a 120×40 cluster in its top-right corner.
 var (
 	testDragPane     = image.Rect(0, 0, 800, 400)
 	testDragReserved = image.Rect(680, 0, 800, 40)
 )
 
-// TestDragHandleAutoModeByDefault: an untouched handle is transparent — Place
-// returns the caller's auto-anchored rect verbatim.
+// Untouched, Place returns the auto-anchored rect verbatim.
 func TestDragHandleAutoModeByDefault(t *testing.T) {
 	var h PopupDragHandle
 	auto := image.Rect(100, 50, 360, 250)
@@ -37,8 +34,7 @@ func TestDragHandleAutoModeByDefault(t *testing.T) {
 	}
 }
 
-// TestDragHandleMovesByCursorDelta: the card follows the cursor 1:1 with no
-// jump at press time — the grab offset keeps the grip under the finger.
+// 1:1 with no jump at press time: the grab offset keeps the grip under the finger.
 func TestDragHandleMovesByCursorDelta(t *testing.T) {
 	var h PopupDragHandle
 	panel := image.Rect(100, 50, 360, 250)
@@ -59,8 +55,7 @@ func TestDragHandleMovesByCursorDelta(t *testing.T) {
 	}
 }
 
-// TestDragHandleTapDoesNotPin: a press+release inside the deadzone is a tap,
-// not a drag — the card stays in auto mode and keeps following its node.
+// A tap within the deadzone leaves the card following its node.
 func TestDragHandleTapDoesNotPin(t *testing.T) {
 	var h PopupDragHandle
 	panel := image.Rect(100, 50, 360, 250)
@@ -80,8 +75,7 @@ func TestDragHandleTapDoesNotPin(t *testing.T) {
 	}
 }
 
-// TestDragHandleClampsInsidePane: dragged hard past every edge, the card stays
-// fully inside the pane (the node card's GridTree layer is clipped to it).
+// The node card's layer is clipped to the pane.
 func TestDragHandleClampsInsidePane(t *testing.T) {
 	size := image.Pt(260, 200)
 	cases := []struct {
@@ -110,9 +104,7 @@ func TestDragHandleClampsInsidePane(t *testing.T) {
 	}
 }
 
-// TestDragHandleGripEscapesReservedZone: the top-right button cluster sits at a
-// higher z and swallows presses, so a card parked under it must still expose
-// its grip — otherwise the user can never drag it back out.
+// The cluster is higher-z and swallows presses, so a card parked under it must still expose its grip.
 func TestDragHandleGripEscapesReservedZone(t *testing.T) {
 	var h PopupDragHandle
 	size := image.Pt(260, 200)
@@ -132,8 +124,7 @@ func TestDragHandleGripEscapesReservedZone(t *testing.T) {
 	}
 }
 
-// TestDragHandleReClampsOnGrowth: expanding a section grows the card; the
-// pinned origin must slide just enough to keep it inside the pane.
+// A grown card slides just enough to stay inside the pane.
 func TestDragHandleReClampsOnGrowth(t *testing.T) {
 	var h PopupDragHandle
 	small := image.Rect(100, 150, 360, 250) // 260×100
@@ -151,8 +142,7 @@ func TestDragHandleReClampsOnGrowth(t *testing.T) {
 	}
 }
 
-// TestDragHandleResetRestoresAuto: closing the menu drops the pin, so the next
-// open re-anchors beside its node.
+// Closing drops the pin, so the next open re-anchors.
 func TestDragHandleResetRestoresAuto(t *testing.T) {
 	var h PopupDragHandle
 	panel := image.Rect(100, 150, 360, 350)
@@ -170,8 +160,7 @@ func TestDragHandleResetRestoresAuto(t *testing.T) {
 	}
 }
 
-// TestDragHandleHitRectMeetsTouchMin: the glyph stays small, but the mobile
-// touch target must reach the 44px minimum.
+// A small glyph, a 44 px mobile target.
 func TestDragHandleHitRectMeetsTouchMin(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
@@ -193,8 +182,6 @@ func TestDragHandleHitRectMeetsTouchMin(t *testing.T) {
 	}
 }
 
-// TestDragHandleGripSitsTopLeft: the affordance the user was promised is in
-// the card's top-left corner.
 func TestDragHandleGripSitsTopLeft(t *testing.T) {
 	var h PopupDragHandle
 	panel := image.Rect(100, 150, 360, 350)
@@ -207,24 +194,13 @@ func TestDragHandleGripSitsTopLeft(t *testing.T) {
 	}
 }
 
-// The three tests below exercise clampPopupOrigin directly (same package) so
-// each asserts a concrete expected origin, not just "doesn't overlap" — a
-// non-overlap-only assertion would pass even on an implementation that
-// teleports the card to the pane origin. TestDragHandleGripEscapesReservedZone
-// above never drives the push branch at all (a 260×200 card's clamped max
-// origin X is 540, leaving the grip ~100px short of reserved.Min.X=680), so
-// it is kept as a coarse end-to-end check but does not, by itself, pin the
-// push/tie-break/fallback logic in clampPopupOrigin.
+// These assert exact origins: a non-overlap check would pass a card teleported to the pane origin, and the grip
+// test above never reaches the push branch.
 
-// TestClampPopupOriginPushEscapesReservedZone: a small enough card (100×100)
-// leaves clamp headroom to actually land inside the reserved cluster, so the
-// push branch must fire and produce a specific escaped origin — not just any
-// non-overlapping one.
+// Small enough to land inside the cluster, so the push must fire to a specific origin.
 func TestClampPopupOriginPushEscapesReservedZone(t *testing.T) {
 	size := image.Pt(100, 100)
-	// Starting origin: the 16px grip (offset by popupGripInset=10) sits at
-	// x=[700,716], y=[10,26] — squarely inside reserved's x=[680,800],
-	// y=[0,40].
+	// The grip sits at x=[700,716], y=[10,26], inside the cluster's x=[680,800], y=[0,40].
 	origin := image.Pt(690, 0)
 
 	got := clampPopupOrigin(origin, size, testDragPane, testDragReserved)
@@ -243,17 +219,10 @@ func TestClampPopupOriginPushEscapesReservedZone(t *testing.T) {
 	}
 }
 
-// TestClampPopupOriginPicksCheapestEscape: with two valid escape directions
-// available (a horizontal push clearing the cluster's left edge, and a
-// cheaper vertical push clearing its bottom edge), the resolver must pick the
-// SMALLEST displacement. The horizontal (Left) delta is evaluated first in
-// clampPopupOrigin's candidate list, so an implementation that returns the
-// first valid candidate instead of the cheapest one fails this test.
+// The smallest displacement wins; Left is tried first, so a first-valid resolver fails.
 func TestClampPopupOriginPicksCheapestEscape(t *testing.T) {
 	size := image.Pt(100, 100)
-	// Grip sits at x=[710,726], y=[30,46]: deeper inside reserved than the
-	// push test above, so the Left escape (cost 46) is markedly more
-	// expensive than the Bottom escape (cost 10).
+	// Left costs 46, Bottom 10.
 	origin := image.Pt(700, 20)
 
 	got := clampPopupOrigin(origin, size, testDragPane, testDragReserved)
@@ -263,11 +232,7 @@ func TestClampPopupOriginPicksCheapestEscape(t *testing.T) {
 	}
 }
 
-// TestClampPopupOriginFallsBackWhenNoEscapeRoom: when reserved spans the
-// entire pane (no push direction has ANY room to clear it, on either axis),
-// clampPopupOrigin must fall back to the rule-1-only origin — still fully
-// inside pane, no panic, no zero rect — rather than looping or returning
-// something degenerate.
+// With no room on either axis it falls back to the in-pane origin: no loop, no panic, no zero rect.
 func TestClampPopupOriginFallsBackWhenNoEscapeRoom(t *testing.T) {
 	pane := image.Rect(0, 0, 120, 120)
 	reserved := pane // spans all the escape room on both axes

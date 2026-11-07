@@ -124,8 +124,7 @@ func TestHitIndexClipRectCutsOutsideButton(t *testing.T) {
 	idx := &HitIndex{}
 	handler := &testHitHandler{}
 
-	// Button rect sits outside the clip rect (mimics len+/- buttons
-	// positioned to the right of the shrunk timeline zone rect).
+	// Outside the clip rect, like the length buttons right of the shrunk timeline.
 	clipRect := image.Rect(100, 100, 300, 200)
 	buttonRect := image.Rect(304, 140, 340, 170) // 4px right of clip
 

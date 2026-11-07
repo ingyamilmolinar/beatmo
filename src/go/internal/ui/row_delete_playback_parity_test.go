@@ -28,9 +28,8 @@ func ageSeqDecisionsForTest(g *Game, d time.Duration) {
 	}
 }
 
-// Regression: closing a drum row during playback used to allow the scheduler's
-// per-row counters (seqNextIdxs) to reset, which could trip parityScan with an
-// audio_missing mismatch while refreshDrumRow runs as part of row deletion.
+// Deleting a row mid-play must not reset the scheduler's per-row counters and trip an audio_missing
+// mismatch.
 func TestDeleteRowDuringPlayback_DoesNotTripParity(t *testing.T) {
 	assertDefaultParityState(t)
 	prevFatal := parityFatalEnabled.Load()
@@ -84,8 +83,7 @@ func TestDeleteRowDuringPlayback_DoesNotTripParity(t *testing.T) {
 	// Simulate "close row" while playing.
 	g.drum.DeleteRow(1)
 
-	// Simulate the runtime race: background sequencer observes the row-count
-	// change and resizes its counters before the UI processes the deletion.
+	// The sequencer sees the row-count change and resizes its counters before the UI processes the delete.
 	g.seqScheduleTime()
 
 	defer func() {
@@ -99,9 +97,8 @@ func TestDeleteRowDuringPlayback_DoesNotTripParity(t *testing.T) {
 	}
 }
 
-// Regression: while a drum row is being deleted, the background sequencer could
-// observe a row-count change before beat paths were rebuilt, causing a
-// scheduler_vs_view parity panic from mismatched row mappings.
+// The sequencer may see the new row count before beat paths are rebuilt; that must not raise a
+// scheduler_vs_view panic.
 func TestDeleteRowDuringPlayback_DoesNotTripSequencerParityWhileRowsShift(t *testing.T) {
 	assertDefaultParityState(t)
 	prevFatal := parityFatalEnabled.Load()
@@ -154,8 +151,7 @@ func TestDeleteRowDuringPlayback_DoesNotTripSequencerParityWhileRowsShift(t *tes
 	g.ClearParityMismatches()
 	scheduleAbsNoHighlightForTest(g, 0)
 
-	// Delete the middle row so the remaining rows shift, but beatInfosByRow and
-	// nextBeatIdxs still reflect the old mapping until Update() processes it.
+	// beatInfosByRow and nextBeatIdxs keep the old mapping until Update processes it.
 	g.drum.DeleteRow(1)
 
 	defer func() {

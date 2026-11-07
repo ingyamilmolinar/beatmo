@@ -6,13 +6,7 @@ import (
 	"testing"
 )
 
-// TestMarkRowFiredSnapsToOneAndDecays verifies the now-playing row tint
-// state machine on DrumView:
-//   - MarkRowFired snaps the per-row decay value to 1.0;
-//   - decayAnims attenuates it each frame so the tint fades out;
-//   - out-of-range rows are silently ignored;
-//   - the row slice grows as needed so newly added rows can be marked
-//     without a separate initialization step.
+// Snaps to 1.0, decays each frame, ignores out-of-range rows, and grows the slice for new rows.
 func TestMarkRowFiredSnapsToOneAndDecays(t *testing.T) {
 	assertDefaultParityState(t)
 

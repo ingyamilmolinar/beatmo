@@ -13,9 +13,7 @@ import (
 	"testing"
 )
 
-// menuCardExempt lists overlay TYPES that legitimately do not embed a
-// MenuCard, with the reason. Everything else that opens through the portal
-// must carry the shared frame (TestEveryPortalMenuUsesMenuCard).
+// Everything else opened through the portal must carry the shared frame.
 var menuCardExempt = map[string]string{
 	"compPortalOverlay":             "adapter — the wrapped component is checked by name below",
 	"dvOverlayPortal":               "adapter — the wrapped DrumView menu is checked by name below",
@@ -28,18 +26,13 @@ var menuCardExempt = map[string]string{
 	"InstrumentMenuComponent":       "breadcrumb strip is its title band (same band/×/hairline primitives); a plain title would lose category navigation",
 }
 
-// dvMenuCards maps a DrumView-hosted menu (opened through dvOverlayPortal by
-// id) to the *MenuCard field that frames it.
 var dvMenuCards = map[string]string{
 	"overflow-menu": "overflowCard",
 	"context-menu":  "contextMenuCard",
 	"fx-panel":      "fxPanelCard",
 }
 
-// TestEveryPortalMenuUsesMenuCard: every overlay type opened through
-// portal.Open in production code embeds/holds a *MenuCard, or is on the
-// explicit exemption list with a reason. Guards the "one frame everywhere"
-// rule as menus are added.
+// Every overlay type opened through portal.Open holds a *MenuCard or is exempt with a reason.
 func TestEveryPortalMenuUsesMenuCard(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
 	fset := token.NewFileSet()
@@ -159,9 +152,7 @@ func TestEveryPortalMenuUsesMenuCard(t *testing.T) {
 	}
 }
 
-// overlayTypeName extracts the overlay's type name from the expression passed
-// as Overlay: &T{…}, T{…}, NewT(…), a variable (unknown → ""), or a
-// compPortalOverlay{comp: dv.X} → X's declared type name when discoverable.
+// &T{…}, T{…}, NewT(…), compPortalOverlay{comp: dv.X} → X's type; a variable gives "".
 func overlayTypeName(e ast.Expr) string {
 	switch v := e.(type) {
 	case *ast.UnaryExpr:
@@ -189,9 +180,7 @@ func overlayTypeName(e ast.Expr) string {
 	return ""
 }
 
-// compTypeName resolves `dv.colorWheelComp`-style selectors to the field's
-// declared type by name convention (the DrumView field names end with the
-// component's role, so we map the known ones explicitly).
+// The known DrumView component fields are mapped explicitly.
 func compTypeName(e ast.Expr) string {
 	sel, ok := e.(*ast.SelectorExpr)
 	if !ok {
@@ -203,8 +192,7 @@ func compTypeName(e ast.Expr) string {
 	return compVarTypes[sel.Sel.Name]
 }
 
-// compVarTypes maps the component variables/fields passed to
-// compPortalOverlay to their types (kept explicit so the scan stays simple).
+// Explicit, so the scan stays simple.
 var compVarTypes = map[string]string{
 	"colorWheelComp": "ColorWheelComponent",
 	"instMenuComp":   "InstrumentMenuComponent",

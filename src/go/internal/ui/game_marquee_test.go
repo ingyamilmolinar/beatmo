@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// shiftDrag simulates press at (x1,y1), drag to (x2,y2), release — all with
-// Shift held. Frames advance through the real Update loop.
+// Shift held throughout; frames advance through the real Update loop.
 func shiftDrag(g *Game, x1, y1, x2, y2 int) {
 	pos := [2]int{x1, y1}
 	down := true
@@ -88,9 +87,6 @@ func TestShiftDragFromNodeStillCreatesEdge(t *testing.T) {
 	}
 }
 
-// gridClick simulates a plain (non-shift) press+release at (x,y) through the
-// real Game.Update loop, mirroring shiftDrag but without Shift held and
-// without movement (a simple click, not a drag).
 func gridClick(g *Game, x, y int) {
 	down := true
 	restore := SetInputForTest(
@@ -107,10 +103,7 @@ func gridClick(g *Game, x, y int) {
 	advanceFrames(g, 2) // release
 }
 
-// TestGridClickClosesOpenGroupMenu is the Task 7 review follow-up: the
-// GroupMenu had no reachable click-outside close. A plain (non-shift) click
-// on empty grid space must close an already-open GroupMenu, mirroring the
-// sidebar's existing close-on-empty-click behavior.
+// A plain click on empty grid space closes an open GroupMenu, as it closes the sidebar.
 func TestGridClickClosesOpenGroupMenu(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -121,23 +114,15 @@ func TestGridClickClosesOpenGroupMenu(t *testing.T) {
 	if !g.groupMenu.IsOpen() {
 		t.Fatalf("setup: group menu must be open")
 	}
-	// Plain click on empty grid space, far from the menu panel and any node.
-	// (700,500) would land in the drum/audio pane for an 800x600 window (the
-	// grid/drum split defaults to the vertical midpoint), so use a point in
-	// the grid pane's top-right, away from both nodes (top-left) and the
-	// menu panel (anchored at (100,100)).
+	// The grid pane's top-right: (700,500) would land in the drum pane, and the nodes and the menu sit top-left.
 	gridClick(g, 700, 50)
 	if g.groupMenu.IsOpen() {
 		t.Fatalf("plain grid click must close the open group menu")
 	}
 }
 
-// TestNodeClickClosesOpenGroupMenu is the Finding 2 review follow-up:
-// TestGridClickClosesOpenGroupMenu only covers an empty-space click. This
-// variant clicks ON an existing node: it must close the open GroupMenu and do
-// NOTHING else — the global tap-outside-a-menu rule (popup_outside_press.go):
-// the press that dismisses a pop-up owns its gesture, so it neither selects
-// the node nor opens its sidebar.
+// A click ON a node closes the menu and does nothing else: the dismissing press owns its gesture, so the
+// node is neither selected nor opened.
 func TestNodeClickClosesOpenGroupMenu(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -161,14 +146,7 @@ func TestNodeClickClosesOpenGroupMenu(t *testing.T) {
 	}
 }
 
-// shiftDragTo simulates a Shift+press+drag gesture with fine-grained control
-// over the release position, distinct from the enclosing pane. Unlike
-// shiftDrag (which drags from (x1,y1) straight to (x2,y2) and releases
-// there), this helper moves through an explicit sequence of screen points,
-// holding Shift throughout, with the button down for every point except the
-// last (the release). Used by
-// TestMarqueeCancelledWhenReleasedOutsideGridPane to reproduce a marquee
-// drag that leaves the grid pane before release.
+// The button is down for every point but the last, so a gesture can leave the grid pane before its release.
 func shiftDragTo(g *Game, downAt bool, points ...[2]int) {
 	if len(points) == 0 {
 		return
@@ -191,20 +169,12 @@ func shiftDragTo(g *Game, downAt bool, points ...[2]int) {
 	}
 }
 
-// TestMarqueeCancelledWhenReleasedOutsideGridPane is the Finding 1 review
-// follow-up: handleEditor's out-of-grid-pane early return (the
-// `y < gridTopOffset() || !g.split.InGridPane(x, y)` branch) fired before the
-// shift/marquee branch, so a marquee dragged out of the grid pane and
-// released elsewhere never reached handleMarquee's release path. g.marquee
-// stayed active forever (dead camera pan), and re-entering the grid pane
-// with the button up replayed a stale release against frozen start/cur
-// coords — potentially creating a phantom group.
+// A marquee released outside the grid pane must be cancelled: otherwise it stays active (dead camera pan)
+// and re-entering the pane replays a stale release into a phantom group.
 func TestMarqueeCancelledWhenReleasedOutsideGridPane(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 
-	// A rect (screen space) that encloses both nodes, mirroring
-	// TestMarqueeCreatesGroupAndOpensMenu, so a stale/replayed release would
-	// actually create a group if the bug is present.
+	// Encloses both nodes, so a replayed release would actually create a group.
 	ax1, ay1, _, _ := g.nodeScreenRect(g.nodesByID[aID])
 	_, _, bx2, by2 := g.nodeScreenRect(g.nodesByID[bID])
 	startX, startY := int(ax1)-20, int(ay1)-20
@@ -219,8 +189,6 @@ func TestMarqueeCancelledWhenReleasedOutsideGridPane(t *testing.T) {
 		t.Fatalf("setup: (%d,%d) must be outside the grid pane", outsideX, outsideY)
 	}
 
-	// Press on empty space, drag to enclose both nodes (still inside the
-	// grid pane), then move into the drum pane and release there.
 	shiftDragTo(g, true,
 		[2]int{startX, startY},
 		[2]int{dragX, dragY},
@@ -239,8 +207,7 @@ func TestMarqueeCancelledWhenReleasedOutsideGridPane(t *testing.T) {
 		t.Fatalf("group menu must not open when the marquee is cancelled outside the grid pane")
 	}
 
-	// Move the cursor back into the grid pane with the button already up —
-	// must not resurrect a phantom group from stale start/cur coords.
+	// Back into the grid pane with the button up must not resurrect the marquee.
 	emptyX, emptyY := 700, 50 // empty grid space, away from both nodes
 	shiftDragReleaseAt(g, emptyX, emptyY)
 
@@ -255,15 +222,8 @@ func TestMarqueeCancelledWhenReleasedOutsideGridPane(t *testing.T) {
 	}
 }
 
-// TestMarqueeCancelledWhenReleasedOverGroupMenu is the final-review MUST-FIX
-// follow-up: handleEditor only runs when
-// `!inputHandled && !g.blocksAt(mx, my)` (game_update.go). If a marquee
-// drag's release lands over the open GroupMenu (or sidebar/settings gear),
-// the input dispatcher consumes the frame and handleEditor never sees the
-// release — g.marquee.active is stranded true forever (dead camera pan via
-// panOK), and the next plain grid click would replay the stale rect into a
-// phantom group. This must instead cancel the marquee (never create a
-// group) the moment the frame is consumed out from under it.
+// A release over the open GroupMenu is consumed by the dispatcher before handleEditor sees it, so the marquee
+// must be cancelled then, or the next plain click replays its stale rect into a phantom group.
 func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -277,18 +237,8 @@ func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 	}
 
 	bounds := g.groupMenu.InputBounds()
-	// task-placement-v2's placeGroupMenu (grid_reserved_zone.go) picks
-	// whichever of {right, left, below, above}-of-anchor is first cleared of
-	// the group's members — which direction wins depends on exactly where
-	// the member bbox sits relative to the anchor, so (unlike the pre-v2
-	// avoidRect chain, which always escaped in a fixed direction relative to
-	// the obstacle) this fixture's chosen panel position isn't safely
-	// predictable as "away from x=0" anymore. Derive a point far along the
-	// gridW axis instead — panel width is capped at groupMenuW (300) and the
-	// anchor (120,80) is well inside the pane, so no candidate's clamped rect
-	// can reach the far right edge — and verify it dynamically against the
-	// panel bounds, the settings-gear button, and the member bbox rather than
-	// assuming a fixed escape direction.
+	// The panel's side depends on where the members sit, so take a point along the far right edge (the panel is at
+	// most groupMenuW wide) and check it against the panel, the gear and the members.
 	gridW, gridH := g.split.GridW(g.winW), g.split.GridH(g.winH)
 	gear := g.gridHelpButtonRect()
 	memberBBox, _ := g.groupMemberScreenBBox([]model.NodeID{aID, bID})
@@ -303,9 +253,7 @@ func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 	}
 	insideX, insideY := (bounds.Min.X+bounds.Max.X)/2, (bounds.Min.Y+bounds.Max.Y)/2
 
-	// Shift+press on empty space (arms the marquee), drag to enclose a point
-	// inside the panel, release there — the dispatcher consumes this release
-	// frame because it lands inside the GroupMenu's InputBounds.
+	// The release lands inside the menu's InputBounds, so the dispatcher consumes that frame.
 	shiftDrag(g, startX, startY, insideX, insideY)
 
 	if g.marquee.active {
@@ -315,9 +263,7 @@ func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 		t.Fatalf("no phantom group should appear, want 1 (pre-existing) group, got %d", n)
 	}
 
-	// A subsequent plain click on empty grid space (clearly outside the
-	// panel) must behave normally — add a node, not replay the stale
-	// marquee rect into a second (phantom) group.
+	// Must add a node, not replay the stale rect into a phantom group.
 	clickX, clickY := gridW-10, 200
 	if !safeOutside(image.Pt(clickX, clickY)) {
 		t.Fatalf("setup: post-cancel click point (%d,%d) must be outside the panel/gear/members, bounds=%v gear=%v members=%v", clickX, clickY, bounds, gear, memberBBox)
@@ -328,18 +274,14 @@ func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 	}
 }
 
-// TestMarqueeSameSetReusesGroup is task-group-badges brief test 1: marquee-
-// selecting the EXACT same node set as an already-COMMITTED group must
-// reopen that group (no new group, no new undo step) rather than creating a
-// duplicate. Closing the reopened (non-provisional) menu must not delete it.
+// Marqueeing exactly a committed group's node set reopens that group: no new group, no undo step, and
+// closing the reopened menu keeps it.
 func TestMarqueeSameSetReusesGroup(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID) // provisional
 	g.groupMenu.save()                        // commit it (task-groupsave Save flow)
 	advanceFrames(g, 2)
-	// task-save-always (Part 1): Save keeps the menu open now — close it
-	// explicitly to reach the "committed, menu closed" state the rest of
-	// this test's setup assumes.
+	// Save keeps the menu open; close it to reach "committed, menu closed".
 	if !g.groupMenu.IsOpen() {
 		t.Fatalf("setup: Save must keep the menu open")
 	}
@@ -355,12 +297,8 @@ func TestMarqueeSameSetReusesGroup(t *testing.T) {
 	}
 	undoBefore := len(g.undoManager.undo)
 
-	// Marquee the SAME two nodes again. Press from the BOTTOM-LEFT corner and
-	// release at the TOP-RIGHT corner (Canon() yields the identical final
-	// selection rect regardless of traversal order) so the press point stays
-	// clear of the committed group's own badge, which now floats just
-	// outside the bbox's TOP-RIGHT corner (game_group_badges.go) — pressing
-	// there would hit the badge instead of arming the marquee.
+	// Pressed bottom-left, released top-right: same rect, but the press stays clear of the group's badge, which
+	// floats past the top-right corner.
 	ax1, ay1, _, _ := g.nodeScreenRect(g.nodesByID[aID])
 	_, _, bx2, by2 := g.nodeScreenRect(g.nodesByID[bID])
 	shiftDrag(g, int(ax1)-20, int(by2)+20, int(bx2)+20, int(ay1)-20)
@@ -385,11 +323,7 @@ func TestMarqueeSameSetReusesGroup(t *testing.T) {
 	}
 }
 
-// TestMarqueeSameSetTwiceProvisional is task-group-badges brief test 2:
-// marquee-selecting the same set TWICE in a row (both times before ever
-// Saving) must still leave exactly one (STILL provisional) group — the
-// second marquee reopens the first's provisional menu rather than creating a
-// second group or accidentally committing the first.
+// The same set marqueed twice before any Save leaves one group, still provisional.
 func TestMarqueeSameSetTwiceProvisional(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gidA := marqueeCreateGroup(t, g, aID, bID)
@@ -397,9 +331,7 @@ func TestMarqueeSameSetTwiceProvisional(t *testing.T) {
 		t.Fatalf("setup: first marquee-created group must be provisional")
 	}
 
-	// Marquee the SAME set again while still provisional and unsaved. Press
-	// from the BOTTOM-LEFT / release TOP-RIGHT for the same badge-avoidance
-	// reason as TestMarqueeSameSetReusesGroup above.
+	// Bottom-left to top-right to stay clear of the badge.
 	ax1, ay1, _, _ := g.nodeScreenRect(g.nodesByID[aID])
 	_, _, bx2, by2 := g.nodeScreenRect(g.nodesByID[bID])
 	shiftDrag(g, int(ax1)-20, int(by2)+20, int(bx2)+20, int(ay1)-20)
@@ -422,15 +354,10 @@ func TestMarqueeSameSetTwiceProvisional(t *testing.T) {
 	}
 }
 
-// TestMarqueeSubsetCreatesNewGroup is task-group-badges brief test 3: a
-// marquee selection that is a SUBSET (or superset) of an existing group's
-// membership is NOT a reuse match — it must create a brand new group.
+// A subset or superset of a group's members is not a reuse match.
 func TestMarqueeSubsetCreatesNewGroup(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
-	// A third node, far away in grid space so the marquee rect below (which
-	// only encloses a/b with a small margin) can never accidentally sweep it
-	// in — so {a,b,c} can be a committed group and {a,b} is a strict subset
-	// of it.
+	// Far away, so the a/b marquee can never sweep it in.
 	nc := g.tryAddNode(20, 20, model.NodeTypeRegular)
 	if _, err := g.graph.CreateGroup("", []model.NodeID{aID, bID, nc.ID}); err != nil {
 		t.Fatalf("setup CreateGroup: %v", err)
@@ -445,9 +372,7 @@ func TestMarqueeSubsetCreatesNewGroup(t *testing.T) {
 	}
 }
 
-// shiftDragReleaseAt advances a couple of frames with Shift held, the mouse
-// button up, and the cursor at (x,y). Used after shiftDragTo to model
-// "button is up, cursor moves" continuations of a gesture.
+// Button up, Shift held: the continuation of a gesture after shiftDragTo.
 func shiftDragReleaseAt(g *Game, x, y int) {
 	restore := SetInputForTest(
 		func() (int, int) { return x, y },
@@ -461,10 +386,7 @@ func shiftDragReleaseAt(g *Game, x, y int) {
 	advanceFrames(g, 2)
 }
 
-// marqueeCreateGroup drives a real shift-drag enclosing both nodes of
-// buildGroupLoopCircuit's a/b pair, returning the resulting (provisional)
-// group's ID. Fails the test if the marquee didn't produce exactly one
-// two-member group with the menu open.
+// Fails the test unless the marquee produced exactly one two-member group with its menu open.
 func marqueeCreateGroup(t *testing.T, g *Game, aID, bID model.NodeID) model.GroupID {
 	t.Helper()
 	ax1, ay1, _, _ := g.nodeScreenRect(g.nodesByID[aID])
@@ -481,10 +403,7 @@ func marqueeCreateGroup(t *testing.T, g *Game, aID, bID model.NodeID) model.Grou
 	return groups[0].ID
 }
 
-// TestMarqueeGroupDiscardedOnCloseWithoutSave is task-groupsave brief test 1:
-// closing the menu (the same method the close button invokes) without ever
-// pressing Save must silently discard the provisional group — no undo step,
-// rings gone from the group index.
+// Closing without Save discards the provisional group: no undo step, no rings.
 func TestMarqueeGroupDiscardedOnCloseWithoutSave(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	undoBefore := len(g.undoManager.undo)
@@ -507,18 +426,13 @@ func TestMarqueeGroupDiscardedOnCloseWithoutSave(t *testing.T) {
 	}
 }
 
-// TestMarqueeGroupDiscardedOnGridClickOutside is task-groupsave brief test 2:
-// a plain click on empty grid space discards the provisional group. It does
-// NOT also add a node: the global tap-outside-a-menu rule
-// (popup_outside_press.go) makes the dismissing press only close the menu.
+// The dismissing click only closes the menu, so no node is added.
 func TestMarqueeGroupDiscardedOnGridClickOutside(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
 	nodesBefore := len(g.nodes)
 
-	// The menu anchors near the marquee release point (close to the node
-	// pair), so pick a click point on the opposite side of the panel from
-	// wherever it landed, rather than a fixed screen coordinate.
+	// On the side of the panel opposite to wherever it landed.
 	panel := g.groupMenu.panel
 	clickX, clickY := 50, 50
 	if image.Pt(clickX, clickY).In(panel) {
@@ -537,9 +451,7 @@ func TestMarqueeGroupDiscardedOnGridClickOutside(t *testing.T) {
 	}
 }
 
-// TestMarqueeGroupDiscardedOnNodeClick is task-groupsave brief test 3: a
-// plain click ON a node discards the provisional group and closes the menu —
-// and only that (popup_outside_press.go): no sidebar opens.
+// A click on a node discards the provisional group and opens no sidebar.
 func TestMarqueeGroupDiscardedOnNodeClick(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
@@ -559,11 +471,7 @@ func TestMarqueeGroupDiscardedOnNodeClick(t *testing.T) {
 	}
 }
 
-// TestMarqueeGroupSavedPersists is task-groupsave brief test 4: rule edits
-// made while provisional, then Save, must land as exactly ONE undo step that
-// carries the whole creation (membership + rule), undoable/redoable as a
-// single atomic unit. Save keeps the menu open (task-save-always Part 1) —
-// ported from the old "save closes the menu" assumption.
+// Rule edits then Save land as ONE undo step carrying membership and rule; the menu stays open.
 func TestMarqueeGroupSavedPersists(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	undoBefore := len(g.undoManager.undo)
@@ -604,9 +512,7 @@ func TestMarqueeGroupSavedPersists(t *testing.T) {
 	}
 }
 
-// TestProvisionalRuleEditsEmitNothing is task-groupsave brief test 5: rule
-// edits made through the menu while the group is still provisional must not
-// add undo steps (they only take effect, undo-wise, once Save is pressed).
+// Provisional rule edits add no undo step until Save.
 func TestProvisionalRuleEditsEmitNothing(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	marqueeCreateGroup(t, g, aID, bID)
@@ -621,78 +527,36 @@ func TestProvisionalRuleEditsEmitNothing(t *testing.T) {
 	}
 }
 
-// TestSecondMarqueeDiscardsPriorProvisionalGroup is the review Finding 1
-// follow-up: openAt() used to overwrite groupID/provisional without
-// discarding a still-open provisional group. A second Shift+drag marquee
-// while a provisional menu was still open therefore leaked the first group
-// into g.graph.Groups — uncommitted, menuless, exportable. openAt() must now
-// silently discard the prior provisional group (same no-emit/no-undo
-// contract as Close()) before adopting the new one.
+// A second marquee while a provisional menu is open must discard the first group, never leak it menuless and
+// exportable into the graph.
 func TestSecondMarqueeDiscardsPriorProvisionalGroup(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 
-	// First marquee: encloses a/b, creates provisional group A with its menu
-	// open (menuless orphan check below fails if this leaks).
 	gidA := marqueeCreateGroup(t, g, aID, bID)
 
-	// A third node in a distinct empty region (negative grid coords, which at
-	// the default zoom maps well to the left of the panel — see below), so
-	// the second marquee targets a disjoint selection from the first. Adding
-	// this node is itself a real, committed undo step, so the "undo depth
-	// unchanged" baseline below is taken AFTER it, isolating just the two
-	// (both-provisional) marquee-creates that follow.
-	//
-	// -20,-20 (rather than the tighter -5,-5 an earlier revision of this test
-	// used) is required post-task-group-badges: group A's floating badge
-	// (game_group_badges.go) now occupies real screen space well outside its
-	// members' own node rects — a -5,-5 node position sat entirely INSIDE
-	// A's badge rect, so any press there hit the badge (opening/reopening A)
-	// instead of ever arming a marquee over node c.
+	// A distinct region for a disjoint selection; the undo baseline is taken after this (committed) add. At -5,-5
+	// the node sat inside group A's badge, so the press opened A instead of arming a marquee.
 	nc := g.tryAddNode(-20, -20, model.NodeTypeRegular)
 	undoBefore := len(g.undoManager.undo)
 	cx1, cy1, cx2, cy2 := g.nodeScreenRect(nc)
 
-	// The margin off c's sprite rect must clear c's GUIDE SNAP annulus, not
-	// merely the sprite rect. game_input_editor.go's Shift+press edge ranks a
-	// guide-snapped node (guideTargetAt == GuideNode, grid_guide.go) ABOVE
-	// the marquee — deliberately, so shift+dragging "from" a node draws the
-	// connect arrow rather than arming a marquee — and that snap is measured
-	// from the node's CENTER against guideSnapRadius (20px), NOT against its
-	// sprite rect. At this fixture's zoom c's rect is only ~3px across, so
-	// the fixed ±5px margin an earlier revision used put the press ~10px from
-	// c's center: deep inside the 20px radius, so the press armed a link-drag
-	// from c and the second marquee never happened at all (group A survived
-	// as the sole group). Derive the margin from the radius so a future
-	// token/zoom change can't silently re-break it, and assert the resolved
-	// target below rather than trusting the arithmetic.
+	// The margin must clear c's guide-snap radius, measured from its centre: a Shift+press within it arms a
+	// connect drag, which outranks the marquee.
 	snapPx := int(g.guideSnapRadiusWorld()*g.cam.Scale) + 2
 	p1 := image.Pt(int(cx1)-snapPx, int(cy1)-snapPx)
 	p2 := image.Pt(int(cx2)+snapPx, int(cy2)+snapPx)
 
-	// The first marquee's (still-open, uncommitted) menu panel is anchored
-	// near its own release point and, per game_update.go's dispatcher-first
-	// gate, ANY frame whose cursor lands inside an open InputHandler's bounds
-	// gets consumed before handleEditor/handleMarquee ever sees it — for an
-	// already-active marquee this actively cancels it outright (see
-	// TestMarqueeCancelledWhenReleasedOverGroupMenu). shiftDrag only ever
-	// samples the two endpoints (no interpolation), so both must sit clear of
-	// the panel; picking negative grid coords for node c keeps this rect
-	// entirely left of the panel's x-range regardless of exact camera state.
+	// Any frame whose cursor lands in the open menu is consumed and cancels an active marquee, and shiftDrag
+	// samples only the endpoints, so both must sit clear of the panel.
 	panel := g.groupMenu.panel
 	if p1.In(panel) || p2.In(panel) {
 		t.Fatalf("setup: second marquee's press/release points must both fall outside the open menu panel=%v p1=%v p2=%v", panel, p1, p2)
 	}
-	// Also must clear group A's badge (see the -20,-20 comment above) —
-	// otherwise the press resolves to a badge click, not a marquee arm.
+	// A press on group A's badge opens it instead of arming the marquee.
 	if _, ok := g.groupBadgeAt(p1.X, p1.Y); ok {
 		t.Fatalf("setup: press point %v must not land on group A's badge", p1)
 	}
-	// ...and must clear every node's guide snap annulus (see the snapPx
-	// comment above) — the third and last interceptor game_input_editor.go
-	// ranks above the marquee on the Shift+press edge. Asserting the resolved
-	// target here fails at the real cause ("the press armed a link-drag")
-	// instead of surfacing three assertions later as the far more confusing
-	// "the surviving group is the orphaned first one".
+	// A press inside any node's snap radius arms a link drag; failing here names that cause directly.
 	if gt := g.guideTargetAt(p1.X, p1.Y); gt.Kind == GuideNode {
 		t.Fatalf("setup: press point %v must fall outside every node's guide snap radius (%.1fpx screen); it snapped to node %d and would arm a link-drag, not a marquee",
 			p1, g.guideSnapRadiusWorld()*g.cam.Scale, gt.Node.ID)
@@ -719,19 +583,11 @@ func TestSecondMarqueeDiscardsPriorProvisionalGroup(t *testing.T) {
 	}
 }
 
-// TestDiscardedProvisionalReleasesGroupNumber is task-no-ghost-groups brief
-// test 1: closing a provisional group WITHOUT saving must delete it, freeing
-// its number for the lowest-free allocator (model.Graph.CreateGroup /
-// lowestFreeGroupID — task-save-always Part 2), so the default "Group N"
-// name is re-minted on the next marquee instead of drifting upward forever.
-// The second marquee selects a DIFFERENT (superset) node set so
-// findGroupWithExactNodeSet's reuse-on-exact-match path can't mask the bug —
-// see TestMarqueeSubsetCreatesNewGroup for why sub/supersets never match.
+// A discarded provisional group frees its number, so the next default name is "Group 1" again. The second
+// marquee picks a superset so the exact-match reuse cannot mask it.
 func TestDiscardedProvisionalReleasesGroupNumber(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
-	// Third node, far away in grid space (mirrors TestMarqueeSubsetCreatesNewGroup),
-	// so a wide marquee enclosing all three is unambiguously a DIFFERENT
-	// (superset) selection from {a, b}.
+	// Far away, so a marquee enclosing all three is a different (superset) selection.
 	nc := g.tryAddNode(20, 20, model.NodeTypeRegular)
 	const wantTitle = "Group 1" // matches CreateGroup's fmt.Sprintf("Group %d", id) default
 
@@ -764,9 +620,7 @@ func TestDiscardedProvisionalReleasesGroupNumber(t *testing.T) {
 		t.Fatalf("second provisional group must be deleted on close")
 	}
 
-	// Second discard+remarquee cycle (different set again: back to {a, b},
-	// which is fine since the earlier {a,b} group was already deleted) must
-	// still yield "Group 1" — no monotonic drift across repeated cycles.
+	// Repeated discard cycles never drift the number upward.
 	gid3 := marqueeCreateGroup(t, g, aID, bID)
 	if got := g.groupMenu.titleText(); got != wantTitle {
 		t.Fatalf("after second discard+remarquee, title = %q, want %q (no monotonic drift)", got, wantTitle)
@@ -777,11 +631,7 @@ func TestDiscardedProvisionalReleasesGroupNumber(t *testing.T) {
 	_ = gid3
 }
 
-// TestEscClosesAndDiscardsProvisionalMenu is task-no-ghost-groups brief test
-// 2: a real Esc key edge (mirroring TestEscClosesPortalNotStop's stubKeys
-// pattern) must close the GroupMenu and silently discard its still-
-// provisional group — same zero-trace contract as the close button and
-// click-outside paths.
+// A real Esc edge closes the menu and discards its provisional group without a trace.
 func TestEscClosesAndDiscardsProvisionalMenu(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	undoBefore := len(g.undoManager.undo)
@@ -809,9 +659,7 @@ func TestEscClosesAndDiscardsProvisionalMenu(t *testing.T) {
 	_ = gid2
 }
 
-// TestEscOnCommittedMenuClosesWithoutDelete is task-no-ghost-groups brief test
-// 3: Esc on a menu opened via OpenAt for an ALREADY-COMMITTED group (not
-// provisional) must close the menu without deleting the group.
+// Esc on a committed group's menu closes it without deleting the group.
 func TestEscOnCommittedMenuClosesWithoutDelete(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("Committed", []model.NodeID{aID, bID})
@@ -835,11 +683,7 @@ func TestEscOnCommittedMenuClosesWithoutDelete(t *testing.T) {
 	}
 }
 
-// TestDiscardLeavesExportByteIdentical is task-no-ghost-groups brief test 4:
-// marqueeing a group, editing its provisional rules, then closing without
-// Save must leave the exported document byte-identical to before the
-// marquee ever started — the zero-trace contract extended to the full
-// export, not just the group index.
+// A discarded provisional group with edited rules leaves the export byte-identical to before the marquee.
 func TestDiscardLeavesExportByteIdentical(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	before, err := g.drum.exportBytes()
@@ -863,12 +707,8 @@ func TestDiscardLeavesExportByteIdentical(t *testing.T) {
 	}
 }
 
-// TestEscPrefersGroupMenuOverSidebar is task-no-ghost-groups brief test 6:
-// menu-open AND sidebar-open simultaneously is not reachable through normal
-// gestures (opening the group menu doesn't open the sidebar and vice versa),
-// but both can be forced open via direct calls to prove the rung ORDER: Esc
-// must close the (z-above) GroupMenu first, leaving the sidebar untouched,
-// rather than falling through to the sidebar rung.
+// Both open is unreachable by gesture, so they are forced open to pin the rung order: Esc closes the
+// z-above GroupMenu first.
 func TestEscPrefersGroupMenuOverSidebar(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid := marqueeCreateGroup(t, g, aID, bID)
@@ -892,11 +732,7 @@ func TestEscPrefersGroupMenuOverSidebar(t *testing.T) {
 	}
 }
 
-// TestDeleteButtonOnProvisionalReleasesGroupNumber pins the Delete-button
-// discard path to the same zero-trace contract as Close/Esc/click-out: a
-// provisional group deleted via the menu's Delete button must release its
-// group number so the next marquee starts at "Group 1" again (review finding:
-// deleteGroup's old inline pre-clear bypassed discardProvisional's release).
+// The Delete button on a provisional group releases its number like Close, Esc and click-out.
 func TestDeleteButtonOnProvisionalReleasesGroupNumber(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	const wantTitle = "Group 1"

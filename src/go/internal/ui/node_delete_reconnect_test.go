@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Deleting a linear in-between node should reconnect its predecessor to its successor
-// preserving a straight path.
+// Predecessor joins successor, keeping the straight path.
 func TestDeleteNodeReconnectsLinear(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -32,8 +31,7 @@ func TestDeleteNodeReconnectsLinear(t *testing.T) {
 	}
 }
 
-// Only reconnect orthogonal straight paths: if predecessor and successor do not share
-// row or column, do not connect.
+// Only orthogonal paths reconnect.
 func TestDeleteCornerDoesNotReconnectDiagonal(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

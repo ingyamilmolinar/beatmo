@@ -10,10 +10,7 @@ import (
 // lum is a quick perceptual-ish brightness proxy for shade comparisons.
 func lum(c color.RGBA) int { return int(c.R) + int(c.G) + int(c.B) }
 
-// TestRowToggleShadesDeriveFromInstrumentColor verifies that the per-row
-// toggle ACTIVE fills are shades of the instrument color: mute darker, solo
-// brighter, fx the full hue — all distinct — while the off state is the
-// neutral row-control body.
+// Mute darker, solo brighter, fx the full hue, all distinct; off is the neutral body.
 func TestRowToggleShadesDeriveFromInstrumentColor(t *testing.T) {
 	base := color.RGBA{180, 120, 60, 255} // a mid-tone orange instrument color
 
@@ -37,16 +34,12 @@ func TestRowToggleShadesDeriveFromInstrumentColor(t *testing.T) {
 		t.Errorf("off fill should be the neutral row-control body %v, got %v", want, off)
 	}
 
-	// The three active states must all be visually distinct from each other
-	// and from the dim off state.
 	if mute == solo || mute == fx || solo == fx {
 		t.Errorf("mute/solo/fx active fills must all differ: mute=%v solo=%v fx=%v", mute, solo, fx)
 	}
 }
 
-// TestRowToggleStyleDiffersByInstrumentColor verifies two differently-colored
-// rows produce different toggle fills — the whole point of tying color to the
-// instrument (no more shared light-blue drift).
+// The point of tying colour to the instrument.
 func TestRowToggleStyleDiffersByInstrumentColor(t *testing.T) {
 	orange := color.RGBA{180, 120, 60, 255}
 	teal := color.RGBA{60, 150, 160, 255}
@@ -62,8 +55,7 @@ func TestRowToggleStyleDiffersByInstrumentColor(t *testing.T) {
 	}
 }
 
-// TestRowToggleNilColorIsSafe guards the test/headless paths that build
-// DrumRow values without a color.
+// Headless paths build DrumRow values with no colour.
 func TestRowToggleNilColorIsSafe(t *testing.T) {
 	// Must not panic and must return a usable style.
 	st := rowToggleStyle(nil, roleSolo, true)
@@ -72,10 +64,7 @@ func TestRowToggleNilColorIsSafe(t *testing.T) {
 	}
 }
 
-// TestRowToggleLetterIsLegibleOnEveryInstrumentColor sweeps the instrument
-// sequence: every active toggle letter must clear WCAG 4.5:1 against its
-// fill — a pale instrument (yellow, mint) gets a dark letter, a deep one a
-// light letter.
+// WCAG 4.5:1 on every fill: a pale instrument gets a dark letter, a deep one a light letter.
 func TestRowToggleLetterIsLegibleOnEveryInstrumentColor(t *testing.T) {
 	for _, base := range genInstrumentSequence {
 		for _, role := range []rowToggleRole{roleMute, roleSolo, roleFX} {

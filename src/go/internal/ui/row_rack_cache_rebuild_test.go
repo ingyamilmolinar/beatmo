@@ -9,18 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestRowRackCacheRebuildRateBounded asserts that during steady-state
-// playback (no row add/delete, no scroll, no mute/solo edits), the
-// RowRackZone controls cache is NOT rebuilt every frame. Each rebuild
-// allocates ~30 vector.Path objects per visible row × N rows via the icon
-// renderer (icon_renderer.go:88) — that is the call stack the production
-// OOM landed in (RowRackZone.drawRowControlsToCache → drawVolIconOff →
-// DrawIcon → iconStrokeArc → vector.Path tessellation).
-//
-// If this test fails the cache is being marked dirty every frame somehow,
-// which means every Draw burns through the per-rebuild path allocations.
-// On WASM with real vector.Path that is enough by itself to drive the
-// heap to the 2 GB linear-memory ceiling within minutes.
+// Steady playback must not rebuild the controls cache every frame: each rebuild tessellates ~30 icon paths
+// per row, which on WASM reaches the 2 GB heap ceiling within minutes.
 func TestRowRackCacheRebuildRateBounded(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -48,8 +38,6 @@ func TestRowRackCacheRebuildRateBounded(t *testing.T) {
 		g.Draw(screen)
 	}
 
-	// Steady-state measurement window. No edits, no scroll — the cache
-	// must reuse cleanly across these frames.
 	const measureFrames = 600
 	rackBefore := g.drum.rowRackZone.controlsCacheRebuilds
 	for i := 0; i < measureFrames; i++ {
@@ -59,9 +47,7 @@ func TestRowRackCacheRebuildRateBounded(t *testing.T) {
 	rackAfter := g.drum.rowRackZone.controlsCacheRebuilds
 	rebuilds := rackAfter - rackBefore
 
-	// Bound: at most 5% of measured frames should rebuild. Allows for
-	// occasional structural-mutation grace frames (parity gen bumps) but
-	// catches per-frame thrash.
+	// 5% allows structural grace frames but catches per-frame thrash.
 	maxAllowed := int64(measureFrames) / 20
 	if maxAllowed < 1 {
 		maxAllowed = 1

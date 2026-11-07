@@ -7,12 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestGroupMenuRuleSectionWritesUpTo3RulesSharingEveryNAndAnchor is the Part B
-// redesign's core contract (task-rule-anchor brief): the three per-param
-// delta rows (rdpit/rdvol/rddur) each write/clear their own GroupRule
-// independently, but all rules the menu writes share the SAME EveryN and the
-// SAME AnchorIdx (captured once per write) — never per-param anchors/EveryN.
-// Zero-delta params are omitted entirely (not written as a zero-delta rule).
+// Each delta row writes or clears its own rule, but all share ONE EveryN and ONE AnchorIdx; zero deltas are
+// omitted.
 func TestGroupMenuRuleSectionWritesUpTo3RulesSharingEveryNAndAnchor(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -21,8 +17,7 @@ func TestGroupMenuRuleSectionWritesUpTo3RulesSharingEveryNAndAnchor(t *testing.T
 	}
 	g.groupMenu.OpenAt(gid, 100, 100)
 
-	// Pitch delta 1 (default step), duration delta 0.05 (default step),
-	// volume left at 0 -> exactly 2 rules, not 3.
+	// Volume at 0, so exactly 2 rules.
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
 	g.groupMenu.stepRuleDelta(model.GroupParamDuration, 1)
 	g.groupMenu.stepRuleEveryN(1) // 1 -> 2, shared across both rules
@@ -54,10 +49,6 @@ func TestGroupMenuRuleSectionWritesUpTo3RulesSharingEveryNAndAnchor(t *testing.T
 	}
 }
 
-// TestGroupMenuParamControlAbsent pins that the old "param" cycle button
-// (task-rule-anchor Part B: REMOVE the param cycle button and
-// cycleRuleParam) no longer exists as a control, at any point in the rule
-// section's lifecycle.
 func TestGroupMenuParamControlAbsent(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -83,9 +74,6 @@ func TestGroupMenuParamControlAbsent(t *testing.T) {
 	}
 }
 
-// TestGroupMenuEveryNRowStillSteps pins that the shared Every-N stepper
-// (n-/n+) still works after the redesign, sharing its row with "ruleonoff"
-// instead of the removed "param" button.
 func TestGroupMenuEveryNRowStillSteps(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -111,10 +99,7 @@ func TestGroupMenuEveryNRowStillSteps(t *testing.T) {
 	}
 }
 
-// TestGroupMenuDurationRowLabelUsesRenamedKey pins the EN copy rename
-// ("Length" -> "Duration") for KeyGroupParamDuration, and that the rule
-// section's duration row (rddur) is labeled with the same key the batch
-// section uses.
+// The duration row uses the same key as the batch section.
 func TestGroupMenuDurationRowLabelUsesRenamedKey(t *testing.T) {
 	if got, want := i18n.T(i18n.KeyGroupParamDuration), "Duration"; got != want {
 		t.Fatalf("KeyGroupParamDuration = %q, want %q", got, want)
