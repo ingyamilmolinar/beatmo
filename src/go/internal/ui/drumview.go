@@ -530,15 +530,6 @@ type DrumView struct {
 	instEditorArmedControl map[instrument.ID]int
 	// instEditorArmedEditor owns the two barrel wheels for the armed control.
 	instEditorArmedEditor *ArmedControlEditor
-	// samplerArmedControl / samplerArmedEditor are the Sampler tab's half of the
-	// armed-control model. They are DELIBERATELY separate from the synth's pair
-	// (rather than one map keyed by armedScope): both tabs address controls by an
-	// index into their own widget slice, so the same instrument id means
-	// different things in each. The shared BEHAVIOR lives in ArmedControlEditor,
-	// drawArmedControlCard, and growArmedCardInto — only this small amount of map
-	// bookkeeping is per-tab. See sampler_armed_control.go.
-	samplerArmedControl map[string]int
-	samplerArmedEditor  *ArmedControlEditor
 	// armGrow* drive the grow/shrink animation of the armed control's 2×2 card
 	// and the reflow of its neighbours. armGrowIdx is the control being animated
 	// (-1 = none, retained through the shrink so it can keep interpolating after
@@ -662,9 +653,6 @@ type DrumView struct {
 	// via field promotion.
 	rowsWinCache
 
-	// follow mirrors TransportZone.followPlayback for backward-compatible
-	// access on test paths that build a DrumView without a TransportZone.
-	follow bool
 	// WASM-only adaptive pad helpers: expand pad when frequent full rebuilds
 	// happen due to horizontal pans; decay toward default when stationary.
 	rowsPadFullRebuilds int

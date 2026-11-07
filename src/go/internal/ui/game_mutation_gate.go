@@ -35,47 +35,6 @@ type structuralMutationOptions struct {
 	Grace time.Duration
 }
 
-// defaultStructuralMutationOptions returns the production defaults: hold
-// seqMu, mark paths dirty, mark per-row path change, clear buffers,
-// 80ms grace.
-func defaultStructuralMutationOptions() structuralMutationOptions {
-	return structuralMutationOptions{
-		HoldSeqMu: true,
-		Grace:     parityMutationGraceDefault,
-	}
-}
-
-// mutateStructural is the single choke-point for any runtime mutation that
-// could disturb predictor / scheduler / audio-channel state during playback.
-// It bumps the parity generation, grants a grace window, optionally marks
-// pathChangeBeatByRow for every row, optionally clears parity buffers, and
-// then runs fn.
-//
-// Every UI-level mutation in the (G2) list (instrument change, EQ, BPM,
-// length, graph edit, row add/del, etc.) routes through this. Audio-only
-// mutations whose state cannot affect parity (pure DSP-graph edits with no
-// scheduler observable) may still wrap themselves for symmetry — the cost
-// of a gen bump is a single atomic store plus map allocation.
-func (g *Game) mutateStructural(reason string, fn func(), opts structuralMutationOptions) {
-	if g == nil {
-		if fn != nil {
-			fn()
-		}
-		return
-	}
-	if opts.Grace == 0 {
-		opts.Grace = parityMutationGraceDefault
-	}
-	if opts.HoldSeqMu {
-		g.seqMu.Lock()
-		defer g.seqMu.Unlock()
-	}
-	g.bumpParityGen(reason, opts)
-	if fn != nil {
-		fn()
-	}
-}
-
 // bumpParityGen performs only the parity-coordination side-effects of a
 // structural mutation: gen bump, grace window, buffer hygiene, path-dirty
 // flag, cross-row pathChange marker. It does NOT acquire seqMu. Use when

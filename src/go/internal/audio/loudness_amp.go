@@ -24,4 +24,3 @@ var runtimeLoudnessAmp sync.Map // instrument.ID -> float32 (always that key typ
 // setRuntimeLoudnessAmp records the loudness amp a runtime instrument should
 // use (its source's measured amp). clearRuntimeLoudnessAmp drops it on delete.
 func setRuntimeLoudnessAmp(id instrument.ID, amp float32) { runtimeLoudnessAmp.Store(id, amp) }
-func clearRuntimeLoudnessAmp(id instrument.ID)            { runtimeLoudnessAmp.Delete(id) }

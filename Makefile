@@ -720,8 +720,11 @@ GOLANGCI_LINT ?= $(CURDIR)/.tools/golangci-lint
 $(CURDIR)/.tools/golangci-lint:
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b .tools v$(GOLANGCI_LINT_VERSION)
 
+# `unused` runs per build configuration (default, -tags test, js, js release):
+# one configuration alone reports every test-only or js-only helper as dead.
 lint-go: $(GOLANGCI_LINT)
-	cd src/go && $(GOLANGCI_LINT) run ./...
+	cd src/go && $(GOLANGCI_LINT) run --disable unused ./...
+	cd src/go && GO=$(GO) GOLANGCI_LINT=$(GOLANGCI_LINT) python3 ../../scripts/ci/lint-unused.py
 
 lint-go-fix: $(GOLANGCI_LINT)
 	cd src/go && $(GOLANGCI_LINT) run --fix ./...

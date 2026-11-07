@@ -106,32 +106,6 @@ func drawMenuSeparator(dst *ebiten.Image, r image.Rectangle) {
 // titles read smaller — all identical.
 const menuTitleRole = RoleSectionHeader
 
-// cardTitleRole is the unified font role for the top-right grid-button CARD
-// titles — Settings, Logs, and the File menu. It is one step ABOVE the
-// section-header labels inside those cards, so every card shows the same
-// Title (panel-title, 21px) > Section (section-header, 16px) > Body (14/12px)
-// ladder. Inline dropdown menus (row context menu, color picker) keep
-// menuTitleRole (section-header); the grid-button cards are panels, not inline
-// menus. See DESIGN.md §Typography "Text hierarchy".
-const cardTitleRole = RolePanelTitle
-
-// cardContentPadX is the shared left/right content inset for the grid-button
-// cards (Settings / Logs / File) so their titles and rows align identically.
-const cardContentPadX = SpaceLG
-
-// drawCardTitleIn draws a grid-button card title (Settings / Logs / File) at
-// cardTitleRole, left-aligned inside titleRect and vertically centred. One
-// helper → pixel-identical font, size, weight, colour, and vertical placement
-// across all three cards.
-func drawCardTitleIn(dst *ebiten.Image, titleRect image.Rectangle, label string) {
-	if titleRect.Empty() {
-		return
-	}
-	th := StyledTextHeight(cardTitleRole)
-	ty := titleRect.Min.Y + (titleRect.Dy()-th)/2
-	DrawTextStyled(dst, label, titleRect.Min.X, ty, cardTitleRole, colTextPrimary)
-}
-
 // menuTitleSwatchSz is the instrument swatch (rounded square) shown at the left
 // of an instrument-scoped menu title (spacing.swatch-sm).
 const menuTitleSwatchSz = SwatchSizeSM

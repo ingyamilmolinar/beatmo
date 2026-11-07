@@ -2674,20 +2674,6 @@ func (z *EQPanelZone) drawEQCellText(dst *ebiten.Image, txt string, cell image.R
 	DrawTextStyled(dst, txt, tx, ty, role, col)
 }
 
-// getAnalyzerState returns the latest analyzer.State via the callback, or nil.
-//
-// DEPRECATED for in-Draw use: prefer getAnalyzerStateForTab(activeTab) so
-// the per-frame memo can route TabMeters through the lightweight
-// metrics-only path. Direct callers (tests, freezeBtn check before
-// memo wiring) bypass the memo and may produce duplicate per-frame
-// calls.
-func (z *EQPanelZone) getAnalyzerState() *analyzer.State {
-	if z.callbacks.AnalyzerState != nil {
-		return z.callbacks.AnalyzerState()
-	}
-	return nil
-}
-
 // getAnalyzerStateForTab is the per-Draw memoised resolver. Routes
 // TabMeters through AnalyzerMetricsOnly when available — the
 // scalar-only builder skips Spectrum/Waveform allocation and (on WASM)

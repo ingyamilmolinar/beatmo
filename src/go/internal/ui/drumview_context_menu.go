@@ -1309,12 +1309,6 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	}
 }
 
-// initOverflowScroll creates the overflow menu's shared scroll component.
-func (dv *DrumView) initOverflowScroll() {
-	dv.overflowMenuScroll = NewMenuScroll(DropdownScrollbarStyle, touchMinTargetPx)
-	dv.configureOverflowScroll()
-}
-
 // configureOverflowScroll refreshes scroll geometry from the current page's
 // items and popup rect. Cheap + idempotent; safe to call every frame. Preserves
 // the scroll position across page switches (Configure clamps, not resets).

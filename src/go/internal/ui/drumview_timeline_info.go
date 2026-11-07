@@ -64,10 +64,3 @@ func max1(n int) int {
 	}
 	return n
 }
-
-func imin(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

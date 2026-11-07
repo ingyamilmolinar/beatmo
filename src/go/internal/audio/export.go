@@ -20,13 +20,6 @@ func amplitudeForInstrument(id instrument.ID) float32 {
 	return ConfigForInstrument(id).Amplitude
 }
 
-// normalizeAndScale applies peak normalization followed by amplitude scaling
-// to match the WASM audio processing pipeline in audio.js.
-// This ensures cross-platform audio parity.
-func normalizeAndScale(buf []float32, instrumentID instrument.ID) {
-	normalizeAndScaleAmp(buf, amplitudeForInstrument(instrumentID))
-}
-
 // normalizeAndScaleAmp is normalizeAndScale with the amplitude given
 // directly — a document render must use ITS amplitude, never whatever is
 // registered under its id (a candidate document is never registered).

@@ -149,12 +149,6 @@ func defaultAssetsRootStub() string {
 	return "assets"
 }
 
-// defaultAssetsRoot mirrors the desktop helper for test/js builds so callers
-// like catalog_test can use a single name across build tags.
-func defaultAssetsRoot() string {
-	return defaultAssetsRootStub()
-}
-
 func Catalog() []SoundMeta {
 	catalogMu.RLock()
 	defer catalogMu.RUnlock()

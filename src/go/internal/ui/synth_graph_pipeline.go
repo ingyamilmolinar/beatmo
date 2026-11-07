@@ -346,13 +346,6 @@ func (p *synthGraphPipeline) relevancePending() bool {
 	return len(p.relQueue) > 0
 }
 
-// clear forgets what slot wants (its landed render is dropped too).
-func (p *synthGraphPipeline) clear(slot graphSlot) {
-	p.mu.Lock()
-	p.slots[slot] = graphSlotState{}
-	p.mu.Unlock()
-}
-
 func (p *synthGraphPipeline) takePending(slot graphSlot) {
 	p.mu.Lock()
 	job := p.slots[slot].pending
@@ -526,13 +519,6 @@ func (p *synthGraphPipeline) takeWarm(r *graphRender) {
 
 // takeDirty reports (and clears) whether a render landed since the last call.
 func (p *synthGraphPipeline) takeDirty() bool { return p.dirty.Swap(false) }
-
-// renderNowSync renders slot's request on the caller goroutine (scene Setup:
-// a deterministic picture at capture time).
-func (p *synthGraphPipeline) renderNowSync(slot graphSlot, ident graphIdent, mk func() graphReq) {
-	p.want(slot, ident, mk)
-	p.takePending(slot)
-}
 
 // drainForTest runs every pending job (renders, then warms) on the caller
 // goroutine.

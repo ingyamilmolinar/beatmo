@@ -260,14 +260,3 @@ func reachedThemeEditorOpen(_ *tourRunner, g *Game) error {
 	}
 	return nil
 }
-
-func allOf(cs ...tourCheck) tourCheck {
-	return func(r *tourRunner, g *Game) error {
-		for _, c := range cs {
-			if err := c(r, g); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-}

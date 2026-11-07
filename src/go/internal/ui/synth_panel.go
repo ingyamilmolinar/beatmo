@@ -70,10 +70,6 @@ func (p *synthPanel) synthParamsHash(instID instrument.ID) string {
 	return string(instID) + ":" + strconv.FormatUint(audio.InstrumentDocRev(instID), 10)
 }
 
-func (dv *DrumView) synthParamsHash(instID instrument.ID) string {
-	return dv.synp().synthParamsHash(instID)
-}
-
 // synp returns the DrumView's synth panel, lazily creating it if absent. The
 // ctor sets dv.synthPanel eagerly; this getter is the self-healing path for the
 // many test files that build *DrumView via a bare &DrumView{} literal bypassing

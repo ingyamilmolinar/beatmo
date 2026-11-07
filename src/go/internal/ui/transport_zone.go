@@ -1935,24 +1935,6 @@ func clampBtnTransport(btn *Button, bounds image.Rectangle) {
 	btn.SetRect(r)
 }
 
-// insetTransportCell converts a contiguous grid cell into its drawn button
-// rect: it applies the standard vertical/large-cell inset (safeInsetTransport)
-// and then guarantees a small horizontal gap so adjacent cells leave a visible
-// space instead of touching at narrow widths (where safeInsetTransport's
-// min-width guard otherwise refuses to inset). The gap is never taken if it
-// would collapse the button, so a button always stays clickable.
-func insetTransportCell(cell image.Rectangle, pad, gap int) image.Rectangle {
-	r := safeInsetTransport(cell, pad)
-	g := gap / 2
-	if g < 1 {
-		g = 1
-	}
-	if r.Dx() > 2*g+6 {
-		r = image.Rect(r.Min.X+g, r.Min.Y, r.Max.X-g, r.Max.Y)
-	}
-	return r
-}
-
 // computeGroupRect returns the bounding rect enclosing all provided rects,
 // expanded by pad pixels. Empty rects are ignored.
 func computeGroupRect(rects []image.Rectangle, pad int) image.Rectangle {

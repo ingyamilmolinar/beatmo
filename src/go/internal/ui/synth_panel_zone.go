@@ -540,15 +540,6 @@ func sectionForParamDef(def audio.ParamDef) synthSectionID {
 	return synthSectionVoice
 }
 
-// sectionForParam routes a param by name alone (tests and name-only callers),
-// using the stage param's canonical definition when there is one.
-func sectionForParam(name string) synthSectionID {
-	if def, ok := audio.StageParamDefByName(name); ok {
-		return sectionForParamDef(def)
-	}
-	return sectionForParamDef(audio.ParamDef{Name: name})
-}
-
 // isSynthEnableParam reports whether a param is a modular per-stage bypass
 // toggle (rendered as a section pill, never as a knob).
 func isSynthEnableParam(name string) bool {
@@ -2743,11 +2734,6 @@ func (h *synthSectionScrollAdapter) OnWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// synthSliderHitAdapter is the legacy name kept so any external callers
-// (or older tests) that reference the symbol continue to compile. It
-// wraps the new knob adapter so behaviour is identical.
-type synthSliderHitAdapter = synthControlHitAdapter
-
 // synthSaveAsDialog hit adapters. The dialog itself is just a *Button
 // pair + TextInput; these adapters wire the button presses into the
 // shared OnClick closures the buttons already carry. Frame adapter
@@ -2912,10 +2898,6 @@ func (s synthSection) EnableParam() string { return s.enableParam }
 // (test-only accessor).
 func (s synthSection) KnobIdxs() []int { return s.knobIdxs }
 
-// EnsureNoTrailingNewline is a tiny helper kept around so a fmt+strings
-// import set is not silently dropped when the file is edited above.
-func ensureSynthImports() string { return strings.ToUpper("") }
-
 func (dv *DrumView) toggleSynthStage(instID instrument.ID, paramName string) {
 	dv.synp().toggleSynthStage(instID, paramName)
 }
@@ -2926,10 +2908,6 @@ func (dv *DrumView) setSelectedSynthSection(instID instrument.ID, id synthSectio
 
 func (dv *DrumView) synthSelectedSection() *synthSection {
 	return dv.synp().synthSelectedSection()
-}
-
-func (dv *DrumView) synthStageEssential(instID instrument.ID, enableParam string) bool {
-	return dv.synp().synthStageEssential(instID, enableParam)
 }
 
 func (dv *DrumView) synthDetailEnablePillRect() image.Rectangle {

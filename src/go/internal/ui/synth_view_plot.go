@@ -654,14 +654,6 @@ func buildAttack(vp *viewPlot, in synthViewInput) {
 	})
 }
 
-func zipPts(xs, ys []float32) []fpt {
-	pts := make([]fpt, len(xs))
-	for i := range xs {
-		pts[i] = fpt{xs[i], ys[i]}
-	}
-	return pts
-}
-
 func buildPitch(vp *viewPlot, in synthViewInput) {
 	span := viewTimeSpan(in, 0.1)
 	vp.timeTicks(span, in.beatSec)
@@ -978,11 +970,6 @@ func buildHarmonics(vp *viewPlot, in synthViewInput) {
 		nc, _ := count(now)
 		return changeWords(float64(bc), float64(nc), 0, 2, i18n.KeyGraphWordsRicher, i18n.KeyGraphWordsPlainer)
 	})
-}
-
-func (vp *viewPlot) freqY(f float64, r image.Rectangle) float32 {
-	frac := math.Log(math.Max(f, 30)/30) / math.Log(16000.0/30)
-	return float32(r.Max.Y) - float32(math.Max(0, math.Min(1, frac)))*float32(r.Dy())
 }
 
 // centroidMoves is a note's brightness at its start and at its end (medians of

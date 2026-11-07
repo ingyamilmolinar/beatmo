@@ -39,4 +39,3 @@ func (a zoneAsLayer) Visible() bool {
 	return a.visible()
 }
 func (a zoneAsLayer) Draw(dst *ebiten.Image) { a.zone.Draw(dst) }
-func (a zoneAsLayer) underlyingZone() Zone   { return a.zone }

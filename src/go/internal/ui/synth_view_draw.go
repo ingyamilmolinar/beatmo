@@ -242,5 +242,3 @@ func fillPlotBand(dst *ebiten.Image, b plotBand, off image.Point, col color.Colo
 		drawRect(dst, image.Rect(off.X+x, off.Y+y0, off.X+x+1, off.Y+y1), col, true)
 	}
 }
-
-func toNRGBA(c color.Color) color.NRGBA { return color.NRGBAModel.Convert(c).(color.NRGBA) }

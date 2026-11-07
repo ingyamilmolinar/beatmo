@@ -17,141 +17,131 @@ import (
 // once at init and again after ApplyTheme (theme_runtime.go) overwrites the
 // tokens — a var initialiser would be evaluated only once and go stale.
 var (
-	colBGTop                    color.RGBA
-	colBGBottom                 color.RGBA
-	colGridHorizon              color.RGBA
-	colSurface1                 color.RGBA
-	colSurface2                 color.RGBA
-	colSurface3                 color.RGBA
-	colGridLine                 color.RGBA
-	colGridHalf                 color.RGBA
-	colGridQuarter              color.RGBA
-	colGridEighth               color.RGBA
-	colGridSixteenth            color.RGBA
-	colGridThirtySecond         color.RGBA
-	colBorderSubtle             color.NRGBA
-	colBorderMedium             color.NRGBA
-	colBorderStrong             color.NRGBA
-	colButtonBorder             color.NRGBA
-	colSubtleBorder             color.NRGBA
-	colAccent                   color.RGBA
-	colAccentBright             color.RGBA
-	colAccentDim                color.RGBA
-	colAccentSubtle             color.NRGBA
-	colPlayGreen                color.RGBA
-	colStopRed                  color.RGBA
-	colMuteRed                  color.RGBA
-	colTextPrimary              color.RGBA
-	colTextSecondary            color.RGBA
-	colTextDisabled             color.RGBA
-	colTextAccent               color.RGBA
-	colPlayButton               color.RGBA
-	colStopButton               color.RGBA
-	colBPMBox                   color.RGBA
-	colDropdown                 color.RGBA
-	colDropdownEdge             color.NRGBA
-	colError                    color.RGBA
-	colSecondaryBtn             color.RGBA
-	colRowBtnInactive           color.RGBA
-	colRowBtnInactiveText       color.RGBA
-	colRowLabel                 color.RGBA
-	colSplitterHandle           color.NRGBA
-	colSplitterHandleHover      color.NRGBA
-	colRackSurface              color.RGBA
-	colPanelBG                  color.NRGBA
-	colPanelBorder              color.NRGBA
-	colScrim                    color.NRGBA
-	colDeleteFill               color.RGBA
-	colDeleteBorder             color.RGBA
-	colDeleteText               color.RGBA
-	colMenuGroupBG              color.NRGBA
-	colMenuGroupDeleteBG        color.NRGBA
-	colMenuIcon                 color.RGBA
-	colStep                     color.RGBA
-	colStepOff                  color.RGBA
-	colStepBorder               color.NRGBA
-	colHighlight                color.RGBA
-	colMuteCell                 color.RGBA
-	colMuteHighlight            color.NRGBA
-	colBeatGroupAlt             color.NRGBA
-	colTimelineTotal            color.RGBA
-	colTimelineView             color.NRGBA
-	colTimelineViewHi           color.RGBA
-	colTimelineCursor           color.RGBA
-	colTimelineBeat             color.RGBA
-	colEQBg                     color.NRGBA
-	colEQBar                    color.RGBA
-	colEQBarPeak                color.RGBA
-	colWaveTrace                color.RGBA
-	colWaveTraceDry             color.NRGBA
-	colWaveMid                  color.NRGBA
-	colEQCurve                  color.NRGBA
-	colEQCurveFill              color.NRGBA
-	colEQHandle                 color.RGBA
-	colEQHandleActive           color.RGBA
-	colEQHandleBorder           color.RGBA
-	colEQZeroLine               color.NRGBA
-	colEQFilterHandle           color.RGBA
-	colEQFilterHandleActive     color.RGBA
-	colEQFilterLine             color.NRGBA
-	colVizBass                  color.RGBA
-	colVizMids                  color.RGBA
-	colVizTreble                color.RGBA
-	NodeUI                      NodeStyle
-	SignalUI                    SignalStyle
-	EdgeUI                      EdgeStyle
-	colTransportSurface         color.RGBA
-	colTransportBorder          color.NRGBA
-	colTransportContainerBorder color.NRGBA
-	colTransportDivider         color.NRGBA
-	colTransportGroupBG         color.NRGBA
-	colPlayIconTint             color.RGBA
-	colStopIconTint             color.RGBA
-	colIncDecIcon               color.RGBA
-	colVolumeIconOn             color.RGBA
-	colVolumeIconOff            color.RGBA
-	colFollowActive             color.RGBA
-	colRecordIdle               color.RGBA
-	colRecordActive             color.RGBA
-	colMuteActive               color.RGBA
-	colMuteActiveBdr            color.RGBA
-	colSoloActive               color.RGBA
-	colSoloActiveBdr            color.RGBA
-	PlayButtonStyle             ButtonStyle
-	StopButtonStyle             ButtonStyle
-	BPMBoxStyle                 TextInputStyle
-	BPMDecStyle                 ButtonStyle
-	BPMIncStyle                 ButtonStyle
-	LenDecStyle                 ButtonStyle
-	LenIncStyle                 ButtonStyle
-	InstButtonStyle             ButtonStyle
-	UploadBtnStyle              ButtonStyle
-	PopupButtonStyle            ButtonStyle
-	DropdownStyle               ButtonStyle
-	DisabledButtonStyle         ButtonStyle
-	DeleteButtonStyle           ButtonStyle
-	DeleteConfirmButtonStyle    ButtonStyle
-	MissingInstStyle            ButtonStyle
-	MuteActiveStyle             ButtonStyle
-	SoloActiveStyle             ButtonStyle
-	FXActiveStyle               ButtonStyle
-	ContextMenuItemStyle        ButtonStyle
-	EQMuteButtonStyle           ButtonStyle
-	EQMuteButtonActiveStyle     ButtonStyle
-	EQFilterButtonActiveStyle   ButtonStyle
-	EQDBBoxStyle                TextInputStyle
-	colEQDBLabel                color.RGBA
-	colEQDBLabelMuted           color.RGBA
-	TransportPlayStyle          ButtonStyle
-	TransportStopStyle          ButtonStyle
-	TransportIncStyle           ButtonStyle
-	TransportDecStyle           ButtonStyle
-	TransportMiscStyle          ButtonStyle
-	TimelineKeycapStyle         ButtonStyle
-	TransportFollowOnStyle      ButtonStyle
-	FABStyle                    ButtonStyle
-	MobileRowLabelStyle         ButtonStyle
-	DrumCellUI                  DrumCellStyle
+	colBGTop                  color.RGBA
+	colBGBottom               color.RGBA
+	colGridHorizon            color.RGBA
+	colSurface1               color.RGBA
+	colSurface2               color.RGBA
+	colSurface3               color.RGBA
+	colGridLine               color.RGBA
+	colGridHalf               color.RGBA
+	colGridQuarter            color.RGBA
+	colGridEighth             color.RGBA
+	colGridSixteenth          color.RGBA
+	colGridThirtySecond       color.RGBA
+	colBorderSubtle           color.NRGBA
+	colBorderMedium           color.NRGBA
+	colBorderStrong           color.NRGBA
+	colButtonBorder           color.NRGBA
+	colAccent                 color.RGBA
+	colAccentBright           color.RGBA
+	colAccentDim              color.RGBA
+	colAccentSubtle           color.NRGBA
+	colPlayGreen              color.RGBA
+	colStopRed                color.RGBA
+	colMuteRed                color.RGBA
+	colTextPrimary            color.RGBA
+	colTextSecondary          color.RGBA
+	colTextDisabled           color.RGBA
+	colTextAccent             color.RGBA
+	colPlayButton             color.RGBA
+	colStopButton             color.RGBA
+	colDropdown               color.RGBA
+	colDropdownEdge           color.NRGBA
+	colError                  color.RGBA
+	colSplitterHandle         color.NRGBA
+	colSplitterHandleHover    color.NRGBA
+	colRackSurface            color.RGBA
+	colPanelBG                color.NRGBA
+	colPanelBorder            color.NRGBA
+	colScrim                  color.NRGBA
+	colDeleteFill             color.RGBA
+	colDeleteBorder           color.RGBA
+	colDeleteText             color.RGBA
+	colMenuGroupDeleteBG      color.NRGBA
+	colMenuIcon               color.RGBA
+	colStep                   color.RGBA
+	colStepOff                color.RGBA
+	colStepBorder             color.NRGBA
+	colHighlight              color.RGBA
+	colMuteCell               color.RGBA
+	colMuteHighlight          color.NRGBA
+	colBeatGroupAlt           color.NRGBA
+	colTimelineTotal          color.RGBA
+	colTimelineView           color.NRGBA
+	colTimelineViewHi         color.RGBA
+	colTimelineCursor         color.RGBA
+	colTimelineBeat           color.RGBA
+	colEQBg                   color.NRGBA
+	colEQBar                  color.RGBA
+	colEQBarPeak              color.RGBA
+	colWaveTrace              color.RGBA
+	colWaveTraceDry           color.NRGBA
+	colWaveMid                color.NRGBA
+	colEQCurve                color.NRGBA
+	colEQCurveFill            color.NRGBA
+	colEQHandle               color.RGBA
+	colEQHandleActive         color.RGBA
+	colEQHandleBorder         color.RGBA
+	colEQZeroLine             color.NRGBA
+	colEQFilterHandle         color.RGBA
+	colEQFilterHandleActive   color.RGBA
+	colEQFilterLine           color.NRGBA
+	colVizBass                color.RGBA
+	colVizMids                color.RGBA
+	colVizTreble              color.RGBA
+	NodeUI                    NodeStyle
+	SignalUI                  SignalStyle
+	EdgeUI                    EdgeStyle
+	colTransportSurface       color.RGBA
+	colTransportBorder        color.NRGBA
+	colTransportDivider       color.NRGBA
+	colTransportGroupBG       color.NRGBA
+	colPlayIconTint           color.RGBA
+	colStopIconTint           color.RGBA
+	colIncDecIcon             color.RGBA
+	colVolumeIconOn           color.RGBA
+	colFollowActive           color.RGBA
+	colRecordIdle             color.RGBA
+	colRecordActive           color.RGBA
+	colMuteActive             color.RGBA
+	colMuteActiveBdr          color.RGBA
+	colSoloActive             color.RGBA
+	colSoloActiveBdr          color.RGBA
+	PlayButtonStyle           ButtonStyle
+	StopButtonStyle           ButtonStyle
+	BPMBoxStyle               TextInputStyle
+	BPMDecStyle               ButtonStyle
+	BPMIncStyle               ButtonStyle
+	LenDecStyle               ButtonStyle
+	LenIncStyle               ButtonStyle
+	InstButtonStyle           ButtonStyle
+	UploadBtnStyle            ButtonStyle
+	PopupButtonStyle          ButtonStyle
+	DropdownStyle             ButtonStyle
+	DisabledButtonStyle       ButtonStyle
+	DeleteButtonStyle         ButtonStyle
+	DeleteConfirmButtonStyle  ButtonStyle
+	MissingInstStyle          ButtonStyle
+	MuteActiveStyle           ButtonStyle
+	SoloActiveStyle           ButtonStyle
+	FXActiveStyle             ButtonStyle
+	ContextMenuItemStyle      ButtonStyle
+	EQMuteButtonStyle         ButtonStyle
+	EQMuteButtonActiveStyle   ButtonStyle
+	EQFilterButtonActiveStyle ButtonStyle
+	EQDBBoxStyle              TextInputStyle
+	colEQDBLabelMuted         color.RGBA
+	TransportPlayStyle        ButtonStyle
+	TransportStopStyle        ButtonStyle
+	TransportIncStyle         ButtonStyle
+	TransportDecStyle         ButtonStyle
+	TransportMiscStyle        ButtonStyle
+	TimelineKeycapStyle       ButtonStyle
+	TransportFollowOnStyle    ButtonStyle
+	FABStyle                  ButtonStyle
+	MobileRowLabelStyle       ButtonStyle
+	DrumCellUI                DrumCellStyle
 )
 
 // Runtime STATE, not theme derivation — initialised once and NEVER touched
@@ -204,7 +194,6 @@ func rebuildThemeAliases() {
 	colBorderStrong = WithAlpha(genColorBorder, genAlphaBorderEmphasis) // focused input borders
 
 	colButtonBorder = colBorderMedium // alias for control borders
-	colSubtleBorder = colBorderSubtle // alias for subtle borders
 
 	// ── Accent (Primary — Cyan) ─────────────────────────────────────────
 	colAccent = genColorPrimary
@@ -229,20 +218,15 @@ func rebuildThemeAliases() {
 	// ── Legacy aliases (mapped to new surface system) ───────────────────
 	colPlayButton = genColorPlayDesktopFill                          // lime play fill (DESIGN.md play-desktop-fill)
 	colStopButton = genColorStopDesktopFill                          // wine stop fill (DESIGN.md stop-desktop-fill)
-	colBPMBox = colSurface2                                          // elevated surface for inputs
 	colDropdown = colSurface2                                        // elevated surface for dropdowns
 	colDropdownEdge = WithAlpha(genColorPrimary, genAlphaAccentTint) // magenta accent border @ alpha.accent-tint (50)
 	colError = genColorError                                         // DESIGN.md error
 
 	// Secondary button fill for file-ops, overflow, etc.
-	colSecondaryBtn = colSurface2
 
 	// Row control button inactive state
-	colRowBtnInactive = colSurface1
-	colRowBtnInactiveText = colTextSecondary
 
 	// Row label brighter color
-	colRowLabel = colTextPrimary
 
 	// Splitter handle colors (handle indicator on divider lines). One cyan
 	// color on every platform (desktop + mobile share it). Sourced from the
@@ -272,7 +256,6 @@ func rebuildThemeAliases() {
 	// Both groups now use named tokens × named alpha buckets — the
 	// menu-delete-tint TODO that previously kept this inline is resolved
 	// (see DESIGN.md `colors.menu-delete-tint`).
-	colMenuGroupBG = WithAlpha(genColorBorder, genAlphaBorderThin)                  // group container bg @ alpha.border-thin (8)
 	colMenuGroupDeleteBG = WithAlpha(genColorMenuDeleteTint, genAlphaBorderDefault) // delete-row warning tint @ alpha.border-default (15)
 	colMenuIcon = colTextDisabled                                                   // icon tint
 
@@ -334,7 +317,6 @@ func rebuildThemeAliases() {
 	// Transport border: subtle section divider
 	colTransportBorder = colBorderSubtle
 	// Transport container border (visible grouping)
-	colTransportContainerBorder = colBorderMedium
 	// Transport group divider — white@20 = alpha.border-panel
 	colTransportDivider = WithAlpha(genColorBorder, genAlphaBorderPanel)
 
@@ -346,7 +328,6 @@ func rebuildThemeAliases() {
 	colStopIconTint = colStopRed           // red for stop icon
 	colIncDecIcon = colTextPrimary         // primary text for +/- icons (mobile)
 	colVolumeIconOn = colTextSecondary     // muted grey when volume > 0 (nil-tint / master speaker; per-row icons pass their instrument color)
-	colVolumeIconOff = colTextDisabled     // disabled when muted/zero
 	colFollowActive = colTextPrimary       // neutral bright tint for follow-on (track lit); free state dims to colTextDisabled
 	colRecordIdle = genColorRecordIdle     // red circle for record button (DESIGN.md record-idle, opaque)
 	colRecordActive = genColorRecordActive // bright red when recording (DESIGN.md record-active, opaque)
@@ -403,7 +384,6 @@ func rebuildThemeAliases() {
 	// EQ per-band dB text input.
 	EQDBBoxStyle = TextInputStyleFromSpec(ComponentInputField, color.White)
 
-	colEQDBLabel = colTextPrimary
 	colEQDBLabelMuted = colTextSecondary
 
 	// ── Transport button styles (all share button-secondary recipe) ──
@@ -515,17 +495,11 @@ func rebuildThemeAliases() {
 	// audio_sticky_bar.go — pill tab palette (pre-boxed color.Color so
 	// drawPillTabAt stays allocation-free).
 	pillCapFillInactive = colSurface2
-	pillCapBorderInact = colButtonBorder
 	pillTextInactive = colTextSecondary
 	pillCapFillActive = genColorSunsetGold300
-	pillCapBorderActive = genColorSunsetGold300
 	pillTextActive = genColorBackground
-	pillShellInactive = adjustColor(colSurface2, -45)
-	pillShellActive = adjustColor(genColorSunsetGold300, -45)
 	pillCapFillDisabled = adjustColor(colSurface2, -20)
-	pillCapBorderDisab = adjustColor(colButtonBorder, -20)
 	pillTextDisabled = colTextDisabled
-	pillShellDisabled = adjustColor(colSurface2, -55)
 
 	// button_styles.go — hand-composed styles on top of specs.
 	PrimaryActionStyle = primaryActionStyle()

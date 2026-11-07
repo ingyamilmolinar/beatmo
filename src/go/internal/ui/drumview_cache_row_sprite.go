@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-const rowCachePatchMax = 12
-
 // drawDrumCell renders a single drum cell into the row sprite: a FLAT fill in
 // the instrument color (or the off / mute fill) with the 1 px cell border
 // that separates adjacent hits. DESIGN.md Rule 2 — nothing is 3D: the ON

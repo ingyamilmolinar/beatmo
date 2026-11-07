@@ -476,15 +476,6 @@ func (m *scheduleMetrics) sortSamples(samples []float64) []float64 {
 	return m.sorted
 }
 
-// percentileSample returns the qth percentile from a sample buffer.
-// Returns NaN if empty. Matches the browser's percentile() function.
-func percentileSample(samples []float64, q float64) float64 {
-	sorted := make([]float64, len(samples))
-	copy(sorted, samples)
-	sort.Float64s(sorted)
-	return sortedQuantile(sorted, q)
-}
-
 // sortedQuantile is percentileSample over an already-sorted buffer.
 func sortedQuantile(sorted []float64, q float64) float64 {
 	n := len(sorted)

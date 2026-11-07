@@ -228,32 +228,6 @@ func (g *Game) initJSSynthRecipe() {
 	audio.PushAllInstrumentDocsToPlatform()
 }
 
-// jsObjectToParams converts a plain-object JS value (param map) into a
-// Go map[string]float64. Non-finite or non-numeric values are silently
-// skipped — same boundary discipline as the userprefs + audio layers.
-func jsObjectToParams(obj js.Value) map[string]float64 {
-	if obj.Type() != js.TypeObject {
-		return nil
-	}
-	keys := js.Global().Get("Object").Call("keys", obj)
-	n := keys.Length()
-	out := make(map[string]float64, n)
-	for i := 0; i < n; i++ {
-		k := keys.Index(i).String()
-		v := obj.Get(k)
-		if v.Type() != js.TypeNumber {
-			continue
-		}
-		f := v.Float()
-		// NaN/Inf check via the same idiom audio.isFiniteParam uses.
-		if f != f || f > 1e308 || f < -1e308 {
-			continue
-		}
-		out[k] = f
-	}
-	return out
-}
-
 // // kitsJSValue serialises every registered kit into a JS array of
 // { id, displayName, members } objects. Used by listKits to give
 // browser tests + future picker UI a single read-only view.
