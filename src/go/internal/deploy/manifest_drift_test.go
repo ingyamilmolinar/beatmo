@@ -16,6 +16,7 @@ package deploy
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -176,13 +177,13 @@ func TestDeployManifestCoversRuntimeRefs(t *testing.T) {
 		)
 	}
 
-	// Each manifest entry must also resolve to an actual file under src/js/.
-	// This catches the inverse drift: a stale manifest entry whose source was
-	// renamed or removed.
+	// Each entry must be a tracked file or one the Makefile writes: a file merely
+	// present on this disk (an old build) would pass here and fail on a clean clone.
+	tracked := gitTrackedUnder(t, root, "src/js")
+	makefile := mustRead(t, filepath.Join(root, "Makefile"))
 	var orphan []string
 	for f := range manifest {
-		p := filepath.Join(root, "src", "js", f)
-		if _, err := os.Stat(p); err != nil {
+		if !tracked[f] && !strings.Contains(makefile, "../js/"+f) && !strings.Contains(makefile, "src/js/"+f) {
 			orphan = append(orphan, f)
 		}
 	}
@@ -299,4 +300,22 @@ func TestDeployCompressesAssets(t *testing.T) {
 			t.Errorf("deploy-wasm-gcs.sh missing %q -- %s", m.needle, m.why)
 		}
 	}
+}
+
+// gitTrackedUnder maps each tracked file under dir (relative to dir) to true.
+func gitTrackedUnder(t *testing.T, root, dir string) map[string]bool {
+	t.Helper()
+	cmd := exec.Command("git", "ls-files", "--", dir)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git ls-files %s: %v", dir, err)
+	}
+	m := map[string]bool{}
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if rel, ok := strings.CutPrefix(l, dir+"/"); ok {
+			m[rel] = true
+		}
+	}
+	return m
 }
