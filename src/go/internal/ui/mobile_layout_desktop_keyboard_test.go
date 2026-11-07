@@ -8,30 +8,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestFunctional_MobileLayout_DesktopKeyboard_BPM reproduces the reported bug:
-// on a browser rendering the MOBILE LAYOUT and driven with a MOUSE (a narrow
-// desktop window, OR — the case that shipped broken — a touch-capable laptop /
-// DevTools device-mode used with a mouse), clicking the BPM readout opens the
-// editor and shows a blinking cursor, but no key press registers.
-//
-// Root cause: ParamValueEditor.Update took the mobile native-<input> branch on
-// Profile().IsMobile() (+ device touch capability) and returned before running
-// keyboard handling. The native <input> is created only inside a `touchend`
-// handler, which never fires on a MOUSE gesture — so the editor is inert.
-//
-// The fix routes input by the OPENING GESTURE's pointer type (lastPointerWasTouch),
-// not device capability: a mouse-opened editor in mobile layout uses the keyboard
-// path. Here lastPointerWasTouchForTest=false models the mouse gesture.
+// A mobile layout driven by mouse and keyboard (a narrow desktop window) still
+// takes BPM input from the keyboard: there is no touch to open a native <input>.
 func TestFunctional_MobileLayout_DesktopKeyboard_BPM(t *testing.T) {
 	g := newDesktopGame(t)
 	// Force the mobile LAYOUT (as a narrow desktop-browser viewport would). Under
 	// the test build SetForceMobileProfile is a no-op, so set the flag directly.
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
-	// ...and model a MOUSE opening gesture (no native <input> will be created).
-	prevTouch := lastPointerWasTouchForTest
-	lastPointerWasTouchForTest = false
-	defer func() { lastPointerWasTouchForTest = prevTouch }()
 
 	if !Profile().IsMobile() {
 		t.Fatalf("precondition: expected mobile layout to be forced")

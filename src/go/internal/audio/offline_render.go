@@ -104,13 +104,6 @@ func argmaxAbs(x []float64) (int, float64) {
 	return bi, bv
 }
 
-func absInt(a int) int {
-	if a < 0 {
-		return -a
-	}
-	return a
-}
-
 // detectOnsets returns the start index of each transient: a rising edge above
 // `floor` that follows at least `refractory` samples of quiet. A single
 // sustained burst (which dips below floor only at its sine zero-crossings)

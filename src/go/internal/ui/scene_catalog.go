@@ -2150,20 +2150,6 @@ func synthTabStageDividerSceneSetup(instrument instrument.ID, section synthSecti
 	}
 }
 
-// spectrumCollisionSetup points the first two rows at instruments whose
-// fundamentals share one ISO band, so the Spectrum banner reports a real
-// collision. Instruments are set through SetInstrument (never a raw
-// Rows[i].Instrument write) so the row label and every dependent of the row's
-// instrument id follow — a direct field write leaves them on the previous
-// instrument and the capture stops showing what it claims.
-// spectrumControlsOf reaches the Spectrum tab's control header, or nil.
-func spectrumControlsOf(g *Game) *spectrumControls {
-	if g == nil || g.drum == nil || g.drum.eqPanelZone == nil {
-		return nil
-	}
-	return g.drum.eqPanelZone.spectrumControls
-}
-
 func spectrumCollisionSetup(g *Game) {
 	if g == nil || g.drum == nil || len(g.drum.Rows) < 2 {
 		return
@@ -3518,14 +3504,6 @@ func loadTemplateScene(stem string, mobile bool) func(*Game) {
 		}
 		panic("scene: no template " + stem)
 	}
-}
-
-// pitchedNode places a node on row 0 and points that row at a melodic
-// instrument, so nodeNoteLabel can resolve node → row → instrument and yield a
-// real note. organ-church is a modular melodic instrument present in the
-// default demo, so this needs no synthetic recipe binding.
-func pitchedNode(g *Game, i, j int) *uiNode {
-	return pitchedNodeWithInstrument(g, i, j, roster.OrganChurch)
 }
 
 // pitchedNodeWithInstrument is pitchedNode for an explicit instrument, so the

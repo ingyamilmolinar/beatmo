@@ -112,29 +112,6 @@ func applyFreezeVisual(b *Button, frozen bool) {
 	}
 }
 
-// newFreezeCodePill is the Chain tab's freeze toggle: a TEXT pill (FRZ / LIVE)
-// rather than the shared icon pill.
-//
-// Two reasons it diverges. The bare pause glyph reads as TRANSPORT pause —
-// the Chain panel sits directly under the transport bar, so an icon that means
-// "stop the music" one row up and "hold the picture" one row down is a real
-// misread. And it is the only icon in a row of text codes (OVR / SPL / DIF /
-// FIT / AG), so it looked like a different class of control.
-//
-// The other tabs keep the icon pill for now; the same ambiguity arguably
-// applies there, but that is a wider change than the Chain work.
-func newFreezeCodePill(onFreeze func() bool) *Button {
-	b := NewButton(i18n.T(i18n.KeyChainFreeze), InstButtonStyle, nil)
-	b.OnClick = func() {
-		if onFreeze == nil {
-			return
-		}
-		applyFreezeCodeVisual(b, onFreeze())
-	}
-	applyFreezeCodeVisual(b, false)
-	return b
-}
-
 // applyFreezeCodeVisual sets the Chain freeze pill's label from a frozen bool.
 // The label names the CURRENT state's action target the way the icon pill does:
 // live shows FRZ (tap to freeze), frozen shows LIVE (tap to go back to live).

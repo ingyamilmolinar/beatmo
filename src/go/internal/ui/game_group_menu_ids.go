@@ -61,17 +61,6 @@ const (
 
 var gmStepNames = [...]string{"n", "rdpit", "rdvol", "rddur"}
 
-// gmStepFor is the delta row of a rule param.
-func gmStepFor(p model.GroupParam) gmStep {
-	switch p {
-	case model.GroupParamPitch:
-		return gmStepPitch
-	case model.GroupParamVolume:
-		return gmStepVolume
-	}
-	return gmStepDuration
-}
-
 func gmRow(s gmStep) gmID                { return gmID{el: gmElRow, arg: int(s)} }
 func gmMinus(s gmStep) gmID              { return gmID{el: gmElMinus, arg: int(s)} }
 func gmValue(s gmStep) gmID              { return gmID{el: gmElValue, arg: int(s)} }

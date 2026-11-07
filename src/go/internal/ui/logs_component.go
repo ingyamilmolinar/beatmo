@@ -373,10 +373,6 @@ func logsRowH() int { return TextHeight() + SpaceSM }
 // the template menu share one single-source footer height.
 func logsFooterH() int { return menuPagerFooterH() }
 
-// logsBtnSize is the square size of the panel's icon keycap buttons.
-// Delegates to menuPagerBtnSize (menu_pager.go).
-func logsBtnSize() int { return menuPagerBtnSize() }
-
 // pagePrev/pageNext change the page and snap the scroll back to the top so the
 // new page always opens at its first row.
 func (c *LogsComponent) pagePrev() { c.page--; c.rebuild(); c.scrollToTop() }

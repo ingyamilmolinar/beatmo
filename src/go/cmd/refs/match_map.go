@@ -204,7 +204,6 @@ type mapInstrument struct {
 	closest     string
 	closestRank int
 	state       string
-	note        string
 }
 
 type mapOwn struct {

@@ -1152,17 +1152,6 @@ func (p *samplerPanel) applySamplerKnob(idx int) {
 	dv.applySamplerEditLive()
 }
 
-// samplerKnobReadoutRect returns the caption hit-rect for the given sampler
-// knob index. Returns the zero rectangle when the index is out of range or
-// the rect has not been populated yet (no Draw pass has occurred).
-func (p *samplerPanel) samplerKnobReadoutRect(idx int) image.Rectangle {
-	dv := p.dv
-	if idx < 0 || idx >= samplerKnobCount {
-		return image.Rectangle{}
-	}
-	return dv.sampler.readoutRects[idx]
-}
-
 // samplerKnobDef synthesizes the audio.ParamDef for sampler knob idx from its
 // KnobScale — the single source of truth shared by the value-wheel popup, the
 // numeric editor, and the ParamCard gauge. The sampler has no per-knob binding
@@ -1645,10 +1634,6 @@ func (dv *DrumView) drawSamplerKnobs(dst *ebiten.Image) { dv.sp().drawSamplerKno
 func (dv *DrumView) drawSamplerWaveform(dst *ebiten.Image) { dv.sp().drawSamplerWaveform(dst) }
 
 func (dv *DrumView) applySamplerKnob(idx int) { dv.sp().applySamplerKnob(idx) }
-
-func (dv *DrumView) samplerKnobReadoutRect(idx int) image.Rectangle {
-	return dv.sp().samplerKnobReadoutRect(idx)
-}
 
 func (dv *DrumView) samplerTabUpdate() bool { return dv.sp().samplerTabUpdate() }
 

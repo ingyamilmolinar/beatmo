@@ -91,7 +91,7 @@ type gridRenderCache struct {
 	nodeLayerCamOffY  float64
 	nodeLayerCamScale float64
 	nodeLayerGraphSig uint64 // hash of node positions + colors + types
-	nodeLayerPad      int    // reuse tolerance for camera pans
+	// reuse tolerance for camera pans
 
 	// node sprite cache (screen-space) keyed by radius px + colors
 	nodeSpriteCache map[spriteKey]*ebiten.Image

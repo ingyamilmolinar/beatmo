@@ -175,14 +175,6 @@ func (dv *DrumView) SetFollow(f bool) {
 	// No TransportZone (rare test-only path) — log-only no-op.
 }
 
-// syncTrackBtnVisual delegates to TransportZone, which owns the track button
-// and the follow state.
-func (dv *DrumView) syncTrackBtnVisual() {
-	if dv.transportZone != nil {
-		dv.transportZone.syncTrackBtnVisual()
-	}
-}
-
 // TrackBeat adjusts the drum view offset to keep the given beat visible when
 // auto-tracking is enabled.
 //

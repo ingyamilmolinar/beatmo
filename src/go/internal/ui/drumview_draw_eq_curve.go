@@ -20,10 +20,6 @@ const (
 	eqGuideDB = 6.0
 )
 
-// eqGuideLabelScale sizes the ±6 dB end labels (caption-sized, derived from
-// the font tokens so it tracks any future font change).
-var eqGuideLabelScale = FontSizeCaption / FontSizeBody
-
 // freqToX maps a frequency (Hz) to an X pixel within eqRect using log scale.
 func freqToX(hz float64, r image.Rectangle) int {
 	if hz <= 0 {
@@ -242,14 +238,4 @@ func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 		}
 	}
 	return false
-}
-
-// rowIndex returns the index of the given row, or -1 if not found.
-func (dv *DrumView) rowIndex(row *DrumRow) int {
-	for i, r := range dv.Rows {
-		if r == row {
-			return i
-		}
-	}
-	return -1
 }

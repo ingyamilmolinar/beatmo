@@ -143,17 +143,6 @@ func (a *Analysis) computePitch() {
 	a.pitch = tr
 }
 
-// decimate is decimate over the analysed PCM, yielding while Warm runs.
-func (a *Analysis) decimate(d int) []float64 {
-	return decimateYield(a.pcm, d, func(j int) { a.yieldEvery(j, 2048) })
-}
-
-// decimate low-passes (63-tap windowed sinc, cutoff 0.42·fs/d) and keeps every
-// d-th sample. d == 1 copies to float64.
-func decimate(pcm []float32, d, sr int) []float64 {
-	return decimateYield(pcm, d, nil)
-}
-
 func decimateYield(pcm []float32, d int, step func(j int)) []float64 {
 	if d <= 1 {
 		out := make([]float64, len(pcm))

@@ -260,7 +260,6 @@ var untokenizedAllowlist = map[string]string{
 	"colGraphGlowRing":        "Synth-tab graph role colour (synth_view_draw.go); composes a Visualizers token + a named alpha bucket, re-derived on ApplyTheme",
 	"colFuzzyHighlight":       "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
 	"pillCapFillActive":       "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
-	"pillCapBorderActive":     "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
 	"pillTextActive":          "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
 
 	// Surfaces / backgrounds
@@ -303,7 +302,6 @@ var untokenizedAllowlist = map[string]string{
 	"colScrim":       "modal backdrop dim — pure-black at alpha 150; Stitch spec rejects alpha-bearing tokens",
 
 	// Context menu group chrome (alpha composites over surface-overlay)
-	"colMenuGroupBG":       "context menu group container — white@8 over surface-overlay",
 	"colMenuGroupDeleteBG": "context menu destructive group — destructive@15 over surface-overlay",
 
 	// Drum/timeline cell rendering

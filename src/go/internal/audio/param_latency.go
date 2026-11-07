@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -41,7 +40,6 @@ type ParamLatencyMetrics struct {
 // a single producer (the goroutine driving the slider) but reads under
 // RWMutex so the snapshot reader doesn't tear durations.
 type paramLatencyCounters struct {
-	mu          sync.RWMutex
 	updates     atomic.Int64
 	rejected    atomic.Int64
 	coalesced   atomic.Int64

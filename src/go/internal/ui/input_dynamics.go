@@ -222,13 +222,6 @@ func wheelScrollSteps() int {
 	return wheelRowsFromNotches(ny)
 }
 
-// wheelScrollStepsX returns this frame's HORIZONTAL wheel movement as steps
-// (a two-finger sideways trackpad scroll; used by the timeline).
-func wheelScrollStepsX() int {
-	nx, _ := wheelNotches()
-	return wheelRowsFromNotches(nx)
-}
-
 // wheelZoomDelta returns this frame's vertical wheel movement in detents for
 // continuous (non-stepped) consumers such as camera zoom, which want the
 // fractional magnitude rather than whole rows.

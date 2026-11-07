@@ -159,14 +159,6 @@ func pitchedVoiceKey(id instrument.ID, sampleRate int, pitch float64) (voiceCach
 	return liveVoiceKey(id, sampleRate, pitch, true, false)
 }
 
-// pitchedVoiceKeyForDoc is pitchedVoiceKey for an explicit document snapshot
-// (prewarm of a prospective edit). Byte-identical to the dispatch key for the
-// same document (TestPrewarmVoiceParamsKeyMatchesDispatch).
-func pitchedVoiceKeyForDoc(id instrument.ID, sampleRate int, pitch float64, d instrument.Doc) voiceCacheKey {
-	key, _ := docVoiceKey(id, d, sampleRate, pitch, true, false)
-	return key
-}
-
 // renderPitchedIntoCacheForDoc renders (id, pitch) under document d into
 // globalVoiceCache. No-op when already cached; false when d is not melodic.
 func renderPitchedIntoCacheForDoc(id instrument.ID, sampleRate int, pitch float64, d instrument.Doc, origin renderOrigin) bool {
@@ -190,14 +182,6 @@ func VoiceCached(id instrument.ID, pitch float64) bool {
 // tryRecipeVoice returns (voice, true) when id renders from its document.
 func tryRecipeVoice(id instrument.ID, sampleRate int) (Voice, bool) {
 	return tryRecipeVoiceOptsOrigin(id, sampleRate, false, originDispatch)
-}
-
-// tryRecipeVoiceOpts is tryRecipeVoice with an ignoreEdit escape hatch used by
-// RenderInstrumentOneShotRaw: the Sampler editor needs the UN-edited source.
-//
-// WARNING: bare wrapper — attributes originDispatch (see newRecipeAwareVoice).
-func tryRecipeVoiceOpts(id instrument.ID, sampleRate int, ignoreEdit bool) (Voice, bool) {
-	return tryRecipeVoiceOptsOrigin(id, sampleRate, ignoreEdit, originDispatch)
 }
 
 // tryRecipeVoiceOptsOrigin is tryRecipeVoiceOpts with explicit attribution.

@@ -282,9 +282,6 @@ func buildDocumentScopeKinds() map[hooks.Kind]string {
 	return m
 }
 
-// undoLabelFor returns the UI label for a recorded kind ("" if not recorded).
-func undoLabelFor(k hooks.Kind) string { return documentScopeKinds[k] }
-
 // recordUndo is the synchronous tap. Free-function form so emit helpers can
 // call it without a *Game. No-op when kind is out of the recorded-set.
 func recordUndo(k hooks.Kind) {

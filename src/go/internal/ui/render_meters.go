@@ -426,11 +426,6 @@ func meterColor(db float64) color.RGBA {
 	return meterLow
 }
 
-// meterColorAlpha returns the meter color with a custom alpha for overlays.
-func meterColorAlpha(db float64, alpha uint8) color.NRGBA {
-	return WithAlpha(meterColor(db), alpha)
-}
-
 // drawLevelsMultiChannel renders one vertical Peak/RMS strip per
 // instrument plus a wider Master strip on the right, plus an aggregate
 // readout column on the far right. Phase 2 of the audio-panel redesign:

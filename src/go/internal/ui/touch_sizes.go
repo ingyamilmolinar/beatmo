@@ -122,14 +122,6 @@ const (
 	BtnHeightLG = genSpacingBtnLg
 )
 
-// labelButtonWidth sizes a text button to comfortably fit its label
-// (label width + a SpaceMD pad on each side). Shared by the audio-panel
-// header rows (Synth, Sampler) so no button truncates its label and the
-// width tracks the font rather than a hand-tuned magic number.
-func labelButtonWidth(label string) int {
-	return TextWidth(label) + 2*SpaceMD
-}
-
 // Standard icon sizes (px)
 const (
 	IconSizeSM = genSpacingIconSm

@@ -431,17 +431,11 @@ func (b *AudioStickyBar) TabBtn(i int) *Button {
 // face (sunset-gold-300), pressed-IN, dark text; disabled = recessed/dim.
 var (
 	pillCapFillInactive color.Color
-	pillCapBorderInact  color.Color
 	pillTextInactive    color.Color
 	pillCapFillActive   color.Color
-	pillCapBorderActive color.Color
 	pillTextActive      color.Color
-	pillShellInactive   color.Color
-	pillShellActive     color.Color
 	pillCapFillDisabled color.Color
-	pillCapBorderDisab  color.Color
 	pillTextDisabled    color.Color
-	pillShellDisabled   color.Color
 )
 
 // drawPillTabAt is the file-scope free-function version of the legacy

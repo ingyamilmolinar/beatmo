@@ -713,15 +713,6 @@ func (b *Button) AdvancePressAnim() {
 	}
 }
 
-// fillColor resolves the cap's base fill for the shell/wall derivation: the
-// spec's Fill when spec-driven, else a neutral surface fallback.
-func (b *Button) fillColor() color.Color {
-	if b.hasSpecID {
-		return Spec(b.SpecID).Fill
-	}
-	return TokenSurface2()
-}
-
 // Pressed reports whether the button is currently in the pressed (held-down)
 // visual state. Driven by the shared input lifecycle (HandleInputResult /
 // buttonHitAdapter); used by tests and any caller that needs press feedback.

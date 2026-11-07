@@ -15,15 +15,6 @@ func (p *synthPanel) synthMobileFocusRect() image.Rectangle {
 	return dv.instEditorMobileFocusRect
 }
 
-// synthSectionsRectForTest returns the post-shrink knob-grid rect that
-// layoutSynthSections actually consumes — i.e. after the desktop preview pane
-// and/or mobile focus band have been carved out. Test-only introspection.
-func (p *synthPanel) synthSectionsRectForTest() image.Rectangle {
-	dv := p.dv
-
-	return dv.instEditorSectionsRect
-}
-
 // synth_selected_control.go — which knob the focus graph explains.
 //
 // Selection is per-instrument, set on knob press (click-to-select, sticky —
@@ -70,10 +61,6 @@ func (p *synthPanel) setSynthSelectedControl(instID instrument.ID, kIdx int) {
 
 func (dv *DrumView) synthMobileFocusRect() image.Rectangle {
 	return dv.synp().synthMobileFocusRect()
-}
-
-func (dv *DrumView) synthSectionsRectForTest() image.Rectangle {
-	return dv.synp().synthSectionsRectForTest()
 }
 
 func (dv *DrumView) synthSelectedControlIdx(instID instrument.ID, sec *synthSection) int {

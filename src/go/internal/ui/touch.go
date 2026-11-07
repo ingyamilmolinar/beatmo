@@ -427,7 +427,7 @@ var (
 	lastSingleTouchX    int
 	lastSingleTouchY    int
 	lastSingleTouchHeld bool // true when the next frame should publish the held lift coords
-	pendingTouchRelease bool // true *during* the held release frame; cleared on the frame after
+	// true *during* the held release frame; cleared on the frame after
 
 	// Tap injection: when a tap gesture fires (touch already ended),
 	// we inject a 2-frame press-then-release cycle so mouse handlers
@@ -446,7 +446,6 @@ func updateTouchOverride() {
 	if inputForTestActive {
 		touchOverrideActive = false
 		lastSingleTouchHeld = false
-		pendingTouchRelease = false
 		return
 	}
 
@@ -467,7 +466,6 @@ func updateTouchOverride() {
 		}
 		// A tap injection supersedes any pending release-frame hold.
 		lastSingleTouchHeld = false
-		pendingTouchRelease = false
 		return
 	}
 
@@ -483,7 +481,6 @@ func updateTouchOverride() {
 			lastSingleTouchX = pt.X
 			lastSingleTouchY = pt.Y
 			lastSingleTouchHeld = true
-			pendingTouchRelease = false
 			return
 		}
 	}
@@ -498,12 +495,10 @@ func updateTouchOverride() {
 		touchOverrideY = lastSingleTouchY
 		touchOverrideLeft = false
 		lastSingleTouchHeld = false
-		pendingTouchRelease = true
 		return
 	}
 
 	// No override (post-release frame and beyond).
-	pendingTouchRelease = false
 	touchOverrideActive = false
 }
 
@@ -554,7 +549,6 @@ func resetTouchOverride() {
 	lastSingleTouchX = 0
 	lastSingleTouchY = 0
 	lastSingleTouchHeld = false
-	pendingTouchRelease = false
 	touchTapInjected = false
 	touchTapFrame = 0
 	touchTapX = 0

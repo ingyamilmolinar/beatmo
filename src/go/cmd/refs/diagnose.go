@@ -342,23 +342,6 @@ func toWave(samples []float32, sr int, label string) wave.Wave {
 	return wave.Wave{Samples: out, SampleRate: sr, Label: label}
 }
 
-// diagnoseInstrument runs the full render+level-match+analyze pipeline for
-// inst against refID (""=default candidate) and returns the per-axis report.
-//
-// When refID is explicitly given, resolution goes through the catalogue's
-// bare Ref(id) lookup + renderCompare directly -- NOT computeCompare's
-// instrument-owns-this-ref gate (compareCandidates/pickReference) -- because
-// the acceptance-gate test needs to pin the EXACT reference a human listener
-// judged against (recorded in ear_verdicts.jsonl), which for some instruments
-// (e.g. cello-A3) was a shared family reference used by `refs audition`, not
-// one of the instrument's own `refs compare` candidates. This mirrors how
-// cmdAudition itself renders a family against a reference outside its own
-// candidate set (see renderCompare's doc comment). refID=="" keeps the
-// ordinary computeCompare path (used by -all and the bare CLI default).
-func diagnoseInstrument(diag io.Writer, inst instrument.ID, refID string) (instrumentDiagnosis, error) {
-	return diagnoseInstrumentDur(diag, inst, refID, 0)
-}
-
 // diagnoseInstrumentDur is diagnoseInstrument's -dur-aware core. durFlag>0
 // overrides the SYNTH's render duration only (renderCompare's durFlag
 // parameter never affects the reference side, which is always whatever's

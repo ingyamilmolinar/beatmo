@@ -91,7 +91,7 @@ type samplerState struct {
 	// scroll body catch-all hit area.
 	knobGrid     *ControlGrid
 	knobGridRect image.Rectangle
-	btns         []*Button // header + control-row buttons, rebuilt each Layout
+	// header + control-row buttons, rebuilt each Layout
 
 	dragHandle int // -1 none, 0 start handle, 1 end handle
 
@@ -520,15 +520,6 @@ func (s *samplerState) reverseBuffer() {
 	}
 	audio.ReverseSample(s.raw)
 	s.reverse = !s.reverse // net flip parity, consumed only by editDescriptor()
-}
-
-// loadPCM installs an externally-decoded buffer (WAV import, Phase 2).
-func (s *samplerState) loadPCM(pcm []float32, sr int) {
-	s.raw = pcm
-	s.rawSampleRate = sr
-	s.source = samplerSourceWAV
-	s.status = ""
-	s.reset()
 }
 
 // hasBuffer reports whether a working buffer is loaded.

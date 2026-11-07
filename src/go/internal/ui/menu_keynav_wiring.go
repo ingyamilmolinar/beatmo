@@ -84,13 +84,6 @@ func (dv *DrumView) overflowNavSignature() string {
 	return itoaMenuNav(dv.overflowPage) + "|" + dv.templateSearchQuery
 }
 
-// resetOverflowKeyNav clears the cursor and its shape signature. Called when
-// the overflow menu closes so the next open starts clean.
-func (dv *DrumView) resetOverflowKeyNav() {
-	dv.overflowNavSig = ""
-	dv.overflowKeyNav().Reset()
-}
-
 // OverflowKeyNavForTest exposes the overflow menu's keyboard cursor.
 func (dv *DrumView) OverflowKeyNavForTest() *MenuKeyNav { return dv.overflowKeyNav() }
 
