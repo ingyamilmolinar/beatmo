@@ -1,16 +1,7 @@
 package ui
 
-// synth_focus.go — the Synth tab's FOCUS: the one control the graph explains
-// (spec docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md
-// §4.2). Pressing, dragging or opening the wheel on a dial focuses it in both
-// modes; in the production UI a card tap focuses the card's first dial (the
-// card no longer drills). Focus is sticky until another control takes it.
-//
-// It is session UI state only (never persisted, never undoable), and it is
-// VALIDATED on read: a focus whose instrument is no longer the one shown, or
-// whose card/dial the current card set does not carry (an instrument switch, a
-// dial hidden by its stage), reads as no focus. So no instrument-switch or
-// stage-toggle site has to remember to clear it.
+// The one control the graph explains: session UI state only, VALIDATED on read (a switched instrument or a
+// hidden dial reads as no focus), so no switch or toggle site has to clear it.
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
@@ -20,10 +11,7 @@ type synthFocus struct {
 	card, dial string
 }
 
-// setSynthFocusDial focuses dial `dial` of card `card` on inst.
-//
-// Every focus is a gesture start (a press, a wheel open, a card tap), so it
-// also snapshots the graph's BEFORE ghost: the sound as it was.
+// Every focus is a gesture start, so it also snapshots the graph's BEFORE ghost.
 func (dv *DrumView) setSynthFocusDial(inst instrument.ID, card, dial string) {
 	dv.synthFocusState = synthFocus{inst: inst, card: card, dial: dial}
 	dv.captureGraphBefore(inst, dialCtl(card, dial))
@@ -32,8 +20,6 @@ func (dv *DrumView) setSynthFocusDial(inst instrument.ID, card, dial string) {
 // clearSynthFocus drops the focus (the graph returns to the overview).
 func (dv *DrumView) clearSynthFocus() { dv.synthFocusState = synthFocus{} }
 
-// synthFocusedDial returns the focused dial on inst, when the focus names inst
-// and the current card set still carries that dial.
 func (dv *DrumView) synthFocusedDial(inst instrument.ID) (card, dial string, ok bool) {
 	f := dv.synthFocusState
 	if f.inst == "" || f.inst != inst {
@@ -45,8 +31,6 @@ func (dv *DrumView) synthFocusedDial(inst instrument.ID) (card, dial string, ok 
 	return f.card, f.dial, true
 }
 
-// focusCardFirstDial focuses the first live dial of card on inst (the
-// production card tap). No-op when the card has no dial.
 func (dv *DrumView) focusCardFirstDial(inst instrument.ID, card string) {
 	cg := dv.macroConceptByID(card)
 	if cg == nil || len(cg.Dials) == 0 {
@@ -55,8 +39,6 @@ func (dv *DrumView) focusCardFirstDial(inst instrument.ID, card string) {
 	dv.setSynthFocusDial(inst, card, cg.Dials[0].Dial.ID)
 }
 
-// clearSynthFocusIfShown drops the focus when the Synth tab is showing a
-// focused dial for its instrument (Esc). Reports whether it did.
 func (dv *DrumView) clearSynthFocusIfShown() bool {
 	if dv.eqPanelZone == nil || dv.eqPanelZone.ActiveTab() != TabSynth {
 		return false
@@ -70,9 +52,7 @@ func (dv *DrumView) clearSynthFocusIfShown() bool {
 	return true
 }
 
-// synthFocusClearAdapter covers the root's card area BEHIND the cards: a tap
-// on empty space drops the focus (the graph returns to the overview); a
-// vertical sweep scrolls the cards like the plain scroll body it replaces.
+// Behind the cards: a tap on empty space drops the focus, a sweep scrolls.
 type synthFocusClearAdapter struct {
 	dv  *DrumView
 	arb dragScrollArbiter

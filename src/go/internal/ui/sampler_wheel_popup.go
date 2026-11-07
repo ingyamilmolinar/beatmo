@@ -5,13 +5,7 @@ import (
 	"image"
 )
 
-// openSamplerKnobWheelPopup opens the mobile scroll-wheel for sampler knob idx,
-// wired to the sampler's shared knob value-model. It closes any existing popups
-// first, then opens the wheel through the portal system. (The synth tab's
-// equivalent popup path was retired in Task 13 — synth controls now arm
-// inline instead.) The sampler's ParamDef is synthesized from
-// samplerKnobScale (it has no per-knob binding array) and every sampler knob
-// is continuous (Discrete=false).
+// Every sampler knob is continuous, and its ParamDef is synthesized from samplerKnobScale.
 func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 	dv := p.dv
 	if idx < 0 || idx >= samplerKnobCount || idx >= len(dv.sampler.knobs) {
@@ -21,8 +15,7 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 	if k == nil {
 		return
 	}
-	// Flush any pending desktop wheel-nudge commit so the popup snapshots the
-	// committed value.
+	// Flush the wheel-nudge commit so the popup snapshots the committed value.
 	dv.samplerWheelNudge.flush()
 	dv.CloseAllPopups()
 
@@ -38,13 +31,10 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 		Badge:    badge,
 		Def:      def,
 		Discrete: false, // every sampler knob is continuous (endless + step badge)
-		// Title is the param NAME ("Start", "Pitch"); the PlainEnglish gloss moves
-		// to the title band's Gloss slot (Task 7 popup v2).
 		Title:    func() string { return samplerKnobNameText(idx, &dv.sampler) },
 		Gloss:    func() string { return samplerKnobPlainEnglish(idx) },
 		OnChange: func() { dv.applySamplerKnob(idx) },
-		// One undo step per gesture, committed on release — the same site the
-		// rotary path commits at (samplerKnobHitAdapter.OnRelease).
+		// One undo step per gesture, on release.
 		OnCommit:     func() { dv.commitSamplerEdit() },
 		OnResolution: func() { dv.persistKnobStep(badge) },
 		Accent:       nil, // renderer falls back to the primary token
@@ -53,9 +43,7 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 	dv.openSamplerWheelPortal()
 }
 
-// SamplerWheelPopupRect returns the screen-space bounding rectangle of the
-// mobile sampler-knob scroll-wheel popup, or an empty rectangle when the popup
-// is nil or not open. Used by (*Game).SubjectRect for screenshot cropping.
+// Empty when nil or closed.
 func (p *samplerPanel) SamplerWheelPopupRect() image.Rectangle {
 	dv := p.dv
 	if dv.samplerWheelPopup == nil || !dv.samplerWheelPopup.IsOpen() {
@@ -64,9 +52,7 @@ func (p *samplerPanel) SamplerWheelPopupRect() image.Rectangle {
 	return dv.samplerWheelPopup.Rect()
 }
 
-// closeSamplerKnobWheelPopup closes the mobile scroll-wheel for sampler knobs.
-// Navigating away persists the pending edit (Accept commits + closes; no-op if
-// already closed).
+// Navigating away keeps the pending edit (Accept commits and closes).
 func (p *samplerPanel) closeSamplerKnobWheelPopup() {
 	dv := p.dv
 	if dv.samplerWheelPopup != nil {
@@ -79,9 +65,6 @@ func (p *samplerPanel) closeSamplerKnobWheelPopup() {
 
 func (dv *DrumView) openSamplerKnobWheelPopup(idx int) { dv.sp().openSamplerKnobWheelPopup(idx) }
 
-// SamplerWheelPopupRect returns the screen-space bounding rectangle of the
-// mobile sampler-knob scroll-wheel popup. Exported forwarding shim onto the
-// relocated *samplerPanel method.
 func (dv *DrumView) SamplerWheelPopupRect() image.Rectangle { return dv.sp().SamplerWheelPopupRect() }
 
 func (dv *DrumView) closeSamplerKnobWheelPopup() { dv.sp().closeSamplerKnobWheelPopup() }

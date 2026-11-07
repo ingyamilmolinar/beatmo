@@ -1,13 +1,7 @@
 package ui
 
-// synth_views.go — WHICH picture the Synth tab's graph shows for a control
-// (spec docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md §4.4–4.5).
-//
-// Every view is drawn from the rendered note (synth_graph_pipeline.go →
-// soundview), never from a model of the voice. A dial names its view in its
-// data (internal/assets/synth_dials.json "view"); a raw knob resolves through
-// synthParamViews, an explicit group table with name overrides and NO
-// fallback (TestEveryVisibleParamHasAnExplicitView).
+// Every view is drawn from the rendered note, never a model. A raw knob resolves through an explicit table with
+// NO fallback.
 
 import (
 	"strings"
@@ -57,9 +51,7 @@ func synthViewTitle(v synthView) string {
 	return ""
 }
 
-// synthViewByName maps a dial's "view" data value to a view. "lfo-target"
-// follows where the instrument's LFO is routed: Amp → loudness, Pitch → pitch,
-// Cutoff → colour over time.
+// "lfo-target" follows the LFO's routing: Amp → loudness, Pitch → pitch, Cutoff → colour over time.
 func synthViewByName(name string, merged audio.RecipeParams) (synthView, bool) {
 	switch name {
 	case "loudness":
@@ -94,9 +86,7 @@ func synthLFOTargetView(merged audio.RecipeParams) synthView {
 	return viewLoudness
 }
 
-// synthParamViewGroups is each raw-knob group's default view; overrides by
-// name (synthParamViewNames, then synthParamViewSuffixes) win. Every visible
-// group must be here: an unknown group is a test failure, not a fallback.
+// Every visible group must be here: an unknown group is a test failure, not a fallback.
 var synthParamViewGroups = map[string]synthView{
 	"osc":                viewHarmonics,
 	"fm":                 viewHarmonics,
@@ -160,8 +150,6 @@ var synthParamViewNames = map[string]synthView{
 	"noiseband_level": viewNoise,
 }
 
-// synthParamViewSuffixes overrides by name suffix (decay tables of the
-// snare and the modal bank).
 var synthParamViewSuffixes = []struct {
 	suffix string
 	view   synthView
@@ -171,8 +159,7 @@ var synthParamViewSuffixes = []struct {
 	{"_dec1", viewColourTime}, {"_dec2", viewColourTime}, {"_dec3", viewColourTime}, {"_dec4", viewColourTime},
 }
 
-// synthParamView resolves a raw knob's view. ok=false only for a group the
-// table does not know (a discipline-test failure, never silently absorbed).
+// ok=false only for an unknown group, never silently absorbed.
 func synthParamView(def audio.ParamDef, merged audio.RecipeParams) (synthView, bool) {
 	if v, ok := synthParamViewNames[def.Name]; ok {
 		return v, true
@@ -189,10 +176,8 @@ func synthParamView(def audio.ParamDef, merged audio.RecipeParams) (synthView, b
 	return v, ok
 }
 
-// synthViewNeeds is the analysis view v reads (plus the envelope, which the
-// trigger glow always reads). Only these are computed for a render — on the
-// worker — so a loudness view never pays for a spectrogram, and the browser's
-// single thread does not either.
+// Only these are computed, on the worker, so a loudness view never pays for a spectrogram on the browser's
+// single thread.
 func synthViewNeeds(v synthView) soundview.Need {
 	n := soundview.NeedEnvelope
 	switch v {
@@ -211,10 +196,7 @@ func synthViewNeeds(v synthView) soundview.Need {
 	return n
 }
 
-// synthRenderNeeds is synthViewNeeds for one render: an UNPITCHED note's wave
-// close-up falls back to its tone colour, so once its pitch is known to be
-// absent its transform is warmed too (a second worker round) — a pitched
-// note never pays for it.
+// An unpitched note's close-up falls back to colour, so that is warmed once its pitch is known absent.
 func synthRenderNeeds(v synthView, r *graphRender) soundview.Need {
 	n := synthViewNeeds(v)
 	if v == viewWave && r != nil && r.an != nil && r.an.Has(soundview.NeedPitch) && !r.an.Pitched() {

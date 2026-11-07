@@ -7,35 +7,23 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// tabControls is the control header owned by a single audio-panel tab. Each
-// tab's controls are an independent component — no tab shares a button widget
-// or visibility state with another. The dispatcher (EQPanelZone) asks the
-// active tab's component for its header height, lays it into the strip just
-// below the shared tab-switcher row, draws it, and routes its hit areas. This
-// is the per-tab ownership model that ChainPanelZone and the Synth header
-// already follow.
+// Each tab owns its controls: no tab shares a widget or visibility state with another.
 type tabControls interface {
 	// HeaderH returns the control-header height in pixels (0 = no header).
 	HeaderH() int
-	// Layout positions the buttons inside header (the strip reserved at the
-	// top of the tab's content region, directly below the tab-switcher row).
 	Layout(header image.Rectangle)
 	// Draw renders the buttons.
 	Draw(dst *ebiten.Image)
 	// HitAreas returns the buttons' hit areas (z-indexed above the panel body).
 	HitAreas() []HitArea
-	// SyncFreeze updates the freeze button's glyph/color from the analyzer's
-	// global frozen state. No-op for components without a freeze button.
+	// No-op without a freeze button.
 	SyncFreeze(frozen bool)
 }
 
-// audioControlHeaderH is the desktop height of a per-tab control header — the
-// row of tab-specific pills directly below the shared tab-switcher row. Mirrors
-// stickyBarH so the two rows read as a stacked pair.
+// Matches stickyBarH, so the two rows read as a pair.
 const audioControlHeaderH = 32
 
-// controlHeaderHeight returns the per-tab control-header height (taller on
-// mobile so the freeze pill meets the touch-min, mirroring stickyBarHeight).
+// Taller on mobile, so the freeze pill meets the touch minimum.
 func controlHeaderHeight() int {
 	if Profile().IsMobile() {
 		return 40
@@ -43,13 +31,9 @@ func controlHeaderHeight() int {
 	return audioControlHeaderH
 }
 
-// audioPillHeight is the single height for every audio-panel pill, Density-
-// driven (two effective sizes: Comfortable desktop, Spacious mobile).
 func audioPillHeight() int { return Profile().DensityValues().AudioPillH }
 
-// audioPillWidth is content-fit: icon/empty-text pills are square (= height);
-// text pills are TextWidth(label) + 2*AudioPillPadX, clamped to the square
-// minimum so a 1-char label stays comfortably tappable.
+// Clamped to the square minimum so a 1-char label stays tappable.
 func audioPillWidth(btn *Button) int {
 	h := audioPillHeight()
 	if btn == nil {
@@ -65,8 +49,7 @@ func audioPillWidth(btn *Button) int {
 	return w
 }
 
-// audioPillHit builds a pill's hit area; on mobile it expands to the 44px
-// touch-min via Touch+ClipRect (bounded — the visible pill is not enlarged).
+// On mobile expands to 44 px via Touch + ClipRect; the visible pill stays.
 func audioPillHit(btn *Button, z int, tag string) HitArea {
 	ha := HitArea{Rect: btn.Rect(), ZIndex: z, Handler: &buttonHitAdapter{btn: btn}, Tag: tag}
 	if Profile().IsMobile() {
@@ -76,11 +59,8 @@ func audioPillHit(btn *Button, z int, tag string) HitArea {
 	return ha
 }
 
-// newFreezePill builds a freeze/resume toggle pill wired to onFreeze (which
-// returns the new frozen state). Each tab owns its own instance — there is no
-// shared freeze widget. The pill is icon-only: a pause icon while live (the
-// click action is "pause") and a play icon while frozen (action "resume"), set
-// by applyFreezeVisual.
+// Each tab owns its own instance. Icon-only: the icon names the click action (pause while live,
+// play while frozen).
 func newFreezePill(onFreeze func() bool) *Button {
 	b := NewButton("", InstButtonStyle, nil)
 	b.OnClick = func() {
@@ -93,9 +73,7 @@ func newFreezePill(onFreeze func() bool) *Button {
 	return b
 }
 
-// applyFreezeVisual sets the freeze pill's icon + color from a frozen bool.
-// Live → pause icon (the action is "pause"); frozen → play icon (action
-// "resume"). Icon-only: Text is cleared so drawPillTabAt renders the glyph.
+// Text is cleared so drawPillTabAt draws the glyph.
 func applyFreezeVisual(b *Button, frozen bool) {
 	if b == nil {
 		return
@@ -112,17 +90,8 @@ func applyFreezeVisual(b *Button, frozen bool) {
 	}
 }
 
-// newFreezeCodePill is the Chain tab's freeze toggle: a TEXT pill (FRZ / LIVE)
-// rather than the shared icon pill.
-//
-// Two reasons it diverges. The bare pause glyph reads as TRANSPORT pause —
-// the Chain panel sits directly under the transport bar, so an icon that means
-// "stop the music" one row up and "hold the picture" one row down is a real
-// misread. And it is the only icon in a row of text codes (OVR / SPL / DIF /
-// FIT / AG), so it looked like a different class of control.
-//
-// The other tabs keep the icon pill for now; the same ambiguity arguably
-// applies there, but that is a wider change than the Chain work.
+// Text, not the icon pill: under the transport bar a pause glyph reads as "stop the music", and it
+// was the only icon in a row of text codes.
 func newFreezeCodePill(onFreeze func() bool) *Button {
 	b := NewButton(i18n.T(i18n.KeyChainFreeze), InstButtonStyle, nil)
 	b.OnClick = func() {
@@ -135,9 +104,7 @@ func newFreezeCodePill(onFreeze func() bool) *Button {
 	return b
 }
 
-// applyFreezeCodeVisual sets the Chain freeze pill's label from a frozen bool.
-// The label names the CURRENT state's action target the way the icon pill does:
-// live shows FRZ (tap to freeze), frozen shows LIVE (tap to go back to live).
+// The label names the click's target: FRZ while live, LIVE while frozen.
 func applyFreezeCodeVisual(b *Button, frozen bool) {
 	if b == nil {
 		return
@@ -152,10 +119,7 @@ func applyFreezeCodeVisual(b *Button, frozen bool) {
 	}
 }
 
-// layoutRightPill places btn flush against header's right edge and returns the
-// clamped button height, the pill top Y, and the running right-edge cursor for
-// any further pills laid out leftward. Shared by the freeze-pill base and the
-// Wave tab's AUTO pill so the header geometry stays identical across tabs.
+// Shared, so header geometry is identical across tabs.
 func layoutRightPill(header image.Rectangle, btn *Button, w int) (btnH, y, rightEdge int) {
 	btnH = audioPillHeight()
 	y = header.Min.Y + (header.Dy()-btnH)/2
@@ -165,13 +129,7 @@ func layoutRightPill(header image.Rectangle, btn *Button, w int) (btnH, y, right
 	return btnH, y, rightEdge
 }
 
-// freezeControls is the shared base every per-tab control header embeds. It
-// owns the freeze/resume pill, the frozen flag (the single source of truth for
-// the pill's active-highlight — no re-parsing the glyph string), the hit-area
-// z-index, and the rebuilt hit-area slice. Concrete tabs embed it and supply
-// only Layout + Draw + rebuildHitAreas; HeaderH/HitAreas/SyncFreeze and the
-// addHit / layoutFreezePill helpers are inherited so adding a fourth tab does
-// not re-copy them.
+// The shared base every tab header embeds; frozen is the single source of the pill's highlight.
 type freezeControls struct {
 	freezeBtn *Button
 	frozen    bool
@@ -183,15 +141,12 @@ func (c *freezeControls) HeaderH() int { return controlHeaderHeight() }
 
 func (c *freezeControls) HitAreas() []HitArea { return c.hitAreas }
 
-// SyncFreeze records the analyzer's global frozen state (read by each tab's
-// Draw to decide the active highlight) and updates the pill glyph/color.
 func (c *freezeControls) SyncFreeze(frozen bool) {
 	c.frozen = frozen
 	applyFreezeVisual(c.freezeBtn, frozen)
 }
 
-// addHit appends a button's hit area at the component's z-index, skipping nil
-// buttons and empty (laid-out-away) rects.
+// Skips nil buttons and empty rects.
 func (c *freezeControls) addHit(b *Button, tag string) {
 	if b == nil {
 		return
@@ -201,18 +156,11 @@ func (c *freezeControls) addHit(b *Button, tag string) {
 	}
 }
 
-// layoutFreezePill clamps the header button height, places the freeze pill
-// flush against the header's right edge, and returns the button height, the
-// pill top Y, and the running right-edge cursor for any further pills the tab
-// lays out leftward.
 func (c *freezeControls) layoutFreezePill(header image.Rectangle) (btnH, y, rightEdge int) {
 	return layoutRightPill(header, c.freezeBtn, audioPillWidth(c.freezeBtn))
 }
 
-// waveControls owns the Wave tab's control header: an AUTO pill that toggles
-// adaptive Y-auto-gain plus a freeze (pause/play) pill that pauses this tab's
-// trace. waveControls does not embed freezeControls; it implements the
-// tabControls interface directly so it can carry both pills.
+// Implements tabControls directly (no freezeControls embed) so it can carry two pills.
 type waveControls struct {
 	autoBtn   *Button
 	freezeBtn *Button
@@ -222,9 +170,6 @@ type waveControls struct {
 	hitAreas  []HitArea
 }
 
-// newWaveControls builds the Wave header: AUTO pill + freeze (pause/play) pill.
-// onAuto toggles auto-gain; onFreeze toggles this tab's freeze. Both return the
-// new state.
 func newWaveControls(z int, onAuto func() bool, onFreeze func() bool) *waveControls {
 	c := &waveControls{z: z, autoOn: true}
 	c.autoBtn = NewButton(i18n.T(i18n.KeyAuto), InstButtonStyle, nil)
@@ -248,8 +193,7 @@ func (c *waveControls) SyncFreeze(frozen bool) {
 	applyFreezeVisual(c.freezeBtn, frozen)
 }
 
-// SyncAuto records the zone's auto-gain state so the pill's active-highlight
-// follows wheel-zoom (which disables auto) as well as the pill click.
+// So the highlight follows a wheel zoom (which disables auto) too.
 func (c *waveControls) SyncAuto(on bool) { c.autoOn = on }
 
 func (c *waveControls) Layout(header image.Rectangle) {
@@ -273,10 +217,7 @@ func (c *waveControls) Draw(dst *ebiten.Image) {
 	drawPillTabAt(dst, c.freezeBtn, c.frozen)
 }
 
-// levelsControls owns the Levels tab's control header: freeze, Clear-Clips
-// (CLR), and the K-20 reference-scale toggle. Clear-Clips and K-20 are
-// desktop-only (mobile hides them, mirroring the legacy bar); freeze shows on
-// both platforms.
+// CLR and K-20 are desktop-only; freeze shows on both.
 type levelsControls struct {
 	freezeControls
 	clearClipsBtn *Button
@@ -329,22 +270,8 @@ func (c *levelsControls) Draw(dst *ebiten.Image) {
 	drawPillTabAt(dst, c.k20Btn, c.k20View)
 }
 
-// spectrumControls owns the Spectrum tab's control header: freeze, freq-scale
-// (log/lin), slope tilt (0/3/4.5 dB/oct), Pre overlay toggle, and Reset-Hold.
-// Freeze shows on both platforms; the other four are desktop-only (mirroring
-// the legacy bar gating).
-// spectrumControls owns the Spectrum tab's chrome. It used to carry six
-// pills; freeze is the only one left. Four were retired because their effect
-// is invisible without prior analyser vocabulary — a dB/oct slope tilt, a
-// pre-EQ overlay, a peak-hold reset for marks that only exist behind DTL,
-// and a linear-frequency axis (audio spectra are read logarithmically; LIN
-// was a strictly worse view). The frequency scale is now always logarithmic.
-//
-// DTL went last. It hid the dB numbers, the note anchors and the peak-hold
-// marks because on the old fixed -80..0 axis they crowded a plot whose bars
-// only reached its lower half. The axis is chosen from the signal now, so
-// those marks sit against bars that fill the plot and there is nothing to
-// opt out of.
+// Only freeze remains: the other pills needed analyser vocabulary to mean anything, and the
+// frequency axis is always logarithmic. The axis follows the signal, so there is no detail to hide.
 type spectrumControls struct {
 	freezeControls
 }
@@ -356,9 +283,7 @@ func newSpectrumControls(z int, onFreeze func() bool) *spectrumControls {
 	return c
 }
 
-// Detail is unconditional; see the type comment. Kept as a method so the
-// renderer keeps one name for "show the analyser marks" rather than a
-// scattering of literal trues.
+// A method so the renderer keeps one name for "show the marks".
 func (c *spectrumControls) Detail() bool { return true }
 
 func (c *spectrumControls) Layout(header image.Rectangle) {

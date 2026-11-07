@@ -6,11 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// ArmedControlEditor pairs two BarrelWheels for the armed synth control: the
-// value lane (right, always present) and the resolution lane (left, present
-// only for continuous params with a step badge). It owns the lane geometry,
-// routes pointer/keyboard input to the correct wheel, and coalesces edits into
-// one debounced undo step via the shared synthWheelNudge.
+// The resolution lane exists only for continuous params; edits coalesce into one debounced undo step.
 type ArmedControlEditor struct {
 	instID instrument.ID
 	idx    int
@@ -26,13 +22,8 @@ type ArmedControlEditor struct {
 	active  *BarrelWheel // wheel currently captured by a drag
 }
 
-// newArmedControlEditor pairs a value binding (always) with an optional
-// resolution binding, and coalesces every detent crossing into the caller's
-// onEdit closure. It knows nothing about which panel owns it: the Synth and
-// Sampler tabs both build one through the factories in
-// armed_control_editor_factories.go, which is what makes the two tabs' editing
-// behavior identical by construction rather than by parallel maintenance.
-// A nil resB means "this control has no resolution ladder" (discrete params).
+// Panel-agnostic: the Synth and Sampler tabs both build one through the same factories, so their editing is
+// identical by construction. A nil resB means no resolution ladder.
 func newArmedControlEditor(instID instrument.ID, idx int, valB, resB barrelBinding, onEdit func()) *ArmedControlEditor {
 	e := &ArmedControlEditor{instID: instID, idx: idx, onEditFn: onEdit}
 	detent := Profile().DensityValues().SynthWheelRowH
@@ -48,16 +39,10 @@ func newArmedControlEditor(instID instrument.ID, idx int, valB, resB barrelBindi
 func (e *ArmedControlEditor) value() *BarrelWheel { return e.valWheel }
 func (e *ArmedControlEditor) res() *BarrelWheel   { return e.resWheel }
 
-// synthLaneGapW is the gutter between the resolution and value lanes — just
-// enough to read as two distinct columns (plus the divider hairline drawn in
-// it) without stealing meaningful width back from either lane.
+// Just enough to read as two columns, with a divider hairline in it.
 const synthLaneGapW = SpaceXS
 
-// SetCardRect splits the grown card into a left resolution lane (when present)
-// and a wider right value lane, leaving the card header untouched at the top.
-// The two lanes are separated by synthLaneGapW so their label stacks never
-// visually merge (drawArmedControlCard paints a subtle divider hairline in
-// that gutter).
+// The gap keeps the two label stacks from visually merging.
 func (e *ArmedControlEditor) SetCardRect(card image.Rectangle) {
 	e.card = card
 	v := Profile().DensityValues()
@@ -84,9 +69,7 @@ func (e *ArmedControlEditor) SetCardRect(card image.Rectangle) {
 func (e *ArmedControlEditor) ValueLaneRect() image.Rectangle { return e.valRect }
 func (e *ArmedControlEditor) ResLaneRect() image.Rectangle   { return e.resRect }
 
-// LaneGapRect returns the gutter rect between the resolution and value lanes
-// — empty when there is no resolution lane, or the card was too narrow to
-// carve out a gap. drawArmedControlCard paints the separating divider here.
+// Empty with no resolution lane or no room for a gap.
 func (e *ArmedControlEditor) LaneGapRect() image.Rectangle {
 	if e.resRect.Empty() || e.valRect.Empty() {
 		return image.Rectangle{}
@@ -97,8 +80,7 @@ func (e *ArmedControlEditor) LaneGapRect() image.Rectangle {
 	return image.Rect(e.resRect.Max.X, e.resRect.Min.Y, e.valRect.Min.X, e.resRect.Max.Y)
 }
 
-// laneAt returns the wheel under pointer x. The value lane is the default so a
-// press just outside the narrow res lane still edits the value.
+// The value lane is the default, so a press just outside the narrow res lane still edits the value.
 func (e *ArmedControlEditor) laneAt(x int) *BarrelWheel {
 	if e.resWheel != nil && !e.resRect.Empty() && x < e.resRect.Max.X {
 		return e.resWheel
@@ -144,10 +126,7 @@ func (e *ArmedControlEditor) Wheel(x, y, steps int) bool {
 	return changed
 }
 
-// StepValue is discrete keyboard input: unlike Wheel/ImpulseNotch (which only
-// resolves across subsequent Tick calls, matching a kinetic scroll), a
-// keypress must change the value synchronously — hence StepImmediate rather
-// than ImpulseNotch.
+// A keypress must change the value synchronously, unlike a kinetic notch that resolves over later Ticks.
 func (e *ArmedControlEditor) StepValue(dir int) bool {
 	if e.valWheel == nil {
 		return false
@@ -170,8 +149,7 @@ func (e *ArmedControlEditor) StepResolution(dir int) bool {
 	return ok
 }
 
-// Tick advances both wheels; whenever a value detent crosses, onEdit fires the
-// live-propagate + debounced commit. Returns true while either wheel animates.
+// Returns true while either wheel animates.
 func (e *ArmedControlEditor) Tick() bool {
 	anim := false
 	if e.valWheel != nil && e.valWheel.Tick() {
@@ -192,8 +170,5 @@ func (e *ArmedControlEditor) onEdit() {
 	}
 }
 
-// HasResolutionLane reports whether this editor carries a step-RESOLUTION lane
-// (continuous params do; a discrete param has a value lane only). The keyboard
-// claimant uses it so Left/Right stay with the grid when there is no lane to
-// move — see armedControlKeys.ClaimedKeys.
+// Without one, Left/Right stay with the grid.
 func (e *ArmedControlEditor) HasResolutionLane() bool { return e != nil && e.resWheel != nil }

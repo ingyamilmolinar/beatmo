@@ -1,10 +1,7 @@
 package ui
 
-// synth_dial_render.go draws the macro dials on a root category card and owns
-// the card geometry they share with the hit areas: macroCardDialRects is the
-// ONE place a dial's rect is computed, called with the card's screen rect by
-// the layout (hit areas) and with the sprite-local rect by the draw, so the
-// two can never disagree.
+// macroCardDialRects is the ONE place a dial's rect is computed, for the hit areas (screen rect) and the draw
+// (sprite rect), so the two cannot disagree.
 
 import (
 	"image"
@@ -18,8 +15,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// macroDialSlot is one dial's draw-time state on a card. Comparable, so a
-// card's sprite cache key can hold the array.
+// Comparable, so a card's sprite cache key can hold the array.
 type macroDialSlot struct {
 	id      string
 	label   string
@@ -28,8 +24,7 @@ type macroDialSlot struct {
 	focused bool // the Synth tab's focused dial (synth_focus.go)
 }
 
-// macroCardInset is the card body's inner padding (tighter on a compact
-// card, so two rows of knobs fit the 720p panel: TestProductionCardsFitTwoRows).
+// Tighter on a compact card so two rows of knobs fit the 720p panel.
 func macroCardInset() int {
 	if synthCompactCards() {
 		return SpaceXS
@@ -37,8 +32,6 @@ func macroCardInset() int {
 	return SpaceXS + 2
 }
 
-// macroCardTopH is the title + one-liner band at the top of a card; a compact
-// card (synthCompactCards) has the title only.
 func macroCardTopH() int {
 	if synthCompactCards() {
 		return StyledTextHeight(RoleBody)
@@ -46,14 +39,10 @@ func macroCardTopH() int {
 	return StyledTextHeight(RoleBody) + 2 + StyledTextHeight(RoleCaption)
 }
 
-// synthCompactCards reports whether root cards draw compact — title + dials,
-// no one-liner, no signature graph, no drill caret. That is the production
-// card (spec 2026-10-24 §4.2): its explanation moves to the graph caption,
-// where it is never truncated, and there is no drill to point at.
+// Production cards are title + dials only: the explanation moves to the graph caption, where it is never
+// truncated, and there is no drill to point at.
 func synthCompactCards() bool { return !devToolsOn() }
 
-// macroDialRowH is the dial row's height: the arc, or the two text lines
-// beside it, whichever is taller.
 func macroDialRowH() int {
 	if synthCompactCards() {
 		// Knob style: the arc with the reading inside, the label under it.
@@ -66,8 +55,6 @@ func macroDialRowH() int {
 	return h
 }
 
-// macroDialCellMinW is the narrowest a dial cell may be: the arc plus room
-// for a short label ("Bright", "Shimmer") beside it.
 func macroDialCellMinW() int {
 	if synthCompactCards() {
 		return max(Profile().DensityValues().SynthKnobD+SpaceSM, compactDialLabelW)
@@ -75,32 +62,22 @@ func macroDialCellMinW() int {
 	return Profile().DensityValues().SynthDialD + SpaceXS + 36
 }
 
-// compactDialLabelW is the room a knob-style dial leaves for its label under
-// the arc ("Expression", "Looseness" at RoleMicro).
 const compactDialLabelW = 58
 
-// macroDialsMaxPerRow caps a dial row: a desktop card (~236 px) fits three
-// cells, a phone-wide card four — each phone cell still wider than a desktop
-// one — so a four-dial card keeps the single-row height and a phone shows two
-// cards, not one.
+// Three cells fit a desktop card, four a phone card, so a four-dial card keeps one row and a phone shows two cards.
 const macroDialsMaxPerRow = 4
 
-// macroDialsPerRow is how many dial cells fit side by side in a card of width
-// cardW (at most macroDialsMaxPerRow, at least one).
 func macroDialsPerRow(n, cardW int) int {
 	inner := cardW - 2*macroCardInset()
 	per := (inner + SpaceSM) / (macroDialCellMinW() + SpaceSM)
 	cap := macroDialsMaxPerRow
 	if synthCompactCards() {
-		// A compact (production) card is sized to its dials (flow layout,
-		// synth_macro_flow.go), so it may hold all of them on one row.
+		// A compact card is sized to its dials (flow layout), so one row may hold them all.
 		cap = synthdial.MaxDialsPerCard
 	}
 	return max(1, min(cap, min(n, per)))
 }
 
-// macroDialRows is how many dial rows n dials take on a card of width cardW:
-// as many per row as fit (macroDialsPerRow), fewer when the card is narrow.
 func macroDialRows(n, cardW int) int {
 	if n <= 0 {
 		return 0
@@ -109,9 +86,7 @@ func macroDialRows(n, cardW int) int {
 	return (n + per - 1) / per
 }
 
-// macroCardDialRects splits a card's dial band into rows of equal cells
-// (macroDialsPerRow per row). A row that would fall off the card's bottom
-// stays empty.
+// A row that would fall off the card's bottom stays empty.
 func macroCardDialRects(r image.Rectangle, n int) (out [synthdial.MaxDialsPerCard]image.Rectangle) {
 	if n <= 0 {
 		return out
@@ -137,14 +112,10 @@ func macroCardDialRects(r image.Rectangle, n int) (out [synthdial.MaxDialsPerCar
 	return out
 }
 
-// synthDialSweep is half the arc's travel (radians): the dial spans 270°
-// with the gap at the bottom, 0 at the lower left and 100 at the lower right.
+// Half of a 270° sweep with the gap at the bottom: 0 lower left, 100 lower right.
 const synthDialSweep = 3 * math.Pi / 4
 
-// drawSynthMacroDial paints one dial cell: a track arc over the full travel, a
-// value arc from 0 to the reading, and the label with the reading beside it.
-// Data colours come from the Visualizers family (the synth concept graph
-// stroke), never the chrome accent.
+// Visualizers colours, never the chrome accent.
 func drawSynthMacroDial(dst *ebiten.Image, cell image.Rectangle, s macroDialSlot) {
 	if cell.Empty() {
 		return
@@ -190,10 +161,7 @@ func drawSynthMacroDial(dst *ebiten.Image, cell image.Rectangle, s macroDialSlot
 	DrawTextStyled(dst, synthDialReadingLabel(s.reading), tx, ty+mh, RoleMicro, readCol)
 }
 
-// drawSynthMacroKnob paints a compact (production) card's dial in hardware
-// knob style: the arc centred at the top of the cell with the 0…100 reading
-// inside it, the label centred underneath. Same arc geometry and colours as
-// drawSynthMacroDial.
+// Same arc geometry and colours as drawSynthMacroDial.
 func drawSynthMacroKnob(dst *ebiten.Image, cell image.Rectangle, s macroDialSlot) {
 	mh := StyledTextHeight(RoleMicro)
 	d := Profile().DensityValues().SynthKnobD
@@ -233,8 +201,7 @@ func drawSynthMacroKnob(dst *ebiten.Image, cell image.Rectangle, s macroDialSlot
 	DrawTextStyled(dst, label, int(cx)-lw/2, cell.Min.Y+d+1, RoleMicro, labelCol)
 }
 
-// synthDialReadingLabel is the readout under a dial's label. 101 strings,
-// built once, so a steady frame allocates nothing.
+// 101 strings built once, so a steady frame allocates nothing.
 func synthDialReadingLabel(r int) string { return synthDialReadingLabels[max(0, min(100, r))] }
 
 var synthDialReadingLabels = func() (out [101]string) {

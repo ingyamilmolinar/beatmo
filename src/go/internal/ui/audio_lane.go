@@ -6,42 +6,21 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// audio_lane.go — the reconciling scheduling horizon
-// (docs/superpowers/specs/2026-10-02-audio-lane-scheduling-horizon-design.md).
-//
-// On WASM, Go runs on the page's single main thread: a note is safe from UI
-// stalls only once it has been handed to WebAudio. The lane therefore keeps
-// every note of the next AudioHorizonSec COMMITTED to the engine, and keeps
-// that commitment correct under real-time edits by RECONCILING rather than
-// invalidating: each tick it fingerprints what decides the sound (per row and
-// globally); for any row whose fingerprint moved it recomputes the window from
-// current state (laneSource.NoteAt) and diffs it against what is committed —
-// unchanged notes stay, changed ones are cancelled and replaced, vanished ones
-// cancelled. An edit that bypasses every invalidation funnel still cannot
-// leave a stale note: if it changes the sound, it changes a fingerprint.
-//
-// A note within CancelGuard of its start is treated as started and never
-// touched (edit semantics (a): an edit reaches the next note that has not
-// started). Mute stops cannot be retracted once sent, so they are committed
-// just in time (laneStopLeadSec ahead), not a horizon ahead.
+// A note is safe from main-thread stalls only once WebAudio has it, so the lane keeps the next
+// AudioHorizonSec committed and RECONCILES on edits: changed fingerprints re-derive rows, and the diff
+// cancels or replaces notes. A note within CancelGuard counts as started; mute stops go just in time.
 
 // audioSink is the engine side of the lane (desktop mixer / audio.js).
 type audioSink interface {
 	Schedule(vid uint64, n laneNote)
-	// Replace swaps voice old for vid ATOMICALLY on the engine: the new voice
-	// is scheduled only if the old one was really removed. An engine whose
-	// clock runs ahead of the lane's (the desktop mixer renders a Read chunk
-	// ahead; WebAudio may already be playing it) refuses the cancel of a voice
-	// it has started — and then the replacement must not play too (a double).
-	// old is the first of the oldVoices ids the replaced note owns.
+	// ATOMIC: the new voice plays only if the old one was really removed. An engine whose clock runs
+	// ahead refuses to cancel a started voice, and then the replacement must not play (a double).
 	Replace(old uint64, oldVoices int, vid uint64, n laneNote)
 	Cancel(vids []uint64)
 	StopAt(inst instrument.ID, t float64)
 	CancelAllFuture()
 }
 
-// laneSource is everything the lane reads. The Game implements it
-// (audio_lane_source.go); tests use a scripted grid.
 type laneSource interface {
 	Playing() bool
 	Now() float64
@@ -52,8 +31,7 @@ type laneSource interface {
 	VoiceRevOnly(row int) bool
 	Steps(from, to float64) (lo, hi int, ok bool) // abs range whose Time ∈ [from, to]
 	NoteAt(row, abs int) (laneNote, bool)
-	// The switch rule (noteAt): whether a note's voice is rendered, a request
-	// to render it, and the same note on another instrument.
+	// The switch rule: a note on an unrendered voice plays the previous instrument instead.
 	VoiceReady(n laneNote) bool
 	Warm(n laneNote)
 	Retarget(n laneNote, inst instrument.ID) laneNote
@@ -65,9 +43,7 @@ type laneConfig struct {
 	LateTol          float64
 	FullReconcile    float64
 	VoiceRecommitMin float64
-	// VoiceNear: a voice-only edit (a knob drag) re-commits only the notes
-	// starting within this window; the rest is re-derived as it enters it.
-	// 0 (or ≥ Horizon) re-commits the whole committed window.
+	// 0 (or ≥ Horizon) re-commits the whole window.
 	VoiceNear float64
 }
 
@@ -75,12 +51,10 @@ type laneStats struct {
 	Scheduled, Cancelled, Late, DroppedLate, Reconciles, FullReconciles uint64
 }
 
-// laneStopLeadSec: how far ahead a mute stop is sent (it cannot be cancelled
-// once sent; until then an edit can still retract it).
+// A sent stop cannot be retracted; until then an edit can still change it.
 const laneStopLeadSec = 0.15
 
-// laneGapResetSec: after a gap longer than this the extend window restarts at
-// now (a seek / resume, not a stall to account for note by note).
+// Past this gap it is a seek or resume, not a stall to account for note by note.
 const laneGapResetSec = 2.0
 
 type laneEntry struct {
@@ -101,19 +75,12 @@ type audioLane struct {
 	rowKeys      []uint64
 	lastVoiceRec []float64
 	pendingVoice []bool
-	// voiceStale[r] > 0: row r's commitments up to that time were made under
-	// an older voice revision and are re-derived as they enter VoiceNear;
-	// voiceDone[r] is how far that re-derivation has reached.
+	// Commitments made under an older voice, re-derived as they come within VoiceNear.
 	voiceStale []float64
 	voiceDone  []float64
 	dirtyRows  []bool
-	// The switch rule (noteAt). heard[r] is the instrument the lane last
-	// committed a voice of on row r; fallback[r] the instrument the row moved
-	// off (since switchSince[r]), which a note plays until its own voice on
-	// the new instrument is rendered — at most laneSwitchMaxWaitSec;
-	// switching[r] re-derives the row every tick meanwhile; warmAsked
-	// re-requests a render every laneSwitchRewarmSec (a request can be
-	// dropped). Reset clears it all: the next play starts on the row's own.
+	// Until a note's voice on the new instrument is rendered, the row keeps the old instrument, for at
+	// most laneSwitchMaxWaitSec; renders are re-requested since a request can be dropped. Reset clears it.
 	heard       []instrument.ID
 	fallback    []instrument.ID
 	switchSince []float64
@@ -134,8 +101,6 @@ func newAudioLane(src laneSource, sink audioSink, cfg laneConfig) *audioLane {
 	return &audioLane{src: src, sink: sink, cfg: cfg, committed: map[[2]int]laneEntry{}}
 }
 
-// Reset cancels every not-yet-started lane voice and forgets all commitments
-// (stop, pause, a new transport generation).
 func (l *audioLane) Reset() {
 	l.sink.CancelAllFuture()
 	l.committed = map[[2]int]laneEntry{}
@@ -158,9 +123,7 @@ func (l *audioLane) Committed(row, abs int) (laneNote, bool) {
 	return e.note, true
 }
 
-// DroppedLate reports whether the lane reached (row, abs) too late to start it
-// on time and dropped it by its late policy (counted in laneStats.DroppedLate):
-// the cell was handed to the lane, and deliberately never sounds.
+// Handed to the lane and deliberately never sounded.
 func (l *audioLane) DroppedLate(row, abs int) bool {
 	e, ok := l.committed[[2]int{row, abs}]
 	return ok && e.note.Kind == laneSound && e.vid == 0
@@ -240,9 +203,7 @@ func (l *audioLane) Tick() {
 		} else if l.pendingVoice[r] && now-l.lastVoiceRec[r] >= l.cfg.VoiceRecommitMin {
 			dirty, voiceOnly = true, true
 		} else if full {
-			// The periodic safety pass: a row stale only in its voice keeps
-			// re-deriving from the near window (every note still is before it
-			// starts), instead of replacing its whole horizon again.
+			// A voice-only stale row keeps re-deriving its near window instead of replacing the whole horizon.
 			voiceOnly = l.voiceStale[r] > 0
 		}
 		if !dirty {
@@ -256,10 +217,8 @@ func (l *audioLane) Tick() {
 		l.lastVoiceRec[r] = now
 		l.stats.Reconciles++
 		if nearOn && voiceOnly && !remapped {
-			// A knob edit: re-commit the notes about to play now; the rest of
-			// the horizon follows as it comes near (advanceVoiceStale). A
-			// whole-horizon re-commit per drag tick was ~3000 WebAudio voice
-			// starts/s, and near-due replacements queued behind far ones.
+			// Only the near window now; the rest follows as it comes near. Re-committing the whole horizon per
+			// drag tick made thousands of voice starts a second, with near notes queued behind far ones.
 			if l.voiceStale[r] < l.hiTime {
 				l.voiceStale[r] = l.hiTime
 			}
@@ -277,10 +236,8 @@ func (l *audioLane) Tick() {
 		}
 	}
 	if anyDirty {
-		// A commitment OUTSIDE the re-walked abs range can only come from an
-		// abs↔time mapping that has since moved (a seek or re-anchor keeps the
-		// transport generation): under the current mapping no retractable note
-		// lies there, so it is stale — cancel it.
+		// A commitment outside the re-walked range can only come from an abs↔time mapping that moved (a
+		// seek keeps the generation), so it is stale.
 		for key, e := range l.committed {
 			if r := key[0]; r >= rows || !l.dirtyRows[r] || (win && key[1] >= lo && key[1] <= hi) {
 				continue
@@ -340,10 +297,7 @@ func (l *audioLane) Tick() {
 	}
 }
 
-// advanceVoiceStale re-derives, for a row whose commitments are stale in their
-// voice only, the notes that have just come within VoiceNear — only those:
-// the near window itself is re-derived by the (rate-limited) edit path —
-// until everything committed under the old voice (voiceStale[r]) is reached.
+// Only the notes just entering VoiceNear (the near window itself goes through the edit path).
 func (l *audioLane) advanceVoiceStale(r int, now, guard float64) {
 	if l.voiceStale[r] == 0 {
 		return
@@ -369,16 +323,11 @@ func (l *audioLane) retractable(e laneEntry, guard float64) bool {
 	return e.vid != 0 && e.note.Time > guard
 }
 
-// reconcileRow re-derives row r over the committed window, whose abs range
-// [lo, hi] (Steps(guard, hiTime)) the caller computed once for every row.
 func (l *audioLane) reconcileRow(r int, guard float64, lo, hi int) {
 	l.reconcileRowUpTo(r, guard, lo, hi, l.hiTime)
 }
 
-// reconcileRowUpTo re-derives only the cells of [lo, hi] whose committed or
-// current note starts by upTo — Steps' one-step margin must not reach (and
-// replace, or cancel) a note past a partial window. upTo is hiTime for the
-// whole committed window.
+// Steps' one-step margin must not reach past a partial window.
 func (l *audioLane) reconcileRowUpTo(r int, guard float64, lo, hi int, upTo float64) {
 	for abs := lo; abs <= hi; abs++ {
 		key := [2]int{r, abs}
@@ -388,13 +337,8 @@ func (l *audioLane) reconcileRowUpTo(r int, guard float64, lo, hi int, upTo floa
 			continue
 		}
 		if had && !l.retractable(e, guard) && !(e.vid == 0 && e.note.Kind == laneSound) {
-			// Started / sent: leave it — unless the abs↔time mapping moved
-			// (a backward seek; every undo/redo while playing seeks to the
-			// beat start) and this cell now lies in the FUTURE. Then the entry
-			// is history from the old mapping, not this cell's note: forget it
-			// (no cancel — it already played) and evaluate the cell afresh.
-			// LateTol keeps a just-started note that a BPM re-anchor nudged by
-			// a few ms from playing twice.
+			// Started or sent: leave it, unless a backward seek put this cell in the FUTURE. Then the entry is
+			// history: forget it (no cancel) and evaluate afresh; LateTol stops a nudged note playing twice.
 			if !(want && n.Time > guard && math.Abs(n.Time-e.note.Time) > l.cfg.LateTol) {
 				continue
 			}
@@ -425,8 +369,7 @@ func (l *audioLane) reconcileRowUpTo(r int, guard float64, lo, hi int, upTo floa
 	}
 }
 
-// commit hands a note to the engine. extend=true for first-time commits from
-// the extend pass, where a note already due is subject to the late policy.
+// extend=true: a note already due falls under the late policy.
 func (l *audioLane) commit(key [2]int, n laneNote, now, guard float64, extend bool) {
 	if n.Kind == laneStop {
 		l.committed[key] = laneEntry{note: n}
@@ -450,10 +393,7 @@ func (l *audioLane) commit(key [2]int, n laneNote, now, guard float64, extend bo
 	l.heard[key[0]] = n.Inst
 }
 
-// laneSwitchMaxWaitSec bounds how long a row keeps its previous instrument
-// for notes whose new voice is not rendered: a render that fails or never
-// lands must not leave the user's choice silently ignored.
-// laneSwitchRewarmSec is how often an unrendered voice is requested again.
+// A render that never lands must not leave the user's choice silently ignored.
 const (
 	laneSwitchMaxWaitSec = 2.0
 	laneSwitchRewarmSec  = 0.25
@@ -464,11 +404,8 @@ type laneWarmKey struct {
 	pitch float64
 }
 
-// noteAt is the source's note under the switch rule (spec 2026-10-31 §1.3):
-// after a row's instrument changes, a note whose own voice on the new
-// instrument is not rendered yet keeps the instrument the row moved off —
-// never a note on a voice that is not there (it would start late, or not at
-// all). Readiness is per note: a melodic instrument renders each pitch apart.
+// Never a note on a voice that is not rendered (it would start late or not at all); readiness is
+// per note, since melodic instruments render each pitch apart.
 func (l *audioLane) noteAt(r, abs int) (laneNote, bool) {
 	n, ok := l.src.NoteAt(r, abs)
 	if !ok || n.Kind != laneSound {
@@ -483,8 +420,7 @@ func (l *audioLane) noteAt(r, abs int) (laneNote, bool) {
 		return n, true
 	}
 	if now-l.switchSince[r] > laneSwitchMaxWaitSec {
-		// Give up waiting: the move is done; re-derive the row once so the
-		// notes still committed on the old instrument follow.
+		// Stop waiting: re-derive once so notes still on the old instrument follow.
 		l.fallback[r], l.heard[r], l.switching[r] = "", n.Inst, true
 		return n, true
 	}
@@ -502,8 +438,7 @@ func (l *audioLane) noteAt(r, abs int) (laneNote, bool) {
 	return l.src.Retarget(n, fb), true
 }
 
-// mint reserves a contiguous block of voice ids for a note (one per voice)
-// and returns its first id. For a single voice this is nextVID++ exactly.
+// One id per voice; for a single voice exactly nextVID++.
 func (l *audioLane) mint(n *laneNote) uint64 {
 	base := l.nextVID + 1
 	l.nextVID += uint64(n.voiceCount())

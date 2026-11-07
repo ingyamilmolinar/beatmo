@@ -5,11 +5,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synth_armed_control.go — which control is ARMED for inline barrel editing.
-//
-// At most one control is armed per instrument. Arming selects the control
-// (focus graph) and locks any previously-armed one. Locking removes the entry.
-// The ArmedControlEditor (rebuilt on arm) owns the kinetic barrel state.
+// At most one control is armed per instrument; arming locks any previous one. The ArmedControlEditor owns
+// the kinetic barrel state.
 
 func (dv *DrumView) synthControlArmed(instID instrument.ID) (int, bool) {
 	if dv.instEditorArmedControl == nil || instID == "" {
@@ -35,9 +32,7 @@ func (dv *DrumView) armSynthControl(instID instrument.ID, idx int) {
 }
 
 func (dv *DrumView) lockSynthControl(instID instrument.ID) {
-	// Aim the grow animation back to rest for the control being locked; the
-	// subject is retained by setArmGrowSubject/advanceArmGrow until it settles, so
-	// the card visibly shrinks and neighbours slide home after it is unarmed.
+	// The subject is retained until the shrink settles, so the card visibly shrinks after it is unarmed.
 	if dv.instEditorArmedControl != nil {
 		if idx, ok := dv.instEditorArmedControl[instID]; ok {
 			dv.setArmGrowSubject(armedScopeSynth, instID, idx, 0)
@@ -47,12 +42,7 @@ func (dv *DrumView) lockSynthControl(instID instrument.ID) {
 	dv.instEditorArmedEditor = nil
 }
 
-// armedControlActive reports whether the ACTIVE audio-panel tab has a control
-// armed for inline barrel editing. Nil-safe. Used by KeyboardClaimed (so armed
-// arrow keys don't also pan the camera) and by handleEscape's armed rung (so Esc
-// locks the control instead of falling through to Stop playback). Keeping ONE
-// predicate across both tabs is what guarantees they get the same keyboard
-// semantics.
+// ONE predicate across both tabs, read by KeyboardClaimed and the Esc rung, so the tabs share keyboard semantics.
 func (dv *DrumView) armedControlActive() bool {
 	if dv == nil || dv.eqPanelZone == nil {
 		return false
@@ -65,8 +55,6 @@ func (dv *DrumView) armedControlActive() bool {
 		_, armed := dv.synthControlArmed(dv.synthTabActiveInstrument())
 		return armed
 	}
-	// The TabSampler branch is added when the Sampler adopts the armed model
-	// (sampler_armed_control.go).
 	return false
 }
 
@@ -80,10 +68,7 @@ func (dv *DrumView) toggleSynthControlArm(instID instrument.ID, idx int) {
 
 // ── keyboard editing (KeyboardKeyClaimant, see keyboard_key_claim.go) ────────
 
-// armedControlKeyClaimant returns the armed inline control as a PARTIAL keyboard
-// claimant, or nil when none is armed on the active tab. It owns the arrows and
-// nothing else, so Space still plays and [ ] still zoom while a control is
-// armed.
+// A PARTIAL claimant owning the arrows only, so Space still plays and [ ] still zoom.
 func (dv *DrumView) armedControlKeyClaimant() KeyboardKeyClaimant {
 	if dv == nil || !dv.armedControlActive() || dv.instEditorArmedEditor == nil {
 		return nil
@@ -91,14 +76,10 @@ func (dv *DrumView) armedControlKeyClaimant() KeyboardKeyClaimant {
 	return armedControlKeys{dv: dv}
 }
 
-// armedControlKeys adapts the armed editor to KeyboardKeyClaimant. It resolves
-// dv.instEditorArmedEditor on every call rather than caching it, so a re-arm
-// (which rebuilds the editor) between claim and handle cannot act on a stale one.
+// Resolves the editor on every call: a re-arm between claim and handle rebuilds it.
 type armedControlKeys struct{ dv *DrumView }
 
-// ClaimedKeys: Up/Down step the value; Left/Right step the resolution, but only
-// when this param has a resolution lane (a discrete param gets a value lane only
-// — see newSynthArmedControlEditor).
+// Left/Right only when the param has a resolution lane; a discrete param has none.
 func (a armedControlKeys) ClaimedKeys() []ebiten.Key {
 	e := a.editor()
 	if e == nil {
@@ -110,8 +91,7 @@ func (a armedControlKeys) ClaimedKeys() []ebiten.Key {
 	return valueStepKeys()
 }
 
-// HandleClaimedKeys: one key acts per frame (the switch), so the arrow-key alias
-// spellings real Ebiten collapses cannot double-fire.
+// One key per frame (the switch), so the arrow spellings real Ebiten aliases cannot double-fire.
 func (a armedControlKeys) HandleClaimedKeys() bool {
 	e := a.editor()
 	if e == nil {

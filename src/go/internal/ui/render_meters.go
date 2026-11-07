@@ -12,8 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Meter bridge colors — sourced from DESIGN.md `viz-meter-*` tokens.
-// To change a hue, edit DESIGN.md and run `make gen-design-tokens`.
 var (
 	// Derived in rebuildThemeAliases (theme.go).
 	meterLow  color.RGBA
@@ -29,21 +27,14 @@ const (
 	meterYellowDB   = -6.0
 	meterRedDB      = -1.0
 	meterRMSOpacity = 128 // 50% of 255
-	// clipLatchFrames keeps the clip readout latched in error color for ~1s
-	// after a new clip event (assumes ~60 fps).
+	// ~1 s at 60 fps.
 	clipLatchFrames = 60
-	// peakHoldStickyFrames keeps PeakHoldDB pinned for ~250ms after a new
-	// peak before it starts decaying (DAW-standard behavior).
+	// ~250 ms at 60 fps before decay starts, the DAW convention.
 	peakHoldStickyFrames = 15
-	// peakHoldDecayDB sets the per-frame decay rate once the sticky window
-	// expires (0.5 dB/frame ≈ 30 dB/s at 60 fps).
+	// ≈ 30 dB/s at 60 fps.
 	peakHoldDecayDB = 0.5
 )
 
-// MultiLevelsLatch holds per-channel LevelsLatch values keyed by channel
-// ID so the multi-channel Levels view can maintain independent peak-
-// hold + clip-latch state for every instrument + master. Phase 2 of the
-// audio-panel redesign.
 type MultiLevelsLatch struct {
 	byID map[channel.ID]*LevelsLatch
 }
@@ -53,10 +44,7 @@ func NewMultiLevelsLatch() *MultiLevelsLatch {
 	return &MultiLevelsLatch{byID: map[channel.ID]*LevelsLatch{}}
 }
 
-// Clear resets every per-channel latch so the persistent "!" markers
-// disappear immediately. Used by the Levels-tab Clear Clips pill —
-// without this users had no way to acknowledge clip events; the latch
-// would auto-expire after 60 frames regardless.
+// Lets the user acknowledge clips (the Clear Clips pill) instead of waiting for the latch to expire.
 func (m *MultiLevelsLatch) Clear() {
 	if m == nil {
 		return
@@ -70,12 +58,8 @@ func (m *MultiLevelsLatch) Clear() {
 	}
 }
 
-// Reset clears the peak/RMS hold ballistics and clip latch of every
-// per-channel latch so the next Update re-seeds directly from the live
-// analyzer state. Used when the Levels tab is re-entered after being
-// hidden: the held values are frozen at whatever they were when the tab
-// was last drawn, so without this the meters decay down from a stale
-// (often loud) value instead of reflecting the current audio immediately.
+// For Levels-tab re-entry: the held values froze when the tab was last drawn, so without a reset the
+// meters decay from a stale value instead of showing the current audio.
 func (m *MultiLevelsLatch) Reset() {
 	if m == nil {
 		return
@@ -100,14 +84,8 @@ func (m *MultiLevelsLatch) Get(id channel.ID) *LevelsLatch {
 	return l
 }
 
-// LevelsLatch tracks transient clip-event + peak/RMS hold state for the
-// Levels tab. A new clip (ClipCount higher than the last seen value)
-// latches the readout in error color for clipLatchFrames frames. The
-// peak-hold and RMS-hold fields rise instantly when the live values
-// exceed the hold, stay pinned for peakHoldStickyFrames frames, then
-// decay slowly so the bars remain visible between drum transients
-// (a snapshot caught between hits otherwise reads -∞ dB and the bar
-// disappears entirely — see Phase 0a of the audio-panel redesign).
+// The holds rise instantly, stay for peakHoldStickyFrames, then decay slowly: a snapshot between drum hits
+// reads -∞ dB and the bar would vanish.
 type LevelsLatch struct {
 	LastClipCount   int
 	LatchFramesLeft int
@@ -119,14 +97,7 @@ type LevelsLatch struct {
 	rmsHoldSeeded   bool
 }
 
-// Update advances the latch by one frame. Returns true while the clip
-// latch is active. PeakHoldDB and RMSHoldDB are updated as side effects.
-//
-// rmsDB carries the held-value semantics for the RMS bar so the bottom
-// half of the Levels strip survives between hits the same way the Peak
-// bar does. Callers passing only a clip count + peak (legacy two-arg
-// shape) should route through UpdateLegacy below — newer renderers
-// always pass RMS too.
+// Returns true while the clip latch is active.
 func (l *LevelsLatch) Update(clipCount int, peakDB, rmsDB float64) bool {
 	if clipCount > l.LastClipCount {
 		l.LatchFramesLeft = clipLatchFrames
@@ -171,25 +142,13 @@ func (l *LevelsLatch) Update(clipCount int, peakDB, rmsDB float64) bool {
 	return l.LatchFramesLeft > 0
 }
 
-// Reset returns the latch to its unseeded zero state so the next Update
-// seeds PeakHoldDB/RMSHoldDB directly from the live values (no decay) and
-// clears any active clip latch. See MultiLevelsLatch.Reset for why this is
-// needed on Levels-tab re-entry.
+// Unseeded, so the next Update seeds the holds straight from the live values.
 func (l *LevelsLatch) Reset() { *l = LevelsLatch{} }
 
-// Latched reports the current latch state without advancing it. Useful when
-// the latch's owner ticked it elsewhere (e.g., in Update) and the renderer
-// only wants to read the visual state.
+// Reads without advancing.
 func (l *LevelsLatch) Latched() bool { return l.LatchFramesLeft > 0 }
 
-// drawLevelsDetail renders the single-channel Levels view: big Peak bar,
-// big RMS bar, dB scale, and a footer readout (Pk / RMS / Hdr / Clips).
-// Replaces the legacy multi-channel meter bridge — overview meters now live
-// inline on each drum row via layer_eq_peek.go.
-//
-// If ch is nil, draws only the panel border (empty state). The latch may
-// be nil; nil latch means "no clip hold tracking" (readout color follows
-// the instantaneous clip count).
+// A nil ch draws only the border; a nil latch means the readout follows the instantaneous clip count.
 func drawLevelsDetail(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, latch *LevelsLatch) {
 	drawRect(dst, rect, colButtonBorder, false)
 	if ch == nil {
@@ -220,28 +179,15 @@ func drawLevelsDetail(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Chan
 	// Header strip with dB scale ticks: 0, -6, -12, -24, -48.
 	headerRect := image.Rect(barX0, rect.Min.Y, barX1, rect.Min.Y+headerH)
 	drawLevelsScale(dst, headerRect)
-	// Clip LED (8×8) at the left of the header strip; lit while a clip
-	// event is latched. Stays visible for ~1s after each new clip event
-	// independent of the live peak — turns the cryptic "Clips N" footer
-	// into a glanceable warning.
+	// The LED stays lit ~1 s after each clip, independent of the live peak.
 	if latch != nil && latch.Latched() {
 		ledX := rect.Min.X + 2
 		ledY := headerRect.Min.Y + 3
 		drawRect(dst, image.Rect(ledX, ledY, ledX+8, ledY+8), meterClip, true)
 	}
 
-	// Peak bar (top, larger). Phase 5: when stereo data is present,
-	// split horizontally into L (top half) + R (bottom half) so the
-	// user sees per-channel headroom at a glance. Mono signals keep
-	// the legacy single-bar render.
-	//
-	// Phase 0a (audio-panel redesign): mono bar fills to the held
-	// peak rather than the instantaneous frame value. Between drum
-	// transients the analyser captures silence, which makes the bar
-	// disappear; the latch holds the most-recent peak for ~250 ms
-	// sticky + 0.5 dB/frame decay so the bar remains legible. The
-	// instantaneous live peak is still drawn as a thin overlay so
-	// the user sees the moment-to-moment signal.
+	// Stereo splits the bar into L (top) and R (bottom). Mono fills to the HELD peak, since the analyser
+	// sees silence between hits; the live peak is a thin overlay on top.
 	peakY0 := rect.Min.Y + headerH
 	peakY1 := peakY0 + peakH
 	peakBar := image.Rect(barX0, peakY0, barX1, peakY1)
@@ -263,9 +209,7 @@ func drawLevelsDetail(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Chan
 		}
 	}
 
-	// RMS bar (bottom). Same stereo split treatment. The mono bar
-	// likewise uses the held RMS value so the bar persists between
-	// hits — see the peak-bar comment above for the rationale.
+	// Same treatment: stereo split, mono fills to the held RMS.
 	rmsY0 := peakY1
 	rmsY1 := rmsY0 + rmsH
 	if ch.HasStereo() {
@@ -306,9 +250,6 @@ func drawLevelsBar(dst *ebiten.Image, rect image.Rectangle, db float64, label st
 	}
 }
 
-// drawLevelsPeakHoldMarker paints a 2px-wide vertical bar at the peak-
-// hold dB position on the Peak bar. Uses colTextPrimary so it reads
-// clearly against the meter golden/orange/red fills.
 func drawLevelsPeakHoldMarker(dst *ebiten.Image, peakBar image.Rectangle, peakHoldDB float64) {
 	if peakBar.Dy() < 4 || peakBar.Dx() < 4 {
 		return
@@ -327,8 +268,6 @@ func drawLevelsPeakHoldMarker(dst *ebiten.Image, peakBar image.Rectangle, peakHo
 	drawRect(dst, image.Rect(x-1, peakBar.Min.Y+1, x+1, peakBar.Max.Y-1), colTextPrimary, true)
 }
 
-// drawLevelsScale renders a thin tick row across the bar area at the
-// standard meter dB references: 0, -6, -12, -24, -48.
 func drawLevelsScale(dst *ebiten.Image, rect image.Rectangle) {
 	tickCol := WithAlpha(genColorBorder, AlphaPanelBorder)
 	for _, db := range []float64{-48, -24, -12, -6, 0} {
@@ -341,19 +280,12 @@ func drawLevelsScale(dst *ebiten.Image, rect image.Rectangle) {
 	}
 }
 
-// drawLevelsReadout renders the footer strip showing Pk / RMS / Hdr / Clips
-// as a single line of text. When the latch is active (recent clip event),
-// the Clips number is rendered in error color; otherwise it follows the
-// instantaneous ClipCount.
 func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, latch *LevelsLatch) {
 	lh := StyledTextHeight(RoleMicro)
 	y := rect.Min.Y + (rect.Dy()-lh)/2
 
-	// Phase 0a: footer reads the held peak / RMS so the numeric
-	// remains meaningful between drum transients. The instantaneous
-	// fields (ch.PeakDB / ch.RMSDB) are -∞ for most frames because
-	// the analyser's 512-sample window catches silence between hits.
-	// Headroom still derives from the held peak.
+	// Reads the held values: the live ones are -∞ on most frames, as the 512-sample window catches the
+	// silence between hits.
 	peakReadout := ch.PeakDB
 	rmsReadout := ch.RMSDB
 	if latch != nil && latch.peakHoldSeeded && latch.PeakHoldDB > peakReadout {
@@ -382,9 +314,7 @@ func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Cha
 		clipsCol = colError
 	}
 
-	// Clip the localized prefix to whatever width the clip count leaves —
-	// roles render at a fixed size, so long locales truncate with an
-	// ellipsis instead of shrinking into pixelated micro-text.
+	// Roles render at a fixed size, so a long locale truncates with an ellipsis instead of shrinking.
 	microW := func(s string) int { return StyledTextWidth(s, RoleMicro) }
 	maxPrefixW := rect.Dx() - 8 - microW(clipsText)
 	prefix = clipTextToWidthMeasure(prefix, maxPrefixW, microW)
@@ -392,9 +322,6 @@ func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Cha
 	DrawTextStyled(dst, clipsText, rect.Min.X+4+microW(prefix), y, RoleMicro, clipsCol)
 }
 
-// fitScaleToWidth returns base, or a smaller scale so that text of width
-// naturalW (measured at scale 1.0) fits within maxW. Used to guarantee
-// longer localized strings never overflow a fixed-width readout.
 func fitScaleToWidth(naturalW int, base float64, maxW int) float64 {
 	if naturalW <= 0 || maxW <= 0 {
 		return base
@@ -405,9 +332,7 @@ func fitScaleToWidth(naturalW int, base float64, maxW int) float64 {
 	return float64(maxW) / float64(naturalW)
 }
 
-// formatDB renders a dB value compactly for the readout strip.
-// Below the meter floor it renders as "-∞" (caller sets context, but the
-// font may not have ∞; fall back to "-inf").
+// "-inf" because the font may lack ∞.
 func formatMeterDB(db float64) string {
 	if db <= meterDBFloor {
 		return "-inf"
@@ -431,19 +356,8 @@ func meterColorAlpha(db float64, alpha uint8) color.NRGBA {
 	return WithAlpha(meterColor(db), alpha)
 }
 
-// drawLevelsMultiChannel renders one vertical Peak/RMS strip per
-// instrument plus a wider Master strip on the right, plus an aggregate
-// readout column on the far right. Phase 2 of the audio-panel redesign:
-// matches the consumer DAW vocabulary (one strip per channel, segmented
-// LED-style fill, per-strip peak-hold marker, clip LED + readout).
-//
-// latches is per-channel keyed by InstrumentMetrics.ID (and the literal
-// "main" for the master). The caller is responsible for advancing each
-// latch via .Update(...) before this function runs.
-//
-// When state has no instruments (only master), falls back to the
-// single-channel drawLevelsDetail so the layout stays meaningful for
-// boot-time idle states.
+// latches are keyed by channel ("main" for master) and the caller advances them first. With no
+// instruments it falls back to drawLevelsDetail.
 func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) {
 	drawRect(dst, rect, colButtonBorder, false)
 	if state == nil {
@@ -461,16 +375,8 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 		stripGap       = 4
 		masterStripPad = 8
 	)
-	// Phase 4 audio-panel redesign: levels readout column width is
-	// density-driven. Three modes:
-	//   1. rect.Dx() ≥ 2 × WFull → full-text column (today's path).
-	//   2. WFull + WIcons ≤ rect.Dx() < 2 × WFull → icon-row collapse
-	//      (Headroom / Clips / Loudest as three stacked icons).
-	//   3. rect.Dx() < WFull + WIcons → footer-chevron only (the
-	//      aggregate is one tap away in the chevron menu).
-	// Pre-Phase-4 a single binary cascade hid the column completely
-	// below 360 px, leaving mobile users with no Headroom readout at
-	// all.
+	// Three readout modes by width: the full column, an icon row, or a footer chevron one tap away, so a narrow
+	// panel never loses Headroom.
 	ldv := Profile().DensityValues()
 
 	contentH := rect.Dy() - headerH - footerH
@@ -482,8 +388,6 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	readoutMode, readoutW := levelsReadoutLayout(rect.Dx())
 	stripsRect := image.Rect(rect.Min.X+4, rect.Min.Y, rect.Max.X-readoutW, rect.Max.Y)
 
-	// Slots: every instrument + master last. Master gets ~2× the
-	// width of a regular strip.
 	nInst := 0
 	for i := range state.Instruments {
 		if visibleIDs == nil {
@@ -515,8 +419,7 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 		inst := &state.Instruments[i]
 		if visibleIDs != nil {
 			if _, present := visibleIDs[inst.ID]; !present {
-				// Hidden because not audible (solo/mute). Skip so the
-				// remaining strips reclaim its width.
+				// Not audible (solo/mute): skipped so the others reclaim its width.
 				continue
 			}
 		}
@@ -542,7 +445,6 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 			latchOrNil(latches, channel.Master))
 	}
 
-	// Phase 4 audio-panel redesign: three readout modes.
 	switch readoutMode {
 	case readoutColModeFull:
 		drawLevelsAggregates(dst,
@@ -553,10 +455,7 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 			image.Rect(rect.Max.X-readoutW+2, rect.Min.Y+4, rect.Max.X-2, rect.Max.Y-4),
 			state, latches, visibleIDs)
 	case readoutColModeChevron:
-		// Footer chevron — drawn in the footer strip's right edge. The
-		// tap target opens a bottom-sheet (UseBottomSheet) carrying the
-		// full aggregates. The chevron rect itself is tiny but the
-		// sheet expands to fill the viewport.
+		// The chevron is tiny, but it opens a bottom sheet with the full aggregates.
 		chevW := ldv.LevelsReadoutWIcons
 		if chevW < 16 {
 			chevW = 16
@@ -566,10 +465,6 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	}
 }
 
-// readoutColMode picks how the Levels-tab aggregate readouts (Headroom
-// / Clips / Loudest) collapse when horizontal space shrinks. Phase 4
-// audio-panel redesign: replaces the pre-Phase-4 binary "180 px or
-// nothing" cascade so mobile users never lose the Headroom number.
 type readoutColMode int
 
 const (
@@ -578,10 +473,7 @@ const (
 	readoutColModeChevron
 )
 
-// LevelsAggregate captures the formatted readout values for the Levels
-// icon-row. Used by EQPanelZone to surface long-press tooltips with the
-// unabbreviated value (e.g., "HEADROOM: 7.3 dB"). The icon row itself
-// renders the icon + numeric text without the prose label.
+// Holds the unabbreviated values for the long-press tooltip; the icon row shows only icon + number.
 type LevelsAggregate struct {
 	HeadroomDB  float64
 	HeadroomTxt string
@@ -590,28 +482,18 @@ type LevelsAggregate struct {
 	LoudestName string
 }
 
-// instrumentVisibleInAgg reports whether an instrument id is included in the
-// Levels aggregate readouts. nil visibleIDs means "include all" (idle/legacy).
+// nil visibleIDs includes all.
 func instrumentVisibleInAgg(visibleIDs map[channel.ID]bool, id channel.ID) bool {
 	return visibleIDs == nil || visibleIDs[id]
 }
 
-// levelsReadoutFullPadX is the horizontal padding (px) added to the measured
-// content width of the full aggregate column — matches the 4px-per-side inset
-// drawLevelsAggregates draws into, plus a little slack.
+// The 4 px inset per side drawLevelsAggregates draws into, plus slack.
 const levelsReadoutFullPadX = 12
 
-// levelsReadoutFullMinW is a small floor so the content-fit column never
-// collapses below what drawLevelsAggregates needs to render at all.
 const levelsReadoutFullMinW = 68
 
-// levelsReadoutFullW returns the minimal width the full aggregate readout
-// column needs to render its static labels + the widest big number at the
-// current font/locale. It is independent of instrument count and of the
-// per-frame loudest name (which truncates), so the summary stays a fixed,
-// content-fit width while the bars absorb all remaining horizontal space.
-// Clamped to [floor, the density's LevelsReadoutWFull budget] so it never
-// grows beyond today's reserved width.
+// Independent of instrument count and of the per-frame loudest name (which truncates), so the summary
+// stays a fixed width and the bars take the rest. Never wider than the density's budget.
 func levelsReadoutFullW() int {
 	w := 0
 	cands := []struct {
@@ -640,11 +522,8 @@ func levelsReadoutFullW() int {
 	return w
 }
 
-// levelsReadoutLayout picks the aggregate-readout mode and its column width
-// for a panel of the given width. The mode THRESHOLDS stay tied to the
-// density's LevelsReadoutWFull/WIcons tokens (so a mobile-width panel still
-// lands in icon-row mode), but full mode renders at the content-fit width
-// from levelsReadoutFullW so the bars get every spare pixel.
+// The mode thresholds stay on the density tokens (so a phone lands in icon-row mode), but the full column
+// renders at its content-fit width.
 func levelsReadoutLayout(panelDx int) (readoutColMode, int) {
 	ldv := Profile().DensityValues()
 	full := ldv.LevelsReadoutWFull
@@ -659,9 +538,7 @@ func levelsReadoutLayout(panelDx int) (readoutColMode, int) {
 	}
 }
 
-// levelsAggregatesValues computes the headroom / clips / loudest readouts
-// for the icon-row. Pure function — used by both the renderer and the
-// tooltip layer to keep their formatted strings in sync.
+// Shared by the renderer and the tooltip so their strings agree.
 func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) LevelsAggregate {
 	masterPeak := state.Master.PeakDB
 	if latches != nil {
@@ -713,9 +590,7 @@ func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch, vi
 	}
 }
 
-// levelsAggregateIconRects returns the three sub-rects (Headroom, Clips,
-// Loudest) within the icon-row container. Pure positioning — used by both
-// the renderer and EQPanelZone for hit-area registration / hover dwell.
+// Shared by the renderer and the panel's hit areas.
 func levelsAggregateIconRects(rect image.Rectangle) (hdr, clp, lou image.Rectangle) {
 	if rect.Dx() < 20 || rect.Dy() < 40 {
 		return
@@ -730,11 +605,7 @@ func levelsAggregateIconRects(rect image.Rectangle) (hdr, clp, lou image.Rectang
 	return
 }
 
-// drawLevelsAggregatesIconRow paints the three aggregate readouts as
-// a vertical icon stack with abbreviated text. Used when the panel
-// is too narrow for the full-text column but wide enough to surface
-// the per-icon values inline. Each icon's tap target meets the
-// density's MinTarget at Spacious.
+// Each icon's tap target meets MinTarget at Spacious.
 func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) {
 	if rect.Dx() < 20 || rect.Dy() < 40 {
 		return
@@ -753,8 +624,6 @@ func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state 
 	}
 	hdrR, clpR, louR := levelsAggregateIconRects(rect)
 
-	// Icon size: square, vertically centered in the row, leaving the
-	// remaining width for the numeric text.
 	iconBox := func(r image.Rectangle) (icon image.Rectangle, textX int) {
 		side := r.Dy() - 2
 		if side < 10 {
@@ -787,9 +656,7 @@ func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state 
 	}
 }
 
-// levelsAggregateTooltipText returns the long-press tooltip text for
-// the given aggregate icon slot ("headroom", "clips", or "loudest").
-// Returns "" for unknown slots.
+// "" for an unknown slot.
 func levelsAggregateTooltipText(slot string, agg LevelsAggregate) string {
 	switch slot {
 	case "headroom":
@@ -808,13 +675,7 @@ func levelsAggregateTooltipText(slot string, agg LevelsAggregate) string {
 	return ""
 }
 
-// drawLevelsAggregatesChevron paints a tiny chevron-down glyph in the
-// footer right edge when the panel is too narrow for both the icon-
-// row and the full-text column. Tapping it opens a bottom-sheet
-// (handled by the EQ-panel zone's existing overlay portal). This
-// keeps the aggregates one-tap reachable instead of disappearing
-// entirely. Pre-Phase-4 the readouts were silently dropped below
-// 360 px; the chevron preserves discoverability.
+// Keeps the aggregates reachable when the panel is too narrow for both other modes.
 func drawLevelsAggregatesChevron(dst *ebiten.Image, r image.Rectangle) {
 	if r.Empty() {
 		return
@@ -835,8 +696,7 @@ func drawLevelsAggregatesChevron(dst *ebiten.Image, r image.Rectangle) {
 	DrawIcon(dst, IconChevronDown, iconR, colTextSecondary)
 }
 
-// formatClipShort renders a clip count compactly: "12", "1k", "9k+"
-// for values too large for the 2-character cell.
+// Fits the 2-character cell.
 func formatClipShort(n int) string {
 	switch {
 	case n >= 9999:
@@ -858,26 +718,17 @@ func latchOrNil(m *MultiLevelsLatch, id channel.ID) *LevelsLatch {
 	return m.Get(id)
 }
 
-// drawLevelsChannelStrip renders ONE vertical channel strip: header
-// label on top, segmented Peak bar (wide) + RMS bar (narrow) below,
-// optional peak-hold marker, optional clip LED, numeric peak readout at
-// the bottom. Used by both the per-channel multi-meter view and (with a
-// nil latch) by simple chrome contexts that just need a strip.
+// A nil latch serves chrome contexts that need a strip and nothing else.
 func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label string, peakDB, rmsDB float64, clipCount int, latch *LevelsLatch) {
 	if rect.Dx() < 6 || rect.Dy() < 32 {
 		return
 	}
-	// Header hosts the caption-role channel name; footer hosts two
-	// micro-role lines (peak readout + optional clip count). Both bands
-	// derive from the real styled line heights so the bars always start
-	// below the text instead of assuming the old bitmap metrics.
+	// Both bands derive from the styled line heights so the bars always start below the text.
 	microH := StyledTextHeight(RoleMicro)
 	headerH := StyledTextHeight(RoleCaption) + 2
 	footerH := microH*2 + 2
 
-	// Header label centered — truncated to the strip width so a long
-	// instrument name (e.g. "fm-epiano-drive") never bleeds into the
-	// neighboring strip's label.
+	// Truncated so a long name never bleeds into the next strip.
 	capW := func(s string) int { return StyledTextWidth(s, RoleCaption) }
 	label = clipTextToWidthMeasure(label, rect.Dx()-2, capW)
 	lw := capW(label)
@@ -909,8 +760,7 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 		rmsW = 2
 	}
 
-	// Bar fills use the held values where higher than instantaneous;
-	// see Phase 0a discussion in drawLevelsDetail.
+	// The held value when higher, so the bar survives between hits.
 	barPeakDB := peakDB
 	barRMSDB := rmsDB
 	if latch != nil && latch.peakHoldSeeded && latch.PeakHoldDB > barPeakDB {
@@ -925,8 +775,7 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 	drawSegmentedLevelBar(dst, peakRect, barPeakDB, true)
 	drawSegmentedLevelBar(dst, rmsRect, barRMSDB, false)
 
-	// Peak-hold marker: a thin horizontal tick at PeakHoldDB across
-	// the Peak bar (not the RMS bar — too narrow).
+	// Not on the RMS bar: too narrow.
 	if latch != nil && latch.peakHoldSeeded && latch.PeakHoldDB > meterDBFloor {
 		frac := dbToFrac(latch.PeakHoldDB)
 		if frac > 0 {
@@ -956,10 +805,7 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 	}
 }
 
-// drawSegmentedLevelBar paints a vertical level meter with 1.5 dB LED
-// segments: golden below -6 dB, orange between -6 and -1 dB, red above.
-// `isPeak` controls the segment opacity — RMS uses a softer fill so
-// peak transients stand out visually against the body of the signal.
+// The RMS bar is softer so peak transients stand out against the body of the signal.
 func drawSegmentedLevelBar(dst *ebiten.Image, r image.Rectangle, db float64, isPeak bool) {
 	if r.Dx() < 2 || r.Dy() < 4 {
 		return
@@ -975,11 +821,8 @@ func drawSegmentedLevelBar(dst *ebiten.Image, r image.Rectangle, db float64, isP
 	if totalSegs < 4 {
 		totalSegs = 4
 	}
-	// Height-robust LED ladder: in a short meter the fixed 1.5 dB/segment
-	// ladder makes every LED sub-2px and nothing draws. Cap the segment count
-	// so each LED is ≥2px tall (fewer, taller LEDs when short) and widen segDB
-	// to match so the lit-proportion stays correct. Tall meters (≥ ~80px) keep
-	// the full 40-segment ladder unchanged.
+	// A short meter would make every 1.5 dB LED sub-2 px and draw nothing: cap the segment count and widen
+	// segDB so the lit proportion stays right.
 	if maxSegs := r.Dy() / 2; maxSegs >= 4 && totalSegs > maxSegs {
 		totalSegs = maxSegs
 		segDB = (meterDBCeil - meterDBFloor) / float64(totalSegs)
@@ -1007,9 +850,7 @@ func drawSegmentedLevelBar(dst *ebiten.Image, r image.Rectangle, db float64, isP
 		if y1-y0 < 2 {
 			continue
 		}
-		// Leave a 1-pixel gap between segments to emphasise the LED
-		// look — skipped for the bottom-most segment so the bar's
-		// foot sits flush on the rect baseline.
+		// No gap under the bottom segment, so the bar's foot sits on the baseline.
 		drawRect(dst, image.Rect(r.Min.X, y0, r.Max.X, y1-1), c, true)
 	}
 }
@@ -1019,8 +860,6 @@ func withColorAlpha(c color.RGBA, a uint8) color.RGBA {
 	return c
 }
 
-// Aggregate-column row indices, in render order top-to-bottom. Used to
-// index the slice returned by levelsAggregateColumnRows.
 const (
 	aggRowHeadroomLabel = iota
 	aggRowHeadroomValue
@@ -1033,25 +872,15 @@ const (
 	aggRowCount
 )
 
-// levelsAggRow describes one text row in the Levels aggregate column:
-// its top y position and the text scale it renders at.
 type levelsAggRow struct {
 	Y    int
 	Role TextRole
 }
 
-// levelsAggRowGap is the consistent vertical gap between consecutive
-// rows of the aggregate column.
 const levelsAggRowGap = 4
 
-// levelsAggregateColumnRows lays out the aggregate column as a
-// sequential flow: each row's y is a running cursor advanced by the
-// row's styled line height plus a consistent gap. Rows that would
-// extend past rect.Max.Y are omitted — the column truncates rather
-// than overlapping. Row typography is role-driven (caption labels,
-// body values, panel-title for the big Headroom number) so every line
-// renders through the smooth styled path. Pure function so the layout
-// is unit-testable without an Ebiten surface.
+// A running cursor: rows that would pass rect.Max.Y are dropped, so the column truncates instead of
+// overlapping.
 func levelsAggregateColumnRows(rect image.Rectangle) []levelsAggRow {
 	roles := [aggRowCount]TextRole{
 		aggRowHeadroomLabel: RoleCaption,
@@ -1076,13 +905,7 @@ func levelsAggregateColumnRows(rect image.Rectangle) []levelsAggRow {
 	return rows
 }
 
-// drawLevelsAggregates renders the right-side readout column showing
-// Headroom (big, prominent), Clips-last-10s, LUFS-S, and the
-// currently-loudest channel name. Pedagogical metadata that consumer
-// DAWs put in a side panel; kid-friendly because the headroom number
-// answers "how much room do I have left before it gets ugly?" in one
-// glance. Row positions come from levelsAggregateColumnRows — a
-// sequential flow that never overlaps; rows that don't fit are dropped.
+// The headroom number answers "how much room before it gets ugly?" at a glance.
 func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[channel.ID]bool) {
 	if rect.Dx() < 60 || rect.Dy() < 60 {
 		return
@@ -1115,9 +938,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	if r, ok := rowAt(aggRowHeadroomLabel); ok {
 		DrawTextStyled(dst, i18n.T(i18n.KeyCapHeadroom), rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
-	// Big number — render "CLIP!" when peak has exceeded 0 dBFS so
-	// the kid-friendly answer ("you're too loud right now") replaces
-	// the confusing "negative headroom" math. Phase 5 polish.
+	// "CLIP!" above 0 dBFS instead of a negative headroom nobody can read.
 	var bigNum string
 	switch {
 	case headroom < 0:
@@ -1132,13 +953,8 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		DrawTextStyled(dst, bigNum, rect.Min.X, r.Y, r.Role, headroomCol)
 	}
 
-	// Rolling 10-second clip count — Phase 2 audio-panel redesign:
-	// state.ClipsLastWindow is owned by the audio package's clip-window
-	// tracker (audio/loudness.go) and reflects the last 10 s only, so
-	// a long session doesn't keep showing an ever-climbing counter.
-	// Fall back to the session-total sum when the rolling window has
-	// never been populated (zero) AND the session-total is non-zero
-	// (stub / pre-wiring builds).
+	// The audio package's rolling 10 s count, so a long session does not show an ever-climbing total; the
+	// session total stands in only when the window was never populated.
 	clipsLast := state.ClipsLastWindow
 	totalClips := state.Master.ClipCount
 	for i := range state.Instruments {
@@ -1165,11 +981,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		DrawTextStyled(dst, clipsTxt, rect.Min.X, r.Y, r.Role, clipsCol)
 	}
 
-	// LUFS-S row — Phase 2: K-weighted short-term loudness from the
-	// audio package's integrator. Rendered just below CLIPS so the
-	// kid-readable "headroom" + the broadcast "LUFS-S" sit next to
-	// each other. Skipped (rendered as "—") when the integrator is
-	// silent.
+	// "—" while the integrator is silent.
 	if r, ok := rowAt(aggRowLUFSLabel); ok {
 		DrawTextStyled(dst, "LUFS-S", rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
@@ -1206,8 +1018,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		DrawTextStyled(dst, i18n.T(i18n.KeyCapLoudest), rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
 	if r, ok := rowAt(aggRowLoudestValue); ok {
-		// "kick · -3 dB" — name plus its peak in dB. The pre-fix
-		// "kick (-3)" suffix was cryptic (an unlabeled number).
+		// The unit makes the number readable; a bare "(-3)" was not.
 		loudTxt := fmt.Sprintf("%s · %s dB", loudestName, formatMeterDB(loudestPeak))
 		loudTxt = clipTextToWidthMeasure(loudTxt, rect.Dx(),
 			func(s string) int { return StyledTextWidth(s, r.Role) })

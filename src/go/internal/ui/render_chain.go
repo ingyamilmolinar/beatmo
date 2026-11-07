@@ -10,18 +10,13 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Scope colors are sourced from DESIGN.md `viz-scope-*` tokens. Trace
-// alpha values are scope-internal (180/150 for the line, 18/15 for the
-// fill, etc.) and stay as numeric arguments to WithAlpha; only the base
-// hex moves to DESIGN.md.
-// Derived in rebuildThemeAliases (theme.go) so a runtime theme re-tints them.
+// The trace alphas are scope-internal and stay numeric; only the base hex is a token. Derived in
+// rebuildThemeAliases so a runtime theme re-tints them.
 var (
 	colScopeA color.NRGBA
 	colScopeB color.NRGBA
-	// Synthwave "outrun" fills beneath the A/B scope traces — raised from
-	// the old 18/15 hints to AlphaSubtle so the wash from trace to the
-	// zero-line reads as the defining sunset move, while the trace stays a
-	// crisp line on top. Per-lane color so split/overlay keep their tint.
+	// The fill under each trace is AlphaSubtle so the wash to the zero line reads while the trace stays a crisp
+	// line; per lane, so split and overlay keep their tint.
 	colScopeAFill color.NRGBA
 	colScopeBFill color.NRGBA
 )
@@ -37,17 +32,10 @@ var (
 	colScopeGridMid color.NRGBA
 )
 
-// colScopeFrozenBorder marks the frozen waveform with the azure accent at
-// AlphaMedium. The old form reused destructive-confirm-border (#FF5050), a
-// red — which violated "three reds, three roles" (error text / mute fill /
-// destructive fill). Freeze is neither destructive nor an error, so it uses
-// the chrome accent instead (bug #6). The FROZEN caption still names the state.
+// Accent, not red: freeze is neither destructive nor an error ("three reds, three roles").
 var colScopeFrozenBorder color.NRGBA // derived in rebuildThemeAliases (theme.go)
 
-// chainAxisDecimals picks ONE decimal precision for the entire time axis from
-// the window's full scale, so every tick on the axis is formatted identically
-// (bug #4a: a single row mixed "0.00ms·4.0ms·12ms"). The choice is driven by
-// the largest value on the axis (windowMs), not per-tick magnitude.
+// ONE precision for the whole axis, from the full scale, so every tick reads alike (never "0.00ms·4.0ms·12ms").
 func chainAxisDecimals(windowMs float64) int {
 	switch {
 	case windowMs >= 10:
@@ -59,9 +47,6 @@ func chainAxisDecimals(windowMs float64) int {
 	}
 }
 
-// chainAxisLabels builds the numLabels evenly-spaced time-axis ticks for the
-// given window, each with its [0,1] fraction along the plot width and a label
-// formatted at the single axis-wide precision (see chainAxisDecimals).
 func chainAxisLabels(windowMs float64, numLabels int) []WaveAxisLabel {
 	if numLabels < 2 {
 		numLabels = 2
@@ -76,15 +61,8 @@ func chainAxisLabels(windowMs float64, numLabels int) []WaveAxisLabel {
 	return out
 }
 
-// chainPlaceAxisLabels resolves the on-screen X for each axis label inside the
-// plot and decimates overprinting ticks. Returns one X per label; a value < 0
-// means "skip this label". Fixes:
-//   - (4b) the rightmost label is right-anchored inside the plot's right edge
-//     instead of running off it.
-//   - (4c) the first label is clamped to the plot's left edge instead of
-//     poking left of the border.
-//   - (4d) a tick is skipped when the previously-kept label's right edge + a
-//     small gap would overlap this label's left edge (narrow/mobile widths).
+// Returns one X per label, < 0 = skip. The first label clamps to the left edge, the last right-anchors
+// inside the plot, and a tick that would overprint the last kept one is dropped.
 func chainPlaceAxisLabels(labels []WaveAxisLabel, waveRect image.Rectangle, w int) []int {
 	const gap = 4
 	xs := make([]int, len(labels))
@@ -117,9 +95,7 @@ func chainPlaceAxisLabels(labels []WaveAxisLabel, waveRect image.Rectangle, w in
 
 		overlaps := x < prevRight+gap && lastKept >= 0
 		if i == last {
-			// The endpoint label always wins: if it collides with the most
-			// recently kept middle tick, drop that middle tick rather than the
-			// endpoint, so the axis still ends with the window max (4b/4d).
+			// The endpoint wins a collision, so the axis still ends with the window max.
 			if overlaps && lastKept != 0 {
 				xs[lastKept] = -1
 			}
@@ -138,11 +114,7 @@ func chainPlaceAxisLabels(labels []WaveAxisLabel, waveRect image.Rectangle, w in
 	return xs
 }
 
-// chainTraceRects splits a content rect into the waveform area and the
-// reserved legend strip below it, using density-aware margins. Layout
-// top-to-bottom: waveform | legend strip | time-axis labels (bottom margin).
-// Both drawChainTraces and the zone's hit-area builder call this so the
-// legend swatches land exactly where the legend draws.
+// Shared by the draw and the hit-area builder so the legend swatches land where the legend draws.
 func chainTraceRects(rect image.Rectangle) (waveRect, legendStrip image.Rectangle) {
 	dv := Profile().DensityValues()
 	leftMargin := dv.ChainScopeLeftMargin
@@ -154,10 +126,7 @@ func chainTraceRects(rect image.Rectangle) (waveRect, legendStrip image.Rectangl
 	return waveRect, legendStrip
 }
 
-// drawChainTraces renders overlaid or split A/B waveform traces with grid,
-// labels, trigger marker, and a peak/RMS legend in a reserved strip below
-// the waveform (never over it).
-// yGain scales the amplitude display (1.0 = normal, >1 = zoomed in).
+// The legend has its own strip below the waveform, never over it. yGain > 1 zooms in.
 func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State, windowMs float64, displayMode chainDisplayMode, frozen bool, yGain float64, showA, showB bool) {
 	if rect.Dx() < 20 || rect.Dy() < 20 {
 		return
@@ -171,9 +140,6 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 		return
 	}
 
-	// All Chain text renders through the styled text-role API (smooth
-	// embedded Inter at its true pixel size): micro for the dense
-	// axis/amplitude/legend labels, caption for the FROZEN status.
 	lh := StyledTextHeight(RoleMicro)
 	w := waveRect.Dx()
 
@@ -225,8 +191,7 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 		ftw := StyledTextWidth(frozenText, RoleCaption)
 		cx := waveRect.Min.X + (waveRect.Dx()-ftw)/2
 		DrawTextStyled(dst, frozenText, cx, waveRect.Min.Y+2, RoleCaption, colAccentBright)
-		// Azure (accent @ AlphaMedium) border to indicate frozen state — no
-		// red, per "three reds, three roles" (bug #6).
+		// Accent, not red ("three reds, three roles").
 		drawRect(dst, image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Max.X, waveRect.Min.Y+1), colScopeFrozenBorder, true)
 		drawRect(dst, image.Rect(waveRect.Min.X, waveRect.Max.Y-1, waveRect.Max.X, waveRect.Max.Y), colScopeFrozenBorder, true)
 		drawRect(dst, image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Min.X+1, waveRect.Max.Y), colScopeFrozenBorder, true)
@@ -234,9 +199,6 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 	}
 }
 
-// drawChainOverlay renders both traces overlaid on the same waveRect. The
-// Pk/RMS legend now lives in a reserved strip (drawChainLegend); this only
-// paints the grid, trigger marker, amplitude labels, and traces.
 func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, lh int, yGain float64, showA, showB bool) {
 	midY := waveRect.Min.Y + waveRect.Dy()/2
 	w := waveRect.Dx()
@@ -260,8 +222,7 @@ func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 		return
 	}
 
-	// Draw TapB (orange/"after") first, then TapA (blue/"before") on top
-	// so the "before" comparison signal is always visible.
+	// B first, then A on top, so the "before" signal is always visible.
 	if showB && state.TapB.Active && len(state.TapB.Samples) > 0 {
 		drawWaveTrace(dst, state.TapB.Samples, waveRect, midY, w, colScopeB, yGain, colScopeBFill)
 	}
@@ -272,9 +233,7 @@ func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 	drawScopeBorder(dst, waveRect)
 }
 
-// drawChainAmplitudeLabels right-aligns the +1/0/-1 amplitude labels inside
-// the left gutter (fullRect.Min.X .. waveRect.Min.X) so the enlarged
-// density text never butts against the waveform or the stage column.
+// Right-aligned in the left gutter so the text never butts against the waveform or the stage column.
 func drawChainAmplitudeLabels(dst *ebiten.Image, fullRect, waveRect image.Rectangle, midY, lh int, topLabel, botLabel string) {
 	rightAlign := func(label string, y int) {
 		tw := StyledTextWidth(label, RoleMicro)
@@ -310,10 +269,7 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 	DrawTextStyled(dst, "0", fullRect.Min.X+4, midY-lh/2, RoleMicro, colTextPrimary)
 	DrawTextStyled(dst, botLabel, fullRect.Min.X+2, halfRect.Max.Y-lh-1, RoleMicro, colTextPrimary)
 
-	// Waveform trace with the synthwave "outrun" fill. Use the canonical
-	// per-lane fill color (matched to col) so the two-band gradient fade
-	// kicks in (drawWaveTrace → traceFillFaint); each half is dedicated, so
-	// there's no overlap concern.
+	// The per-lane fill color enables the two-band fade; each half is dedicated, so nothing overlaps.
 	if tap.Active && len(tap.Samples) > 0 {
 		var fillCol color.Color
 		switch col {
@@ -330,8 +286,6 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 	}
 }
 
-// drawScopeDiff renders the A-B difference waveform. The legend is drawn
-// separately in the reserved strip (drawChainLegend).
 func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, lh int, yGain float64) {
 	midY := waveRect.Min.Y + waveRect.Dy()/2
 	w := waveRect.Dx()
@@ -357,8 +311,7 @@ func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state 
 	drawScopeBorder(dst, waveRect)
 }
 
-// chainDiffStats returns the peak and RMS (linear) of the element-wise A-B
-// difference without allocating. Used by the diff-mode legend.
+// Without allocating.
 func chainDiffStats(a, b []float64) (peak, rms float64) {
 	n := len(a)
 	if len(b) < n {
@@ -382,10 +335,7 @@ func chainDiffStats(a, b []float64) (peak, rms float64) {
 	return peak, math.Sqrt(sumSq / float64(n))
 }
 
-// chainLegendHalves splits the reserved legend strip into the A (left) and B
-// (right) clickable segments. In diff mode the whole strip is the A-B readout
-// (no per-trace toggle) so segB is empty. Shared by drawChainLegend and the
-// zone's swatch hit areas so clicks land on the right readout.
+// Diff mode has no per-trace toggle, so segB is empty. Shared with the swatch hit areas.
 func chainLegendHalves(strip image.Rectangle, displayMode chainDisplayMode) (segA, segB image.Rectangle) {
 	if strip.Dx() <= 0 || strip.Dy() <= 0 {
 		return image.Rectangle{}, image.Rectangle{}
@@ -399,10 +349,7 @@ func chainLegendHalves(strip image.Rectangle, displayMode chainDisplayMode) (seg
 	return segA, segB
 }
 
-// drawChainLegend paints the Pk/RMS readout into the reserved strip below the
-// waveform — never over it. Overlay/split: A in the left half, B in the right
-// half, each prefixed by a color swatch; a hidden trace is dimmed. Diff: one
-// A-B readout spanning the strip.
+// A hidden trace is dimmed; diff mode shows one A-B readout across the strip.
 func drawChainLegend(dst *ebiten.Image, strip image.Rectangle, state *scope.State, displayMode chainDisplayMode, showA, showB bool) {
 	if state == nil || strip.Dx() <= 0 || strip.Dy() <= 0 {
 		return
@@ -424,8 +371,7 @@ func drawChainLegend(dst *ebiten.Image, strip image.Rectangle, state *scope.Stat
 		DrawTextStyled(dst, text, sx+swatchW+4, textY, RoleMicro, col)
 	}
 
-	// fit picks a full or compact readout depending on the segment width so
-	// the larger density text doesn't overrun into the neighbour segment.
+	// A compact readout when the segment is narrow, so it never overruns its neighbour.
 	fit := func(seg image.Rectangle, full, compact string) string {
 		avail := seg.Dx() - swatchW - 8
 		if StyledTextWidth(full, RoleMicro) <= avail {
@@ -461,14 +407,11 @@ func drawChainLegend(dst *ebiten.Image, strip image.Rectangle, state *scope.Stat
 	}
 }
 
-// chainDiffScratch is grow-only reusable storage for the A-B difference
-// waveform so diff mode doesn't heap-allocate per frame (alloc budget gate:
-// TabScope cap). The Chain panel renders on the single UI goroutine, so a
-// package-level scratch is safe here.
+// Grow-only so diff mode does not allocate per frame; package-level is safe because the Chain panel draws
+// on the UI goroutine only.
 var chainDiffScratch []float64
 
-// chainDiffSamples computes element-wise A-B from two sample slices, reusing
-// chainDiffScratch. The returned slice is valid until the next call.
+// Valid until the next call.
 func chainDiffSamples(a, b []float64) []float64 {
 	n := len(a)
 	if len(b) < n {
@@ -523,17 +466,13 @@ func drawScopeBorder(dst *ebiten.Image, r image.Rectangle) {
 	drawRect(dst, image.Rect(r.Max.X-1, r.Min.Y, r.Max.X, r.Max.Y), colButtonBorder, true)
 }
 
-// Auto-fit tuning: a sample counts as "active" once it reaches
-// chainFitThreshold of the buffer peak; the framed span is padded by
-// chainFitPad on each side so the transient isn't flush against the edge.
+// Padding keeps the transient off the edge of the framed span.
 const (
 	chainFitThreshold = 0.04
 	chainFitPad       = 0.20
 )
 
-// chainFitSpan returns the union active-span [start,end) across the visible
-// taps, in sample indices. Returns (0,0) when no visible tap has signal, so
-// the caller leaves the full buffer untouched.
+// (0,0) when no visible tap has signal, so the caller keeps the full buffer.
 func chainFitSpan(state *scope.State, showA, showB bool) (start, end int) {
 	start, end = -1, -1
 	consider := func(tap *scope.TapData, show bool) {
@@ -556,8 +495,7 @@ func chainFitSpan(state *scope.State, showA, showB bool) (start, end int) {
 	return start, end
 }
 
-// chainSliceSpan returns s[start:end] clamped to s's bounds (alloc-free).
-// Out-of-range or inverted spans yield an empty slice.
+// Alloc-free; an out-of-range or inverted span is empty.
 func chainSliceSpan(s []float64, start, end int) []float64 {
 	n := len(s)
 	if n == 0 {

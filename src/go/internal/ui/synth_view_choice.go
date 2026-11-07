@@ -1,15 +1,7 @@
 package ui
 
-// synth_view_choice.go — which view explains a dial ON THIS INSTRUMENT (spec
-// docs/superpowers/specs/2026-10-25-synth-dial-relevance-and-cheap-graphs-design.md §3.2).
-//
-// A dial names the view that usually shows what it does (synth_dials.json
-// "view"), but the same dial can change different things on different
-// sounds: Room is a loudness tail on a kick and a colour on a tom. Every
-// shown dial changes its instrument audibly (the relevance verdict), so its
-// graph must show that change: when the named view does not move between
-// the dial's two ends, the graph uses the view that moves most — measured on
-// the two end renders the graph has anyway. Never an exception list.
+// The same dial changes different things on different sounds (Room: a tail on a kick, a colour on a tom), so
+// when its named view does not move between its ends the graph uses the view that moves most. No exception list.
 
 import "math"
 
@@ -19,8 +11,7 @@ const viewMinMovePx = 3.0
 // dialViewCandidates is the order the views are tried in (ties keep the first).
 var dialViewCandidates = []synthView{viewLoudness, viewAttack, viewColour, viewColourTime, viewNoise, viewPitch, viewHarmonics, viewWave}
 
-// viewMovePx is how far the HI end's curve stands from the LO end's (max over
-// x, in pixels) when view v draws both on one w×h plot with shared axes.
+// Max over x, in pixels, with shared axes.
 func viewMovePx(v synthView, lo, hi *graphRender, w, h int) float64 {
 	both := buildSynthViewPlot(v, w, h, synthViewInput{now: lo, hi: hi})
 	var now, ghost [][]fpt
@@ -42,18 +33,14 @@ func viewMovePx(v synthView, lo, hi *graphRender, w, h int) float64 {
 			}
 		}
 	}
-	// A line present at one end and absent at the other (no pitch at 0, a
-	// pitch at 100) is a visible change too.
+	// A line present at one end and absent at the other is a visible change too.
 	if (len(now) == 0) != (len(ghost) == 0) {
 		px = math.Max(px, viewMinMovePx)
 	}
 	return px
 }
 
-// chooseDialView returns the view that shows a dial's change: declared when
-// it moves visibly between lo and hi, else the candidate that moves most.
-// The ends must be analysed for every view (soundview.NeedAll) when declared
-// does not move.
+// When declared does not move, the ends must be analysed for every view.
 func chooseDialView(declared synthView, lo, hi *graphRender, w, h int) (synthView, float64) {
 	best, bestPx := declared, viewMovePx(declared, lo, hi, w, h)
 	if bestPx >= viewMinMovePx {

@@ -1,21 +1,7 @@
 package ui
 
-// synth_macro_render.go renders the Synth tab's category layer inside the
-// content area — the ONE flow every synth instrument gets:
-//
-//   - ROOT (synthAtMacroRoot): the PIPELINE STRIP (active stages in signal
-//     order, synth_pipeline_strip.go) above a grid of CATEGORY cards (Sound,
-//     Brightness, …), each a plain-English label + one-liner + a signature
-//     graph + up to three MACRO DIALS (synth_dials.go) that move many params
-//     at once. Tapping a card (off its dials) or a stage pill DRILLS in.
-//   - DRILLED: a header row (Back · title · one-liner · the stage's enable
-//     pill when the target maps to exactly one stage) above the target's
-//     ESSENTIAL params as ParamCards (tap to arm, barrels, all unchanged), then
-//     a "More" divider that expands the remaining fine-tuning params.
-//
-// It reuses the existing primitives (ControlGrid, Button + buttonHitAdapter,
-// drawParamCard/drawParamCardGauge, the FX toggle pill, the Advanced divider,
-// growArmedCard) so nothing here is a new component.
+// ROOT: the pipeline strip above category cards, each with up to three macro dials; a tap off the dials or a
+// stage pill drills in. DRILLED: Back · title · pill, the essentials, then More. Built only from existing primitives.
 
 import (
 	"image"
@@ -30,19 +16,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// synthBackButtonTag / synthMoreButtonTag are the sentinel Button texts for
-// the drilled view's Back button and the More divider's input button (both
-// live in instEditorBtns so the existing button loop publishes their hit
-// areas). Like the header sentinels, the leading \x00 keeps them off screen.
+// Sentinel texts so the existing button loop publishes their hit areas; the leading \x00 keeps them off screen.
 const (
 	synthBackButtonTag = "\x00synth-back"
 	synthMoreButtonTag = "\x00synth-more"
 )
 
-// macroCardSlot is one laid-out category card at the root. dials is a fixed
-// array (no per-layout allocation); nDials is how many are in use, and
-// dialRects their screen rects (the hit areas; drawing recomputes the same
-// geometry sprite-locally via macroCardDialRects).
+// A fixed dial array, so layout allocates nothing; drawing recomputes the same rects sprite-locally.
 type macroCardSlot struct {
 	id        string
 	spriteID  string
@@ -54,8 +34,6 @@ type macroCardSlot struct {
 	dialRects [synthdial.MaxDialsPerCard]image.Rectangle
 }
 
-// macroCardDials fills a card's dial slots: each dial's reading is a pure
-// function of the instrument's current values.
 func (dv *DrumView) macroCardDials(cg macroGroup, resolved instrument.ID, out *[synthdial.MaxDialsPerCard]macroDialSlot) int {
 	n := 0
 	for _, d := range cg.Dials {
@@ -72,10 +50,7 @@ func (dv *DrumView) macroCardDials(cg macroGroup, resolved instrument.ID, out *[
 	return n
 }
 
-// bindingIndexByName maps param name → knob/binding index for the active
-// instrument. Cached on the DrumView and rebuilt only when the binding slice
-// changed shape (buildSynthTab rebuilds bindings only on a schema swap), so
-// the per-frame layout/draw paths allocate nothing here.
+// Rebuilt only when the binding slice changes shape (a schema swap), so per-frame paths allocate nothing.
 func (dv *DrumView) bindingIndexByName() map[string]int {
 	if dv.instEditorBindingIdx != nil && len(dv.instEditorBindingIdx) == len(dv.instEditorBindings) &&
 		dv.instEditorBindingIdxGen == dv.instEditorBindingsGen {
@@ -90,8 +65,6 @@ func (dv *DrumView) bindingIndexByName() map[string]int {
 	return byName
 }
 
-// macroLayerHeaderH is the drilled view's header band: Back button, title +
-// one-liner, and the stage pill share one row.
 func macroLayerHeaderH() int {
 	textH := StyledTextHeight(RoleBody) + 1 + StyledTextHeight(RoleCaption)
 	btnH := Profile().DensityValues().SynthHeaderButtonH
@@ -106,14 +79,10 @@ func macroRootCardH(rows int) int {
 	return 2*macroCardInset() + macroCardTopH() + rows*(SpaceXS+macroDialRowH())
 }
 
-// macroRootCardShortH is the root card height without the dial row (a root
-// where no card has a live dial).
 func macroRootCardShortH() int {
 	return StyledTextHeight(RoleBody) + StyledTextHeight(RoleCaption) + SpaceSM + SpaceXS
 }
 
-// layoutSynthMacroLayer positions the category layer inside detailR (the
-// content region left of the preview pane). Called from buildSynthTab.
 func (dv *DrumView) layoutSynthMacroLayer(detailR image.Rectangle, resolved instrument.ID, mobile bool) {
 	p := dv.synp()
 	dv.instEditorMacroDetailR = detailR
@@ -129,8 +98,7 @@ func (dv *DrumView) layoutSynthMacroLayer(detailR image.Rectangle, resolved inst
 	dv.instEditorPipeAddBtn = nil
 	dv.instEditorPipeRect = image.Rectangle{}
 	dv.instEditorMobileFocusRect = image.Rectangle{}
-	// Every knob starts hidden; only the drilled target's knobs get a rect below
-	// (the per-knob hit loop + card draw key off a non-empty rect).
+	// Only the drilled target's knobs get a rect; the hit loop and draw key off a non-empty one.
 	for i := range dv.instEditorControls {
 		if dv.instEditorControls[i] != nil {
 			dv.instEditorControls[i].SetRect(image.Rectangle{})
@@ -161,11 +129,7 @@ func (dv *DrumView) layoutSynthMacroLayer(detailR image.Rectangle, resolved inst
 	p.layoutMacroDrilled(grid, inner, resolved, target, mobile)
 }
 
-// layoutMacroRoot: pipeline strip band on top, category cards below.
-//
-// The production UI (devtools.go) has no pipeline strip and shows only the
-// cards with a live dial (productionMacroCards), as compact cards
-// (synthCompactCards): title + dials.
+// Production has no pipeline strip and shows only cards with a live dial, compact.
 func (p *synthPanel) layoutMacroRoot(grid *ControlGrid, inner image.Rectangle, resolved instrument.ID, mobile bool) {
 	dv := p.dv
 	cardsR := inner
@@ -218,14 +182,10 @@ func (p *synthPanel) layoutMacroRoot(grid *ControlGrid, inner image.Rectangle, r
 		idealW = 120
 	}
 	grid.SetSmoothScroll(true)
-	// No peek band: a card row is ~half the phone's cards area, so the band
-	// would cost the second card (the scrollbar already shows there is more).
+	// A card row is about half the phone's card area, so a peek band would cost the second card.
 	grid.SetPeekBand(false)
-	// One uniform card height: tall enough for the most dial rows any card
-	// needs at the card width the grid gives (rows of up to three; a card with
-	// four to six dials takes two). The grid scrolls when the cards outgrow
-	// the panel. Laid out once at the ideal width, then again if the real cell
-	// width asks for a different row count.
+	// One uniform height for the most dial rows any card needs; laid out at the ideal width, then again if the
+	// real cell width asks for a different row count.
 	cellHFor := func(cardW int) int {
 		rows := 0
 		for _, cg := range cards {
@@ -238,9 +198,8 @@ func (p *synthPanel) layoutMacroRoot(grid *ControlGrid, inner image.Rectangle, r
 	}
 	cellH := cellHFor(idealW)
 	grid.Layout(cardsR, len(cards), idealW, cellH, SpaceSM, SpaceSM)
-	// The grid's cell width, not CellRect(0): the first cell is not visible
-	// once the root scrolls, and the real width (minus the scrollbar) can ask
-	// for another row (TestScrolledRootKeepsEveryDial).
+	// The grid's cell width, not CellRect(0): the first cell is not visible once the root scrolls, and the real
+	// width (minus the scrollbar) can ask for another row.
 	if cw := grid.CellW(); cw > 0 {
 		if h := cellHFor(cw); h != cellH {
 			cellH = h
@@ -259,8 +218,6 @@ func (p *synthPanel) layoutMacroRoot(grid *ControlGrid, inner image.Rectangle, r
 	}
 }
 
-// drilledKnobIdxs returns the drilled target's knob indices split into
-// essentials and fine-tuning (More), in display order.
 func (dv *DrumView) drilledKnobIdxs(target synthDrillTarget) (essential, advanced []int) {
 	byName := dv.bindingIndexByName()
 	essential = dv.instEditorDrillEss[:0]
@@ -297,16 +254,12 @@ func (dv *DrumView) drilledKnobIdxs(target synthDrillTarget) (essential, advance
 	return essential, advanced
 }
 
-// macroConceptKnobIdxs returns every bound knob index of category id, essentials
-// first — the drilled order.
 func (dv *DrumView) macroConceptKnobIdxs(id string) []int {
 	e, a := dv.drilledKnobIdxs(synthDrillTarget{kind: drillCategory, cat: id})
 	return append(e, a...)
 }
 
-// drilledStageForPill resolves the section whose enable pill the drilled header
-// shows: the drilled stage itself, or a category's single stage. ok=false when
-// the target spans several stages or the section carries no pill.
+// !ok when the target spans several stages or the section has no pill.
 func (dv *DrumView) drilledStageForPill(target synthDrillTarget) (secIdx int, ok bool) {
 	var want synthSectionID = -1
 	switch target.kind {
@@ -342,8 +295,6 @@ func (dv *DrumView) drilledTitle(target synthDrillTarget) (title, gloss string) 
 	return "", ""
 }
 
-// layoutMacroDrilled: header row (Back · title/gloss · pill), the mobile graph
-// band, then essentials + More in the grid.
 func (p *synthPanel) layoutMacroDrilled(grid *ControlGrid, inner image.Rectangle, resolved instrument.ID, target synthDrillTarget, mobile bool) {
 	dv := p.dv
 	dv2 := Profile().DensityValues()
@@ -436,20 +387,13 @@ func (p *synthPanel) layoutMacroDrilled(grid *ControlGrid, inner image.Rectangle
 		dv.instEditorMoreBtn = more
 		dv.instEditorBtns = append(dv.instEditorBtns, more)
 	}
-	// An armed control grows its card in place to host the two barrel lanes —
-	// the same post-slot extension the stage detail pane applied.
 	if idx, active := dv.armGrowControl(armedScopeSynth, resolved); active {
 		dv.growArmedCard(visible, grid, body, idx)
 	}
 }
 
-// layoutTieredGrid lays essentials, then (when there are fine-tuning params) a
-// full phantom divider row, then — only when moreOpen — the advanced params.
-// Returns the laid-out index list (-1 = phantom cell) and stores the divider
-// band in dv.synthAdvDividerRect / dv.synthAdvDividerCount. Two-pass: the
-// first Layout discovers the column count for this width, the second lays the
-// padded list for real; the scroll offset is saved around the probe so the
-// probe's smaller row count cannot clamp the window down.
+// Two passes: the first discovers the column count; the scroll offset is saved around it so the probe's
+// smaller row count cannot clamp the window. -1 = phantom divider cell.
 func (dv *DrumView) layoutTieredGrid(grid *ControlGrid, innerR image.Rectangle, essential, advanced []int, moreOpen bool) []int {
 	dv2 := Profile().DensityValues()
 	hGap, vGap := SpaceSM, SpaceXS
@@ -516,8 +460,6 @@ func (dv *DrumView) layoutTieredGrid(grid *ControlGrid, innerR image.Rectangle, 
 	return visible
 }
 
-// drawSynthMacroLayer paints the category layer (root: strip + cards; drilled:
-// header + param cards + More).
 func (p *synthPanel) drawSynthMacroLayer(dst *ebiten.Image, resolved instrument.ID) {
 	dv := p.dv
 	detail := dv.instEditorMacroDetailR
@@ -531,11 +473,8 @@ func (p *synthPanel) drawSynthMacroLayer(dst *ebiten.Image, resolved instrument.
 	if target.kind == drillNone {
 		p.sprites.beginCardFrame()
 		p.drawPipelineStrip(dst)
-		// Root cards render through the per-card sprite cache: a steady frame
-		// blits; only a card whose label, dials or state changed re-rasterises.
-		// Dial readings are re-read at draw time, so a raw edit / undo that
-		// moves a dial's params repaints it even when nothing re-laid the
-		// panel out.
+		// Per-card sprites: only a card whose label, dials or state changed re-rasterises. Readings are re-read at draw
+		// time, so an undo that moves a dial repaints it even with no re-layout.
 		params := audio.MergedInstrumentParamsRO(resolved)
 		focusCard, focusDial, focused := dv.synthFocusedDial(resolved)
 		for i := range dv.instEditorMacroCards {
@@ -543,8 +482,7 @@ func (p *synthPanel) drawSynthMacroLayer(dst *ebiten.Image, resolved instrument.
 			if c.r.Empty() {
 				continue
 			}
-			// By id, not by index: cards scrolled out of the grid's window are
-			// not laid out, so the slot index drifts from the macro index.
+			// By id: cards scrolled out of the window are not laid out, so the slot index drifts from the macro index.
 			cg := dv.macroConceptByID(c.id)
 			if cg != nil {
 				for j := 0; j < c.nDials && j < len(cg.Dials); j++ {
@@ -574,8 +512,6 @@ func (p *synthPanel) drawSynthMacroLayer(dst *ebiten.Image, resolved instrument.
 		return
 	}
 
-	// Drilled header: Back (drawn with the other instEditorBtns by
-	// drawSynthFooter) · title · gloss · stage pill.
 	tx := detail.Min.X + synthSectionPaddingX
 	if b := dv.instEditorMacroBackBtn; b != nil && !b.Rect().Empty() {
 		tx = b.Rect().Max.X + SpaceMD
@@ -649,8 +585,7 @@ func (p *synthPanel) drawSynthMacroLayer(dst *ebiten.Image, resolved instrument.
 	}
 	p.sprites.endCardFrame()
 	if grid := dv.instEditorMacroGrid; grid != nil {
-		// Honesty scrim: a bypassed stage's controls stay interactive but read
-		// as inert (dimmed cards under a translucent wash).
+		// A bypassed stage's controls stay interactive but read as inert.
 		if !stageEnabled && !grid.ContentRect().Empty() {
 			drawRoundedRect(dst, grid.ContentRect(), WithAlpha(TokenSurface1(), AlphaStrong), RadiusSM, true)
 		}
@@ -659,9 +594,6 @@ func (p *synthPanel) drawSynthMacroLayer(dst *ebiten.Image, resolved instrument.
 	}
 }
 
-// drawSynthMoreDivider paints the "More · n" divider band with a chevron that
-// points down when collapsed and up when expanded. Reuses the Advanced
-// divider's rect/count (synthAdvDividerRect / synthAdvDividerCount).
 func (p *synthPanel) drawSynthMoreDivider(dst *ebiten.Image, open bool) {
 	dv := p.dv
 	r := dv.synthAdvDividerRect
@@ -702,11 +634,7 @@ func (dv *DrumView) macroConceptByID(id string) *macroGroup {
 	return nil
 }
 
-// synthMacroHitAreas publishes the category layer's own hit areas: at the root
-// the pipeline strip + the card drill handlers + the card grid's scroll body;
-// drilled, the stage pill + the param grid's scroll body. The Back / More
-// Buttons and the param knobs are published by the existing instEditorBtns /
-// per-knob loops in synthTabHitAreas.
+// The Back/More buttons and the knobs are published by the existing loops in synthTabHitAreas.
 func (p *synthPanel) synthMacroHitAreas(instID instrument.ID) []HitArea {
 	dv := p.dv
 	z := ZEQPanel + 2
@@ -717,8 +645,7 @@ func (p *synthPanel) synthMacroHitAreas(instID instrument.ID) []HitArea {
 	grid := dv.instEditorMacroGrid
 	atRoot := dv.synthAtMacroRoot(resolved)
 	if atRoot && !dv.instEditorMacroDetailR.Empty() {
-		// The root's empty card space: a tap drops the graph's focus, a sweep
-		// scrolls the cards (synthFocusClearAdapter replaces the scroll body).
+		// A tap on empty card space drops the graph's focus; a sweep scrolls.
 		out = append(out, HitArea{
 			Rect:    dv.instEditorMacroDetailR,
 			ZIndex:  ZEQPanel + 1,
@@ -758,15 +685,13 @@ func (p *synthPanel) synthMacroHitAreas(instID instrument.ID) []HitArea {
 				Touch:    true,
 				ClipRect: c.r.Inset(-8),
 			})
-			// Dials sit above their card's drill area: a press on a dial
-			// adjusts it and never drills.
+			// Above the card's drill area, so a dial press never drills.
 			for j := 0; j < c.nDials; j++ {
 				dr := c.dialRects[j]
 				if dr.Empty() {
 					continue
 				}
-				// Touch expansion (44 px minimum) stays inside the dial's own
-				// card and the visible grid, so it can never reach a sibling.
+				// The 44 px touch expansion stays inside the dial's card and the visible grid, so it never reaches a sibling.
 				clip := c.r
 				if grid != nil && !grid.ContentRect().Empty() {
 					dr = dr.Intersect(grid.ContentRect())
@@ -803,10 +728,8 @@ func (p *synthPanel) synthMacroHitAreas(instID instrument.ID) []HitArea {
 	return out
 }
 
-// macroCardHitAdapter drills into a category on a TAP. A vertical sweep that
-// starts on a card scrolls the root grid instead (the dials make the root
-// taller than the panel), so the drill happens on release, through the same
-// tap-vs-scroll arbiter the synth controls use.
+// The drill happens on release through the tap-vs-scroll arbiter: the dials make the root taller than the
+// panel, so a sweep starting on a card must scroll.
 type macroCardHitAdapter struct {
 	dv     *DrumView
 	id     string
@@ -835,8 +758,7 @@ func (h *macroCardHitAdapter) OnRelease(x, y int) {
 	}
 	inst := h.dv.resolveSynthInstrument(h.instID)
 	if !devToolsOn() {
-		// Production: a card does not drill (its knobs are developer tools);
-		// a tap focuses its first dial, so the graph explains the card.
+		// Production cards do not drill; a tap focuses the first dial so the graph explains the card.
 		h.dv.focusCardFirstDial(inst, h.id)
 		h.dv.invalidateSynthPanel()
 		return
@@ -846,9 +768,6 @@ func (h *macroCardHitAdapter) OnRelease(x, y int) {
 }
 func (h *macroCardHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// drawMacroCard renders one category card: the flat-tonal card body with a
-// plain-English LABEL + one-liner GLOSS and a drill caret, and — when the card
-// has dials — the dial row across the card's full width underneath.
 func drawMacroCard(dst *ebiten.Image, r image.Rectangle, label, gloss string, dials []macroDialSlot, st paramCardState) {
 	if r.Empty() {
 		return
