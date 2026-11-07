@@ -11,8 +11,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newMobileTestDV creates a DrumView configured for mobile testing with
-// small screen enabled and layout initialized.
 func newMobileTestDV(t *testing.T) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -43,8 +41,6 @@ func newMobileTestDV(t *testing.T) *DrumView {
 	return dv
 }
 
-// mobileInputAt sets input mocks at the given position with given press state.
-// Returns a restore function.
 func mobileInputAt(t *testing.T, x, y int, pressed bool) func() {
 	t.Helper()
 	return SetInputForTest(
@@ -57,9 +53,7 @@ func mobileInputAt(t *testing.T, x, y int, pressed bool) func() {
 	)
 }
 
-// TestContextMenuTapInjectionWithOpenMenu verifies that removing the
-// anyDropdownOpen() guard from tap injection allows taps inside an open
-// context menu to fire buttons.
+// Taps inside an open context menu reach its buttons; tap injection is not blocked by an open dropdown.
 func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	dv := newMobileTestDV(t)
 
@@ -80,13 +74,10 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	bx := btnRect.Min.X + btnRect.Dx()/2
 	by := btnRect.Min.Y + btnRect.Dy()/2
 
-	// Suppress should be set from openContextMenu — clear it to simulate
-	// a new touch after the open (user lifts finger, then taps again).
+	// Opening sets the suppression; clear it to model a fresh touch after the finger lifts.
 	suppressClicksUntilRelease = false
 
-	// Frame 1: press inside the context menu at a button position.
-	// The portal system now handles context menu input dispatch. Call
-	// handleContextMenuInput directly to simulate the portal path.
+	// Called directly, as the portal dispatches it.
 	r := mobileInputAt(t, bx, by, true)
 	dv.handleContextMenuInput(bx, by, true)
 	r()
@@ -95,9 +86,7 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 		t.Fatal("deferred tap should be active after press inside context menu")
 	}
 
-	// Frame 2: release at (0,0) — simulating mobile touch end where coords
-	// revert to origin. With portal capture, the context menu input handler
-	// still fires on release because the deferred tap is active.
+	// A mobile touch end reverts to (0,0); the active deferred tap still fires on release.
 	r = mobileInputAt(t, 0, 0, false)
 	handled := dv.handleContextMenuInput(0, 0, false)
 	r()
@@ -105,17 +94,13 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	if !handled {
 		t.Error("handleContextMenuInput should consume input when deferred tap is active on release")
 	}
-	// The deferred tap should have fired and closed the menu (the Rename
-	// button closes the context menu when fired).
+	// Rename closes the menu when it fires.
 	if dv.contextMenuDeferredTap.Active() {
 		t.Error("deferred tap should have fired on release")
 	}
 }
 
-// TestContextMenuDeferredTapCapture verifies that when a DeferredTap is
-// started on a context menu button, the portal system establishes capture
-// so that the release frame (even at coords 0,0) routes to the correct
-// overlay and fires the button.
+// A deferred tap on a button holds capture, so the release (even at 0,0) reaches the right overlay.
 func TestContextMenuDeferredTapCapture(t *testing.T) {
 	dv := newMobileTestDV(t)
 
@@ -135,8 +120,7 @@ func TestContextMenuDeferredTapCapture(t *testing.T) {
 
 	suppressClicksUntilRelease = false
 
-	// Press inside menu -> portal dispatches to context menu overlay.
-	// Call handleContextMenuInput directly to simulate the portal path.
+	// Called directly, as the portal dispatches it.
 	r := mobileInputAt(t, bx, by, true)
 	handled := dv.handleContextMenuInput(bx, by, true)
 	r()
@@ -148,8 +132,7 @@ func TestContextMenuDeferredTapCapture(t *testing.T) {
 		t.Fatal("context menu deferred tap should be active after press")
 	}
 
-	// Release at (0,0) -- portal capture routes to context menu overlay
-	// even though (0,0) is outside drum bounds because deferred tap is active.
+	// (0,0) is outside the drum bounds, but the active deferred tap holds capture.
 	r = mobileInputAt(t, 0, 0, false)
 	dv.handleContextMenuInput(0, 0, false)
 	r()
@@ -159,8 +142,6 @@ func TestContextMenuDeferredTapCapture(t *testing.T) {
 	}
 }
 
-// TestOverflowMenuTapInjectionWithOpenMenu verifies the same fix works for
-// the overflow menu (Upload/Import/Export).
 func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 	dv := newMobileTestDV(t)
 
@@ -171,16 +152,13 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 		t.Skip("overflow popup rect empty")
 	}
 
-	// A position inside the popup, on a header/row that routes through the
-	// shared MenuScroll deferred-tap mechanism this test exercises. (The
-	// overflow menu is file-only now; the nav menu is a separate portal.)
+	// On a row that routes through the shared MenuScroll deferred tap.
 	px := popupRect.Min.X + popupRect.Dx()/2
 	py := popupRect.Min.Y + 5
 
 	suppressClicksUntilRelease = false
 
-	// Press inside the overflow menu. The portal system now handles
-	// overflow menu input dispatch. Call handleOverflowMenuInput directly.
+	// Called directly, as the portal dispatches it.
 	r := mobileInputAt(t, px, py, true)
 	handled := dv.handleOverflowMenuInput(px, py, true)
 	r()
@@ -203,9 +181,7 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 	}
 }
 
-// TestTapOutsideOpenPopupClosesIt verifies that tapping outside an open
-// popup closes it without click-through, confirming the Phase 1 change
-// (removing anyDropdownOpen guard) is safe.
+// An outside tap closes the popup without clicking through.
 func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 	dv := newMobileTestDV(t)
 
@@ -216,8 +192,6 @@ func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 
 	suppressClicksUntilRelease = false
 
-	// Tap outside the context menu rect. Choose a point inside drum bounds
-	// but clearly outside the menu.
 	outsideX := dv.Bounds.Min.X + 5
 	outsideY := dv.Bounds.Max.Y - 5
 	// Ensure it's outside the context menu rect.
@@ -235,9 +209,7 @@ func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 	}
 }
 
-// TestLongPressCancelsDeferredTap verifies that a GestureLongPress event
-// cancels any active DeferredTap on the DrumView, preventing stale taps
-// from firing when the finger lifts after a long press.
+// A long press cancels any active deferred tap, so lifting the finger fires nothing stale.
 func TestLongPressCancelsDeferredTap(t *testing.T) {
 	dv := newMobileTestDV(t)
 
@@ -264,8 +236,6 @@ func TestLongPressCancelsDeferredTap(t *testing.T) {
 	}
 }
 
-// TestFXPanelPortalDispatch verifies that the FX panel is dispatched via
-// the portal system and responds to taps inside the panel rect.
 func TestFXPanelPortalDispatch(t *testing.T) {
 	dv := newMobileTestDV(t)
 

@@ -10,12 +10,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSidebarViewportStartsBelowGrownHeader guards the input / viewport content-top
-// math against the header band's actual laid-out height. While playing, the header
-// grows to a two-line coordinate readout (taller than the legacy fixed
-// sidebarHeaderH constant); the scroll viewport must start at the real header
-// bottom, not the stale constant — otherwise header taps fall inside the scroll
-// viewport and are mis-handled as content presses.
+// While playing, the header grows to two lines; the scroll viewport starts at its real bottom, or header taps
+// are handled as content presses.
 func TestSidebarViewportStartsBelowGrownHeader(t *testing.T) {
 	g, a, _ := buildLoopGame(t)
 	g.SetPlaying(true)
@@ -27,8 +23,7 @@ func TestSidebarViewportStartsBelowGrownHeader(t *testing.T) {
 	realTop := hdr.Max.Y + sidebarGap
 	gridH := g.split.GridH(g.winH)
 
-	// Discover the content-top that inViewport actually enforces: the smallest y
-	// at which a 1px probe rect first counts as scrollable content.
+	// The smallest y at which a 1 px probe counts as scrollable content.
 	probeTop := -1
 	for y := hdr.Min.Y; y < gridH; y++ {
 		if g.sidebar.inViewport(image.Rect(0, y, 1, y+1)) {
@@ -105,9 +100,7 @@ func TestNodePopupCoordinateLine(t *testing.T) {
 	}
 }
 
-// TestNodePopupHeaderDrawPlaying exercises the playing-state header render path
-// (the two-line coordinate readout with the live last/next fire) end to end: it
-// reserves a second line and drawHeader paints it without panicking.
+// The playing header reserves a second line with the live last/next fire and draws without panicking.
 func TestNodePopupHeaderDrawPlaying(t *testing.T) {
 	g, a, _ := buildLoopGame(t)
 	g.SetPlaying(true)
@@ -168,11 +161,7 @@ func TestNodePopupShowsInstrument(t *testing.T) {
 	}
 }
 
-// TestNodePopupHasNoMoveButton pins the removal of the "Move Node" row (and its
-// section header) from the main node popup on desktop: moving a node is already
-// covered by copy/paste and by the long-press quick-action popup, so the popup
-// no longer duplicates it. The mobile counterpart is
-// TestMoveButtonRemovedFromMobilePopup.
+// Copy/paste and the long-press popup already move a node, so the popup does not duplicate it.
 func TestNodePopupHasNoMoveButton(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))

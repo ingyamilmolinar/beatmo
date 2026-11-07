@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// openWheelForPrecision builds a continuous (endless) wheel popup over a single
-// unitless param, value seeded low so there is headroom to nudge upward.
+// Seeded low so there is headroom upward.
 func openWheelForPrecision(t *testing.T, def audio.ParamDef, value, stepMul float64) (*MobileWheelPopup, *Knob) {
 	t.Helper()
 	k := &Knob{Endless: true}
@@ -22,10 +21,7 @@ func openWheelForPrecision(t *testing.T, def audio.ParamDef, value, stepMul floa
 	return w, k
 }
 
-// TestKnobPillLabelTracksResolution covers the inline mobile knob pill (the
-// resting-state face of the control, tapped to open the wheel): it must show the
-// same resolution-aware precision as the wheel center, so a value dialed in at a
-// fine resolution is still legible after the wheel closes.
+// The pill shows the wheel centre's resolution-aware precision, so a fine value stays legible after closing.
 func TestKnobPillLabelTracksResolution(t *testing.T) {
 	def := audio.ParamDef{Name: "amt", Min: 0, Max: 1} // unitless
 	k := &Knob{Endless: true}
@@ -59,9 +55,7 @@ func TestStepDecimals(t *testing.T) {
 	}
 }
 
-// TestFormatParamValueStepFineResolution pins precision + sign handling per unit
-// at a fine step. Each row would render with too few decimals (frozen) under the
-// natural-precision formatter.
+// Each row would freeze under the natural-precision formatter.
 func TestFormatParamValueStepFineResolution(t *testing.T) {
 	cases := []struct {
 		value, step float64
@@ -83,9 +77,7 @@ func TestFormatParamValueStepFineResolution(t *testing.T) {
 	}
 }
 
-// TestFormatParamValueStepCoarseMatchesNatural guarantees that a coarse/infinite
-// step reproduces the natural-precision formatter byte-for-byte, so existing
-// captions are untouched.
+// A coarse or infinite step reproduces the natural formatter byte for byte.
 func TestFormatParamValueStepCoarseMatchesNatural(t *testing.T) {
 	units := []string{"", "×", "x", "mult", "Hz", "s", "ms", "cents", "c", "st", "dB", "%", "rad"}
 	values := []float64{0, 0.4, 1, 12.5, -7.25, 1500, 440}
@@ -99,10 +91,7 @@ func TestFormatParamValueStepCoarseMatchesNatural(t *testing.T) {
 	}
 }
 
-// TestWheelCenterValueChangesOnFineResolutionStep is the user-reported scenario:
-// at a fine resolution (x0.005) a single-step nudge must visibly change the
-// number drawn in the center selector. Before the fix the center label kept its
-// 1-decimal precision and showed the same string after a 0.005 change.
+// At ×0.005 a single nudge must visibly change the centre number.
 func TestWheelCenterValueChangesOnFineResolutionStep(t *testing.T) {
 	def := audio.ParamDef{Name: "amt", Min: 0, Max: 1} // unitless
 	w, k := openWheelForPrecision(t, def, 0.1, 0.005)
@@ -115,9 +104,7 @@ func TestWheelCenterValueChangesOnFineResolutionStep(t *testing.T) {
 	}
 }
 
-// TestWheelCenterValuePrecisionTracksResolution pins the exact rendered strings:
-// a coarse step keeps the natural 1-decimal precision, a fine step gains the
-// decimals needed to reflect the resolution.
+// Coarse keeps one decimal; fine gains the decimals its resolution needs.
 func TestWheelCenterValuePrecisionTracksResolution(t *testing.T) {
 	def := audio.ParamDef{Name: "amt", Min: 0, Max: 1} // unitless
 	w, k := openWheelForPrecision(t, def, 0.4, 0.5)
@@ -131,11 +118,7 @@ func TestWheelCenterValuePrecisionTracksResolution(t *testing.T) {
 	}
 }
 
-// TestWheelCenterValueRefreshesAtEveryResolution walks every rung of the
-// resolution ladder (the full set of supported resolutions) and asserts that a
-// single-step nudge changes the rendered center number at each one. This is the
-// core invariant: no supported resolution may leave the displayed value frozen
-// after a real value change.
+// No supported resolution may leave the shown value frozen after a real change.
 func TestWheelCenterValueRefreshesAtEveryResolution(t *testing.T) {
 	defs := []audio.ParamDef{
 		{Name: "amt", Min: 0, Max: 1},                   // unitless

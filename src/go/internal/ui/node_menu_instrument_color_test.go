@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestNodeSidebarTintsToOwningInstrumentColor verifies the desktop node pop-up
-// (sidebar) draws its header underline and active section stripes in the
-// owning row's INSTRUMENT color, not the fixed azure accent.
+// The owning row's instrument colour, not the fixed azure.
 func TestNodeSidebarTintsToOwningInstrumentColor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -36,10 +34,7 @@ func TestNodeSidebarTintsToOwningInstrumentColor(t *testing.T) {
 	dst := ebiten.NewImage(640, 480)
 	rects := collectFilledRects(t, func() { g.sidebar.Draw(dst) })
 
-	// The node sidebar header underline tints to the instrument color (the
-	// header swatch + button faces also carry it; see the other test). NOTE:
-	// expanded section headers intentionally NO LONGER draw a node-color
-	// fill/stripe — that "selected bar" highlight was removed as distracting.
+	// Expanded section headers carry no node-colour fill: that highlight read as distracting.
 	warmUnderline := false
 	for _, dr := range rects {
 		// Header underline: alpha-blended tint of the warm color (R >= B).
@@ -52,8 +47,6 @@ func TestNodeSidebarTintsToOwningInstrumentColor(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupConnectHoverTintsToInstrument verifies the mobile node
-// long-press popup's Connect hover accent uses the node's instrument color.
 func TestLongPressPopupConnectHoverTintsToInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -82,11 +75,8 @@ func TestLongPressPopupConnectHoverTintsToInstrument(t *testing.T) {
 	}
 }
 
-// TestNodeSidebarButtonFacesStayNeutral pins the 2026-07-16 redesign: the
-// sidebar's interactive buttons (± steppers, logic selector) keep the plain
-// DropdownStyle keycap face — the node's identity lives in the header band,
-// title swatch, and dropdown accent stripes, never on button fills (the old
-// tintBtnAccent 40% face tint made the panel read as color-filled blocks).
+// Buttons keep the plain DropdownStyle face: the node's identity lives in the header band, the title swatch and
+// the dropdown stripes, never on fills, which made the panel read as coloured blocks.
 func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -106,8 +96,6 @@ func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 
-	// Draw a frame, then assert the faces are the untinted DropdownStyle
-	// fill on a stepper and the logic selector.
 	g.sidebar.Draw(ebiten.NewImage(640, 1000))
 
 	wantFill := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
@@ -135,15 +123,12 @@ func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 	}
 }
 
-// TestNodeSidebarSelectedLogicOptionTintsToInstrument verifies that the
-// currently-selected logic dropdown option carries an instrument-color active
-// highlight, isolated from the section-header stripe by its Y position.
+// Told apart from the section-header stripe by its Y position.
 func TestNodeSidebarSelectedLogicOptionTintsToInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	// Tall window so the expanded logic dropdown items sit inside the sidebar
-	// viewport (off-screen items are correctly not drawn).
+	// Tall, so the expanded items sit inside the viewport (off-screen items are not drawn).
 	g.Layout(640, 1000)
 
 	n := g.tryAddNode(3, 3, model.NodeTypeRegular)

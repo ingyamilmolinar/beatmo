@@ -49,8 +49,7 @@ func TestGridDragHitAdapter_OnDrag_Horizontal(t *testing.T) {
 	if !offsetChanged {
 		t.Error("expected OnOffsetChange to fire after horizontal drag past deadzone")
 	}
-	// Dragging right (x increasing) means dragStartX - x < 0, so offset stays 0.
-	// Drag left instead to increase offset.
+	// Dragging right keeps the offset at 0; drag left to raise it.
 	offsetChanged = false
 	adapter2 := &gridDragHitAdapter{zone: z}
 	adapter2.OnPress(200, 100)
@@ -171,9 +170,7 @@ func TestGridDragHitAdapter_OnWheel_NotConsumed(t *testing.T) {
 
 // --- Timeline scrub hit adapter tests ---
 
-// Task 6: the ribbon is drag-only — press only arms scrubbing. It must NOT
-// dispatch a seek; that only happens on OnRelease when the gesture moved to
-// a different beat than the press.
+// The press only arms the scrub; a seek comes on release, and only to a different beat.
 func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 	scrubCalled := false
 	z, _ := newTestTimelineZone()
@@ -194,12 +191,7 @@ func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubHitAdapter_OnDrag: Task 10 redesign — a drag no longer
-// re-seeks per frame (that was the old view-offset scrub behavior, which
-// fired the seek callback on every drag frame). Drag only updates the
-// ghost preview (z.scrubGhostBeat); OnSeekToStep is NOT called again
-// until OnRelease commits the final position. This test now asserts the
-// inverse of the old expectation, plus the ghost tracking the pointer.
+// A drag only moves the ghost preview; OnSeekToStep waits for the release.
 func TestTimelineScrubHitAdapter_OnDrag(t *testing.T) {
 	scrubCount := 0
 	z, _ := newTestTimelineZone()
@@ -513,8 +505,7 @@ func TestTimelineZone_ComputeTimelineBeats_OffsetExpands(t *testing.T) {
 	z.callbacks.TimelineBeats = func() int { return currentBeats }
 	z.callbacks.SetTimelineBeats = func(n int) { currentBeats = n }
 	z.callbacks.BeatLength = func() int { return 0 }
-	// Large offset: offset=60, length=8, unitsPerBeat=4.
-	// offsetBeats = 60/4 = 15, lengthBeats = 8/4 = 2, needBeats2 = ceil(15+2) = 17.
+	// 60/4 = 15 beats offset + 2 beats length = 17.
 	z.callbacks.Offset = func() int { return 60 }
 	z.Layout(image.Rect(0, 0, 400, 300))
 
@@ -1004,9 +995,7 @@ func TestTimelineZone_HandleCharsIgnored(t *testing.T) {
 
 // --- SetTimelineBarHeight ---
 
-// Task 6: the ribbon is now clamped to timelineBarHMax so it reads as a
-// slim progress strip — SetTimelineBarHeight no longer echoes back
-// arbitrarily large requested heights verbatim.
+// Clamped to timelineBarHMax, a slim progress strip.
 func TestTimelineZone_SetTimelineBarHeight(t *testing.T) {
 	z, _ := newTestTimelineZone()
 	z.SetTimelineBarHeight(20)
@@ -1026,18 +1015,8 @@ func TestTimelineZone_SetTimelineBarHeight(t *testing.T) {
 	}
 }
 
-// --- Ribbon seek clamping ---
-//
-// Task 10 replaced the offset-scrub adapter (which clamped to
-// [0, timelineBeats-lengthBeats] so the pattern's editable window never
-// scrolled past the end) with ribbonStepAt, a click-to-seek mapping that
-// clamps to the full [0, TimelineBeats] range — the ribbon can seek
-// anywhere in session history/future, not just within "room for the
-// pattern window". Was TestTimelineScrubHitAdapter_ScrubTo_Clamp,
-// asserting the old scrubTo's pattern-aware max-offset clamp; now asserts
-// OnPress (via ribbonStepAt) clamps to [0, TimelineBeats*unitsPerBeat].
-// Task 6: press no longer seeks, so clamping is now exercised via
-// press-then-drag-then-release (a real drag) instead of press alone.
+// The ribbon seeks anywhere in [0, TimelineBeats·unitsPerBeat], not just within room for the pattern
+// window; exercised through a real press-drag-release.
 func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 	var scrubbed int
 	z, _ := newTestTimelineZone()
@@ -1049,8 +1028,7 @@ func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 
 	adapter := &timelineScrubHitAdapter{zone: z}
 
-	// Press near the middle, drag far left of the bar — should clamp to
-	// beat 0 (step 0) on release.
+	// Clamps to step 0.
 	adapter.OnPress(200, 5)
 	adapter.OnDrag(-100, 5)
 	adapter.OnRelease(-100, 5)
@@ -1058,9 +1036,7 @@ func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 		t.Errorf("expected clamp to step 0 for far-left drag, got %d", scrubbed)
 	}
 
-	// Press near the middle, drag far right of the bar — should clamp to
-	// the last whole beat (16 beats * 4 units/beat = step 64), NOT the old
-	// length-aware max.
+	// Clamps to the last whole beat (16 × 4 = step 64), not a length-aware max.
 	scrubbed = -1
 	adapter.OnPress(200, 5)
 	adapter.OnDrag(9999, 5)

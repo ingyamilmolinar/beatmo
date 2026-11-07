@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestEnterConnectMode verifies that entering connect mode sets the expected
-// state and deselects any previously selected node.
 func TestEnterConnectMode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -46,8 +44,6 @@ func TestEnterConnectMode(t *testing.T) {
 	}
 }
 
-// TestEnterConnectModeNoPriorSelection verifies entering connect mode when no
-// node was previously selected.
 func TestEnterConnectModeNoPriorSelection(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -71,8 +67,6 @@ func TestEnterConnectModeNoPriorSelection(t *testing.T) {
 	}
 }
 
-// TestHandleConnectModeTapEmptyGrid verifies that tapping empty grid space
-// cancels connect mode.
 func TestHandleConnectModeTapEmptyGrid(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -94,8 +88,7 @@ func TestHandleConnectModeTapEmptyGrid(t *testing.T) {
 	}
 }
 
-// TestHandleConnectModeTapSelfTap verifies that tapping the source node itself
-// is a no-op (connect mode remains active, no edge created).
+// No edge, and connect mode stays active.
 func TestHandleConnectModeTapSelfTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -124,10 +117,7 @@ func TestHandleConnectModeTapSelfTap(t *testing.T) {
 	}
 }
 
-// TestHandleConnectModeTapInvisibleNodePosition verifies that tapping at the
-// position of an invisible node (far from any visible node) is treated as an
-// empty-space tap (because nodeAtScreen skips invisible nodes), which cancels
-// connect mode.
+// nodeAtScreen skips invisible nodes, so this is an empty-space tap.
 func TestHandleConnectModeTapInvisibleNodePosition(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -141,8 +131,6 @@ func TestHandleConnectModeTapInvisibleNodePosition(t *testing.T) {
 	g.enterConnectMode(from)
 	edgesBefore := len(g.edges)
 
-	// Tap at the invisible node's position. nodeAtScreen skips invisible
-	// nodes, so this acts like an empty-space tap and cancels connect mode.
 	sx1, sy1, sx2, sy2 := g.nodeScreenRect(invis)
 	cx := int((sx1 + sx2) * 0.5)
 	cy := int((sy1 + sy2) * 0.5)
@@ -156,8 +144,7 @@ func TestHandleConnectModeTapInvisibleNodePosition(t *testing.T) {
 	}
 }
 
-// TestHandleConnectModeTapNonPerpendicular verifies that tapping a diagonal
-// node shows an error and keeps connect mode active.
+// An error shows and connect mode stays active.
 func TestHandleConnectModeTapNonPerpendicular(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -191,8 +178,6 @@ func TestHandleConnectModeTapNonPerpendicular(t *testing.T) {
 	}
 }
 
-// TestHandleConnectModeTapSuccessfulConnect verifies that tapping a
-// perpendicular node creates an edge and exits connect mode.
 func TestHandleConnectModeTapSuccessfulConnect(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -221,8 +206,6 @@ func TestHandleConnectModeTapSuccessfulConnect(t *testing.T) {
 	}
 }
 
-// TestCancelConnectMode verifies that g.modes.Cancel resets all connect-mode
-// state (formerly cancelConnectMode, folded into gridModeManager).
 func TestCancelConnectMode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -246,8 +229,6 @@ func TestCancelConnectMode(t *testing.T) {
 	}
 }
 
-// TestDrawConnectModeNotActive verifies that drawConnectMode is a no-op when
-// connect mode is not active.
 func TestDrawConnectModeNotActive(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -262,15 +243,6 @@ func TestDrawConnectModeNotActive(t *testing.T) {
 	})
 }
 
-// Note: the old TestDrawConnectModeNilFromNode (kind==Connect with a nil
-// subject) tested a state the gridModeManager no longer allows to exist:
-// Enter(kind, subject) is a no-op unless subject != nil, so "armed but no
-// source node" is now structurally unreachable, and drawConnectMode's guard
-// (see brief) intentionally dropped the defensive nil check. Removed rather
-// than kept as a synthetic-state test.
-
-// TestDrawConnectModeActive verifies that drawConnectMode runs without error
-// when connect mode is active with a valid source node.
 func TestDrawConnectModeActive(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

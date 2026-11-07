@@ -12,22 +12,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Usability of the chord builder the way a USER meets it: the card opens with
-// every section collapsed, nothing is scrolled for the test, and a control can
-// only be pressed where the drawn card shows it. The older chord tests opened
-// every section (ExpandAllSections) and scrolled each target into view before
-// clicking, so all three of these defects passed them:
-//   - the Chord section header did not toggle (it was missing from the
-//     sidebar's hard-coded header lists), so a chord node reopened later could
-//     never show its builder;
-//   - the type cycle pushed its own Audible button below the card on
-//     Regular → Chord (the auto-expanded Chord section grew the content above
-//     it), so the second tap of a "rotate" landed on nothing;
-//   - the chord matrix opened only from the Pitch chip, inside a collapsed
-//     section the Chord section gave no hint of.
+// The card the way a user meets it: sections collapsed, nothing scrolled for the test, a control pressed only
+// where the drawn card shows it. Expanding every section first had hidden three dead controls.
 
-// chordUser drives the sidebar like a person: tap = real input through
-// Game.Update, then one drawn frame (the sidebar lays out in Draw).
+// The sidebar lays out in Draw, so each tap is followed by a drawn frame.
 type chordUser struct {
 	t      *testing.T
 	g      *Game
@@ -38,8 +26,7 @@ type chordUser struct {
 
 func (u *chordUser) frame() { u.g.Draw(u.screen) }
 
-// visibleRect is the drawn rect of a control, failing when the card does not
-// show it (absent, or scrolled out of the card's viewport).
+// Fails when the card does not show it: absent, or scrolled out of the viewport.
 func (u *chordUser) visibleRect(id sbID) image.Rectangle {
 	u.t.Helper()
 	r := u.g.sidebar.rects[id]
@@ -109,9 +96,7 @@ func forEachPointer(t *testing.T, fn func(t *testing.T, u *chordUser)) {
 	t.Run("mobile-touch", func(t *testing.T) { fn(t, newChordUser(t, true)) })
 }
 
-// TestChordTypeRotationByRepeatedTaps: open Audible and keep tapping the type
-// button. Every tap must land on it (it stays on the card) and advance the
-// cycle Regular → Chord → Silent → Mute → Regular → Chord.
+// Every tap lands on the type button and advances the cycle.
 func TestChordTypeRotationByRepeatedTaps(t *testing.T) {
 	forEachPointer(t, func(t *testing.T, u *chordUser) {
 		u.tap(sbSectionHeader(secAud))
@@ -129,9 +114,7 @@ func TestChordTypeRotationByRepeatedTaps(t *testing.T) {
 	})
 }
 
-// TestChordTypeTapKeepsTheButtonUnderThePointer: Regular → Chord grows the
-// card above the Audible button; the button must still be under the point
-// that was just tapped, so a second tap without moving rotates again.
+// Regular → Chord grows the card above the button; it must stay under the tapped point.
 func TestChordTypeTapKeepsTheButtonUnderThePointer(t *testing.T) {
 	forEachPointer(t, func(t *testing.T, u *chordUser) {
 		u.tap(sbSectionHeader(secAud))
@@ -149,9 +132,7 @@ func TestChordTypeTapKeepsTheButtonUnderThePointer(t *testing.T) {
 	})
 }
 
-// TestChordSectionHeaderToggles: a chord node opened fresh shows its Chord
-// section collapsed; tapping the header must expand it (the builder appears)
-// and tapping again must collapse it.
+// A fresh chord node shows Chord collapsed; its header expands and collapses it.
 func TestChordSectionHeaderToggles(t *testing.T) {
 	forEachPointer(t, func(t *testing.T, u *chordUser) {
 		u.g.setNodeType(u.node.ID, model.NodeTypeChord)
@@ -173,8 +154,7 @@ func TestChordSectionHeaderToggles(t *testing.T) {
 	})
 }
 
-// TestEverySidebarSectionHeaderToggles: every section header the card draws
-// toggles its section — so a future section cannot ship with a dead header.
+// So no section can ship with a dead header.
 func TestEverySidebarSectionHeaderToggles(t *testing.T) {
 	u := newChordUser(t, false)
 	u.g.setNodeType(u.node.ID, model.NodeTypeChord)
@@ -195,9 +175,7 @@ func TestEverySidebarSectionHeaderToggles(t *testing.T) {
 	}
 }
 
-// TestChordSectionChipOpensTheChordMatrix: the Chord section leads with a chip
-// naming the chord; tapping it opens the chord matrix (no detour through the
-// Pitch section), a cell applies, and the chip closes it again.
+// The chip opens the chord matrix directly, a cell applies, and the chip closes it.
 func TestChordSectionChipOpensTheChordMatrix(t *testing.T) {
 	forEachPointer(t, func(t *testing.T, u *chordUser) {
 		u.tap(sbSectionHeader(secAud))
@@ -246,9 +224,7 @@ func TestChordSectionChipOpensTheChordMatrix(t *testing.T) {
 	})
 }
 
-// cellOutsideCard is a visible picker cell that does NOT overlap the node card
-// — the confirming tap there used to read as a tap OUTSIDE the card once the
-// picker had closed under it, and closed the card too.
+// Off the card: once the picker closed under it, a confirm there read as a tap outside the card.
 func cellOutsideCard(t *testing.T, u *chordUser, ids []sbID) sbID {
 	t.Helper()
 	panel := u.g.sidebar.rects[sbPanel]
@@ -261,8 +237,7 @@ func cellOutsideCard(t *testing.T, u *chordUser, ids []sbID) sbID {
 	return sbID{}
 }
 
-// TestNoteMatrixConfirmOutsideCardKeepsTheCard: the same confirm-closes-the-
-// card defect on the note matrix (shared picker host).
+// The note matrix shares the picker host.
 func TestNoteMatrixConfirmOutsideCardKeepsTheCard(t *testing.T) {
 	forEachPointer(t, func(t *testing.T, u *chordUser) {
 		u.tap(sbSectionHeader(secPit))
@@ -289,12 +264,8 @@ func TestNoteMatrixConfirmOutsideCardKeepsTheCard(t *testing.T) {
 	})
 }
 
-// TestMobilePickerLeavesTheTopBarAndAnOutsideToTap: on a phone the grid
-// pickers (note and chord matrix) used to fill the whole grid pane — under
-// the top-right buttons, which hid their header, and with no "outside" left
-// to tap, while mobile has no close × by design. They now start below the
-// top-right button row, so the strip beside those buttons is outside the
-// picker and an outside tap there closes it (and the card) like any menu.
+// On a phone the pickers start below the top-right buttons, so their header shows and the strip beside the
+// buttons is an outside to tap (mobile has no close ×).
 func TestMobilePickerLeavesTheTopBarAndAnOutsideToTap(t *testing.T) {
 	for _, which := range []string{"chord", "note"} {
 		t.Run(which, func(t *testing.T) {

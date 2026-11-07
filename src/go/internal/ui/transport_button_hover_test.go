@@ -10,9 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// homeRowButtons returns the always-present desktop home-row (transport panel)
-// buttons paired with a stable name, filtered to those with a non-empty rect so
-// the test only asserts on controls actually laid out this frame.
+// Only controls laid out this frame.
 func homeRowButtons(z *TransportZone) []struct {
 	name string
 	btn  *Button
@@ -40,16 +38,8 @@ func homeRowButtons(z *TransportZone) []struct {
 	return out
 }
 
-// TestHomeRowButtonsHoverOnPlainDesktopHover guards that EVERY home-row
-// (transport panel) button reflects a hover state when the desktop cursor is
-// merely over it (no press). The button component already carries a `hovered`
-// flag + a hover-brightened keycap render (drawKeycapPanelButton fill+12 /
-// border+20, the same affordance the beat-counter keycap uses); the missing
-// seam was that tree-dispatched transport buttons never had their `hovered`
-// flag refreshed on plain mouse-over (the dispatcher runs only on
-// press/drag/release). This test drives a real Update frame with the cursor
-// parked over each button and asserts the button's own `hovered` flag flips
-// true, then clears when the cursor leaves.
+// Tree-dispatched buttons get hover on plain mouse-over, not only on press/drag/release; a real frame with the
+// cursor over each must set `hovered`, and leaving clears it.
 func TestHomeRowButtonsHoverOnPlainDesktopHover(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

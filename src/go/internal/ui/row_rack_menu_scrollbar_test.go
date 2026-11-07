@@ -7,13 +7,8 @@ import (
 	"testing"
 )
 
-// TestRowControlsClearScrollbarDesktop guards the "⋯ overflow button overlaps
-// the scrollbar" bug: when the kit has more instruments than fit the
-// EQ-panel-squeezed rack, the row-rack scrollbar draws at the panel's right
-// edge (VS.BarRect == [View.Max.X-width, View.Max.X]). The right-anchored
-// control cluster must reserve that width so the ⋯ chip (and every other
-// per-row control) renders entirely to the LEFT of the scrollbar — never under
-// it or flush against it.
+// With more rows than fit, the scrollbar draws at the panel's right edge, so the right-anchored controls
+// reserve its width and render entirely left of it.
 func TestRowControlsClearScrollbarDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -25,8 +20,7 @@ func TestRowControlsClearScrollbarDesktop(t *testing.T) {
 	z, _ := newTestRowRackZone(rows)
 	tree := registerRowRackZone(z, image.Rect(0, 0, 300, 100))
 	tree.Update()
-	// Populate the scrollbar viewport exactly as the per-frame Draw does so we
-	// can read its on-screen BarRect.
+	// As the per-frame Draw does, so BarRect is on screen.
 	z.syncScroll()
 
 	if !z.RowScroll().HasScroll() {

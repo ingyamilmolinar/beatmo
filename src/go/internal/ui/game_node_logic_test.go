@@ -26,10 +26,7 @@ func ensureNode(g *Game, i, j int, nodeType model.NodeType) *uiNode {
 }
 
 func scheduleAbsForTest(g *Game, abs int) {
-	// seqScheduleTime initializes its per-row counters on-demand. Many tests
-	// drive scheduling without going through the Play button path, so ensure the
-	// sequencer counters are sized up-front (starting at 0) to avoid inheriting
-	// any UI preview offsets (nextBeatIdxs) that would skip abs=0.
+	// Sized up front at 0, or tests that skip the Play path inherit UI preview offsets that skip abs=0.
 	if g != nil && g.drum != nil {
 		if len(g.seqNextIdxs) != len(g.drum.Rows) {
 			g.seqNextIdxs = make([]int, len(g.drum.Rows))
@@ -123,8 +120,6 @@ func TestNodeVolumeMultiplier(t *testing.T) {
 	}
 }
 
-// TestNodeLogic_DisableEveryOtherTrigger defines a node logic that disables
-// playback on even triggers for a regular node in a loop.
 func TestNodeLogic_DisableEveryOtherTrigger(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -294,9 +289,8 @@ func TestNodeLogicParamAdjustmentsApplied(t *testing.T) {
 
 	info := g.beatInfoAtRow(0, 0)
 	baseVol, basePitch, baseDur := g.evalNodeParamsOnly(0, 0, info)
-	// The test play wrapper (SetPlayFunc) applies the channel × master gain on
-	// top of the node volume; the expectation must too, or it depends on what
-	// an earlier test left the process-global master volume at.
+	// The play wrapper applies channel × master gain, so the expectation must too, or it depends on the
+	// process-global master volume an earlier test left.
 	wantVol := baseVol * 0.5 * playGainForTest(g, 0)
 	wantPitch := basePitch + 3
 	wantDur := baseDur * 2
@@ -389,8 +383,6 @@ func TestNodeLogicParamCountsSkipDisabled(t *testing.T) {
 	}
 }
 
-// playGainForTest is the gain SetPlayFunc's wrapper multiplies every play by:
-// the row instrument's channel volume times the master volume.
 func playGainForTest(g *Game, row int) float64 {
 	return audio.ChannelVolume(channel.Of(g.drum.Rows[row].Instrument)) * audio.MainVolume()
 }

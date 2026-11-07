@@ -7,9 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestFXPanelEmptyChainHasNoParamRows verifies bug #1: opening the FX panel for
-// a row whose insert chain is empty must produce ZERO param sliders/bindings —
-// no leftover rows from a previously-removed effect.
 func TestFXPanelEmptyChainHasNoParamRows(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -35,9 +32,6 @@ func TestFXPanelEmptyChainHasNoParamRows(t *testing.T) {
 	}
 }
 
-// TestFXPanelParamRowsClearedAfterRemoval verifies bug #1: after removing the
-// only effect, the panel rebuild must drop all of that effect's param rows and
-// slider bindings — no stale "Drive: 8.19"-style rows survive.
 func TestFXPanelParamRowsClearedAfterRemoval(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -69,9 +63,7 @@ func TestFXPanelParamRowsClearedAfterRemoval(t *testing.T) {
 	}
 }
 
-// TestFXPanelReverbOnlyDerivesFromLiveChain verifies bug #2: with a reverb-only
-// chain, every slider binding's param + def come from the reverb registration —
-// NOT from a previous (distortion) effect's params.
+// No binding may come from a previous (distortion) effect's params.
 func TestFXPanelReverbOnlyDerivesFromLiveChain(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -95,8 +87,6 @@ func TestFXPanelReverbOnlyDerivesFromLiveChain(t *testing.T) {
 		t.Errorf("expected effect name 'Reverb', got %q", got)
 	}
 
-	// Every binding must reference slot 0 and a reverb param name (room/damping/mix),
-	// proving the rows are derived from the CURRENT chain.
 	reverbParams := map[string]bool{"room": true, "damping": true, "mix": true}
 	if len(dv.fxSliderBindings) == 0 {
 		t.Fatal("expected reverb param sliders")
@@ -117,9 +107,6 @@ func TestFXPanelReverbOnlyDerivesFromLiveChain(t *testing.T) {
 	}
 }
 
-// TestFXPanelSwapEffectTypeUpdatesRows verifies bug #2: replacing the chain's
-// effect with a different type fully refreshes the bindings — no label/param
-// rows from the old effect type linger.
 func TestFXPanelSwapEffectTypeUpdatesRows(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -158,8 +145,6 @@ func TestFXPanelSwapEffectTypeUpdatesRows(t *testing.T) {
 	}
 }
 
-// TestFXParamSummaryDerivesFromLiveChain verifies bug #6: the collapsed-row
-// summary reflects the CURRENT param values, not defaults/stale state.
 func TestFXParamSummaryDerivesFromLiveChain(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -189,9 +174,7 @@ func TestFXParamSummaryDerivesFromLiveChain(t *testing.T) {
 	}
 }
 
-// TestFXParamSummaryEmptyForUnknownType verifies fxParamSummary returns "" when
-// an effect has no catalog params (defensive — collapsed rows then render no
-// summary rather than a stray separator).
+// No stray separator for an effect without catalog params.
 func TestFXParamSummaryEmptyForUnknownType(t *testing.T) {
 	got := fxParamSummary(audio.EffectSlot{Type: audio.EffectType("nonexistent")})
 	if got != "" {
@@ -199,12 +182,8 @@ func TestFXParamSummaryEmptyForUnknownType(t *testing.T) {
 	}
 }
 
-// TestFXToggleColorIsAccentNotGreen verifies bug #3: the FX enable toggle does
-// NOT use the shared iOS-green default still used by the synth stage pills. The
-// FX call site now passes the owning instrument's color (dv.fxPanelAccent(),
-// asserted in fx_toggle_color_test.go); this guard keeps the green default —
-// which synth pills depend on — distinct from the chrome accent so neither the
-// instrument-color nor accent path can silently regress to green.
+// The shared green default stays for the synth pills, so the FX toggle and chrome accent must stay distinct
+// from it.
 func TestFXToggleColorIsAccentNotGreen(t *testing.T) {
 	if colAccent == colPlayGreen {
 		t.Skip("accent and play-green share a hex — color assertion is vacuous")

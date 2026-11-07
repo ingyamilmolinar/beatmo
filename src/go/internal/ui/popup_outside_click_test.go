@@ -7,13 +7,9 @@ import (
 	"testing"
 )
 
-// Part C — uniform outside-click consumption. A press outside ANY interactive
-// overlay (blocking OR not) must close it without leaking to the surface below.
-// Blocking overlays already did this; these pin the NON-blocking cases (docked
-// FX panel, EQ channel dropdown) and the passive-tooltip exclusion.
+// A press outside any interactive overlay, blocking or not, closes it without reaching the surface below;
+// passive tooltips are excluded.
 
-// fxPanelGame builds a Game with the demo rows and opens row 0's (non-blocking)
-// FX panel. It returns the game and a grid-pane point clear of the panel.
 func fxPanelGame(t *testing.T) (g *Game, gx, gy int) {
 	t.Helper()
 	g = New(testLogger)
@@ -40,9 +36,7 @@ func fxPanelGame(t *testing.T) (g *Game, gx, gy int) {
 	return g, gx, gy
 }
 
-// TestFXPanelOpenBlocksGridTap: while the non-blocking FX panel is open, a tap
-// on the grid beneath must NOT create/select a node — the out-of-tree grid
-// handler must stand down for any interactive overlay, not only blocking ones.
+// The out-of-tree grid handler stands down for any interactive overlay, not only blocking ones.
 func TestFXPanelOpenBlocksGridTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -57,8 +51,6 @@ func TestFXPanelOpenBlocksGridTap(t *testing.T) {
 	}
 }
 
-// TestFXPanelOpenBlocksCameraPan: a two-finger pan while the FX panel is open
-// must NOT move the camera.
 func TestFXPanelOpenBlocksCameraPan(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -73,9 +65,7 @@ func TestFXPanelOpenBlocksCameraPan(t *testing.T) {
 	}
 }
 
-// TestPassiveTooltipDoesNotBlockGridTap: a display-only tooltip is Passive, so
-// it must NOT own input — a grid tap while it is up still creates a node, unlike
-// the interactive overlays above.
+// A display-only tooltip owns no input.
 func TestPassiveTooltipDoesNotBlockGridTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

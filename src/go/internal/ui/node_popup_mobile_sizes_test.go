@@ -7,8 +7,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestNodePopupMobileButtonSizes verifies all sidebar buttons use the fixed
-// sidebarBtnH height on mobile (no scaling — scrolling is used instead).
+// A fixed sidebarBtnH on mobile: content scrolls instead of buttons scaling.
 func TestNodePopupMobileButtonSizes(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -49,8 +48,7 @@ func TestNodePopupMobileButtonSizes(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileLogicDropdownInline verifies logic dropdown items are
-// horizontally within panel bounds.
+// Horizontally inside the panel.
 func TestNodePopupMobileLogicDropdownInline(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -82,8 +80,7 @@ func TestNodePopupMobileLogicDropdownInline(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileGrooveDropdownInline verifies groove dropdown items are
-// horizontally within panel bounds.
+// Horizontally inside the panel.
 func TestNodePopupMobileGrooveDropdownInline(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -114,8 +111,7 @@ func TestNodePopupMobileGrooveDropdownInline(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileCollapsedHeight verifies that with all sections collapsed
-// (the default), the sidebar panel height is small.
+// All sections collapsed by default, so the panel is small.
 func TestNodePopupMobileCollapsedHeight(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -137,8 +133,6 @@ func TestNodePopupMobileCollapsedHeight(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileExpandToggle verifies that toggling sectionOpen shows/hides
-// section content (replacing the old More/Less toggle).
 func TestNodePopupMobileExpandToggle(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -200,8 +194,6 @@ func TestNodePopupDesktopUnchanged(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileDropdownWithinPanel verifies that with the logic dropdown
-// open, all items are within the panel bounds.
 func TestNodePopupMobileDropdownWithinPanel(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -235,8 +227,7 @@ func TestNodePopupMobileDropdownWithinPanel(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileAccordion verifies the accordion flow: when one
-// dropdown is open, the other section's toggle is hidden (if not in section).
+// While one dropdown is open, the other section's toggle is hidden.
 func TestNodePopupMobileAccordion(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -308,8 +299,6 @@ func TestNodePopupMobileAccordion(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileSectionVisibility verifies that aud/move section headers
-// are always laid out when sections are visible for the node type.
 func TestNodePopupMobileSectionVisibility(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -363,16 +352,14 @@ func TestNodePopupMobileSectionVisibility(t *testing.T) {
 					t.Errorf("section header %q should always be laid out, got empty in state %q", sec, st.name)
 				}
 			}
-			// Aud section header should exist within grid bounds.
-			// With scrolling, content can extend beyond viewport.
+			// Content may extend past the viewport; it scrolls.
 			gridH := g.split.GridH(g.winH)
 			_ = gridH
 		})
 	}
 }
 
-// TestNodePopupMobileConditionalParams verifies that parameter space is only
-// reserved when the logic kind actually has parameters.
+// Space is reserved only for a logic kind that has parameters.
 func TestNodePopupMobileConditionalParams(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -436,8 +423,6 @@ func TestNodePopupMobileConditionalParams(t *testing.T) {
 	}
 }
 
-// TestNodePopupDesktopLayoutOrder verifies desktop layout keeps Logic and Groove
-// before the Aud section.
 func TestNodePopupDesktopLayoutOrder(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -454,8 +439,7 @@ func TestNodePopupDesktopLayoutOrder(t *testing.T) {
 	g.sidebar.sectionOpen[secGrp] = true
 	g.sidebar.layout()
 
-	// On desktop: Logic and Groove should come before Aud, and Aud before the
-	// Groups section (the last section now that Move is gone).
+	// Logic and Groove, then Aud, then Groups last.
 	logicRect := g.sidebar.rects[sbLogicSelect]
 	grvRect := g.sidebar.rects[sbGrooveSelect]
 	audRect := g.sidebar.rects[sbAudible]
@@ -475,9 +459,7 @@ func TestNodePopupDesktopLayoutOrder(t *testing.T) {
 	}
 }
 
-// TestNodePopupMobileScrollEnabled verifies that on a mobile screen with all
-// sections expanded and logic dropdown open, scrolling is enabled to accommodate
-// the extra content (instead of the old sizeFactor scaling).
+// Everything expanded with the dropdown open scrolls rather than shrinking.
 func TestNodePopupMobileScrollEnabled(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

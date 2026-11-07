@@ -4,12 +4,8 @@ package ui
 
 import "testing"
 
-// simulateScreenshotCapture drives g through the real Ebiten frame ordering —
-// Update() (which terminates via screenshotReady) runs before Draw() (which
-// increments screenshotDraws and may capture) within each frame. It returns the
-// draw count at which the capture fired (0 = never) and the frame at which the
-// loop terminated (-1 = never). It uses only the production decision methods so
-// it pins the actual capture/termination coupling.
+// Update (which ends the run via screenshotReady) precedes Draw (which counts and captures) in each frame, as
+// in Ebiten; only the production decision methods are used. Returns the capture draw (0 = never) and the end frame (-1 = never).
 func simulateScreenshotCapture(g *Game) (captureFrame, terminateFrame int) {
 	g.screenshotCaptured = false
 	g.screenshotDraws = 0
@@ -26,8 +22,7 @@ func simulateScreenshotCapture(g *Game) (captureFrame, terminateFrame int) {
 	return captureFrame, -1
 }
 
-// TestScreenshotThreshold pins the settle-frame resolution: an explicit
-// SettleFrames override wins; 0 falls back to the 90-frame default.
+// An explicit SettleFrames wins; 0 falls back to 90.
 func TestScreenshotThreshold(t *testing.T) {
 	g := &Game{}
 	if got := g.screenshotThreshold(); got != 90 {
@@ -43,11 +38,7 @@ func TestScreenshotThreshold(t *testing.T) {
 	}
 }
 
-// TestScreenshotCapturesAtSettleThreshold is the core regression guard for the
-// hardcoded-frame-90 bug. The capture must fire exactly at the scene's settle
-// threshold (never the old hardcoded 90), must actually fire (the SettleFrames<90
-// "no PNG" bug), and must precede termination (the loop must not exit before the
-// capture frame).
+// The capture fires exactly at the scene's settle threshold, always fires, and precedes termination.
 func TestScreenshotCapturesAtSettleThreshold(t *testing.T) {
 	for _, settle := range []int{0, 60, 90, 120, 150} {
 		want := settle
@@ -69,9 +60,7 @@ func TestScreenshotCapturesAtSettleThreshold(t *testing.T) {
 	}
 }
 
-// TestScreenshotReadyOnlyAfterCapture verifies termination is gated on the
-// capture having happened, not merely on the draw count — so the two predicates
-// can never diverge into "terminate before capture".
+// Termination waits for the capture, not merely the draw count, so the two can never diverge.
 func TestScreenshotReadyOnlyAfterCapture(t *testing.T) {
 	g := &Game{screenshotPath: "out.png", screenshotSettleFrames: 60}
 	g.screenshotDraws = 500 // far past the threshold
@@ -84,9 +73,7 @@ func TestScreenshotReadyOnlyAfterCapture(t *testing.T) {
 	}
 }
 
-// TestScreenshotNoCaptureWithoutPath verifies screenshot mode is inert when no
-// path is configured (normal interactive / bench runs must never capture or
-// self-terminate).
+// Interactive and bench runs must never capture or self-terminate.
 func TestScreenshotNoCaptureWithoutPath(t *testing.T) {
 	g := &Game{screenshotSettleFrames: 60, screenshotDraws: 500}
 	if g.shouldCaptureScreenshot() {

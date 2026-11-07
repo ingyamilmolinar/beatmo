@@ -198,8 +198,7 @@ func TestTimelineZoneScrubCapture(t *testing.T) {
 		t.Fatal("expected 'timeline-scrub' hit area")
 	}
 
-	// Press in the timeline bar. Task 6: the ribbon is drag-only — a press
-	// alone must NOT dispatch a seek.
+	// Drag-only: a press alone must not seek.
 	mx = (scrubArea.Rect.Min.X + scrubArea.Rect.Max.X) / 2
 	my = (scrubArea.Rect.Min.Y + scrubArea.Rect.Max.Y) / 2
 	pressed = true
@@ -221,8 +220,7 @@ func TestTimelineZoneScrubCapture(t *testing.T) {
 	mx += 50
 	tree.Update()
 
-	// Release — a real drag moved to a different beat, so exactly one seek
-	// commits now.
+	// The drag moved to another beat, so exactly one seek commits.
 	pressed = false
 	tree.Update()
 
@@ -549,8 +547,7 @@ func TestTimelineZone_ScrubPosition(t *testing.T) {
 		t.Fatal("expected non-empty timeline bar rect")
 	}
 
-	// Press at ~50%, drag to ~75% along the timeline bar (Task 6: the
-	// ribbon is drag-only — a press alone must not seek).
+	// ~50% to ~75%; a press alone must not seek.
 	pressX := barRect.Min.X + barRect.Dx()/2
 	scrubX := barRect.Min.X + barRect.Dx()*3/4
 	scrubY := (barRect.Min.Y + barRect.Max.Y) / 2

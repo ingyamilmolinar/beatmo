@@ -190,8 +190,7 @@ func TestSeqShouldTriggerNode_EveryN(t *testing.T) {
 	info := model.BeatInfo{NodeID: a.ID, NodeType: model.NodeTypeRegular}
 	counts := map[model.NodeID]int{}
 
-	// Call 9 times. Triggers should happen on the 3rd, 6th, 9th calls
-	// (when count % 3 == 0).
+	// Fires when count % 3 == 0.
 	var results []bool
 	for i := 0; i < 9; i++ {
 		results = append(results, g.seqShouldTriggerNode(0, i, info, n, counts, nil))
@@ -237,9 +236,7 @@ func TestSeqShouldTriggerNode_SkipEveryN(t *testing.T) {
 	info := model.BeatInfo{NodeID: a.ID, NodeType: model.NodeTypeRegular}
 	counts := map[model.NodeID]int{}
 
-	// Call 6 times. Skips every 2nd call (count%2==0 means skip).
-	// count after increment: 1, 2, 3, 4, 5, 6
-	// skip when count%2==0:  no, yes, no, yes, no, yes
+	// Skips when count % 2 == 0.
 	var results []bool
 	for i := 0; i < 6; i++ {
 		results = append(results, g.seqShouldTriggerNode(0, i, info, n, counts, nil))
@@ -540,8 +537,7 @@ func TestSeqShouldTriggerNode_EveryN_Mute(t *testing.T) {
 		t.Fatal("node not found")
 	}
 
-	// For mute nodes, every_n_triggers uses cycle-based logic instead of
-	// counts. Build a snapshot with a 2-node path so cycleLen=2.
+	// A mute node counts cycles, not triggers; a 2-node path makes cycleLen=2.
 	path := []model.BeatInfo{
 		{NodeID: a.ID, NodeType: model.NodeTypeMute},
 		{NodeID: b.ID, NodeType: model.NodeTypeRegular},
@@ -553,14 +549,7 @@ func TestSeqShouldTriggerNode_EveryN_Mute(t *testing.T) {
 	info := model.BeatInfo{NodeID: a.ID, NodeType: model.NodeTypeMute}
 	counts := map[model.NodeID]int{}
 
-	// cycleLen=2, so cycle = idx/2.
-	// N=2: triggers when (cycle+1)%2==0, i.e. cycle is odd (1, 3, 5, ...).
-	// idx=0 -> cycle=0 -> (0+1)%2=1!=0 -> false
-	// idx=1 -> cycle=0 -> false
-	// idx=2 -> cycle=1 -> (1+1)%2=0 -> true
-	// idx=3 -> cycle=1 -> true
-	// idx=4 -> cycle=2 -> (2+1)%2=1!=0 -> false
-	// idx=5 -> cycle=2 -> false
+	// cycle = idx/2, and N=2 fires on odd cycles.
 	expected := []bool{false, false, true, true, false, false}
 	for i, want := range expected {
 		got := g.seqShouldTriggerNode(0, i, info, n, counts, snap)

@@ -9,16 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestPopupCloseNoNodeCreation verifies that tapping outside the node popup
-// to close it does NOT create a node underneath. On mobile, the same touch
-// interaction spans multiple frames through two code paths:
-//
-//	Frame N:   touch-to-mouse override → handleEditor → sets pendingClick=true
-//	Frame N+1: gesture tap → handleTapInGrid → closes popup, sets guard
-//	Frame N+2: touch ended, handleEditor → release handler with stale pendingClick
-//
-// The nodeMenuClosedGuard in handleEditor prevents the release handler from
-// firing tryAddNode with stale state.
+// On mobile one touch spans frames: the override press sets pendingClick, the gesture tap closes the popup,
+// and the release would then add a node from the stale pendingClick; the closed guard stops it.
 func TestPopupCloseNoNodeCreation(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -36,8 +28,7 @@ func TestPopupCloseNoNodeCreation(t *testing.T) {
 	g.sidebar.Open(n)
 	g.sidebar.layout()
 
-	// Find a screen position outside the popup panel to simulate the tap.
-	// Use a position far from the node at (0,0) so it's outside the menu.
+	// Far from the node at (0,0), outside the menu.
 	tapX, tapY := g.winW-20, g.split.GridH(g.winH)/2
 	if g.menuHit(tapX, tapY) {
 		t.Fatal("test position should be outside popup panel")
@@ -45,8 +36,7 @@ func TestPopupCloseNoNodeCreation(t *testing.T) {
 
 	nodesBefore := len(g.nodes)
 
-	// --- Frame N: touch press at outside-popup position via mouse override ---
-	// handleEditor sees left=true, !leftPrev → sets pendingClick=true.
+	// handleEditor sees the press edge and sets pendingClick.
 	restore := SetInputForTest(
 		func() (int, int) { return tapX, tapY },
 		func(btn ebiten.MouseButton) bool { return btn == ebiten.MouseButtonLeft },
@@ -72,9 +62,7 @@ func TestPopupCloseNoNodeCreation(t *testing.T) {
 		t.Fatal("nodeMenuClosedGuard should be set after popup close")
 	}
 
-	// --- Frame N+2: touch released, handleEditor runs with left=false ---
-	// Without the guard, this would enter the release handler (left=false,
-	// leftPrev=true, pendingClick=true) and call tryAddNode.
+	// Without the guard the release handler would call tryAddNode.
 	restore = SetInputForTest(
 		func() (int, int) { return tapX, tapY },
 		func(btn ebiten.MouseButton) bool { return false }, // released
@@ -94,9 +82,7 @@ func TestPopupCloseNoNodeCreation(t *testing.T) {
 	}
 }
 
-// TestPopupCloseButtonNoNodeCreation verifies the same scenario but when
-// the close button is tapped directly — the close button fires via
-// handleNodeMenuButtons, setting the guard.
+// The close button sets the guard through handleNodeMenuButtons.
 func TestPopupCloseButtonNoNodeCreation(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -124,8 +110,7 @@ func TestPopupCloseButtonNoNodeCreation(t *testing.T) {
 
 	nodesBefore := len(g.nodes)
 
-	// --- Frame N: press on close button via sidebar HandleInput (as the
-	// InputDispatcher would route it in the real Update path) ---
+	// As the InputDispatcher routes it.
 	g.sidebar.HandleInput(cx, cy, true)
 
 	if g.sidebar.IsOpen() {
@@ -143,19 +128,8 @@ func TestPopupCloseButtonNoNodeCreation(t *testing.T) {
 	}
 }
 
-// TestPopupCloseButtonMultiFrameTouch reproduces the exact bug scenario where
-// a mobile touch lasting 3+ frames (very common — even a quick tap is ~50ms /
-// 3 frames at 60fps) exhausts the guard before the GestureTap fires.
-//
-// Timeline without the fix:
-//
-//	Frame N:   Touch starts. handleEditor → close button fires → guard=2.
-//	Frame N+1: guard decremented 2→1. Touch still held. handleEditor → guard>0 → blocked (ok).
-//	Frame N+2: guard decremented 1→0. Touch ends → GestureTap detected.
-//	           handleTapInGrid: guard=0 → NOT blocked → tryAddNode() → BUG!
-//
-// The fix freezes the guard while ActiveTouchCount() > 0, so it remains at 2
-// until the touch fully ends and the GestureTap can be blocked.
+// Even a quick tap lasts ~3 frames: the guard is frozen while a touch is down, or it runs out before the
+// GestureTap arrives and a node is added.
 func TestPopupCloseButtonMultiFrameTouch(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -203,8 +177,7 @@ func TestPopupCloseButtonMultiFrameTouch(t *testing.T) {
 		t.Fatalf("expected guard=2, got %d", g.sidebar.closedGuard)
 	}
 
-	// Simulate a touch being held via mock touch state. This makes
-	// globalTouchState.ActiveTouchCount() return 1.
+	// ActiveTouchCount() returns 1.
 	mock := newMockTouchState()
 	mock.addTouch(1, cx, cy)
 	restoreTouch := SetTouchForTest(mock.TouchIDs, mock.TouchPosition)
@@ -216,8 +189,7 @@ func TestPopupCloseButtonMultiFrameTouch(t *testing.T) {
 		t.Fatalf("expected 1 active touch, got %d", globalTouchState.ActiveTouchCount())
 	}
 
-	// --- Frame N+1: Guard decrement runs (touch still held) ---
-	// With the fix, guard should NOT decrement because ActiveTouchCount() > 0.
+	// Frozen while a touch is down.
 	if g.sidebar.closedGuard > 0 && globalTouchState.ActiveTouchCount() == 0 {
 		g.sidebar.closedGuard--
 	}
@@ -237,8 +209,7 @@ func TestPopupCloseButtonMultiFrameTouch(t *testing.T) {
 	mock.removeTouch(1)
 	gesture := globalTouchState.Update()
 
-	// ActiveTouchCount is now 0, but the guard decrement for this frame
-	// already ran (at top of Update loop). The guard is still 2.
+	// This frame's decrement already ran at the top of Update.
 	if g.sidebar.closedGuard != 2 {
 		t.Fatalf("guard should be 2 when tap fires, got %d", g.sidebar.closedGuard)
 	}

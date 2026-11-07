@@ -22,8 +22,7 @@ func buildLoop(g *Game, n int) {
 	g.drum.Rows[0].Node = first
 }
 
-// TestDefaultTimelineBeatsDesktop verifies that on desktop, the visible drum
-// timeline auto-grows to the full circuit path length (no cap).
+// The full path length on desktop: only screen width clamps it.
 func TestDefaultTimelineBeatsDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -46,16 +45,13 @@ func TestDefaultTimelineBeatsDesktop(t *testing.T) {
 		t.Fatalf("desktop: timelineBeats should be positive, got %d", g.drum.timelineBeats)
 	}
 
-	// On desktop, visible Length should equal the full path (no artificial
-	// beats cap—only screen-width clamping applies).
 	if g.drum.Length != g.drum.timelineBeats {
 		t.Logf("desktop: Length=%d vs timelineBeats=%d (screen clamp may apply)",
 			g.drum.Length, g.drum.timelineBeats)
 	}
 }
 
-// TestDefaultTimelineBeatsMobile verifies that on mobile, the visible drum
-// timeline is capped at 8 beats even when the circuit is longer.
+// Capped at 8 beats on mobile.
 func TestDefaultTimelineBeatsMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -94,8 +90,6 @@ func TestDefaultTimelineBeatsMobile(t *testing.T) {
 	}
 }
 
-// TestDefaultTimelineBeatsMobileVsDesktop directly compares the visible Length
-// for the same circuit on mobile vs desktop to confirm mobile is smaller.
 func TestDefaultTimelineBeatsMobileVsDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -135,15 +129,12 @@ func TestDefaultTimelineBeatsMobileVsDesktop(t *testing.T) {
 			mobileBeats, desktopBeats)
 	}
 
-	// Mobile visible should be ≤ desktop visible (the cap only makes it
-	// smaller or equal, never larger).
 	if mobileLen > desktopLen {
 		t.Errorf("mobile Length %d should be <= desktop Length %d", mobileLen, desktopLen)
 	}
 }
 
-// TestDefaultTimelineBeatsMobileSmallCircuit verifies that when the circuit is
-// shorter than the mobile default (8 beats), no padding is applied.
+// No padding below 8 beats.
 func TestDefaultTimelineBeatsMobileSmallCircuit(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -164,9 +155,7 @@ func TestDefaultTimelineBeatsMobileSmallCircuit(t *testing.T) {
 	}
 }
 
-// TestDefaultTimelineBeatsMobileLateInit simulates the WASM startup flow where
-// the mobile profile activates AFTER the initial updateBeatInfos. The visible
-// Length should still be capped via SetBounds.
+// The WASM startup order: the mobile profile arrives after the first updateBeatInfos, and SetBounds still caps.
 func TestDefaultTimelineBeatsMobileLateInit(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -184,8 +173,6 @@ func TestDefaultTimelineBeatsMobileLateInit(t *testing.T) {
 
 	// Step 2: Switch to mobile profile (simulates first WASM Layout call).
 	withSmallScreen(t, true)
-	// Trigger SetBounds with a different rect to simulate the WASM mobile
-	// Layout call that activates the profile and re-clamps Length.
 	g.drum.SetBounds(g.drum.Bounds.Inset(1))
 
 	upb := g.drum.timelineUnitsPerBeat
@@ -206,8 +193,7 @@ func TestDefaultTimelineBeatsMobileLateInit(t *testing.T) {
 	}
 }
 
-// TestDefaultTimelineBeatsMobileBeatCounter verifies the beat counter text
-// reflects the capped visible length on mobile, not the full circuit.
+// "Beat X/Y" counts the capped length.
 func TestDefaultTimelineBeatsMobileBeatCounter(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -224,16 +210,14 @@ func TestDefaultTimelineBeatsMobileBeatCounter(t *testing.T) {
 	upb := g.drum.timelineUnitsPerBeat
 	maxVisible := 8 * upb
 
-	// The beat counter shows "Beat X/Y" where Y = ceil(Length / upb).
-	// On mobile with cap, Y should be ≤ 8.
+	// Y = ceil(Length / upb), at most 8 when capped.
 	if g.drum.timelineBeats > maxVisible && g.drum.Length > maxVisible {
 		t.Errorf("mobile beat counter: Length=%d should be <= %d (8 beats × %d upb)",
 			g.drum.Length, maxVisible, upb)
 	}
 }
 
-// TestDefaultTimelineBeatsMobileUserOverride verifies that after the user
-// manually adjusts length via +/- buttons, the mobile cap no longer applies.
+// A manual length change lifts the cap.
 func TestDefaultTimelineBeatsMobileUserOverride(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

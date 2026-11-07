@@ -2,12 +2,7 @@
 
 package ui
 
-// popup_control_keys_discipline_test.go — structural guards for the partial
-// keyboard-claim contract (keyboard_key_claim.go).
-//
-// The reported bug was a MISSING pair, not a wrong one: the Sampler wheel popup
-// neither handled the arrows nor claimed them, so a press did the grid's job.
-// These guards make both halves impossible to omit independently.
+// A partial claim is a claim plus its handler; these guards make each half impossible to omit alone.
 
 import (
 	"image"
@@ -19,9 +14,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Every popup value control must satisfy KeyboardKeyClaimant. A compile-time
-// assertion, so adding a fourth family without the interface fails the build of
-// this test rather than shipping arrows that pan the camera.
+// Compile-time, so a new family without the interface fails here instead of shipping arrows that pan the camera.
 var (
 	_ KeyboardKeyClaimant = (*MobileWheelPopup)(nil)
 	_ KeyboardKeyClaimant = (*SliderPopup)(nil)
@@ -30,8 +23,7 @@ var (
 	_ KeyboardKeyClaimant = armedControlKeys{}
 )
 
-// A claim must not outlive its control: a CLOSED popup owns nothing, or the
-// arrows would stay dead for the rest of the session.
+// A closed popup owns nothing, or the arrows stay dead for the rest of the session.
 func TestClosedPopupControlsClaimNoKeys(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -51,10 +43,8 @@ func TestClosedPopupControlsClaimNoKeys(t *testing.T) {
 	}
 }
 
-// A claimant may only claim keys it actually handles. HandleClaimedKeys reads
-// the arrows through anyKeyJustPressed(keysStep*), so every claimed key must
-// appear in one of those shared slices — a claim on, say, Space would silently
-// kill play/pause with no handler to replace it.
+// Only keys the handler reads (the keysStep* slices): a claim on Space would kill play/pause with nothing in its
+// place.
 func TestClaimedKeysAreOnlyTheHandledArrows(t *testing.T) {
 	handled := map[ebiten.Key]bool{}
 	for _, ks := range [][]ebiten.Key{keysStepUp, keysStepDown, keysStepLeft, keysStepRight} {
@@ -76,13 +66,10 @@ func TestClaimedKeysAreOnlyTheHandledArrows(t *testing.T) {
 	}
 }
 
-// The arrow keys may only be READ at the sanctioned sites. A popup or panel that
-// reads them in its own Update re-introduces the double-fire the claim contract
-// removes (isKeyJustPressed is non-consuming, so both sites would act on the
-// same press) — and, if it forgets the claim, the camera pans too.
+// isKeyJustPressed is non-consuming, so a second reader acts on the same press twice, and without a claim the
+// camera pans too.
 func TestArrowKeysReadOnlyAtSanctionedSites(t *testing.T) {
-	// Sanctioned: the shared alias slices, the grid shortcut NODE that owns
-	// arrow-pan, the router's key declaration, and the menu keyboard navigator.
+	// The alias slices, the grid node that owns arrow-pan, the router's key declaration and the menu navigator.
 	allowed := map[string]bool{
 		"keyboard_key_claim.go":   true, // declares keysStep* — the one alias table
 		"keyboard_shortcuts.go":   true, // declares the grid node's key set

@@ -157,13 +157,8 @@ func TestPopupSizingMobile(t *testing.T) {
 	}
 }
 
-// TestMobileTransportButtons_AtTouchMin is a 44 px touch-target ratchet
-// for every transport button placed by the mobile layout. After B3
-// (single-row toolbar + bottom action bar) — and after the record button's
-// geometric demote was removed — every mobile transport button meets the
-// DESIGN.md floor, so `knownBelowMin` is empty. New exceptions go in there
-// with a citation; the dual-direction assertion below also fails if a fixed
-// button is left listed.
+// Every mobile transport button meets the 44 px floor; an exception goes in knownBelowMin with a reason, and a
+// listed button that has since been fixed fails too.
 func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 	withSmallScreen(t, true)
 	logger := testLogger
@@ -196,14 +191,7 @@ func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 		{"bpmIncBtn", func() image.Rectangle { return tz.bpmIncBtn.Rect() }},
 		{"bpmDecBtn", func() image.Rectangle { return tz.bpmDecBtn.Rect() }},
 	}
-	// Buttons still below the 44 px floor.
-	// After B3 (single-row toolbar + bottom action bar), play/stop/subdiv
-	// and the BPM stepper now occupy the full mobile header row (≥ 56 px)
-	// and vol-icon / view-switch / overflow live in the 44 px bottom action
-	// bar — all hit the floor. recordBtn joined them once its geometric
-	// demote was removed (it left a seam above the button; its lower visual
-	// weight is carried by tone instead — see
-	// TestTransportRecordMatchesPlayStopBounds).
+	// Empty: every button meets the floor.
 	knownBelowMin := map[string]bool{}
 	for _, b := range all {
 		r := b.rect()
@@ -224,8 +212,7 @@ func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 }
 
 func TestDesignTokenConstants(t *testing.T) {
-	// Spacing scale bumped ~25% for the cushioned-dark theme — see
-	// DESIGN.md "Spacing scale" prose.
+	// Scaled ~25% for the cushioned-dark theme (DESIGN.md "Spacing scale").
 	if SpaceXS != 3 {
 		t.Errorf("SpaceXS = %d, want 3", SpaceXS)
 	}

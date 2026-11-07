@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestNodeTriggerAnimationIncreasesRadius verifies that when a node is
-// audibly triggered, its on-screen radius increases above the baseline and
-// then decays, while remaining clamped to non-overlapping bounds.
+// Grows above the baseline, then decays, clamped so nodes never overlap.
 func TestNodeTriggerAnimationIncreasesRadius(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -63,8 +61,7 @@ func TestNodeAnimPeakLimited(t *testing.T) {
 	}
 }
 
-// TestNodeAnimRespectsSkipEveryNLogic ensures node-level gating (skip_every_n)
-// inhibits the animation on skipped triggers.
+// A skipped trigger does not animate.
 func TestNodeAnimRespectsSkipEveryNLogic(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -120,10 +117,7 @@ func TestNodeAnimRespectsSkipEveryNLogic(t *testing.T) {
 	}
 }
 
-// TestNodeAnimNoOverlapAtMax ensures two adjacent nodes with full animation do
-// not overlap in screen space.
-// TestNodeSizeScalesWithZoomOut ensures nodes become larger on screen as the
-// user zooms out (smaller camera scale), providing visibility at bird's‑eye view.
+// Zoomed out, nodes are larger on screen so they stay visible from far away.
 func TestNodeSizeScalesWithZoomOut(t *testing.T) {
 	withDefaultStart(t, true)
 	assertDefaultParityState(t)

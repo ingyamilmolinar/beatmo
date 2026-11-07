@@ -30,8 +30,7 @@ func TestGridModeManager_TransitionMatrix(t *testing.T) {
 	if !m.Is(GridModeMove) {
 		t.Fatalf("no-op Enters must not change state, got %v", m.Active())
 	}
-	// Move armed while Connect requested: implicit cancel ("switched") then
-	// re-arm — observers see move->none followed by none->connect.
+	// An implicit "switched" cancel, then the re-arm: move→none, then none→connect.
 	m.Enter(GridModeConnect, n)
 	if !m.Is(GridModeConnect) {
 		t.Fatalf("expected connect after switch, got %v", m.Active())

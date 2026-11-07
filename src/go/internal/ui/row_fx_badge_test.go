@@ -11,15 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestRowFXBadgeCountFromActiveSlots verifies the FX badge helper interprets
-// the slot list correctly:
-//   - zero or all-disabled slots → no badge (count 0).
-//   - one enabled slot → badge with no numeric label.
-//   - multiple enabled slots → badge with numeric count text.
-//
-// The badge replaces the previous icon-swap convention so the FX button
-// always shows IconFx; the count surfaces "how many" without changing the
-// button's identity.
+// None for zero or all-disabled slots, a plain dot for one, a count for several; the button keeps IconFx.
 func TestRowFXBadgeCountFromActiveSlots(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -47,20 +39,14 @@ func TestRowFXBadgeCountFromActiveSlots(t *testing.T) {
 				t.Errorf("hasActiveEffects = %t, want %t", gotActive, c.wantDraw)
 			}
 
-			// Render a 32x32 button rect through drawFXBadge and confirm the
-			// helper completes without panic for every state. The visual
-			// presence/absence of the dot is asserted indirectly via the
-			// count helpers above; pixel-level verification lives in the
-			// regenerated mobile screenshot baseline.
+			// Completes for every state; the dot's presence follows from the count helpers above.
 			img := ebiten.NewImage(32, 32)
 			drawFXBadge(img, image.Rect(0, 0, 32, 32), gotN, color.RGBA{190, 120, 60, 255})
 		})
 	}
 }
 
-// TestFXButtonAlwaysShowsFXLetters ensures the FX button keeps its identity
-// (the "FX" letters) across active/inactive states — only the count dots
-// signal how many effects are on.
+// Only the count dots signal how many effects are on.
 func TestFXButtonAlwaysShowsFXLetters(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

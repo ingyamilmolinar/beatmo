@@ -213,8 +213,6 @@ func TestBeatCounterFreezesWhenPaused(t *testing.T) {
 	}
 }
 
-// After pressing Stop and then Play, playback restarts from the beginning
-// (index 0) and spawns pulses from the start node.
 func TestPlayAfterStopResetsToStart(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -313,10 +311,7 @@ func TestCurrentBeatMonotonic(t *testing.T) {
 	}
 }
 
-// Regression for jittery beat counter: when the scheduler's progress wraps to
-// the next beat before the game processes the corresponding tick event,
-// currentBeat should still advance to the next integer beat rather than
-// lingering on the previous one.
+// When progress wraps to the next beat before the tick event is processed, currentBeat must still advance.
 func TestCurrentBeatAdvancesOnProgressWrap(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -339,8 +334,7 @@ func TestCurrentBeatAdvancesOnProgressWrap(t *testing.T) {
 	}
 }
 
-// Small drops in scheduler progress should be ignored so the beat counter
-// advances smoothly without jumping ahead.
+// Small progress drops are ignored, so the counter never jumps.
 func TestCurrentBeatIgnoresJitter(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -364,8 +358,7 @@ func TestCurrentBeatIgnoresJitter(t *testing.T) {
 	}
 }
 
-// DrumView should reflect the globally applied BPM when computing timeline
-// seconds/milliseconds, regardless of local UI edits.
+// The timeline uses the globally applied BPM, whatever local UI edits say.
 func TestTimelineRefreshesBPMFromGame(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -390,8 +383,7 @@ func TestTimelineRefreshesBPMFromGame(t *testing.T) {
 	}
 }
 
-// Verify that currentBeat is quantized to the grid's smallest subdivision
-// (default 1/32 beat) so each playback tick maps to discrete sub-beat steps.
+// Quantised to the grid's smallest subdivision (default 1/32 beat).
 func TestCurrentBeatQuantizedToSubdiv(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -437,8 +429,6 @@ func TestTimelineShowsSubBeatTime(t *testing.T) {
 	}
 }
 
-// Quantization should honor the grid's MaxDiv factor. When reduced to 16,
-// sub-beat steps snap to sixteenth notes (1/16 beat).
 func TestCurrentBeatQuantizationRespectsGrid(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -457,8 +447,7 @@ func TestCurrentBeatQuantizationRespectsGrid(t *testing.T) {
 	}
 }
 
-// Counters should advance in 1/MaxDiv increments with time shown in ms that
-// correspond to (60_000/BPM)/MaxDiv per sub-beat.
+// Advances in 1/MaxDiv steps of (60000/BPM)/MaxDiv ms.
 func TestTimelineCountersAdvanceEachSubdiv(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -472,9 +461,7 @@ func TestTimelineCountersAdvanceEachSubdiv(t *testing.T) {
 	g.elapsedBeats = 0
 	div := float64(g.grid.MaxDiv())
 
-	// Generate a few progress values near exact boundaries.
-	// With the simplified format "Beat X · M:SS", verify integer beats
-	// and that seconds advance correctly at larger steps.
+	// "Beat X · M:SS" shows whole beats and seconds only.
 	makeProg := func(k int) float64 { return float64(k)/div + 1e-5 }
 	for k := 0; k <= 4; k++ {
 		kk := k
@@ -489,8 +476,7 @@ func TestTimelineCountersAdvanceEachSubdiv(t *testing.T) {
 	}
 }
 
-// Timeline time must reflect BPM precisely (including rounding) for sub-beat
-// steps at non-round BPM values.
+// Exact at non-round BPM, rounding included.
 func TestTimelineTimeMatchesBPMAcrossSubdiv(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -503,9 +489,7 @@ func TestTimelineTimeMatchesBPMAcrossSubdiv(t *testing.T) {
 	g.elapsedBeats = 0
 	div := float64(g.grid.MaxDiv())
 
-	// Generate progress values near exact sub-beat boundaries and validate
-	// that the simplified format produces valid output for a non-integer
-	// ms per sub-beat. With second-level precision, early sub-beats all map to 0:00.
+	// A non-integer ms per sub-beat; at second precision the early sub-beats all read 0:00.
 	makeProg := func(k int) float64 { return float64(k)/div + 1e-5 }
 	for k := 0; k <= 4; k++ {
 		kk := k
@@ -519,8 +503,7 @@ func TestTimelineTimeMatchesBPMAcrossSubdiv(t *testing.T) {
 	}
 }
 
-// Sanity at 60 BPM: each 1/32 sub-beat should add ~31.25ms (rounded), and
-// every 32 sub-beats should advance exactly 1.000 beat.
+// At 60 BPM each 1/32 adds ~31.25 ms and 32 of them make exactly one beat.
 func TestTimelineAt60BPMSteps(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -532,9 +515,7 @@ func TestTimelineAt60BPMSteps(t *testing.T) {
 	g.SetPlaying(true)
 	div := float64(g.grid.MaxDiv()) // default 32
 
-	// Walk two beats worth of sub-steps. With the simplified "Beat X · M:SS"
-	// format, verify that integer beat values are non-decreasing and the
-	// displayed time in seconds is consistent.
+	// Whole beats non-decreasing, seconds consistent.
 	prevBeatInt := -1
 	for k := 0; k <= int(2*div); k++ {
 		g.elapsedBeats = k
@@ -556,8 +537,7 @@ func TestTimelineAt60BPMSteps(t *testing.T) {
 	}
 }
 
-// Smooth display beat should increase monotonically with scheduler progress
-// between subdivision steps, avoiding step-by-step jitter in timers.
+// Rises smoothly between subdivision steps instead of stepping.
 func TestDisplayBeatSmoothBetweenSubdivisions(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -587,8 +567,7 @@ func TestDisplayBeatSmoothBetweenSubdivisions(t *testing.T) {
 	}
 }
 
-// Small regressions in scheduler progress should not cause displayBeat to
-// move backwards or stutter.
+// Never moves backwards on small progress regressions.
 func TestDisplayBeatIgnoresMinorJitter(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -616,9 +595,7 @@ func TestDisplayBeatIgnoresMinorJitter(t *testing.T) {
 	}
 }
 
-// Across a progress wrap (near 1 -> near 0), displayBeat should continue
-// increasing smoothly into the next beat even before another subdivision
-// completes.
+// Keeps rising across a progress wrap, before the next subdivision completes.
 func TestDisplayBeatWrapsSmoothly(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -646,8 +623,7 @@ func TestDisplayBeatWrapsSmoothly(t *testing.T) {
 	}
 }
 
-// Timeline counters should increase smoothly (no 1/32-step jumps) as engine
-// progress increases within a beat.
+// No 1/32-step jumps within a beat.
 func TestTimelineCountersSmoothMonotonic(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -668,10 +644,7 @@ func TestTimelineCountersSmoothMonotonic(t *testing.T) {
 	p := g.activePulse
 	g.elapsedBeats = 0
 
-	// With the simplified "Beat X · M:SS" format, the displayed seconds
-	// only have second-level precision. For small pulse.t deltas within the
-	// same beat, the displayed time may not change. Verify that the displayed
-	// beat values are non-decreasing and displayBeat itself is smooth.
+	// The displayed seconds may not change for small deltas; displayBeat itself must be smooth.
 	p.t = 0.10
 	da := g.displayBeat()
 	p.t = 0.15
@@ -683,8 +656,7 @@ func TestTimelineCountersSmoothMonotonic(t *testing.T) {
 	}
 }
 
-// After stopping and resuming playback, counters must immediately reflect the
-// new playback state (based on current step and pulse), without lag.
+// Counters reflect the resumed state at once, with no lag.
 func TestCountersUpdateOnResume(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -736,8 +708,7 @@ func TestCountersUpdateOnResume(t *testing.T) {
 	}
 }
 
-// TrackBeat should react immediately to progress wrap so the drum view follows
-// playback without waiting for internal counters to update.
+// TrackBeat follows a progress wrap at once, without waiting for internal counters.
 func TestTrackBeatUpdatesOnProgressWrap(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -831,8 +802,7 @@ func TestPlayButtonTogglesPause(t *testing.T) {
 	}
 }
 
-// TestPlayButtonClickPausesPlayback ensures that clicking the play button pauses
-// playback while leaving the follow state unchanged.
+// Pausing leaves the follow state unchanged.
 func TestPlayButtonClickPausesPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -898,8 +868,7 @@ func TestPauseKeepsHighlight(t *testing.T) {
 	}
 }
 
-// TestPauseStopsPulseProgress verifies that pausing via the play button
-// freezes active pulses so no further audio events fire.
+// Pausing freezes active pulses, so no further audio fires.
 func TestPauseStopsPulseProgress(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -1085,8 +1054,7 @@ func TestTryAddNodeTogglesRow(t *testing.T) {
 	g.Layout(640, 480)
 	nodeID := g.tryAddNode(2, 0, model.NodeTypeRegular).ID
 	g.graph.StartNodeID = nodeID
-	// After adding a node and setting it as start, the beat row should reflect it.
-	// We need to call Update to propagate the change to drum.Rows.
+	// Update propagates the new start to drum.Rows.
 	g.Update()
 	if len(g.drum.Rows[0].Steps) <= 0 || !g.drum.Rows[0].Steps[0] {
 		t.Fatalf("expected step 0 on")
@@ -1511,8 +1479,7 @@ func TestDrumWheelDoesNotZoomGrid(t *testing.T) {
 	}
 }
 
-// Length +/- buttons should grow/shrink by one full beat (MaxDiv subdivisions)
-// in the Game context, and holding the button should trigger repeats.
+// One full beat (MaxDiv subdivisions) per step; holding repeats.
 func TestDrumLengthButtonsStepBeat(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -1556,9 +1523,7 @@ func TestDrumLengthButtonsStepBeat(t *testing.T) {
 	}
 }
 
-// The default Game-wired DrumView should start with a usable window that
-// spans at least four full beats in the current grid so new loops are visible
-// at a “big picture” scale from the beginning.
+// At least four beats, so a new loop is visible at a big-picture scale.
 func TestGameDrumViewDefaultLengthAtLeastFourBeats(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -1615,9 +1580,7 @@ func TestDrumLengthButtonsHoldRepeats(t *testing.T) {
 	}
 }
 
-// Changing the number of visible subdivisions should not change the pixel
-// width of the step row; cell width adjusts instead. Validate for both
-// button-based beats and wheel zoom.
+// The step row's pixel width is fixed; the cell width adjusts, for both buttons and wheel zoom.
 func TestDrumStepsPixelWidthStableOnResize(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -1719,8 +1682,7 @@ func TestAddRegularNodeOverInvisible(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	// Previously an edge introduced invisible pass-through nodes; now edges are
-	// direct and placing a regular node on the path should create it directly.
+	// Edges are direct, so a regular node on the path is created as is.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.addEdge(a, b)
@@ -1749,8 +1711,7 @@ func TestComplexCircuitTraversal(t *testing.T) {
 	g.addEdge(d, start)
 
 	expectedLen := 10
-	// Align the drum window with the expected traversal size so length checks
-	// in this regression remain stable regardless of the default UI window.
+	// Matched to the traversal size so length checks do not depend on the default window.
 	g.drum.SetLength(expectedLen)
 	g.updateBeatInfos()
 
@@ -1789,9 +1750,7 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	// This test pins scheduler advancement, not the playback readiness gate:
-	// g.warmup == nil is a fully supported, nil-safe state
-	// (playbackReady/Tick both guard on it) that simply disables the gate.
+	// Pins scheduler advancement, not the readiness gate; a nil warm-up is supported and disables the gate.
 	g.warmup = nil
 	// ensure first step active
 	nodeID := g.tryAddNode(0, 0, model.NodeTypeRegular).ID
@@ -1972,8 +1931,7 @@ func TestRowLengthMatchesConnectedNodes(t *testing.T) {
 
 	g.updateBeatInfos()
 
-	// The drum view length should now be independent of the number of connected nodes
-	// and should match the default drum.Length (which is 8)
+	// Independent of the number of connected nodes.
 	if len(g.drum.Rows[0].Steps) != g.drum.Length {
 		t.Errorf("row len=%d want %d", len(g.drum.Rows[0].Steps), g.drum.Length)
 	}
@@ -2012,8 +1970,7 @@ func TestDrumRowReflectsSubBeatNodes(t *testing.T) {
 	n2 := g.tryAddNode(32, 0, model.NodeTypeRegular)
 	g.addEdge(n1, n2)
 
-	// Ensure the drum window matches the expected path length so sub-beat
-	// placements materialize in the Steps slice at their exact offsets.
+	// Long enough for sub-beat placements to land at their exact Steps offsets.
 	g.drum.SetLength(33)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
@@ -2218,9 +2175,7 @@ func TestLoopPulseDoesNotJumpToOrigin(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		g.advancePulse(g.activePulse)
 	}
-	// With intermediate steps synthesized, the segment after reaching n3 may
-	// pass through an invisible step before n1. Accept either the invisible
-	// pass-through or the immediate hop to n1 depending on spacing.
+	// Depending on spacing the hop after n3 passes an invisible step or reaches n1 directly.
 	to := g.activePulse.toBeatInfo.NodeID
 	if (to != n1.ID && to != model.InvalidNodeID) || g.activePulse.fromBeatInfo.NodeID != n3.ID {
 		t.Fatalf("expected pulse from %d to %d or invisible, got from %d to %d", n3.ID, n1.ID, g.activePulse.fromBeatInfo.NodeID, to)
@@ -2273,8 +2228,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 	g.start = start
 	g.updateBeatInfos()
 
-	// With the unified time-based sequencer, audio truth comes from the engine predictor.
-	// Schedule a small window and ensure the play calls match predictor.AudibleAt.
+	// Audio truth is the engine predictor: play calls must match AudibleAt.
 	plays := 0
 	g.SetPlayFunc(func(id instrument.ID, vol float64, when ...float64) { plays++ })
 
@@ -2561,8 +2515,7 @@ func TestSplitterDragPersists(t *testing.T) {
 	g.graph.StartNodeID = model.InvalidNodeID
 }
 
-// When the screen size can't be queried (e.g. it returns 0), dragging the
-// splitter should still preserve its final position once released.
+// With no queryable screen size (0), a dragged splitter keeps its released position.
 func TestSplitterDragPersistsWithoutScreenSize(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -2816,8 +2769,7 @@ func TestPulseTraversalIgnoresDrumLength(t *testing.T) {
 		t.Fatalf("expected pulse heading to second node")
 	}
 
-	// Advance to the next segment explicitly to avoid relying on
-	// time-based sync paths.
+	// Explicit, so the test does not rely on time-based sync.
 	_ = g.advancePulse(g.activePulse)
 	if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n2.ID {
 		t.Fatalf("expected pulse to continue to third node, got %+v", g.activePulse)
@@ -2885,18 +2837,7 @@ func TestDrumViewLoopingHighlighting(t *testing.T) {
 	g.drum.SetLength(6)
 	g.drum.SetBeatLength(g.drum.Length)
 
-	// Create the circuit: [X] -> [] -> [X] -> [X]
-	//                       ^      ^
-	//                       |      |
-	//                      [X] <- [X]
-
-	// Nodes:
-	// (0,0) - Node 1 (Regular)
-	// (1,0) - Node 2 (Invisible)
-	// (2,0) - Node 3 (Regular)
-	// (3,0) - Node 4 (Regular)
-	// (3,1) - Node 5 (Regular)
-	// (2,1) - Node 6 (Regular)
+	// [X] → [] → [X] → [X], looping back through [X] ← [X] below.
 
 	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular) // X
 	g.start = n1
@@ -2932,11 +2873,7 @@ func TestDrumViewLoopingHighlighting(t *testing.T) {
 		}
 	}
 
-	// Test a more complex looped circuit
-	// [X] -> [X] -> [X]
-	//  ^           |
-	//  |           v
-	// [X] <- [X] <- [X]
+	// A loop of three nodes across the top and three back along the bottom.
 
 	// Reset graph and drum view
 	g = New(logger)
@@ -2983,9 +2920,7 @@ func TestPulseTraversalBeyondDrumView(t *testing.T) {
 	assertDefaultParityState(t)
 	g.Layout(640, 480)
 
-	// Build looped circuit: [O] -> [] -> [X] -> [X]
-	//                                   ^      v
-	//                                   [X] <- [X]
+	// [O] → [] → [X] → [X], with a [X] ← [X] loop below the last two.
 	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.start = n1
 	g.graph.StartNodeID = n1.ID
@@ -3185,9 +3120,7 @@ func TestBPMChangeDuringLoopKeepsForwardProgress(t *testing.T) {
 	assertDefaultParityState(t)
 	g.Layout(640, 480)
 
-	// Build looped circuit: [O] -> [] -> [X] -> [X]
-	//                                   ^      v
-	//                                   [X] <- [X]
+	// [O] → [] → [X] → [X], with a [X] ← [X] loop below the last two.
 	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.start = n1
 	g.graph.StartNodeID = n1.ID
@@ -3429,11 +3362,8 @@ func TestAutoTrackFollowsBeat(t *testing.T) {
 	g.refreshDrumRow()
 	g.SetPlaying(true)
 	g.elapsedBeats = 5
-	// Anchor the wall clock so displayBeat() reports the canonical
-	// playhead (1.25 beats at div=4). updateDrumTracking now consumes
-	// playheadAbsSubdiv() = round(displayBeat() * div), so callers
-	// driving auto-track must initialise the play state the same way
-	// the production play handler does.
+	// Auto-track reads playheadAbsSubdiv() = round(displayBeat() * div), so the play state is set up the way the
+	// play handler does (1.25 beats at div=4).
 	setPlayStartForAbs(g, 5)
 	g.updateDrumTracking()
 	if g.drum.Offset <= 0 {
@@ -3473,8 +3403,7 @@ func TestUpdateBeatInfosClampUsesTimelineUnits(t *testing.T) {
 	}
 }
 
-// Rendering regression: a small progress dip should not shift the drum view
-// or misplace the highlight when tracking is enabled.
+// A small progress dip must not shift the tracked view or misplace the highlight.
 func TestAutoTrackIgnoresProgressJitter(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -3500,8 +3429,6 @@ func TestAutoTrackIgnoresProgressJitter(t *testing.T) {
 	if g.drum.Offset != initial {
 		t.Fatalf("offset changed unexpectedly: %d -> %d", initial, g.drum.Offset)
 	}
-	// draw the drum view to ensure rendering path runs; tracking should have
-	// kept the offset stable despite the progress jitter
 	g.drum.Draw(ebiten.NewImage(400, timelineHeight+24), nil, 0, nil, g.currentBeat())
 	if g.drum.Offset != initial {
 		t.Fatalf("offset changed after draw: %d", g.drum.Offset)
@@ -3553,8 +3480,7 @@ func TestNodeHoverScalesRadius(t *testing.T) {
 	}
 }
 
-// Global zoom limits: length never below 1 beat and never exceeds the
-// horizontal pixel capacity of the timeline.
+// Never below 1 beat, never beyond the timeline's horizontal pixel capacity.
 func TestDrumZoomGlobalMinMax(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -3646,8 +3572,6 @@ func TestDrawDrumPaneConcurrentHighlights(t *testing.T) {
 	wg.Wait()
 }
 
-// TestGameUpdatePendingImport verifies that pendingImportData is processed
-// and cleared after Update().
 func TestGameUpdatePendingImport(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -3680,8 +3604,6 @@ func TestGameUpdatePendingImport(t *testing.T) {
 	}
 }
 
-// TestGameUpdatePendingImportError verifies that invalid JSON in
-// pendingImportData triggers error notification and clears data.
 func TestGameUpdatePendingImportError(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -3697,8 +3619,6 @@ func TestGameUpdatePendingImportError(t *testing.T) {
 	}
 }
 
-// TestGameUpdateSimpleDrawAutoDisable verifies that simpleDraw=true with
-// auto-disable countdown disables simpleDraw after the countdown reaches 0.
 func TestGameUpdateSimpleDrawAutoDisable(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

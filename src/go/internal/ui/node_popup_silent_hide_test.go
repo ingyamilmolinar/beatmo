@@ -6,10 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensure that when a node is toggled to Silent or Mute, the popup hides the
-// appropriate informational rows (vol/pitch/dur/logic/groove) leaving only the
-// audible toggle where necessary. Switching back to Regular restores the rows
-// with previous values.
+// Silent and Mute hide vol/pitch/dur/logic/groove, leaving the audible toggle; back to Regular restores them
+// with their values.
 func TestNodePopupHidesForSilentAndMute_ThenRestores(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

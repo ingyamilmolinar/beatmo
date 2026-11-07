@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestNodeLogicLayout_NoOverlap ensures logic selector and +/- buttons never overlap
-// and align with other rows' buttons.
+// Aligned with the other rows' buttons.
 func TestNodeLogicLayout_NoOverlap(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -35,9 +34,7 @@ func TestNodeLogicLayout_NoOverlap(t *testing.T) {
 	if rLogic.Overlaps(rLnMinus) || rLogic.Overlaps(rLnPlus) {
 		t.Fatalf("logic button overlaps +/- controls: logic=%v ln-=%v ln+=%v", rLogic, rLnMinus, rLnPlus)
 	}
-	// Logic button is full-width within the panel; label is rendered
-	// inside the button, so no separate overlap check is needed.
-	// +/- x positions should still align with volume +/- for consistent grid
+	// The label sits inside the full-width logic button; the ± align with volume's.
 	if rLnMinus.Min.X != rVolMinus.Min.X || rLnPlus.Min.X != rVolPlus.Min.X {
 		t.Fatalf("logic +/- not aligned with other rows: ln-=%v vol-=%v ln+=%v vol+=%v", rLnMinus, rVolMinus, rLnPlus, rVolPlus)
 	}

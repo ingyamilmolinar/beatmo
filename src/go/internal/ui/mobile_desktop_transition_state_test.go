@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// layoutFingerprint captures all profile-derived rendering state that should
-// be identical between a fresh-desktop session and a mobile→desktop-
-// transitioned session at the same viewport dimensions. The struct's
-// equality is the invariant — drift in any field reveals construction-time-
-// baked profile state that survives the transition.
+// Equality is the invariant: any field that differs after mobile→desktop is profile state baked at
+// construction that survived the transition.
 type layoutFingerprint struct {
 	// Profile + size-derived
 	profileClass ScreenSizeClass
@@ -46,8 +43,7 @@ type layoutFingerprint struct {
 	rowLabel0TextScale float64
 	rowLabel0TextColor color.Color
 
-	// Scrollbar style (mobile and desktop share Width=6 but differ by MinThumbH:
-	// desktop=10, mobile=44 for the touch target)
+	// Same width, different MinThumbH: desktop 10, mobile 44 for the touch target.
 	rowScrollWidth     int
 	rowScrollMinThumbH int
 
@@ -58,8 +54,6 @@ type layoutFingerprint struct {
 	rowZoomChipRect     image.Rectangle
 }
 
-// captureFingerprint reads the post-Layout state of a DrumView into a
-// fingerprint snapshot for comparison.
 func captureFingerprint(dv *DrumView) layoutFingerprint {
 	fp := layoutFingerprint{
 		profileClass:        Profile().Class,
@@ -120,11 +114,7 @@ func captureFingerprint(dv *DrumView) layoutFingerprint {
 	return fp
 }
 
-// styleSnapshotsEqual compares two ButtonVisual values for semantic equality
-// using reflect.DeepEqual. ButtonVisual is an interface whose dynamic value
-// is typically a buttonStyleSpec (or similar) struct containing color.Color
-// interface fields — direct `==` comparison is unreliable for nested
-// interfaces, so DeepEqual is the right tool here.
+// DeepEqual: the specs hold color.Color interfaces, which `==` compares unreliably.
 func styleSnapshotsEqual(a, b ButtonVisual) bool {
 	return reflect.DeepEqual(a, b)
 }
@@ -142,10 +132,7 @@ func colorsEqualTest(a, b color.Color) bool {
 	return ar == br && ag == bg && ab == bb && aa == ba
 }
 
-// fingerprintsStyleEqual asserts that the *style/typography* subset of two
-// fingerprints matches. This is the invariant that must hold between a
-// fresh session and a transitioned session — rects are allowed to differ
-// only in tests that explicitly check them.
+// Rects may differ; only the tests that check them compare them.
 func fingerprintsStyleEqual(a, b layoutFingerprint) (string, bool) {
 	if a.profileClass != b.profileClass {
 		return "profileClass", false
@@ -201,11 +188,7 @@ func fingerprintsStyleEqual(a, b layoutFingerprint) (string, bool) {
 	return "", true
 }
 
-// buildFreshGame constructs a *Game at the given dimensions and screen
-// class (mobile if small, desktop otherwise), advances 2 frames to let
-// layout settle, and returns the game. Callers MUST register cleanup
-// via t.Cleanup before any subsequent state mutation that depends on
-// the screen class to land.
+// Two settle frames. Register cleanup before any mutation that depends on the screen class.
 func buildFreshGame(t *testing.T, w, h int, small bool) *Game {
 	t.Helper()
 	forceSmallScreenForTest = small
@@ -220,11 +203,7 @@ func buildFreshGame(t *testing.T, w, h int, small bool) *Game {
 
 // ─── Test 1: Strongest invariant — full fingerprint equality after transition
 
-// TestMobileToDesktopFingerprintMatchesFreshDesktop asserts that a
-// mobile→desktop transition produces a layout state byte-identical (on
-// every profile-derived field) to a fresh-desktop session at the same
-// dimensions. This catches any state that was sampled at construction
-// time and survived the screen-class change.
+// Any state sampled at construction that survives the class change shows up here.
 func TestMobileToDesktopFingerprintMatchesFreshDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -265,11 +244,7 @@ func TestMobileToDesktopFingerprintMatchesFreshDesktop(t *testing.T) {
 
 // ─── Test 2: Symmetric direction — desktop→mobile fingerprint equality
 
-// TestDesktopToMobileFingerprintMatchesFreshMobile asserts the symmetric
-// invariant: after a desktop→mobile transition, the layout state equals a
-// fresh-mobile session. Acts as a control case — most baked state is
-// mobile-only (so this should pass even pre-fix); failure here would
-// reveal a desktop-only construction-time bake we haven't found yet.
+// The control case: most baked state is mobile-only, so a failure here is a desktop-only bake.
 func TestDesktopToMobileFingerprintMatchesFreshMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -310,16 +285,8 @@ func TestDesktopToMobileFingerprintMatchesFreshMobile(t *testing.T) {
 
 // ─── Test 3: Row rack desktop branch selected after transition
 
-// TestMobileToDesktopRowControlsUseDesktopLayout asserts that the row
-// rack zone re-derives desktop state after a mobile→desktop transition.
-// The control cluster (vol · M · S · FX · ⋯) is now unified across both
-// profiles — the ⋯ overflow chip is present on mobile AND desktop (the
-// row label opens the instrument picker on every platform). What the
-// transition must flip is the row-label TYPOGRAPHY: mobile upscales it
-// (non-zero TextScale + explicit TextColor), desktop resets to the
-// Button defaults (TextScale=0 sentinel, TextColor=nil sentinel). This
-// guards against the construction-time bake regression — see
-// [[feedback_runtime_profile_derivation]].
+// The cluster is the same on both; what flips is the label typography: mobile sets TextScale and TextColor,
+// desktop resets them to the Button zero values.
 func TestMobileToDesktopRowControlsUseDesktopLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -340,9 +307,7 @@ func TestMobileToDesktopRowControlsUseDesktopLayout(t *testing.T) {
 	g.Layout(400, 800)
 	advanceFrames(g, 2)
 
-	// Confirm mobile baseline: ⋯ menu btn present (unified cluster shows it
-	// on mobile too), label typography upscaled (the thing that must reset
-	// on the desktop transition).
+	// The mobile baseline: ⋯ present, label typography upscaled.
 	if g.drum.rowRackZone.RowMenuBtns()[0].Rect().Empty() {
 		t.Fatal("baseline: mobile must show ⋯ menu button (unified control cluster)")
 	}
@@ -370,8 +335,7 @@ func TestMobileToDesktopRowControlsUseDesktopLayout(t *testing.T) {
 		t.Fatal("post-transition: row fx btn must be visible")
 	}
 
-	// Desktop typography: TextScale should be the Button-default zero,
-	// TextColor should be the Button-default nil.
+	// The Button defaults: TextScale 0, TextColor nil.
 	if got := g.drum.rowRackZone.RowLabels()[0].TextScale; got != 0 {
 		t.Fatalf("post-transition row label TextScale=%v, want 0 (desktop default)", got)
 	}
@@ -382,11 +346,7 @@ func TestMobileToDesktopRowControlsUseDesktopLayout(t *testing.T) {
 
 // ─── Test 4: Bisecting test — lenDec/lenInc button styles
 
-// TestMobileToDesktopLenButtonStylesResetToDesktop is the narrowest
-// pinpointed assertion: after mobile→desktop transition, the length
-// +/− buttons' Style and IconColor must equal the desktop values. If
-// only this fails (and Tests 1/3/6 also fail), the bug is isolated to
-// the construction-time bake in drumview_ctor.go:124-139.
+// The length buttons' Style and IconColor are the desktop values after the transition.
 func TestMobileToDesktopLenButtonStylesResetToDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -432,11 +392,7 @@ func TestMobileToDesktopLenButtonStylesResetToDesktop(t *testing.T) {
 
 // ─── Test 5: Negative case — in-class resize must NOT mutate style state
 
-// TestResizeWithinDesktopPreservesStyleState resizes 1200→1600 without
-// crossing the 900px mobile threshold. Styles, typography, and scrollbar
-// width must NOT change (no over-reset). Rect fields are allowed to
-// differ — they're not checked here. This guards against a fix that
-// would reset state on every Layout call.
+// No over-reset: a resize that stays above 900 px changes no style, typography or scrollbar width.
 func TestResizeWithinDesktopPreservesStyleState(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -471,10 +427,7 @@ func TestResizeWithinDesktopPreservesStyleState(t *testing.T) {
 
 // ─── Test 6: Multi-cycle idempotency
 
-// TestRoundTripFingerprintIdempotent cycles mobile↔desktop multiple times
-// and asserts every desktop visit produces the desktop reference fingerprint,
-// every mobile visit produces the mobile reference fingerprint. Catches
-// state that accumulates across cycles (e.g., styles that build up).
+// Every visit matches its class's reference, so nothing accumulates across cycles.
 func TestRoundTripFingerprintIdempotent(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true

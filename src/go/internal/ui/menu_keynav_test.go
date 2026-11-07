@@ -1,11 +1,7 @@
 //go:build test
 
-// Unit tests for the shared menu keyboard-navigation component.
-//
-// Extracted from InstrumentMenuComponent, which had the only implementation.
-// The genuinely new capability is MenuItemSelectable: the Templates menu
-// interleaves group headers and a pinned search row among its template rows,
-// so "the next item" is not "the next index".
+// The new capability is MenuItemSelectable: Templates interleaves headers and a pinned search row, so the next
+// item is not the next index.
 
 package ui
 
@@ -33,8 +29,7 @@ func (h *fakeNavHost) MenuScrollBehavior() *ScrollBehavior {
 	return h.scroll.ScrollBehavior()
 }
 
-// navKeys installs a key mock and returns a press function plus restore.
-// Keys are edge-detected, so a "press" is down-then-up.
+// Edge-detected: a press is down then up.
 func navKeys(t *testing.T, nav *MenuKeyNav, host MenuKeyNavHost) func(ebiten.Key) {
 	t.Helper()
 	var held ebiten.Key = -1
@@ -233,8 +228,7 @@ func TestMenuKeyNav_ResetClearsSelection(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_ScrollsToRevealSelection pins that arrowing past the visible
-// page scrolls the list instead of moving an invisible cursor.
+// Arrowing past the page scrolls rather than moving an invisible cursor.
 func TestMenuKeyNav_ScrollsToRevealSelection(t *testing.T) {
 	sc := NewMenuScroll(DropdownScrollbarStyle, 20)
 	sc.Configure(image.Rect(0, 0, 100, 60), 20, 3) // 20 rows, 3 visible
@@ -255,18 +249,8 @@ func TestMenuKeyNav_ScrollsToRevealSelection(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_AcceptsBothArrowKeySpellings guards a stub-vs-real trap.
-//
-// Real Ebiten ALIASES the arrow keys — keys.go defines both KeyDown and
-// KeyArrowDown as Key(ui.KeyArrowDown) — but the -tags test ebitestub declares
-// KeyUp, KeyDown, KeyArrowUp and KeyArrowDown as four DISTINCT iota constants.
-// A menu bound to only one spelling therefore works in production while doing
-// nothing under the stub for callers using the other, and vice versa. That is
-// not hypothetical: it broke the instrument menu's existing keyboard tests the
-// moment the shared component switched spellings.
-//
-// The codebase genuinely mixes both (game_input_shortcuts.go uses KeyArrowUp;
-// the instrument-menu tests press KeyDown), so the nav must answer to either.
+// Real Ebiten aliases KeyDown and KeyArrowDown, but the stub declares four distinct constants, and the code
+// uses both spellings: the nav must answer to either.
 func TestMenuKeyNav_AcceptsBothArrowKeySpellings(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -289,13 +273,11 @@ func TestMenuKeyNav_AcceptsBothArrowKeySpellings(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_AliasesShareOneEdgeSlot pins that folding the two spellings
-// together cannot double-fire on the real build, where they ARE the same key.
+// Folding the spellings must not double-fire on the real build, where they are one key.
 func TestMenuKeyNav_AliasesShareOneEdgeSlot(t *testing.T) {
 	host := &fakeNavHost{selectable: allSelectable(5)}
 	nav := NewMenuKeyNav()
-	// Hold BOTH spellings at once — what real Ebiten looks like, since one
-	// physical press reports true for both constants.
+	// What real Ebiten reports for one physical press.
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },

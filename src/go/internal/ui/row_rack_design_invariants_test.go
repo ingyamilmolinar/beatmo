@@ -13,20 +13,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// row_rack_design_invariants_test.go pins the drum-pane design pass (DESIGN.md
-// "Row control", "Cluster alignment", "Groups are spacing, not containers")
-// against the REAL crop_row_rack_states scene driven through Game.Update:
-//
-//   - every control in a rack row shares one vertical band (one row once held
-//     three heights: label/volume inset, toggles a smaller centered square);
-//   - a row has exactly two gutters: ControlGap inside the toggle group,
-//     rowGroupGap between label | volume | toggles (it had 9 / 6 / 3 px);
-//   - the rack bed spans the whole rack column (a 10 px background lane used
-//     to open between the rack and the timeline on wide windows) and the
-//     column is sized to its content, not a share of the screen;
-//   - the desktop transport groups are separated by spacing.cluster with no
-//     container chrome; the timeline length stepper clears the icon floor;
-//   - a running transport is the play key's active state, not a halo.
+// Pinned on the real crop_row_rack_states scene: one vertical band per row; two gutters (ControlGap,
+// rowGroupGap); a content-sized rack bed spanning its column; transport groups separated by spacing alone; a
+// running transport shown as the play key's active state.
 
 func rackStatesGame(t *testing.T, mobile bool, w, h int) *Game {
 	t.Helper()
@@ -115,9 +104,7 @@ func TestRackBedSpansContentSizedColumn(t *testing.T) {
 				t.Errorf("w=%d: rack bed paints %d px but the rack column is %d px — a %d px background lane",
 					w, dv.labelW+dv.controlsW, col, col-dv.labelW-dv.controlsW)
 			}
-			// Content-sized: the column holds the label (names on screen, floor
-			// rackLabelMinW) plus the real control cluster — nowhere near the
-			// 30%-of-screen floor that made a 505 px bar hold "Kick".
+			// The label plus the real control cluster, never a share of the screen.
 			if want := dv.labelW + dv.rowRackZone.FixedControlsWidth(); col > want+1 && col > dv.widgets.minColW {
 				t.Errorf("w=%d: rack column %d px wider than its content %d px", w, col, want)
 			}
@@ -188,9 +175,7 @@ func TestDesktopTransportGroupsAreSpacingNotContainers(t *testing.T) {
 		}
 	}
 
-	// The length stepper: two side-by-side square keys as tall as the beat
-	// counter keycap they share the band with (DESIGN.md icon-vs-text matrix,
-	// "Timeline band keycaps").
+	// Two square keys as tall as the beat counter keycap beside them.
 	inc, dec := g.drum.lenIncBtn.Rect(), g.drum.lenDecBtn.Rect()
 	bc := g.drum.beatCounterRect
 	keyH := TextHeight() + 2*beatCounterPillPadY + genGeomKeycapWallDepth
@@ -224,12 +209,8 @@ func TestPlayingIsThePlayKeysActiveStateNotAHalo(t *testing.T) {
 	}
 }
 
-// TestIdleRowChipsShareOneBodyAfterRuntimeTheme: after a runtime theme moves
-// the surfaces (the Theme editor, or a stored theme applied once the rows
-// exist), every idle chip — M, S, FX AND the ⋯ kebab — wears the label's
-// body color. The kebab's style used to be captured once at construction
-// while the toggles were re-derived each draw, so after a surfaces pick the
-// kebab alone kept the old body color.
+// Every idle chip, kebab included, wears the label's body after a runtime theme moves the surfaces; a style
+// captured at construction keeps the old colour.
 func TestIdleRowChipsShareOneBodyAfterRuntimeTheme(t *testing.T) {
 	defer SetThemeSink(nil)
 	SetThemeSink(&fakeThemeSink{})
@@ -262,10 +243,7 @@ func TestIdleRowChipsShareOneBodyAfterRuntimeTheme(t *testing.T) {
 	}
 }
 
-// TestHeaderRowSharesTheRackBed: the header row — transport strip and the
-// timeline header band right of the beat counter — is painted with the same
-// rack bed as the rack and the area under the rows. It used to take the base
-// background, a black band across the whole pane above the lighter rack.
+// The header row shares the rack bed, never the base background.
 func TestHeaderRowSharesTheRackBed(t *testing.T) {
 	g := rackStatesGame(t, false, 1600, 1000)
 	dv := g.drum
@@ -295,9 +273,7 @@ func TestHeaderRowSharesTheRackBed(t *testing.T) {
 	}
 }
 
-// TestFollowLockIsActiveNotHeldDown: follow-on is the lock key's active state
-// (Toggled), never the `pressed` flag — ButtonStyle renders pressed as the −20
-// press dim, which left a latched lock as a near-black square in the header.
+// Toggled, never `pressed`, which renders as the −20 press dim: a near-black square.
 func TestFollowLockIsActiveNotHeldDown(t *testing.T) {
 	g := rackStatesGame(t, false, 1600, 1000)
 	z := g.drum.transportZone

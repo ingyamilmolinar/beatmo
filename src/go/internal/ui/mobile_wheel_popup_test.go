@@ -21,13 +21,8 @@ func wheelTestBinding(k *Knob) (*WheelBinding, *int) {
 	return b, &commits
 }
 
-// TestWheelDownGesturesAllIncrease locks the cross-input barrel invariant: a
-// DOWNWARD gesture raises the value ("the wheel turns down, higher numbers descend
-// to the center selector"). Finger drag DOWN and mouse/two-finger scroll DOWN must
-// BOTH increase. They read different sign sources — pointer-y (my increases
-// downward) vs ebiten.Wheel's wy (POSITIVE for a downward scroll on the target
-// device) — so this guards against re-inverting one path without the other (the
-// bug that recurred while tuning the wheel direction).
+// A downward drag and a downward scroll both raise the value. They read different sign sources (pointer y vs
+// ebiten.Wheel's wy, positive downward on the target device), so one path can be inverted without the other.
 func TestWheelDownGesturesAllIncrease(t *testing.T) {
 	// Finger drag DOWN (pointer y increases) increases.
 	k1 := newEndlessKnobForTest(0, 200, 1.0)
@@ -43,8 +38,7 @@ func TestWheelDownGesturesAllIncrease(t *testing.T) {
 		t.Fatalf("finger drag DOWN must increase, got %v", realValue(k1))
 	}
 
-	// Scroll DOWN (positive ebiten wy on the target => positive steps) increases —
-	// same direction as the finger drag.
+	// Positive wy on the target device is a downward scroll.
 	k2 := newEndlessKnobForTest(0, 200, 1.0)
 	b2, _ := wheelTestBinding(k2)
 	w2 := NewMobileWheelPopup()
@@ -66,8 +60,7 @@ func TestWheelDragDownIncreasesValue(t *testing.T) {
 	w.Open(*b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
 
 	cx := w.Rect().Min.X + 20
-	// Barrel: higher values sit at the top. Dragging the finger DOWN (y increases)
-	// pulls those higher rows down toward the center selector => value increases.
+	// Higher values sit on top, so a downward drag pulls them to the selector.
 	y0 := w.Rect().Min.Y + w.Rect().Dy()/2
 	w.HandleInput(cx, y0, true)
 	w.HandleInput(cx, y0+knobEndlessPxPerNotch*10, true)
@@ -93,8 +86,7 @@ func TestWheelDragUpDecreasesValue(t *testing.T) {
 	}
 }
 
-// Transactional model: a drag+release previews the change but DEFERS the undo
-// commit; the single commit fires on Accept (Enter / tap-away), not on release.
+// A release previews; the single commit fires on Accept.
 func TestWheelReleaseDefersCommitToAccept(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0)
 	b, commits := wheelTestBinding(k)
@@ -130,11 +122,8 @@ func TestWheelClampsAtMax(t *testing.T) {
 	}
 }
 
-// TestWheelResolutionStripCapturesUnderHandler drives the resolution-strip drag
-// through the PORTAL HANDLER (mobileWheelHitHandler) rather than HandleInput
-// directly — this is the path that the tree dispatcher uses. The bug was that
-// OnPress returned InputConsumed (not InputCaptured) for a res-strip press, so
-// the tree never set capturedHandler and OnDrag was never delivered.
+// Through the portal handler the tree uses: a res-strip press must return InputCaptured, or OnDrag is never
+// delivered.
 func TestWheelResolutionStripCapturesUnderHandler(t *testing.T) {
 	def := audio.ParamDef{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"}
 	k := &Knob{Endless: true}
@@ -159,8 +148,6 @@ func TestWheelResolutionStripCapturesUnderHandler(t *testing.T) {
 	h := &mobileWheelHitHandler{popup: w}
 	rx, y0 := resStripDragStart(t, w)
 
-	// Press on the resolution strip — must return InputCaptured so the tree
-	// routes subsequent OnDrag calls to this handler.
 	res := h.OnPress(rx, y0)
 	if res != InputCaptured {
 		t.Fatalf("res-strip OnPress must return InputCaptured (got %v); without capture the tree never delivers OnDrag and the rung never changes", res)
@@ -199,12 +186,7 @@ func TestWheelPortalOverlayHitAreasAndClose(t *testing.T) {
 	}
 }
 
-// resStripDragStart returns a press point inside the resolution strip that is
-// guaranteed OUTSIDE every rung pill, so a press there starts the legacy
-// rung-drag capture instead of a tap-jump. Computed from rungRects (the single
-// source of truth for pill geometry) rather than a hardcoded 1-2px gutter
-// offset, so an inset change can never silently convert these drag tests into
-// rung taps.
+// Outside every rung pill, computed from rungRects, so an inset change cannot turn a drag test into a tap.
 func resStripDragStart(t *testing.T, w *MobileWheelPopup) (int, int) {
 	t.Helper()
 	if w.resRect.Empty() {

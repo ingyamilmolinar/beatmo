@@ -7,12 +7,8 @@ import (
 	"testing"
 )
 
-// TestRowRackResizeClampsStaleOffset reproduces the mobile bug where scrolling
-// down to reveal the last instrument row (hiding the first row) and then
-// resizing the bottom panel so every row fits again leaves the row scroll
-// offset stale: the scrollbar correctly disappears (all rows fit) but the
-// first row stays hidden because rowOffset is never re-clamped when the rack
-// gains vertical space.
+// A panel resize that lets every row fit re-clamps a stale offset, or the first row stays hidden with no
+// scrollbar to bring it back.
 func TestRowRackResizeClampsStaleOffset(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()

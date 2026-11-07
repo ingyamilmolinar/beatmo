@@ -8,9 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTopRightMenusMutuallyExclusive: the three top-right grid-button menus
-// (Settings, Logs, File) are mutually exclusive — opening one closes any other
-// that is open, so two can never be visible at once.
+// Opening one closes the others, so two are never visible at once.
 func TestTopRightMenusMutuallyExclusive(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(testLogOutput(), game_log.LevelError))
@@ -56,8 +54,6 @@ func TestTopRightMenusMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// TestFileMenuTogglesClosed: tapping the folder button while the File menu is
-// open closes it (toggle), mirroring Settings/Logs.
 func TestFileMenuTogglesClosed(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(testLogOutput(), game_log.LevelError))

@@ -31,8 +31,6 @@ func TestEQDualWaveformBoostComparison(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.calcLayout()
 
-	// Inject deterministic snapshots.
-	// Pre-EQ: modest signal.
 	preWave := make([]float64, 512)
 	for i := range preWave {
 		preWave[i] = 0.3

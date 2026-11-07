@@ -8,13 +8,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGridFileButtonResetsWhenMenuClosesExternally reproduces the reported bug:
-// tapping the folder button opens the File menu, but the release edge is
-// swallowed by the menu/scrim that just opened, so the button stays latched
-// "pressed" (cap down) with held==1. When the menu later closes for an EXTERNAL
-// reason — a failed or cancelled mobile file picker, a click-outside, Esc — the
-// button must not stay stuck: its toggle resets and it becomes clickable again.
-// reconcileGridButtonToggles (run every Update) is the guarantee.
+// The menu that opens swallows the button's release, leaving it latched; when the menu closes for an
+// external reason the button must unlatch and take taps again.
 func TestGridFileButtonResetsWhenMenuClosesExternally(t *testing.T) {
 	g := New(game_log.New(nil, game_log.LevelError))
 	t.Cleanup(g.CloseForTest)
@@ -36,15 +31,11 @@ func TestGridFileButtonResetsWhenMenuClosesExternally(t *testing.T) {
 		t.Error("folder button should read toggled/active while its menu is open")
 	}
 
-	// Simulate the swallowed release: the button is left stuck pressed with
-	// held latched — exactly the state a menu/scrim leaves it in when it eats
-	// the release edge.
+	// The state a menu that eats the release edge leaves behind.
 	fb.pressed = true
 	fb.held = 1
 
-	// The menu closes for an external reason (e.g. the file picker failed or was
-	// cancelled). portal.Close stands in for any close path that is NOT a button
-	// release routed back to the folder button.
+	// Any close that is not a release routed back to the button.
 	g.drum.portal().Close(overflowMenuID)
 	advanceFrames(g, 1) // one Update → reconcileGridButtonToggles heals (pointer up)
 
@@ -58,9 +49,7 @@ func TestGridFileButtonResetsWhenMenuClosesExternally(t *testing.T) {
 		t.Errorf("folder button must not stay stuck-pressed after the menu closed (pressed=%v held=%d)", fb.pressed, fb.held)
 	}
 
-	// It must be clickable again: with held reset to 0 a fresh press is a real
-	// press edge that fires OnClick (had held stayed at 1, the edge check
-	// held==1 would fail on the increment to 2 and swallow the tap).
+	// With held back at 0 a fresh press is a real edge; stuck at 1, the increment to 2 swallows the tap.
 	clicks := 0
 	fb.OnClick = func() { clicks++ }
 	r := g.gridFileButtonRect()
@@ -72,9 +61,7 @@ func TestGridFileButtonResetsWhenMenuClosesExternally(t *testing.T) {
 	}
 }
 
-// TestGridButtonsTogglesTrackMenuOpenState pins that every top-right grid button
-// (settings gear, folder, logs) reports toggled == "its menu is open", driven by
-// the portal (the single source of truth), for both the open and closed states.
+// Every button's toggled state is "its menu is open", read from the portal.
 func TestGridButtonsTogglesTrackMenuOpenState(t *testing.T) {
 	g := New(game_log.New(nil, game_log.LevelError))
 	t.Cleanup(g.CloseForTest)

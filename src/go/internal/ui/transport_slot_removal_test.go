@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// TestTransportHasNoNavOrOverflowHitAreas asserts the bullseye (Navigate) and
-// kebab (Overflow) transport buttons are gone from both platforms: navigation
-// now opens from the beat counter, file options from the grid folder button.
+// Navigation opens from the beat counter, file options from the grid folder button.
 func TestTransportHasNoNavOrOverflowHitAreas(t *testing.T) {
 	run := func(t *testing.T, mobile bool, rect image.Rectangle) {
 		forceSmallScreenForTest = mobile

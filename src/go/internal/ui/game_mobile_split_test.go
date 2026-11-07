@@ -80,10 +80,7 @@ func TestMobileSplit_AppliedAtStartupAndOnResize(t *testing.T) {
 func TestMobileSplit_RackShowsWholeRows(t *testing.T) {
 	for _, h := range []int{640, 720, 844, 960} {
 		g := mobileSplitGame(t, 390, h, viewModeRows)
-		// Read the size tokens UNDER the mobile profile that mobileSplitGame
-		// activates (force-mobile + browser runtime) so they match the values
-		// adaptiveMobilePortraitSplitY uses internally. Reading them before the
-		// game is created would capture the desktop defaults instead.
+		// Read under the mobile profile mobileSplitGame activates; before it they are the desktop values.
 		rh := TouchRowHeight()
 		headerH := Profile().HeaderMaxH
 		if headerH <= 0 {

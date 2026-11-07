@@ -9,16 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestTimelineScrubReleasesOnYDrift pins Phase 3 Part B: a captured
-// scrub handler must release itself when the pointer drifts outside
-// the bar's vertical lane. The tree's drag dispatch routes every
-// move to the captured handler without re-testing hit areas, so the
-// handler self-polices.
-//
-// Pre-Phase-3: the scrub kept scrubbing across the entire screen as
-// long as the press started inside the bar, so a drag that started
-// near the timeline and ended on a synth knob ALSO updated the
-// timeline playhead. The canonical input-leak the user reported.
+// Drag moves go straight to the captured handler without re-testing hit areas, so the scrub releases itself
+// once the pointer leaves the bar's lane; otherwise a drag ending on a synth knob also moves the playhead.
 func TestTimelineScrubReleasesOnYDrift(t *testing.T) {
 	g := newTimelineZoneTestHarness(t)
 	defer g.cleanup()
@@ -36,15 +28,13 @@ func TestTimelineScrubReleasesOnYDrift(t *testing.T) {
 		t.Fatal("scrubbing flag should be true after OnPress")
 	}
 
-	// Drag straight down to far below the bar — past the skirt (-4 inset
-	// of bar Y range = [-4, 16]). y=400 is well outside.
+	// Far past the 4 px skirt ([-4, 16]).
 	h.OnDrag(200, 400)
 	if z.scrubbing {
 		t.Error("scrubbing should have released after Y drifted out of skirt — leak risk")
 	}
 
-	// A subsequent press inside the bar must re-engage so scrub still
-	// works for ordinary use.
+	// A fresh press inside the bar re-engages.
 	h.OnPress(200, 6)
 	if !z.scrubbing {
 		t.Fatal("re-engagement: scrubbing should be true after second OnPress at bar centre")
@@ -56,11 +46,7 @@ func TestTimelineScrubReleasesOnYDrift(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubRectIsStrictlyBoundedToBar pins Phase 3 Part A:
-// the scrub HitArea's exact Rect must NOT extend below the visible
-// bar (no downward geometric growth). Touch expansion via the
-// `Touch + ClipRect` field provides the touch-target floor, but the
-// expansion is strictly bounded.
+// The exact Rect never grows below the bar; Touch + ClipRect give the touch floor, bounded.
 func TestTimelineScrubRectIsStrictlyBoundedToBar(t *testing.T) {
 	g := newTimelineZoneTestHarness(t)
 	defer g.cleanup()
@@ -91,14 +77,12 @@ func TestTimelineScrubRectIsStrictlyBoundedToBar(t *testing.T) {
 			scrubArea.Rect, z.timelineBarRect)
 	}
 
-	// Touch flag must be set so HitIndex.At expands the touch radius
-	// at query time (bounded by ClipRect).
+	// HitIndex.At expands touch hits at query time, bounded by ClipRect.
 	if !scrubArea.Touch {
 		t.Error("scrub Touch=false; expected Touch=true so touch-min is met via expansion not enlargement")
 	}
 
-	// ClipRect must be set and bounded to ~4 px skirt of the bar so
-	// touch expansion can never reach a sibling zone.
+	// A ~4 px skirt, so the expansion can never reach a sibling zone.
 	if scrubArea.ClipRect.Empty() {
 		t.Fatal("scrub ClipRect empty — touch expansion would be unbounded")
 	}
@@ -108,10 +92,7 @@ func TestTimelineScrubRectIsStrictlyBoundedToBar(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubTouchExpansionRespectsClipRect: HitIndex.At should
-// hit scrub at points within the 4 px skirt below the bar, but NOT
-// at points far below (e.g., 50 px). Verifies the touch expansion is
-// genuinely bounded by ClipRect.
+// Hit within the skirt below the bar, not 50 px below.
 func TestTimelineScrubTouchExpansionRespectsClipRect(t *testing.T) {
 	g := newTimelineZoneTestHarness(t)
 	defer g.cleanup()

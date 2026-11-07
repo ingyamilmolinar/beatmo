@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestSimpleDrawNodeHighlightThickOutline ensures that in simple draw mode,
-// node highlights render with a thick, high-contrast outline (multiple
-// drawRect border calls, including white and row-colored rings).
+// Several border rings, white and row-coloured.
 func TestSimpleDrawNodeHighlightThickOutline(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

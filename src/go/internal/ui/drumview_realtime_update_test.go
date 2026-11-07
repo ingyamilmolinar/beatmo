@@ -14,9 +14,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Regression: changing a row's instrument (which also changes its color) during
-// playback must invalidate the row cache fully so the new color shows across the
-// visible window immediately (not only in the newly revealed strip on the right).
+// A mid-playback instrument change (and so colour) must fully invalidate the row cache, not just the new strip.
 func TestDrumView_InstrumentChangeDuringShiftRebuildsRowCache(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, []audio.SoundMeta{
@@ -29,8 +27,7 @@ func TestDrumView_InstrumentChangeDuringShiftRebuildsRowCache(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	// Make 1px-per-step so a +1 offset produces a small shift eligible for
-	// incremental reuse (the bug path).
+	// 1 px per step, so a +1 offset is a small shift eligible for incremental reuse.
 	dv.SetLength(dv.timelineRect.Dx())
 	for _, r := range dv.Rows {
 		r.Steps = make([]bool, dv.Length)
@@ -53,8 +50,7 @@ func TestDrumView_InstrumentChangeDuringShiftRebuildsRowCache(t *testing.T) {
 	dv.Offset = dv.Offset + 1
 	dv.markRowsShiftDirty()
 
-	// Switch to a different built-in instrument (avoid registering custom
-	// instruments which would leak into other tests via the global catalog).
+	// A built-in: a custom one would leak into other tests through the global catalog.
 	nextID := ""
 	for _, id := range dv.instOptions {
 		if id != "" && id != dv.Rows[0].Instrument {

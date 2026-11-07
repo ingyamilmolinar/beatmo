@@ -9,9 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// menuUnderTest describes one floating menu for the shared close-behavior
-// contract: how to open it, how to know it is open, where its panel and
-// close × are. Adding a menu to the kit = one row here.
+// Adding a menu to the kit is one row here.
 type menuUnderTest struct {
 	name     string
 	open     func(g *Game)
@@ -60,10 +58,8 @@ func cardMenus() []menuUnderTest {
 	}
 }
 
-// TestEveryMenuClosesTheSameWay drives the shared contract with REAL input
-// through Game.Update for every card menu: the close × closes it, Esc closes
-// it, a tap outside closes it (unless it must be answered), and it can be
-// reopened afterwards.
+// Real input through Game.Update: ×, Esc and an outside tap (unless it must be answered) close it, and it
+// reopens afterwards.
 func TestEveryMenuClosesTheSameWay(t *testing.T) {
 	for _, m := range cardMenus() {
 		t.Run(m.name, func(t *testing.T) {
@@ -109,8 +105,7 @@ func TestEveryMenuClosesTheSameWay(t *testing.T) {
 			if m.isOpen(g) {
 				t.Fatalf("%s: Esc did not close it", m.name)
 			}
-			// 3. outside tap (a cell-grid point in the drum pane; the tree's
-			// click-away consumes the press, so no step toggles)
+			// A drum-pane cell: the click-away consumes the press, so no step toggles.
 			openIt()
 			panel := m.panel(g)
 			ox, oy := 700, 500

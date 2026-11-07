@@ -10,12 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// buildTwoGroupsCircuit builds two spatially-separated, committed 2-node
-// groups: "Alpha" over buildGroupLoopCircuit's a/b pair (grid (0,0)/(1,0)),
-// and "Beta" over a fresh c/d pair several rows below (grid (0,5)/(1,5)) so
-// their member bounding boxes — and therefore their badges — don't naturally
-// collide, unless a test deliberately wants them to (TestGroupBadgesDoNotOverlap
-// builds its own tighter pair instead).
+// Several rows apart so their badges never collide unless a test wants them to.
 func buildTwoGroupsCircuit(t *testing.T) (g *Game, aID, bID, cID, dID model.NodeID, gid1, gid2 model.GroupID) {
 	t.Helper()
 	g, aID, bID = buildGroupLoopCircuit(t)
@@ -36,8 +31,6 @@ func buildTwoGroupsCircuit(t *testing.T) (g *Game, aID, bID, cID, dID model.Node
 	return g, aID, bID, c.ID, d.ID, gid1, gid2
 }
 
-// badgeRectFor finds the computed badge rect for gid, failing the test if
-// absent.
 func badgeRectFor(t *testing.T, g *Game, gid model.GroupID) image.Rectangle {
 	t.Helper()
 	for _, b := range g.groupBadgeRects() {
@@ -49,28 +42,8 @@ func badgeRectFor(t *testing.T, g *Game, gid model.GroupID) image.Rectangle {
 	return image.Rectangle{}
 }
 
-// desktopClickViaEditor drives a real press-then-release mouse click straight
-// through (*Game).handleEditor — the actual desktop click-resolution code
-// path (group-badge hit-test, node select, guide commit) — WITHOUT routing
-// through the full per-frame (*Game).Update()/gridClick cascade.
-//
-// This matters specifically for a badge click while the node sidebar is
-// open: the sidebar now renders through the global OverlayPortal as a
-// Passive, node-anchored card (game_node_sidebar.go) that publishes NO hit
-// areas of its own (by design — grid input stays on the plain
-// inputDispatcher, not the portal's shared hitIndex). Passive-through-portal
-// is a green-field interaction of the P0 hybrid design; the DrumView's own
-// tree/RootTree (dv.rootTree, driven from (*Game).Update -> drum.Update)
-// separately treats ANY press that lands in none of its own hit areas, WHILE
-// its shared portal is open, as a "click outside the popup" and closes the
-// topmost portal entry on the spot (drumview_tree.go's handleInput, the
-// `len(hits)==0 && t.portal.IsOpen()` branch) — before the grid dispatcher's
-// own release-driven badge check (handleEditor's `if !left && g.leftPrev`
-// block) ever runs. That race is orthogonal to what THIS test verifies (that
-// a real click's group-badge hit-test in handleEditor resolves correctly);
-// driving handleEditor directly exercises the identical production
-// press/release resolution logic without also asserting on that separate,
-// already-known hybrid-portal interaction.
+// Drives handleEditor directly: while the sidebar is open, the tree's click-outside closes it before the
+// grid's release-time badge check, a separate interaction this test does not assert.
 func desktopClickViaEditor(g *Game, x, y int) {
 	down := true
 	restore := SetInputForTest(
@@ -87,11 +60,7 @@ func desktopClickViaEditor(g *Game, x, y int) {
 	g.handleEditor()
 }
 
-// TestGroupBadgeClickOpensMenu is task-group-badges brief test 4 (desktop
-// path): with 2 committed groups, a real press-then-release click (driven
-// through handleEditor — see desktopClickViaEditor) on the second group's
-// badge rect center must open ITS menu (non-provisional), not touch the
-// first group, and close the sidebar if it was open.
+// The second group's badge opens ITS menu, leaves the first group alone and closes the sidebar.
 func TestGroupBadgeClickOpensMenu(t *testing.T) {
 	g, aID, _, _, _, _, gid2 := buildTwoGroupsCircuit(t)
 	// Open the sidebar first so we can confirm the badge click closes it.
@@ -115,13 +84,7 @@ func TestGroupBadgeClickOpensMenu(t *testing.T) {
 	}
 }
 
-// TestGroupBadgeTapOpensMenu_Touch is task-group-badges brief test 5: the
-// touch path (handleTapInGrid, driven directly the way existing touch tests
-// do) must resolve a tap on a group's badge to opening that group's menu,
-// mirroring the desktop click path. (The sidebar-open-closes-on-outside-tap
-// behavior is pre-existing and orthogonal — handleTapInGrid's badge check
-// sits after that guard, matching the brief's "top of the node/empty
-// resolution" placement, so this test starts with the sidebar closed.)
+// The touch path mirrors the desktop click. Starts with the sidebar closed: its outside-tap close is orthogonal.
 func TestGroupBadgeTapOpensMenu_Touch(t *testing.T) {
 	g, _, _, _, _, _, gid2 := buildTwoGroupsCircuit(t)
 
@@ -137,18 +100,14 @@ func TestGroupBadgeTapOpensMenu_Touch(t *testing.T) {
 	}
 }
 
-// TestGroupBadgesDoNotOverlap is task-group-badges brief test 6: two groups
-// whose member bounding boxes sit close enough together that their naively-
-// anchored badge rects would collide must resolve to pairwise non-
-// intersecting rects (the "push down below the collider" rule).
+// Naively anchored badges would collide; the push-down rule must separate them.
 func TestGroupBadgesDoNotOverlap(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	g.updateBeatInfos()
 
-	// Two adjacent 2-node groups, one row apart — close enough that their
-	// top-right-anchored badges would naturally collide before resolution.
+	// One row apart, close enough to collide before resolution.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	c := g.tryAddNode(0, 1, model.NodeTypeRegular)
@@ -173,12 +132,7 @@ func TestGroupBadgesDoNotOverlap(t *testing.T) {
 	}
 }
 
-// TestGroupColorsDistinctAndConsistent is task-group-badges brief test 7:
-// groupColor cycles distinctly across consecutive GroupIDs, is deterministic
-// (same gid -> same color across calls), and the ring-color helper
-// (groupRingColor) — which is what the node-layer draw path actually calls —
-// derives its RGB channel from the SAME groupColor value, only varying alpha
-// by whether the GroupMenu is open for that gid.
+// Distinct across consecutive ids and deterministic; groupRingColor shares its RGB and varies only alpha.
 func TestGroupColorsDistinctAndConsistent(t *testing.T) {
 	g, aID, bID, _, _, gid1, _ := buildTwoGroupsCircuit(t)
 
@@ -191,8 +145,6 @@ func TestGroupColorsDistinctAndConsistent(t *testing.T) {
 		t.Fatalf("groupColor must be deterministic, got %v then %v", c1, again)
 	}
 
-	// Faint (no menu open for gid1) vs strong (menu open for gid1), both
-	// reading the SAME base RGB as groupColor(gid1).
 	faint := g.groupRingColor(gid1)
 	if faint.A != AlphaSubtle {
 		t.Fatalf("ring color with no menu open must use AlphaSubtle, got %d", faint.A)
@@ -213,10 +165,7 @@ func TestGroupColorsDistinctAndConsistent(t *testing.T) {
 	_ = bID
 }
 
-// TestBadgeShiftPressDoesNotArmMarquee is task-group-badges brief test 8: a
-// Shift+press landing on a group badge must behave exactly like a plain
-// badge click (open that group's menu) and must NOT arm the marquee gesture
-// or create any group.
+// Behaves like a plain badge click: no marquee armed, no group created.
 func TestBadgeShiftPressDoesNotArmMarquee(t *testing.T) {
 	g, aID, _, _, _, _, gid2 := buildTwoGroupsCircuit(t)
 	groupsBefore := len(g.graph.AllGroups())
@@ -225,8 +174,7 @@ func TestBadgeShiftPressDoesNotArmMarquee(t *testing.T) {
 	rect := badgeRectFor(t, g, gid2)
 	cx, cy := (rect.Min.X+rect.Max.X)/2, (rect.Min.Y+rect.Max.Y)/2
 
-	// shiftDrag with identical start/end coordinates models a Shift+press
-	// (and release) with no movement, i.e. a "Shift+click" gesture.
+	// Identical start and end: a Shift+click.
 	shiftDrag(g, cx, cy, cx, cy)
 
 	if g.marquee.active {

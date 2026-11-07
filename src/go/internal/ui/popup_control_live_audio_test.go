@@ -2,17 +2,8 @@
 
 package ui
 
-// popup_control_live_audio_test.go — every value control applies to AUDIO in
-// REAL TIME.
-//
-// Turning a control must change what you HEAR on the next trigger, with no
-// Enter, no click-away, no Save. The undo STEP is still deferred to the commit
-// (one step per gesture) — that is an undo-history concern and must not hold the
-// sound hostage.
-//
-// Each test asserts against the AUDIO layer's own state (the thing the
-// scheduler/mixer reads), never the UI's copy of it: a knob that moved its own
-// Value while the audio layer stayed put is exactly the bug.
+// Turning a control changes the next trigger with no Enter, click-away or Save; only the undo step waits for the
+// commit. Every test reads the AUDIO layer's state, never the UI's copy.
 
 import (
 	"image"
@@ -27,10 +18,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSamplerWheelArrowIsAudibleWithoutCommit: an arrow press on the Sampler
-// Pitch wheel must reach audio.SampleEditFor immediately — that descriptor is
-// what the voice dispatch renders through, so until it moves the next hit sounds
-// exactly the same.
+// SampleEditFor is what the voice dispatch renders through.
 func TestSamplerWheelArrowIsAudibleWithoutCommit(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -56,9 +44,7 @@ func TestSamplerWheelArrowIsAudibleWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestSamplerTrimHandleDragIsAudibleWhileDragging: the trim handles are the
-// other sampler control that writes only UI state — the chop must move in audio
-// DURING the drag, not on release.
+// The chop moves in audio during the drag, not on release.
 func TestSamplerTrimHandleDragIsAudibleWhileDragging(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -84,9 +70,7 @@ func TestSamplerTrimHandleDragIsAudibleWhileDragging(t *testing.T) {
 	}
 }
 
-// TestSamplerToggleIsAudibleImmediately: Rev / Norm / Fade are single-click
-// actions, so "live" and "commit" coincide — pinned so a future refactor that
-// defers the toggle cannot regress it silently.
+// Single-click toggles, where live and commit coincide.
 func TestSamplerToggleIsAudibleImmediately(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -102,8 +86,7 @@ func TestSamplerToggleIsAudibleImmediately(t *testing.T) {
 	}
 }
 
-// TestEQWheelArrowIsAudibleWithoutCommit: the EQ precision wheel must push the
-// new band gain into the channel's biquad chain on the keypress.
+// Into the channel's biquad chain on the keypress.
 func TestEQWheelArrowIsAudibleWithoutCommit(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -133,8 +116,7 @@ func TestEQWheelArrowIsAudibleWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestMasterVolumeArrowIsAudibleWithoutCommit: the master slider popup writes
-// audio.SetMainVolume live; the release commit is only the undo step.
+// The release commit is only the undo step.
 func TestMasterVolumeArrowIsAudibleWithoutCommit(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -156,10 +138,7 @@ func TestMasterVolumeArrowIsAudibleWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestRowVolumeArrowIsAudibleWithoutCommit: the row slider popup's live write is
-// DrumRow.Volume — the field the sequencer reads when it schedules the next hit
-// (see feedback_next_trigger_param_deferral). Pinned so a refactor that stages
-// the value behind the release commit cannot silently mute the change.
+// DrumRow.Volume is what the sequencer reads for the next hit.
 func TestRowVolumeArrowIsAudibleWithoutCommit(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -181,9 +160,7 @@ func TestRowVolumeArrowIsAudibleWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestSynthArmedArrowIsAudibleWithoutCommit: the armed synth control must write
-// through audio.SetInstrumentParam on the keypress; the debounced wheelNudger is
-// only the undo step.
+// The debounced wheelNudger is only the undo step.
 func TestSynthArmedArrowIsAudibleWithoutCommit(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -205,11 +182,7 @@ func TestSynthArmedArrowIsAudibleWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestSamplerLiveApplyStillAnnouncesOncePerGesture is the guard for the split
-// this fix introduced. Applying live per detent must NOT announce per detent —
-// the log contract is one line per gesture — and moving the publish out of the
-// audio setter must not lose it altogether. Three arrow presses, then the
-// gesture ends: exactly one EventSampleEditChanged.
+// Live per detent, announced once per gesture: three presses, then the end, give exactly one event.
 func TestSamplerLiveApplyStillAnnouncesOncePerGesture(t *testing.T) {
 	var count int32
 	unsub := hooks.Subscribe(hooks.EventSampleEditChanged, func(e hooks.Event) { atomic.AddInt32(&count, 1) })

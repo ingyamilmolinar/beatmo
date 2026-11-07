@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// openSidebarForDispatch creates a game with a sidebar open and all sections
-// expanded so content overflows, then sets up input mocks for the full
-// g.Update() dispatch path. Returns the game and a cleanup function.
+// Content overflows, and the input mocks feed the full g.Update() path.
 func openSidebarForDispatch(t *testing.T, cursorX, cursorY *int, leftPressed *bool, wheelYVal *float64) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -43,13 +41,9 @@ func openSidebarForDispatch(t *testing.T, cursorX, cursorY *int, leftPressed *bo
 	return g
 }
 
-// TestSidebarDispatchWheelScroll verifies that mouse wheel events over the
-// sidebar scroll its content through the full g.Update() dispatch path.
+// Through the full g.Update() dispatch.
 func TestSidebarDispatchWheelScroll(t *testing.T) {
-	// Placeholder cursor; the sidebar's panel is now a compact card anchored
-	// beside its node (not a full-height panel docked at x=0), so the real
-	// coordinate is derived from g.sidebar.rects[sbPanel] below, once the
-	// sidebar is open and laid out.
+	// The card is anchored beside its node, so the real point comes from rects[sbPanel] once laid out.
 	cursorX, cursorY := 0, 0
 	leftPressed := false
 	wheelY := 0.0
@@ -92,8 +86,7 @@ func TestSidebarDispatchWheelScroll(t *testing.T) {
 	}
 }
 
-// TestSidebarDispatchScrollbarClick verifies that clicking on the scrollbar
-// track (not the thumb) jumps the scroll position through the full dispatch.
+// A track click (not the thumb) jumps.
 func TestSidebarDispatchScrollbarClick(t *testing.T) {
 	cursorX, cursorY := 0, 0
 	leftPressed := false
@@ -135,8 +128,7 @@ func TestSidebarDispatchScrollbarClick(t *testing.T) {
 	}
 }
 
-// TestSidebarDispatchScrollDragCapture verifies that a scrollbar thumb drag
-// maintains capture even when the cursor moves outside the sidebar bounds.
+// Capture holds even when the cursor leaves the sidebar.
 func TestSidebarDispatchScrollDragCapture(t *testing.T) {
 	cursorX, cursorY := 0, 0
 	leftPressed := false
@@ -188,13 +180,8 @@ func TestSidebarDispatchScrollDragCapture(t *testing.T) {
 	}
 }
 
-// TestSidebarDispatchWheelBlocksZoom verifies that wheel events over the
-// sidebar do NOT cause camera zoom.
 func TestSidebarDispatchWheelBlocksZoom(t *testing.T) {
-	// Placeholder cursor; the sidebar's panel is now a compact card anchored
-	// beside its node (not a full-height panel docked at x=0), so the real
-	// coordinate is derived from g.sidebar.rects[sbPanel] below, once the
-	// sidebar is open and laid out.
+	// The card is anchored beside its node, so the real point comes from rects[sbPanel] once laid out.
 	cursorX, cursorY := 0, 0
 	leftPressed := false
 	wheelY := 0.0
@@ -224,9 +211,7 @@ func TestSidebarDispatchWheelBlocksZoom(t *testing.T) {
 	}
 }
 
-// TestSidebarDispatchTouchScroll verifies that touch scroll through the
-// sidebar works via the sidebar's HandleInput method with a mouse drag
-// simulating touch behavior.
+// A mouse drag through HandleInput stands in for touch.
 func TestSidebarDispatchTouchScroll(t *testing.T) {
 	cursorX, cursorY := 0, 0
 	leftPressed := false
@@ -237,11 +222,7 @@ func TestSidebarDispatchTouchScroll(t *testing.T) {
 	panel := g.sidebar.rects[sbPanel]
 	cx := panel.Min.X + panel.Dx()/2
 
-	// Use the content area (below header, inside panel).
-	// The panel bottom is panel.Max.Y; start near the bottom. contentTopY is
-	// the same position-independent helper NodeSidebar.HandleInput itself
-	// uses (derived from the laid-out "header" rect, which floats with the
-	// node-anchored panel), rather than a fixed offset from a (0,0) origin.
+	// contentTopY is HandleInput's own position-independent helper.
 	contentTop := g.sidebar.contentTopY()
 	startY := panel.Max.Y - 10
 	if startY <= contentTop {

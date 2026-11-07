@@ -13,34 +13,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// Task 4: edge-only move placement, immediate commit, target-edge stitch, and
-// retirement of the move-confirm dialog. These tests drive the real
-// handleTapInGrid entry point (touch path) — the same one the shared
-// handleArmedModeTap helper serves — never poking gridModeManager/uiNode
-// fields the input handlers wouldn't touch themselves.
-//
-// Shared layout (mirrors the task brief):
-//
-//	A(0,0) ── edge ── B(0,20)   (vertical edge, interior cells (0,1)..(0,19))
-//	M(10,0)                     (the node being moved; no edges)
-//
-// A free empty cell (50,50) and node B itself stand in for the brief's "free
-// cell C" / "occupied endpoint O" targets.
+// Driven through handleTapInGrid (touch), never by poking mode fields. Layout: A(0,0)──B(0,20) vertical; M(10,0)
+// moves, with no edges; (50,50) is a free cell and B an occupied endpoint.
 
-// shrinkGuideSnapRadius sets the camera scale so guideSnapRadiusWorld is a
-// small fraction of one grid unit. A tap exactly on an integer grid
-// coordinate then resolves deterministically — exact node/edge coincidence
-// only, never an accidental proximity snap to a nearby integer coordinate —
-// so the small integer coordinates in the layout above behave as the brief's
-// diagram implies regardless of the default camera scale/grid subdivision.
+// A tap on an integer coordinate then resolves by exact coincidence only, never a proximity snap, whatever
+// the default camera scale.
 func shrinkGuideSnapRadius(g *Game) {
 	u := g.grid.Unit()
 	g.cam.Scale = float64(Profile().DensityValues().GuideSnapRadius) / (0.1 * u)
 }
 
-// buildMoveModeLayout builds the shared A-B edge + free-standing M circuit
-// described above, with the guide-snap radius shrunk for deterministic
-// tap resolution.
 func buildMoveModeLayout(t *testing.T) (g *Game, a, b, m *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -128,15 +110,8 @@ func TestMoveMode_TapOccupiedNodeCancels(t *testing.T) {
 	}
 }
 
-// TestMoveMode_MoveWithOwnEdgesDropsNonOrthogonalSilently: under extraction
-// semantics, this topology's own-edge pair (M3->M2 horizontal in, M2->D
-// vertical out) is a corner — M3 and D are NOT mutually orthogonal — so
-// moveHealPlan classifies M2 as healUnhealable, not healPassThrough. A
-// direct moveNode call still breaks silently (both of M2's own edges are
-// extracted, no heal edge, no panic); the interactive confirm dialog for
-// this case is Task 3's job (noted below), so this test only exercises the
-// classification + the direct-call silent-break path, plus the destination
-// splice into the A-B edge which is unaffected by M2's own-edge fate.
+// M3→M2 in and M2→D out form a corner, so M2 is healUnhealable; a direct moveNode still breaks silently (no heal
+// edge, no panic), and the A-B splice is unaffected.
 func TestMoveMode_MoveWithOwnEdgesDropsNonOrthogonalSilently(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -162,8 +137,7 @@ func TestMoveMode_MoveWithOwnEdgesDropsNonOrthogonalSilently(t *testing.T) {
 		t.Fatalf("setup: expected M2's corner topology to classify healUnhealable, got %v", plan.class)
 	}
 
-	// Direct moveNode call (bypasses the GuideEdge-gated interactive tap
-	// path; Task 3 wires the interactive confirm dialog for this case).
+	// Direct, bypassing the interactive confirm dialog.
 	if ok := g.moveNode(m2, 0, 10); !ok { // interior point of the A-B edge
 		t.Fatal("moveNode returned false")
 	}
@@ -189,12 +163,8 @@ func TestMoveMode_MoveWithOwnEdgesDropsNonOrthogonalSilently(t *testing.T) {
 	}
 }
 
-// TestMoveMode_MoveAlongOwnChain (spec #5, interactive): A(0,0)->N(0,4)->B(0,8).
-// Arming move on N and tapping (0,6) — interior of N's own N-B edge, and also
-// interior of what becomes the healed A-B span — must NOT leave an unsplit
-// A->B edge: the heal immediately re-splices at N's new position since
-// nodesOnSpan naturally includes the moved node once it lands on the healed
-// span. A single undo restores N to (0,4) with the original A->N->B chain.
+// A(0,0)→N(0,4)→B(0,8), N moved to (0,6) on its own N-B edge: the heal re-splices at N's new position, never
+// leaving an unsplit A→B, and one undo restores the chain.
 func TestMoveMode_MoveAlongOwnChain(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -248,19 +218,12 @@ func TestMoveMode_MoveAlongOwnChain(t *testing.T) {
 	}
 }
 
-// TestMoveMode_SingleUndoStep (extended for Task 2): M carries its own
-// pass-through chain P->M->Q (orthogonal, off the A-B row) in addition to the
-// shared destination A-B edge, so the move exercises BOTH heal (P-Q closes
-// behind M) and destination splice (A-B splits around M) in the same
-// undo group. One undo must revert everything: M back at its origin, its own
-// P-M/M-Q edges restored, the P-Q heal edge gone, and the A-B destination
-// edge restored unsplit.
+// M has its own pass-through P→M→Q too, so one move both heals (P-Q) and splices (A-B); one undo reverts all of
+// it.
 func TestMoveMode_SingleUndoStep(t *testing.T) {
 	g, a, b, m := buildMoveModeLayout(t)
 
-	// Give M its own pass-through chain P(10,-5)->M(10,0)->Q(10,5), orthogonal
-	// on the I=10 column, distinct from the A-B edge M is about to splice
-	// into.
+	// Orthogonal on the I=10 column, distinct from the A-B edge M splices into.
 	p := g.tryAddNode(10, -5, model.NodeTypeRegular)
 	q := g.tryAddNode(10, 5, model.NodeTypeRegular)
 	g.addEdge(p, m)
@@ -405,27 +368,15 @@ func TestMoveMode_EventSequence(t *testing.T) {
 	})
 }
 
-// ─── Task 5: blink + ghost validity rendering ──────────────────────────────
-//
-// These tests drive the REAL drawGridPane dispatch (mirrors
-// grid_coord_badge_zorder_test.go's TestCoordBadgeDrawnBeforeSidebarPanel
-// pattern) and intercept the package-level drawRect var to capture what was
-// actually painted — never a manual/isolated draw call, and never a raw
-// screen.At() pixel read (that panics under real Ebiten; interception is the
-// stub-safe, delta-measuring approach used throughout this package).
+// These drive the real drawGridPane and intercept drawRect: screen.At() panics under real Ebiten.
 
-// moveModeRectCall records one drawRect invocation (filled or outline) during
-// a drawGridMoveMode pass.
 type moveModeRectCall struct {
 	Rect   image.Rectangle
 	Color  color.RGBA
 	Filled bool
 }
 
-// collectMoveModeRects intercepts drawRect during fn() and returns every call
-// in invocation order, filled and outline alike — TestMoveModeGhostValidityStates
-// needs the outline-only (filled=false) calls too, which the existing
-// collectFilledRects helper (render_verify_test.go) discards.
+// Keeps the outline-only calls, which collectFilledRects discards.
 func collectMoveModeRects(t *testing.T, fn func()) []moveModeRectCall {
 	t.Helper()
 	var calls []moveModeRectCall
@@ -443,11 +394,7 @@ func collectMoveModeRects(t *testing.T, fn func()) []moveModeRectCall {
 	return calls
 }
 
-// filledAreaOfColor sums the pixel area of every FILLED call matching col
-// whose rect intersects inside. Used as the "filled glow pixel count" proxy:
-// drawRect's fast path blits a single filled rect per call (drawRectBlit is
-// the un-intercepted primitive), so one matching call's intersected area is
-// exactly the filled coverage contributed by that draw.
+// drawRect blits one filled rect per call, so a matching call's intersected area is exactly its coverage.
 func filledAreaOfColor(calls []moveModeRectCall, col color.Color, inside image.Rectangle) int {
 	want := color.RGBAModel.Convert(col).(color.RGBA)
 	area := 0
@@ -464,8 +411,6 @@ func filledAreaOfColor(calls []moveModeRectCall, col color.Color, inside image.R
 	return area
 }
 
-// outlineCountOfColor counts OUTLINE (filled=false) calls matching col whose
-// rect intersects inside.
 func outlineCountOfColor(calls []moveModeRectCall, col color.Color, inside image.Rectangle) int {
 	want := color.RGBAModel.Convert(col).(color.RGBA)
 	n := 0
@@ -481,11 +426,7 @@ func outlineCountOfColor(calls []moveModeRectCall, col color.Color, inside image
 	return n
 }
 
-// TestMoveModeBlinkAlternates arms move mode on M, draws once at phase 0
-// (blink ON per gridModeManager.blinkOn: (0/gridModeBlinkHalfPeriod)%2==0)
-// and once after ticking the phase past gridModeBlinkHalfPeriod (blink OFF),
-// and asserts the subject node's screen rect is filled with the blink glow
-// color strictly more in the ON draw than the OFF draw.
+// Blink phase 0 is ON and past gridModeBlinkHalfPeriod OFF: the subject's rect gets strictly more glow ON.
 func TestMoveModeBlinkAlternates(t *testing.T) {
 	g, _, _, m := buildMoveModeLayout(t)
 	g.modes.Enter(GridModeMove, m)
@@ -519,11 +460,8 @@ func TestMoveModeBlinkAlternates(t *testing.T) {
 	}
 }
 
-// TestMoveModeGhostValidityStates arms move mode on M, then draws with the
-// cursor over an interior point of the A-B edge (valid target, GuideEdge) and
-// separately over a far-away free cell (invalid target, not GuideEdge).
-// Valid must produce a filled glow ghost; invalid must produce strictly fewer
-// filled-glow pixels (zero) plus a nonzero outline-only ghost.
+// A valid target (an A-B edge interior) draws a filled glow ghost; an invalid free cell draws none, only an
+// outline ghost.
 func TestMoveModeGhostValidityStates(t *testing.T) {
 	g, _, _, m := buildMoveModeLayout(t)
 	g.modes.Enter(GridModeMove, m)
@@ -544,12 +482,8 @@ func TestMoveModeGhostValidityStates(t *testing.T) {
 	ghostOutline := WithAlpha(genColorVizGlow, genAlphaSubtle)
 	fullFrame := image.Rect(0, 0, 800, 600)
 
-	// centerCameraOn (render_verify_test.go) re-centers the camera so grid
-	// (gi,gj) maps to the grid pane's on-screen center — always inside the
-	// pane's visible bounds regardless of shrinkGuideSnapRadius's huge scale
-	// (a raw screenPosForGridIJ(g, 0, 10) screen point lands far outside the
-	// 800x600 window at that scale, so g.split.InGridPane would reject it and
-	// the whole ghost block would be skipped for the wrong reason).
+	// Centred on the pane: at shrinkGuideSnapRadius's huge scale a raw screen point leaves the window, and the ghost
+	// would be skipped for the wrong reason.
 	paneCenterX := g.winW / 2
 	paneCenterY := gridTopOffset() + (g.split.Y-gridTopOffset())/2
 
@@ -589,10 +523,7 @@ func TestMoveModeGhostValidityStates(t *testing.T) {
 
 // ─── Task 6: long-press popup lifecycle + option-tap telemetry ────────────
 
-// TestLongPressPopupEmitsLifecycleEvents drives the real showLongPressPopup /
-// updateLongPressPopup entry points and asserts the popup.opened /
-// popup.closed / ui.tap / mode.armed event sequence for both the Move
-// activation path and the outside-release dismiss path.
+// popup.opened / popup.closed / ui.tap / mode.armed, for both Move activation and an outside-release dismiss.
 func TestLongPressPopupEmitsLifecycleEvents(t *testing.T) {
 	t.Run("move activation", func(t *testing.T) {
 		opened := make(chan hooks.PopupPayload, 4)
@@ -745,9 +676,7 @@ func TestLongPressPopupEmitsLifecycleEvents(t *testing.T) {
 
 // ─── Task 7: Copy option + armed copy mode ─────────────────────────────────
 
-// TestLongPressPopupCopyArmsCopyMode: open the popup, slide-release on the
-// Copy button. Expect the clipboard to hold the node's type/params, copy
-// mode armed, EventNodeCopied and EventGridModeArmed{Mode:"copy"} emitted.
+// The clipboard holds the node's type and params, copy mode is armed, and both events fire.
 func TestLongPressPopupCopyArmsCopyMode(t *testing.T) {
 	copied := make(chan hooks.NodeEdit, 4)
 	armed := make(chan hooks.GridModePayload, 4)
@@ -833,10 +762,7 @@ func TestLongPressPopupCopyArmsCopyMode(t *testing.T) {
 	}
 }
 
-// buildCopyModeLayout builds a small circuit for copy-mode tap tests: node M
-// (the copy subject, with a distinctive Volume so paste-preserves-params is
-// verifiable), an A-B edge with interior cells, and node B as the "occupied"
-// target.
+// M carries a distinctive Volume so paste-preserves-params is checkable; B is the occupied target.
 func buildCopyModeLayout(t *testing.T) (g *Game, a, b, m *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -863,10 +789,7 @@ func buildCopyModeLayout(t *testing.T) (g *Game, a, b, m *uiNode) {
 	return g, a, b, m
 }
 
-// TestCopyMode_TapFreeCellPastes arms copy on M then taps a free cell (10,4):
-// a new node must exist there with M's type+params, M itself must be
-// unchanged, the mode must commit (None), EventNodePasted must fire, and the
-// node count must increase by exactly one.
+// The paste has M's type and params, M is unchanged, the mode commits, and exactly one node is added.
 func TestCopyMode_TapFreeCellPastes(t *testing.T) {
 	pasted := make(chan hooks.NodeEdit, 4)
 	u := hooks.GlobalBus().Subscribe(hooks.EventNodePasted, func(e hooks.Event) {
@@ -932,10 +855,7 @@ func TestCopyMode_TapFreeCellPastes(t *testing.T) {
 	}
 }
 
-// TestCopyMode_TapOnEdgeCellPastesAndStitches arms copy on M then taps an
-// interior point of the A-B edge: the pasted node must be stitched into that
-// edge exactly like pasteNodeFrom's manual-add semantics (A-B edge replaced
-// by A-paste and paste-B).
+// Stitched like a manual add: A-B becomes A-paste and paste-B.
 func TestCopyMode_TapOnEdgeCellPastesAndStitches(t *testing.T) {
 	g, a, b, m := buildCopyModeLayout(t)
 	if !hasEdgeBetween(g, a.ID, b.ID) {
@@ -965,10 +885,7 @@ func TestCopyMode_TapOnEdgeCellPastesAndStitches(t *testing.T) {
 	}
 }
 
-// TestCopyMode_TapOccupiedOpensOverwriteConfirm arms copy on M then taps
-// occupied node B: the overwrite confirmation portal must own the flow (the
-// full ConfirmPasteOverwrite path is covered by node_clipboard_test.go), and
-// the armed mode's job is done (committed).
+// The overwrite confirm owns the flow from there, and the armed mode has committed.
 func TestCopyMode_TapOccupiedOpensOverwriteConfirm(t *testing.T) {
 	g, _, b, m := buildCopyModeLayout(t)
 
@@ -985,9 +902,7 @@ func TestCopyMode_TapOccupiedOpensOverwriteConfirm(t *testing.T) {
 	}
 }
 
-// TestCopyMode_EscCancels arms copy mode then presses ESC via handleEscape
-// (the single Esc authority, per the Task 6 consolidation): mode must go to
-// None and EventGridModeCanceled{Mode:"copy", Reason:"esc"} must fire.
+// Through handleEscape, the single Esc authority.
 func TestCopyMode_EscCancels(t *testing.T) {
 	canceled := make(chan hooks.GridModePayload, 4)
 	u := hooks.GlobalBus().Subscribe(hooks.EventGridModeCanceled, func(e hooks.Event) {
@@ -1025,18 +940,8 @@ func TestCopyMode_EscCancels(t *testing.T) {
 	}
 }
 
-// --- Task 8: desktop mouse click-and-hold opens the long-press popup -------
-//
-// All five tests drive the real handleEditor entry point via g.Update(),
-// mirroring TestClickNodeByScreenRectOpensPopup's press/release-across-frames
-// pattern (node_click_screen_hit_test.go): SetInputForTest wires mutable
-// mx/my/left closures, and successive g.Update() calls advance one frame each.
-// touchOverrideActive is left at its SetInputForTest-reset default (false) —
-// this is the desktop mouse path, not touch.
+// Desktop mouse path through g.Update, one frame per call; touchOverrideActive stays false.
 
-// mouseHoldDriver wires SetInputForTest with mutable cursor/button state and
-// returns setters plus the restore func, so each test can drive frames with
-// plain assignments instead of re-deriving the closures every time.
 func mouseHoldDriver(g *Game) (setPos func(x, y int), setLeft func(bool), restore func()) {
 	mx, my := 0, 0
 	left := false
@@ -1053,10 +958,7 @@ func mouseHoldDriver(g *Game) (setPos func(x, y int), setLeft func(bool), restor
 	return setPos, setLeft, restore
 }
 
-// TestMouseHoldOnNodeOpensPopup verifies that pressing and holding the mouse
-// stationary on a node for mouseHoldPopupFrames+1 frames opens the long-press
-// quick-action popup for that node, and that the hold consumes the press so
-// the eventual release does NOT also open the node sidebar.
+// The hold consumes the press, so the release does not also open the sidebar.
 func TestMouseHoldOnNodeOpensPopup(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -1084,10 +986,7 @@ func TestMouseHoldOnNodeOpensPopup(t *testing.T) {
 		t.Fatalf("expected popup node = %v, got %v", n, g.longPressPopupNode)
 	}
 
-	// Release: since the hold consumed pendingClick, this must NOT open the
-	// sidebar (the popup intercept owns input while g.longPressPopup is true,
-	// so handleEditor's release branch never even runs — the sidebar staying
-	// closed is the observable proof the click was consumed).
+	// The popup owns input, so the release never reaches handleEditor; a closed sidebar proves it.
 	setLeft(false)
 	_ = g.Update()
 
@@ -1096,10 +995,7 @@ func TestMouseHoldOnNodeOpensPopup(t *testing.T) {
 	}
 }
 
-// TestMouseHoldCanceledByDrag verifies that moving the cursor beyond
-// tapMaxMovePx during the hold kills the hold permanently for that press —
-// the popup never opens even if the button stays down well past the
-// threshold.
+// Moving past tapMaxMovePx kills the hold for that press, however long the button stays down.
 func TestMouseHoldCanceledByDrag(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -1123,8 +1019,6 @@ func TestMouseHoldCanceledByDrag(t *testing.T) {
 		t.Fatal("popup should not have opened yet after only 10 frames")
 	}
 
-	// Drag well past the tap-move threshold, then keep holding past the
-	// point where the hold would otherwise have fired.
 	setPos(cx+tapMaxMovePx+20, cy)
 	for i := 0; i < mouseHoldPopupFrames+20; i++ {
 		_ = g.Update()
@@ -1134,18 +1028,13 @@ func TestMouseHoldCanceledByDrag(t *testing.T) {
 		t.Fatal("popup should never open once the hold was canceled by drag")
 	}
 
-	// Release: leaving the button "held" past the end of the test would leak
-	// the camera's package-level last-mouse-position tracker (camera.go's
-	// lastMouse) into whichever test runs next, making that test's very
-	// first press frame look like a continuing drag. Always end a
-	// still-held test with a release.
+	// A test that ends holding leaks camera.go's package-level lastMouse, so the next test's first press reads as
+	// a drag.
 	setLeft(false)
 	_ = g.Update()
 }
 
-// TestMouseShortClickStillOpensSidebar verifies existing click-to-select
-// behavior is unaffected by the new hold detector: a quick press+release
-// well under the hold threshold still opens the node sidebar.
+// A quick press+release under the hold threshold still opens the sidebar.
 func TestMouseShortClickStillOpensSidebar(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -1174,10 +1063,7 @@ func TestMouseShortClickStillOpensSidebar(t *testing.T) {
 	}
 }
 
-// TestMouseHoldThenSlideReleaseArmsMove verifies that once the popup is open
-// via a mouse hold, the existing slide-to-button-then-release activation
-// (shared with touch via updateLongPressPopup) works with the mouse: sliding
-// into the Move button rect and releasing arms GridModeMove.
+// Slide into Move and release, as on touch.
 func TestMouseHoldThenSlideReleaseArmsMove(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -1201,9 +1087,7 @@ func TestMouseHoldThenSlideReleaseArmsMove(t *testing.T) {
 		t.Fatal("expected popup open after hold")
 	}
 
-	// Slide into the Move button (finger/button still down) — the intercept
-	// in game_update.go routes to updateLongPressPopup while longPressPopup
-	// is true, so this hover-tracking frame works identically to touch.
+	// The popup intercept handles hover tracking the same way for mouse and touch.
 	mvx := (g.longPressPopupMove.Min.X + g.longPressPopupMove.Max.X) / 2
 	mvy := (g.longPressPopupMove.Min.Y + g.longPressPopupMove.Max.Y) / 2
 	setPos(mvx, mvy)
@@ -1223,9 +1107,7 @@ func TestMouseHoldThenSlideReleaseArmsMove(t *testing.T) {
 	}
 }
 
-// TestMouseHoldOnEmptySpaceDoesNothing verifies that holding the mouse on
-// empty grid space (no node under the press) never opens the popup — the
-// hold detector gates on g.clickNode != nil.
+// The hold detector needs a node under the press.
 func TestMouseHoldOnEmptySpaceDoesNothing(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -1249,20 +1131,13 @@ func TestMouseHoldOnEmptySpaceDoesNothing(t *testing.T) {
 		t.Fatal("popup should not open when holding on empty grid space")
 	}
 
-	// Release: see the comment in TestMouseHoldCanceledByDrag — a test that
-	// ends still holding the button leaks camera.go's package-level
-	// lastMouse tracker into the next test's first press frame.
+	// Ending held would leak camera.go's lastMouse into the next test.
 	setLeft(false)
 	_ = g.Update()
 }
 
-// TestMoveMode_SubjectDeletedCancelsMode: arming move mode on a node and then
-// deleting that same node (e.g. via the sidebar's delete action, which can
-// fire while a mode is armed on a different node reference than the one being
-// deleted — or, degenerate case, the armed subject itself) must not leave the
-// mode manager pointing at a dangling *uiNode. pruneDanglingNodeRefs runs once
-// per Update (game_update.go) and on Import; this drives it the same way the
-// real frame loop does.
+// Deleting the armed node must not leave the mode manager on a dangling *uiNode; the prune runs once per Update
+// and on Import.
 func TestMoveMode_SubjectDeletedCancelsMode(t *testing.T) {
 	g, _, _, m := buildMoveModeLayout(t)
 
@@ -1290,16 +1165,9 @@ func TestMoveMode_SubjectDeletedCancelsMode(t *testing.T) {
 	}
 }
 
-// --- Task 3: "Break the circuit?" confirm portal ---------------------------
-//
-// Square circuit fixture for the corner/junction/double-in/double-out cases:
-// A(0,0)->N(0,6)->B(6,6)->C(6,0)->A, plus a separate target edge
-// X(10,0)->Y(10,8) supplying a valid GuideEdge destination at (10,4).
+// Square A(0,0)→N(0,6)→B(6,6)→C(6,0)→A, plus a target edge X(10,0)→Y(10,8) whose (10,4) is a valid GuideEdge.
 
-// buildBreakConfirmSquareLayout builds the shared square A->N->B->C->A plus
-// the X-Y target edge, with the guide-snap radius shrunk for deterministic
-// tap resolution. N is the corner subject: in=A (vertical), out=B
-// (horizontal) — perpendicular, so moveHealPlan classifies N healUnhealable.
+// N is the corner: in from A (vertical), out to B (horizontal), so healUnhealable.
 func buildBreakConfirmSquareLayout(t *testing.T) (g *Game, a, n, b, c, x, y *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -1326,10 +1194,7 @@ func buildBreakConfirmSquareLayout(t *testing.T) (g *Game, a, n, b, c, x, y *uiN
 	return g, a, n, b, c, x, y
 }
 
-// buildBreakConfirmJunctionLayout builds A->N->B plus a second outgoing
-// N->D, so N carries 3 total edges (1 in, 2 out) — always healUnhealable
-// regardless of orthogonality (moveHealPlan only pass-throughs exactly 1
-// in + 1 out). Plus the X-Y target edge.
+// Three edges: only exactly 1 in + 1 out can pass through.
 func buildBreakConfirmJunctionLayout(t *testing.T) (g *Game, n *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -1355,9 +1220,7 @@ func buildBreakConfirmJunctionLayout(t *testing.T) (g *Game, n *uiNode) {
 	return g, n
 }
 
-// buildBreakConfirmDoubleInLayout builds A->N, B->N (two incoming, zero
-// outgoing) — healUnhealable since moveHealPlan's pass-through branch
-// requires exactly 1 in + 1 out. Plus the X-Y target edge.
+// Two in, none out: not a pass-through.
 func buildBreakConfirmDoubleInLayout(t *testing.T) (g *Game, n *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -1381,9 +1244,7 @@ func buildBreakConfirmDoubleInLayout(t *testing.T) (g *Game, n *uiNode) {
 	return g, n
 }
 
-// buildBreakConfirmDoubleOutLayout builds N->A, N->B (two outgoing, zero
-// incoming) — healUnhealable for the same reason as double-in. Plus the X-Y
-// target edge.
+// Two out, none in: not a pass-through.
 func buildBreakConfirmDoubleOutLayout(t *testing.T) (g *Game, n *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -1407,11 +1268,7 @@ func buildBreakConfirmDoubleOutLayout(t *testing.T) (g *Game, n *uiNode) {
 	return g, n
 }
 
-// TestMoveMode_CornerOpensBreakConfirm (spec #8): arm move on N (corner —
-// in=A(0,0), out=B(6,6), perpendicular) and tap the X-Y target edge's
-// interior point (10,4): the break-confirm dialog opens, the graph is
-// UNCHANGED (all 4 square edges intact, N still at (0,6)), and the mode
-// stays armed on N.
+// The dialog opens, the graph is unchanged and the mode stays armed on N.
 func TestMoveMode_CornerOpensBreakConfirm(t *testing.T) {
 	g, a, n, b, c, x, y := buildBreakConfirmSquareLayout(t)
 	nID, aID, bID, cID, xID, yID := n.ID, a.ID, b.ID, c.ID, x.ID, y.ID
@@ -1443,10 +1300,7 @@ func TestMoveMode_CornerOpensBreakConfirm(t *testing.T) {
 	}
 }
 
-// TestMoveMode_BreakConfirmBreak (spec #9): confirming the corner-move
-// break-confirm splices N into X-Y (X->N, N->Y), extracts A->N and N->B
-// with NO heal edge A->B, and commits the mode. A single undo restores the
-// entire square AND unsplits X-Y.
+// N splices into X-Y, A→N and N→B go with no heal A→B, and one undo restores the square and unsplits X-Y.
 func TestMoveMode_BreakConfirmBreak(t *testing.T) {
 	g, a, n, b, c, x, y := buildBreakConfirmSquareLayout(t)
 	nID, aID, bID, cID, xID, yID := n.ID, a.ID, b.ID, c.ID, x.ID, y.ID
@@ -1508,11 +1362,8 @@ func TestMoveMode_BreakConfirmBreak(t *testing.T) {
 	}
 }
 
-// TestMoveMode_BreakConfirmCancelStaysArmed (spec #10): canceling the dialog
-// leaves the graph untouched, the dialog closed, and move mode STILL ARMED
-// on N. A follow-up tap on the same target re-opens the dialog (retry
-// works). ESC then cancels the dialog first (rung); a second ESC disarms
-// the mode.
+// Cancel leaves the graph untouched and the mode armed, so a re-tap retries; the first Esc closes the dialog,
+// the second disarms.
 func TestMoveMode_BreakConfirmCancelStaysArmed(t *testing.T) {
 	canceled := make(chan hooks.GridModePayload, 4)
 	u := hooks.GlobalBus().Subscribe(hooks.EventGridModeCanceled, func(e hooks.Event) {
@@ -1597,8 +1448,6 @@ func TestMoveMode_JunctionOpensBreakConfirm(t *testing.T) {
 	}
 }
 
-// TestMoveMode_DoubleInOpensBreakConfirm (spec #12): two incoming edges into
-// N (zero outgoing) → dialog.
 func TestMoveMode_DoubleInOpensBreakConfirm(t *testing.T) {
 	g, n := buildBreakConfirmDoubleInLayout(t)
 	if plan := g.moveHealPlan(n); plan.class != healUnhealable {
@@ -1617,8 +1466,6 @@ func TestMoveMode_DoubleInOpensBreakConfirm(t *testing.T) {
 	}
 }
 
-// TestMoveMode_DoubleOutOpensBreakConfirm (spec #12, double-out variant):
-// two outgoing edges from N (zero incoming) → dialog.
 func TestMoveMode_DoubleOutOpensBreakConfirm(t *testing.T) {
 	g, n := buildBreakConfirmDoubleOutLayout(t)
 	if plan := g.moveHealPlan(n); plan.class != healUnhealable {
@@ -1637,11 +1484,7 @@ func TestMoveMode_DoubleOutOpensBreakConfirm(t *testing.T) {
 	}
 }
 
-// TestMoveMode_BreakConfirmEvents (spec #14): the corner tap emits
-// popup.opened{ID:"break-circuit-confirm"}; Cancel emits popup.closed and NO
-// mode.canceled within 150ms (mode stays armed, not canceled); a re-tap +
-// Confirm emits node.moved. Portal Open/Close emit popup events
-// automatically via portal.go.
+// Cancel emits popup.closed and no mode.canceled; a re-tap + Confirm emits node.moved.
 func TestMoveMode_BreakConfirmEvents(t *testing.T) {
 	opened := make(chan hooks.PopupPayload, 4)
 	closed := make(chan hooks.PopupPayload, 4)
@@ -1716,11 +1559,7 @@ func TestMoveMode_BreakConfirmEvents(t *testing.T) {
 	}
 }
 
-// TestMoveMode_SubjectDeletedClosesBreakConfirm: with the break-confirm
-// dialog open, deleting the armed subject N and running the prune pass must
-// close the dialog AND cancel the mode — the prune rung already cancels the
-// mode on subject deletion; this extends it to also close the dialog so a
-// dangling breakPending.node reference can't linger.
+// Deleting the armed subject closes the dialog too, so no dangling breakPending.node lingers.
 func TestMoveMode_SubjectDeletedClosesBreakConfirm(t *testing.T) {
 	g, _, n, _, _, _, _ := buildBreakConfirmSquareLayout(t)
 	g.modes.Enter(GridModeMove, n)
@@ -1745,14 +1584,8 @@ func TestMoveMode_SubjectDeletedClosesBreakConfirm(t *testing.T) {
 	}
 }
 
-// TestMoveMode_ExternalCancelClosesBreakConfirm: the break-confirm dialog
-// must not be left stranded when move mode ends for a reason that has
-// nothing to do with the dialog's own Confirm/Cancel buttons — e.g. an
-// import wiping the mode via g.modes.Cancel("import") (import.go, reachable
-// from the JS bridge) while the dialog is open. breakConfirmModeObserver
-// (grid_move_break_confirm.go) exists specifically to close the dialog on
-// any such external mode-cancel. RED before that observer is registered:
-// breakConfirmActive() stays true and the Modal+Scrim portal is stranded.
+// A mode ended from outside (an import's Cancel, reachable from the JS bridge) must close the dialog, or its
+// modal scrim is stranded.
 func TestMoveMode_ExternalCancelClosesBreakConfirm(t *testing.T) {
 	g, a, n, b, c, x, y := buildBreakConfirmSquareLayout(t)
 	nID, aID, bID, cID, xID, yID := n.ID, a.ID, b.ID, c.ID, x.ID, y.ID
@@ -1786,12 +1619,8 @@ func TestMoveMode_ExternalCancelClosesBreakConfirm(t *testing.T) {
 	}
 }
 
-// TestMoveMode_BreakConfirmStaleOccupiedDestination: the dialog's captured
-// destination (i,j) can go stale while the dialog is open — a node placed at
-// (i,j) after the dialog opens but before Confirm. ConfirmBreakCircuit must
-// hit moveNode's occupied-destination guard and cancel the mode with reason
-// "move-failed" rather than clobber the newly-placed node. Pins the guard
-// documented in grid_move_break_confirm.go's ConfirmBreakCircuit.
+// A node placed at the captured destination while the dialog is open: Confirm cancels with "move-failed"
+// instead of clobbering it.
 func TestMoveMode_BreakConfirmStaleOccupiedDestination(t *testing.T) {
 	canceled := make(chan hooks.GridModePayload, 4)
 	u := hooks.GlobalBus().Subscribe(hooks.EventGridModeCanceled, func(e hooks.Event) {

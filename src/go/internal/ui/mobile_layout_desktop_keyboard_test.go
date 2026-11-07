@@ -8,24 +8,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestFunctional_MobileLayout_DesktopKeyboard_BPM reproduces the reported bug:
-// on a browser rendering the MOBILE LAYOUT and driven with a MOUSE (a narrow
-// desktop window, OR — the case that shipped broken — a touch-capable laptop /
-// DevTools device-mode used with a mouse), clicking the BPM readout opens the
-// editor and shows a blinking cursor, but no key press registers.
-//
-// Root cause: ParamValueEditor.Update took the mobile native-<input> branch on
-// Profile().IsMobile() (+ device touch capability) and returned before running
-// keyboard handling. The native <input> is created only inside a `touchend`
-// handler, which never fires on a MOUSE gesture — so the editor is inert.
-//
-// The fix routes input by the OPENING GESTURE's pointer type (lastPointerWasTouch),
-// not device capability: a mouse-opened editor in mobile layout uses the keyboard
-// path. Here lastPointerWasTouchForTest=false models the mouse gesture.
+// A mobile layout driven by a mouse (a narrow window, a touch laptop) must still take keys: input routes by
+// the opening gesture's pointer type, never by device capability.
 func TestFunctional_MobileLayout_DesktopKeyboard_BPM(t *testing.T) {
 	g := newDesktopGame(t)
-	// Force the mobile LAYOUT (as a narrow desktop-browser viewport would). Under
-	// the test build SetForceMobileProfile is a no-op, so set the flag directly.
+	// SetForceMobileProfile is a no-op under the test build.
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
 	// ...and model a MOUSE opening gesture (no native <input> will be created).
@@ -51,8 +38,7 @@ func TestFunctional_MobileLayout_DesktopKeyboard_BPM(t *testing.T) {
 	}
 	orig := g.drum.BPM()
 
-	// 1. Click the BPM readout: it opens the shared value wheel (typed numeric
-	// entry was replaced by the wheel on both platforms).
+	// Opens the shared value wheel.
 	r := box.Rect
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 	w := g.drum.valueWheelPopup
@@ -60,8 +46,7 @@ func TestFunctional_MobileLayout_DesktopKeyboard_BPM(t *testing.T) {
 		t.Fatalf("clicking the BPM readout did not open the value wheel")
 	}
 
-	// 2. Physical arrow keys step the tempo (proves key presses register on a
-	// mobile layout driven by a mouse + keyboard).
+	// Physical arrows step the tempo.
 	for i := 0; i < 3; i++ {
 		fi.pressKey(t, g, ebiten.KeyArrowUp)
 	}

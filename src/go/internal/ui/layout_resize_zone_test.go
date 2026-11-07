@@ -117,8 +117,7 @@ func TestLayoutResizeZone_HitAreas_DisabledResize(t *testing.T) {
 		t.Fatal("precondition: EnableLayoutResize should be false on mobile")
 	}
 
-	// Provide a non-nil widgets so the nil check passes but the feature
-	// flag check triggers the early return.
+	// Non-nil, so the feature flag check is what returns early.
 	wb := NewWidgetBoard(image.Rect(0, 0, 800, 400), []float64{1, 3}, []float64{3, 3, 3})
 	dv := &DrumView{widgets: wb}
 	h := &LayoutResizeHandler{dv: dv}

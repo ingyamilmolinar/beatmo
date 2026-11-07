@@ -6,23 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// openSidebarGrpExpanded opens the sidebar on node id and expands the grp
-// section with a REAL click on its header, mirroring the established "expand
-// the section first" pattern used throughout sidebar_group_controls_test.go
-// before clicking any of its controls.
-//
-// Clicking (rather than poking sectionOpen directly) is load-bearing: the
-// click is what re-runs NodeSidebar.layout(), the only thing that rebuilds
-// sb.rects. layout() runs from Open(), Draw() and HandleInput() — but these
-// tests never Draw (advanceFrames only calls Update()), and Open() lays out
-// with every section collapsed. A direct poke therefore left sb.rects frozen
-// at Open()'s collapsed layout, so the grp rows ("grpnew", "grpchip:<gid>")
-// were simply absent. That poke only ever appeared to work because the stub
-// build's mock cursor defaults to (0,0) — inside the panel — so the
-// dispatcher called HandleInput -> layout() every frame; under the real
-// Ebiten build the cursor sits wherever the process left it and the rows
-// never laid out. Open() resets every section to collapsed, so this click
-// always expands (never collapses) grp.
+// A real header click, never a sectionOpen poke: the click re-runs layout(), the only thing that rebuilds
+// sb.rects, and these tests never Draw. A poke left the rows absent, hidden on the stub by its (0,0) cursor.
 func openSidebarGrpExpanded(t *testing.T, g *Game, id model.NodeID) {
 	t.Helper()
 	g.sidebar.Open(g.nodesByID[id])
@@ -35,12 +20,7 @@ func openSidebarGrpExpanded(t *testing.T, g *Game, id model.NodeID) {
 
 // ─── 1. Section always visible ──────────────────────────────────────────────
 
-// TestSidebarGroupSectionAlwaysVisible is task-sidebar-create brief test 1
-// (RED against pre-task code, which gates "sec-grp" on
-// len(g.graph.AllGroups())>0): with zero groups anywhere in the project,
-// opening the sidebar on a node and expanding the grp section must still lay
-// out "sec-grp" and its new "grpnew" row — with no membership chips and no
-// "grpadd" row, since there is nothing to add to yet.
+// With zero groups the grp section still lays out its "grpnew" row, with no chips and no "grpadd".
 func TestSidebarGroupSectionAlwaysVisible(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	if n := len(g.graph.AllGroups()); n != 0 {
@@ -66,13 +46,8 @@ func TestSidebarGroupSectionAlwaysVisible(t *testing.T) {
 
 // ─── 2. grpnew opens a provisional menu ─────────────────────────────────────
 
-// TestSidebarCreateNewGroupOpensProvisionalMenu is task-sidebar-create brief
-// test 2 (RED against pre-task code, which has no "grpnew" control at all):
-// with zero groups, a real click on grpnew must close the sidebar and open
-// the GroupMenu on a brand-new PROVISIONAL group containing EXACTLY the
-// selected node, with RulesEnabled false, the lowest-free number
-// ("Group 1"), and ZERO undo steps recorded (provisional creation never
-// emits — Save owns the single emitGroupCreated step).
+// grpnew closes the sidebar and opens the menu on a provisional group of exactly this node, rules off,
+// "Group 1", with no undo step: Save owns the single one.
 func TestSidebarCreateNewGroupOpensProvisionalMenu(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	openSidebarGrpExpanded(t, g, aID)
@@ -111,10 +86,7 @@ func TestSidebarCreateNewGroupOpensProvisionalMenu(t *testing.T) {
 
 // ─── 3. Close without Save leaves no trace ──────────────────────────────────
 
-// TestSidebarCreateThenCloseLeavesNoTrace is task-sidebar-create brief test
-// 3: after grpnew opens the provisional menu, closing it WITHOUT Save must
-// leave zero trace — zero groups, unchanged undo depth, and the number
-// immediately reusable (the next create still mints "Group 1").
+// Closing without Save leaves no trace, and the number is reusable at once.
 func TestSidebarCreateThenCloseLeavesNoTrace(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	openSidebarGrpExpanded(t, g, aID)
@@ -147,10 +119,7 @@ func TestSidebarCreateThenCloseLeavesNoTrace(t *testing.T) {
 
 // ─── 4. Save commits ─────────────────────────────────────────────────────────
 
-// TestSidebarCreateThenSaveCommits is task-sidebar-create brief test 4:
-// grpnew -> Save commits the provisional group as exactly ONE undo step; the
-// menu stays open (Save greys out); closing after Save persists the group;
-// reopening the sidebar shows a membership chip for it.
+// One undo step; the menu stays open with Save greyed; reopening the sidebar shows the chip.
 func TestSidebarCreateThenSaveCommits(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	openSidebarGrpExpanded(t, g, aID)
@@ -186,10 +155,7 @@ func TestSidebarCreateThenSaveCommits(t *testing.T) {
 
 // ─── 5. Coexists with existing membership ───────────────────────────────────
 
-// TestSidebarCreateWithExistingMembership is task-sidebar-create brief test
-// 5: a node already belonging to group A can still create a brand-new
-// provisional group via grpnew (chips + create coexist); after Save the
-// node belongs to both groups (GroupsForNode).
+// A member of A can still create a new group; after Save it belongs to both.
 func TestSidebarCreateWithExistingMembership(t *testing.T) {
 	g, aID, bID := buildGroupSidebarFixture(t)
 	gidA := createCommittedGroup(t, g, "A", []model.NodeID{aID, bID})
@@ -224,11 +190,8 @@ func TestSidebarCreateWithExistingMembership(t *testing.T) {
 
 // ─── 6. Merge chips appear ───────────────────────────────────────────────────
 
-// TestSidebarCreateShowsMergeChips is task-sidebar-create brief test 6: with
-// another group B already existing, grpnew's provisional menu must show a
-// merge chip for B (mergeChipCandidates needs no special-casing for a
-// single-node provisional selection — see its doc comment); clicking the
-// chip merges the node into B and the provisional group is gone.
+// The provisional menu shows a merge chip for B; clicking it merges the node into B and the provisional group
+// is gone.
 func TestSidebarCreateShowsMergeChips(t *testing.T) {
 	g, aID, bID := buildGroupSidebarFixture(t)
 	gidB := createCommittedGroup(t, g, "B", []model.NodeID{bID})
@@ -261,12 +224,8 @@ func TestSidebarCreateShowsMergeChips(t *testing.T) {
 	}
 }
 
-// TestSidebarCreateReusesExactSingleNodeGroup mirrors the marquee's exact-set
-// reuse for the sidebar's Create-new-group row (review finding on the
-// task-sidebar-create pass): if a COMMITTED group already contains exactly
-// this node and nothing else, grpnew must reopen that group non-provisionally
-// instead of minting a duplicate — closing the reopened menu must NOT delete
-// it, and no new group/undo step may appear.
+// A committed group of exactly this node is reopened, never duplicated: closing it keeps it, and no group or
+// undo step is added.
 func TestSidebarCreateReusesExactSingleNodeGroup(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	gid, err := g.graph.CreateGroup("Solo", []model.NodeID{aID})

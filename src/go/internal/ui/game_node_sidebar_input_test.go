@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestSidebar_DeferredTapVsScroll opens the sidebar with expanded sections
-// (so there is scrollable content). A touch scroll with vertical movement
-// > 20 px commits scrolling and cancels the deferredTap. A short touch
-// without movement fires the deferred tap.
+// A touch moving > 20 px commits a scroll and cancels the deferred tap; a short still touch fires it.
 func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 	g := openSidebarWithScroll(t, 250)
 
@@ -35,21 +32,15 @@ func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 		t.Error("expected scroll to be committed after >20px vertical drag")
 	}
 
-	// The deferred tap should be active but will be canceled on release.
-	// Release.
 	g.sidebar.HandleInput(cx, cy-40, false)
 
-	// After release with scroll committed, deferred tap should be canceled
-	// (not fired). We can verify that no section was toggled.
-	// Record current section states.
+	// A committed scroll toggles no section.
 	for _, sec := range []sbSection{secVol, secPit, secDur} {
 		if !g.sidebar.sectionOpen[sec] {
 			t.Errorf("section %q should still be open (expanded earlier)", sec)
 		}
 	}
 
-	// Now test short touch (no scroll) — should fire deferred tap.
-	// First, find a section header rect to tap on.
 	secDurRect := g.sidebar.rects[sbSectionHeader(secDur)]
 	if secDurRect.Empty() {
 		t.Skip("sec-dur rect empty — cannot test deferred tap fire")
@@ -62,16 +53,13 @@ func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 	g.sidebar.HandleInput(sx, sy, true)
 	g.sidebar.HandleInput(sx, sy, false)
 
-	// After release with no scroll, deferred tap should have fired on sec-dur.
-	// sec-dur was open; toggling it closes it.
+	// sec-dur was open, so the deferred tap closes it.
 	if g.sidebar.sectionOpen[secDur] {
 		t.Error("expected 'dur' section to be toggled closed by deferred tap")
 	}
 }
 
-// TestSidebar_DropdownCloseOnOutsideClick opens the sidebar, opens the logic
-// dropdown, then clicks outside the dropdown but inside the panel. The dropdown
-// should close but the sidebar should stay open.
+// A click outside the dropdown but inside the panel closes only the dropdown.
 func TestSidebar_DropdownCloseOnOutsideClick(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -88,8 +76,6 @@ func TestSidebar_DropdownCloseOnOutsideClick(t *testing.T) {
 		t.Fatal("precondition: logic dropdown should be open")
 	}
 
-	// Find the panel rect and click in a spot that is inside the panel
-	// but outside all dropdown rects. The header area (top of panel) works.
 	headerR := g.sidebar.rects[sbHeader]
 	if headerR.Empty() {
 		t.Fatal("header rect should not be empty")
@@ -101,8 +87,7 @@ func TestSidebar_DropdownCloseOnOutsideClick(t *testing.T) {
 	g.sidebar.HandleInput(cx, cy, true)
 	g.sidebar.HandleInput(cx, cy, false)
 
-	// The close button occupies part of the header. Call closeDropdownsOutside
-	// directly to be sure.
+	// The close button sits in the header, so the helper is called directly.
 	if g.sidebar.logicDropdownOpen {
 		// If still open (button might have intercepted), use direct call.
 		g.sidebar.closeDropdownsOutside(cx, cy)
@@ -116,8 +101,7 @@ func TestSidebar_DropdownCloseOnOutsideClick(t *testing.T) {
 	}
 }
 
-// TestSidebar_CollapsedExpandTab verifies that when collapsed=true, only the
-// expand tab is hittable. Clicking the tab sets collapsed=false.
+// Collapsed, only the expand tab is hittable.
 func TestSidebar_CollapsedExpandTab(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

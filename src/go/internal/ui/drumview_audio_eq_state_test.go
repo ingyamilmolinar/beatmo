@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestActiveEQChannelStartsOnMasterAndRefusesNoChannel: the EQ view starts on
-// the master bus, and a switch to the zero channel (no bus) is refused rather
-// than read as the master bus.
+// The zero channel is no bus, never a spelling of master.
 func TestActiveEQChannelStartsOnMasterAndRefusesNoChannel(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -27,9 +25,7 @@ func TestActiveEQChannelStartsOnMasterAndRefusesNoChannel(t *testing.T) {
 	}
 }
 
-// TestActiveHPFCutoffHzFallback covers the per-row cutoff defaulting:
-// when the row's HPFCutoffHz is unset (≤0), activeHPFCutoffHz must
-// return 20 (the band-floor sentinel) instead of zero / negative.
+// An unset cutoff (≤ 0) reads as 20, the band-floor sentinel.
 func TestActiveHPFCutoffHzFallback(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -53,8 +49,7 @@ func TestActiveHPFCutoffHzFallback(t *testing.T) {
 	}
 }
 
-// TestActiveLPFCutoffHzFallback is the LPF counterpart. Default sentinel
-// is 20000 Hz (Nyquist-adjacent).
+// An unset cutoff reads as 20000.
 func TestActiveLPFCutoffHzFallback(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -71,11 +66,7 @@ func TestActiveLPFCutoffHzFallback(t *testing.T) {
 	}
 }
 
-// TestOnRowInstrumentChangedFollowsRename is the invariant guard from
-// CLAUDE.md § Event Notification: when the row's instrument id changes
-// and the EQ panel was viewing the old id, the panel's active channel
-// must move to the new id atomically. The previous bug let the EQ panel
-// silently target a stale (now-orphan) channel after a rename.
+// The panel's channel must move with the rename, or it targets an orphan channel.
 func TestOnRowInstrumentChangedFollowsRename(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)

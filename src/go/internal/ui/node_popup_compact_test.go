@@ -7,14 +7,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Ensure the sidebar panel uses the correct default width on desktop, and is
-// content-sized (compact) rather than spanning the full grid pane height. The
-// card is a node-anchored popup rendered as a GridTree layer ("grid-sidebar",
-// clipped to the grid pane — game_node_sidebar.go's layout()): its height is
-// content-sized, capped to gridH only as a ceiling (so a tall node's card
-// still scrolls instead of running off-pane), and AnchorPopupRect clamps its
-// final position to the GRID PANE (not the whole window) so the card can
-// never paint over the bottom drum-view pane.
+// Content-sized, with the grid pane height only as a ceiling (a tall card scrolls), and clamped to the GRID pane
+// so it never paints over the drum view.
 func TestNodePopupCompactSize(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -32,11 +26,7 @@ func TestNodePopupCompactSize(t *testing.T) {
 	if r.Dx() != sidebarDefaultW {
 		t.Fatalf("expected panel width %d, got %d", sidebarDefaultW, r.Dx())
 	}
-	// Compact: content-sized (header + a couple of sections for this minimal
-	// node), capped to gridH only as a ceiling — never taller than the pane,
-	// and on this small 640x360 window the content actually reaches that
-	// ceiling (the old design's height was ALWAYS gridH by construction; the
-	// new design's height is content-derived and merely capped by it).
+	// On this small 640x360 window the content does reach the ceiling.
 	gridH := g.split.GridH(g.winH)
 	if r.Dy() <= 0 {
 		t.Fatalf("panel height must be positive, got %d", r.Dy())
@@ -44,8 +34,6 @@ func TestNodePopupCompactSize(t *testing.T) {
 	if r.Dy() > gridH {
 		t.Fatalf("panel height %d must not exceed the gridH ceiling %d", r.Dy(), gridH)
 	}
-	// Ensure the card lies within the GRID PANE (clamped away from the split
-	// line, never spilling into the drum pane below).
 	gridPane := image.Rect(0, 0, g.split.GridW(g.winW), g.split.GridH(g.winH))
 	if r.Min.X < gridPane.Min.X || r.Max.X > gridPane.Max.X ||
 		r.Min.Y < gridPane.Min.Y || r.Max.Y > gridPane.Max.Y {
@@ -53,8 +41,6 @@ func TestNodePopupCompactSize(t *testing.T) {
 	}
 }
 
-// Ensure mobile sidebar uses the same default width, is compact (content-
-// sized, not full-pane), and stays within the grid pane bounds.
 func TestNodePopupCompactSizeMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -81,8 +67,6 @@ func TestNodePopupCompactSizeMobile(t *testing.T) {
 	if r.Dy() > gridH {
 		t.Fatalf("panel height %d must not exceed the gridH ceiling %d", r.Dy(), gridH)
 	}
-	// Panel must fit within the GRID PANE (the card is a GridTree layer clipped
-	// to the grid pane and can never extend past the grid/drum split line).
 	gridPane := image.Rect(0, 0, g.split.GridW(g.winW), g.split.GridH(g.winH))
 	if r.Min.X < gridPane.Min.X || r.Max.X > gridPane.Max.X {
 		t.Fatalf("panel overflows horizontally: %v gridPane=%v", r, gridPane)

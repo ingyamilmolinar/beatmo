@@ -1,15 +1,7 @@
 //go:build test
 
-// Structural guard for menu keyboard navigation.
-//
-// The point of MenuKeyNav is that every list menu behaves the same. That only
-// holds if new menus are wired too — and nothing in the compiler notices a menu
-// that renders rows but never calls MenuKeyNav.Update. Before this work the
-// instrument menu was the ONLY navigable menu and had been for a long time,
-// precisely because there was no signal that the others lacked it.
-//
-// So: every file that renders menu rows (drawMenuRow) is either a navigable
-// menu or is explicitly exempted here with a reason.
+// The compiler cannot see a menu that renders rows but never calls MenuKeyNav.Update, so every drawMenuRow file
+// is either navigable or exempt with a reason.
 
 package ui
 
@@ -30,18 +22,13 @@ var navigableMenuFiles = map[string]string{
 	"action_menu_comp.go":             "shared \u22ef overflow (Synth/Sampler Save As/Export/Import/Reset, synth + Add stage)",
 }
 
-// exemptRowRenderers render menu rows but are not pick-one row lists.
-// Each entry must say WHY arrows/Enter do not apply.
+// Not pick-one lists; each says why arrows/Enter do not apply.
 var exemptRowRenderers = map[string]string{
-	// A control panel, not a list: prev/next jog buttons, an amount picker that
-	// opens the (navigable) jump menu, and two go-to editors that already own
-	// Enter. There are no rows to arrow through.
+	// Jog buttons and go-to editors that already own Enter: no rows to arrow through.
 	"navigation_panel.go": "control panel (jog buttons + goto editors), no row list",
-	// Effect slots with per-row controls (toggle, params, reorder); Enter has no
-	// single meaning on a row.
+	// Per-row controls; Enter has no single meaning on a row.
 	"drumview_fx_panel.go": "per-row controls, not a pick-one list",
-	// A persistent inspector pane, not a transient menu; it has no open/close
-	// lifecycle to scope a keyboard cursor to.
+	// A persistent pane with no open/close lifecycle to scope a cursor to.
 	"game_node_sidebar.go": "always-visible inspector pane, not a menu",
 	// Marquee/group actions drawn as rows inside the grid pane.
 	"game_group_menu.go": "grid-pane group actions, opened and dismissed by gesture",
@@ -83,9 +70,7 @@ func TestEveryMenuRowRendererIsNavigableOrExempt(t *testing.T) {
 	}
 }
 
-// TestNavigableMenusDriveMenuKeyNav pins that a file claiming to be navigable
-// actually uses the shared component — the registry above cannot go stale into
-// a false "yes".
+// So the registry cannot go stale into a false "yes".
 func TestNavigableMenusDriveMenuKeyNav(t *testing.T) {
 	for name, why := range navigableMenuFiles {
 		src, err := os.ReadFile(filepath.Clean(name))
@@ -101,8 +86,7 @@ func TestNavigableMenusDriveMenuKeyNav(t *testing.T) {
 	}
 }
 
-// TestExemptRowRenderersCarryAReason keeps the exemption list honest: a blank
-// reason is how "temporarily skip this one" becomes permanent.
+// A blank reason is how a temporary skip becomes permanent.
 func TestExemptRowRenderersCarryAReason(t *testing.T) {
 	for name, why := range exemptRowRenderers {
 		if strings.TrimSpace(why) == "" {

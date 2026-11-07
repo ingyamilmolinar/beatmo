@@ -6,16 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowControlsBoundsCoverAllRowsMobile verifies that in portrait orientation
-// with 3+ rows, the computed bounds height covers all visible rows.
-//
-// Uses a 1280-px tall viewport so the rack column has room for 3 rows
-// PLUS the addRowBtn footer ABOVE the bottom action bar / EQ peek strip
-// (which together reserve ~68 px below the rack). With the smaller
-// 844-px viewport that this test originally used, the rack zone (after
-// the rowsBottom() clamp in drumview_layout.go) only had room for ≈1
-// row above the bar — causing the test to flake against the legacy
-// behavior where the rack erroneously overlapped the bar.
+// 1280 px tall, so the rack holds three rows plus the footer above the bottom bar.
 func TestRowControlsBoundsCoverAllRowsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -37,8 +28,7 @@ func TestRowControlsBoundsCoverAllRowsMobile(t *testing.T) {
 
 	nRows := len(g.drum.Rows)
 	rh := g.drum.rowHeight()
-	// Bounds must span at least (nRows-1) * rowHeight to prove all rows are
-	// included (the last row's buttons may not fill the full row height).
+	// (nRows-1) rows at least: the last row's buttons may not fill its height.
 	minExpectedH := rh * (nRows - 1)
 
 	if bounds.Dy() < minExpectedH {
@@ -47,8 +37,6 @@ func TestRowControlsBoundsCoverAllRowsMobile(t *testing.T) {
 	}
 }
 
-// TestRowControlsBoundsCoverAllRowsLandscape verifies that in landscape
-// orientation with 3+ rows, the computed bounds height covers all visible rows.
 func TestRowControlsBoundsCoverAllRowsLandscape(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -81,8 +69,6 @@ func TestRowControlsBoundsCoverAllRowsLandscape(t *testing.T) {
 	}
 }
 
-// TestMobileRowLabelRectsNonEmpty verifies that in portrait mode with 4 rows,
-// every visible row's label and mute button have non-empty rects.
 func TestMobileRowLabelRectsNonEmpty(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -125,8 +111,7 @@ func TestMobileRowLabelRectsNonEmpty(t *testing.T) {
 	}
 }
 
-// TestLandscapeDrumPaneWidthSufficient verifies that in landscape mode the drum
-// pane gets at least 45% of the screen width (with the 50/50 split).
+// At least 45% with the 50/50 split.
 func TestLandscapeDrumPaneWidthSufficient(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -153,8 +138,6 @@ func TestLandscapeDrumPaneWidthSufficient(t *testing.T) {
 	}
 }
 
-// TestRowControlsBoundsDesktopUnchanged verifies that desktop layout with 3 rows
-// still computes correct bounds (not broken by the mobile fix).
 func TestRowControlsBoundsDesktopUnchanged(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 
@@ -173,11 +156,8 @@ func TestRowControlsBoundsDesktopUnchanged(t *testing.T) {
 		t.Fatal("desktop computeRowControlsBounds returned empty rect for 3-row layout")
 	}
 
-	// Use rackVisibleRows() — the row count the rack zone actually
-	// lays out widgets for, since the bounds are computed from those
-	// widgets. dv.visibleRows() (bounds-based) can over-estimate when
-	// the widget board allocates row 2 (wave) some pixels but the rack
-	// rect stops at the wave widget's top edge.
+	// The rows the rack lays out widgets for: visibleRows() can over-count when the board gives the wave row a few
+	// pixels.
 	vis := g.drum.rackVisibleRows()
 	if vis > len(g.drum.Rows) {
 		vis = len(g.drum.Rows)

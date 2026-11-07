@@ -7,14 +7,8 @@ import (
 	"testing"
 )
 
-// TestMobilePlayPrimaryActionStyleSwap covers the primary-action treatment
-// of the mobile transport's play button:
-//   - when stopped, the button uses PrimaryActionStyle (saturated colAccent
-//     fill) so it visually dominates the toolbar;
-//   - when playing, the button reverts to the recede PlayBtnStyle from the
-//     mobile profile so the active state doesn't shout;
-//   - the swap is mobile-only — desktop must keep its existing chrome
-//     regardless of playback state.
+// Mobile only: stopped, play wears the saturated PrimaryActionStyle so it dominates; playing, it recedes to the
+// profile's PlayBtnStyle so the active state does not shout.
 func TestMobilePlayPrimaryActionStyleSwap(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -40,8 +34,6 @@ func TestMobilePlayPrimaryActionStyleSwap(t *testing.T) {
 	}
 }
 
-// TestDesktopPlayKeepsDefaultStyle ensures the mobile-only primary-action
-// swap does not bleed into desktop toolbars.
 func TestDesktopPlayKeepsDefaultStyle(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false

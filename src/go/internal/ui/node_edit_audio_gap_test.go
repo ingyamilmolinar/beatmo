@@ -10,28 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow reproduces the
-// "small gap of silence while placing a node" artifact.
-//
-// A structural graph edit runs through (*Game).updateBeatInfos, which bumps a
-// SINGLE GLOBAL generation counter (g.audioGen). The audioLoop drop-filter
-// (game_audio_loop.go) discards any already-scheduled sequencer beat whose
-// stamped generation != the current global generation. Because the counter is
-// global, editing ONE row invalidates in-flight (lookahead-scheduled, not yet
-// played) beats on EVERY row — including rows whose path did not change. Those
-// unchanged rows are not rewound/rescheduled (only changed rows get the
-// seqNextIdxs rewind), so their dropped beat simply never plays → audible gap.
-//
-// The invariant: placing a node must only affect the edited node's trigger; an
-// already-scheduled beat for an UNCHANGED row must still play.
-//
-// Determinism: the eager audioLoop goroutine dispatches on enqueue, so we can't
-// interleave "enqueue then bump" through live scheduling. Instead we bump the
-// generation first (via a real add-node), then enqueue a beat stamped with the
-// pre-edit generation (exactly what a lookahead beat scheduled just before the
-// edit would carry), then enqueue a generation-exempt fire-and-forget sentinel
-// (row < 0) after it. When the sentinel plays, the audioLoop has finished
-// deciding the earlier beat, so the assertion is race-free and deterministic.
+// One row's edit must not drop an already-scheduled beat on an unchanged row. Deterministic: edit first, then
+// enqueue a beat stamped with the pre-edit generation and a generation-exempt sentinel; once the sentinel
+// plays, the beat has been decided.
 func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -71,12 +52,9 @@ func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.
 	unchangedInst := g.drum.Rows[1].Instrument
 	const sentinelID = "gap-test-sentinel"
 
-	// The generation an already-scheduled (in-flight) beat would carry if it was
-	// enqueued just before the edit.
 	preGen := g.audioGen.Load()
 
-	// Perform a real structural edit on row 0 (insert a node onto its path). This
-	// bumps the generation counter that the audioLoop drop-filter reads.
+	// Bumps the generation the audioLoop drop-filter reads.
 	extra := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.deleteEdgeNoRefresh(start, mid)
 	g.addEdgeNoRefresh(start, extra)
@@ -87,8 +65,7 @@ func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.
 		t.Fatalf("row 1 path unexpectedly marked changed by a row-0 edit")
 	}
 
-	// A lookahead beat for the UNCHANGED row 1, scheduled just before the edit
-	// (carries preGen), now sitting in the audio channel.
+	// Scheduled just before the edit, for the unchanged row 1.
 	inflight := soundReq{
 		id:    unchangedInst,
 		vol:   1.0,
@@ -101,8 +78,7 @@ func TestAddNodeDuringPlaybackDoesNotDropScheduledBeatOnUnchangedRow(t *testing.
 	}
 	sendLatest(g.audioCh, inflight, nil)
 
-	// Generation-exempt sentinel (row < 0) enqueued AFTER the in-flight beat.
-	// When it plays, the audioLoop has already decided the in-flight beat.
+	// Exempt (row < 0) and after the in-flight beat.
 	sentinel := soundReq{id: sentinelID, vol: 1.0, dur: 1, row: -1, abs: -1, gen: g.audioGen.Load(), enqAt: time.Now()}
 	sendLatest(g.audioCh, sentinel, nil)
 

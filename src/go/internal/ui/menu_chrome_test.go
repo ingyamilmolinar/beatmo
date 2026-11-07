@@ -8,8 +8,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// interceptDrawRect swaps the package drawRect var, forwarding to fn then the
-// original, and returns a restore func.
 func interceptDrawRect(fn func(*ebiten.Image, image.Rectangle, color.Color, bool)) func() {
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
@@ -19,9 +17,7 @@ func interceptDrawRect(fn func(*ebiten.Image, image.Rectangle, color.Color, bool
 	return func() { drawRect = orig }
 }
 
-// TestMenuActiveItemDrawsAzureStripe verifies an active menu item paints a
-// left accent stripe in the azure family and a tinted fill; a resting item
-// paints neither.
+// A left azure stripe and a tinted fill when active; neither at rest.
 func TestMenuActiveItemDrawsAzureStripe(t *testing.T) {
 	dst := ebiten.NewImage(200, 40)
 	r := image.Rect(0, 0, 200, 30)
@@ -40,9 +36,7 @@ func TestMenuActiveItemDrawsAzureStripe(t *testing.T) {
 	}
 }
 
-// TestMenuItemRestIsFlat verifies a resting menu item paints nothing — rows sit
-// directly on the menu's single panel surface (minimalist-flat styling, no
-// per-row keycap pad/bevel).
+// Rows sit directly on the menu's one panel surface: no per-row pad or bevel.
 func TestMenuItemRestIsFlat(t *testing.T) {
 	dst := ebiten.NewImage(40, 20)
 	var drew bool
@@ -54,8 +48,7 @@ func TestMenuItemRestIsFlat(t *testing.T) {
 	}
 }
 
-// TestMenuSeparatorDraws verifies the hairline group-divider helper draws a
-// visible line at the row's vertical center.
+// At the row's vertical centre.
 func TestMenuSeparatorDraws(t *testing.T) {
 	dst := ebiten.NewImage(40, 20)
 	r := image.Rect(0, 0, 40, 20)
@@ -73,8 +66,7 @@ func TestMenuSeparatorDraws(t *testing.T) {
 	}
 }
 
-// TestLongPressConnectHoverUsesAzure proves the Connect-hover text is in the
-// azure single-accent family, not cyan (viz-only).
+// Azure, the single accent family; cyan is for visualizers only.
 func TestLongPressConnectHoverUsesAzure(t *testing.T) {
 	got := longPressConnectHoverColor()
 	if got != color.Color(colAccent) && got != color.Color(colAccentBright) {
@@ -82,8 +74,7 @@ func TestLongPressConnectHoverUsesAzure(t *testing.T) {
 	}
 }
 
-// Menu-row leading icons must be small (like the row context menu), not sized to
-// the full row height, and the label must start to the right of the icon.
+// Small like the row context menu's, not row-height, with the label right of it.
 func TestMenuRowIconIsSmall(t *testing.T) {
 	row := image.Rect(0, 0, 200, 44)
 	ir := menuRowIconRect(row)
@@ -98,9 +89,7 @@ func TestMenuRowIconIsSmall(t *testing.T) {
 	}
 }
 
-// menuTitleRole must sit between RoleCaption (old "File") and RolePanelTitle
-// (old "Kick-1"): File reads a bit larger, instrument-name titles smaller, all
-// the same unified size.
+// Between RoleCaption and RolePanelTitle: one size for file and instrument-name titles alike.
 func TestMenuTitleRoleUnified(t *testing.T) {
 	if StyledTextHeight(menuTitleRole) <= StyledTextHeight(RoleCaption) {
 		t.Fatalf("menu title (%d) must be larger than caption (%d) — File a bit larger",

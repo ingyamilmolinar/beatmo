@@ -12,8 +12,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestScrollbarWidthMobile verifies the mobile scrollbar uses the single shared
-// mobile width (slim hairline; touch grab comes from the tall thumb, not width).
+// A slim hairline; the touch grab comes from the tall thumb, not the width.
 func TestScrollbarWidthMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -29,9 +28,7 @@ func TestScrollbarWidthMobile(t *testing.T) {
 	}
 }
 
-// TestMobileScrollbarsUniformWidth verifies every scrollbar surface on mobile —
-// content scrollers (MobileScrollbarStyle) and popup/menu scrollers
-// (dropdownScrollbarStyle) — shares one width, so none reads thicker than another.
+// Content and menu scrollers share one width, so none reads thicker.
 func TestMobileScrollbarsUniformWidth(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)

@@ -11,19 +11,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// These tests pin the transactional Enter/Esc contract for the shared
-// MobileWheelPopup (synth, sampler, EQ):
-//   - live preview via OnChange while turning the wheel,
-//   - the undo commit is DEFERRED (not per gesture/detent) until the edit is
-//     Accepted (Enter, tap-away, navigate-away),
-//   - Esc Cancels: restore the value snapshotted at Open, re-apply via OnChange,
-//     and do NOT commit.
-// Because all three wheels share this type, fixing it here makes them behave
-// identically; TestAllControlWheels_AcceptCancelParity asserts that.
+// Turning previews live through OnChange; the one undo commit waits for Accept (Enter, tap-away, navigate-away);
+// Esc restores the value captured at Open and commits nothing. All value wheels share this type.
 
-// dragWheelValue presses inside the value barrel BELOW the center box (so the
-// press never lands on centerH, which would open the numeric editor on a real
-// wheel whose OpenEditor is non-nil) and drags up by dpx, changing the value.
+// Below the centre box, which would open the editor on a real wheel.
 func dragWheelValue(w *MobileWheelPopup, dpx int) {
 	cx := w.valRect.Min.X + 4
 	y := w.valRect.Max.Y - 6
@@ -39,8 +30,6 @@ func openTestWheel(k *Knob) (*MobileWheelPopup, *int) {
 	return w, commits
 }
 
-// A drag changes the value live but must NOT commit; the commit is deferred
-// until the edit is Accepted.
 func TestWheelPopup_CommitDeferredUntilAccept(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0)
 	w, commits := openTestWheel(k)
@@ -61,8 +50,6 @@ func TestWheelPopup_CommitDeferredUntilAccept(t *testing.T) {
 	}
 }
 
-// Esc/Cancel reverts the value to the snapshot taken at Open, re-applies it via
-// OnChange, and does not commit.
 func TestWheelPopup_CancelRevertsToSnapshot(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0)
 	changes := 0
@@ -120,8 +107,7 @@ func TestWheelPopup_NotDirtyAcceptCancelNoop(t *testing.T) {
 	}
 }
 
-// The portal overlay routes Esc -> Cancel (returning false so handleEscape's
-// CloseTop still removes the entry) and Enter -> Accept.
+// Esc returns false so handleEscape's CloseTop still removes the entry.
 func TestWheelPopupOverlay_KeyHandlers(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0)
 	w, commits := openTestWheel(k)
@@ -154,8 +140,7 @@ func TestWheelPopupOverlay_KeyHandlers(t *testing.T) {
 	}
 }
 
-// Game-level Enter/Esc routing on a live EQ wheel: Esc reverts the source of
-// truth (bandGainsDB), Enter persists it.
+// Esc reverts the source of truth (bandGainsDB); Enter persists it.
 func TestWheelPopup_GameRouting_EQ(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -201,10 +186,7 @@ func TestWheelPopup_GameRouting_EQ(t *testing.T) {
 	}
 }
 
-// Tap-outside dismissal (a modal popup's click-outside routes through the tree
-// to portal.CloseTop → the entry's OnClose) must PERSIST the edit: value kept
-// AND exactly one undo step recorded. Regression for the OnClose→Close bug that
-// dropped the deferred commit on the most common dismissal.
+// The most common dismissal persists the edit: value kept and exactly one undo step.
 func TestWheelPopup_TapOutsidePersists_EQ(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -234,8 +216,7 @@ func TestWheelPopup_TapOutsidePersists_EQ(t *testing.T) {
 	}
 }
 
-// Navigate-away (CloseAllPopups drains the portal via CloseTop) must PERSIST the
-// edit — value kept AND one undo step recorded.
+// CloseAllPopups drains through CloseTop and must persist too.
 func TestWheelPopup_NavigateAwayPersists_EQ(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -291,11 +272,7 @@ func TestWheelPopup_DiscreteCancelReverts(t *testing.T) {
 	}
 }
 
-// Both remaining control wheels accept user input the exact same way: a
-// change then Cancel reverts to the snapshot; a change then Accept keeps it
-// and closes. (The synth case was retired in Task 13 — the barrel/wheel
-// popup no longer exists on the synth path; see TestTapArmsThenWheelEditsValue
-// in synth_armed_input_test.go for the armed-editor equivalent.)
+// Every control wheel takes input the same way: Cancel reverts, Accept keeps and closes.
 func TestAllControlWheels_AcceptCancelParity(t *testing.T) {
 	type wheelCase struct {
 		name string

@@ -12,18 +12,8 @@ import (
 	"testing"
 )
 
-// TestGridTreeDrawHasSingleDispatchSite pins the hidden coupling created by the
-// dispatch-only design: the drawGrid* Layer methods (grid_pane_draw.go) read
-// per-frame state from g.gridDrawCtx + g.gridDrawScreen, and ONLY
-// (*Game).drawGridPane populates those before it dispatches the tree. A second
-// caller of g.gridTree.Draw that skipped that setup would render every grid
-// layer against a stale/zero context (wrong camera matrix, nil target screen,
-// empty cull rect). This guard makes that contract structural: g.gridTree.Draw
-// must be invoked from exactly one place, (*Game).drawGridPane.
-//
-// It also asserts drawGridPane assigns g.gridDrawScreen — so the single call
-// site is provably the one that wires the shared context, not just any single
-// caller.
+// The drawGrid* layers read g.gridDrawCtx/gridDrawScreen, which only drawGridPane fills before it
+// dispatches; a second caller would render against a stale context. That one site must also assign the screen.
 func TestGridTreeDrawHasSingleDispatchSite(t *testing.T) {
 	fset := token.NewFileSet()
 	files, err := filepath.Glob("*.go")
@@ -51,8 +41,7 @@ func TestGridTreeDrawHasSingleDispatchSite(t *testing.T) {
 				if !ok {
 					return true
 				}
-				// Match X.gridTree.Draw(...) — Fun is SelectorExpr{Sel:"Draw"}
-				// whose X is itself a SelectorExpr{Sel:"gridTree"}.
+				// X.gridTree.Draw(...): a Draw selector whose X selects gridTree.
 				sel, ok := call.Fun.(*ast.SelectorExpr)
 				if !ok || sel.Sel.Name != "Draw" {
 					return true

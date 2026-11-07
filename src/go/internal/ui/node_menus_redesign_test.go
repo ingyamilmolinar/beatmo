@@ -1,9 +1,5 @@
 package ui
 
-// Tests for the 2026-07-16 node-menus redesign: smooth styled button text
-// (Button.TextRole) across the group menu + node sidebar, neutral button
-// faces (identity never fills a keycap), and indented dropdown option rows.
-
 import (
 	"image/color"
 	"testing"
@@ -11,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestGroupMenuButtonsUseStyledTextRole pins that every GroupMenu button
-// renders its caption through the styled text-role path (embedded Inter) —
-// the legacy bitmap TextSprite + GeoM upscale pixelated every caption.
+// Through the styled text role (embedded Inter): the bitmap sprite upscale pixelated every caption.
 func TestGroupMenuButtonsUseStyledTextRole(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -36,10 +30,8 @@ func TestGroupMenuButtonsUseStyledTextRole(t *testing.T) {
 	}
 }
 
-// TestGroupMenuSaveFaceNeutral pins that Save keeps the plain DropdownStyle
-// keycap face: the group's identity lives in the title swatch + header
-// underline, never on a color-filled button (the old tintSaveBtnAccent).
-// The armed state is carried by the gold accent LABEL instead.
+// Plain DropdownStyle face: the group's identity lives in the title swatch and underline; the armed state is
+// the gold label.
 func TestGroupMenuSaveFaceNeutral(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -66,8 +58,7 @@ func TestGroupMenuSaveFaceNeutral(t *testing.T) {
 	}
 }
 
-// TestSidebarButtonsUseStyledTextRole pins the sidebar's buttons on the
-// styled text path too (wireButtons sets TextRole, never TextScale).
+// wireButtons sets TextRole, never TextScale.
 func TestSidebarButtonsUseStyledTextRole(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -94,9 +85,7 @@ func TestSidebarButtonsUseStyledTextRole(t *testing.T) {
 	}
 }
 
-// TestSidebarDropdownOptionsIndented pins the "level below" nesting cue:
-// dropdown OPTION rows (Logic kinds) start sidebarOptionIndent deeper than
-// their trigger row so an open dropdown reads as a submenu.
+// Options start sidebarOptionIndent deeper than their trigger, so an open dropdown reads as a submenu.
 func TestSidebarDropdownOptionsIndented(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

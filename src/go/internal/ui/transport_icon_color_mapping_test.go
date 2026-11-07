@@ -9,10 +9,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTransport_IconColorMapping enforces DESIGN.md:1495-1508 IconColor
-// mapping. Without this guard, buttons regress to default (black/white)
-// IconColors, making the UI look monochrome — the user complaint that
-// prompted Theme 4.
+// DESIGN.md's IconColor mapping: without it the buttons fall back to default colours and the bar reads as
+// monochrome.
 func TestTransport_IconColorMapping(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)

@@ -1,10 +1,5 @@
 package ui
 
-// Tests for the 2026-07-15 menus redesign (see
-// docs/superpowers/specs/2026-07-15-menus-uiux-redesign-design.md):
-// shared search-field clear-×, template group headers + BPM trail captions +
-// loaded-template active row, and instrument-category row metadata.
-
 import (
 	"regexp"
 	"testing"
@@ -13,10 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestTemplateMenu_GroupHeadersWhenUnfiltered pins the template page's group
-// headers: with an empty query the canonical group labels appear as
-// non-clickable header rows between templates; an active search flattens the
-// list (score-sorted, no headers).
+// Unfiltered, group headers sit between templates and are not clickable; a search flattens to a score-sorted
+// list.
 func TestTemplateMenu_GroupHeadersWhenUnfiltered(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -36,8 +29,7 @@ func TestTemplateMenu_GroupHeadersWhenUnfiltered(t *testing.T) {
 	if len(groups) < 5 {
 		t.Fatalf("expected >=5 template group headers, got %v", groups)
 	}
-	// The groove templates lead — they are what shows a new user the drums —
-	// and the classical library follows in chronological order.
+	// The groove templates lead (they show a new user the drums); the classical library follows chronologically.
 	if groups[0] != "Funk · Soul · Jazz" {
 		t.Errorf("first group header = %q, want the groove templates first", groups[0])
 	}
@@ -66,8 +58,7 @@ func TestTemplateMenu_GroupHeadersWhenUnfiltered(t *testing.T) {
 	}
 }
 
-// TestTemplateMenu_RowsCarryBPMTrail pins that every template row carries its
-// tempo as a right-aligned "N BPM" trail caption (MenuRowSpec.TrailLabel).
+// A right-aligned "N BPM" trail caption on every row.
 func TestTemplateMenu_RowsCarryBPMTrail(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -92,10 +83,7 @@ func TestTemplateMenu_RowsCarryBPMTrail(t *testing.T) {
 	}
 }
 
-// TestTemplateMenu_LoadedTemplateReadsActive pins the "currently loaded"
-// indicator: selecting a template remembers its stem for the session, and the
-// reopened list marks exactly that row active (stripe + tint via
-// menuItemActive in drawOverflowMenu).
+// The loaded template's stem is remembered for the session, and exactly that row reads active.
 func TestTemplateMenu_LoadedTemplateReadsActive(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -138,9 +126,7 @@ func TestTemplateMenu_LoadedTemplateReadsActive(t *testing.T) {
 	}
 }
 
-// TestInstMenu_SearchClearButton pins the shared search-field clear-×: with a
-// query present, a tap on menuSearchClearRect wipes the query and restores the
-// unfiltered list; with no query the rect is not treated as a clear action.
+// With a query, the clear rect wipes it and restores the full list; with none it is not a clear action.
 func TestInstMenu_SearchClearButton(t *testing.T) {
 	props := instMenuTestProps(
 		[]InstrumentOption{
@@ -176,8 +162,7 @@ func TestInstMenu_SearchClearButton(t *testing.T) {
 	}
 }
 
-// TestInstMenu_CategoryRowsCarryCounts pins the categories-mode metadata: each
-// category row carries its instrument count for the trailing caption.
+// Each category row carries its instrument count.
 func TestInstMenu_CategoryRowsCarryCounts(t *testing.T) {
 	props := instMenuTestProps(
 		[]InstrumentOption{

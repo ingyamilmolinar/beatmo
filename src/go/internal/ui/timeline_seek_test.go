@@ -7,16 +7,8 @@ import (
 	"testing"
 )
 
-// TestRibbonDragSeeksToBeat drives the ribbon scrub adapter's
-// press+drag+release directly (bypassing the input dispatcher) and asserts
-// the resulting seek request lands the playhead on a whole-beat boundary.
-// Task 6 makes the ribbon drag-only: a pure press+release at the same point
-// no longer seeks at all (see TestRibbonSingleClickDoesNotSeek in
-// ribbon_progress_test.go) — only a press-then-drag-to-a-different-beat
-// commits a seek, on release, snapped to the nearest beat under the
-// pointer. This test was TestRibbonPressSeeksToBeat under the old
-// click-to-seek-on-press contract (Task 10); it now exercises the drag path
-// instead of the removed press-seeks path.
+// The ribbon is drag-only: a press+release seeks nothing, and a drag to another beat seeks on release, snapped
+// to the beat under the pointer.
 func TestRibbonDragSeeksToBeat(t *testing.T) {
 	g := newGameWithStart(t)
 	_ = g.Update() // lay out zones so timelineBarRect is populated
@@ -35,9 +27,7 @@ func TestRibbonDragSeeksToBeat(t *testing.T) {
 	adapter.OnRelease(x, y)
 	g.drainSeekRequest()
 
-	// Expected beat = round(frac * timelineBeats), independently computed
-	// here (not via z.ribbonStepAt) so the test doesn't just echo the
-	// production formula back at itself.
+	// Computed independently of ribbonStepAt, so the test does not echo the production formula.
 	div := g.grid.MaxDiv()
 	frac := float64(x-bar.Min.X) / float64(bar.Dx())
 	totalBeats := z.callbacks.TimelineBeats()

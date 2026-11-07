@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// setupMobileTest configures overrides for mobile layout testing.
-// Must be called after assertDefaultParityState.
+// Call after assertDefaultParityState.
 func setupMobileTest(t *testing.T, smallScreen bool) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -20,15 +19,8 @@ func setupMobileTest(t *testing.T, smallScreen bool) {
 
 	if smallScreen {
 		forceSmallScreenForTest = true
-		// Restore BOTH the flag and the touch screen size on cleanup. These
-		// tests Layout the game at a small (mobile) width, which calls
-		// SetTouchScreenSize and leaves touchScreenWidth tiny. A later test that
-		// enables touch small-screen detection (e.g. one using the browser
-		// runtime profile) would then see that stale width and wrongly resolve a
-		// mobile profile — the cross-test leak that hid the EQ divider. Reset to
-		// the zero-value default (the clean desktop state: detectSmallScreen
-		// requires touchScreenWidth > 0) and rebuild the profile, so the next
-		// test starts fresh regardless of what an earlier test may have left.
+		// Laying out at a mobile width leaves touchScreenWidth tiny, and a later test using touch detection would
+		// resolve a mobile profile from it. Reset to the clean desktop zero value and rebuild the profile.
 		t.Cleanup(func() {
 			forceSmallScreenForTest = false
 			SetTouchScreenSize(0, 0)
@@ -37,8 +29,7 @@ func setupMobileTest(t *testing.T, smallScreen bool) {
 	}
 }
 
-// TestMobileLandscapeStacked verifies that on a small screen in landscape
-// orientation, the layout is stacked (not side-by-side) with adaptive Y split.
+// Stacked, with the adaptive Y split.
 func TestMobileLandscapeStacked(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -57,10 +48,7 @@ func TestMobileLandscapeStacked(t *testing.T) {
 	}
 }
 
-// TestMobilePortraitAdaptiveSplit verifies that on a small screen in portrait
-// orientation, the split is the content-based adaptive value: the drum pane is
-// sized to fit the rack AND the tallest audio tab, clamped so the grid keeps at
-// least 40% of the height (drum pane capped at 60%).
+// The drum pane fits the rack and the tallest audio tab, capped at 60% so the grid keeps 40%.
 func TestMobilePortraitAdaptiveSplit(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -70,8 +58,7 @@ func TestMobilePortraitAdaptiveSplit(t *testing.T) {
 
 	g.Layout(400, 800)
 
-	// Layout applies adaptiveMobilePortraitSplitY at startup; assert against the
-	// same source of truth and that the grid keeps >= 40% of the height.
+	// The same source of truth Layout applies at startup.
 	want := adaptiveMobilePortraitSplitY(800, g)
 	if g.split.Y != want {
 		t.Fatalf("expected adaptive split %d for 400x800 mobile portrait, got %d", want, g.split.Y)
@@ -81,8 +68,6 @@ func TestMobilePortraitAdaptiveSplit(t *testing.T) {
 	}
 }
 
-// TestMobileOrientationChange verifies that the split adapts when the screen
-// rotates between portrait and landscape (both stacked).
 func TestMobileOrientationChange(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -112,8 +97,7 @@ func TestMobileOrientationChange(t *testing.T) {
 	}
 }
 
-// TestMobileProportionalClamp verifies that on mobile, neither pane goes below
-// 25% of the total dimension, even with content pressure.
+// Neither pane goes below 25%, whatever the content pressure.
 func TestMobileProportionalClamp(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -148,8 +132,6 @@ func TestMobileProportionalClamp(t *testing.T) {
 	}
 }
 
-// TestDesktopUnaffectedByMobileLogic verifies that without the small screen
-// override, the existing content-based auto-sizing is unchanged.
 func TestDesktopUnaffectedByMobileLogic(t *testing.T) {
 	setupMobileTest(t, false) // smallScreen=false → desktop path
 
@@ -159,9 +141,7 @@ func TestDesktopUnaffectedByMobileLogic(t *testing.T) {
 
 	g.Layout(1280, 720)
 
-	// Desktop content-based sizing: split should NOT necessarily be at 50%.
-	// With 1 row, the drum pane content is small, so split.Y should be high
-	// (grid gets most of the space).
+	// With 1 row the drum content is small, so the grid gets most of the space.
 	if g.split.Y == 360 {
 		// Exactly 50% would indicate mobile logic leaked into desktop path
 		t.Logf("split.Y=360 (exactly 50%%), checking content-based calculation...")
@@ -172,8 +152,7 @@ func TestDesktopUnaffectedByMobileLogic(t *testing.T) {
 	}
 }
 
-// TestMobileSplitterDragRespectsProportion verifies that when the user drags
-// the splitter on mobile, the 25% minimum is enforced.
+// A drag still enforces the 25% minimum.
 func TestMobileSplitterDragRespectsProportion(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -209,9 +188,7 @@ func TestMobileSplitterDragRespectsProportion(t *testing.T) {
 	}
 }
 
-// TestStaleRatioAfterLandscapeToPortrait verifies that when switching from
-// landscape (side-by-side) to portrait (stacked), the split.Y is not computed
-// from a stale landscape split.Y value but uses the adaptive formula.
+// Portrait uses the adaptive formula, never a stale landscape split.Y.
 func TestStaleRatioAfterLandscapeToPortrait(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -232,8 +209,6 @@ func TestStaleRatioAfterLandscapeToPortrait(t *testing.T) {
 	}
 }
 
-// TestMobileBothPanesUsable verifies that both grid and drum panes have usable
-// space in both orientations.
 func TestMobileBothPanesUsable(t *testing.T) {
 	setupMobileTest(t, true)
 

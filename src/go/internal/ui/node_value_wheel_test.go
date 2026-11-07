@@ -11,11 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Node sidebar values (spec §3): tapping a value pill (volume, duration, logic
-// N, logic P, groove %) opens the shared value wheel. Each detent writes the
-// node LIVE (predictor sees it); closing records ONE undo step; Esc restores.
-// The ± steppers keep working and share one limits table with the wheel and the
-// JS bridge.
+// A value pill opens the shared wheel: each detent writes the node live, closing records one undo step, Esc
+// restores; the ± steppers share one limits table with the wheel and the JS bridge.
 
 func newNodeWheelGame(t *testing.T, setup func(p *model.NodeParams), sections ...sbSection) (*Game, *uiNode, func(x, y, frames int)) {
 	t.Helper()
@@ -176,8 +173,6 @@ func TestNodeGrooveWheel(t *testing.T) {
 	}
 }
 
-// A tap on ANOTHER node while a node's wheel is open commits to the node the
-// wheel was opened for — never to the newly selected one.
 func TestNodeWheelCommitsToOriginalNodeOnRetarget(t *testing.T) {
 	g, a, tap := newNodeWheelGame(t, nil)
 	b := g.tryAddNode(6, 1, model.NodeTypeRegular)
@@ -199,8 +194,7 @@ func TestNodeWheelCommitsToOriginalNodeOnRetarget(t *testing.T) {
 	}
 }
 
-// The ± steppers share the limits table: they can no longer drive a value
-// outside the range the wheel and the JS bridge enforce.
+// So they can never leave the range the wheel and the JS bridge enforce.
 func TestNodeSteppersRespectTheLimitsTable(t *testing.T) {
 	g, n, _ := newNodeWheelGame(t, func(p *model.NodeParams) {
 		p.Duration = 0.3
@@ -232,9 +226,7 @@ func TestNodeSteppersRespectTheLimitsTable(t *testing.T) {
 	}
 }
 
-// The node wheel opens over the GRID pane, whose input is not tree-routed: a
-// tap on a wheel row must reach the wheel (value changes) and never fall
-// through to the grid (no node added, no node selected away).
+// Grid input is not tree-routed, so a tap on a wheel row must reach the wheel and never the grid.
 func TestNodeWheelTapInsidePopupOverTheGridReachesTheWheel(t *testing.T) {
 	g, n, tap := newNodeWheelGame(t, nil)
 	openNodeWheelByTap(t, g, tap, sbValue(fieldVol))
@@ -257,9 +249,8 @@ func TestNodeWheelTapInsidePopupOverTheGridReachesTheWheel(t *testing.T) {
 	}
 }
 
-// Review I1: Esc must put the node back EXACTLY as it was — never re-derive it
-// through the wheel's clamped, dB-converted model (a quiet node would come back
-// Muted, a loud one capped, an exact value drifted — all outside undo).
+// Never re-derived through the wheel's clamped dB model: a quiet node would come back Muted, a loud one capped,
+// outside undo.
 func TestNodeWheelEscRestoresTheOpeningParamsVerbatim(t *testing.T) {
 	cases := []struct {
 		name string
@@ -294,8 +285,7 @@ func TestNodeWheelEscRestoresTheOpeningParamsVerbatim(t *testing.T) {
 	}
 }
 
-// A node quieter than the wheel's -40 dB floor (reachable with the − stepper)
-// opens showing its real level, not "Muted".
+// Below the wheel's −40 dB floor, reachable with the − stepper.
 func TestNodeVolumeWheelShowsAQuietNodesRealLevel(t *testing.T) {
 	g, _, tap := newNodeWheelGame(t, func(p *model.NodeParams) { p.Volume = 1e-3 }) // -60 dB
 	openNodeWheelByTap(t, g, tap, sbValue(fieldVol))

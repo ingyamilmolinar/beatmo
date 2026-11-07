@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// gridPointOutside returns an empty grid-pane point (above the drum pane)
-// outside every rect in avoid, the top-right button cluster, nodes and group
-// badges.
+// Clear of every avoid rect, the corner cluster, nodes and group badges.
 func gridPointOutside(t *testing.T, g *Game, avoid ...image.Rectangle) image.Point {
 	t.Helper()
 	drum := g.split.DrumRect(g.winW, g.winH)
@@ -38,8 +36,6 @@ func gridPointOutside(t *testing.T, g *Game, avoid ...image.Rectangle) image.Poi
 	return image.Point{}
 }
 
-// gridPopupCase is one menu / pop-up that can be open while the user taps the
-// grid canvas beside it.
 type gridPopupCase struct {
 	name   string
 	open   func(t *testing.T, g *Game)
@@ -47,9 +43,7 @@ type gridPopupCase struct {
 	panel  func(g *Game) image.Rectangle
 }
 
-// gridPopupCases: every portal card menu (the four top-right menus opened by
-// their real buttons are covered separately) plus the grid-local pop-ups —
-// the node sidebar and the group menu.
+// Every portal card menu plus the grid-local pop-ups; the four corner menus are covered separately.
 func gridPopupCases() []gridPopupCase {
 	var cases []gridPopupCase
 	for _, m := range cardMenus() {
@@ -112,13 +106,8 @@ func openPopupForOutsideTap(t *testing.T, g *Game, c gridPopupCase) image.Rectan
 	return c.panel(g)
 }
 
-// TestMobileTopRightMenuOutsideTapInGridClosesAndCreatesNoNode reproduces the
-// reported mobile bug: open a menu from a top-right grid button (theme / file /
-// settings / logs), then tap the grid outside it. The tap must CLOSE the menu
-// (mobile has no close ×, by design — the outside tap IS the close) and must
-// NOT create a node: the press that dismissed the menu owns the whole gesture,
-// so the release-time GestureTap must not reach the canvas once the menu is
-// gone.
+// Mobile has no close ×, so the outside tap IS the close, and the press that dismisses the menu owns the
+// gesture: its release-time tap must not create a node.
 func TestMobileTopRightMenuOutsideTapInGridClosesAndCreatesNoNode(t *testing.T) {
 	panels := map[string]func(g *Game) image.Rectangle{}
 	for _, m := range cardMenus() {
@@ -149,10 +138,7 @@ func TestMobileTopRightMenuOutsideTapInGridClosesAndCreatesNoNode(t *testing.T) 
 	}
 }
 
-// TestEveryPopupOutsideGridTapOnlyCloses is the global contract, on BOTH
-// platforms (real touch on mobile, real mouse on desktop): with any menu or
-// pop-up open, a tap on the grid canvas outside it closes it and does nothing
-// else — no node is created.
+// On both platforms (real touch, real mouse): a grid tap outside any menu closes it and does nothing else.
 func TestEveryPopupOutsideGridTapOnlyCloses(t *testing.T) {
 	for _, c := range gridPopupCases() {
 		c := c
@@ -191,9 +177,7 @@ func TestEveryPopupOutsideGridTapOnlyCloses(t *testing.T) {
 	}
 }
 
-// TestEveryPopupOutsideGridTouchOnDesktopLayoutOnlyCloses: a touchscreen on the
-// DESKTOP layout (a touch laptop, a tablet in landscape) goes through the same
-// release-time GestureTap as a phone, so the rule must hold there too.
+// A touchscreen on the desktop layout takes the same release-time GestureTap as a phone.
 func TestEveryPopupOutsideGridTouchOnDesktopLayoutOnlyCloses(t *testing.T) {
 	for _, c := range gridPopupCases() {
 		c := c
@@ -219,13 +203,8 @@ func TestEveryPopupOutsideGridTouchOnDesktopLayoutOnlyCloses(t *testing.T) {
 	}
 }
 
-// TestPopupOutsideGridTapAfterPointerRestedOnDrumPane: the pointer last rested
-// on the DRUM pane (the real cursor parked there, or the last touch opened a
-// row menu) while a menu is open. DrumView grabs the grid dispatcher's capture
-// on that hover and keeps it while any dropdown is open, so every later press —
-// on the grid too — was routed ONLY to DrumView, which declined it: the press
-// got no owner and the release-time grid tap created a node. A capture that
-// declines a NEW press must not swallow it (InputDispatcher.Dispatch).
+// DrumView grabs the dispatcher's capture on a drum-pane hover while a dropdown is open; a capture that
+// declines a NEW press must release it, or the press gets no owner and the grid tap creates a node.
 func TestPopupOutsideGridTapAfterPointerRestedOnDrumPane(t *testing.T) {
 	for _, layout := range []struct {
 		name   string

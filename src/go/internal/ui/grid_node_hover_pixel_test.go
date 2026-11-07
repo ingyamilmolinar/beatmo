@@ -12,13 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// hoverMaxChannelDelta draws the grid twice (with and without the node hovered)
-// and returns the largest per-channel pixel difference anywhere in a box around
-// the node. This is a real VISUAL measurement (reads composited pixels via the
-// ebiten stub — real Ebiten panics on At() outside RunGame, which is why every
-// pixel test here is `//go:build test`). Draw behaviour is identical stub↔real
-// (verified via the drawRoundedRect interceptor), so the stub faithfully
-// measures what the user sees.
+// A real visual measurement: the largest channel change around the node, hovered vs not. Stub only (real
+// Ebiten panics on At() outside RunGame); its draw calls match real Ebiten.
 func hoverMaxChannelDelta(t *testing.T) int {
 	t.Helper()
 	g := New(testLogger)
@@ -95,15 +90,10 @@ func iabsHover(x int) int {
 	return x
 }
 
-// hoverVisibleMinDelta is the minimum per-channel pixel change a hover must
-// produce to count as a clearly-visible highlight. The pre-fix faint bloom
-// (behind the node, ~alpha 9–63) measured only ~59 and was invisible in
-// practice; a clear hover affordance lands well above this.
+// A faint bloom of ~59 was invisible in practice; a clear hover lands well above this.
 const hoverVisibleMinDelta = 110
 
-// TestGridNodeHoverIsVisiblyHighlighted is the TRUE visual guard the earlier
-// interceptor tests lacked: it asserts hovering a node produces a clearly
-// perceptible on-screen change, not merely that drawNodeBloom was called.
+// A perceptible on-screen change, not merely a drawNodeBloom call.
 func TestGridNodeHoverIsVisiblyHighlighted(t *testing.T) {
 	md := hoverMaxChannelDelta(t)
 	t.Logf("hover max channel delta = %d (min visible = %d)", md, hoverVisibleMinDelta)

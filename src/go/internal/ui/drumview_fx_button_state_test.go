@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// fxActiveStyle / fxInactiveStyle are the FX-chip styles the row rack
-// applies: FX-on = the full instrument hue, FX-off = the neutral row-control
-// body (see row_instrument_shades.go).
+// FX-on is the full instrument hue, FX-off the neutral row-control body.
 func fxActiveStyle(dv *DrumView, row int) rowToggleVisual {
 	return rowToggleStyle(dv.Rows[row].Color, roleFX, true)
 }
@@ -27,8 +25,7 @@ func fxButtonForRow(t *testing.T, dv *DrumView, row int) *Button {
 	return btns[row]
 }
 
-// renderRowControlsDirect forces a fresh draw of the row control rack so the
-// FX button's Style reflects current state.
+// Forces a fresh draw so the FX button's style reflects current state.
 func renderRowControlsDirect(t *testing.T, dv *DrumView) {
 	t.Helper()
 	dst := ebiten.NewImage(800, 300)
@@ -131,10 +128,7 @@ func TestFXButton_InactiveAfterRemovingAllEffects(t *testing.T) {
 	}
 }
 
-// Cache-invalidation regression: when FX active state flips, the controls
-// cache must report invalid so the next Draw() rebuilds with the correct
-// style. Without this, a Mute/Solo-only validity check silently shows a stale
-// highlighted button after the user disables or removes all effects.
+// A Mute/Solo-only validity check would keep showing a stale highlighted FX button after the effects go.
 
 func TestFXButton_ControlsCacheInvalidatesOnDisable(t *testing.T) {
 	dv := newTestDV(t)

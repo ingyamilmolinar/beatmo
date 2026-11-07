@@ -7,8 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestNoGapTimelineRightEdge verifies the timeline rect extends close to
-// the right edge of the drum view bounds (accounting for len buttons).
 func TestNoGapTimelineRightEdge(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -20,8 +18,7 @@ func TestNoGapTimelineRightEdge(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	// Timeline right edge should be within 80px of bounds right edge
-	// (len buttons take ~36px + 4px gap).
+	// The length buttons take ~36 px + a 4 px gap.
 	gap := dv.Bounds.Max.X - dv.timelineRect.Max.X
 	if gap > 80 {
 		t.Errorf("timeline right edge gap too large: %dpx (timeline.Max.X=%d, bounds.Max.X=%d)",
@@ -29,8 +26,6 @@ func TestNoGapTimelineRightEdge(t *testing.T) {
 	}
 }
 
-// TestNoGapRackToTimeline verifies no black gap between rack column controls
-// and the timeline cells.
 func TestNoGapRackToTimeline(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -54,17 +49,14 @@ func TestNoGapRackToTimeline(t *testing.T) {
 	}
 }
 
-// TestContentAwareColumnSizingActivates verifies that on wide windows the
-// adaptive column sizing tightens the rack column when controlsW hits its cap.
+// On a wide window the rack column tightens once controlsW hits its cap.
 func TestContentAwareColumnSizingActivates(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 
-	// Very wide window — at 2400px the [1, 2] ratio gives rack col 800px.
-	// controlsW caps at 520, labelW ~80, so content needs ~600px.
-	// Without adaptive sizing, 200px would be wasted.
+	// The [1,2] ratio gives the rack 800 px at 2400, while its content needs ~600 (controlsW caps at 520).
 	g.Layout(2400, 600)
 
 	dv := g.drum
@@ -73,8 +65,6 @@ func TestContentAwareColumnSizingActivates(t *testing.T) {
 	rackW := dv.widgets.ColWidth(0)
 	contentW := dv.labelW + dv.controlsW
 
-	// After content-aware sizing, rack column should be smaller than
-	// the default 33% allocation.
 	defaultRackW := 2400 / 3 // 800px from [1,2] ratio
 	if rackW >= defaultRackW {
 		t.Errorf("content-aware sizing did not activate: rackW=%d >= defaultRackW=%d (contentW=%d)",
@@ -82,8 +72,7 @@ func TestContentAwareColumnSizingActivates(t *testing.T) {
 	}
 }
 
-// TestPanelMaskTightenedToControls verifies the panel mask right edge matches
-// the actual controls width, not the full rack widget column.
+// The mask ends at the controls, not the whole rack column.
 func TestPanelMaskTightenedToControls(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -121,8 +110,7 @@ func TestBelowRowsNotBlack(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	// With default 1-2 rows and 24px row height at 600px window height,
-	// there should be a gap below the rows.
+	// At 600 px with 1-2 rows of 24 px there is room below the rows.
 	vis := dv.visibleRows()
 	rowsTop := dv.Bounds.Min.Y + dv.headerH
 	nBelow := len(dv.Rows) - dv.rowOffset

@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-// TestRowAccentStripeWidthMatchesProfile asserts the profile exposes a
-// non-zero accent-stripe width on mobile, which the row draw path uses as
-// the column of instrument-colored pixels at rowRect.Min.X. The stripe gives
-// each row a distinct visual identity — it's how the eye groups
-// "this row plays kick" without reading the row name.
+// The stripe lets the eye group "this row plays kick" without reading its name.
 func TestRowAccentStripeWidthMatchesProfile(t *testing.T) {
 	assertDefaultParityState(t)
 

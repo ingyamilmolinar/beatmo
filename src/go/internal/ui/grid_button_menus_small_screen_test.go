@@ -8,14 +8,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGridButtonMenusStayInGridPaneOnSmallScreen pins the two-trees invariant:
-// the top-right grid-pane button menus (Settings, Logs, File) must render in the
-// GRID pane's coordinate space (like the node pop-up), NEVER in the drum-view
-// tree's. They are portal overlays whose portal screenBounds == dv.Bounds (the
-// drum pane); on a small screen (UseBottomSheet) the desktop grid-pane positioner
-// was skipped, so they fell back to centering / bottom-sheeting on that drum-pane
-// screenBounds and appeared in the drum-view panel below. A 833px window (the
-// user's) is < smallScreenWidthPx(900), so on touch/browser it is small-screen.
+// The menus are portal overlays whose bounds are the drum pane, so on a small screen (a 833 px window, under
+// 900) they must still be placed in the GRID pane, never centred or bottom-sheeted in the drum view.
 func TestGridButtonMenusStayInGridPaneOnSmallScreen(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })

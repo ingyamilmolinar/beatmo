@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestPopupCloseNeverOpenedNoEvent asserts that Close on an ID that was never
-// opened emits no popup.closed event (fixes phantom close log lines produced
-// by hover-transition callers like the chain-tooltip handler).
+// Hover-transition callers close ids they never opened; no phantom close line.
 func TestPopupCloseNeverOpenedNoEvent(t *testing.T) {
 	ch := make(chan string, 4)
 	u := hooks.GlobalBus().Subscribe(hooks.EventPopupClosed, func(e hooks.Event) {
@@ -32,9 +30,7 @@ func TestPopupCloseNeverOpenedNoEvent(t *testing.T) {
 	}
 }
 
-// TestPopupReOpenEmitsReplacedThenOpened asserts that opening an overlay whose
-// ID is already on the stack emits popup.closed(reason="replaced") before the
-// new popup.opened — keeping open/close counts balanced on re-open.
+// popup.closed(reason="replaced") before the new popup.opened, so the counts balance.
 func TestPopupReOpenEmitsReplacedThenOpened(t *testing.T) {
 	opened := make(chan string, 4)
 	type closedEv struct{ id, reason string }

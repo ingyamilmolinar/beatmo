@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// The armed-mode helper banners are localized, parameterized through the
-// active gridModeManager state, and driven by one pure method
-// (g.gridModeBannerText) shared with the draw path (g.drawGridModeBanner).
-// Task 9 (see .superpowers/sdd/task-9-brief.md): replaces the three bespoke
-// DrawTextAt banners (move / copy / connect) with this single chokepoint.
+// One pure method feeds both the test and the draw path.
 func TestGridModeBanner_TextIsStyledAndLocalized(t *testing.T) {
 	g := newTestGameForUndo(t)
 	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -33,10 +29,8 @@ func TestGridModeBanner_TextIsStyledAndLocalized(t *testing.T) {
 	}
 }
 
-// TestGridModeBannerText covers every armed mode across both locales: the
-// localized text is non-empty, fully formatted (no stray %d / %! verbs),
-// embeds the subject's coordinates (move/connect), never shouts in ALL-CAPS,
-// genuinely differs between EN/ES, and is empty when idle.
+// Every armed mode, both locales: formatted (no stray verbs), with the subject's coordinates, not ALL-CAPS,
+// different in EN and ES, and empty when idle.
 func TestGridModeBannerText(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)

@@ -8,9 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Wheel scrolling over the timeline should scroll rows when there are more
-// rows than fit on screen, and do nothing when all rows are visible.
-// It should never change the beat length.
+// The wheel scrolls rows only when they overflow, and never changes the beat length.
 
 // Many rows: wheel scrolls rows, does not change length.
 func TestWheelScrollDoesNotChangeLength(t *testing.T) {

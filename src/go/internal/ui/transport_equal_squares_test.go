@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// transportSquareButtons returns the transport controls that must render as
-// equal-size squares (everything except the BPM text box and the BPM ±
-// stepper, which are the intentional exceptions). The master volume control
-// is an icon rect (mainVolIconRect), not a Button, so it is included by rect.
+// All but the BPM box and its ± stepper; the master volume is an icon rect, not a Button.
 func transportSquareRects(z *TransportZone, includeUndoRedo bool) []struct {
 	name string
 	r    image.Rectangle
@@ -19,10 +16,7 @@ func transportSquareRects(z *TransportZone, includeUndoRedo bool) []struct {
 		name string
 		r    image.Rectangle
 	}{
-		// Task: transport declutter — RW/FF/×N removed, replaced by a single
-		// Navigate button (navBtn) that sits after subdiv in the desktop
-		// square run (see layoutDesktop) and must share the same square side
-		// length as every other transport control.
+		// Nav sits after subdiv and shares the square side.
 		{"play", z.playBtn.Rect()},
 		{"stop", z.stopBtn.Rect()},
 		{"record", z.recordBtn.Rect()},
@@ -44,11 +38,7 @@ func transportSquareRects(z *TransportZone, includeUndoRedo bool) []struct {
 	return out
 }
 
-// TestDesktopTransportButtonsAreEqualSquares asserts that every transport
-// button except the BPM box and BPM ± stepper is a square (width == height)
-// and that all such squares share the same side length, across the full
-// desktop width range. This is the "make the subdivision button square; make
-// all buttons except +/- BPM the same size and shape" requirement.
+// One square side for all of them across the desktop width range.
 func TestDesktopTransportButtonsAreEqualSquares(t *testing.T) {
 	assertDefaultParityState(t)
 	UpdateProfile()
@@ -84,9 +74,7 @@ func TestDesktopTransportButtonsAreEqualSquares(t *testing.T) {
 	}
 }
 
-// orderedTransportControls returns the desktop transport controls in their
-// left-to-right running order, for gap analysis. The BPM ± stepper is
-// represented by its inc button (inc/dec share the same X span).
+// Left to right; the ± stepper is represented by inc (they share an X span).
 func orderedTransportControls(z *TransportZone) []struct {
 	name string
 	r    image.Rectangle
@@ -95,10 +83,7 @@ func orderedTransportControls(z *TransportZone) []struct {
 		name string
 		r    image.Rectangle
 	}{
-		// Task: transport declutter — RW/FF/×N removed; the run is now
-		// Play|Stop|Record|BPM box|BPM ±|Subdiv|Nav|Vol|Undo|Redo|Overflow
-		// (see layoutDesktop) — include every control so adjacent-gap
-		// measurement doesn't span across an unlisted button.
+		// Every control, so no measured gap spans an unlisted button.
 		{"play", z.playBtn.Rect()},
 		{"stop", z.stopBtn.Rect()},
 		{"record", z.recordBtn.Rect()},
@@ -111,12 +96,8 @@ func orderedTransportControls(z *TransportZone) []struct {
 	}
 }
 
-// TestDesktopTransportNoSpacerGap asserts there is no large empty gap between
-// any two adjacent transport controls — in particular none between the
-// subdivision button and the master volume control (the old weight-0.6
-// "spacer" cell). Gaps take exactly two values: the uniform in-group gap, and
-// spacing.cluster at the three group boundaries (transport | tempo | level |
-// history — DESIGN.md "Groups are spacing, not containers").
+// Gaps take two values: the in-group gap and spacing.cluster at the three group boundaries, never a spacer
+// cell.
 func TestDesktopTransportNoSpacerGap(t *testing.T) {
 	assertDefaultParityState(t)
 	UpdateProfile()
@@ -133,8 +114,7 @@ func TestDesktopTransportNoSpacerGap(t *testing.T) {
 		z := g.drum.transportZone
 		controls := orderedTransportControls(z)
 
-		// Square side is the reference for "small": gaps must be smaller than
-		// a button, so the row reads as one continuous cluster.
+		// Smaller than a button, so the row reads as one cluster.
 		side := z.playBtn.Rect().Dy()
 
 		groupBoundary := map[string]bool{"record": true, "subdiv": true, "vol": true}
@@ -166,21 +146,14 @@ func TestDesktopTransportNoSpacerGap(t *testing.T) {
 		if maxGap >= side {
 			t.Errorf("w=%d: largest inter-control gap %d >= button side %d (spacer void present)", w, maxGap, side)
 		}
-		// In-group gaps must be uniform — the spread between the widest and
-		// narrowest is at most a couple of pixels of rounding.
+		// Within a couple of pixels of rounding.
 		if maxGap-minGap > 2 {
 			t.Errorf("w=%d: in-group gaps not uniform: min=%d max=%d", w, minGap, maxGap)
 		}
 	}
 }
 
-// TestMobileTransportNoButtonSizedVoid drives the real mobile Game layout and
-// asserts the mobile transport row has no button-sized empty gap between
-// adjacent controls. Mobile is intentionally NOT converted to equal squares
-// (its transport region is only ~188px wide, so seven controls at the 44px
-// touch-min cannot be square — see layoutMobile's note). This test instead
-// locks the "no weird gaps" half of the request for mobile: no void as wide as
-// a full touch target may appear between consecutive controls.
+// Mobile cannot be squares (seven 44 px controls in ~188 px), so it only guarantees no button-sized void.
 func TestMobileTransportNoButtonSizedVoid(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -193,9 +166,7 @@ func TestMobileTransportNoButtonSizedVoid(t *testing.T) {
 	}
 	z := g.drum.transportZone
 
-	// Every control that occupies a slot in the mobile transport row, by rect.
-	// The Nav (bullseye) and Overflow (kebab) buttons were removed — navigation
-	// opens from the beat counter, file options from the grid folder button.
+	// Navigation opens from the beat counter, file options from the grid folder button.
 	rects := []image.Rectangle{
 		z.playBtn.Rect(), z.stopBtn.Rect(), z.recordBtn.Rect(),
 		z.bpmDecBtn.Rect(), z.bpmBox.Rect, z.bpmIncBtn.Rect(),
@@ -208,9 +179,7 @@ func TestMobileTransportNoButtonSizedVoid(t *testing.T) {
 		}
 	}
 
-	// No empty gap between consecutive controls may be as wide as a full
-	// touch target — that would be the kind of "spacer void" the desktop bar
-	// had. (Mobile's actual gaps are 0–15px.)
+	// Real gaps are 0–15 px.
 	maxVoid := TouchMinTarget()
 	for i := 0; i+1 < len(rects); i++ {
 		a, b := rects[i], rects[i+1]

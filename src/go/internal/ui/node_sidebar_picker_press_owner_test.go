@@ -10,14 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A press that began on the open note/chord picker owns its gesture to the
-// release (NodeSidebar.HandleInput). Re-tapping the picked cell confirms and
-// closes the picker on the PRESS frame; before the latch, the still-held
-// finger then activated the sidebar control under the cell on the next held
-// frame. On a phone that control is the Audible selector, so confirming a
-// chord turned the node straight back into a single note. Found by the
-// landing page's showcase tour (tour_steps.go), which confirms a chord with a
-// real held tap.
+// A press begun on the open picker owns its gesture to the release: confirming closes the picker on the press
+// frame, and the held finger must not then fire the control beneath (on a phone, Audible, which turned the
+// chord back into a note).
 func TestChordConfirmHeldPressDoesNotFireTheControlBeneath(t *testing.T) {
 	g, node := chordSidebarGame(t, roster.OrganChurch)
 	forceSmallScreenForTest = true

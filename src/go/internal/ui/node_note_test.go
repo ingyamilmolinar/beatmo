@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// noteTestNode adds a real graph node and maps it onto the existing row 0 so
-// nodeNoteLabel can resolve node → row → instrument deterministically (the
-// nodeRows map is exactly that resolution's input).
+// Mapped onto row 0 so node → row → instrument resolves deterministically.
 func noteTestNode(t *testing.T, g *Game) *uiNode {
 	t.Helper()
 	if len(g.drum.Rows) == 0 {
@@ -33,8 +31,7 @@ func TestNodeNoteLabel_MelodicDerivesNote(t *testing.T) {
 
 	const inst = "test-note-inst-mel"
 	g.drum.Rows[0].Instrument = inst
-	// Unbound (sampler-style) instrument is pitched; a +3 semitone transpose
-	// puts A3 (node pitch 0) at C4.
+	// An unbound (sampler-style) instrument is pitched; +3 semitones puts A3 (pitch 0) at C4.
 	audio.SetSampleEdit(inst, audio.SampleEdit{TransposeSemis: 3})
 	t.Cleanup(func() { audio.ClearSampleEdit(inst) })
 
@@ -57,9 +54,7 @@ func TestNodeNoteLabel_PercussionSuppressed(t *testing.T) {
 
 	const inst = "test-note-inst-drum"
 	g.drum.Rows[0].Instrument = inst
-	// drum-hihat declares no fundamental at all — noise, nothing to name. A
-	// recipe that DOES declare one (drum-kick) names a note even for a
-	// user-made instrument, so the suppression case has to use real noise.
+	// Real noise: any document that declares a fundamental names a note, user-made or not.
 	_ = audio.InstallInstrumentDocForTest(inst, roster.Hihat)
 	t.Cleanup(func() { audio.RemoveInstrumentDocForTest(inst) })
 
@@ -68,10 +63,7 @@ func TestNodeNoteLabel_PercussionSuppressed(t *testing.T) {
 	}
 }
 
-// TestNodeNoteLabel_RealDemoInstruments validates classification against the
-// actual shipped instrument set (as bound by the real engine init), not
-// synthetic test recipes: melodic and tuned-percussion instruments both yield a
-// note, and only genuinely unpitched noise is suppressed.
+// The shipped instruments: melodic and tuned percussion name a note, only unpitched noise does not.
 func TestNodeNoteLabel_RealDemoInstruments(t *testing.T) {
 	g := newTestGameForUndo(t)
 	node := noteTestNode(t, g)
@@ -82,26 +74,20 @@ func TestNodeNoteLabel_RealDemoInstruments(t *testing.T) {
 		t.Errorf("melodic organ-church should yield a note, got empty")
 	}
 
-	// dnb-kick is percussion and names a note too since display went universal:
-	// it is tuned to 48 Hz, which is G1. Suppressing it (the old contract) hid
-	// a real, measurable pitch.
+	// Tuned to 48 Hz, G1.
 	g.drum.Rows[0].Instrument = roster.DnbKick
 	if got := g.nodeNoteLabel(node.ID, 0); got != "G1" {
 		t.Errorf("percussion dnb-kick = %q, want \"G1\" (48 Hz)", got)
 	}
 
-	// Only genuinely unpitched noise is still suppressed — a hi-hat has no
-	// fundamental for any note name to refer to.
+	// A hi-hat has no fundamental for a note name to refer to.
 	g.drum.Rows[0].Instrument = roster.Hihat
 	if got := g.nodeNoteLabel(node.ID, 0); got != "" {
 		t.Errorf("unpitched hihat = %q, want empty (no fundamental to name)", got)
 	}
 }
 
-// TestNodeSidebar_DrawsNoteChip drives the real sidebar Draw with a melodic
-// node and asserts the read-only note chip is actually painted in the pitch
-// row's left gap (a filled rounded rect left of the "−" stepper button). This
-// exercises the render integration, not just the derivation helper.
+// Through the real sidebar Draw: the chip is painted in the pitch row's gap, left of the "−" stepper.
 func TestNodeSidebar_DrawsNoteChip(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(800, 1200)
@@ -121,10 +107,8 @@ func TestNodeSidebar_DrawsNoteChip(t *testing.T) {
 		t.Skip("pitch stepper not laid out / out of viewport")
 	}
 
-	// The chip is a Button ("pitnote"), drawn through the shared keycap style
-	// like the -/+ steppers beside it — NOT the old drawRoundedRect pill. So
-	// assert what it IS rather than which primitive painted it: a registered
-	// button, labelled with the note, seated left of the "−" key.
+	// The chip is a Button drawn like the steppers beside it, so assert what it is: registered, labelled with the
+	// note, left of "−".
 	chip, ok := g.sidebar.rects[sbPitchNote]
 	if !ok || chip.Empty() {
 		t.Fatal("sidebar reserved no note-chip rect in the pitch row for a melodic instrument")
@@ -147,9 +131,7 @@ func TestNodeSidebar_DrawsNoteChip(t *testing.T) {
 	g.sidebar.Draw(ebiten.NewImage(800, 1200))
 }
 
-// A tuned percussion row DOES get the chip and the picker — that is the whole
-// point of universal note display. dnb-kick sounds 48 Hz (G1), so there is a
-// real note to show and a real octave range to pick from.
+// dnb-kick sounds 48 Hz (G1): a real note to show and a real octave range to pick from.
 func TestNodeSidebar_NoteChipForTunedPercussion(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(800, 1200)
@@ -169,8 +151,7 @@ func TestNodeSidebar_NoteChipForTunedPercussion(t *testing.T) {
 	}
 }
 
-// Genuinely unpitched noise still has no chip and no button: a picker there
-// would offer a choice with nothing meaningful behind it.
+// A picker there would offer a choice with nothing behind it.
 func TestNodeSidebar_NoNoteChipForUnpitchedNoise(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(800, 1200)

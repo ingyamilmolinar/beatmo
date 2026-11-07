@@ -10,11 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// dragColPillRight simulates the user grabbing the column-divider pill
-// (between rack and timeline) and dragging it as far right as possible.
-// It mirrors what handleDrag does: ResizeAxis + refreshWidgetLayout, on
-// each step. Returns when no further movement is possible (clamp by
-// minColW or by the right edge).
+// Mirrors handleDrag (ResizeAxis + refreshWidgetLayout) per step until the clamp stops it.
 func dragColPillRight(t *testing.T, dv *DrumView) {
 	t.Helper()
 	if dv.widgets == nil || len(dv.widgets.cols) < 2 {
@@ -35,11 +31,7 @@ func dragColPillRight(t *testing.T, dv *DrumView) {
 	}
 }
 
-// TestPillDragRightKeepsRackAndTimelineDisjoint asserts that no matter
-// how far right the user drags the column-divider pill, the rack and
-// timeline widget rectangles remain edge-adjacent (rack.Max.X ==
-// timeline.Min.X) with no overlap and no gap. A regression on either
-// side manifests as instrument-row UI distortion.
+// Rack and timeline stay edge-adjacent (rack.Max.X == timeline.Min.X): any gap or overlap distorts the rows.
 func TestPillDragRightKeepsRackAndTimelineDisjoint(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -68,12 +60,7 @@ func TestPillDragRightKeepsRackAndTimelineDisjoint(t *testing.T) {
 	}
 }
 
-// TestPillDragRightKeepsRowControlsInsideRack asserts every per-row
-// control button (mute/solo/fx/origin/edit/save/menu/delete/label/volume)
-// stays fully contained within the rack widget rect after a far-right
-// pill drag. Buttons drifting outside the rack indicates the rack column
-// shrank below required content width while controls were positioned
-// using the pre-drag layout.
+// A control outside the rack means the column shrank below its content while controls kept the pre-drag layout.
 func TestPillDragRightKeepsRowControlsInsideRack(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -131,10 +118,7 @@ func TestPillDragRightKeepsRowControlsInsideRack(t *testing.T) {
 	}
 }
 
-// addRowsForLayoutTest appends n extra rows to dv (so total = 1 + n) and
-// drives the layout pipeline so per-row widgets are positioned. Mirrors
-// what real-time AddRow() does plus the explicit relayout the test harness
-// needs (newTestDrumView only exercises the constructor).
+// newTestDrumView only runs the constructor, so the relayout is explicit.
 func addRowsForLayoutTest(t *testing.T, dv *DrumView, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
@@ -145,30 +129,18 @@ func addRowsForLayoutTest(t *testing.T, dv *DrumView, n int) {
 	dv.calcLayout()
 }
 
-// newTestDrumViewBottomHalf builds a DrumView whose bounds match the
-// runtime "bottom half of screen" geometry (graph view above, drum view
-// below). This mirrors the real-app proportions where the drum-rows area
-// is small enough that visibleRows() can be smaller than len(Rows) — the
-// scenario that triggers the screenshot bug. The drumview must be created
-// at offset (0, screenH/2) — like Game does in real life — because
-// internal logic uses Bounds.Min.Y as rowsTop after subtracting headerH.
+// The real proportions, where visibleRows() can be below len(Rows); offset to (0, screenH/2) because rowsTop
+// derives from Bounds.Min.Y.
 func newTestDrumViewBottomHalf(t *testing.T, screenW, screenH int) *DrumView {
 	t.Helper()
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	return NewDrumView(image.Rect(0, screenH/2, screenW, screenH), nil, logger)
 }
 
-// TestPillDragRightWithSixRowsKeepsLayoutCoherent reproduces the
-// screenshot bug: with 6 instrument rows, dragging the column-divider pill
-// fully right leaves intermediate rows half-rendered and pushes the "+" add
-// button into the middle of the row stack. This test asserts the
-// post-drag layout is coherent for every row simultaneously.
+// With 6 rows a full-right drag must keep every row coherent, with no half-rendered rows and no "+" mid-stack.
 func TestPillDragRightWithSixRowsKeepsLayoutCoherent(t *testing.T) {
 	assertDefaultParityState(t)
-	// Use a viewport that comfortably fits all 6 rows after the desktop
-	// row-height bump (28→36): 1280x900 gives ~450 px of bottom-half drum
-	// view, leaving the rack rect tall enough for 6 rows of 36 px plus the
-	// "+" footer plus EQ chrome.
+	// Tall enough for 6 rows of 36 px plus the "+" footer and EQ chrome.
 	dv := newTestDrumViewBottomHalf(t, 1280, 900)
 	addRowsForLayoutTest(t, dv, 5) // 1 default + 5 = 6 rows
 
@@ -207,9 +179,7 @@ func TestPillDragRightWithSixRowsKeepsLayoutCoherent(t *testing.T) {
 		t.Fatalf("rowVolSliders: got %d want 6", len(sliders))
 	}
 
-	// Per-row coherence: every visible row must have non-empty controls
-	// AND every control must lie inside the row's expected y-band AND the
-	// rack widget rect.
+	// Every visible row has controls, each inside its y-band and the rack.
 	for i := 0; i < 6; i++ {
 		expectedY := rowsTop + i*rh
 		expectedRowRect := image.Rect(rack.Min.X, expectedY, rack.Max.X, expectedY+rh)
@@ -257,17 +227,11 @@ func TestPillDragRightWithSixRowsKeepsLayoutCoherent(t *testing.T) {
 	}
 }
 
-// TestPillDragRightWithVisLessThanRows is the smoking-gun reproducer for
-// the screenshot bug. With drum-view bounds small enough that
-// visibleRows() < len(Rows), the addRowBtn lands at row index `nBelow`
-// (mid-stack). The bug manifests if rendering ALSO emits row chrome for
-// indices past `nBelow` — i.e. stale cache or misplaced widgets that
-// survive the vis shrink.
+// With visibleRows() < len(Rows) the add button lands mid-stack; no row chrome may be drawn past it (stale
+// cache or leftover widgets).
 func TestPillDragRightWithVisLessThanRows(t *testing.T) {
 	assertDefaultParityState(t)
-	// Small drum-view: bounds ~180px tall → rowsAreaHeight ~120 → vis ~3
-	// with rh=28. With 6 rows total, only the first 3 should be drawn
-	// from row chrome; addRowBtn lands at row 3 position.
+	// ~180 px tall: about 3 visible rows of 6.
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 540, 1280, 720), nil, logger)
 	addRowsForLayoutTest(t, dv, 5) // 6 rows
@@ -281,9 +245,7 @@ func TestPillDragRightWithVisLessThanRows(t *testing.T) {
 	rack := dv.widgetRects[WidgetRack]
 	rh := dv.rowHeight()
 	rowsTop := rack.Min.Y
-	// Use rackVisibleRows() — the value the row rack zone actually uses
-	// for layout. dv.visibleRows() is bounds-derived and may
-	// over-estimate when the rack rect is shorter than rowsAreaHeight.
+	// rackVisibleRows, what the rack lays out; visibleRows() can over-estimate.
 	vis := dv.rackVisibleRows()
 	t.Logf("small-bounds: rack=%v rh=%d rowsTop=%d vis=%d rowOff=%d", rack, rh, rowsTop, vis, dv.rowOffset)
 
@@ -304,8 +266,7 @@ func TestPillDragRightWithVisLessThanRows(t *testing.T) {
 		}
 	}
 
-	// 2. ALL rows past `vis` must have empty per-row widget rects (no leftover
-	//    state from previous larger-vis layouts).
+	// No leftover rects from an earlier, larger layout.
 	groups := dv.rowGroups()
 	sliders := dv.rowVolSliders()
 	for i := dv.rowOffset + vis; i < len(dv.Rows); i++ {
@@ -337,10 +298,7 @@ func TestPillDragRightWithVisLessThanRows(t *testing.T) {
 	}
 }
 
-// TestPillDragRightWithSixRowsRendersAllControls runs a full Draw after the
-// pill drag with 6 rows and asserts every row contributes at least one
-// drawCall inside its expected y-band — i.e. no row is silently missing
-// from the rendered output.
+// Every row contributes a draw inside its band: none silently missing.
 func TestPillDragRightWithSixRowsRendersAllControls(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumViewBottomHalf(t, 1280, 720)
@@ -363,8 +321,7 @@ func TestPillDragRightWithSixRowsRendersAllControls(t *testing.T) {
 	})
 
 	for i := 0; i < 6; i++ {
-		// Use the inner half of the row band so we don't double-count the
-		// neighbouring panel mask / stripe edges.
+		// The inner band, so neighbouring mask/stripe edges are not counted.
 		bandTop := rowsTop + i*rh + 2
 		bandBottom := rowsTop + (i+1)*rh - 2
 		band := image.Rect(rack.Min.X+2, bandTop, rack.Max.X-2, bandBottom)
@@ -380,10 +337,7 @@ func TestPillDragRightWithSixRowsRendersAllControls(t *testing.T) {
 	}
 }
 
-// TestPillDragRightKeepsTimelineDrawConfined runs a full Draw after the
-// pill drag and asserts no row-stripe drawRect call lands inside the
-// rack widget rect. This is the user-visible bleed symptom: cells
-// drawn behind the instrument labels.
+// No row stripe may land inside the rack: cells drawn behind the labels.
 func TestPillDragRightKeepsTimelineDrawConfined(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -414,11 +368,7 @@ func TestPillDragRightKeepsTimelineDrawConfined(t *testing.T) {
 		if c.Color != stripeEven && c.Color != stripeOdd {
 			continue
 		}
-		// The drum-stripe tokens alias the background/surface-1 tokens by
-		// design (DESIGN.md: stripes recede into the background), so legitimate
-		// full-zone background fills share the stripe RGBA. A real per-row
-		// stripe is exactly one rowHeight tall; zone/area backgrounds are
-		// taller. Only single-row-height fills can be true bleed.
+		// Stripe tokens alias the background by design, so only single-row-height fills can be real bleed.
 		if c.Rect.Dy() > rh {
 			continue
 		}

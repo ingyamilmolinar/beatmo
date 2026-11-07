@@ -9,21 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestPlayheadSingleSourceOfTruth is the architectural invariant the user
-// requested in screenshot.png: the value the mini-timeline cursor renders
-// (g.displayBeat(), float beats) and the value the drum-view auto-scroll
-// consumes (TrackBeat's `cur`, int subdivisions) must be derivable from
-// the SAME canonical playhead. If they sample different clocks (sequencer
-// fires vs. wall-clock interpolation vs. row-0 nextBeatIdxs) they drift —
-// that's the "drum view little window gets before the yellow current cell
-// marker" the user described.
-//
-// Two assertions:
-//  1. g.playheadAbsSubdiv() returns the canonical playhead in subdivisions.
-//  2. round(g.displayBeat() * div) == g.playheadAbsSubdiv() — i.e., the
-//     smooth cursor and the discrete auto-scroll consumer agree to within
-//     sub-cell quantisation. Without the fix, updateDrumTracking() can
-//     receive a value that's BEHIND or AHEAD of what the cursor shows.
+// The mini-timeline cursor (displayBeat) and the drum view's auto-scroll (TrackBeat) derive from ONE
+// playhead: round(displayBeat * div) == playheadAbsSubdiv(). Sampled from different clocks they drift apart.
 func TestPlayheadSingleSourceOfTruth(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -69,10 +56,7 @@ func TestPlayheadSingleSourceOfTruth(t *testing.T) {
 	}
 }
 
-// TestTrackBeatConsumesCanonicalPlayhead asserts that updateDrumTracking()
-// hands TrackBeat the SAME value that playheadAbsSubdiv() returns, not a
-// MAX over disparate clocks. This is the wiring half of the source-of-
-// truth contract: the helper exists AND the auto-scroll actually uses it.
+// The auto-scroll actually uses the helper, not a MAX over several clocks.
 func TestTrackBeatConsumesCanonicalPlayhead(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -107,10 +91,7 @@ func TestTrackBeatConsumesCanonicalPlayhead(t *testing.T) {
 	advancePlaybackByAbs(g, 200*g.grid.MaxDiv())
 	g.drum.Draw(dst, nil, 0, nil, 0)
 
-	// After auto-scroll settles, drum.Offset must equal what TrackBeat
-	// would compute from playheadAbsSubdiv (cur - length*frac). If
-	// updateDrumTracking is still using its old MAX-of-three formula, the
-	// observed offset will diverge.
+	// cur - length*frac.
 	frac := RuntimeProf().RibbonPlayheadFrac
 	if frac <= 0 || frac >= 1 {
 		frac = 0.70

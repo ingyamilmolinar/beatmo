@@ -8,12 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowHeight_DoesNotScale verifies the per-row pixel height is the
-// fixed profile baseline on both desktop and mobile. The historical
-// rowZoom multiplier (driven by the +/− chip and the rows-area pinch)
-// has been retired — the chips now resize the *visible beat length*
-// of the active drum view via `dv.changeLength`. Per-row dimensions
-// must NEVER change in response to a chip tap.
+// The chips resize the visible beat length, never a row's pixel height.
 func TestRowHeight_DoesNotScale(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -48,11 +43,7 @@ func TestRowHeight_DoesNotScale(t *testing.T) {
 	}
 }
 
-// TestLengthChip_IncreasesVisibleBeats verifies the + chip grows the
-// timeline by one beat (`dv.timelineUnitsPerBeat` subdivisions). The
-// user contract: chips control the horizontal beat span of the
-// active drum view, never per-row dimensions or the pane's vertical
-// size.
+// One beat (timelineUnitsPerBeat subdivisions): the horizontal span, never row size or the pane height.
 func TestLengthChip_IncreasesVisibleBeats(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -67,10 +58,8 @@ func TestLengthChip_IncreasesVisibleBeats(t *testing.T) {
 	if dv.rowZoomIncBtn == nil || dv.rowZoomIncBtn.OnClick == nil {
 		t.Fatal("inc chip / OnClick must be constructed")
 	}
-	// Pre-shrink Length to give room to grow — default boot already
-	// sits at the cell-width-derived max for narrow mobile viewports,
-	// where + chips would no-op against the clamp. SetLength bypasses
-	// clampLength so we can drop well below maxLen.
+	// Narrow mobile boots at the max length, where + would no-op, so drop well below it (SetLength skips the
+	// clamp).
 	beforePerBeat := dv.timelineUnitsPerBeat
 	dv.SetLength(max1(beforePerBeat) * 2)
 	advanceFrames(g, 2)
@@ -90,8 +79,6 @@ func TestLengthChip_IncreasesVisibleBeats(t *testing.T) {
 	}
 }
 
-// TestLengthChip_DecreasesVisibleBeats is the symmetric assertion for
-// the − chip.
 func TestLengthChip_DecreasesVisibleBeats(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -103,8 +90,7 @@ func TestLengthChip_DecreasesVisibleBeats(t *testing.T) {
 	advanceFrames(g, 2)
 	dv := g.drum
 
-	// Set Length to a known value above the floor (one beat) but well
-	// within the cell-width-derived max so neither clamp engages.
+	// Above the one-beat floor and below the max, so no clamp engages.
 	beforePerBeat := dv.timelineUnitsPerBeat
 	dv.SetLength(max1(beforePerBeat) * 2)
 	advanceFrames(g, 2)
@@ -120,9 +106,7 @@ func TestLengthChip_DecreasesVisibleBeats(t *testing.T) {
 	}
 }
 
-// TestLengthChip_RowDimensionsAndPaneUnchanged verifies the chip
-// callbacks never alter row dimensions OR the drum-view pane height.
-// The chip's only effect is on `dv.Length`.
+// Only dv.Length changes.
 func TestLengthChip_RowDimensionsAndPaneUnchanged(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -163,8 +147,6 @@ func TestLengthChip_RowDimensionsAndPaneUnchanged(t *testing.T) {
 	}
 }
 
-// TestRowZoom_ChipPlacedOnMobile verifies the chip rects are non-empty
-// on mobile (so users can tap them).
 func TestRowZoom_ChipPlacedOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -201,10 +183,7 @@ func TestRowZoom_ChipAbsentOnDesktop(t *testing.T) {
 	}
 }
 
-// TestPinchInRowsZone_DoesNotChangeRowDimensions verifies that the
-// rows-area pinch gesture is absorbed (does NOT scale row height) —
-// the legacy "pinch to zoom rows" behavior was retired with the chip
-// refactor.
+// The rows-area pinch is absorbed and never scales the rows.
 func TestPinchInRowsZone_DoesNotChangeRowDimensions(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)

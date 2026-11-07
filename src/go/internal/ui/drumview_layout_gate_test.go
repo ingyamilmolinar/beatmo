@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// recalcButtons runs every frame. It used to force the audio panel and the
-// timeline to lay out every frame too (~10% of WASM Update, webaudio_perf);
-// now a frame where nothing they lay out from changed skips them, and a
-// change still reaches the very next frame.
+// A frame where nothing they lay out from changed skips them; a change still reaches the next frame.
 func TestIdleFramesSkipForcedPanelLayouts(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

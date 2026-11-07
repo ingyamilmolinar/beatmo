@@ -65,27 +65,15 @@ func closeTestGames() {
 
 func TestMain(m *testing.M) {
 	resetTestEnvAndGlobals()
-	// Pre-warm the standing async pools so they're part of the baseline.
-	// internal/ui shares pools with internal/audio (recording.lifecycle),
-	// internal/eventstream (eventstream.persist), internal/hooks (hooks.fanout),
-	// and the audio scheduler/dialog pools — all spawned lazily on first
-	// game construction. Constructing one game here forces them to start
-	// before goleak.IgnoreCurrent captures the baseline; otherwise every
-	// test that builds a Game appears to leak the shared workers.
+	// The shared pools start lazily on the first Game; start them before the baseline, or every test that builds a
+	// Game appears to leak them.
 	prewarm := New(testLogger)
 	prewarm.CloseForTest()
-	// Capture the baseline goroutines before m.Run so post-test goleak.Find
-	// reports only test-introduced leaks. Mirrors the discipline in the
-	// seven sibling packages (async, hooks, eventstream, audio, engine,
-	// eventlogger, userprefs) per CLAUDE.md.
 	baseline := goleak.IgnoreCurrent()
 	code := m.Run()
 	closeTestGames()
 	if code == 0 {
-		// Input-mock hygiene, checked like goroutine hygiene below: a test
-		// that swaps out an input function variable and never puts it back
-		// re-aims the cursor for every later test in the package, and the
-		// failure surfaces far from the culprit. See inputGlobalsLeakMsg.
+		// A swapped input function never put back re-aims the cursor for every later test, far from the culprit.
 		if msg := inputGlobalsLeakMsg(); msg != "" {
 			fmt.Fprintln(os.Stderr, msg)
 			os.Exit(1)
@@ -94,35 +82,18 @@ func TestMain(m *testing.M) {
 			baseline,
 			goleak.IgnoreTopFunction("github.com/hajimehoshi/ebiten/v2/internal/ui.(*UserInterface).runSingleThread"),
 			goleak.IgnoreTopFunction("github.com/hajimehoshi/ebiten/v2/internal/ui.(*UserInterface).loopGame"),
-			// async.Pool workers are shared across the package via
-			// DefaultRegistry; CloseForTest releases registry refs but a
-			// production-pool worker may still be parked in chan receive.
+			// Shared pool workers may still be parked after CloseForTest releases the registry refs.
 			goleak.IgnoreTopFunction("github.com/ingyamilmolinar/beatmo/internal/async.(*Pool).run"),
 			goleak.IgnoreTopFunction("github.com/ingyamilmolinar/beatmo/internal/async.(*Scheduler).run"),
-			// audio.initContext singletons. These are spawned lazily on the
-			// first PlayParams call (NOT during prewarm), so they aren't in
-			// the goleak baseline; once spawned they live for the rest of
-			// the process by design (single audio output mux per process).
-			// Previously masked by the cascade-of-failures abort path —
-			// surfaced once the cascade was fixed.
-			//
-			// Use IgnoreAnyFunction (matches any frame) since these
-			// goroutines are usually parked in `sync.Mutex.Lock` /
-			// `sync.Cond.Wait` / cgo syscalls — the actual top frame is
-			// `runtime.semacquire` etc., not the package's Run/loop func.
+			// The audio output singletons start on the first PlayParams (after the baseline) and live for the process.
+			// IgnoreAnyFunction because they park in locks or cgo, so their top frame is runtime's.
 			goleak.IgnoreAnyFunction("github.com/ingyamilmolinar/beatmo/internal/analyzer.(*Service).Run"),
 			goleak.IgnoreAnyFunction("github.com/ingyamilmolinar/beatmo/internal/scope.(*Service).Run"),
 			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3.(*context).readAndWrite"),
 			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3.(*context).readAndWrite.func1"),
 			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3/internal/mux.(*Mux).loop"),
 			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3/internal/mux.(*Mux).wait"),
-			// NB: Game.audioLoop and Game.bpmLoop are now joined by
-			// Game.Close() via g.bgWG.Wait(), and Engine.run() is joined by
-			// Engine.Close() via runDone. They no longer need explicit
-			// IgnoreAnyFunction entries — if they show up here it's a real
-			// leak (a test built a Game without registering it for
-			// CloseForTest, or Close was called concurrently with a still
-			// blocked goroutine).
+			// audioLoop, bpmLoop and Engine.run are joined by Close; if they show up here a Game escaped CloseForTest.
 		); err != nil {
 			fmt.Fprintf(os.Stderr, "goleak: %v\n", err)
 			code = 1

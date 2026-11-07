@@ -18,8 +18,7 @@ func TestSeekStepsStoppedSetsPosition(t *testing.T) {
 
 func TestSeekStepsEmitsEventWithOrigin(t *testing.T) {
 	g := newGameWithStart(t)
-	// hooks.Bus is ASYNC (worker pool, no ordering) — observe via a buffered
-	// channel + timeout rather than a synchronous count.
+	// The bus is async with no ordering, so observe through a buffered channel and a timeout.
 	ch := make(chan hooks.SeekPayload, 4)
 	unsub := hooks.Subscribe(hooks.EventSeek, func(e hooks.Event) {
 		if p, ok := e.Payload.(hooks.SeekPayload); ok {

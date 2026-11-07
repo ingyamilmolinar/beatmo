@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// TestTransportZone_SetBarRectStoresField verifies SetBarRect persists the
-// rect for downstream consumers (hit-area clip override AND the new
-// segmented-control hit area registered in Phase 3). Prior API
-// (SetBottomBarHostedHitClip) only mutated existing hit-areas in place;
-// nothing read back the bar geometry.
+// Kept for the clip override and the segmented control's hit area.
 func TestTransportZone_SetBarRectStoresField(t *testing.T) {
 	z, _ := newTestTransportZone()
 	bar := image.Rect(0, 600, 360, 644)
@@ -21,10 +17,7 @@ func TestTransportZone_SetBarRectStoresField(t *testing.T) {
 	}
 }
 
-// TestTransportZone_SetBarRectDoesNotMutateHitAreas (Theme 4) verifies
-// SetBarRect now only stores the bar geometry — vol/view/overflow live
-// in the top toolbar with ClipRect = z.rect, NOT the bar. Mutating their
-// clip to the bar (the prior behavior) would cull top-toolbar taps.
+// Only stores geometry: vol/view/overflow clip to the toolbar, and clipping them to the bar would cull their taps.
 func TestTransportZone_SetBarRectDoesNotMutateHitAreas(t *testing.T) {
 	z, _ := newTestTransportZone()
 	bar := image.Rect(0, 600, 360, 644)

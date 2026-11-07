@@ -28,8 +28,6 @@ var mobileViewports = []mobileViewport{
 	{"small_landscape", 480, 320},
 }
 
-// TestMobileDrumRowsAreaPositive verifies that rowsAreaHeight() > 0
-// on all mobile viewports so drum rows are actually visible.
 func TestMobileDrumRowsAreaPositive(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -49,8 +47,6 @@ func TestMobileDrumRowsAreaPositive(t *testing.T) {
 	}
 }
 
-// TestMobileDrumVisibleRowsPositive verifies that visibleRows() >= 1
-// on all mobile viewports.
 func TestMobileDrumVisibleRowsPositive(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -71,8 +67,6 @@ func TestMobileDrumVisibleRowsPositive(t *testing.T) {
 	}
 }
 
-// TestMobileDrumTimelineWidthPositive verifies that timelineRect.Dx() > 0
-// on all mobile viewports so row sprites have space to render.
 func TestMobileDrumTimelineWidthPositive(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -92,8 +86,7 @@ func TestMobileDrumTimelineWidthPositive(t *testing.T) {
 	}
 }
 
-// TestMobileDrumTimelineMinPercent verifies that the timeline column gets at
-// least 30% of the drum pane width on all mobile viewports.
+// At least 30% of the drum pane width.
 func TestMobileDrumTimelineMinPercent(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -118,8 +111,6 @@ func TestMobileDrumTimelineMinPercent(t *testing.T) {
 	}
 }
 
-// TestMobileDesktopLayoutUnchanged verifies that desktop layout is not
-// affected by the mobile fixes.
 func TestMobileDesktopLayoutUnchanged(t *testing.T) {
 	setupMobileTest(t, false) // desktop path
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -144,10 +135,7 @@ func TestMobileDesktopLayoutUnchanged(t *testing.T) {
 	}
 }
 
-// TestMobileDrumRowCacheBuilt verifies that rows are rendered after Draw().
-// On small screens, the direct draw path is used (bypassing intermediate
-// textures); on desktop, row caches and rows layer are built via
-// rowsLayerMaybeRebuild().
+// Small screens draw rows directly; desktop builds the row caches and rows layer.
 func TestMobileDrumRowCacheBuilt(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -171,8 +159,6 @@ func TestMobileDrumRowCacheBuilt(t *testing.T) {
 				t.Fatalf("visibleRows()=%d after Draw, want >= 1", vis)
 			}
 
-			// On small screens, the direct draw path is used instead of
-			// row caches + rows layer. Verify the appropriate path ran.
 			if isSmallScreen() {
 				if g.drum.directDrawCount == 0 {
 					t.Fatalf("directDrawCount=0 on small screen %dx%d — direct draw path not used", vp.w, vp.h)
@@ -191,10 +177,7 @@ func TestMobileDrumRowCacheBuilt(t *testing.T) {
 	}
 }
 
-// TestMobileDrumRowHasContentWithStriping verifies that rows are rendered
-// after Draw() with striping enabled. On small screens, the direct draw path
-// bypasses the rows layer, so we verify directDrawCount > 0 instead of
-// sampling the intermediate texture.
+// The direct path bypasses the rows layer, so directDrawCount stands in for sampling it.
 func TestMobileDrumRowHasContentWithStriping(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -237,8 +220,6 @@ func TestMobileDrumRowHasContentWithStriping(t *testing.T) {
 	}
 }
 
-// TestMobileDrumRowsDrawnMaskWithStriping verifies that visible rows are
-// marked as drawn in rowsDrawnMask after Draw() with striping enabled.
 func TestMobileDrumRowsDrawnMaskWithStriping(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -269,10 +250,7 @@ func TestMobileDrumRowsDrawnMaskWithStriping(t *testing.T) {
 	}
 }
 
-// TestMobileDrumRowsWithProductionEQ verifies that rowsAreaHeight > 0 and
-// visibleRows >= 1 even when eqPanelHeight uses its production value (180).
-// The test init() sets eqPanelHeight=0, masking the space budget issue where
-// the EQ panel eats all vertical space on small screens.
+// The test init() zeroes eqPanelHeight, which hides the EQ panel eating all the space on small screens.
 func TestMobileDrumRowsWithProductionEQ(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -284,9 +262,7 @@ func TestMobileDrumRowsWithProductionEQ(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-			// Simulate production eqPanelHeight after layout is computed.
-			// recalcButtons() resets eqPanelHeight=0 under test, so we
-			// restore it and re-run the layout calculations that depend on it.
+			// recalcButtons zeroes it under test, so restore it and redo the dependent layout.
 			eqPanelHeight = 180
 			t.Cleanup(func() { eqPanelHeight = 0 })
 
@@ -311,8 +287,6 @@ func TestMobileDrumRowsWithProductionEQ(t *testing.T) {
 	}
 }
 
-// TestMobileDrumRowCacheWithProductionEQ verifies that Draw() produces row
-// caches and a rows layer even with production eqPanelHeight=180.
 func TestMobileDrumRowCacheWithProductionEQ(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -353,8 +327,7 @@ func TestMobileDrumRowCacheWithProductionEQ(t *testing.T) {
 	}
 }
 
-// TestMobileDirectDrawUsed verifies that the direct draw path is activated
-// on small screens when striping is enabled and stripes bail out.
+// On small screens with striping enabled, when the stripes bail out.
 func TestMobileDirectDrawUsed(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
@@ -397,8 +370,6 @@ func TestMobileDirectDrawUsed(t *testing.T) {
 	}
 }
 
-// TestMobileDesktopNoDirectDraw verifies that desktop layout does NOT use the
-// direct draw path even when striping is enabled.
 func TestMobileDesktopNoDirectDraw(t *testing.T) {
 	setupMobileTest(t, false) // desktop path
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -420,8 +391,7 @@ func TestMobileDesktopNoDirectDraw(t *testing.T) {
 	}
 }
 
-// TestMobileDirectDrawDecimatedMarkers verifies that drawRowsDirect draws
-// decimated colTimelineBeat ticks when zoomed out (n > timelineWidth).
+// Zoomed out (n > timelineWidth) the beat ticks are decimated.
 func TestMobileDirectDrawDecimatedMarkers(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -483,10 +453,7 @@ func TestMobileDirectDrawDecimatedMarkers(t *testing.T) {
 	t.Logf("decimated ticks=%d vis=%d timelineW=%d n=%d", ticks, vis, dv.timelineRect.Dx(), extreme)
 }
 
-// TestMobileRowInlineControlsVisible verifies that mute/solo/FX buttons and
-// the volume slider all have non-empty rects in the row strip on mobile —
-// they used to be hidden behind a context menu (overflow-only). Failing this
-// regresses the "controls reachable in main UI" requirement.
+// M/S/FX and the volume slider are reachable in the row strip, not only through a context menu.
 func TestMobileRowInlineControlsVisible(t *testing.T) {
 	for _, vp := range []mobileViewport{
 		{"iPhone14_portrait", 390, 844},
@@ -538,22 +505,8 @@ func TestMobileRowInlineControlsVisible(t *testing.T) {
 					vp.w, vp.h, vr, mr, sr, fr)
 			}
 
-			// Tappability is guaranteed by touch expansion, not raw chip
-			// width. The control cluster is now unified across platforms —
-			// vol · M · S · FX · ⋯ — so the rack column (label+controls) must
-			// fit five cells plus a readable label. On the narrowest phones
-			// the label+controls column the WidgetBoard allocates is too
-			// tight for full-size (RowControlBtnSize) chips, so the documented
-			// narrow-row clamp in layoutRowControls shrinks the chips
-			// proportionally (down to ~11px on the 320px iPhone SE) to keep
-			// the label legible. That is intentional graceful degradation:
-			// each control registers a Touch-flagged hit area (ClipRect =
-			// rack rect), so the dispatcher expands the effective tap target
-			// to the platform touch minimum (TouchMinTarget) before testing —
-			// see hit_index.go's At(). Assert the real contract: each chip is
-			// present (non-empty) and its touch-expanded effective width
-			// clears the touch minimum, so it stays reliably tappable even
-			// when the visible chip is narrower than the 32px design target.
+			// On the narrowest phones the chips shrink to keep the label legible; each registers a Touch hit area the
+			// dispatcher expands to TouchMinTarget, so the contract is present + touch-expanded width.
 			expand := TouchMinTarget()
 			for _, b := range []struct {
 				name string
@@ -572,9 +525,7 @@ func TestMobileRowInlineControlsVisible(t *testing.T) {
 	}
 }
 
-// TestDesktopRowControlsUnchanged verifies that the desktop row strip still
-// shows label + vol + M + S + FX + ⋯ — the mobile change should not regress
-// desktop layout.
+// Label, vol, M, S, FX and ⋯.
 func TestDesktopRowControlsUnchanged(t *testing.T) {
 	setupMobileTest(t, false) // desktop path
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -601,8 +552,7 @@ func TestDesktopRowControlsUnchanged(t *testing.T) {
 	}
 }
 
-// TestDirectDrawMatchesBuildRowSprite verifies that for the normal (n <= w)
-// case, drawRowsDirect produces the same cell draw calls as buildRowSprite.
+// For n <= w the direct path draws the same cells as buildRowSprite.
 func TestDirectDrawMatchesBuildRowSprite(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)

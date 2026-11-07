@@ -10,8 +10,6 @@ import (
 	log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// rowControlRects gathers the first row's control button rects (mute, solo,
-// fx, menu) plus the label rect, after a layout pass.
 type rowControlRects struct {
 	label image.Rectangle
 	mute  image.Rectangle
@@ -39,17 +37,8 @@ func firstRowControlRects(t *testing.T, g *Game) rowControlRects {
 	}
 }
 
-// TestRowControls_NoCramping_AllProfiles asserts the mute/solo/fx/ellipsis
-// buttons never overlap one another and always leave a non-empty label, and
-// that each renders at least the per-profile minimum size.
-//
-// Desktop: the rack column is wide, so controls render at the full comfortable
-// RowControlBtnSize. Mobile: the rack lives in a ~192px left column
-// (rows-left / timeline-right), which cannot fit four full-size (36px) keys
-// plus a readable label; the layout's narrow-row clamp scales the keys down to
-// a compact ~20px visual width (each still backed by a 44px touch skirt via
-// HitArea.Touch). The mobile floor below reflects that reality and guards
-// against a regression that would collapse the keys into slivers.
+// Never overlapping, always leaving a label, at least each profile's minimum. On mobile the ~192 px rack column
+// cannot fit four 36 px keys, so they shrink to ~20 px (each with a 44 px touch skirt); the floor stops slivers.
 func TestRowControls_NoCramping_AllProfiles(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -116,9 +105,7 @@ func TestRowControls_NoCramping_AllProfiles(t *testing.T) {
 	}
 }
 
-// TestRowControls_EllipsisVisibleAndRightmost asserts the ellipsis (overflow)
-// button is present on BOTH profiles and is the right-most control, sitting to
-// the right of the label and the other controls and within bounds.
+// On both profiles, right of the label and every other control, inside the bounds.
 func TestRowControls_EllipsisVisibleAndRightmost(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -166,9 +153,7 @@ func TestRowControls_EllipsisVisibleAndRightmost(t *testing.T) {
 	}
 }
 
-// TestRowControls_DesktopEllipsisRoomierThanLegacy is a regression witness: the
-// desktop ellipsis used to get weight 1/16 (~6% of row width, far below the
-// comfortable button size). It must now be at least RowControlBtnSize wide.
+// At least RowControlBtnSize wide, not a 1/16 weight far below the comfortable size.
 func TestRowControls_DesktopEllipsisRoomierThanLegacy(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(log.New(testLogOutput(), log.LevelError))

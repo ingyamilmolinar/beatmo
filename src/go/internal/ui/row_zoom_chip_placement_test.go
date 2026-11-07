@@ -9,20 +9,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// rectGetter is the minimal interface satisfied by Button / Slider in
-// the row-rack zone — both expose `Rect() image.Rectangle`.
 type rectGetter interface {
 	Rect() image.Rectangle
 }
 
-// TestRowZoomChipsDoNotOverlapAnyRow asserts that the mobile row-zoom +/-
-// chips do not overlap any row's interactive controls. The legacy layout
-// pinned the chips to the top-right of WidgetRack, which placed them
-// directly on top of the FX cells of the topmost rows — visible in
-// screenshot2.png 2026-05-09: rows Kick-1 and Snare had their FX buttons
-// hidden under "+" / "-" chips. The fix relocates the chips to a
-// dedicated strip alongside the addRow "+" button at the bottom of the
-// rack column, where they cannot collide with any per-row control rect.
+// The zoom chips never sit on any row's controls: pinned to the rack's top-right they once hid the top rows'
+// FX buttons.
 func TestRowZoomChipsDoNotOverlapAnyRow(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -69,8 +61,7 @@ func TestRowZoomChipsDoNotOverlapAnyRow(t *testing.T) {
 		}
 	}
 
-	// AddRow button shares the strip but its right margin must be
-	// reserved so it cannot overlap the chips.
+	// The addRow button never overlaps the chips.
 	if addRect := dv.rowRackZone.AddRowBtnRect(); !addRect.Empty() {
 		if !incRect.Empty() && addRect.Overlaps(incRect) {
 			t.Errorf("addRow rect %v overlaps zoomInc chip %v", addRect, incRect)
@@ -81,11 +72,7 @@ func TestRowZoomChipsDoNotOverlapAnyRow(t *testing.T) {
 	}
 }
 
-// TestRowZoomChipsDoNotOverlapTimelineChrome asserts the chip strip does
-// not draw over the trackBtn kebab chip, beat counter pill, or timeline
-// ruler dots. The chip block in drumview_layout.go shrinks beatCounter
-// and ruler Max.X to clear the chip column — this is the regression
-// guard for that invariant.
+// Clear of the track chip, beat counter and ruler dots, which shrink to make room.
 func TestRowZoomChipsDoNotOverlapTimelineChrome(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -116,9 +103,7 @@ func TestRowZoomChipsDoNotOverlapTimelineChrome(t *testing.T) {
 	}
 }
 
-// TestRowZoomChipsHiddenOnDesktop asserts the chips are not rendered on
-// desktop layouts — the lenInc/lenDec pair next to the timeline already
-// covers that role on desktop.
+// The length buttons beside the timeline cover that role on desktop.
 func TestRowZoomChipsHiddenOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -139,9 +124,7 @@ func TestRowZoomChipsHiddenOnDesktop(t *testing.T) {
 	}
 }
 
-// TestRowZoomChipsHidePastBottomActionBar asserts that when the bottom
-// action bar collapses (ultra-short viewports), the row-zoom chips also
-// hide so they don't squat over content with no semantic anchor.
+// With the bottom bar collapsed they hide too, rather than squat over content.
 func TestRowZoomChipsHidePastBottomActionBar(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -162,10 +145,7 @@ func TestRowZoomChipsHidePastBottomActionBar(t *testing.T) {
 	}
 }
 
-// TestRowZoomChipsInTimelineHeader asserts the chip strip lives in the
-// timeline header band (next to the ruler) — strictly above the addRow
-// "+" button at the bottom of the rack column. Replaces the legacy
-// "inline with addRow" placement.
+// Next to the ruler they affect, strictly above addRow.
 func TestRowZoomChipsInTimelineHeader(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -186,10 +166,7 @@ func TestRowZoomChipsInTimelineHeader(t *testing.T) {
 		t.Errorf("zoomInc chip Y range [%d,%d] not strictly above addRow Y range [%d,%d]",
 			incRect.Min.Y, incRect.Max.Y, addRect.Min.Y, addRect.Max.Y)
 	}
-	// Chip strip (inc ∪ dec) overlaps the timeline ruler band. The
-	// vertical pair spans both the beat counter row and the ruler row,
-	// so the union must straddle the ruler band even if one chip alone
-	// sits above it.
+	// The vertical pair spans the beat counter and ruler rows, so their union straddles the ruler band.
 	tl := dv.timelineRect
 	if tl.Empty() {
 		t.Fatal("timelineRect empty; preconditions not met")

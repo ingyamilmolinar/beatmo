@@ -1,11 +1,7 @@
 //go:build test
 
-// Tests for the OPTIONAL secondary row action (Shift+Enter).
-//
-// Enter activates a row; Shift+Enter fires the row's secondary action, which
-// for the instrument menu is the ★ favourite toggle. A host that wants none
-// simply does not implement MenuKeyNavSecondary, and Shift+Enter then behaves
-// exactly like Enter did before — no host is forced to grow a second action.
+// Shift+Enter fires the row's optional secondary action (the instrument menu's ★); a host without one gets
+// plain Enter.
 
 package ui
 
@@ -23,8 +19,7 @@ type secondaryNavHost struct {
 
 func (h *secondaryNavHost) MenuSecondary(i int) { h.secondary = append(h.secondary, i) }
 
-// navKeysMulti is navKeys for chords: it holds every key in the set for one
-// frame, so Shift+Enter can be pressed as the single physical gesture it is.
+// One frame with every key held, so a chord is the single gesture it is.
 func navKeysMulti(t *testing.T, nav *MenuKeyNav, host MenuKeyNavHost) func(...ebiten.Key) {
 	t.Helper()
 	held := map[ebiten.Key]bool{}
@@ -65,10 +60,8 @@ func TestMenuKeyNav_ShiftEnterFiresSecondaryNotActivate(t *testing.T) {
 	}
 }
 
-// The right-hand shift must work too. Real Ebiten aliases KeyShift onto the
-// sides, but the -tags test ebitestub declares ONLY KeyShiftLeft/KeyShiftRight
-// (ebitestub/ebiten/ebiten.go), so binding one spelling is how the arrow keys
-// first shipped half-broken. Both sides are checked explicitly.
+// The stub declares only KeyShiftLeft/Right while real Ebiten aliases KeyShift, so both sides are checked:
+// binding one spelling is how the arrows first shipped half-broken.
 func TestMenuKeyNav_RightShiftEnterAlsoFiresSecondary(t *testing.T) {
 	host := &secondaryNavHost{fakeNavHost: fakeNavHost{selectable: allSelectable(3)}}
 	nav := NewMenuKeyNav()
@@ -98,8 +91,7 @@ func TestMenuKeyNav_PlainEnterStillActivates(t *testing.T) {
 	}
 }
 
-// A host without a secondary action must not silently swallow Shift+Enter.
-// Falling back to MenuActivate keeps every existing menu behaving as before.
+// Falls back to MenuActivate rather than swallowing the chord.
 func TestMenuKeyNav_ShiftEnterActivatesWhenHostHasNoSecondary(t *testing.T) {
 	host := &fakeNavHost{selectable: allSelectable(3)}
 	nav := NewMenuKeyNav()
@@ -130,13 +122,8 @@ func TestMenuKeyNav_ShiftEnterWithNoCursorDoesNothing(t *testing.T) {
 
 // --- Reveal -----------------------------------------------------------------
 
-// TestMenuKeyNav_RevealScrollsAProgrammaticCursorIntoView.
-//
-// Arrow movement reveals as it goes, but SetSelected does not: it is the HOVER
-// entry point, where the row is visible by definition. Anything that places the
-// cursor programmatically — a screenshot scene, a test, a future "open on the
-// current item" — therefore lands off-screen with no way to scroll to it, and
-// the cursor becomes invisible with no arrow pressed.
+// SetSelected is the hover path and does not scroll, so a programmatically placed cursor needs Reveal or it
+// lands off-screen and invisible.
 func TestMenuKeyNav_RevealScrollsAProgrammaticCursorIntoView(t *testing.T) {
 	scroll := NewMenuScroll(DropdownScrollbarStyle, 20)
 	host := &fakeNavHost{selectable: allSelectable(20), scroll: scroll}
@@ -160,8 +147,7 @@ func TestMenuKeyNav_RevealScrollsAProgrammaticCursorIntoView(t *testing.T) {
 	}
 }
 
-// Reveal must be a no-op when the cursor is already on the page: scrolling a
-// visible cursor would yank the list under a user who only hovered a row.
+// Scrolling a visible cursor would yank the list under a user who only hovered.
 func TestMenuKeyNav_RevealLeavesAVisibleCursorAlone(t *testing.T) {
 	scroll := NewMenuScroll(DropdownScrollbarStyle, 20)
 	host := &fakeNavHost{selectable: allSelectable(20), scroll: scroll}

@@ -12,10 +12,7 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRenameLabelStyleNotMissing verifies that after renaming an instrument,
-// the row label does NOT get MissingInstStyle (red). Rename is now
-// metadata-only (the instrument ID is unchanged), so the row's instrument stays
-// available and the label keeps its normal style.
+// Rename is metadata-only, so the instrument stays available and the label is never MissingInstStyle.
 func TestRenameLabelStyleNotMissing(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -79,10 +76,7 @@ func TestRenameLabelStyleNotMissing(t *testing.T) {
 	}
 }
 
-// TestMobileSoftKeyboardRenameCommits verifies that pressing Enter/Done on a
-// soft keyboard (which sends '\n' via inputChars rather than isKeyPressed(Enter))
-// correctly commits the rename. This was broken because TextInput.Update() saw
-// '\n', defocused, and returned true — but OnCommit was never called.
+// A soft keyboard's Done sends '\n' through inputChars, not isKeyPressed(Enter); OnCommit must still fire.
 func TestMobileSoftKeyboardRenameCommits(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -115,8 +109,7 @@ func TestMobileSoftKeyboardRenameCommits(t *testing.T) {
 		t.Fatal("no edit buttons after initial Update")
 	}
 
-	// Click the edit button to open rename in desktop-fallback mode
-	// (mobileInputActive is false, so Open() creates a TextInput).
+	// mobileInputActive is false, so Open() makes a TextInput.
 	dv.rowEditBtns()[0].OnClick()
 
 	if dv.renameComp == nil || !dv.renameComp.IsOpen() {
@@ -142,8 +135,7 @@ func TestMobileSoftKeyboardRenameCommits(t *testing.T) {
 	}
 	tb.SetText("NewKick")
 
-	// Inject '\n' via inputChars with isKeyPressed(Enter) = false.
-	// This simulates the soft keyboard Done/Enter button.
+	// The soft keyboard's Done: '\n' with isKeyPressed(Enter) false.
 	restore = SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(b ebiten.MouseButton) bool { return false },

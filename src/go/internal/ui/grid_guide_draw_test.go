@@ -59,9 +59,7 @@ func TestGuideGhostDrawnAtCommitCell(t *testing.T) {
 	img := ebiten.NewImage(1280, 720)
 	g.Draw(img)
 
-	// Expected ghost center: screen position of cell (0,4). Filter to
-	// ghost-sized rects — large rects (backgrounds, panels) would contain the
-	// point trivially and mask a missing ghost.
+	// Ghost-sized rects only: a background or panel contains the point trivially and would mask a missing ghost.
 	cx := int(g.cam.OffsetX)
 	cy := int(g.cam.OffsetY+4*u*g.cam.Scale) + gridTopOffset()
 	found := false
@@ -85,11 +83,8 @@ func TestGuideLayerHiddenOutsideGridPane(t *testing.T) {
 	}
 }
 
-// TestCursorLabelHiddenOverHigherZSurfaces: the cursor coordinate label is an
-// unclipped z=70 layer, so without its own occlusion check it paints on top
-// of the sidebar (z=60), the group menu (z=62), and into the settings-gear
-// corner — surfaces that render and handle input above the grid. The label
-// must only appear over bare grid.
+// The label is an unclipped z=70 layer, so it needs its own occlusion check to stay off the sidebar, the group
+// menu and the gear corner.
 func TestCursorLabelHiddenOverHigherZSurfaces(t *testing.T) {
 	g, a, b := buildGuideCircuit(t, 12)
 
@@ -116,10 +111,7 @@ func TestCursorLabelHiddenOverHigherZSurfaces(t *testing.T) {
 		t.Fatalf("control: label must show over bare grid")
 	}
 
-	// 1. Over the open node sidebar — now a compact card anchored beside the
-	// tapped node (rendered through the global OverlayPortal) rather than a
-	// full-height left panel, so the probe point must be derived from the
-	// card's actual rect instead of a hardcoded corner.
+	// The sidebar is a card beside the node, so the probe comes from its actual rect.
 	g.selectNodeOpenSidebar(a)
 	g.sidebar.layout()
 	panel, ok := g.sidebar.rects[sbPanel]

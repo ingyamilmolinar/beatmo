@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestImportRejectsRetiredLogicSpellings: a rule has one spelling. A file
-// naming a retired one (skip_if_prev_*, prev_fired, every_n_loops, none) is
-// rejected before anything resets, instead of being silently remapped.
+// One spelling per rule: a retired one is rejected before anything resets, never remapped.
 func TestImportRejectsRetiredLogicSpellings(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -37,8 +35,7 @@ func TestImportRejectsRetiredLogicSpellings(t *testing.T) {
 	}
 }
 
-// TestImportKeepsEveryLogicRuleAndNoneClears: every rule survives import
-// verbatim, and selecting None in the sidebar clears it.
+// Every rule survives import verbatim, and None in the sidebar clears it.
 func TestImportKeepsEveryLogicRuleAndNoneClears(t *testing.T) {
 	assertDefaultParityState(t)
 	file := projectFile{
@@ -80,8 +77,6 @@ func TestImportKeepsEveryLogicRuleAndNoneClears(t *testing.T) {
 	if node4.Params.LogicKind != model.LogicSkipEveryN || node4.Params.LogicN != 2 {
 		t.Fatalf("node4 logic = %q n=%d, want skip_every_n n=2", node4.Params.LogicKind, node4.Params.LogicN)
 	}
-	// Now select node4 and choose None: logic should be cleared
-	// find ui node for node4
 	var u4 *uiNode
 	for _, u := range g.nodes {
 		if u.I == node4.I && u.J == node4.J {

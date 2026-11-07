@@ -63,12 +63,7 @@ func TestInstDisplayLabel_InitializesCache(t *testing.T) {
 	}
 }
 
-// --- computeInstLabel tests ---
-// NOTE: catalog-tier resolution (explicit Name, RelPath basename, empty-Name
-// → RelPath) moved into audio.InstrumentDisplayName and is tested in
-// internal/audio/instrument_names_test.go (TestInstrumentDisplayNameRelPathFallback).
-// computeInstLabel now just delegates, so the UI-tier instMeta tests were
-// removed. Remaining tests cover the pure-id pretty-case fallback path.
+// Catalog-tier resolution lives in audio.InstrumentDisplayName; these cover the pure-id fallback.
 
 func TestComputeInstLabel_FallbackCapitalize(t *testing.T) {
 	dv := &DrumView{}
@@ -122,8 +117,7 @@ func TestMatchInstrumentSearch_MatchIDCaseInsensitive(t *testing.T) {
 }
 
 func TestMatchInstrumentSearch_MatchLabel(t *testing.T) {
-	// The display label now resolves through audio.InstrumentDisplayName, which
-	// reads the real catalog — so seed it there rather than dv.instMeta.
+	// The label resolves through the real catalog, so it is seeded there.
 	audio.ResetCatalogForTest([]audio.SoundMeta{{ID: "k808", Name: "808 Deep Kick"}})
 	defer audio.ResetCatalogForTest(nil)
 	dv := &DrumView{}

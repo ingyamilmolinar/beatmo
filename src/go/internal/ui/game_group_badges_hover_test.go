@@ -8,8 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// stubCursorAt stubs the cursor position (no buttons/keys) for hover-only
-// checks — lighter than gridClick/shiftDrag, which also drive press state.
+// Lighter than gridClick/shiftDrag, which also drive press state.
 func stubCursorAt(x, y int) func() {
 	return SetInputForTest(
 		func() (int, int) { return x, y },
@@ -21,10 +20,6 @@ func stubCursorAt(x, y int) func() {
 	)
 }
 
-// TestBadgeHoverComputesHighlight is task-enabled-status brief Part B test 1
-// (RED): with the cursor stubbed directly over group 2's badge rect,
-// hoveredGroupBadge() must resolve to gid2; moved off every badge, it must
-// resolve to none.
 func TestBadgeHoverComputesHighlight(t *testing.T) {
 	g, _, _, _, _, _, gid2 := buildTwoGroupsCircuit(t)
 
@@ -46,13 +41,7 @@ func TestBadgeHoverComputesHighlight(t *testing.T) {
 	}
 }
 
-// TestGroupExternalHighlightGidPrefersOpenMenu is task-enabled-status brief
-// Part B test 2 (structural): groupExternalHighlightGid resolves the OPEN
-// GroupMenu's group over a merely-hovered badge (matches groupRingColor's
-// existing "open menu draws strong" precedent), and hoveredGroupBadge alone
-// resolves when no menu is open. Hoisted once per frame by drawGridNodes (see
-// its call site), not per node — this test exercises the resolver directly
-// rather than duplicating a pixel test.
+// The OPEN menu's group beats a merely hovered badge, as groupRingColor's "open menu draws strong".
 func TestGroupExternalHighlightGidPrefersOpenMenu(t *testing.T) {
 	g, _, _, _, _, gid1, gid2 := buildTwoGroupsCircuit(t)
 
@@ -67,8 +56,6 @@ func TestGroupExternalHighlightGidPrefersOpenMenu(t *testing.T) {
 		t.Fatalf("no menu open: groupExternalHighlightGid() = (%v,%v), want (%v,true)", gid, ok, gid2)
 	}
 
-	// Open gid1's menu (different group than the hovered badge): the open
-	// menu's group must win over the hover.
 	g.groupMenu.OpenAt(gid1, 10, 10)
 	gid, ok = g.groupExternalHighlightGid()
 	if !ok || gid != gid1 {
@@ -76,10 +63,7 @@ func TestGroupExternalHighlightGidPrefersOpenMenu(t *testing.T) {
 	}
 }
 
-// TestGroupBadgeBrightensFillOnHover pins the cheap hover affordance: the
-// badge fill color for the hovered group's badge is a brighter alpha bucket
-// than the un-hovered fill (AlphaStrong vs AlphaMedium), never a new color
-// literal — same groupColor RGB, only the alpha bucket differs.
+// A brighter alpha bucket of the same groupColor RGB, never a new colour literal.
 func TestGroupBadgeBrightensFillOnHover(t *testing.T) {
 	g, _, _, _, _, _, gid2 := buildTwoGroupsCircuit(t)
 

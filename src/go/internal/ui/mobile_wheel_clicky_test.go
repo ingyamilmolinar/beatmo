@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// wheelValueDrag presses just inside the barrel (not the center band or strip),
-// drags the finger DOWN by dyDown px in a single move, then releases. Drag down
-// pulls the higher (top) rows toward the center selector, so it advances the value.
+// Outside the centre band and strip. Dragging down pulls the higher rows to the selector, raising the value.
 func wheelValueDrag(w *MobileWheelPopup, dyDown int) {
 	sx := w.valRect.Min.X + 4
 	sy := w.valRect.Min.Y + 4 // above the center band -> value drag, not editor
@@ -19,8 +17,7 @@ func wheelValueDrag(w *MobileWheelPopup, dyDown int) {
 	w.HandleInput(sx, sy+dyDown, false)
 }
 
-// A drag of exactly one notch advances the value by exactly ONE step (StepMul),
-// not by a continuous pixel-scaled amount. Clicky, like a discrete knob.
+// One notch is exactly ONE step, like a discrete knob, never a pixel-scaled amount.
 func TestWheelDragClicky_OneStepPerNotch(t *testing.T) {
 	k := newEndlessKnobForTest(0, 1000, 1.0) // StepMul=1, value 0.5 -> 500
 	b, _ := wheelTestBinding(k)
@@ -34,8 +31,7 @@ func TestWheelDragClicky_OneStepPerNotch(t *testing.T) {
 	}
 }
 
-// A drag shorter than one notch must not move the value at all (sub-notch travel
-// accumulates; it does not fly the value forward).
+// Sub-notch travel accumulates rather than moving the value.
 func TestWheelDragClicky_SubNotchNoChange(t *testing.T) {
 	k := newEndlessKnobForTest(0, 1000, 1.0)
 	b, _ := wheelTestBinding(k)
@@ -63,8 +59,7 @@ func TestWheelDragClicky_MultipleNotches(t *testing.T) {
 	}
 }
 
-// The shared stepNotcher emits one step per pxPerNotch of travel, retains the
-// remainder, and handles negatives — the cadence reused by every clicky control.
+// One step per pxPerNotch, the remainder kept, negatives handled: the cadence every clicky control shares.
 func TestStepNotcherCadence(t *testing.T) {
 	n := newStepNotcher(10)
 	if got := n.add(9); got != 0 {
@@ -108,8 +103,7 @@ func paramDefEnumForTest() audio.ParamDef {
 	return audio.ParamDef{Name: "wave", Min: 0, Max: 3, Enum: []string{"Sine", "Saw", "Square", "Tri"}}
 }
 
-// A single two-finger/trackpad scroll event carries a large magnitude; it must
-// NOT dump many value steps at once. Scroll is paced, not magnitude-scaled.
+// A large trackpad event must not dump many steps at once: scroll is paced.
 func TestWheelScroll_LargeEventDoesNotFly(t *testing.T) {
 	k := newEndlessKnobForTest(0, 1000, 1.0) // StepMul=1, start 500
 	b, _ := wheelTestBinding(k)

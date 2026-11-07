@@ -2,12 +2,7 @@
 
 package ui
 
-// mobile_desktop_parity_test.go — cross-platform visual-parity guards.
-//
-// These tests pin the rule that VISUAL STYLING and ANIMATION never diverge
-// between mobile and desktop. (Layout arrangement and Density-driven sizing
-// may still diverge — those axes are exercised elsewhere.) Each test forces a
-// profile and asserts mobile renders the same treatment desktop does.
+// Visual styling and animation never diverge between mobile and desktop; layout and density may.
 
 import (
 	"image"
@@ -17,8 +12,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// roundedOp records one drawRoundedRect call (rect + premultiplied color +
-// radius + filled).
 type roundedOp struct {
 	rect       image.Rectangle
 	r, g, b, a uint32
@@ -26,8 +19,6 @@ type roundedOp struct {
 	filled     bool
 }
 
-// captureRounded intercepts drawRoundedRect and records every call. Returns a
-// snapshot getter + restore.
 func captureRounded() (ops func() []roundedOp, restore func()) {
 	var got []roundedOp
 	orig := drawRoundedRect
@@ -39,8 +30,6 @@ func captureRounded() (ops func() []roundedOp, restore func()) {
 	return func() []roundedOp { return got }, func() { drawRoundedRect = orig }
 }
 
-// withProfile runs fn with the mobile/desktop profile forced, restoring the
-// previous profile afterward.
 func withProfile(t *testing.T, mobile bool, fn func()) {
 	t.Helper()
 	prev := forceSmallScreenForTest
@@ -50,9 +39,7 @@ func withProfile(t *testing.T, mobile bool, fn func()) {
 	fn()
 }
 
-// TestTopEdgeHighlightParity pins that the subtle top-edge depth highlight on
-// buttons renders on BOTH platforms (was desktop-only under the retired
-// "mobile chrome stays flat" rule).
+// The top-edge depth highlight renders on both platforms.
 func TestTopEdgeHighlightParity(t *testing.T) {
 	var desktop, mobile bool
 	withProfile(t, false, func() { desktop = Profile().DrawTopEdgeHighlight })
@@ -70,11 +57,7 @@ func TestTopEdgeHighlightParity(t *testing.T) {
 	}
 }
 
-// TestTransportGroupStyleParity pins that the transport cluster pill (play +
-// stop + record container) renders with the SAME fill, border, and radius on
-// both platforms — previously mobile used colSurface2 + colBorderMedium +
-// RadiusMD+2 while desktop used colTransportGroupBG + colTransportGroupBorder +
-// RadiusMD.
+// Same fill, border and radius on both platforms.
 func TestTransportGroupStyleParity(t *testing.T) {
 	groupRect := image.Rect(10, 10, 120, 44)
 	capture := func(mobile bool) []roundedOp {
@@ -107,9 +90,7 @@ func TestTransportGroupStyleParity(t *testing.T) {
 	}
 }
 
-// TestRecordArmedRingParity pins that the destructive recording-armed ring
-// around the record button renders on BOTH platforms (was mobile-only). The
-// recording-state highlight must not diverge by platform.
+// The recording-state ring must not diverge by platform.
 func TestRecordArmedRingParity(t *testing.T) {
 	want := genColorDestructive
 	dr, dg, db, da := want.RGBA()

@@ -11,10 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newKebabTestDrumView creates a DrumView with one row for kebab-button tests,
-// runs a warm-up frame so layout is initialized, and returns the view.
-// Uses desktop layout (1280x800) where the kebab button is visible in-row;
-// on mobile the button is hidden (context menu is opened via label tap).
+// Desktop (1280x800), where the kebab shows in-row.
 func newKebabTestDrumView(t *testing.T) *DrumView {
 	t.Helper()
 	const W, H = 1280, 800
@@ -40,11 +37,7 @@ func newKebabTestDrumView(t *testing.T) *DrumView {
 	return dv
 }
 
-// TestRowKebab_StyledAsChip pins the row-menu button visual contract: the
-// neutral row-control body at rounded.control, an "overflow" icon, and at
-// least TouchMinTarget() height. The button is visible on desktop layout
-// (col 5 of the row rack); on mobile it is hidden and context menu is
-// triggered by tapping the row label instead.
+// The neutral body at rounded.control, an "overflow" icon, at least TouchMinTarget() tall.
 func TestRowKebab_StyledAsChip(t *testing.T) {
 	assertDefaultParityState(t)
 	// Desktop layout: profile defaults to desktop at 1280×800.
@@ -74,10 +67,7 @@ func TestRowKebab_StyledAsChip(t *testing.T) {
 		t.Errorf("row-kebab height %d below TouchMinTarget %d", kebabRect.Dy(), TouchMinTarget())
 	}
 
-	// The kebab sits in the last column of the row rack (col 5).
-	// Verify it's right of the label (col 0). The gap may be large because
-	// vol/mute/solo/FX controls sit between them, so we check only that
-	// kebab.Min.X > label.Max.X (no overlap to the left of the label).
+	// The last rack column, right of the label with the other controls between them.
 	groups := dv.rowRackZone.RowGroups()
 	if len(groups) == 0 || groups[0].Label == nil || groups[0].Label.Rect().Empty() {
 		t.Skip("no label rect to compare alignment")
@@ -88,8 +78,6 @@ func TestRowKebab_StyledAsChip(t *testing.T) {
 	}
 }
 
-// TestRowKebab_TapOpensContextMenu pins the click-through (regression
-// guard for the existing kebab tap → context menu flow).
 func TestRowKebab_TapOpensContextMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	// Desktop layout: profile defaults to desktop at 1280×800.

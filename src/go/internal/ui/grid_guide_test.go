@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// buildGuideCircuit creates two nodes at (0,0) and (0,span) joined by one
-// vertical edge, with a deterministic camera. Mirrors the canonical
-// functional-test constructor (see buildGroupLoopCircuit, game_groups_test.go).
+// A deterministic camera, on the canonical functional-test constructor.
 func buildGuideCircuit(t *testing.T, span int) (*Game, *uiNode, *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -55,8 +53,7 @@ func TestGuideSmallestDenominatorRule(t *testing.T) {
 	g, _, _ := buildGuideCircuit(t, 12)
 	u := g.grid.Unit()
 
-	// Zoomed in: radius < 1 unit → exact nearest cell. Cursor at 4.2 units
-	// along the edge picks cell 4 = 1/3 of the span.
+	// Radius < 1 unit: exact nearest cell; 4.2 units picks cell 4 = 1/3.
 	g.cam.Scale = float64(Profile().DensityValues().GuideSnapRadius) / (0.9 * u)
 	sx, sy := guideScreenAt(g, 0.2*u, 4.2*u)
 	got := g.guideTargetAt(sx, sy)
@@ -65,8 +62,7 @@ func TestGuideSmallestDenominatorRule(t *testing.T) {
 			got.Kind, got.I, got.J, got.Num, got.Den)
 	}
 
-	// Zoomed out: radius ≈ 4 units. Cursor at 4.4 units now also has cell 6
-	// (= 1/2, denominator 2) in reach — the simpler fraction wins.
+	// Radius ≈ 4 units: cell 6 (= 1/2) is in reach and the simpler fraction wins.
 	g.cam.Scale = float64(Profile().DensityValues().GuideSnapRadius) / (4.0 * u)
 	sx, sy = guideScreenAt(g, 0.2*u, 4.4*u)
 	got = g.guideTargetAt(sx, sy)
@@ -79,8 +75,7 @@ func TestGuideSmallestDenominatorRule(t *testing.T) {
 func TestGuideThirdsUnrepresentableOnSpan8(t *testing.T) {
 	g, _, _ := buildGuideCircuit(t, 8)
 	u := g.grid.Unit()
-	// Tight radius (0.5u): only cell 3 is reachable near 8/3 ≈ 2.67 → the
-	// honest fraction is 3/8 (no exact third exists on a span-8 edge).
+	// Radius 0.5u: only cell 3 is reachable, so 3/8 (a span-8 edge has no exact third).
 	g.cam.Scale = float64(Profile().DensityValues().GuideSnapRadius) / (0.5 * u)
 	sx, sy := guideScreenAt(g, 0.2*u, (8.0/3.0)*u)
 	got := g.guideTargetAt(sx, sy)
@@ -88,8 +83,7 @@ func TestGuideThirdsUnrepresentableOnSpan8(t *testing.T) {
 		t.Fatalf("tight: got kind=%v cell=(%d,%d) frac=%d/%d, want edge (0,3) 3/8",
 			got.Kind, got.I, got.J, got.Num, got.Den)
 	}
-	// Wider radius (0.9u): cell 2 (= 1/4, denominator 4) comes into reach and
-	// beats 3/8 despite being farther from the cursor.
+	// Radius 0.9u: cell 2 (= 1/4) is in reach and beats 3/8 though farther away.
 	g.cam.Scale = float64(Profile().DensityValues().GuideSnapRadius) / (0.9 * u)
 	sx, sy = guideScreenAt(g, 0.2*u, (8.0/3.0)*u)
 	got = g.guideTargetAt(sx, sy)
@@ -143,11 +137,8 @@ func TestGuideSpanOneEdgeNeverEdgeTarget(t *testing.T) {
 }
 
 func TestGuideOccupiedCellResolvesToNode(t *testing.T) {
-	// A node parked on an interior cell of a hand-built UI edge (defensive
-	// case: normal placement auto-stitches, but imports/origin flows can
-	// leave this shape). Built WITHOUT buildGuideCircuit: the nodes must be
-	// created BEFORE any edge exists so no stitch splits the spanning edge —
-	// and no g.addEdge call, so g.edges holds exactly the hand-built edge.
+	// A node on an interior cell of a hand-built edge (imports can leave this shape): nodes first and no g.addEdge, so
+	// no stitch splits the edge.
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -161,11 +152,8 @@ func TestGuideOccupiedCellResolvesToNode(t *testing.T) {
 	g.cam.OffsetX = 200
 	g.cam.OffsetY = 60
 	u := g.grid.Unit()
-	// Radius 1.5u; cursor 1.2u perpendicular, along-axis 5.0. The reachable
-	// cells are 4..6; cell 6 (1/2, den 2) wins the smallest-denominator rule
-	// but is occupied by c → GuideNode(c). c itself is hypot(1.2,1.0) ≈ 1.56u
-	// from the cursor — outside the radius — so the node-search phase cannot
-	// claim it first; only the occupied-cell branch can.
+	// Radius 1.5u: cell 6 (1/2) wins but is occupied by c, which is 1.56u away (outside the radius), so only the
+	// occupied-cell branch can return GuideNode(c).
 	g.cam.Scale = float64(Profile().DensityValues().GuideSnapRadius) / (1.5 * u)
 	sx, sy := guideScreenAt(g, 1.2*u, 5.0*u)
 	got := g.guideTargetAt(sx, sy)

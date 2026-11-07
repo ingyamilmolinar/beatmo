@@ -16,16 +16,11 @@ import (
 func TestRuntimeAudioLookaheadMaxCap(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
-	// Base high enough that base + the 30ms pressure extra crosses the
-	// 150ms ceiling in runtimeAudioLookahead (game_audio_schedule.go) —
-	// the cap, not the extra, must win. (This test used to assert a 60ms
-	// cap that the implementation no longer has.)
+	// High enough that base + the 30 ms extra crosses the 150 ms ceiling: the cap must win.
 	g.audioLookaheadSec = 0.14
 	g.SetPlayingForTest(true)
 
-	// Simulate high draw times to trigger max extra.
-	// snapshot() computes drawAvgMS = drawSumNS / frames / 1e6.
-	// To get drawAvgMS=25.0: frames=10, drawSumNS = 25 * 10 * 1e6 = 250_000_000
+	// drawAvgMS = drawSumNS / frames / 1e6, so 25 ms at 10 frames.
 	g.perf.reset()
 	atomic.StoreInt64(&g.perf.frames, 10)
 	atomic.StoreInt64(&g.perf.drawSumNS, 250_000_000) // 25ms avg
@@ -63,10 +58,7 @@ func TestRuntimeAudioLookaheadNotPlayingCap(t *testing.T) {
 	}
 }
 
-// TestExpectedHighlightSecondsUnknownInstrumentFallback verifies the BPM
-// fallback path at a normal BPM. Under the test stub, SampleSeconds always
-// returns 0, so expectedHighlightSeconds takes the BPM fallback:
-// (60/120)*0.25 = 0.125, which falls within [minHighlightSeconds, maxHighlightSeconds].
+// The test stub's SampleSeconds is 0, so the BPM fallback: (60/120)·0.25 = 0.125.
 func TestExpectedHighlightSecondsUnknownInstrumentFallback(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -89,9 +81,7 @@ func TestExpectedHighlightSecondsUnknownInstrumentFallback(t *testing.T) {
 	}
 }
 
-// TestExpectedHighlightSecondsHighBPMFallback verifies that at very high BPM
-// (600), the fallback formula (60/600)*0.25 = 0.025 is below minHighlightSeconds
-// and the result is clamped to minHighlightSeconds (0.05).
+// (60/600)·0.25 = 0.025, clamped up to 0.05.
 func TestExpectedHighlightSecondsHighBPMFallback(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -111,9 +101,7 @@ func TestExpectedHighlightSecondsHighBPMFallback(t *testing.T) {
 	}
 }
 
-// TestExpectedHighlightSecondsLowBPMFallback verifies that at very low BPM
-// (15), the fallback formula (60/15)*0.25 = 1.0 exceeds maxHighlightSeconds
-// and the result is clamped to maxHighlightSeconds (0.20).
+// (60/15)·0.25 = 1.0, clamped down to 0.20.
 func TestExpectedHighlightSecondsLowBPMFallback(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -133,8 +121,6 @@ func TestExpectedHighlightSecondsLowBPMFallback(t *testing.T) {
 	}
 }
 
-// TestExpectedHighlightSecondsAlwaysPositive verifies that expectedHighlightSeconds
-// never returns zero or negative for a range of BPM values.
 func TestExpectedHighlightSecondsAlwaysPositive(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -157,9 +143,7 @@ func TestExpectedHighlightSecondsAlwaysPositive(t *testing.T) {
 	}
 }
 
-// TestScheduleSoundMuteNodeStopsAudio verifies that scheduleSound with a mute
-// node type calls audio.Stop for the instrument and returns early without
-// enqueuing a sound request.
+// A mute node stops the instrument and enqueues nothing.
 func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -187,17 +171,7 @@ func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 	}
 }
 
-// TestAudioChNearFull was removed alongside the audioChNearFull() source
-// method ("R2.3 — removed the audioChNearFull skip-tick", see
-// game_sequencer_schedule.go). Kept intentionally blank to make the removal
-// auditable in git history; the deleted test body referenced
-// g.audioChNearFull() which no longer exists.
-
-// TestRuntimeAudioLookaheadNeverShrinksMidPlay pins the ratchet: once UI
-// pressure grows the cushion, a calmer frame must not shrink it again within
-// the same transport generation — every change shifts all later notes, so an
-// oscillating cushion is audible as tempo hiccups. A new generation (Stop,
-// Pause, seek) starts from the base again.
+// Every change shifts all later notes, so an oscillating cushion is audible; a new generation starts from base.
 func TestRuntimeAudioLookaheadNeverShrinksMidPlay(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)

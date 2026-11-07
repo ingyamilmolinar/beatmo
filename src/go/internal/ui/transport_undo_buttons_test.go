@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// TestTransportUndoRedoButtonsWired verifies the transport-bar Undo/Redo
-// buttons exist and route through the wired callbacks into the Game's
-// UndoManager: clicking Undo after a recorded action makes Redo available.
+// Clicking Undo after a recorded action makes Redo available.
 func TestTransportUndoRedoButtonsWired(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.drum.AddRow()
@@ -22,9 +20,8 @@ func TestTransportUndoRedoButtonsWired(t *testing.T) {
 		t.Fatal("precondition: expected CanUndo after record")
 	}
 
-	// The buttons defer the restore via QueueAction (so it never runs under the
-	// seqMu that Game.Update holds during dispatch); Game.Update drains the queue
-	// after releasing the lock, which drainPendingActions reproduces here.
+	// The restore is queued so it never runs under the seqMu Update holds; drainPendingActions is Update's
+	// post-lock drain.
 	tz.undoBtn.OnClick()
 	g.drainPendingActions()
 	if !g.undoManager.CanRedo() {
@@ -38,8 +35,7 @@ func TestTransportUndoRedoButtonsWired(t *testing.T) {
 	}
 }
 
-// TestTransportUndoRedoDim verifies the labels dim when the respective stack
-// is empty and re-light when it is non-empty, via syncUndoRedoVisual.
+// Dimmed while the stack is empty, lit when it is not.
 func TestTransportUndoRedoDim(t *testing.T) {
 	g := newTestGameForUndo(t)
 	tz := g.drum.transportZone

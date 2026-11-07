@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Repro: Changing volume on a node that also has pitch and duration set must
-// still affect playback volume. This ensures the three parameters combine.
+// Volume still applies when pitch and duration are also set.
 func TestNodeVolumeWorksWithPitchAndDuration(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

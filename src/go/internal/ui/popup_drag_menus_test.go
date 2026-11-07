@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// dragRig drives real g.Update() frames with scriptable pointer state — the
-// project's functional-over-isolation rule: the grip must work through the
-// actual dispatcher, not a hand-called HandleInput.
+// Through the real dispatcher, never a hand-called HandleInput.
 type dragRig struct {
 	g    *Game
 	x, y int
@@ -73,8 +71,6 @@ func openNodeMenuForDrag(t *testing.T, r *dragRig) *uiNode {
 	return n
 }
 
-// TestNodeMenuGripDragMovesCard is the headline behavior: press the grip, move,
-// release — the card is where it was dropped.
 func TestNodeMenuGripDragMovesCard(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openNodeMenuForDrag(t, r)
@@ -104,8 +100,7 @@ func TestNodeMenuGripDragMovesCard(t *testing.T) {
 	}
 }
 
-// TestNodeMenuGripDragPinSurvivesFrames: the pin is not a one-frame nudge that
-// the next layout re-anchors away.
+// Not a one-frame nudge the next layout re-anchors.
 func TestNodeMenuGripDragPinSurvivesFrames(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openNodeMenuForDrag(t, r)
@@ -123,8 +118,7 @@ func TestNodeMenuGripDragPinSurvivesFrames(t *testing.T) {
 	}
 }
 
-// TestNodeMenuGripDragSurvivesCameraPan: pinned means pinned to the SCREEN —
-// panning the grid must not drag the card along with its node.
+// Pinned to the screen: a grid pan does not take the card with its node.
 func TestNodeMenuGripDragSurvivesCameraPan(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openNodeMenuForDrag(t, r)
@@ -166,8 +160,7 @@ func TestNodeMenuReopenResetsToDefault(t *testing.T) {
 	}
 }
 
-// TestNodeMenuGripPressCreatesNoNode: the grip press must be consumed, never
-// fall through to the grid editor.
+// Consumed, never reaching the grid editor.
 func TestNodeMenuGripPressCreatesNoNode(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openNodeMenuForDrag(t, r)
@@ -182,8 +175,7 @@ func TestNodeMenuGripPressCreatesNoNode(t *testing.T) {
 	}
 }
 
-// TestNodeMenuGripDragDoesNotScroll: the grip lives in the header band, above
-// the scroll viewport — a drag on it must not scroll the card's content.
+// The grip sits above the scroll viewport.
 func TestNodeMenuGripDragDoesNotScroll(t *testing.T) {
 	r := newDragRig(t, 640, 250) // short pane → content overflows
 	openNodeMenuForDrag(t, r)
@@ -200,9 +192,7 @@ func TestNodeMenuGripDragDoesNotScroll(t *testing.T) {
 	}
 }
 
-// TestNodeMenuStaysInGridPaneWhenDragged: the card renders through the
-// grid-sidebar GridTree layer (clip:true) — anything outside the pane is
-// scissored away, so the drag must never put it there.
+// The layer clips to the pane, so a card outside it would be scissored away.
 func TestNodeMenuStaysInGridPaneWhenDragged(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openNodeMenuForDrag(t, r)
@@ -217,8 +207,6 @@ func TestNodeMenuStaysInGridPaneWhenDragged(t *testing.T) {
 	}
 }
 
-// openGroupMenuForDrag builds a three-node group and opens its menu, mirroring
-// the group_menu_open screenshot scene.
 func openGroupMenuForDrag(t *testing.T, r *dragRig) model.GroupID {
 	t.Helper()
 	a := r.g.tryAddNode(2, 1, model.NodeTypeRegular)
@@ -253,12 +241,8 @@ func TestGroupMenuGripDragMovesCard(t *testing.T) {
 	}
 
 	from := image.Pt(grip.Min.X+grip.Dx()/2, grip.Min.Y+grip.Dy()/2)
-	// Both axes must move up-and-left: at this window size (1280x720, 50/50
-	// split → 360px-tall grid pane) the ~250px-tall card is already anchored
-	// with its bottom edge touching the pane floor, so a downward delta would
-	// be silently clamped to 0 by clampOriginInPane and this assertion would
-	// be testing clamping, not tracking. Moving up-left instead stays inside
-	// the pane on both axes and exercises the real 1:1 cursor-delta tracking.
+	// Up-left: the card already touches the pane floor at 1280x720, so a downward drag would test clamping, not
+	// tracking.
 	r.dragGrip(from, from.Add(image.Pt(-90, -80)))
 
 	after := r.g.groupMenu.panel
@@ -267,9 +251,7 @@ func TestGroupMenuGripDragMovesCard(t *testing.T) {
 	}
 }
 
-// TestGroupMenuPinnedIgnoresMemberAvoidance: auto placement dodges member
-// rects; once pinned, the card must stay where it was dropped even if a member
-// moves under it (camera pan), not get shoved aside.
+// Auto placement dodges members; a pinned card stays where it was dropped.
 func TestGroupMenuPinnedIgnoresMemberAvoidance(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openGroupMenuForDrag(t, r)
@@ -313,8 +295,7 @@ func TestGroupMenuReopenResetsToDefault(t *testing.T) {
 	}
 }
 
-// TestGroupMenuCapturingDuringDrag: without this the dispatcher drops the
-// capture mid-gesture and the card stops following the cursor.
+// Without it the dispatcher drops the capture mid-gesture.
 func TestGroupMenuCapturingDuringDrag(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openGroupMenuForDrag(t, r)
@@ -336,8 +317,6 @@ func TestGroupMenuCapturingDuringDrag(t *testing.T) {
 	}
 }
 
-// TestGroupMenuStaysInGridPaneWhenDragged mirrors the node-card containment
-// guarantee.
 func TestGroupMenuStaysInGridPaneWhenDragged(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openGroupMenuForDrag(t, r)
@@ -352,17 +331,8 @@ func TestGroupMenuStaysInGridPaneWhenDragged(t *testing.T) {
 	}
 }
 
-// TestGripDragDoesNotPanCamera: panOK gates on menuHit(cursor), which is
-// position-based — once the drag pulls the cursor off the card the grid would
-// start panning under the moving menu. The drag state must gate it instead.
-//
-// A modest in-bounds drag (e.g. +300,+120) is NOT a real test of this: the
-// card tracks the cursor 1:1 while unclamped, so the grab-offset point stays
-// under the cursor and menuHit(cursor) stays true on its own — the gate would
-// never be exercised. This drags to a far corner (mirroring
-// TestNodeMenuStaysInGridPaneWhenDragged) so clampPopupOrigin clamps the card
-// against the grid-pane edge while the raw cursor keeps travelling — the
-// cursor demonstrably separates from the card while the button is still held.
+// panOK gates on menuHit(cursor), so the drag state must gate it once the cursor leaves the card. The drag goes
+// to a far corner where the card clamps and the cursor separates from it; a modest drag never would.
 func TestGripDragDoesNotPanCamera(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openNodeMenuForDrag(t, r)
@@ -379,8 +349,7 @@ func TestGripDragDoesNotPanCamera(t *testing.T) {
 	}
 }
 
-// TestGridMenuDraggingReportsBothMenus keeps the gate honest for the group
-// menu too — a helper that only checks the sidebar would silently regress.
+// A helper checking only the sidebar would regress the group menu silently.
 func TestGridMenuDraggingReportsBothMenus(t *testing.T) {
 	r := newDragRig(t, 1280, 720)
 	openGroupMenuForDrag(t, r)

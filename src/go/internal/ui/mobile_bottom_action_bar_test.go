@@ -10,11 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestBottomActionBar_AllocatedOnMobile verifies that on the mobile profile
-// the DrumView allocates a bottom action bar rect that anchors to the
-// drum-pane bottom, spans the drum-pane width, and is at least
-// TouchMinTarget tall. This is the host for the volume icon, view-switch,
-// and overflow buttons in the mobile bottom-sheet redesign (B3 critique).
+// Anchored to the drum-pane bottom, full width, at least TouchMinTarget tall.
 func TestBottomActionBar_AllocatedOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -37,8 +33,6 @@ func TestBottomActionBar_AllocatedOnMobile(t *testing.T) {
 	}
 }
 
-// TestBottomActionBar_EmptyOnDesktop verifies the bottom action bar is NOT
-// allocated on the desktop profile — it is a mobile-only affordance.
 func TestBottomActionBar_EmptyOnDesktop(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -51,9 +45,7 @@ func TestBottomActionBar_EmptyOnDesktop(t *testing.T) {
 	}
 }
 
-// TestBottomActionBar_DrumPaneShrinks verifies that on mobile the rows area
-// ends at or above the bottom action bar — rows must never paint beneath
-// the bar that hosts vol/view/overflow controls.
+// Rows never paint beneath the bar.
 func TestBottomActionBar_DrumPaneShrinks(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -68,9 +60,7 @@ func TestBottomActionBar_DrumPaneShrinks(t *testing.T) {
 	}
 }
 
-// TestBottomActionBar_HostsSegmentedControlOnly (Theme 1) verifies that
-// on mobile the bottom action bar hosts ONLY the 6-segment view switcher.
-// Vol icon and overflow now live in the top transport toolbar (Theme 4).
+// Only the view switcher: volume and overflow live in the top transport toolbar.
 func TestBottomActionBar_HostsSegmentedControlOnly(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -107,34 +97,18 @@ func TestBottomActionBar_HostsSegmentedControlOnly(t *testing.T) {
 	}
 }
 
-// TestUltraShortViewport_VolViewOverflowReachable verifies that on
-// ultra-short viewports (landscape phones, drum-pane height insufficient
-// for bar + 1 row) the vol/view/overflow buttons remain reachable —
-// either inside the bottom action bar OR inside the top transport
-// toolbar. Without this guard, the bar collapse in recalcButtons
-// orphans the buttons (transport zone already cleared them, drumview
-// won't re-place them), leaving the user with no entry point to the
-// overflow menu.
+// When the bar collapses on an ultra-short viewport its buttons must stay reachable somewhere, or the user
+// has no way into the overflow menu.
 func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// Ultra-short viewport (480×200 — landscape watch / split-screen
-	// landscape phone). With the 2026-05-10 adaptive-portrait split
-	// fix, drum-pane height = max(needed, h*0.30) but clamped at
-	// `maxDrum = h*0.65`; at h=200 the cap forces drum pane ≤ 130 px,
-	// less than `headerH (56) + barH (44) + rowHeight (44) = 144`, so
-	// recalcButtons takes the bar-collapse branch. If this precondition
-	// stops triggering after future layout work, bump dims until the
-	// bar collapses again.
+	// At h=200 the drum pane is capped at 130 px, under the 144 that header + bar + one row need, so the bar
+	// collapses; if layout work changes that, shrink the viewport until it does again.
 	g.Layout(480, 200)
 
-	// Precondition assertion: bar IS collapsed on this viewport. If this
-	// fails the viewport math no longer triggers the bar-collapse path
-	// and the rest of the test stops being a regression guard for the
-	// orphaned-buttons bug — bump the dimensions until the bar collapses
-	// again.
+	// Without the collapse this test guards nothing: shrink the viewport until it collapses again.
 	if !g.drum.bottomActionBarRect.Empty() {
 		t.Fatalf("precondition: expected bar to collapse at 844x390 landscape; got %v — pick smaller dims", g.drum.bottomActionBarRect)
 	}
@@ -142,19 +116,13 @@ func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
 	if z == nil {
 		t.Fatalf("transportZone nil")
 	}
-	// Theme 1: legacy viewSwitchBtn is always suppressed on mobile in
-	// favor of the segmented control; the segmented lives only in the
-	// bottom action bar (which is collapsed here). At minimum the vol icon
-	// must remain reachable in the top toolbar.
+	// The segmented control lives only in the collapsed bar; the volume icon must still be in the top toolbar.
 	if z.mainVolIconRect.Empty() {
 		t.Errorf("mainVolIconRect unreachable on ultra-short viewport (empty)")
 	}
 }
 
-// TestMobileTransport_AllShareSingleRow is a regression guard for Task 1.4:
-// after the transport zone collapsed to a single row on mobile, all of
-// play/stop/record/bpm/subdiv must share the same Y baseline (within 1 px
-// for safeInsetTransport rounding).
+// The single-row transport: play/stop/record/bpm/subdiv share one baseline (±1 px of inset rounding).
 func TestMobileTransport_AllShareSingleRow(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -178,10 +146,7 @@ func TestMobileTransport_AllShareSingleRow(t *testing.T) {
 		t.Fatalf("transport rects unexpectedly empty")
 	}
 	names := []string{"playBtn", "stopBtn", "recordBtn", "bpmBox", "subdivBtn"}
-	// Midline alignment is the single-row invariant this test owns. Exact
-	// top/bottom agreement across the strip is a stricter, separate invariant —
-	// see TestTransportClusterSharesBounds, which is what caught the record
-	// button's old symmetric demote.
+	// Midlines only; exact top/bottom agreement is TestTransportClusterSharesBounds's.
 	mid := func(r image.Rectangle) int { return (r.Min.Y + r.Max.Y) / 2 }
 	baseMid := mid(rects[0])
 	for i, r := range rects {
@@ -196,11 +161,7 @@ func TestMobileTransport_AllShareSingleRow(t *testing.T) {
 	}
 }
 
-// TestBottomActionBar_DrawsSheetSurface verifies that on mobile the bottom
-// action bar paints a sheet surface (drawBottomSheetPanel) distinct from
-// the underlying background fill. Without the surface paint the bar host
-// reads back the bg color, which breaks the visual grouping of the
-// vol/view/overflow controls.
+// A sheet surface distinct from the background, which groups the bar's controls visually.
 func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -216,10 +177,7 @@ func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
 	screen := ebiten.NewImage(360, 700)
 	g.Draw(screen)
 
-	// Theme 1: the bar hosts the 6-segment switcher with horizontal
-	// padding only. Sample at the bar edge (1 px in from Min.X) which
-	// sits inside the bar's surface paint but outside the segmented
-	// control's rect.
+	// 1 px inside the bar's edge: on its surface, outside the segmented control.
 	x := bar.Min.X + 1
 	y := bar.Min.Y + bar.Dy()/2
 	r1, g1, b1, a1 := screen.At(x, y).RGBA()
@@ -227,9 +185,7 @@ func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
 		t.Fatalf("expected bar surface painted at (%d, %d); got transparent", x, y)
 	}
 
-	// Compare against a sample just ABOVE the bar (rows area). If the
-	// surface paint is missing, both samples read back the same bg color.
-	// drawBottomSheetPanel paints colPanelBG which differs from colBGBottom.
+	// Without the surface both samples read the background; the sheet paints colPanelBG.
 	yAbove := bar.Min.Y - 4
 	if yAbove < 0 {
 		t.Fatalf("test geometry: bar too high to sample above (bar.Min.Y=%d)", bar.Min.Y)
@@ -241,11 +197,7 @@ func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
 	}
 }
 
-// TestRowsRect_ExcludesBottomActionBar verifies the rowsRect() and
-// rowsAreaHeight() geometry helpers respect the mobile bottom action
-// bar — touches landing in the bar's vertical band must NOT count as
-// "in the rows area" (otherwise scroll dead-zone and row-tap dispatch
-// compete with bar-button taps).
+// A touch in the bar's band is not "in the rows area", or row scroll and taps compete with the bar's buttons.
 func TestRowsRect_ExcludesBottomActionBar(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)

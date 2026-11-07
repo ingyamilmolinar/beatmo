@@ -23,9 +23,8 @@ func topRightButtonCases() []topRightButtonCase {
 	}
 }
 
-// realTouchPath drives ONE real touch (globalTouchState → touch override →
-// gesture detector → Game.Update) that presses at path[0], moves through the
-// rest of path (one frame per point) and lifts at the last point.
+// ONE real touch through globalTouchState, the override, the gesture detector and Game.Update, a frame per
+// point.
 func realTouchPath(t *testing.T, g *Game, path ...image.Point) {
 	t.Helper()
 	mock := newMockTouchState()
@@ -52,8 +51,6 @@ func newSettledMobileGame(t *testing.T) *Game {
 	return g
 }
 
-// TestTopRightButtonsMobileRealTouch: a plain real-touch tap on the middle of
-// each top-right button opens its menu and creates no node.
 func TestTopRightButtonsMobileRealTouch(t *testing.T) {
 	for _, c := range topRightButtonCases() {
 		t.Run(c.name, func(t *testing.T) {
@@ -75,20 +72,8 @@ func TestTopRightButtonsMobileRealTouch(t *testing.T) {
 	}
 }
 
-// TestTopRightButtonsMobileEdgeTapWithLiftDrift reproduces the reported mobile
-// bug: "the top-right buttons cannot be used — if I tap, a node appears below".
-//
-// A finger's contact centroid lands a few px BELOW the target the user aims at,
-// and drifts a few more px while lifting. The press below lands inside the
-// button's 44px touch target (Button already expands its hit rect to
-// TouchMinTarget on mobile) but the grid dispatcher routed by the 30px VISIBLE
-// rect, so the button never fired; and the release-time GestureTap — routed by
-// a separate, narrower "reserved zone" evaluated at the LIFT point — fell into
-// the grid and created a node under the button. One gesture, two owners.
-//
-// Contract: a gesture whose press lands in a button's touch target belongs to
-// that button for its whole lifetime — it opens the menu, and nothing beneath
-// the button (the grid canvas) sees the tap, wherever the finger lifts.
+// A finger lands below its aim and drifts while lifting. A gesture whose press lands in a button's touch
+// target belongs to that button for its whole life, wherever it lifts: the grid never sees the tap.
 func TestTopRightButtonsMobileEdgeTapWithLiftDrift(t *testing.T) {
 	for _, c := range topRightButtonCases() {
 		for _, drift := range []int{0, 4, 9} {
@@ -118,10 +103,7 @@ func TestTopRightButtonsMobileEdgeTapWithLiftDrift(t *testing.T) {
 	}
 }
 
-// TestTopRightButtonsMobileSecondTapClosesMenu: every top-right button is a
-// toggle — a second real tap closes the menu its first tap opened, and neither
-// tap creates a node. (The theme button was missing from the toggle-reconcile
-// table, so its first press stayed latched and the second tap was swallowed.)
+// Every button is a toggle: the second tap closes its menu, and neither creates a node.
 func TestTopRightButtonsMobileSecondTapClosesMenu(t *testing.T) {
 	for _, c := range topRightButtonCases() {
 		t.Run(c.name, func(t *testing.T) {
@@ -144,14 +126,8 @@ func TestTopRightButtonsMobileSecondTapClosesMenu(t *testing.T) {
 	}
 }
 
-// TestTopRightClusterOwnsWholeGestureWhenNoMenuStaysOpen pins the gesture
-// latch itself: the press edge decides the owner ONCE. A tap that CLOSES a
-// button's menu leaves no open menu to shield the grid, and a finger that
-// drifts off the button before lifting reports its GestureTap below the
-// cluster. That tap belongs to the button that took the press, never to the
-// grid canvas beneath. (On mobile every point of the cluster is some button's
-// 44px touch target — the targets overlap the 6px gaps — so there is no inert
-// gap to probe here.)
+// The press decides the owner once: a tap that closes a menu, drifting off before lifting, still belongs to the
+// button. On mobile the 44 px targets overlap the gaps, so there is no inert gap.
 func TestTopRightClusterOwnsWholeGestureWhenNoMenuStaysOpen(t *testing.T) {
 	const drift = 9 // within the tap slop (tapMaxMovePx=10): still a tap
 	for _, c := range topRightButtonCases() {

@@ -9,15 +9,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestSidebarCloseButtonVisible verifies that the sidebar close button is
-// always drawn, even though it lives in the fixed header area above the
-// scrollable content viewport. Previously, the close button drawing was
-// guarded by sb.inViewport(r), which only returned true for the scrollable
-// content area below the header — so the close button never rendered.
+// Drawn although it sits in the fixed header above the scroll viewport, which inViewport alone rejects.
 func TestSidebarCloseButtonVisible(t *testing.T) {
 	assertDefaultParityState(t)
-	// The close × is desktop-only (mobile node card dismisses via tap-away), so
-	// this "close button renders" regression guard runs on the desktop profile.
+	// The close × is desktop only; the mobile card dismisses by tap-away.
 	withSmallScreen(t, false)
 
 	g := New(testLogger)
@@ -49,15 +44,11 @@ func TestSidebarCloseButtonVisible(t *testing.T) {
 		t.Errorf("close button rect %v is not within panel rect %v", closeRect, panel)
 	}
 
-	// Verify the close button is in the fixed header — its Max.Y should be
-	// LESS than contentTop, which is where inViewport starts accepting.
+	// In the fixed header, above where inViewport starts accepting.
 	contentTop := sidebarPad + sidebarHeaderH + sidebarGap
 	if closeRect.Max.Y >= contentTop {
 		t.Logf("close button Max.Y=%d >= contentTop=%d (inViewport would accept it anyway)", closeRect.Max.Y, contentTop)
 	} else {
-		// This is the case that previously caused the bug: the close button
-		// is above contentTop, so inViewport(closeRect) returned false and
-		// the button was never drawn.
 		t.Logf("close button Max.Y=%d < contentTop=%d — inViewport would reject this (pre-fix bug)", closeRect.Max.Y, contentTop)
 	}
 
@@ -70,11 +61,7 @@ func TestSidebarCloseButtonVisible(t *testing.T) {
 	}
 }
 
-// TestOverflowCloseButtonNotOverlappingFilePickerRects verifies that the
-// file picker rects produced by filePickerCandidates() do not overlap
-// with the overflow popup's close button. Previously, the Upload file picker
-// rect spanned the full popup width and overlapped the close button, causing
-// taps on close to also trigger the file picker on mobile.
+// A full-width Upload rect over the close button would make a tap on close also open the picker on mobile.
 func TestOverflowCloseButtonNotOverlappingFilePickerRects(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -86,8 +73,6 @@ func TestOverflowCloseButtonNotOverlappingFilePickerRects(t *testing.T) {
 	dv.SetOverflowMenuOpen(true)
 	dv.overflowPage = 0
 
-	// filePickerCandidates() is the producer that replaced
-	// registerFilePickerRects(); inspect its return value directly.
 	captured := dv.filePickerCandidates()
 
 	if len(captured) < 1 {

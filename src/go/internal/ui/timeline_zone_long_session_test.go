@@ -12,21 +12,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// Long-session regression guards for the timeline ribbon.
-//
-// At beat 8552 (~1:11:15 elapsed), screenshot.png shows the ribbon
-// rendering a near-solid wall of vertical ticks compressed across the
-// whole bar width. The pre-fix behavior maps the entire [0..elapsedBeats]
-// history into barRect.Dx() pixels with sub-pixel clustering. The post-fix
-// behavior fixes beats-per-pixel and pins the playhead at ~70% of the bar
-// width, so tick density and playhead position stay stable regardless of
-// session length.
+// At thousands of beats the whole history squeezed into the bar's pixels became a wall of ticks; density
+// and the cursor must stay stable at any session length.
 
-// ribbonZoneForTest constructs a TimelineZone wired with callbacks that
-// emulate live playback at the given elapsed-beat count. The mutable
-// totalBeats cell mirrors the high-water-mark behavior the live
-// drumview wires up: SetTimelineBeats() and TimelineBeats() share one
-// counter.
+// One shared high-water counter behind SetTimelineBeats/TimelineBeats, as the live drum view wires it.
 func ribbonZoneForTest(t *testing.T, elapsedBeats float64) (*TimelineZone, image.Rectangle) {
 	t.Helper()
 	const unitsPerBeat = 4
@@ -63,14 +52,9 @@ func ribbonZoneForTest(t *testing.T, elapsedBeats float64) (*TimelineZone, image
 	return z, barRect
 }
 
-// TestTimelineRibbon_DoesNotClutterAtHighAbs asserts the ribbon cannot
-// degenerate into a forest of ticks once playback crosses several thousand
-// beats. The fix should hold tick density ≤ barRect.Dx()/4 (≥4 px between
-// adjacent ticks) at every elapsed-beat checkpoint that exercises a long
-// session. Pre-fix the loop emits ~1024 ticks at 1 px spacing.
+// At most barRect.Dx()/4 ticks (≥ 4 px apart) at every long-session checkpoint.
 func TestTimelineRibbon_DoesNotClutterAtHighAbs(t *testing.T) {
-	// elapsedBeats is whatever displayBeat() returns — in beats, not
-	// subdivision units. screenshot.png shows playback at beat 8552.
+	// In beats, not subdivision units.
 	checkpoints := []float64{
 		8552,  // the screenshot symptom
 		20000, // deeper into long-session territory
@@ -86,10 +70,7 @@ func TestTimelineRibbon_DoesNotClutterAtHighAbs(t *testing.T) {
 				z.drawTimelineBar(screen, elapsedBeats, totalBeats)
 			})
 
-			// The ribbon caches into TlCache, then blits it onto screen.
-			// Tick drawRect calls land on TlCache, not on screen, but
-			// collectFilledRects intercepts the function pointer itself,
-			// so they show up here regardless of dst.
+			// The ticks land on TlCache, but collectFilledRects intercepts the function itself.
 			beatRGBA := color.RGBAModel.Convert(colTimelineBeat).(color.RGBA)
 			ticks := 0
 			for _, r := range rects {
@@ -100,8 +81,7 @@ func TestTimelineRibbon_DoesNotClutterAtHighAbs(t *testing.T) {
 					continue
 				}
 				if r.Rect.Dx() > 4 {
-					// Tick marks are 1-px wide; anything wider is background
-					// chrome that happens to share the color.
+					// Ticks are 1 px wide; wider rects are chrome sharing the colour.
 					continue
 				}
 				ticks++
@@ -116,13 +96,8 @@ func TestTimelineRibbon_DoesNotClutterAtHighAbs(t *testing.T) {
 	}
 }
 
-// TestTimelineRibbon_CursorAtWholeSongFraction asserts the cursor is
-// rendered at its correct horizontal position regardless of session length.
-// Task 6 replaced the old fixed-beats-per-pixel sliding window (which pinned
-// the cursor at ~70% of the bar once the window started sliding) with a
-// whole-song span: the cursor sits at `elapsedBeats / TimelineBeats()` of
-// the bar width, full stop — no pin/float regime switch, since there is no
-// sliding window left to pin against.
+// The ribbon spans the whole song, so the cursor sits at elapsedBeats / TimelineBeats() of the bar at any
+// length.
 func TestTimelineRibbon_CursorAtWholeSongFraction(t *testing.T) {
 	const tolerancePx = 2
 	for _, elapsedBeats := range []float64{100, 1000, 8552, 20000} {
@@ -136,10 +111,7 @@ func TestTimelineRibbon_CursorAtWholeSongFraction(t *testing.T) {
 				z.drawTimelineBar(screen, elapsedBeats, totalBeats)
 			})
 
-			// The cursor draws as a filled rect colTimelineCursor (or
-			// colAccentBright on mobile) with 2*cursorThick width centered
-			// on cursorX. We find the only such rect and compare its
-			// midpoint to the expected position for this regime.
+			// A filled rect 2·cursorThick wide centred on cursorX (colAccentBright on mobile).
 			cursorRGBA := color.RGBAModel.Convert(colTimelineCursor).(color.RGBA)
 			accentRGBA := color.RGBAModel.Convert(colAccentBright).(color.RGBA)
 			var cursorRect image.Rectangle

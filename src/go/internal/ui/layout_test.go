@@ -12,9 +12,6 @@ const (
 	TestWinH = 720
 )
 
-// TODO: Add a font file to the project and load it here.
-// var testFont font.Face
-
 func TestMainLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -62,8 +59,7 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			t.Fatalf("w=%d: bpm +/- out of transport bounds: inc=%v dec=%v trans=%v", w, inc, dec, trans)
 		}
 
-		// Verify Length − + sit side by side (− then +) in the timeline area,
-		// each at least btn-sm so the glyphs clear the icon floor.
+		// − then +, each at least btn-sm so the glyphs clear the icon floor.
 		linc := dv.lenIncBtn.Rect()
 		ldec := dv.lenDecBtn.Rect()
 		if linc.Empty() || ldec.Empty() {
@@ -83,8 +79,7 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			}
 		}
 
-		// File ops moved behind the grid folder button's file menu on desktop;
-		// the inline Upload/Import/Export buttons are hidden.
+		// On desktop the file ops live behind the folder button's menu.
 		if ur := dv.uploadBtn().Rect(); !ur.Empty() {
 			t.Fatalf("w=%d: upload rect = %v want empty (behind file menu)", w, ur)
 		}
@@ -133,9 +128,7 @@ func TestDrumRowEditButtonLayout(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
 	dv.calcLayout()
-	// On desktop, edit/save/color buttons are hidden (empty rects) — they
-	// live in the overflow menu. Verify they are indeed empty and that the
-	// visible controls (label, volume slider) have valid rects.
+	// On desktop edit/save/color live in the overflow menu.
 	for _, name := range []string{"edit", "save", "color"} {
 		var r image.Rectangle
 		switch name {
@@ -217,11 +210,7 @@ func intAbs(a int) int {
 	return a
 }
 
-// TestDesktopDrumPanelCappedAt60Percent verifies that on desktop, the drum
-// panel (including header + rows + EQ) never exceeds 60% of the window height
-// (the desktopDrumPaneWant cap — raised from 50% so the 6-row startup demo
-// boots with all rows visible; the grid pane always keeps >= 40%), even when
-// many instrument rows would push it past that limit.
+// Never more than 60% of the window, however many rows (the grid keeps 40%).
 func TestDesktopDrumPanelCappedAt60Percent(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -234,9 +223,7 @@ func TestDesktopDrumPanelCappedAt60Percent(t *testing.T) {
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
 
-	// Add enough rows so that the content-based drum height would exceed 50%.
-	// With rowHeight=28, header=72, eqPanel=190:
-	//   want = 72 + (10+1)*28 + 190 = 570  → 79% of 720px
+	// Content alone would want 72 + 11·28 + 190 = 570 px, 79% of 720.
 	for i := 0; i < 9; i++ {
 		g.drum.AddRow()
 	}

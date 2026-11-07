@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// TestSidebarTextWidthUsesTextWidth verifies that sidebarScaledTextWidth uses
-// proper font metrics (TextWidth) instead of the debug font's debugCharW*len.
+// Real font metrics, not the debug font's per-glyph width.
 func TestSidebarTextWidthUsesTextWidth(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -27,9 +26,7 @@ func TestSidebarTextWidthUsesTextWidth(t *testing.T) {
 	}
 }
 
-// TestMobileTrackButtonInline verifies the Track button is rendered as an
-// inline chip on the timeline ruler header on mobile (Theme 2 — was
-// previously hidden).
+// An inline chip on the timeline ruler header.
 func TestMobileTrackButtonInline(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -42,8 +39,7 @@ func TestMobileTrackButtonInline(t *testing.T) {
 	}
 }
 
-// TestMobileTransportButtonUniformWidth verifies all mobile transport buttons
-// have equal widths, +/- buttons are half height, and Track matches transport width.
+// Equal widths, and Track matches them.
 func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -63,27 +59,17 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 			t.Errorf("row0 button width %d differs from play width %d by %d (max 1px)", w, refW, diff)
 		}
 	}
-	// Row 1 on mobile now hosts the segmented Pads/EQ/Wave control (col 1)
-	// and the overflow button (col 2). The binary viewSwitchBtn is hidden on
-	// mobile (replaced by the segmented control in B4). The old 2-button
-	// uniform-width check becomes a 1-button no-op; skip it to avoid a false
-	// reference-width of 0 when the legacy button rect is empty.
-	//
-	// (The overflow/kebab button was removed — file options now open from the
-	// grid folder button.)
+	// The binary viewSwitchBtn is hidden on mobile (the segmented control replaces it), so there is no second
+	// width to compare.
 
-	// BPM ± buttons render at full row height (matching play) on the
-	// mobile horizontal stepper. Regression guard for B1: prior layout
-	// halved the row to 22 px via stackVerticalTransport.
+	// Full row height, matching play, on the horizontal stepper.
 	playH := dv.playBtn().Rect().Dy()
 	bpmIncH := dv.bpmIncBtn().Rect().Dy()
 	if diff := bpmIncH - playH; diff < -2 || diff > 2 {
 		t.Errorf("bpmIncBtn height %d should match play height %d within 2 px on mobile horizontal stepper (B1)", bpmIncH, playH)
 	}
 
-	// Track button now lives inline as a chip on the timeline ruler
-	// header on mobile (Theme 2). Verify it's non-empty and its finger target
-	// (the Touch-expanded hit area) meets the touch-target floor.
+	// Its touch-expanded hit area meets the touch-target floor.
 	trackR := dv.trackBtn().Rect()
 	if trackR.Empty() {
 		t.Errorf("track chip should be visible on mobile (inline on timeline)")

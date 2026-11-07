@@ -10,10 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestNodeMenuButtonsRespondOnPress verifies popup buttons trigger on tap
-// (press+release) and are decoupled from direct state changes (processed via
-// queue within Update()). With the deferred-tap pattern, buttons fire on
-// release to prevent accidental triggers during touch scrolling.
+// They fire on release (deferred tap), so a touch scroll never triggers one, and the state change is queued
+// within Update.
 func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -60,8 +58,7 @@ func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
 	}
 }
 
-// TestMuteSoloNoAutoRepeat ensures holding down the mouse does not auto-toggle
-// mute/solo buttons repeatedly.
+// Holding never auto-repeats mute/solo.
 func TestMuteSoloNoAutoRepeat(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -186,8 +183,7 @@ func TestNodeMenuMuteCycle(t *testing.T) {
 		t.Fatalf("aud button missing")
 	}
 
-	// The cycle passes through Chord first (Regular → Chord → Silent → Mute;
-	// the default row instrument is pitched).
+	// Regular → Chord → Silent → Mute: the default row instrument is pitched.
 	btn.OnClick()
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
@@ -258,8 +254,7 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 	if btn == nil {
 		t.Fatalf("aud button missing")
 	}
-	// The cycle passes through Chord first (Regular → Chord → Silent → Mute;
-	// the default row instrument is pitched).
+	// Regular → Chord → Silent → Mute: the default row instrument is pitched.
 	btn.OnClick()
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
@@ -310,36 +305,9 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 	}
 }
 
-// TestNodeMenuMuteClickDoesNotTriggerLogic guards the reflow-under-the-cursor
-// case: toggling Audible hides/shows the Logic section, so the control that
-// lands under a stationary cursor could change between the press and the
-// release — and the same gesture must not also activate it. Since the chord
-// work the type cycle keeps Audible itself under the cursor (keepUnderPointer),
-// so the test now asserts that, plus the original guard.
-//
-// The window is deliberately SHORT (340px): the popup card is then taller than
-// the grid pane in BOTH the silent and the mute state, so both clamp to the
-// same card origin and the reflow is guaranteed to slide Logic under the
-// cursor. With a tall window the card is anchored relative to the node instead,
-// and whether the overlap happens at all depends on the incidental total height
-// of the sections — the premise silently evaporated when the Move section was
-// removed from the popup.
-//
-// WHY 340 AND NOT 480. Under `go test` the auto-sizer is off and the grid pane
-// is exactly half the window, so the pane is 170px here against a ~193px silent
-// card: the card is the taller of the two by a comfortable 23px and genuinely
-// clamps. At 480 the pane was 240px — TALLER than the silent card, so the card
-// did not clamp at all and the premise was already dead. It passed anyway,
-// under `-tags test` only, for a reason worth recording: the stubbed build's
-// card measured 195px to the real build's 193px (font metrics), and at 195 its
-// bottom edge overlapped the top-right button cluster's reserved rect by ONE
-// pixel, which tripped avoidReservedRect into relocating the card to the very
-// origin the test wanted. Two pixels of text metrics were holding the whole
-// assertion up. 380 would also pass today but sits 3px from that cliff; 400
-// fails outright. At this window size the Audible row of a *regular*
-// node sits below the scroll viewport, so the Regular→Silent setup step is
-// driven through the row's own handler; the guarded Silent→Mute step is a real
-// press/release through Game.Update.
+// Toggling Audible reflows the card; the gesture must never also fire the control that lands under a still
+// cursor. At 340 px the card outgrows the pane in both states, so both clamp to one origin (at 400 it stops);
+// Audible then sits below the viewport, so Regular→Silent goes through its handler.
 func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -373,8 +341,7 @@ func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
 	if btn == nil {
 		t.Fatalf("audible button missing")
 	}
-	// The cycle passes through Chord first (Regular → Chord → Silent → Mute;
-	// the default row instrument is pitched).
+	// Regular → Chord → Silent → Mute: the default row instrument is pitched.
 	btn.OnClick()
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
@@ -421,12 +388,8 @@ func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
 	if g.sidebar.rects[sbLogicSelect].Empty() {
 		t.Fatalf("logic rect missing after mute toggle")
 	}
-	// The type cycle keeps its own button under the pointer
-	// (NodeSidebar.keepUnderPointer): the card holds its position and the
-	// content scrolls by however far Audible moved. So the sections Mute
-	// re-shows (Logic, Groove) appear ABOVE the stationary cursor instead of
-	// sliding under it — the reflow can no longer hand the gesture to Logic,
-	// and a second press at the same spot keeps rotating.
+	// The cycle keeps its own button under the pointer: the card holds and the content scrolls, so the sections
+	// Mute re-shows appear above the cursor and a second press keeps rotating.
 	if got := g.sidebar.rects[sbPanel].Min; got != silentCardOrigin {
 		t.Fatalf("the card moved between the silent and mute states (%v -> %v)", silentCardOrigin, got)
 	}

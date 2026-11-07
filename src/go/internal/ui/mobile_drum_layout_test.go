@@ -11,10 +11,7 @@ import (
 
 // ──────────────────────── Fix 2: visibleRows footer ──────────────────────────
 
-// TestMobileVisibleRowsReservesFooter verifies that on mobile, visibleRows()
-// subtracts one rowHeight for the "+" add-row footer — the add-row button is
-// rendered as a full-width footer row (matching desktop), so its space must
-// be reserved regardless of how many rows are present.
+// The "+" footer is a full-width row, so its height is reserved whatever the row count.
 func TestMobileVisibleRowsReservesFooter(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -39,8 +36,6 @@ func TestMobileVisibleRowsReservesFooter(t *testing.T) {
 	}
 }
 
-// TestDesktopVisibleRowsReservesFooter is a regression test ensuring desktop
-// still subtracts one rowHeight for the "+" footer row.
 func TestDesktopVisibleRowsReservesFooter(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -68,8 +63,7 @@ func TestDesktopVisibleRowsReservesFooter(t *testing.T) {
 
 // ──────────────────────── Fix 1: row divider suppression ─────────────────────
 
-// TestMobileRowDividerNotDetectable verifies that detectRowDivider() always
-// returns ("", -1) on mobile, preventing accidental row boundary drags.
+// Always ("", -1) on mobile, so a row boundary is never dragged by accident.
 func TestMobileRowDividerNotDetectable(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -89,8 +83,7 @@ func TestMobileRowDividerNotDetectable(t *testing.T) {
 	}
 }
 
-// TestMobileLayoutGuidesSkipRowLines verifies that drawLayoutGuides() does not
-// draw any horizontal row divider lines on mobile (column dividers are fine).
+// Column dividers are fine.
 func TestMobileLayoutGuidesSkipRowLines(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -116,9 +109,7 @@ func TestMobileLayoutGuidesSkipRowLines(t *testing.T) {
 	dst := ebiten.NewImage(390, 844)
 	dv.drawLayoutGuides(dst)
 
-	// Row divider lines are horizontal (wider than tall). Column divider
-	// lines are vertical (taller than wide). Check that no horizontal lines
-	// were drawn — those are the row dividers we want suppressed.
+	// Horizontal lines are the row dividers.
 	for _, l := range lines {
 		if l.r.Dx() > l.r.Dy() {
 			t.Fatalf("mobile drawLayoutGuides drew a horizontal line at %v — row dividers should be suppressed", l.r)
@@ -128,9 +119,7 @@ func TestMobileLayoutGuidesSkipRowLines(t *testing.T) {
 
 // ──────────────────────── Fix 3: scrollbar constrained ───────────────────────
 
-// TestMobileScrollbarCoversRowsOnly verifies that the scrollbar track height
-// is limited to vis*rowHeight — it should not extend into the leftover space
-// below the last visible row.
+// Never past vis*rowHeight into the space below the last row.
 func TestMobileScrollbarCoversRowsOnly(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -157,9 +146,7 @@ func TestMobileScrollbarCoversRowsOnly(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowBtnDoesNotOverlapScrollTrack verifies that the full-width
-// add-row footer button on mobile sits below the scrollable rows area, so it
-// never overlaps the scrollbar track or any visible row.
+// Below the scrollable rows, never over the track or a row.
 func TestMobileAddRowBtnDoesNotOverlapScrollTrack(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -184,8 +171,6 @@ func TestMobileAddRowBtnDoesNotOverlapScrollTrack(t *testing.T) {
 	if barRect.Empty() {
 		t.Skip("scrollbar rect is empty")
 	}
-	// The button is full-width below the scrollable rows; it must not
-	// vertically overlap the scrollbar track.
 	if btnRect.Min.Y < barRect.Max.Y && btnRect.Max.Y > barRect.Min.Y {
 		t.Fatalf("add-row button %v vertically overlaps scrollbar track %v", btnRect, barRect)
 	}

@@ -10,9 +10,6 @@ import (
 
 // ─── Open/Close Lifecycle ────────────────────────────────────────────────────
 
-// TestSidebarOpenCloseCycle verifies the sidebar open/close lifecycle:
-// Open sets IsOpen=true and Node!=nil; Close sets IsOpen=false, Node=nil,
-// and ClosedGuard=2.
 func TestSidebarOpenCloseCycle(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -57,8 +54,6 @@ func TestSidebarOpenCloseCycle(t *testing.T) {
 	}
 }
 
-// TestSidebarClosedGuardDecrement verifies that DecrementClosedGuard counts
-// down to 0 and does not go negative.
 func TestSidebarClosedGuardDecrement(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -90,8 +85,6 @@ func TestSidebarClosedGuardDecrement(t *testing.T) {
 	}
 }
 
-// TestSidebarOpenResetsSections verifies that reopening the sidebar on a
-// different node resets all sections to collapsed.
 func TestSidebarOpenResetsSections(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -126,8 +119,6 @@ func TestSidebarOpenResetsSections(t *testing.T) {
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
-// TestSidebarLayoutWidthClamping verifies that sidebar width is clamped to
-// [sidebarMinW, sidebarMaxW] after layout.
 func TestSidebarLayoutWidthClamping(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -159,9 +150,7 @@ func TestSidebarLayoutWidthClamping(t *testing.T) {
 	}
 }
 
-// TestSidebarLayoutNodeTypeSections verifies that sections are shown/hidden
-// based on the node type: Regular shows all, Silent hides vol/pit/dur/logic/groove,
-// Mute hides vol/pit/dur.
+// Silent hides vol/pit/dur/logic/groove; Mute hides vol/pit/dur.
 func TestSidebarLayoutNodeTypeSections(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -213,8 +202,6 @@ func TestSidebarLayoutNodeTypeSections(t *testing.T) {
 
 // ─── Hit Testing ─────────────────────────────────────────────────────────────
 
-// TestSidebarHitInsidePanel verifies that Hit returns true for a point inside
-// the panel rect.
 func TestSidebarHitInsidePanel(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -237,8 +224,6 @@ func TestSidebarHitInsidePanel(t *testing.T) {
 	}
 }
 
-// TestSidebarHitOutsidePanel verifies that Hit returns false for a point well
-// outside the panel rect.
 func TestSidebarHitOutsidePanel(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -255,8 +240,6 @@ func TestSidebarHitOutsidePanel(t *testing.T) {
 	}
 }
 
-// TestSidebarHitCollapsed verifies that when collapsed, Hit returns true only
-// for the expand tab area.
 func TestSidebarHitCollapsed(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -285,8 +268,6 @@ func TestSidebarHitCollapsed(t *testing.T) {
 	}
 }
 
-// TestSidebarHitNotOpen verifies that Hit returns false when the sidebar is
-// not open.
 func TestSidebarHitNotOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -301,8 +282,6 @@ func TestSidebarHitNotOpen(t *testing.T) {
 
 // ─── Input Handling ──────────────────────────────────────────────────────────
 
-// TestSidebarHandleInputCollapsedExpands verifies that pressing inside the
-// collapsed expand tab sets collapsed=false and open=true.
 func TestSidebarHandleInputCollapsedExpands(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -326,8 +305,6 @@ func TestSidebarHandleInputCollapsedExpands(t *testing.T) {
 	}
 }
 
-// TestSidebarHandleInputNotOpenReturnsIgnored verifies that HandleInput returns
-// InputIgnored when the sidebar is not open and not collapsed.
 func TestSidebarHandleInputNotOpenReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -371,8 +348,6 @@ func TestSidebarToggleSection(t *testing.T) {
 	}
 }
 
-// TestSidebarLogicDropdownToggle verifies that the logic dropdown can be
-// toggled open via the logic button's OnClick callback.
 func TestSidebarLogicDropdownToggle(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -423,8 +398,6 @@ func TestSidebarLogicDropdownToggle(t *testing.T) {
 	}
 }
 
-// TestSidebarGrooveDropdownMutualExclusion verifies that opening the groove
-// dropdown closes the logic dropdown, and vice versa.
 func TestSidebarGrooveDropdownMutualExclusion(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -493,8 +466,6 @@ func TestSidebarGrooveDropdownMutualExclusion(t *testing.T) {
 	}
 }
 
-// TestSidebarCloseDropdownsOutside verifies that closeDropdownsOutside closes
-// dropdowns when the point is outside all dropdown rects.
 func TestSidebarCloseDropdownsOutside(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -521,8 +492,6 @@ func TestSidebarCloseDropdownsOutside(t *testing.T) {
 
 // ─── Parameter Mutations ─────────────────────────────────────────────────────
 
-// TestSidebarVolumeButtons verifies that vol+ and vol- buttons modify the
-// graph node's volume parameter.
 func TestSidebarVolumeButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -575,8 +544,6 @@ func TestSidebarVolumeButtons(t *testing.T) {
 	}
 }
 
-// TestSidebarPitchButtons verifies that pit+ and pit- buttons modify the
-// graph node's pitch parameter.
 func TestSidebarPitchButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -629,8 +596,6 @@ func TestSidebarPitchButtons(t *testing.T) {
 	}
 }
 
-// TestSidebarDurationButtons verifies that dur+ and dur- buttons modify the
-// graph node's duration parameter.
 func TestSidebarDurationButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -686,11 +651,7 @@ func TestSidebarDurationButtons(t *testing.T) {
 
 // ─── Additional Layout & Rect Tests ─────────────────────────────────────────
 
-// TestSidebarPanelRectDimensions verifies that the panel rect is a compact,
-// content-sized card anchored beside the tapped node — NOT a full-height panel
-// docked at the grid pane's left edge (x=0). It still has a width matching
-// sidebar.width and a height capped to the grid pane, but its origin now
-// follows the anchored node rather than being fixed at (0,0).
+// A compact card anchored beside the tapped node, height capped to the pane, not a panel docked at x=0.
 func TestSidebarPanelRectDimensions(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -715,13 +676,8 @@ func TestSidebarPanelRectDimensions(t *testing.T) {
 			panel.Dy(), gridH)
 	}
 
-	// The card is anchored beside the tapped node (a compact popup), not
-	// docked at a fixed left-edge origin: opening on a node at a different
-	// grid cell must move the panel's origin. The second node sits to the
-	// LEFT of the first: at 800x600 a card anchored to the right of the
-	// origin collides with the four-button corner cluster (gear/file/logs/
-	// theme) and is pushed to the same clamped x, which would mask the
-	// anchoring under test.
+	// A node at another cell must move the card. It sits LEFT of the first: anchored right, the card would hit
+	// the corner cluster and clamp to the same x, masking the anchoring.
 	n2 := g.tryAddNode(-5, 5, model.NodeTypeRegular)
 	g.sidebar.Open(n2)
 	g.sidebar.layout()
@@ -735,8 +691,6 @@ func TestSidebarPanelRectDimensions(t *testing.T) {
 	}
 }
 
-// TestSidebarCloseButtonRectInHeader verifies that the close button rect is
-// positioned within the header area.
 func TestSidebarCloseButtonRectInHeader(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -762,8 +716,6 @@ func TestSidebarCloseButtonRectInHeader(t *testing.T) {
 	}
 }
 
-// TestSidebarExpandedSectionCreatesButtonRects verifies that expanding a section
-// causes the +/- button rects to be created in the layout.
 func TestSidebarExpandedSectionCreatesButtonRects(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -794,8 +746,6 @@ func TestSidebarExpandedSectionCreatesButtonRects(t *testing.T) {
 	}
 }
 
-// TestSidebarCloseSectionClosesDropdown verifies that closing the logic section
-// also closes the logic dropdown.
 func TestSidebarCloseSectionClosesDropdown(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -819,8 +769,7 @@ func TestSidebarCloseSectionClosesDropdown(t *testing.T) {
 	}
 }
 
-// TestSidebarInputBounds verifies InputBounds returns the panel rect when open,
-// and the expand tab rect when collapsed.
+// The panel rect when open, the expand tab when collapsed.
 func TestSidebarInputBounds(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -848,8 +797,7 @@ func TestSidebarInputBounds(t *testing.T) {
 	}
 }
 
-// TestSidebarCapturing verifies that Capturing reflects active scroll state.
-// (The user-resize path was removed, so scroll is now the only capture source.)
+// Scroll is the only capture source.
 func TestSidebarCapturing(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -875,8 +823,6 @@ func TestSidebarCapturing(t *testing.T) {
 	}
 }
 
-// TestSidebarHandleWheelWhenNotOpen verifies that HandleWheel returns
-// InputIgnored when the sidebar is not open.
 func TestSidebarHandleWheelWhenNotOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -889,8 +835,6 @@ func TestSidebarHandleWheelWhenNotOpen(t *testing.T) {
 	}
 }
 
-// TestSidebarLogicDropdownItemSetsKind verifies that clicking a logic dropdown
-// item sets the node's LogicKind parameter.
 func TestSidebarLogicDropdownItemSetsKind(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -927,8 +871,6 @@ func TestSidebarLogicDropdownItemSetsKind(t *testing.T) {
 	}
 }
 
-// TestSidebarGrooveDropdownItemSetsKind verifies that clicking a groove dropdown
-// item sets the node's GrooveKind parameter.
 func TestSidebarGrooveDropdownItemSetsKind(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -962,8 +904,6 @@ func TestSidebarGrooveDropdownItemSetsKind(t *testing.T) {
 	}
 }
 
-// TestSidebarDefaultWidth verifies that a newly created sidebar uses the
-// default width.
 func TestSidebarDefaultWidth(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -987,8 +927,6 @@ func TestSidebarZIndex(t *testing.T) {
 	}
 }
 
-// Ensure math import is used. The compiler will verify this; this is a
-// compile-time guard.
 var _ = image.Pt
 var _ = math.Abs
 

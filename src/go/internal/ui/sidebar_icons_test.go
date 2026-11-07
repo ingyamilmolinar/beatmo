@@ -2,10 +2,7 @@ package ui
 
 import "testing"
 
-// sidebar_icons_test.go covers the pure span calculators that back the
-// sidebar's expand/collapse triangle drawing. Tests focus on geometric
-// invariants — symmetry around the midline, monotonic taper, single-
-// pixel tip — rather than per-pixel snapshots.
+// Geometric invariants (symmetry, monotonic taper, single-pixel tip), not pixel snapshots.
 
 func TestTriangleRightRowSpanShape(t *testing.T) {
 	const x, y, w, h = 10, 0, 8, 5

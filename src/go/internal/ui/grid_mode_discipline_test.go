@@ -8,12 +8,9 @@ import (
 	"testing"
 )
 
-// gridModeManager fields may only be written inside grid_mode.go — every
-// other file must go through Enter/Cancel/Commit/Tick/Register. This keeps
-// the mode domain centralized (see the design spec § Centralized mode domain).
+// Every other file goes through Enter/Cancel/Commit/Tick/Register, keeping the mode domain in one place.
 func TestGridModeManagerFieldWritesOnlyInOwnFile(t *testing.T) {
-	// Known gap: best-effort grep — an aliased local (`m := &g.modes; m.kind = x`)
-	// or other non-dot-qualified access would slip past this regex.
+	// Best effort: an aliased local (m := &g.modes; m.kind = x) slips past the regex.
 	writeRe := regexp.MustCompile(`\.modes\.(kind|subject|phase|observers)\s*(=|\+\+|--|\+=|-=)`)
 	files, err := filepath.Glob("*.go")
 	if err != nil {

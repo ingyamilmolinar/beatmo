@@ -18,9 +18,6 @@ func nodeScreenCenter(g *Game, n *uiNode) (int, int) {
 	return int((x1 + x2) * 0.5), int((y1 + y2) * 0.5)
 }
 
-// screenPosForGridIJ returns a screen-space coordinate that maps to grid
-// subdivision (i,j) under the current camera. Similar to screenPosForGrid in
-// grid_ui_interaction_test.go but duplicated here to keep the file standalone.
 func screenPosForGridIJ(g *Game, i, j int) (int, int) {
 	unit := g.grid.Unit()
 	wx := float64(i) * unit
@@ -104,8 +101,7 @@ func TestHandleTapInGrid_MoveMode_EmptyTarget(t *testing.T) {
 
 	g.modes.Enter(GridModeMove, n)
 
-	// Move placement is edge-only: a tap on a free cell (not on an existing
-	// edge) cancels the mode instead of placing the node there.
+	// Placement is edge-only: a free cell cancels the mode.
 	tx, ty := screenPosForGridIJ(g, 32, 0)
 	g.handleTapInGrid(tx, ty)
 
@@ -143,12 +139,6 @@ func TestHandleTapInGrid_MoveMode_OccupiedTarget(t *testing.T) {
 	}
 	_ = b // keep b referenced
 }
-
-// The edge-loss confirmation dialog (moveConfirm / moveEdgeLoss) was retired
-// in favor of edge-only placement with immediate commit: a moved node with
-// its own edges silently drops the ones that go non-orthogonal at the
-// destination, with no confirmation step. That coverage now lives in
-// TestMoveMode_MoveWithOwnEdgesDropsNonOrthogonalSilently (grid_mode_flow_test.go).
 
 // --- Test: origin selection -------------------------------------------------
 
@@ -245,11 +235,7 @@ func TestHandleTapInGrid_CreateNewNode(t *testing.T) {
 
 // --- Test: sidebar close on outside tap -------------------------------------
 
-// TestHandleTapInGrid_SidebarClose verifies that a tap outside the sidebar
-// closes it. The sidebar is a compact, node-anchored card drawn as a GridTree
-// layer (clamped to the grid pane, "grid-sidebar" at z=GZSidebar), not a
-// portal overlay, so handleTapInGrid's own tap-outside-closes-sidebar branch
-// is the live close mechanism — exercise it directly.
+// The sidebar is a GridTree layer, not a portal, so handleTapInGrid's own branch is the live close mechanism.
 func TestHandleTapInGrid_SidebarClose(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -264,8 +250,7 @@ func TestHandleTapInGrid_SidebarClose(t *testing.T) {
 		t.Fatal("precondition: sidebar should be open")
 	}
 
-	// Tap provably outside the sidebar's actual (node-anchored) panel rect,
-	// but still within the window.
+	// Outside the node-anchored panel but inside the window.
 	panel := g.sidebar.rects[sbPanel]
 	if panel.Empty() {
 		t.Fatal("precondition: sidebar panel rect should be non-empty")
@@ -421,8 +406,7 @@ func TestHandleTouchTwoFingerPan(t *testing.T) {
 	origX := g.cam.OffsetX
 	origY := g.cam.OffsetY
 
-	// Center over the graph pane (not the drum cell grid) so the pan pans the
-	// camera rather than moving the timeline.
+	// Over the graph pane, so the camera pans rather than the timeline.
 	g.handleTouchTwoFingerPan(10, -5, g.winW/2, gridTopOffset()+20)
 
 	// OffsetX and OffsetY are snapped to integer pixels.
@@ -538,9 +522,6 @@ func TestIsTouchActive_NoTouches(t *testing.T) {
 	}
 }
 
-// TestMobileGridCapturingFalseDuringGridTouch checks that Capturing() returns
-// false when a touch is on the grid pane (not the drum pane). This is a targeted
-// diagnostic for the one-finger grid panning regression.
 func TestMobileGridCapturingFalseDuringGridTouch(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -596,9 +577,7 @@ func TestMobileGridCapturingFalseDuringGridTouch(t *testing.T) {
 	advanceFrames(g, 2)
 }
 
-// TestMobileGridPanAfterPortalClose verifies that one-finger grid panning
-// works correctly after a portal overlay has been opened and closed. This
-// tests for stale portal entries blocking panOK.
+// A stale portal entry must not block panOK.
 func TestMobileGridPanAfterPortalClose(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, true)
@@ -646,11 +625,7 @@ func TestMobileGridPanAfterPortalClose(t *testing.T) {
 	initialNodes := len(g.nodes)
 	initialOffX := g.cam.OffsetX
 
-	// Offset well clear of the default start node's screen position (the
-	// camera centers on it, so the untouched "grid center" sits exactly on
-	// top of the node) — otherwise the grid-guide aiming gesture (see
-	// grid_guide.go's updateGuideAim) arms on press and the drag aims/places
-	// a node instead of panning, which is this test's actual subject.
+	// Clear of the start node (the camera centres on it), or the guide aim arms and the drag places a node.
 	gridCenterX := 260
 	gridCenterY := g.split.Y / 2
 	if gridCenterY < 10 {
@@ -678,9 +653,7 @@ func TestMobileGridPanAfterPortalClose(t *testing.T) {
 	}
 }
 
-// TestMobileGridPanAfterDrumTouch verifies that grid panning works after
-// a prior touch on the drum pane. The InputDispatcher capture from the
-// drum touch must be released before the grid touch starts.
+// The drum touch's dispatcher capture must be released before the grid touch.
 func TestMobileGridPanAfterDrumTouch(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, true) // need a start node for rows
@@ -728,11 +701,7 @@ func TestMobileGridPanAfterDrumTouch(t *testing.T) {
 	initialNodes := len(g.nodes)
 	initialOffX := g.cam.OffsetX
 
-	// Offset well clear of the default start node's screen position (the
-	// camera centers on it, so the untouched "grid center" sits exactly on
-	// top of the node) — otherwise the grid-guide aiming gesture (see
-	// grid_guide.go's updateGuideAim) arms on press and the drag aims/places
-	// a node instead of panning, which is this test's actual subject.
+	// Clear of the start node, or the guide aim arms and the drag places a node.
 	gridCenterX := 260
 	gridCenterY := g.split.Y / 2
 	if gridCenterY < 10 {
@@ -759,10 +728,7 @@ func TestMobileGridPanAfterDrumTouch(t *testing.T) {
 	}
 }
 
-// TestMobileOneFingerGridDrag verifies that a single-finger drag on the
-// grid pane pans the camera instead of creating nodes. This is a regression
-// test for a bug where the portal tree refactor caused g.drum.Capturing()
-// to return true during grid touches, blocking panOK and preventing panning.
+// The drum view must not report Capturing() during a grid touch, or panOK is blocked.
 func TestMobileOneFingerGridDrag(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -779,8 +745,7 @@ func TestMobileOneFingerGridDrag(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(360, 640) // mobile portrait
 
-	// Override Ebiten cursor fallback so cursorPosition() returns a valid
-	// position when touch override is inactive (e.g., between touches).
+	// So cursorPosition() stays valid between touches.
 	oldEbCursor := _ebCursorPosition
 	_ebCursorPosition = func() (int, int) { return 0, 0 }
 	defer func() { _ebCursorPosition = oldEbCursor }()
@@ -819,8 +784,7 @@ func TestMobileOneFingerGridDrag(t *testing.T) {
 	mock.addTouch(1, gridCenterX, gridCenterY)
 	advanceFrames(g, 1)
 
-	// Frames 2-6: drag finger 50px to the right (10px/frame for 5 frames).
-	// This ensures movement > tapMaxMovePx (10px) so it's NOT classified as tap.
+	// 50 px total, well past the 10 px tap slop.
 	for frame := 0; frame < 5; frame++ {
 		dx := (frame + 1) * 10
 		newX := gridCenterX + dx

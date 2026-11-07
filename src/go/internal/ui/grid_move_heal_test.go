@@ -7,8 +7,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newHealTestGame builds a fresh Game the same way move_node_test.go does,
-// so grid_move_heal tests share the canonical fixture construction.
 func newHealTestGame(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -22,9 +20,7 @@ func newHealTestGame(t *testing.T) *Game {
 func TestMoveHealPlan(t *testing.T) {
 	tests := []struct {
 		name string
-		// build constructs the graph and returns the node under test (n),
-		// plus the expected from/to nodes for healPassThrough cases (nil
-		// otherwise).
+		// wantFrom/wantTo only for healPassThrough cases.
 		build     func(g *Game) (n, wantFrom, wantTo *uiNode)
 		wantClass healClass
 	}{
@@ -81,13 +77,8 @@ func TestMoveHealPlan(t *testing.T) {
 			wantClass: healPassThrough,
 		},
 		{
-			// N itself is off the A-B line (4,4 vs shared I=0); classification
-			// only cares that Np and Nn (A and B) are orthogonal to each
-			// other, not that N sits between them. The A-N leg is diagonal,
-			// which g.addEdge's orthogonal-only gate would silently reject
-			// (the live UI never places diagonal edges), so this bystander
-			// edge is injected directly into g.edges — moveHealPlan itself
-			// only reads that slice and never checks A-N/N-B orthogonality.
+			// Classification only needs A and B orthogonal to each other. The diagonal A-N leg is injected into g.edges
+			// directly: g.addEdge refuses diagonals, and moveHealPlan only reads the slice.
 			name: "collinear-but-offset pass-through",
 			build: func(g *Game) (*uiNode, *uiNode, *uiNode) {
 				a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -112,9 +103,7 @@ func TestMoveHealPlan(t *testing.T) {
 			wantClass: healUnhealable,
 		},
 		{
-			// Both bystander edges into/out of N must individually be
-			// orthogonal (g.addEdge's gate), so B sits at (4,4) sharing N's
-			// J rather than at (4,0) sharing neither of N's coordinates.
+			// Each edge into or out of N must be orthogonal, so B shares N's J.
 			name: "junction 3 edges",
 			build: func(g *Game) (*uiNode, *uiNode, *uiNode) {
 				a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -164,10 +153,7 @@ func TestMoveHealPlan(t *testing.T) {
 			wantClass: healUnhealable,
 		},
 		{
-			// A self-loop (reachable via import JSON, which doesn't guard
-			// from==to) must count as neither in nor out: with one real
-			// incoming edge the node is an endpoint (healSilent), NOT a
-			// pass-through whose "to" is the node itself.
+			// An imported self-loop counts as neither in nor out, so one real incoming edge makes an endpoint (healSilent).
 			name: "self-loop plus one incoming",
 			build: func(g *Game) (*uiNode, *uiNode, *uiNode) {
 				a := g.tryAddNode(0, 0, model.NodeTypeRegular)

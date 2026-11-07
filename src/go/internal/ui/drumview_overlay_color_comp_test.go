@@ -50,8 +50,6 @@ func TestColorWheelComponent_NoHoldAfterOpen(t *testing.T) {
 	}
 }
 
-// TestColorSwatchGrid_LaysOutFullPalette verifies the full curated palette
-// renders as a grid of cells, each holding a palette color.
 func TestColorSwatchGrid_LaysOutFullPalette(t *testing.T) {
 	comp := NewColorWheelComponent()
 	comp.SetProps(stdColorProps())
@@ -69,8 +67,7 @@ func TestColorSwatchGrid_LaysOutFullPalette(t *testing.T) {
 	}
 }
 
-// TestColorRampGridLayout verifies the 7-family × 5-shade ramp layout: 35 cells
-// total, and the first and last cell rects are non-empty and inside the panel.
+// 7 families × 5 shades = 35 cells.
 func TestColorRampGridLayout(t *testing.T) {
 	comp := NewColorWheelComponent()
 	comp.SetProps(stdColorProps())
@@ -102,12 +99,7 @@ func TestColorRampGridLayout(t *testing.T) {
 	}
 }
 
-// TestColorPickerFamilyLabelsFitGutter is the regression guard for the
-// left-gutter text-overflow bug: every family label rendered in the left gutter
-// must fit fully inside the gutter width, so it never collides with / spills
-// over the first swatch column. Before the fix the gutter was a fixed 56 px
-// while "Sunset Gold" (~66 px) and "Electric Blue" (~78 px) overflowed into the
-// swatches, rendering as "Sunset Go…" / "Electric B…".
+// Every family label fits inside the gutter, so none spills over the first swatch column.
 func TestColorPickerFamilyLabelsFitGutter(t *testing.T) {
 	comp := NewColorWheelComponent()
 	comp.SetProps(stdColorProps())
@@ -130,10 +122,7 @@ func TestColorPickerFamilyLabelsFitGutter(t *testing.T) {
 	}
 }
 
-// TestColorPickerFamilyLabelsAreShort encodes the "names not super long"
-// requirement: no family label should be so long that it forces a wide gutter
-// wasting horizontal space that belongs to the swatches. Plain, short color
-// names ("Blue", "Gold", "Pink"…) keep the gutter tight.
+// Short names keep the gutter tight, leaving the width to the swatches.
 func TestColorPickerFamilyLabelsAreShort(t *testing.T) {
 	comp := NewColorWheelComponent()
 	comp.SetProps(stdColorProps())
@@ -147,9 +136,7 @@ func TestColorPickerFamilyLabelsAreShort(t *testing.T) {
 	}
 }
 
-// TestCanonicalColorNameForEverySwatch verifies every palette swatch has a
-// canonical human color name (not hex), and that the 35 names are per-shade
-// specific rather than collapsing to the 7 family labels.
+// 35 per-shade names, not the 7 family labels.
 func TestCanonicalColorNameForEverySwatch(t *testing.T) {
 	seen := map[string]bool{}
 	for _, s := range SuggestedInstrumentSwatches {
@@ -163,14 +150,11 @@ func TestCanonicalColorNameForEverySwatch(t *testing.T) {
 		}
 		seen[n] = true
 	}
-	// 7 families × 5 shades = 35 swatches; the names must distinguish shades,
-	// so we expect far more than the 7 family labels.
 	if len(seen) < 20 {
 		t.Errorf("only %d distinct canonical color names across %d swatches — names must be per-shade specific, not just the family label",
 			len(seen), len(SuggestedInstrumentSwatches))
 	}
-	// Drift guard: every current palette swatch must have an EXPLICIT table entry
-	// (not the family fallback). A new swatch added without a name trips this.
+	// A new swatch without an explicit name entry trips this.
 	for _, s := range SuggestedInstrumentSwatches {
 		if _, ok := canonicalSwatchNames[s.Name]; !ok {
 			t.Errorf("palette swatch %q has no canonicalSwatchNames entry — add its human color name", s.Name)
@@ -178,8 +162,6 @@ func TestCanonicalColorNameForEverySwatch(t *testing.T) {
 	}
 }
 
-// TestColorPickerShadeHintPresent verifies the "Light … Deep" shade-direction
-// caption band is laid out above the swatch columns on a roomy panel.
 func TestColorPickerShadeHintPresent(t *testing.T) {
 	comp := NewColorWheelComponent()
 	comp.SetProps(stdColorProps())
@@ -202,8 +184,6 @@ func TestColorPickerShadeHintPresent(t *testing.T) {
 	}
 }
 
-// TestColorPickerPanelIsUsableSize verifies the panel is a real, usable size —
-// not the ~52px square the broken hue wheel collapsed to on desktop.
 func TestColorPickerPanelIsUsableSize(t *testing.T) {
 	comp := NewColorWheelComponent()
 	comp.SetProps(stdColorProps())
@@ -215,8 +195,6 @@ func TestColorPickerPanelIsUsableSize(t *testing.T) {
 	}
 }
 
-// TestColorSwatchClickPicksExactPaletteColor verifies clicking a swatch cell
-// invokes OnColorPick with that exact palette color.
 func TestColorSwatchClickPicksExactPaletteColor(t *testing.T) {
 	comp := NewColorWheelComponent()
 
@@ -249,9 +227,7 @@ func TestColorSwatchClickPicksExactPaletteColor(t *testing.T) {
 		t.Fatalf("picked color %v != palette swatch %v", picked, want)
 	}
 
-	// Selecting APPLIES and leaves the picker open (see
-	// picker_confirm_on_reselect_test.go); the gesture still owns input until
-	// its release.
+	// A pick applies and leaves the picker open; the gesture owns input until release.
 	if !comp.IsOpen() {
 		t.Error("expected picker to remain open until release")
 	}
@@ -266,8 +242,7 @@ func TestColorSwatchClickPicksExactPaletteColor(t *testing.T) {
 		t.Error("expected picker to stay open after applying a colour")
 	}
 
-	// Re-selecting the applied colour is the confirm gesture: deferred close
-	// on release, exactly as the single pick used to behave.
+	// Re-selecting the applied colour confirms: a deferred close on release.
 	comp.HandleInput(cx, cy, true)
 	if !comp.IsOpen() {
 		t.Error("expected picker open while the confirm press is held")
@@ -342,8 +317,6 @@ func TestColorWheelComponent_ClickOutsideCloses(t *testing.T) {
 	}
 }
 
-// TestColorPickerStaysInsideBounds verifies the panel is clamped inside the
-// container on all sides.
 func TestColorPickerStaysInsideBounds(t *testing.T) {
 	comp := NewColorWheelComponent()
 	bounds := image.Rect(50, 100, 600, 500)
@@ -369,8 +342,6 @@ func TestColorWheelComponent_HandleInputWhenClosed(t *testing.T) {
 	}
 }
 
-// TestColorSwatchPickOutsideGridAbsorbed verifies a press inside the panel but
-// not on a swatch (e.g. header whitespace) is absorbed without picking.
 func TestColorSwatchPickOutsideGridAbsorbed(t *testing.T) {
 	comp := NewColorWheelComponent()
 
@@ -435,8 +406,7 @@ func TestColorWheelComponent_InputBounds(t *testing.T) {
 	}
 }
 
-// TestColorSwatchSelectedRing verifies the selected ring renders only when the
-// current color matches a palette swatch (RGB compare).
+// RGB compare.
 func TestColorSwatchSelectedRing(t *testing.T) {
 	// Matching color → colorsEqualRGB true for that swatch.
 	want := SuggestedInstrumentSwatches[2].RGBA // coral
@@ -461,8 +431,6 @@ func TestColorSwatchSelectedRing(t *testing.T) {
 	}
 }
 
-// TestColorPickerMobileTouchTargets verifies swatch cells meet the touch
-// minimum on mobile.
 func TestColorPickerMobileTouchTargets(t *testing.T) {
 	forceSmallScreenForTest = true
 	UpdateProfile()
@@ -487,9 +455,7 @@ func TestColorPickerMobileTouchTargets(t *testing.T) {
 	}
 }
 
-// TestColorRampGridLayoutMobile mirrors TestColorRampGridLayout but under the
-// mobile bottom-sheet profile (the worst-case clamp): the full 7×5 ramp must
-// still lay out as 35 non-empty, non-overlapping cells contained in the panel.
+// The mobile bottom sheet is the worst-case clamp.
 func TestColorRampGridLayoutMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	UpdateProfile()
@@ -522,8 +488,7 @@ func TestColorRampGridLayoutMobile(t *testing.T) {
 		}
 	}
 
-	// Cells must not overlap each other (would mean the grid collapsed under
-	// the mobile clamp). Allow edge-touching; flag only positive-area overlap.
+	// Positive-area overlap would mean the grid collapsed; edge-touching is fine.
 	for a := 0; a < len(cells); a++ {
 		for b := a + 1; b < len(cells); b++ {
 			x := cells[a].Intersect(cells[b])

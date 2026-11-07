@@ -6,10 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestGridHelpButtonClickThroughUpdate drives the REAL Game.Update() input loop
-// with a simulated left-click at the grid help button's center and asserts the
-// shortcuts overlay opens. This reproduces the user-visible "clicking does
-// nothing" path that the isolated HandleInputResult test cannot catch.
+// Through the real Update loop: the isolated HandleInputResult test cannot see "clicking does nothing".
 func TestGridHelpButtonClickThroughUpdate(t *testing.T) {
 	g := newTestGameForUndo(t)
 	if g.gridHelpBtn == nil {
@@ -21,8 +18,7 @@ func TestGridHelpButtonClickThroughUpdate(t *testing.T) {
 	}
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 
-	// Match the screen size the test game was laid out at (800x600) so Update
-	// doesn't relayout the button rect out from under our click coordinates.
+	// The layout size (800x600), so Update does not relayout the button under the click.
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },

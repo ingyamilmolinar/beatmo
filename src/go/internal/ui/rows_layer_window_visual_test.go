@@ -1,9 +1,6 @@
 //go:build test
 
-// Stub-only: relies on Image.At() reading back rendered pixels. Real Ebiten
-// panics with "ReadPixels cannot be called before the game starts" because
-// there is no running game loop in a unit test, so this comparison is gated
-// to the ebitenstub backend (matches render_visual_regression_test.go).
+// Stub only: real Ebiten cannot ReadPixels before the game loop starts.
 
 package ui
 
@@ -15,12 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestRowsLayerWindowedRenderMatchesLegacy verifies the windowed scroll cache
-// renders the drum-row region visually equivalent to the legacy composite at a
-// scrolled playback position. Two identical games are driven to the same offset
-// — one with the windowed path, one without — and the row-region pixels are
-// compared. A small per-pixel/positional tolerance is allowed for the inherent
-// <=1px sub-cell rounding that the legacy shift path also exhibits.
+// Two identical games at the same offset, windowed and legacy; a little <= 1 px cell-edge rounding is allowed,
+// as the legacy shift also shows it.
 func TestRowsLayerWindowedRenderMatchesLegacy(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -71,8 +64,6 @@ func TestRowsLayerWindowedRenderMatchesLegacy(t *testing.T) {
 			if d > maxChan {
 				maxChan = d
 			}
-			// Allow a tolerance band: small color deltas from <=1px cell-edge
-			// rounding shift. Count only meaningfully different pixels.
 			if d > 48 {
 				diffPixels++
 			}
@@ -83,14 +74,11 @@ func TestRowsLayerWindowedRenderMatchesLegacy(t *testing.T) {
 	}
 	frac := float64(diffPixels) / float64(sampled)
 	t.Logf("sampled=%d nonEmpty=%d diffPixels=%d frac=%.4f maxChanDelta=%d", sampled, nonEmpty, diffPixels, frac, maxChan)
-	// Guard against a vacuous pass: the region must contain real rendered
-	// content (ebitenstub SubImage reads can be empty — see CLAUDE.md).
+	// A region with no real content would pass vacuously.
 	if nonEmpty < sampled/10 {
 		t.Skipf("row region read mostly empty (nonEmpty=%d/%d) — ebitenstub pixel reads not capturing the composite here; equivalence covered by content-signature invariant in rows_layer_scroll_recompose_test.go", nonEmpty, sampled)
 	}
-	// The two renders should be visually equivalent: only a thin band of
-	// cell-edge pixels may differ by the <=1px scroll rounding. Require the
-	// differing fraction to be small.
+	// Only a thin band of cell-edge pixels may differ.
 	if frac > 0.08 {
 		t.Fatalf("windowed render differs from legacy in %.1f%% of sampled row pixels (>8%%) — visual regression", frac*100)
 	}

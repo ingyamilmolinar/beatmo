@@ -184,8 +184,7 @@ func TestNumberKeysSwitchTabs(t *testing.T) {
 		{ebiten.Key6, TabSynth},
 		{ebiten.Key7, TabSampler},
 	}
-	// Guard: the expectations must match the live display order so this test
-	// tracks any future reordering of AllPanelTabs().
+	// Tracks the live AllPanelTabs() order.
 	for i, c := range cases {
 		if AllPanelTabs()[i] != c.tab {
 			t.Fatalf("display order drift at index %d: AllPanelTabs()=%v, expected %v", i, AllPanelTabs()[i], c.tab)
@@ -420,8 +419,7 @@ func TestGridHelpButtonExistsTopRight(t *testing.T) {
 		t.Fatal("grid help button rect should be non-empty on desktop")
 	}
 	gr := g.split.GridRect(g.winW, g.winH)
-	// True top-right corner of the grid pane: right edge near gridRect.Max.X,
-	// top near gridRect.Min.Y (NOT the +gridTopOffset content origin).
+	// The pane's true top-right, not the +gridTopOffset content origin.
 	if r.Max.X > gr.Max.X || r.Min.X < gr.Max.X-80 {
 		t.Fatalf("button should hug the right edge of the grid (max.X=%d), got %v", gr.Max.X, r)
 	}

@@ -12,8 +12,6 @@ import (
 
 // ─── Color wheel state tests ─────────────────────────────────────────────────
 
-// TestColorWheelHoldRelease verifies that the color wheel component's hold
-// state is clearable via ClearHold.
 func TestColorWheelHoldRelease(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -28,8 +26,6 @@ func TestColorWheelHoldRelease(t *testing.T) {
 	}
 }
 
-// TestColorWheelPressOnWheel verifies that a point inside the color wheel
-// rect is detected as inside.
 func TestColorWheelPressOnWheel(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -46,8 +42,6 @@ func TestColorWheelPressOnWheel(t *testing.T) {
 	}
 }
 
-// TestColorWheelPressOutsideWheel verifies that a point outside the color
-// wheel rect is detected as outside.
 func TestColorWheelPressOutsideWheel(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -64,8 +58,6 @@ func TestColorWheelPressOutsideWheel(t *testing.T) {
 	}
 }
 
-// TestColorWheelCloseResetsState verifies that closing the color wheel
-// clears open state.
 func TestColorWheelCloseResetsState(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -84,8 +76,6 @@ func TestColorWheelCloseResetsState(t *testing.T) {
 
 // ─── Instrument menu input handling tests ─────────────────────────────────
 
-// TestInstMenuBoundsWhenClosed verifies that instMenuFullRect is empty
-// when the instrument menu is not open.
 func TestInstMenuBoundsWhenClosed(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -94,16 +84,13 @@ func TestInstMenuBoundsWhenClosed(t *testing.T) {
 
 	dv.CloseAllPopups()
 	if !dv.instMenuFullRect.Empty() {
-		// Note: instMenuFullRect may retain a stale value from a previous open.
-		// The key semantic is that instMenuOpen is false so portal won't dispatch.
+		// The rect may keep a stale value; instMenuOpen false is what stops the portal dispatching.
 	}
 	if dv.IsInstMenuOpen() {
 		t.Error("instMenuOpen should be false")
 	}
 }
 
-// TestInstMenuBoundsInvalidRow verifies that with an invalid row index,
-// the menu rect is empty or the menu state is invalid.
 func TestInstMenuBoundsInvalidRow(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -114,8 +101,6 @@ func TestInstMenuBoundsInvalidRow(t *testing.T) {
 	dv.instMenuComp = nil // no component, use legacy
 	dv.instMenuRow = -1   // invalid row
 
-	// With an invalid row, the menu should not have usable bounds.
-	// The row index is out of range for rowLabels.
 	if dv.instMenuRow >= 0 && dv.instMenuRow < len(dv.rowLabels()) {
 		t.Error("invalid row should not be in rowLabels range")
 	}

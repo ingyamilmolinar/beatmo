@@ -35,13 +35,7 @@ func TestDrawMenuRowVariants(t *testing.T) {
 	}
 }
 
-// Menus are minimalist-flat (DESIGN.md components note): rows sit directly on
-// the single panel surface — no per-row keycap pad, socket, or bevel. The
-// keycap is the signature of BUTTONS; list rows carry state via the flat
-// accent tint + stripe only. drawMenuRow must therefore never invoke the
-// keycap cap-face painter (drawRoundedButton) for any state.
-// (2026-07-04 design pass: reverts the keycap chrome the 2026-06-28 row
-// unification added, keeping the unified renderer itself.)
+// Rows are flat: the keycap is the signature of buttons, so drawMenuRow never paints one, in any state.
 func TestDrawMenuRowIsFlatNoKeycap(t *testing.T) {
 	origRRB := drawRoundedButton
 	defer func() { drawRoundedButton = origRRB }()
@@ -63,10 +57,7 @@ func TestDrawMenuRowIsFlatNoKeycap(t *testing.T) {
 	}
 }
 
-// The active row still carries the accent indicator: a full-opacity accent
-// stripe plus the tinted fill (this is the flat replacement for the old
-// keycap+accent stack — and the reason the keycap removal can't regress the
-// node dropdown's node-color indicator).
+// A full-opacity accent stripe plus the tint, which also carries the node dropdown's node-colour indicator.
 func TestDrawMenuRowActiveDrawsStripeAndTint(t *testing.T) {
 	accent := color.RGBA{1, 2, 3, 255} // distinctive; won't collide with chrome colors
 	b := NewButton("opt", DropdownStyle, nil)
@@ -111,9 +102,7 @@ func TestDrawMenuRowHoverDrawsTint(t *testing.T) {
 
 	var tint bool
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		// A translucent full-row fill is the hover tint (alpha-composited
-		// from the accent; premultiplication scrambles the RGB so only the
-		// translucency + geometry are asserted).
+		// Premultiplication scrambles the RGB, so only translucency and geometry are asserted.
 		rgba := color.RGBAModel.Convert(c).(color.RGBA)
 		if filled && rgba.A > 0 && rgba.A < 255 && r.Dx() == 120 && r.Dy() == 28 {
 			tint = true
