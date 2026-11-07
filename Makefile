@@ -1,6 +1,6 @@
 include ci/versions.env
 
-GO ?= $(shell if [ -x $(CURDIR)/.tools/go/bin/go ]; then echo $(CURDIR)/.tools/go/bin/go; else echo go; fi)
+GO ?= $(shell if [ -x $(CURDIR)/.tools/go/bin/go ]; then echo $(CURDIR)/.tools/go/bin/go; else command -v go || echo go; fi)
 WASM_OUT = ../js/main.wasm
 MA_JS = src/js/drums.single.js
 C_ARCHIVE = build/libdrums.a

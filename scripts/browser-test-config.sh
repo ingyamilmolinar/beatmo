@@ -128,7 +128,7 @@ get_test_env() {
 
 # Function to check if test must run sequentially
 is_sequential() {
-    local test_name="$1"
+    local test_name="$1" t
     for t in "${SEQUENTIAL_TESTS[@]}"; do
         if [[ "$t" == "$test_name" ]]; then
             return 0
@@ -165,7 +165,7 @@ RETRY_TESTS=(
 )
 
 is_retry() {
-    local test_name="$1"
+    local test_name="$1" t
     for t in "${RETRY_TESTS[@]}"; do
         if [[ "$t" == "$test_name" ]]; then
             return 0
@@ -175,7 +175,7 @@ is_retry() {
 }
 
 should_skip() {
-    local test_name="$1"
+    local test_name="$1" t
     for t in "${SKIP_TESTS[@]}"; do
         if [[ "$t" == "$test_name" ]]; then
             return 0
