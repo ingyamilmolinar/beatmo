@@ -16,9 +16,9 @@ import (
 var (
 	testGamesMu sync.Mutex
 	testGames   []*Game
-	// The locale each live test Game started with: closing it restores that,
-	// so a scene or test that switches language never leaks into the next.
-	testGameLocales = map[*Game]i18n.Locale{}
+	// Which live test Games started in English: closing one puts English back,
+	// since a scene switches the language for its Game's life and never back.
+	testGameStartedEN = map[*Game]bool{}
 
 	defaultDrawRect      = drawRect
 	defaultDrawEdgeLine  = drawEdgeLine
@@ -38,7 +38,7 @@ func init() {
 		}
 		testGamesMu.Lock()
 		testGames = append(testGames, g)
-		testGameLocales[g] = i18n.ActiveLocale()
+		testGameStartedEN[g] = i18n.ActiveLocale() == i18n.LocaleEN
 		testGamesMu.Unlock()
 	}
 	unregisterGameForTest = func(g *Game) {
@@ -46,17 +46,17 @@ func init() {
 			return
 		}
 		testGamesMu.Lock()
-		loc, tracked := testGameLocales[g]
-		delete(testGameLocales, g)
 		for i, q := range testGames {
 			if q == g {
 				testGames = append(testGames[:i], testGames[i+1:]...)
 				break
 			}
 		}
+		startedEN := testGameStartedEN[g]
+		delete(testGameStartedEN, g)
 		testGamesMu.Unlock()
-		if tracked && i18n.ActiveLocale() != loc {
-			i18n.SetLocale(loc)
+		if startedEN && i18n.ActiveLocale() != i18n.LocaleEN {
+			i18n.SetLocale(i18n.LocaleEN)
 		}
 	}
 }
