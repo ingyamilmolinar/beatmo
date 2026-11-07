@@ -1,25 +1,6 @@
-// voice_tempo_independence.browser.test.js
-//
-// A note sounds the same at every tempo and on both platforms (user decision
-// 2026-10-27: "the same circuit sounds exactly the same at any tempo in both
-// platforms. This is paramount."). A voice is its document's render.seconds
-// long — never a number of beats — and the browser post-processes it exactly
-// like desktop (voice_post.js ↔ doc_voice_native.go: voice FX, gate tail,
-// normalise × amplitude, end fade). Three checks, every shipped instrument:
-//
-//   1. TEMPO: the voice the PLAYBACK path renders (ensureRenderedSample) is
-//      the same sample for sample at 60 and 240 BPM (each tempo renders fresh).
-//   2. BRIDGE: what Go pushed (setInstrumentBlock) is the desktop document —
-//      the same block, seconds, amplitude, gate tail and voice FX calls.
-//   3. PLATFORMS: the browser renders that block into the desktop's played
-//      voice (cmd/export_audio --voices, rendered fresh from this tree):
-//      exactly as many frames, and every sample within the float-rounding seam
-//      of the C engine (1e-4, the xplat_audio_compare contract — the C is the
-//      same; only the compiler and libm differ, ~1e-7 typically).
-//
-// COVERED-BY-GO: TestVoiceIsTheSameAtEveryTempo / TestTempoChangeReRendersNothing
-// (internal/audio, real build) for desktop. JS-owned here: the render worker,
-// voice_post.js and the Go→JS document push.
+// A note sounds the same at every tempo and on both platforms, for every shipped instrument: the playback render is
+// sample-identical at 60 and 240 BPM, the pushed block is desktop's document, and the browser render matches desktop's
+// played voice (same frames, every sample within 1e-4). COVERED-BY-GO: TestVoiceIsTheSameAtEveryTempo, TestTempoChangeReRendersNothing
 
 import fs from "fs";
 import path from "path";
@@ -48,8 +29,7 @@ function nativeVoices(sr) {
   return JSON.parse(r.stdout);
 }
 
-// The startup demo carries its own documents for a few instruments; for those
-// the page holds the demo's version, not the shipped one (bridge check only).
+// For these the page holds the demo's own document, so only the bridge check applies.
 function demoInstrumentIDs() {
   const demo = JSON.parse(fs.readFileSync(path.resolve(repoRoot, "src/go/internal/assets/startup_demo.json"), "utf8"));
   return new Set(Object.keys(demo.instrument_docs || {}));

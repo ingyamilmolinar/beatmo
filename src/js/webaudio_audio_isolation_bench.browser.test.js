@@ -1,61 +1,6 @@
-// webaudio_audio_isolation_bench.browser.test.js
-//
-// "A UI bug must not affect audio." This bench plays the startup demo in the
-// real app (main.wasm + index.html) under a matrix of UI loads and measures,
-// with the playback probe (audio.js → audio_probe_worklet.js →
-// audio_probe_analysis.js), what the listener actually HEARS relative to what
-// the predictor said should fire:
-//
-//   lag vs grid / vs request   onset − predictor time / − scheduler request
-//   late notes                 > 10 / 20 / 50 ms behind the request
-//   IOI error                  rhythm evenness vs the predictor's intervals
-//   lookahead shifts           the audio cushion moving mid-play (tempo hiccup)
-//   jsQueue                    request → BufferSource.start inside audio.js
-//   arrivedLate                notes that reached audio.js already overdue
-//                              (the Go sequencer was starved by the UI)
-//   missed / dropped           notes silent in the output / never started
-//   clicks / cuts / slips      signal glitches and audio-thread underruns
-//
-// Scenarios (ISOLATION_SCENARIOS=a,b to filter):
-//   idle             plain playback, no interaction
-//   stall-50         synthetic UI bug: the main thread blocks 50 ms every 250 ms
-//   stall-150        …150 ms every 500 ms
-//   stall-150-microtask  same stall, legacy microtask flush (A/B for sync start())
-//   tab-synth        the heaviest audio-panel tab drawing
-//   synth-graphs     the Synth tab's graphs working: real pointer presses and
-//                    drags on its dials (every press renders + analyses the
-//                    dial's two ends, every drag detent the live sound) and a
-//                    switch to another row's instrument every few steps (its
-//                    dial relevance is measured on first sight)
-//   tab-chain        the Chain (scope) tab drawing
-//   zoom-storm       continuous zoom gestures (grid re-rasterization)
-//   pan-storm        continuous pan gestures
-//   fx-worklet       3 insert effects per row on the audio-thread host (the
-//                    C in the beatmo-dsp worklet), under stall-150. (The old
-//                    fx-scriptproc A/B is gone: the host is chosen once per
-//                    AudioContext, and the main-thread host is only the
-//                    no-AudioWorklet fallback.)
-//
-// Gates (always on — deterministic even under headless software GL):
-//   - every scenario: notes were judged, none dropped, none silent
-//   - jsQueue p99 ≤ one 60 Hz frame (sequencer batches start synchronously; a queue wait
-//                          here is the UI frame leaking into audio timing)
-//   - lookahead shifts ≤ 3 (the cushion ratchets, never oscillates)
-//   - fx-worklet: the effects really run on the worklet host, and the stalled
-//     main thread causes no hard cuts on those channels
-// Lateness / IOI limits are REPORTED, and enforced only with
-// AUDIO_PROBE_STRICT=1: headless Chromium rasterizes WebGL in software on the
-// renderer main thread (400-600 ms frames here), which starves the Go
-// sequencer far beyond anything real hardware does.
-//
-// Output: bench-results/audio_isolation.json
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/webaudio_audio_isolation_bench.browser.test.js
-// Env: ISOLATION_SECS (default 8), ISOLATION_BPM (default 120),
-//      ISOLATION_SCENARIOS, WASM_PREBUILT=1, WASM_FILE=<path to serve as main.wasm>,
-//      SITE_DIR=<dir to serve every other file from>, ISOLATION_ENV=<JSON for
-//      window.__beatmoEnv>, AB_ARM=<name: output → audio_isolation_<name>.json>
+// "A UI bug must not affect audio": the demo under a matrix of UI loads (stalls, heavy tabs, the Synth graphs, zoom/pan
+// storms, worklet FX, edit storms), judged on what the probe HEARS. Hard gates: notes judged, none dropped or silent,
+// jsQueue p99 ≤ one frame, ≤ 3 lookahead shifts; lateness only with AUDIO_PROBE_STRICT=1. → bench-results/audio_isolation.json
 
 import http from "http";
 import { spawnSync } from "child_process";
@@ -74,8 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
-// SITE_DIR serves every non-wasm file from another directory (the A/B runner
-// points it at a frozen pre-change build: scripts/audio_lane_ab.mjs).
+// The A/B runner points it at a frozen pre-change build.
 const SITE_DIR = process.env.SITE_DIR ? path.resolve(process.env.SITE_DIR) : jsDir;
 const WASM_FILE = process.env.WASM_FILE ? path.resolve(process.env.WASM_FILE)
   : (process.env.SITE_DIR ? path.join(SITE_DIR, "main.wasm") : path.join(jsDir, "main.wasm"));
@@ -117,14 +61,10 @@ const SCENARIOS = [
   { name: "stall-50", load: { stall: [250, 50] } },
   { name: "stall-150", load: { stall: [500, 150] } },
   { name: "stall-300", load: { stall: [700, 300] } },
-  // Edit storms with a 150 ms / 500 ms stall underneath: an edit must reach
-  // the next not-started note even while the main thread stutters.
-  //   edit-mute — row 0 mute/unmute every 600 ms
-  //   edit-vol  — row 1 volume steps every 400 ms
+  // An edit must reach the next not-started note while the main thread stutters.
   { name: "edit-mute", edits: "mute", load: { stall: [500, 150] } },
   { name: "edit-vol", edits: "vol", load: { stall: [500, 150] } },
-  // A/B for the synchronous start(): the legacy microtask flush under the
-  // same stall (see enqueueAudioEvents).
+  // The legacy microtask flush under the same stall.
   { name: "stall-150-microtask", flush: "microtask", load: { stall: [500, 150] } },
   { name: "tab-synth", tab: "synth" },
   { name: "synth-graphs", tab: "synth", load: { graphs: true } },
@@ -143,8 +83,7 @@ const results = [];
 const { browser } = await launchBrowser(); // TEST_PLATFORM=chrome-local TEST_HEADED=1: real Chrome, real GPU
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  // ISOLATION_ENV (JSON) → window.__beatmoEnv before WASM init (index.html's
-  // go.env plumbing), e.g. {"BEATMO_AUDIO_LANE":"1"} for the lane arm.
+  // Into window.__beatmoEnv before init, e.g. {"BEATMO_AUDIO_LANE":"1"}.
   const ISO_ENV = process.env.ISOLATION_ENV ? JSON.parse(process.env.ISOLATION_ENV) : null;
   if (ISO_ENV && Object.keys(ISO_ENV).length) {
     await page.addInitScript((cfg) => {
@@ -206,12 +145,8 @@ try {
         let k = 0;
         timers.push(setInterval(() => { const d = (k++ % 60) < 30 ? 6 : -6; panBy(d, d / 2); }, 16));
       }
-      // Graph storm, driven in the page (no protocol round trips): mouse
-      // events on the canvas, the way Ebiten reads a real pointer — press a
-      // dial (focus: its two ends render + analyse), drag it (the turn
-      // re-renders the live sound), release; next dial. Every 4th
-      // gesture the tab shows another row's instrument (first sight: its dial
-      // relevance is measured).
+      // Driven in the page, as Ebiten reads a real pointer: press a dial (its ends render), drag it (the live sound
+      // re-renders), release; every 4th gesture shows another row's instrument (its dial relevance is measured).
       if (load?.graphs) {
         const canvas = document.querySelector("canvas");
         const ev = (type, x, y, buttons) => canvas.dispatchEvent(new MouseEvent(type,
@@ -243,9 +178,7 @@ try {
       }
       window.__isoStop = () => timers.forEach(clearInterval);
     }, { load: sc.load || null, rows });
-    // Edit storm: marks are stamped with the ctx time read in the SAME
-    // evaluate that performs the edit (markEdit), so the frozen baseline
-    // build is measured exactly like the new one.
+    // Stamped in the SAME evaluate as the edit, so the frozen baseline is measured exactly like the new build.
     const marks = [];
     let mutes = 0;
     const editLoop = sc.edits ? (async () => {
@@ -258,9 +191,7 @@ try {
           await page.waitForTimeout(600);
         } else {
           const v = [0.9, 0.5, 0.7, 0.3][k % 4];
-          // prev = row volume before this edit: the analysis learns the
-          // channel's node volumes from pre-edit notes (startup-demo nodes
-          // are not all vol 1).
+          // The analysis learns node volumes from pre-edit notes; demo nodes are not all vol 1.
           const prev = await page.evaluate(() => rowVolume(1));
           marks.push(await markEdit(page, { label: `vol#${k}`, kind: "vol", channel: rows[1], value: v, prev }, "setRowVolume(1, arg)", v));
           await page.waitForTimeout(400);
@@ -305,8 +236,7 @@ try {
     hard(report.notes.dropped === 0, `${report.notes.dropped} notes requested but never started`);
     // Edit storms are measurements (staleness per arm), not gates.
     if (sc.edits) continue;
-    // Legacy-host A/B baselines (fx-scriptproc, stall-150-microtask) exist to
-    // SHOW the coupling; their silence/queueing is the finding, not a failure.
+    // The legacy A/B arms exist to SHOW the coupling: their silence or queueing is the finding.
     const legacy = sc.fx === "scriptprocessor" || !!sc.flush;
     if (!legacy) hard(report.notes.missed === 0, `${report.notes.missed} notes silent in the output`);
     else if (report.notes.missed > 0) infos.push(`${tag} legacy host A/B: ${report.notes.missed}/${report.notes.judged} notes silent`);

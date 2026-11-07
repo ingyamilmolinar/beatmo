@@ -1,15 +1,5 @@
-// scenarios/playback_ready.js
-//
-// In-page twin of audio_probe_bench_helpers.js#startPlaybackWhenReady, for the
-// scenario modules that also run on real phones (test_runner.html), where there
-// is no Playwright `page` to wait from.
-//
-// The Play button is deliberately DISABLED while the playback-readiness gate
-// warms the circuit's voices, and a press during warm-up is ignored, never
-// queued ("a play that fires seconds later, unprompted, is worse than one that
-// did not fire" — game_update.go). A user cannot press it then; a scenario that
-// does is testing something no user can do, and passes or fails on how fast the
-// warm-up happens to be. These wait for the same gate the button renders from.
+// In-page twin of startPlaybackWhenReady for phones, where there is no Playwright page. Play is DISABLED while warm-up
+// runs and a press then is ignored, never queued, so a scenario pressing early tests something no user can do.
 
 /** Resolves true once the readiness gate is open (or the build has no gate). */
 export async function waitForPlaybackReady(timeoutMs = 20000) {
@@ -21,10 +11,7 @@ export async function waitForPlaybackReady(timeoutMs = 20000) {
   return false;
 }
 
-/**
- * Presses Play (the startPlay export) once the gate is open and confirms the
- * transport is running. Returns { ok, reason }.
- */
+/** Returns {ok, reason}. */
 export async function pressPlayWhenReady(timeoutMs = 20000) {
   if (!(await waitForPlaybackReady(timeoutMs))) return { ok: false, reason: "warmup_never_ready" };
   const deadline = Date.now() + timeoutMs;

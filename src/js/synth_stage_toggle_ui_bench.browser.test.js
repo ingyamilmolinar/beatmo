@@ -1,25 +1,6 @@
-/**
- * Harness B — real-UI synth stage-toggle bench (WASM, full main.wasm).
- *
- * Reproduces the user-reported crackle: while playing, real clicks on the
- * detail-header enable pill (via synthEnablePillRect) and real ParamCard
- * wheel-popup drags on an enabled stage, WITH THE SYNTH TAB OPEN AND DRAWING.
- * The eqControl run applies the IDENTICAL logical param churn (toggle
- * filter_enabled + sweep filter_cutoff) but via the bridge (setInstrumentParam)
- * while the cheap EQ tab draws — a sound single-variable control that isolates
- * Synth-tab draw cost (project_synth_tab_audio_starvation). See the comment
- * above runUIStorm for why bridge churn, not frozen-coordinate clicks, is used.
- *
- * Structural gates only (software-GL amplifies draw cost — wall-clock is
- * recorded, not gated):
- *   - no page errors; AudioContext running
- *   - toggles>0 and knobDrags>0 for the synth run (the storm actually ran)
- *   - mainThreadRenders==0 for the synth run (off-thread voice rendering
- *     must hold even under stage-toggle cache eviction)
- *   - audio recovers after the storm (RMS on a quiet tab > silence floor)
- *     — proves starvation, not a permanently dead instrument
- * Records: RMS, FPS, drawMaxMS, audioDrops, overdue, gaps, render metrics.
- */
+/** Real clicks on the stage enable pill and real armed-control edits while playing with the Synth tab DRAWING, against an
+ * identical bridge-driven churn on the cheap EQ tab: the delta isolates Synth-tab draw cost. Gated structurally (no
+ * errors, the storm ran, no main-thread renders, audio recovers); wall-clock is only recorded. */
 import { chromium } from "playwright";
 import fs from "fs";
 import path from "path";
@@ -46,8 +27,7 @@ const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e.message)));
 page.on("console", (m) => { const t = m.text(); if (m.type() === "error") pageErrors.push("console.error: " + t); try { console.log("[PAGE]", m.type(), t); } catch (_) {} });
 
-// Tap the real AudioContext destination (mirrors synth_generator_solo_realinput):
-// windowed accumulators (__rmsAccum/__nonZero/__frames) we reset per sample window.
+// Windowed accumulators reset per sample window.
 await page.addInitScript(() => {
   const RealAC = window.AudioContext || window.webkitAudioContext;
   class TestAC extends RealAC {
@@ -97,14 +77,9 @@ try {
   await page.mouse.click(200, 200);
   await waitForAudioReady(page, { allowReject: true });
 
-  // Put a heavy melodic (modular, per-pitch-rendered) voice on row 0 so the
-  // Synth tab edits a heavy voice — cello (see AGENTS.md instrument catalog /
-  // project_voice_choir_instruments memory).
+  // A heavy melodic per-pitch voice.
   await page.evaluate(() => setRowInstrument(0, "cello"));
-  // Make sure the Synth tab edits cello (row 0), not whatever channel was
-  // previously selected — setRowInstrument alone does not change the
-  // edited-instrument selection (see synth_generator_solo_realinput's
-  // "Make sure the Synth tab edits the snare" comment for the same pattern).
+  // setRowInstrument does not change which instrument the Synth tab edits.
   await page.evaluate(() => setEQChannel("cello")); // present per the waitForFunction guard above
   await page.evaluate(() => { forceDraw?.(); });
   await page.waitForTimeout(200);
@@ -117,25 +92,9 @@ try {
   console.log("[TEST] AudioContext state =", ctxState);
   if (ctxState !== "running") fail(`AudioContext not running (state=${ctxState})`);
 
-  // runUIStorm(tabName): switches to `tabName` and, for DURATION_MS at
-  // SPAM_INTERVAL_MS cadence, applies the same logical param load (25% ticks
-  // toggle filter_enabled, 75% ticks sweep filter_cutoff) via one of two input
-  // paths chosen by `tabName`:
-  //
-  //   "synth" — the FAITHFUL reproduction. Opens the FILTER stage, then uses
-  //     REAL pointer input on the drawn Synth tab: click the centre of
-  //     synthEnablePillRect() to toggle, and for the cutoff knob the
-  //     armed-control flow (click the card → arrow keys step the value →
-  //     Enter). This is what we gate.
-  //
-  //   "eq" — the DRAW-COST CONTROL. Applies the identical churn via the BRIDGE
-  //     (setInstrumentParam) while the cheap EQ tab draws, with NO mouse input.
-  //     Bridge (not "click the synth panel's frozen screen coordinates on the
-  //     EQ tab") is deliberate: those coordinates map to unrelated EQ controls
-  //     when the EQ tab is the one drawn, so clicking them corrupts audio state
-  //     (an earlier version muted master → a false "audio dead" reading). Same
-  //     mutation load, only the drawn tab differs → the synth-vs-eqControl
-  //     delta isolates Synth-tab draw cost. See the tabName !== "synth" branch.
+  // Same load either way (25 % toggles, 75 % cutoff sweeps): "synth" opens FILTER and uses REAL input on the drawn tab (the
+  // gated run); "eq" drives the bridge while the EQ tab draws, since the Synth panel's frozen coordinates hit unrelated EQ
+  // controls there.
   async function runUIStorm(tabName) {
     await page.evaluate((t) => setEQTab(t), tabName);
     await page.waitForTimeout(250);
@@ -145,10 +104,7 @@ try {
       await page.waitForTimeout(150);
       await waitForGameLoopRelease(page);
 
-      // Fail loudly (with diagnostics) instead of silently recording a
-      // zero-input run: if neither the enable pill nor a cutoff knob laid
-      // out, the edited instrument / section selection didn't take, and the
-      // toggles>0 / knobDrags>0 gates below would fail with no clue why.
+      // A zero-input run would fail the gates with no clue why.
       const diagPill = await page.evaluate(() => (typeof synthEnablePillRect === "function" ? synthEnablePillRect() : { x: 0, y: 0, w: 0, h: 0 }));
       const diagKnobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
       const diagChips = await page.evaluate(() => (typeof synthChipRects === "function" ? synthChipRects() : []));
@@ -169,9 +125,7 @@ try {
       if (typeof resetPerfStats === "function") resetPerfStats();
       if (typeof resetAudioScheduleMetrics === "function") resetAudioScheduleMetrics();
       if (typeof resetRenderLatencyMetrics === "function") resetRenderLatencyMetrics();
-      // In-page event-loop gap sampler (mirrors webaudio_synth_param_stress):
-      // a blocked main thread (heavy Synth-tab draw) shows up as a large gap
-      // between 8ms ticks.
+      // A blocked main thread shows as a large gap between 8 ms ticks.
       window.__uiGaps = [];
       window.__uiGapLast = performance.now();
       window.__uiGapTimer = setInterval(() => {
@@ -187,14 +141,7 @@ try {
     for (let i = 0; i < ticks; i++) {
       await page.evaluate(() => { window.__rmsAccum = 0; window.__frames = 0; });
       if (tabName !== "synth") {
-        // Draw-cost control: identical param churn via the BRIDGE while the
-        // cheap EQ tab draws. NO frozen-coordinate clicks — clicking the synth
-        // panel's last-laid-out pill/knob screen coordinates on the EQ tab
-        // would hit unrelated EQ controls and corrupt audio state (an earlier
-        // version did exactly that and muted master → a false "audio dead"
-        // recovery reading). Same logical load (toggle filter_enabled + sweep
-        // filter_cutoff) as the synth run, so the synth-vs-eqControl delta
-        // isolates Synth-tab DRAW cost, not the mutation itself.
+        // The bridge, never frozen-coordinate clicks, which once muted master and read as "audio dead".
         if (i % 4 === 0) {
           await page.evaluate(() => { window.__ctlTog = (window.__ctlTog | 0) ^ 1; setInstrumentParam("cello", "filter_enabled", window.__ctlTog); });
           toggles++;
@@ -210,13 +157,8 @@ try {
           toggles++;
         }
       } else {
-        // ARMED-CONTROL model: a click ARMS the Synth control in place and the
-        // arrow keys step its value (Up/Down; armedControlKeys claims them),
-        // Enter accepts. The earlier flows — in-place rotary drag, then a modal
-        // "barrel" wheel popup (SubjectSynthWheel) dragged vertically — are both
-        // gone, so the popup this bench waited for never appeared and it
-        // counted zero edits. An edit is counted only when the param actually
-        // moved, so the gate below cannot pass on input that did nothing.
+        // A click ARMS the control, arrows step it, Enter accepts; an edit counts only if the param moved, so input that did
+        // nothing cannot pass.
         const knobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
         const knob = (knobs || []).find((k) => k && k.w > 0 && k.h > 0 && /cutoff/i.test(k.name || ""));
         if (knob) {
@@ -266,11 +208,7 @@ try {
   console.log("[TEST] progress: entering synth storm");
   const synthResult = await runUIStorm("synth");
 
-  // Recovery probe: after the FAITHFUL real-input storm, leave to the cheap EQ
-  // tab, let audio settle, sample RMS. A recovering level proves the storm
-  // STARVED audio (recovers once the heavy Synth-tab draw stops) rather than
-  // permanently silencing the toggled instrument. Measured here — before the
-  // bridge-churn control run — so it reflects the real-input storm's aftermath.
+  // Recovery after the real-input storm proves starvation, not a dead instrument; measured before the control run.
   await page.evaluate(() => setEQTab("eq"));
   await page.waitForTimeout(600);
   const recoverRMS = await sampleRMS(400);

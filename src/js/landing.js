@@ -1,11 +1,5 @@
-// landing.js — the landing page overlay (spec
-// docs/superpowers/specs/2026-10-23-landing-page-design.md). Loaded by the
-// first <head> script only when the landing is shown; the shell (markup + CSS)
-// is inline in index.html so it paints before this file arrives.
-//
-// Owns: the crystal worker, the recording (deferred until the game's download
-// has finished), cue-driven captions / chapter chips / theme / beat clock, the
-// visitor's controls, readiness, and the Play handover to the game beneath.
+// The landing overlay, loaded only when it is shown; the shell is inline in index.html so it paints before this
+// arrives. Owns the crystal, the deferred recording, the cues, the controls, readiness and the Play handover.
 
 const $ = (id) => document.getElementById(id);
 const root = document.documentElement;
@@ -21,8 +15,7 @@ const MEDIA = {
   phone: { video: new URL("./landing/phone.mp4", import.meta.url), cues: new URL("./landing/phone.vtt", import.meta.url) },
 }[cut];
 
-// Fallback palette until the cue file (which carries the game's own resolved
-// presets) has loaded.
+// Until the cue file (with the game's resolved presets) has loaded.
 let palettes = [{ id: "vice-city", name: "Vice City", bg: "#120A1C", acc: "#FFB30A", cols: ["#EE00DD", "#00C8E0", "#3FD67A", "#FFB30A", "#C24FFF", "#FF5C2A"] }];
 let paletteIdx = 0;
 let song = { bpm: 140, beat0: 0 };
@@ -35,10 +28,7 @@ let chapters = []; // {id,label,start,end} from the cue file
 let chapterIdx = 0;
 let capSide = "left";
 
-// ---------------------------------------------------------------------------
-// Crystal: a worker owning an OffscreenCanvas, or the same module on the main
-// thread where OffscreenCanvas is missing.
-// ---------------------------------------------------------------------------
+// A worker owning an OffscreenCanvas, or the same module on the main thread where that is missing.
 const canvas = $("lc-crystal");
 const pad2 = (n) => String(n).padStart(2, "0");
 const D = new Date();
@@ -85,9 +75,7 @@ function sendHole() {
 addEventListener("resize", () => { post({ type: "resize", w: innerWidth, h: innerHeight, dpr: Math.min(2, devicePixelRatio || 1) }); sendHole(); });
 sendHole();
 
-// ---------------------------------------------------------------------------
-// Controls (they only change how the crystal looks).
-// ---------------------------------------------------------------------------
+// The controls only change how the crystal looks.
 function toast(msg, ms) {
   const t = $("lc-toast");
   t.textContent = msg;
@@ -117,11 +105,8 @@ const actions = {
 actions["="] = actions["+"];
 actions._ = actions["-"];
 for (const b of landing.querySelectorAll(".lc-tips button")) b.addEventListener("click", (e) => { e.stopPropagation(); actions[b.dataset.k](); });
-// Keys arrive through the capture guard in index.html's head script, which
-// keeps them from the game while the landing is up.
-// Every key is the landing's while it is up: preventDefault also keeps Enter /
-// Space from clicking whichever landing button the last click left focused
-// (Enter on a focused opt-out box would otherwise untick it while playing).
+// Keys reach here through index.html's capture guard, which keeps them from the game. preventDefault also stops Enter
+// or Space from clicking the last-focused landing button (Enter on the opt-out box would untick it).
 window.__beatmoLandingKey = (e) => {
   wantSound();
   if (e.key === "Enter") { e.preventDefault(); handOver(); return; }
@@ -149,11 +134,7 @@ landing.addEventListener("touchend", (e) => { for (const t of e.changedTouches) 
 landing.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") post({ type: "pointer", x: e.clientX, y: e.clientY }); });
 landing.addEventListener("click", (e) => { if (e.target === landing || e.target === canvas) post({ type: "plant", x: e.clientX, y: e.clientY }); });
 
-// ---------------------------------------------------------------------------
-// "Do not show tutorial demo again": the landing shows on every visit until
-// the visitor ticks this (the head script in index.html reads the same key).
-// Ticking only stores the choice; this visit carries on until Play.
-// ---------------------------------------------------------------------------
+// Shown on every visit until ticked (the head script reads the same key); ticking only stores the choice.
 const OPT_OUT_KEY = "beatmo.landing.optOut";
 const optBtn = $("lc-optout");
 function optedOut() {
@@ -173,16 +154,11 @@ optBtn.addEventListener("click", (e) => {
 });
 syncOptOut();
 
-// ---------------------------------------------------------------------------
-// The recording: loads only after the game's download has finished (from there
-// the game is CPU-bound, so the video uses bandwidth nobody else needs).
-// ---------------------------------------------------------------------------
+// Loads only after the game's download: from then the game is CPU-bound and the bandwidth is free.
 const saveData = !!(navigator.connection && navigator.connection.saveData);
-// ?video=late starts the recording only once the game is ready (A/B knob for
-// the load benchmark: it isolates the video's cost during the game's boot).
+// A load-benchmark knob isolating the video's cost during boot.
 const videoAfterReady = /[?&]video=late/.test(location.search);
-// H.264 + AAC plays in Chrome, Safari, Firefox and Edge; an engine without it
-// (e.g. an open-source Chromium build) keeps the poster and downloads nothing.
+// An engine without H.264 (an open-source Chromium) keeps the poster and downloads nothing.
 const canPlay = video.canPlayType('video/mp4; codecs="avc1.640028, mp4a.40.2"') !== "";
 let videoRequested = false;
 function loadVideo(asked) {
@@ -193,19 +169,13 @@ function loadVideo(asked) {
   video.preload = "auto";
   play();
 }
-// play() outside a user gesture may be refused (iOS Low Power Mode, a browser
-// set to block autoplay, a video with sound under a strict policy): the poster
-// stays and the next tap or key (wantSound) plays it.
+// Refused outside a gesture (Low Power Mode, blocked autoplay): the poster stays and the next tap or key plays it.
 function play() {
   const p = video.play();
   if (p && p.catch) p.catch(() => { if (video.paused) soundBtn.textContent = "Tap to play"; });
 }
-// The visitor's tap or key: the recording plays, with sound. Must run inside
-// the gesture (click / keydown), never on pointerdown — on a touch screen
-// pointerdown comes BEFORE the tap counts as a user gesture, and unmuting an
-// autoplaying video there makes the browser PAUSE it (that froze the
-// recording on every phone's first touch). Idempotent; also resumes a
-// recording the browser paused.
+// Inside the gesture (click / keydown), never on pointerdown: on a touch screen that precedes activation, and unmuting
+// an autoplaying video there makes the browser PAUSE it. Idempotent; also resumes a paused recording.
 const soundBtn = $("lc-sound");
 function wantSound() {
   if (!landing.isConnected || window.__beatmoLanding.state !== "shown") return;
@@ -222,9 +192,7 @@ for (const ev of ["playing", "pause", "seeked", "ratechange"]) video.addEventLis
 video.addEventListener("timeupdate", () => { if (++syncClock.n % 8 === 0) syncClock(); });
 syncClock.n = 0;
 
-// ---------------------------------------------------------------------------
-// Cues (WebVTT metadata, JSON payloads written by the game's tour recorder).
-// ---------------------------------------------------------------------------
+// WebVTT metadata with JSON payloads written by the game's tour recorder.
 const trackEl = document.createElement("track");
 trackEl.kind = "metadata";
 trackEl.src = MEDIA.cues.href;
@@ -302,10 +270,7 @@ function goChapter(i) {
   video.currentTime = chapters[chapterIdx].start + 0.01;
 }
 
-// ---------------------------------------------------------------------------
-// Readiness (no new Go export): the first full frame has drawn and the voice
-// warm-up gate is open. The ring shows honest phases.
-// ---------------------------------------------------------------------------
+// No Go export: the first full frame has drawn and the warm-up gate is open. The ring shows honest phases.
 const playBtn = $("lc-play"), playLbl = $("lc-play-label"), ring = $("lc-ring");
 let playReady = false;
 function poll() {
@@ -344,10 +309,7 @@ setInterval(() => {
   });
 }, 100);
 
-// ---------------------------------------------------------------------------
-// Play: the press is a document-level gesture, so audio.js's capture-phase
-// unlock listener resumes the AudioContext; then hand the screen to the game.
-// ---------------------------------------------------------------------------
+// The press is a document-level gesture, so audio.js's capture-phase unlock resumes the context.
 function handOver() {
   if (!playReady) return;
   playReady = false;
@@ -356,8 +318,7 @@ function handOver() {
   root.removeAttribute("data-landing");
   landing.classList.add("lc-out");
   try { if (typeof window.startPlay === "function") window.startPlay(); } catch (_) {}
-  // Keys go to the game from here: hand it the focus (a landing button had it,
-  // and that button is about to be removed).
+  // The landing button holding focus is about to be removed.
   const game = window.__beatmoGameCanvas();
   if (game) {
     if (!game.hasAttribute("tabindex")) game.tabIndex = -1;

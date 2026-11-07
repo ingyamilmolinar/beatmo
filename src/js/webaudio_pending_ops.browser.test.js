@@ -1,17 +1,5 @@
-// audio_pending_ops.browser.test.js
-//
-// Tests pending channel operations that queue before audio context unlock.
-// The audio.js module defers setChannelVolume, setChannelEQ
-// calls when no AudioContext exists yet. These are applied once the context
-// first reaches 'running' state.
-//
-// Verifies:
-//   1. Volume set before context creation is applied after unlock
-//   2. EQ set before context creation is applied after unlock
-//   3. Multiple pending ops are applied in order
-//   4. Pending insert effects are applied after unlock
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/audio_pending_ops.browser.test.js
+// Channel volume, EQ and insert effects set before the AudioContext exists must apply, in order, once it first runs.
+// Usage: GO=… node src/js/webaudio_pending_ops.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -23,9 +11,7 @@ import { flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
-// This test uses audio.js directly (no WASM) to test the pending ops behavior
-// before AudioContext creation. We create a minimal HTML page that loads audio.js
-// as a module but does NOT auto-play or create an AudioContext.
+// audio.js alone (no WASM), on a page that never auto-creates a context.
 
 const server = http.createServer((req, res) => {
   if (req.url === "/" || req.url === "/pending.html") {
@@ -53,8 +39,7 @@ const port = server.address().port;
 let exitCode = 0;
 let browser;
 try {
-  // Do NOT pass --autoplay-policy=no-user-gesture-required
-  // so that AudioContext starts suspended (simulating mobile behavior).
+  // No autoplay flag, so the context starts suspended as on mobile.
   browser = await chromium.launch({ args: [] });
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/pending.html`);
@@ -67,9 +52,6 @@ try {
     typeof window.setChannelEQ === "function"
   );
 
-  // ========================================================================
-  // Scenario 1: Volume set before context creation is applied after unlock
-  // ========================================================================
   console.log("--- Scenario 1: Pending volume ---");
 
   const s1 = await page.evaluate(async () => {
@@ -96,8 +78,7 @@ try {
     const hasCtxAfter = !!window.__audioCtx;
     const ctxState = window.__audioCtx ? window.__audioCtx.state : "none";
 
-    // After context is running, the pending volume should be applied.
-    // Small delay to allow applyPendingOps to complete.
+    // applyPendingOps needs a moment.
     await new Promise((r) => setTimeout(r, 200));
     const volAfter = window.channelVolume("kick");
 
@@ -117,9 +98,6 @@ try {
   if (Math.abs(s1.volAfter - 0.42) > 0.01) throw new Error(`Scenario 1 FAIL: volume after unlock should be 0.42, got ${s1.volAfter}`);
   console.log("  PASS");
 
-  // ========================================================================
-  // Scenario 2: EQ set before context is applied after unlock
-  // ========================================================================
   console.log("--- Scenario 2: Pending EQ ---");
 
   const page2 = await browser.newPage();
@@ -152,10 +130,7 @@ try {
     const hasCtxAfter = !!window.__audioCtx;
     const ctxState = window.__audioCtx ? window.__audioCtx.state : "none";
 
-    // Verify the EQ was applied: the channel chain should have eqChain entries.
-    // We can't easily inspect the internal eqChain array from outside, but we
-    // can verify that setChannelEQ did not throw and the analyzer can be enabled
-    // (which exercises the same pipeline).
+    // The internal eqChain is not visible, so a successful analyzer enable stands in for the same pipeline.
     let analyzerOK = false;
     try {
       window.enableChannelAnalyzer("kick", 512);
@@ -177,9 +152,6 @@ try {
   console.log("  PASS");
   await page2.close();
 
-  // ========================================================================
-  // Scenario 3: Multiple pending ops are applied in order
-  // ========================================================================
   console.log("--- Scenario 3: Multiple pending ops order ---");
 
   const page3 = await browser.newPage();
@@ -190,8 +162,7 @@ try {
   );
 
   const s3 = await page3.evaluate(async () => {
-    // Queue multiple volume changes before context exists.
-    // The last value should win because they execute in order.
+    // The last value wins.
     window.setChannelVolume("kick", 0.2);
     window.setChannelVolume("kick", 0.5);
     window.setChannelVolume("kick", 0.77);
@@ -225,16 +196,7 @@ try {
   console.log("  PASS");
   await page3.close();
 
-  // ========================================================================
-  // Scenario 4: Pending insert effects are applied after context unlock.
-  //
-  // Reproduces the bug where the WASM startup demo imports per-instrument
-  // insert effects (e.g. distortion on Snare) before the AudioContext is
-  // unlocked. updateInsertEffects() used to silently early-return on
-  // !hasCtx(), so the slot config was lost; the user would only hear the
-  // effect after toggling it off/on (which fires updateInsertEffects again
-  // with a live context).
-  // ========================================================================
+  // An import before unlock (the startup demo on mobile) must not lose its insert effects.
   console.log("--- Scenario 4: Pending insert effects ---");
 
   const page4 = await browser.newPage();
@@ -248,9 +210,7 @@ try {
     const hasCtxBefore = !!window.__audioCtx;
     const fxBefore = window.__channelInsertFXCount("snare");
 
-    // Queue an insert effect chain before any AudioContext exists. This is
-    // exactly what happens during demo Import() at startup on mobile, where
-    // the AudioContext is suspended pending a user gesture.
+    // What the demo import does at startup on mobile.
     const slots = [
       { type: "distortion", enabled: true, params: { drive: 8, tone: 4000, mix: 1 } },
     ];

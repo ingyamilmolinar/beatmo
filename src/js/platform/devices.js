@@ -1,21 +1,8 @@
-// platform/devices.js
-//
-// BrowserStack device registry. Maps short slugs (used in
-// TEST_PLATFORM=browserstack:<slug>) to the capabilities BrowserStack expects.
-//
-// Slug naming: <device-family><model-or-os>-<browser>.
-// Add new entries here; keep capabilities minimal — global fields (username,
-// accessKey, local, localIdentifier, name, project, build) are injected by
-// browserstack.js so credentials never live in this file.
-//
-// Browser kind drives whether we connect via Playwright chromium or webkit:
-//   - "chromium" -> chromium.connect()   (Android Chrome)
-//   - "webkit"   -> webkit.connect()     (iOS Safari, macOS Safari)
+// Slugs for TEST_PLATFORM=browserstack:<slug> (<family><model-or-os>-<browser>). Credentials and global fields are
+// injected by browserstack.js, never stored here. kind "chromium" (Android Chrome) or "webkit" (iOS/macOS Safari).
 
 export const BROWSERSTACK_DEVICES = Object.freeze({
-  // iOS Safari — real iPhones. WebKit on iOS shares engine + audio quirks
-  // with Mobile Safari, including the AudioWorklet behavior that the local
-  // webkit-local platform can only approximate.
+  // Real iPhones share Mobile Safari's engine and audio quirks, which webkit-local only approximates.
   "iphone15-safari": {
     kind: "webkit",
     caps: {
@@ -59,8 +46,7 @@ export const BROWSERSTACK_DEVICES = Object.freeze({
     },
   },
 
-  // macOS Safari — useful for cross-checking WebKit behavior between iOS and
-  // desktop Safari without an actual phone.
+  // Cross-checks WebKit between iOS and desktop without a phone.
   "mac-safari": {
     kind: "webkit",
     caps: {

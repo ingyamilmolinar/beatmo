@@ -1,46 +1,6 @@
-// landing_playback.browser.test.js
-//
-// The landing page's recording, captions, chapter chips and crystal really
-// PLAY on a phone, the sound really turns on, and Play hands over to a game
-// that plays — on an emulated Android phone, an emulated iPhone with autoplay
-// refused (Low Power Mode) and desktop, all on real Chrome (see PLATFORMS). Served by landing_server.js exactly like
-// beatmo.io (spec docs/superpowers/specs/2026-10-23-landing-page-design.md).
-//
-// WHY this file exists next to landing_behavior.browser.test.js: Playwright's
-// page.evaluate / waitForFunction run with a USER GESTURE (Chromium
-// Runtime.callFunctionOn userGesture:true, WebKit emulateUserGesture:true), so
-// the first state read gives the page sticky user activation and every
-// autoplay rule is waived from then on. A phone visitor has no activation
-// until their first tap, and on a touch screen pointerdown comes BEFORE it
-// (activation lands on pointerup / touchend). landing.js unmuted the video on
-// pointerdown, the browser paused the autoplaying video for unmuting without a
-// gesture, and the "already unmuted" flag kept every later tap from resuming
-// it: on a real phone the recording froze on the first touch and never made a
-// sound (2026-10-24 report), while every evaluate-driven test passed.
-//
-// So this file NEVER calls page.evaluate / waitForFunction while a landing is
-// up: the page reports its own state through console messages (an init
-// script), and the only input is real touch / mouse / keyboard.
-//
-//   1. Autoplay: the recording plays muted with no input at all; its time
-//      advances, the chapter chip fills, a caption shows, the crystal grows.
-//   2. The first touch anywhere (empty background, the recording) keeps the
-//      recording playing and turns its sound on.
-//   3. "Tap for sound" as the very first touch: playing, unmuted.
-//   4. Autoplay refused (iOS Low Power Mode, a browser set to block autoplay):
-//      nothing plays until a tap — then that tap plays it, with sound.
-//   5. Save-Data: nothing is downloaded until a tap asks for sound — then it plays.
-//   6. A touch on the crystal plants a node.
-//   7. Play: the landing goes, the game plays, its AudioContext runs.
-//   LANDING_RECORD=<dir>: also record the whole loop per platform (the
-//   recording plays through every chapter and wraps, sound on, Play, the game
-//   running) to <dir>/<platform>.webm, for a human to watch.
-//
-// Run: GO=… node src/js/landing_playback.browser.test.js
-//   WASM_FILE=<main.wasm>   serve this build (default: build src/js/main.wasm
-//                           unless WASM_PREBUILT=1)
-//   LANDING_PLATFORMS=android,iphone,desktop   (the default; iphone-webkit is opt-in)
-//   LANDING_ROOT=<dir>      serve another copy of src/js (A/B an older landing.js)
+// Recording, captions, chips and crystal really PLAY on phones, sound turns on, and Play hands over to a playing game.
+// page.evaluate runs WITH a user gesture, which waives every autoplay rule, so this NEVER evaluates while the landing is
+// up: state comes from console logs, input is real touch only. Run: GO=… node src/js/landing_playback.browser.test.js
 
 import { chromium, webkit, devices } from "playwright";
 import fs from "fs";
@@ -73,18 +33,9 @@ const server = createLandingServer({ wasmFile: WASM_FILE, root: process.env.LAND
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
 
-// Playwright's bundled Chromium has no H.264: the phone/desktop Chrome runs
-// need the real Chrome channel (as landing_behavior does).
-// autoplays: false = the engine (or the emulation) refuses play() outside a
-// user gesture, so nothing plays before the first tap and that tap must play
-// it — the iOS Low Power Mode case.
-//   iphone: an iPhone 13's screen and touch on Chrome's engine, autoplay
-//     refused the way Low Power Mode refuses it.
-//   iphone-webkit (opt-in): Playwright's Linux WebKit (GTK/WPE) — measured
-//     2026-10-24 to be no stand-in for iOS video: it refuses muted autoplay
-//     of any video with an audio track, flips it unmuted, and across repeated
-//     runs either crashed the page (2 of 4 bare runs) or left a gesture-
-//     started video "playing" with its clock stuck at 0.11 s.
+// autoplays false = play() is refused outside a gesture (Low Power Mode). "iphone" is an iPhone 13 screen and touch on
+// Chrome; Playwright's Linux WebKit is opt-in because it is no stand-in for iOS video (refuses muted autoplay with sound,
+// crashes, stalls).
 const PLATFORMS = {
   android: { engine: "chrome", device: devices["Pixel 7"], cut: "phone", autoplays: true },
   iphone: { engine: "chrome", device: devices["iPhone 13"], cut: "phone", autoplays: false, init: [refuseAutoplayScript] },
@@ -100,9 +51,7 @@ function check(cond, msg) {
   if (!cond) { failures.push(msg); console.log(`  FAIL ${msg}`); }
 }
 
-// ---------------------------------------------------------------------------
-// The gesture-free state channel: the page logs its own state every 200 ms.
-// ---------------------------------------------------------------------------
+// The gesture-free state channel: the page logs itself every 200 ms.
 function probeScript() {
   const rect = (id) => {
     const e = document.getElementById(id);
@@ -160,8 +109,7 @@ function probeScript() {
   }, 200);
 }
 
-// Autoplay refused, the way iOS Low Power Mode (or a browser set to block
-// autoplay) refuses it: play() outside a user gesture rejects.
+// play() outside a gesture rejects, as under Low Power Mode.
 function refuseAutoplayScript() {
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () {
@@ -207,8 +155,7 @@ async function until(page, pred, timeout, what) {
   }
   throw new Error(`timed out after ${timeout} ms waiting for ${what}; last probe ${JSON.stringify(page.last)}`);
 }
-// Two probes at least ms apart on the PAGE's clock (a busy main thread — the
-// game booting under the landing — can hold the reporter back).
+// On the PAGE's clock: a booting game can hold the reporter back.
 async function sample(page, ms) {
   const a = await until(page, () => true, 10000, "a probe");
   const b = await until(page, (s) => s.at >= a.at + ms, ms + 20000, `a probe ${ms} ms after the last`);
@@ -230,8 +177,6 @@ async function close(page) {
   return video ? video.path() : null;
 }
 
-// While the recording plays: the chapter chip fills, a caption shows, the
-// crystal grows.
 async function crystalAndCues(page, tag) {
   const chipped = await until(page, (s) => s.chip && s.chip.fill > 0, 15000, tag("a chapter chip to fill")).catch(() => null);
   check(!!chipped, tag("no chapter chip fills while the recording plays"));
@@ -278,8 +223,7 @@ for (const platform of wanted) {
       check(t.b.video && !t.b.video.muted && t.b.video.volume > 0, tag(`the first touch did not turn the sound on (${playingDesc(t.b)})`));
       if (t.a.video && t.b.video && t.a.video.audioBytes != null) check(t.b.video.audioBytes > t.a.video.audioBytes, tag("no audio decoded while the sound is on"));
       check(t.b.sound === "Sound on", tag(`sound chip says "${t.b.sound}"`));
-      // 6. ...and that touch planted a node in the crystal.
-      // (counted by the crystal itself: it also grows on its own)
+      // Counted by the crystal itself, since it also grows on its own.
       check(t.b.crystal && t.b.crystal.plants === plants0 + 1, tag(`a touch on the crystal planted nothing (plant requests ${plants0} → ${t.b.crystal && t.b.crystal.plants})`));
 
       if (!P.autoplays) await crystalAndCues(page, tag);
@@ -306,8 +250,7 @@ for (const platform of wanted) {
   {
     const page = await open(platform);
     try {
-      // Autoplaying engines: the recording runs. Refusing ones: the refusal has
-      // happened (metadata loaded, still paused).
+      // Refusing engines: metadata loaded, still paused.
       await until(page, (s) => s.videoRequested && (P.autoplays ? !s.video.paused && s.video.t > 0.3 : s.video.ready >= 1 && s.video.paused), BOOT_TIMEOUT, tag("the recording to start (or be refused)"));
       await tap(page, page.last.rects.sound, platform);
       await page.waitForTimeout(600);
@@ -355,8 +298,7 @@ for (const platform of wanted) {
     await close(page);
   }
 
-  // The whole loop, recorded for a human: the recording plays through every
-  // chapter and wraps, sound on, then Play and a few seconds of the game.
+  // For a human: every chapter and the wrap, sound on, then Play and the game.
   if (RECORD) {
     const dir = path.join(RECORD, platform);
     fs.mkdirSync(dir, { recursive: true });

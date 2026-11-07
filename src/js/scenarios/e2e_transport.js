@@ -1,31 +1,12 @@
-// scenarios/e2e_transport.js
-//
-// Pure in-browser scenarios extracted from
-// src/js/e2e_transport.browser.test.js. Same assertions as the existing
-// Playwright spec; what changes is the click driver:
-//
-//   - Playwright shell: page.mouse.click() — produces trusted MouseEvents
-//     that Ebiten's input layer treats like a real user.
-//   - In-page on a phone: we have to synthesize events from JS, which
-//     iOS Safari marks as `isTrusted: false`. Ebiten's input.go reads the
-//     pointer state regardless of trust, so it generally works — but the
-//     gold standard reproduction is the user actually tapping the
-//     on-canvas button with their finger; see scenarioPlayButtonUserTap.
-//
-// The "*UserTap" scenarios deliberately do NOT auto-click anything. They
-// arm a capture window, ask test_runner_overlay.js to step out of the way
-// (pointer-events: none + cosmetic dim), then wait for the user's finger
-// to land on the actual Beatmo Play button on the canvas underneath. This
-// is the only path that 100% reproduces the beatmo.io flow: real touch +
-// Ebiten input + Go-side click handler + audio dispatch.
+// The e2e_transport assertions, runnable in-page on a phone. Synthesized events are untrusted (Ebiten reads them anyway);
+// the gold standard is the *UserTap scenarios, which wait for a real finger on the canvas Play button: real touch, Ebiten
+// input, Go handler, audio.
 
 import { register } from "./registry.js";
 import { pressPlayWhenReady, waitForPlaybackReady } from "./playback_ready.js";
 
 function dispatchClickAtClientPoint(target, clientX, clientY) {
-  // Fire the whole pointer + touch + mouse sequence; Ebiten's input layer
-  // is forgiving but different browsers route differently. isTrusted will
-  // be false on all of these (in-page JS cannot synthesize trusted events).
+  // Browsers route differently, so the whole pointer + touch + mouse sequence fires.
   const opts = { bubbles: true, cancelable: true, clientX, clientY, button: 0, buttons: 1, view: window };
   try { target.dispatchEvent(new PointerEvent("pointerdown", { ...opts, pointerType: "touch", isPrimary: true, pointerId: 1 })); } catch (_) {}
   try {
@@ -70,13 +51,9 @@ async function waitFor(predicate, timeoutMs, pollMs = 100) {
   return predicate();
 }
 
-// ─── Scenario 1: synthetic Play-button click ───────────────────────────────
-// Direct port of e2e_transport's Test 1, with the click synthesized in-page.
-// Catches "Play-button rect missing/zero" + "click never reaches Ebiten" +
-// "Ebiten saw the click but Go-side handler did nothing".
+// Catches a missing Play rect, a click that never reaches Ebiten, and a handler that did nothing.
 export async function scenarioPlayButtonSyntheticClick() {
-  // The Play button is disabled while the circuit warm-up gate is closed; a
-  // user can only press it once it opens, so wait for that first.
+  // Play is disabled while the warm-up gate is closed.
   if (!(await waitForPlaybackReady())) return { pass: false, reason: "warmup_never_ready" };
   const playRect = window.playBtnRect?.();
   if (!playRect || !(playRect.w > 0) || !(playRect.h > 0)) {
@@ -159,13 +136,7 @@ export async function scenarioBpmIncrementSynthetic() {
     await dispatchClickAtClientPoint(getCanvas(), pt.clientX, pt.clientY);
     await new Promise((r) => setTimeout(r, 90));
   }
-  // Unlike Play/Stop (whose OnClick applies its effect synchronously), the
-  // BPM +/- buttons only accumulate a delta in OnClick; TransportZone.Update()
-  // applies it via SetBPM on a *subsequent* frame. Under heavy parallel CI
-  // load a frame can take longer than the inter-click delay, so a single
-  // synchronous read can observe the pre-apply value (the cause of the flaky
-  // "bpm_did_not_increase" with delta:0 in the 4-job parallel phase). Poll for
-  // the deferred update instead, mirroring the Play/Stop waitFor(() => isPlaying).
+  // BPM ± only accumulates a delta that Update applies on a LATER frame, so a single read can see the old value under load.
   await waitFor(() => {
     const v = window.getBPM?.();
     return Number.isFinite(v) && Number.isFinite(before) && v > before;
@@ -184,21 +155,8 @@ register({
   description: "3 synthetic clicks on BPM+ → assert getBPM() increased",
 });
 
-// ─── Scenario 4: PRODUCTION REPRODUCTION ───────────────────────────────────
-// The bug class the user is hitting: "click Play on beatmo.io, no audio".
-// This scenario asks the user to physically tap the on-canvas Play button
-// while audio capture runs. The runner overlay (test_runner_overlay.js)
-// disables pointer events for the duration of the window so the finger
-// actually lands on the canvas Play button under the overlay.
-//
-// The result decomposes the silence into four diagnoses (the same shape
-// the deleted sanity probe used, now grounded in the real production
-// flow):
-//   - tap_not_received   : isPlaying never flipped → Ebiten didn't see the tap
-//   - tap_received_silent: isPlaying flipped but capture stayed zero
-//                          → audio dispatch / output chain broken on iOS
-//   - extreme_peak       : clipping outside [-10, +10]
-//   - pass               : real tap → real audio
+// "Play on beatmo.io, no audio", reproduced with a real finger while audio is captured: tap_not_received (isPlaying
+// never flipped), tap_received_silent (audio chain broken), extreme_peak (clipping), or pass.
 export async function scenarioPlayButtonUserTap(opts = {}) {
   const windowMs = opts.windowMs ?? 8000;
   const capturePostMs = opts.capturePostMs ?? 2500;
@@ -219,9 +177,7 @@ export async function scenarioPlayButtonUserTap(opts = {}) {
     return { pass: false, reason: "startOutputCapture_threw", error: String(e?.message || e) };
   }
 
-  // Signal to the overlay that we need pointer events to pass through to
-  // the canvas. The overlay listens for this event and dims+disables
-  // itself for the duration.
+  // The overlay dims and disables itself so the finger reaches the canvas.
   document.dispatchEvent(new CustomEvent("beatmo:runner-needs-canvas", {
     detail: { reason: "user_tap_play", windowMs, playRect },
   }));
@@ -233,8 +189,7 @@ export async function scenarioPlayButtonUserTap(opts = {}) {
     return false;
   }, windowMs);
 
-  // Hand control back to the overlay either way (it re-enables itself when
-  // it sees the result event below, but also has its own timer fallback).
+  // The overlay also has its own timer fallback.
   document.dispatchEvent(new CustomEvent("beatmo:runner-release-canvas"));
 
   if (!flipped) {

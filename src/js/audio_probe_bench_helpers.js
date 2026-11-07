@@ -1,20 +1,6 @@
-// audio_probe_bench_helpers.js — shared glue so every browser bench can report
-// what the listener actually HEARD (audio.js playback probe +
-// audio_probe_worklet.js + audio_probe_analysis.js), not only what the
-// scheduler asked for.
-//
-// Usage in a bench (page = Playwright page on index.html / play_ui.html):
-//
-//   await startPlaybackProbe(page);            // after the AudioContext runs
-//   ... play ...
-//   const { report } = await stopPlaybackProbe(page, "BPM=200");
-//   const flat = probeSummaryFields(report);   // merge into the bench JSON
-//   failures.push(...probeGateFailures(report, PROBE_LIMITS_DEFAULT, "BPM=200"));
-//
-// Env:
-//   AUDIO_PROBE=0            disable (benches then skip the probe entirely)
-//   AUDIO_PROBE_STRICT=1     probe gates fail the bench (default: report only)
-//   AUDIO_PROBE_DUMP=<dir>   write each raw log as JSON for offline analysis
+// So every bench reports what the listener HEARD, not only what was asked for: startPlaybackProbe, play,
+// stopPlaybackProbe, then probeSummaryFields / probeGateFailures. AUDIO_PROBE=0 disables, AUDIO_PROBE_STRICT=1 makes
+// gates fatal, AUDIO_PROBE_DUMP=<dir> writes raw logs.
 
 import fs from "fs";
 import path from "path";
@@ -23,19 +9,11 @@ import { analyzeAudioProbe, formatAudioProbeReport } from "./audio_probe_analysi
 export const PROBE_ENABLED = process.env.AUDIO_PROBE !== "0";
 export const PROBE_STRICT = process.env.AUDIO_PROBE_STRICT === "1";
 
-// Hard contract for request → BufferSource.start on render-cache hits: the
-// Go batch is started synchronously, so it must never wait for a UI frame.
-// Gated on p90 ≤ one 60 Hz frame. Not ~0 and not p99: this is wall-clock time
-// inside a synchronous loop, so a 32-event catch-up batch on a loaded CPU (and
-// the OS descheduling the browser on an oversubscribed host) stretches the
-// tail — p99 read 9-45 ms at load 12-19 while p90 stayed low. The defect it
-// guards shifts the WHOLE distribution: the legacy microtask flush measured
-// p99 115.7 ms under a 150 ms stall, vs 0.5 ms synchronous.
+// A cache hit's batch starts synchronously, so it must never wait for a UI frame. p90, not p99: on a loaded host a
+// 32-event catch-up batch stretches the tail, while the defect this guards shifts the WHOLE distribution.
 export const PROBE_JSQUEUE_MAX_MS = 16;
 
-// systemLoad is the 1-minute load average (0 where /proc/loadavg does not
-// exist). Timing benches are meaningless on an oversubscribed machine (CLAUDE.md
-// § Browser audio isolation, gotcha 2): skip or discard runs above a limit.
+// Timing benches are meaningless on an oversubscribed machine. 0 where /proc/loadavg does not exist.
 export function systemLoad() {
   try {
     return Number(fs.readFileSync("/proc/loadavg", "utf8").split(" ")[0]);
@@ -44,9 +22,7 @@ export function systemLoad() {
   }
 }
 
-// Limits for "the listener hears the circuit as predicted". Timing limits are
-// on UNPLANNED lateness (onset − scheduler request) and rhythm evenness, not
-// on absolute latency: the lookahead cushion is deliberate.
+// On UNPLANNED lateness (onset − request) and evenness, not absolute latency: the cushion is deliberate.
 export const PROBE_LIMITS_DEFAULT = {
   missedFrac: 0.02,       // ≤2% of judged notes silent in the output
   dropped: 0,             // requested but never started
@@ -75,8 +51,7 @@ export async function stopPlaybackProbe(page, label = "", analysisOpts = {}) {
   if (dumpDir) {
     fs.mkdirSync(dumpDir, { recursive: true });
     const safe = (label || "probe").replace(/[^a-z0-9_.-]+/gi, "_");
-    // Marks ride along so a dump can be re-analysed offline (analysis fixes
-    // never require re-running a browser).
+    // So a dump can be re-analysed offline without a browser.
     fs.writeFileSync(path.join(dumpDir, `${safe}.json`), JSON.stringify({ ...raw, editMarks: analysisOpts.editMarks || [] }));
   }
   const report = analyzeAudioProbe(raw, analysisOpts);
@@ -132,8 +107,7 @@ export function probeSummaryFields(r) {
   };
 }
 
-// Returns failure strings (empty = pass). Callers decide whether they are
-// fatal (PROBE_STRICT) or informational.
+// Empty = pass; callers decide whether failures are fatal.
 export function probeGateFailures(r, limits = PROBE_LIMITS_DEFAULT, label = "") {
   const out = [];
   if (!r) return out;
@@ -153,12 +127,7 @@ export function probeGateFailures(r, limits = PROBE_LIMITS_DEFAULT, label = "") 
   return out;
 }
 
-// startPlaybackWhenReady presses Play only once the playback-readiness gate
-// (warm-up of every row's voices) has opened, and confirms the transport is
-// actually running. A bench that calls startPlay() straight after loading or
-// building a circuit is silently ignored by the gate ("[warmup] play ignored
-// while warming") — webaudio_three_stage_latency measured nothing but `null`
-// for that reason.
+// The readiness gate silently ignores Play while warming, so a bench that plays straight after loading measures nothing.
 export async function startPlaybackWhenReady(page, { bpm, timeoutMs = 30000 } = {}) {
   await page.waitForFunction(
     () => typeof window.warmupProgress !== "function" || window.warmupProgress().ready === true,
@@ -178,10 +147,8 @@ export async function startPlaybackWhenReady(page, { bpm, timeoutMs = 30000 } = 
   }
 }
 
-// markEdit performs an edit in the page and returns its mark, stamped with the
-// AudioContext time read in the SAME evaluate — so marks work against any
-// build, including the frozen pre-lane baseline that has no mark API.
-// editFnSource is the body of a function taking `arg`, e.g. "toggleMute(0)".
+// Stamped with the ctx time read in the SAME evaluate, so marks work against any build, including a baseline with no
+// mark API. editFnSource is a function body taking `arg`.
 export async function markEdit(page, mark, editFnSource, arg) {
   const t = await page.evaluate(({ src, arg }) => {
     const t = window.__audioCtx ? window.__audioCtx.currentTime : 0;

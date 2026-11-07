@@ -1,26 +1,6 @@
-// mobile_import_gesture.browser.test.js
-//
-// REAL-GESTURE reproduction + regression guard for "tapping Import does nothing
-// on iOS Safari" (the phone's file system never opens).
-//
-// WHY the existing mobile_file_picker.browser.test.js does not catch this: it
-// stubs window._fpConsumePending and calls window.openJSONFile() directly, so it
-// never exercises the actual tap-to-open-picker gesture.
-//
-// WHY headless Chromium alone is not enough: Chromium happily opens a file
-// chooser from a programmatic input.click() fired in a canvas `touchend`
-// handler. iOS Safari does NOT — it only reliably opens the native file picker
-// when the user physically taps a real <input type=file> element. So the
-// iOS-faithful invariant this test pins is:
-//
-//   After the mobile overflow menu opens, a REAL <input type=file> element must
-//   exist in the DOM, positioned over the Import (and Upload) row — so the user's
-//   tap lands on a real input, which every browser (including iOS Safari) honors.
-//
-// The test also drives the full end-to-end: tap the Import row, pick a file, and
-// assert the circuit actually loads.
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/mobile_import_gesture.browser.test.js
+// iOS Safari opens a picker only for a physical tap on a real <input type=file>, never a programmatic click (which
+// Chromium honours), so once the File menu opens a real input must sit over the Import and Upload rows; then the whole
+// tap → pick → load path. Usage: GO=… node src/js/mobile_import_gesture.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -41,11 +21,7 @@ const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("main.wasm")) {
   const build = spawnSync(
     GO,
-    // Build ONLY the WASM entry package (./cmd), not ./cmd/... — under GOOS=js the
-    // "..." pattern now also matches sibling generator mains (gen-showcase,
-    // gen-sample-edit-golden, synth-match, …), and `go build -o <file>` refuses to
-    // write multiple packages to one output ("cannot write multiple packages to a
-    // non-directory"). ./cmd matches the production `make wasm` target exactly.
+    // Only ./cmd: under GOOS=js "./cmd/..." also matches the generator mains, and -o refuses several packages.
     ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
     { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
   );
@@ -84,9 +60,7 @@ const rectCenter = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 const overlaps = (a, b) =>
   a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
-// Open the overflow menu on `deviceName` and assert a real <input type=file>
-// overlay exists over the Import row. When `endToEnd` is set, also tap the row,
-// pick a file, and assert the circuit loads (bpm -> 123).
+// With endToEnd, also tap the row, pick a file and assert the load (bpm → 123).
 async function runMobileImport(deviceName, { endToEnd } = {}) {
   console.log(`--- ${deviceName}: real Import file-input overlay${endToEnd ? " + end-to-end" : ""} ---`);
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -104,11 +78,7 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
     const isMobile = await page.evaluate(() => fullLayoutSnapshot()?.drumLayout?.isSmallScreen);
     if (!isMobile) throw new Error(`${deviceName}: expected mobile profile; threshold/runtime drift`);
 
-    // Open the File menu via a real tap so the file-picker rects register and the
-    // <input type=file> overlays are created. Since the "Pop Up Controls / Modes"
-    // overhaul the transport kebab was removed; File actions now open from the
-    // grid-pane folder button (dv.OpenFileMenu → overflowModeFile), exported as
-    // fileMenuBtnRect().
+    // A real tap registers the picker rects and creates the overlays; the File menu opens from the grid folder button.
     const overflow = await page.evaluate(() => (typeof fileMenuBtnRect === "function" ? fileMenuBtnRect() : null));
     if (!overflow || overflow.w <= 0) throw new Error(`${deviceName}: no file-menu (folder) button rect`);
     const oc = rectCenter(overflow);
@@ -120,8 +90,7 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
       throw new Error(`${deviceName}: Import file-picker rect not registered on overflow open`);
     }
 
-    // Canvas page offset so we can compare DOM client rects against the canvas-
-    // relative import rect.
+    // To compare DOM client rects with the canvas-relative rect.
     const canvasBox = await page.evaluate(() => {
       const c = document.querySelector("canvas");
       const r = c.getBoundingClientRect();
@@ -132,9 +101,7 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
       w: importRect.w, h: importRect.h,
     };
 
-    // THE iOS-FAITHFUL ASSERTION: a real <input type=file> for JSON exists over
-    // the Import row. Before the fix no such element exists (the input is only
-    // created on touchend), so this fails — matching the iOS symptom.
+    // THE iOS-faithful assertion: a real input exists over the Import row before any tap.
     const fileInputs = await page.evaluate(() =>
       Array.from(document.querySelectorAll('input[type="file"]')).map((el) => {
         const r = el.getBoundingClientRect();
@@ -153,8 +120,7 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
     }
     console.log(`  OK: JSON file-input overlay present at ${JSON.stringify(jsonOverlay)}`);
 
-    // The same iOS-safe overlay must exist for Upload (WAV), since it shares the
-    // exact gesture mechanism that fails on iOS.
+    // Upload shares the same gesture mechanism.
     const uploadRect = await page.evaluate(() => window._fpDebugRects?.().upload || null);
     if (uploadRect && uploadRect.w > 0) {
       const uploadPageRect = {
@@ -173,17 +139,8 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
     if (endToEnd) {
       page.on("filechooser", async (fc) => { try { await fc.setFiles(importFile); } catch (_) {} });
       const ic = rectCenter(importRect);
-      // The import chain crosses several Update ticks (overlay change ->
-      // _fpStartImport -> QueueAction -> importBtn.OnClick -> openJSONFile ->
-      // consume pending -> importCh -> apply). forceDraw() only advances Draw();
-      // the queued actions and channel drains ride the natural rAF Update loop,
-      // which the browser THROTTLES under CPU contention. In the parallel test
-      // batch (BROWSER_JOBS × Chromium+WASM) that loop slows enough that a fixed
-      // 12s budget expires mid-import, and a single dropped CDP tap never opens
-      // the picker at all. So mirror the proven device_user_actions pattern:
-      // re-tap Import a few times to ride out a dropped tap, each attempt polling
-      // with a generous budget while pumping frames. (bpm probe is deterministic;
-      // slowness never corrupts it — worst case we simply wait longer.)
+      // The import crosses several Update ticks on the rAF loop, which the browser throttles under load, and a CDP tap can
+      // drop: re-tap a few times, each polling with a generous budget while pumping frames.
       let bpm = 0;
       const pollForApply = async (ms) => {
         const deadline = Date.now() + ms;
@@ -212,17 +169,8 @@ async function runMobileImport(deviceName, { endToEnd } = {}) {
   }
 }
 
-// Mobile landscape is intentionally unsupported: the mobile profile detects
-// landscape (IsMobile && winW > winH) and renders a full-screen
-// rotate-to-portrait notice while BLOCKING all touch input (see
-// internal/ui/landscape_unsupported.go + game_input_touch.go). The disable
-// itself — the DOM #landscape-block overlay — is owned and fully tested by
-// landscape_block.browser.test.js. This function pins the matching invariant
-// for THIS test's concern: because input is blocked, the overflow menu cannot
-// open in landscape, so no Import file-picker rect registers and no real
-// <input type=file> overlay leaks into the blocked state. Importing in
-// landscape is impossible by design — asserting it works (as a prior version
-// of this test did) contradicts the shipped feature.
+// Landscape blocks all touch input by design, so the File menu cannot open and no picker rect or overlay may leak into
+// the blocked state.
 async function assertLandscapeImportBlocked(deviceName) {
   console.log(`--- ${deviceName}: import flow blocked (landscape unsupported) ---`);
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -241,14 +189,12 @@ async function assertLandscapeImportBlocked(deviceName) {
     if (!snap?.drumLayout?.isSmallScreen) {
       throw new Error(`${deviceName}: expected mobile profile; threshold/runtime drift`);
     }
-    // Sanity: this device really is landscape (width > height) so the
-    // landscapeUnsupported() gate is actually exercised.
+    // So the landscape gate is actually exercised.
     if (!(snap.canvasWidth > snap.canvasHeight)) {
       throw new Error(`${deviceName}: expected landscape (w>h), got ${snap.canvasWidth}x${snap.canvasHeight}`);
     }
 
-    // Best-effort tap on the File-menu (folder) button location. Input is blocked
-    // in landscape, so the menu must NOT open and no picker rect may register.
+    // Input is blocked: the menu must NOT open.
     const overflow = await page.evaluate(() => (typeof fileMenuBtnRect === "function" ? fileMenuBtnRect() : null));
     if (overflow && overflow.w > 0) {
       const oc = rectCenter(overflow);

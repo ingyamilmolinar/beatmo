@@ -1,37 +1,6 @@
-/**
- * Chn-tab per-instrument trace render — Browser E2E (real WebAudio)
- *
- * Closes the Go↔WebAudio AnalyserNode coverage gap behind the reported
- * Chn-tab bug. The Go-side scope service and bridge synthesise functions
- * are covered fast in internal/scope and internal/ui, but the WASM-side
- * "EnableSynthAnalyzer is called for every per-instrument id" contract
- * only manifests when a real AudioContext + AnalyserNode actually sees
- * playback samples. That is the layer that broke for the user.
- *
- * Per the JS Test Charter in CLAUDE.md, this test lives in src/js/
- * because it crosses the Go↔WebAudio boundary; the Go side cannot
- * exercise live AnalyserNode delivery.
- *
- * Setup:
- *   1. Build + boot the WASM module; trigger a pointerdown + resumeAudio
- *      so the AudioContext leaves the suspended state.
- *   2. runScene("crop_chain_default") to put the panel on the Chain tab
- *      and start the sequencer.
- *   3. Resolve the first per-instrument row id (e.g. "kick").
- *
- * Per case (synth_vs_insertfx, antipop_vs_eq, insertfx_vs_eq,
- * + main_baseline):
- *   1. setEQChannel(rowID) — routes through setEQActiveChannel which
- *      enables Channel + PreEQ + Synth analysers (the fix).
- *   2. setScopeTaps(stageA, stageB).
- *   3. Fire 6 playSound(target, 1.0) hits so AnalyserNode buffers fill.
- *   4. probeScopeState() — assert tapA + tapB both active with >0 samples.
- *
- * Before the fix the Synth/AntiPop cases fail on per-instrument channels
- * (tapASamples=0, tapAActive=false). After the fix they pass. The
- * insertfx_vs_eq + main_baseline cases pass either way and serve as
- * positive controls.
- */
+/** Only a real AudioContext shows whether every per-instrument scope tap resolves to an ENABLED AnalyserNode that
+ * delivers samples over the bridge. Per case: pick the channel, set the taps, feed hits, then assert both taps deliver
+ * buffers. COVERED-BY-GO: internal/ui/chain_tab_per_instrument_test.go (the enable contract) */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -70,8 +39,7 @@ function buildWasmSafely() {
 }
 
 async function settle(page, ms = 800) {
-  // Drive a handful of draw frames so layout populates, then sleep so
-  // the WebAudio AnalyserNode ring buffer collects time-domain samples.
+  // Prime a few frames so layout populates, then let the analyser buffers fill.
   for (let i = 0; i < 6; i++) {
     await page.evaluate(() => forceDraw?.());
     await page.waitForTimeout(40);
@@ -82,92 +50,32 @@ async function settle(page, ms = 800) {
 }
 
 const CASES = [
-  // The Synth/AntiPop cases are the ones the bug killed: both taps share
-  // the synth analyser, which was never enabled for per-instrument ids.
+  // Both taps read the synth analyser, the one a per-instrument channel must enable.
   { name: "synth_vs_insertfx", tapA: "synth", tapB: "insertfx" },
   { name: "antipop_vs_eq",     tapA: "antipop", tapB: "eq" },
-  // Sanity row — passes before AND after the fix; guards against the
-  // PreEQ/EQ analysers regressing.
+  // A control that guards the pre-EQ/EQ analysers.
   { name: "insertfx_vs_eq",    tapA: "insertfx", tapB: "eq" },
 ];
 
 async function runCaseForChannel(page, label, channel, { tapA, tapB }) {
-  // Switch channel + taps on the already-playing scene; do NOT cycle
-  // stopPlay/startPlay between cases (AudioContext suspends and the
-  // analyser nodes go quiet).
+  // No stop/start between cases: the context suspends and the analysers go quiet.
   await page.evaluate(({ ch }) => setEQChannel?.(ch), { ch: channel });
   await page.evaluate(({ a, b }) => setScopeTaps?.(a, b), { a: tapA, b: tapB });
-  // For channel="main" fire kick so the master analyser sees signal;
-  // per-instrument cases fire that instrument directly. Pre-warm the
-  // synth sample so the first play doesn't drop on cold cache.
+  // Pre-warmed so the first play is not dropped on a cold cache.
   const target = channel === "main" ? "kick" : channel;
   await page.evaluate(({ id }) => ensureSynthSample?.(id), { id: target });
 
-  // setEQChannel above SYNCHRONOUSLY creates + rewires this channel's synth /
-  // preEQ AnalyserNodes (setEQActiveChannel → EnableSynthAnalyzer). On the
-  // FIRST per-instrument case, sampling immediately after that graph mutation
-  // — under CPU contention where the WebAudio render thread runs in bursts —
-  // can catch the freshly-inserted pre-EQ taps before any audio has been
-  // pushed through them. Drive a few frames + a warm-up burst so the rewired
-  // graph is settled and flowing before we start probing.
+  // Choosing the channel rewires its analysers synchronously; under CPU contention a probe right after can catch the
+  // fresh taps before audio has flowed, so a few frames and a warm-up burst settle it.
   for (let i = 0; i < 4; i++) {
     await page.evaluate(({ id }) => playSound?.(id, 1.0), { id: target });
     await page.evaluate(() => forceDraw?.());
     await page.waitForTimeout(25);
   }
 
-  // The AnalyserNode time-domain window is only ~10 ms. Under CPU contention
-  // the WebAudio rendering thread falls behind real time and renders in
-  // bursts, so a probe can land in a silent window even though audio is
-  // scheduled. Strategy: poll the analyser snapshot in a retry loop and, on
-  // every attempt, fire a short BURST of OVERLAPPING hits so the pre-EQ taps
-  // are continuously fed.
-  //
-  // CRITICAL: the pre-EQ taps — synth (channel ingress) and insertfx (pre-EQ)
-  // — read *exact zero* the instant no fresh hit sits inside the ~10 ms
-  // window, whereas the postEQ tap (eq) keeps reporting Active from the EQ
-  // biquads' ringing/denormal tail even after the source goes silent. A deep,
-  // short kick (the dnb-kick now seeded at row 0) is audible for only
-  // ~150 ms, so a single re-fired hit per probe can fully decay between the
-  // render thread's bursts and leave the ingress window empty at probe time —
-  // spuriously failing synth_vs_insertfx / antipop_vs_eq. Firing 3 hits at
-  // ~12 ms spacing means several ~150 ms voices overlap, so the ingress is
-  // never silent regardless of when the starved render thread catches up. The
-  // per-attempt wait (>= the 33 ms scope-state cache TTL) both renders the
-  // fresh energy into the analyser window and forces a fresh scope-state
-  // rebuild. See chain_tab_per_instrument_test.go for the Go-side enable
-  // contract.
-  // What this browser test uniquely guards (the Go side can't reach a live
-  // AudioContext): every per-instrument scope tap resolves to a REAL, ENABLED
-  // AnalyserNode that delivers sample buffers over the WASM↔WebAudio bridge,
-  // and the channel actually delivers live audio through that bridge. The
-  // pre-fix bug surfaced as tapASamples=0 / analyser ABSENT for per-instrument
-  // ids (EnableSynthAnalyzer never called); after the fix every tap delivers a
-  // full 512-sample buffer. See chain_tab_per_instrument_test.go for the
-  // deterministic Go-side enable contract.
-  //
-  // Two independent, per-tap latches across the poll loop:
-  //   - everSamples: the tap's analyser exists and returns a non-empty buffer
-  //     (a NULL/absent analyser returns waveLen 0 — that is the real bug).
-  //   - everActive:  the tap's buffer was non-zero on some probe (live audio
-  //     observed through the bridge).
-  //
-  // A single probe is NOT required to catch both taps active at once. The
-  // pre-EQ taps (synth = ingress, insertfx = pre-EQ) read *exact zero* the
-  // instant no fresh hit sits inside the AnalyserNode's ~10 ms window, while
-  // the postEQ tap (eq) keeps reading Active from the EQ biquads' ringing tail;
-  // and the deep, short dnb-kick (row 0, ~150 ms audible) can, under extreme
-  // CPU contention, leave a freshly-rewired pre-EQ analyser briefly orphaned
-  // from the live serial chain for a whole case even though it is enabled and
-  // delivering buffers. That transient, self-healing graph-rewire race is
-  // covered deterministically in Go; forcing it green here by re-wiring the
-  // graph under load only makes the orphaning worse. So: fire a BURST of
-  // overlapping hits every attempt to keep the ingress continuously fed, latch
-  // per-tap, and PASS once both taps are enabled+delivering AND the channel is
-  // proven live (at least one tap went active). If a pre-EQ tap never flips
-  // Active despite delivering buffers, we tolerate it with a logged note
-  // rather than flake — its enable is already asserted here (samples>0) and
-  // its wiring deterministically in Go.
+  // The analyser window is ~10 ms and a starved render thread runs in bursts, so every attempt fires overlapping hits and
+  // each tap latches separately: it passes once both taps deliver buffers and one went active. A pre-EQ tap that never
+  // flips active while delivering is tolerated (logged): its wiring is pinned in Go, and re-wiring under load worsens it.
   const MAX_ATTEMPTS = 40;
   const PROBE_INTERVAL_MS = 45;
   let probe = null;
@@ -202,8 +110,7 @@ async function runCaseForChannel(page, label, channel, { tapA, tapB }) {
     }
   }
 
-  // The channel must have delivered live audio through the bridge (at least one
-  // tap went active) and BOTH taps must be enabled + delivering buffers.
+  // Live audio on at least one tap, and BOTH delivering buffers.
   if (everSamplesA && everSamplesB && (everActiveA || everActiveB)) {
     const note =
       everActiveA && everActiveB
@@ -249,10 +156,7 @@ let failures = 0;
 const page = await initPage(browser, { width: 1280, height: 720 }, port);
 
 try {
-  // Trigger a user gesture so Chromium honours AudioContext.resume(),
-  // then explicitly resume it. Without this, --autoplay-policy still
-  // hands us a suspended ctx and every AnalyserNode reports zero. This
-  // is the same handshake webaudio_mixer_eq_parity.browser.test.js uses.
+  // A user gesture so Chromium honours resume(); otherwise the context stays suspended and every analyser reads zero.
   await page.evaluate(() => {
     document.dispatchEvent(new Event("pointerdown"));
     if (typeof resumeAudio === "function") resumeAudio();
@@ -264,11 +168,7 @@ try {
   );
   await waitForAudioReady(page);
 
-  // Boot the Chain-default scene. crop_chain_default's Setup runs
-  // activateScopeTab(g) which assigns default taps and calls
-  // SetPlaying(true) so the sequencer ticks, but we'll drive
-  // individual hits via playSound() to guarantee analyser-visible
-  // samples land inside the settle window.
+  // The scene sets the default taps and starts the sequencer; hits come from playSound() so samples land in the window.
   const sceneOK = await page.evaluate(() =>
     typeof runScene === "function" ? runScene("crop_chain_default") : false
   );
@@ -303,10 +203,7 @@ try {
       }
     }
 
-    // Regression guard: the same taps on "main" still work. This case
-    // already passes pre-fix; ensures we don't trade per-instrument for
-    // master coverage. Run AFTER the per-instrument cases so the
-    // analyser nodes have already proven they fill on a non-master id.
+    // After the per-instrument cases, so master coverage is not traded for them.
     console.log("\n=== synth_vs_insertfx on channel \"main\" (regression guard) ===");
     const masterResult = await runCaseForChannel(page, "main_baseline", "main", {
       tapA: "synth",

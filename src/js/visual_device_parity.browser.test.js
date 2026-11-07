@@ -1,26 +1,6 @@
-/**
- * Real-Device Visual Parity Test (BrowserStack)
- *
- * Compares a local desktop reference screenshot against real mobile device
- * screenshots taken via BrowserStack. Detects GPU/WebGL rendering bugs
- * (like "flat gray on mobile") that Playwright headless cannot reproduce
- * because headless uses a desktop Chrome engine regardless of viewport size.
- *
- * Also validates structural layout on real devices: component positions, touch
- * target sizes, widget overlap, and desktop-at-same-size parity (same WASM
- * layout at same viewport dimensions on local Chromium vs real device).
- *
- * Prerequisites:
- *   export BROWSERSTACK_USERNAME="your_username"
- *   export BROWSERSTACK_ACCESS_KEY="your_access_key"
- *
- * Run:
- *   GO=$(pwd)/.tools/go/bin/go node src/js/visual_device_parity.browser.test.js
- *   # or: make test-visual-device
- *
- * On-demand only — not part of CI. Run manually when debugging mobile
- * rendering issues.
- */
+/** Real-device screenshots against a local desktop reference catch GPU/WebGL bugs ("flat gray on mobile") that headless
+ * cannot (it is desktop Chrome at any viewport), plus structural layout. On demand, needs BROWSERSTACK_*:
+ * GO=… node src/js/visual_device_parity.browser.test.js (or make test-visual-device). */
 
 import { chromium } from "playwright";
 import {

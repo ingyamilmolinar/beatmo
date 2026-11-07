@@ -1,25 +1,8 @@
-/**
- * dsp_host.js — the C stages after the voice, driven from JavaScript.
- *
- * Desktop runs these exact C functions through cgo (insert_fx_c.go,
- * mix_dsp_c.go); the browser runs them from drums.single.js in three places:
- *
- *   - the beatmo-dsp AudioWorklet (dsp_worklet.js): every channel's insert
- *     chain and EQ, and the master soft clip, on the audio thread;
- *   - a ScriptProcessor on the main thread, only where AudioWorklet does not
- *     exist (an insecure origin such as `make serve-lan`);
- *   - the voice render (voice_post.js): a document's voice FX.
- *
- * Nothing here decides a value: Go sends complete parameter sets
- * (InsertEffectInstance), complete EQ programs (BuildEQProgram) and the
- * soft-clip knee (CHAIN_SPEC); the C engine orders the parameters itself
- * (ifx_param_names). So the browser computes what desktop computes.
- *
- * Every function takes the Emscripten module `m` it runs in.
- */
+/** The C stages after the voice, run from drums.single.js in the beatmo-dsp worklet, the main-thread fallback (no
+ * AudioWorklet on an insecure origin) and the voice render. Nothing here decides a value: Go sends complete params,
+ * EQ programs and the knee, and C orders the params, so the browser computes what desktop computes. */
 
-// ASCII strings into / out of the C heap. (AudioWorkletGlobalScope has no
-// TextEncoder in every engine, and every name here is ASCII.)
+// Not every AudioWorkletGlobalScope has TextEncoder, and every name here is ASCII.
 function withCString(m, s, fn) {
   const p = m._malloc(s.length + 1);
   try {
@@ -53,12 +36,8 @@ export function effectParamNames(m, type) {
   return byType.get(type);
 }
 
-/**
- * A C effect instance (0 when the type is unknown or the heap is full — the
- * caller then passes audio through, like desktop's cEffect). params is the
- * effect's COMPLETE parameter set; a name it lacks reads 0, exactly as Go's
- * map lookup does.
- */
+/** 0 when the type is unknown or the heap is full: the caller passes audio through, like desktop. A name the COMPLETE
+ * params lack reads 0, as Go's map lookup does. */
 export function createEffect(m, type, sr, params) {
   const names = effectParamNames(m, type);
   if (!names) return 0;
@@ -95,11 +74,7 @@ class Scratch {
   }
 }
 
-/**
- * A channel's insert chain: C instances reconciled by uid, so a structural
- * edit keeps every surviving effect's state (desktop keeps its Go processors
- * the same way). A disabled slot keeps its instance and is skipped.
- */
+/** Reconciled by uid, so a structural edit keeps every surviving effect's state, as desktop keeps its processors. */
 export class InsertChain {
   constructor(m, sr) {
     this.m = m;
@@ -221,22 +196,15 @@ export class SoftClip {
   destroy() { this.scratch.free(); }
 }
 
-/**
- * One DSP stage of a given kind, configured by messages:
- *   inserts  { chain: [InsertEffectInstance] } | { param: { uid, name, value } }
- *   eq       { program: Float64Array | null }
- *   softclip (configured at construction: { threshold })
- *   any      { clear: true } — ResetDSPState: forget every delay line / filter
- */
+/** inserts {chain} | {param: {uid, name, value}}; eq {program}; softclip {threshold} at construction; any {clear} forgets
+ * every delay line and filter (ResetDSPState). */
 export function createStage(m, kind, sr, init, onQuiet) {
   let dsp;
   if (kind === "inserts") dsp = new InsertChain(m, sr);
   else if (kind === "eq") dsp = new ChannelEQ(m);
   else if (kind === "softclip") dsp = new SoftClip(m, init && Number.isFinite(init.threshold) ? init.threshold : 1);
   else return null;
-  // Residency (audio.js): {watchQuiet: {frames, amp}} arms a watch that calls
-  // onQuiet once the stage's input AND output have stayed at or below amp for
-  // that many frames (counted from the arming); {watchQuiet: 0} disarms it.
+  // {watchQuiet: {frames, amp}} calls onQuiet once input AND output stay at or below amp that long; 0 disarms it.
   let quiet = 0;
   let watch = null;
   return {
@@ -271,10 +239,7 @@ export function createStage(m, kind, sr, init, onQuiet) {
   };
 }
 
-/**
- * A document's voice FX applied to a whole rendered voice, in order, each a
- * fresh C instance (desktop applyDefaultFX). fx = [{ type, params }].
- */
+/** Each a fresh C instance, as desktop's applyDefaultFX. fx = [{type, params}]. */
 export function applyEffectsToBuffer(m, data, sr, fx) {
   const n = data.length;
   if (!n || !Array.isArray(fx) || fx.length === 0) return data;

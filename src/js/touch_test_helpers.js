@@ -1,19 +1,8 @@
-/**
- * Touch simulation utilities for Playwright tests.
- * These helpers simulate touch events that map to Ebiten's touch APIs.
- *
- * NOTE: Synthetic TouchEvents dispatched via JavaScript are "untrusted" and may
- * not behave identically to real touch events on mobile devices. For more
- * accurate testing, consider using CDP helpers (touch_cdp_helpers.js).
- */
+/** Synthetic TouchEvents are "untrusted" and may differ from real touches; touch_cdp_helpers.js is more faithful. */
 
 import { cdpTap, cdpLongPress, cdpPinch, cdpDrag, cdpTwoFingerPan } from './touch_cdp_helpers.js';
 
-/**
- * Gets canvas position and DPR for coordinate adjustments.
- * @param {import('playwright').Page} page - Playwright page
- * @returns {Promise<{left: number, top: number, width: number, height: number, dpr: number}>}
- */
+/** {left, top, width, height, dpr}. */
 export async function getCanvasRect(page) {
   return await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
@@ -29,14 +18,7 @@ export async function getCanvasRect(page) {
   });
 }
 
-/**
- * Converts canvas-relative coordinates to client coordinates for TouchEvent.
- * Accounts for canvas position on the page.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} canvasX - X coordinate relative to canvas
- * @param {number} canvasY - Y coordinate relative to canvas
- * @returns {Promise<{clientX: number, clientY: number, pageX: number, pageY: number}>}
- */
+/** Accounts for the canvas position on the page. */
 export async function canvasToClientCoords(page, canvasX, canvasY) {
   const rect = await getCanvasRect(page);
   return {
@@ -47,15 +29,7 @@ export async function canvasToClientCoords(page, canvasX, canvasY) {
   };
 }
 
-/**
- * Simulates a tap gesture (touchstart + touchend in quick succession).
- * Coordinates are canvas-relative and will be adjusted for canvas position.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} x - X coordinate (canvas-relative)
- * @param {number} y - Y coordinate (canvas-relative)
- * @param {object} [options] - Options
- * @param {boolean} [options.useCDP] - Use CDP for trusted events (default false)
- */
+/** Canvas-relative; options.useCDP for trusted events. */
 export async function simulateTap(page, x, y, options = {}) {
   if (options.useCDP) {
     return cdpTap(page, x, y);
@@ -94,16 +68,7 @@ export async function simulateTap(page, x, y, options = {}) {
   }, coords);
 }
 
-/**
- * Simulates a long press gesture (touchstart, wait, touchend).
- * Coordinates are canvas-relative and will be adjusted for canvas position.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} x - X coordinate (canvas-relative)
- * @param {number} y - Y coordinate (canvas-relative)
- * @param {number} duration - Hold duration in ms (default 600ms)
- * @param {object} [options] - Options
- * @param {boolean} [options.useCDP] - Use CDP for trusted events (default false)
- */
+/** Canvas-relative; duration default 600 ms; options.useCDP for trusted events. */
 export async function simulateLongPress(page, x, y, duration = 600, options = {}) {
   if (options.useCDP) {
     return cdpLongPress(page, x, y, duration);
@@ -163,18 +128,7 @@ export async function simulateLongPress(page, x, y, duration = 600, options = {}
   }, { ...coords, touchId });
 }
 
-/**
- * Simulates a pinch gesture (two touches with changing distance).
- * Coordinates are canvas-relative and will be adjusted for canvas position.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} cx - Center X coordinate (canvas-relative)
- * @param {number} cy - Center Y coordinate (canvas-relative)
- * @param {number} startDist - Initial distance between fingers
- * @param {number} endDist - Final distance between fingers
- * @param {number} steps - Number of intermediate steps (default 10)
- * @param {object} [options] - Options
- * @param {boolean} [options.useCDP] - Use CDP for trusted events (default false)
- */
+/** Canvas-relative centre; options.useCDP for trusted events. */
 export async function simulatePinch(page, cx, cy, startDist, endDist, steps = 10, options = {}) {
   if (options.useCDP) {
     return cdpPinch(page, cx, cy, startDist, endDist, steps);
@@ -249,19 +203,7 @@ export async function simulatePinch(page, cx, cy, startDist, endDist, steps = 10
   }, { cx: pageCx, cy: pageCy, startDist, endDist, steps });
 }
 
-/**
- * Simulates a two-finger pan gesture.
- * Coordinates are canvas-relative and will be adjusted for canvas position.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} startX - Starting center X (canvas-relative)
- * @param {number} startY - Starting center Y (canvas-relative)
- * @param {number} deltaX - Horizontal movement
- * @param {number} deltaY - Vertical movement
- * @param {number} fingerDist - Distance between fingers (default 100)
- * @param {number} steps - Number of intermediate steps (default 10)
- * @param {object} [options] - Options
- * @param {boolean} [options.useCDP] - Use CDP for trusted events (default false)
- */
+/** Canvas-relative centre; fingerDist default 100; options.useCDP for trusted events. */
 export async function simulateTwoFingerPan(page, startX, startY, deltaX, deltaY, fingerDist = 100, steps = 10, options = {}) {
   if (options.useCDP) {
     return cdpTwoFingerPan(page, startX, startY, deltaX, deltaY, fingerDist, steps);
@@ -337,18 +279,7 @@ export async function simulateTwoFingerPan(page, startX, startY, deltaX, deltaY,
   }, { startX: pageStartX, startY: pageStartY, deltaX, deltaY, fingerDist, steps });
 }
 
-/**
- * Simulates a single-finger drag gesture.
- * Coordinates are canvas-relative and will be adjusted for canvas position.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} startX - Starting X (canvas-relative)
- * @param {number} startY - Starting Y (canvas-relative)
- * @param {number} endX - Ending X (canvas-relative)
- * @param {number} endY - Ending Y (canvas-relative)
- * @param {number} steps - Number of intermediate steps (default 10)
- * @param {object} [options] - Options
- * @param {boolean} [options.useCDP] - Use CDP for trusted events (default false)
- */
+/** Canvas-relative; options.useCDP for trusted events. */
 export async function simulateDrag(page, startX, startY, endX, endY, steps = 10, options = {}) {
   if (options.useCDP) {
     return cdpDrag(page, startX, startY, endX, endY, steps);

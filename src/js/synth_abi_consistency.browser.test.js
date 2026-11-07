@@ -1,18 +1,5 @@
-/**
- * Synth ABI consistency guard (WASM).
- *
- * The generated src/js/synth_param_abi.gen.js maps the C modular_params struct
- * field order to the JS heap-write indices audio.js uses. If it ships stale
- * (e.g. a `make wasm` that skipped gen-synth-abi before that was wired into the
- * build), the modular param block is undersized and a re-voiced instrument's
- * oscillator reads an uninitialised enable flag → SILENCE. That was the
- * "audio is gone when I change the oscillator off Native" bug.
- *
- * This is the fast guard: it asserts the loaded ABI carries every field the C
- * modular voice requires and that audio.js's own validateModularABI() did not
- * flag it stale. Pairs with the Go drift test (synth_param_schema_test.go) and
- * the behavioural test (synth_generator_audible.browser.test.js).
- */
+/** A stale synth_param_abi.gen.js undersizes the block and a re-voiced oscillator reads an uninitialised enable flag:
+ * silence. This fast guard checks the loaded ABI has every required field and audio.js did not flag it stale. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -68,8 +55,7 @@ try {
   const abi = await page.evaluate(() => window.__synthABI);
   console.log("[TEST] __synthABI =", JSON.stringify(abi));
 
-  // The C modular_params struct currently has 33 fields. A stale gen.js (the
-  // pre-generator-selector 27-field version) is the exact silence trigger.
+  // A stale gen.js is the exact silence trigger.
   if (abi.stale) {
     fail("audio.js validateModularABI() flagged the ABI STALE — gen.js is out of sync with the C struct (run `make gen-synth-abi`).");
   }

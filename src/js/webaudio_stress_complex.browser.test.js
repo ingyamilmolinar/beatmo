@@ -55,11 +55,7 @@ await clearSchedulerMismatches(page);
 
 const projectJson = fs.readFileSync(path.join(repoRoot, "src", "go", "internal", "assets", "beatmo_project_fixture.json"), "utf8");
 
-// Every row of the fixture is a builtin synth. The test never reads WAVs: it
-// used to load the local, untracked assets/wav sample library when present and
-// assign a sample to every row, so the same test measured synths on one machine
-// and samples on another. Audio files are local tuning material only — never
-// committed, never a test input (TestNoAudioFilesInRepository).
+// Every row is a built-in synth; no test reads WAVs, which are local tuning material, never a test input.
 await page.evaluate(async ({ projectJson }) => {
   // Unlock AudioContext — page.evaluate() doesn't trigger user gesture events.
   document.dispatchEvent(new Event('pointerdown'));
@@ -84,8 +80,7 @@ await page.evaluate(async ({ projectJson }) => {
 
   forceDraw?.();
 }, { projectJson });
-// Play once the readiness gate opens (a bare startPlay() during voice warm-up
-// is ignored), then probe what is actually heard across the sample window.
+// A bare startPlay() during warm-up is ignored.
 await startPlaybackWhenReady(page, { bpm: 210 });
 await page.evaluate(() => resetPerfStats?.());
 await startPlaybackProbe(page);
@@ -127,27 +122,13 @@ if (!stats) { throw new Error("perfStats unavailable");
 if (!audioMetrics) { throw new Error("audio schedule metrics unavailable");
 }
 
-// Thresholds calibrated 2026-05-06 from 8 fresh runs of this scenario
-// (5 back-to-back hot + 3 with cooldown) on the development machine:
-//   fpsAvg        observed 14.86–22.04 → gate 12   (~20% headroom over worst)
-//   drawAvgMS     observed 46.07–69.50 → gate 80   (~15% headroom over worst)
-//   drawMaxMS     observed 102.9–196.2 → gate 250  (~28% headroom; spikes are noisy)
-//   audioCallAvg  observed 0.043–0.190 → gate 0.25 (~32% headroom)
-//   audioCallMax  observed 0.10–22.85  → gate 50   (covers the outlier with margin)
-// Each gate is tight enough to detect a meaningful regression beyond today's
-// envelope while loose enough to absorb variance from system load when this
-// test runs late in the sequential phase of `make test-real`. To make a gate
-// stricter for a one-off experiment, override via the matching env var.
+// Each gate sits ~15-30 % above the worst of 8 runs on the development machine: tight enough to catch a real regression,
+// loose enough for load late in the sequential test phase. The env vars loosen one for an experiment.
 const minFps = Number(process.env.STRESS_COMPLEX_FPS_MIN ?? "12");
 const maxDrawAvg = Number(process.env.STRESS_COMPLEX_DRAW_MAX_MS ?? "80");
 const maxDrawMax = Number(process.env.STRESS_COMPLEX_DRAW_MAX_SPIKE_MS ?? "250");
-// audioCallAvg re-calibrated 2026-09-30 (0.25 → 0.6): the Go→JS PlayBatch
-// call now STARTS the batch's voices synchronously (audio.js
-// enqueueAudioEvents(…, true)) instead of only queueing them for a microtask
-// that ran after the whole frame. Same work, now inside the timed span.
-// Interleaved A/B on this bench (load 18-22): sync 0.20/0.23/0.27 ms vs legacy
-// 0.07/0.11/0.09 ms, updateAvg unchanged (4.1-4.9 vs 3.8-4.4 ms); worst sync
-// reading 0.58 ms at load 18.
+// PlayBatch now STARTS its batch's voices inside the timed call: the same work, so a higher call time is not a bridge
+// regression (Update unchanged in the interleaved A/B).
 const maxAudioCallAvg = Number(process.env.STRESS_COMPLEX_AUDIO_CALL_AVG_MS ?? "0.6");
 const maxAudioCallMax = Number(process.env.STRESS_COMPLEX_AUDIO_CALL_MAX_MS ?? "50");
 if (stats.fpsAvg < minFps) {
@@ -159,18 +140,15 @@ if (stats.drawAvgMS > maxDrawAvg) {
 if (stats.drawMaxMS > maxDrawMax) {
   throw new Error(`drawMaxMS ${stats.drawMaxMS.toFixed(2)}ms exceeded ${maxDrawMax}ms target (worst-frame spike)`);
 }
-// Lateness is observed on the REQUESTED start (before audio.js's 4 ms floor
-// clamp — after it these could never fail). In headless it is dominated by
-// software-GL frames starving the WASM thread → enforced only with
-// AUDIO_PROBE_STRICT=1. The probe's structural gates stay hard.
+// On the REQUESTED start, before audio.js's floor. Headless software GL dominates lateness, so these are enforced only
+// with AUDIO_PROBE_STRICT=1; the probe's structural gates stay hard.
 const latenessFail = (msg) => {
   if (PROBE_STRICT) throw new Error(msg);
   console.log(`  [lateness info] ${msg}`);
 };
 if (probe) {
   if (probe.notes.judged === 0) throw new Error("stress_complex: playback probe judged no notes");
-  // The project fixture has mute nodes, which legitimately stop a voice
-  // before it sounds — so a silent note is reported here, not fatal.
+  // The fixture's mute nodes legitimately stop a voice before it sounds.
   if (probe.notes.missed > 0) console.log(`  [probe info] stress_complex: ${probe.notes.missed} notes silent (fixture has mute nodes)`);
   if (probe.notes.dropped > 0) throw new Error(`stress_complex: ${probe.notes.dropped} notes requested but never started`);
   if (probe.jsQueueMs.p90 != null && probe.jsQueueMs.p90 > PROBE_JSQUEUE_MAX_MS) throw new Error(`stress_complex: jsQueue p90 ${probe.jsQueueMs.p90}ms > ${PROBE_JSQUEUE_MAX_MS}ms`);

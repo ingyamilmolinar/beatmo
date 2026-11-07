@@ -1,12 +1,5 @@
-// mobile_audio.browser.test.js
-//
-// Verifies mobile browser audio unlock and playback.
-// Tests three scenarios:
-//   1. AudioContext unlock via touch gesture (no autoplay policy override)
-//   2. Mobile playback produces audio (output capture verification)
-//   3. Mobile vs desktop audio parity (peak/RMS comparison)
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/mobile_audio.browser.test.js
+// Mobile audio: touch unlock with autoplay rules enforced, playback output, parity with desktop, EQ rewires, and the
+// suspended→running queue flush. Usage: GO=… node src/js/mobile_audio.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -21,10 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const repoRoot = path.resolve(jsDir, "..", "..");
 
-// eqCircuitJSON: the stable multi-row test fixture with a non-flat EQ on EVERY
-// instrument, so importing it runs setChannelEQ → rewireChannel per channel.
-// Built here instead of borrowing the shipped startup demo, whose contents are
-// free to change (and whose EQ was the only reason Scenarios 5/7 used it).
+// A stable fixture with a non-flat EQ on EVERY row, so import rewires every channel; the startup demo is free to change.
 function eqCircuitJSON() {
   const f = JSON.parse(fs.readFileSync(path.join(repoRoot, "src/go/internal/assets/test_fixture_demo.json"), "utf-8"));
   const bands = [[22, 44], [44, 88], [88, 177], [177, 354], [354, 707], [707, 1414], [1414, 2828], [2828, 5657], [5657, 11314], [11314, 20000]];
@@ -67,17 +57,12 @@ const iPhone = devices['iPhone 12 landscape'];
 let exitCode = 0;
 let browser;
 try {
-  // ========================================================================
-  // Scenario 1: AudioContext unlock via touch
-  // Launch WITHOUT --autoplay-policy=no-user-gesture-required to test real
-  // mobile unlock behavior. Chromium will enforce autoplay restrictions.
-  // ========================================================================
+  // Without the autoplay override, so Chromium enforces the real mobile restrictions.
   console.log("--- Scenario 1: AudioContext unlock via touch ---");
   {
     const b = await chromium.launch({
       args: [
-        // DO NOT include --autoplay-policy=no-user-gesture-required
-        // so autoplay restrictions are enforced.
+        // No --autoplay-policy flag: the restrictions must apply.
       ],
     });
     const context = await b.newContext({
@@ -97,17 +82,14 @@ try {
 
     // Check initial AudioContext state — should be suspended (no user gesture yet).
     const initialState = await page.evaluate(() => {
-      // Force AudioContext creation by calling getCtx indirectly.
-      // audioNow() calls getCtx() internally.
+      // audioNow() calls getCtx().
       audioNow?.();
       return window.__audioCtx?.state || 'no-context';
     });
     console.log(`  Initial AudioContext state: ${initialState}`);
-    // On Chromium with autoplay restrictions, the context starts suspended.
-    // (In headless mode it might auto-run, so we just log and continue.)
+    // Headless may auto-run the context; logged either way.
 
-    // Tap the canvas to trigger the multi-event unlock listeners.
-    // Use CDP trusted touch events to simulate real mobile touch.
+    // Trusted CDP touch, as a real phone.
     const canvasRect = await page.evaluate(() => {
       const c = document.querySelector('canvas');
       if (!c) return null;
@@ -138,9 +120,7 @@ try {
     if (finalState === 'running') {
       console.log("  PASS: AudioContext unlocked to running state");
     } else if (finalState === 'suspended') {
-      // In headless Chromium, CDP touch may not count as a "user gesture" for
-      // autoplay purposes. This is a known limitation of headless testing.
-      // We log a warning but don't fail — the unlock code is still exercised.
+      // Headless CDP touch may not count as a gesture; the unlock code still ran.
       console.log("  WARN: AudioContext still suspended (expected in headless without autoplay policy)");
       console.log("  NOTE: The unlock listeners were registered and exercised; real mobile devices will unlock.");
     } else {
@@ -150,11 +130,7 @@ try {
     await b.close();
   }
 
-  // ========================================================================
-  // Scenario 2: Mobile playback produces audio
-  // Uses --autoplay-policy=no-user-gesture-required so we can verify the
-  // audio pipeline works with mobile viewport/touch (not testing unlock here).
-  // ========================================================================
+  // With the autoplay override: the pipeline under a mobile viewport, not the unlock.
   console.log("\n--- Scenario 2: Mobile playback produces audio ---");
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   {
@@ -219,19 +195,14 @@ try {
     console.log(`  Samples: ${s2.samples}, Peak: ${s2.peak.toFixed(6)}, RMS: ${s2.rms.toFixed(6)}`);
     if (s2.samples === 0) throw new Error("Scenario 2 FAIL: no samples captured");
     if (s2.rms < 0.0001) throw new Error(`Scenario 2 FAIL: no audio energy on mobile (RMS=${s2.rms})`);
-    // Output capture samples are pre-clamp, so peaks can exceed 1.0 when
-    // multiple voices overlap. We only check for extreme values.
+    // Capture samples are pre-clamp, so overlapping voices can exceed 1.0; only extremes fail.
     if (s2.peak > 10) throw new Error(`Scenario 2 FAIL: extreme peak detected (peak=${s2.peak})`);
     console.log("  PASS");
 
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 3: Mobile vs desktop audio parity
-  // Build a deterministic 2-node circuit on both desktop and mobile, play
-  // for the same duration, capture output, and compare RMS levels.
-  // ========================================================================
+  // The same 2-node circuit on both, same duration, RMS compared.
   console.log("\n--- Scenario 3: Mobile vs desktop audio parity ---");
   {
     // Helper: build a 2-node loop, play for 1.5s, capture output.
@@ -305,29 +276,16 @@ try {
     console.log(`  Desktop: ${desktopResult.samples} samples, Peak=${desktopResult.peak.toFixed(6)}, RMS=${desktopResult.rms.toFixed(6)}`);
     console.log(`  Mobile:  ${mobileResult.samples} samples, Peak=${mobileResult.peak.toFixed(6)}, RMS=${mobileResult.rms.toFixed(6)}`);
 
-    // Real regression guard: both platforms must actually produce audio. A
-    // broken mobile audio path (wrong routing, dead unlock, silent bus) shows
-    // up here as ~0 RMS. This is the assertion that catches real bugs.
+    // A broken mobile path (routing, unlock, a silent bus) reads ~0 RMS: the assertion that catches real bugs.
     if (desktopResult.rms < 0.0001) throw new Error(`Scenario 3 FAIL: desktop has no audio energy (RMS=${desktopResult.rms})`);
     if (mobileResult.rms < 0.0001) throw new Error(`Scenario 3 FAIL: mobile has no audio energy (RMS=${mobileResult.rms})`);
 
-    // Note on level parity: desktop and mobile run the IDENTICAL WASM/audio
-    // code — the only difference is viewport size. On mobile the canvas renders
-    // at deviceScaleFactor=3 (9x the pixels), so Ebiten's draw loop starves the
-    // single-threaded WASM audio scheduler far more (see project_choppy_audio_fx
-    // / game_update.go). Under CPU contention (e.g. parallel browser jobs in
-    // `make test-real`) the mobile capture drops onaudioprocess callbacks and
-    // beats render late, so its RMS can fall well below desktop's. That ratio
-    // measures render/audio contention, not a code property — Scenario 4 was
-    // rewritten to structural verification for the same reason. We therefore
-    // keep only the gross-divergence guards and WARN (not fail) on the
-    // contention-sensitive low side; absolute audio existence (above) plus the
-    // full EQ'd-circuit playback in Scenarios 5 & 7 cover the real regressions.
+    // Identical code on both; mobile's 3× DPR canvas starves the single-threaded scheduler far more under load, so a low
+    // ratio measures contention, not code. Only gross divergence fails; the EQ'd-circuit scenarios cover real regressions.
     const ratio = mobileResult.rms / desktopResult.rms;
     console.log(`  RMS ratio (mobile/desktop): ${ratio.toFixed(4)}`);
     if (ratio > 10) {
-      // Mobile dramatically hotter than desktop ⇒ a real gain/distortion bug,
-      // not starvation (starvation only makes mobile quieter, never louder).
+      // Starvation only makes mobile quieter, so louder is a real gain bug.
       throw new Error(`Scenario 3 FAIL: mobile RMS (${mobileResult.rms.toFixed(6)}) is much higher than desktop (${desktopResult.rms.toFixed(6)})`);
     }
     if (ratio < 0.1) {
@@ -336,13 +294,8 @@ try {
     console.log("  PASS");
   }
 
-  // ========================================================================
-  // Scenario 4: rewireChannel preserves output capture (structural)
-  // Verifies that setChannelEQ (which calls rewireChannel internally) does
-  // not disconnect the limiter → captureNode → destination chain.
-  // Uses structural verification instead of audio rendering to avoid flaky
-  // ScriptProcessorNode timing under CPU contention.
-  // ========================================================================
+  // Structural rather than rendered (ScriptProcessor timing flakes under load): setChannelEQ's rewire must not
+  // disconnect the output capture chain.
   console.log("\n--- Scenario 4: rewireChannel preserves output capture ---");
   {
     const context = await browser.newContext({
@@ -438,13 +391,7 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 5: EQ'd multi-row circuit playback on mobile produces audio
-  // Imports a circuit with per-instrument EQ on every row (eqCircuitJSON),
-  // starts playback, and verifies output capture detects audio. This exercises
-  // the full import path including setChannelEQ → rewireChannel for every
-  // instrument, which was previously breaking the audio routing.
-  // ========================================================================
+  // Import rewires every channel's EQ, which once broke the audio routing.
   console.log("\n--- Scenario 5: EQ'd circuit playback on mobile ---");
   {
     const context = await browser.newContext({
@@ -502,21 +449,14 @@ try {
     console.log(`  Samples: ${s5.samples}, Peak: ${s5.peak.toFixed(6)}, RMS: ${s5.rms.toFixed(6)}`);
     if (s5.samples === 0) throw new Error("Scenario 5 FAIL: no samples captured");
     if (s5.rms < 0.0001) throw new Error(`Scenario 5 FAIL: no audio energy from the EQ'd circuit on mobile (RMS=${s5.rms})`);
-    // Output capture samples are pre-clamp, so peaks can exceed 1.0 when
-    // multiple voices overlap. We only check for extreme values.
+    // Capture samples are pre-clamp, so overlapping voices can exceed 1.0; only extremes fail.
     if (s5.peak > 10) throw new Error(`Scenario 5 FAIL: extreme peak detected (peak=${s5.peak})`);
     console.log("  PASS");
 
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 6: Suspended→running queue flush
-  // Programmatically suspends the AudioContext, enqueues audio events while
-  // suspended, then resumes and verifies that deferred events are flushed
-  // and produce audio. This exercises the exact code path that breaks on
-  // real mobile without needing a real user gesture.
-  // ========================================================================
+  // Events enqueued while suspended must flush and sound on resume: the path real phones hit, without a real gesture.
   console.log("\n--- Scenario 6: Suspended→running queue flush ---");
   {
     const context = await browser.newContext({
@@ -526,9 +466,7 @@ try {
     const page = await context.newPage();
     await page.goto(`http://localhost:${port}/`);
 
-    // Wait for Go to have pushed the two instruments this scenario plays: a
-    // page without Go has no instruments, and audio.js loading first raced it
-    // (under load the notes reached audio.js before their documents did).
+    // A page without Go has no instruments, and under load notes reached audio.js before their documents did.
     await page.waitForFunction(() =>
       typeof playSound === "function" &&
       typeof resumeAudio === "function" &&
@@ -548,17 +486,8 @@ try {
       const ctx = window.__audioCtx;
       if (!ctx) return { error: "no AudioContext" };
 
-      // Arm the DETERMINISTIC raw-PCM capture. recordSamples() pushes each
-      // dispatched voice's PCM into window.__samples the moment the deferred
-      // event is PROCESSED in flushAudioQueue — i.e. after resume flushes the
-      // queue. We assert audibility off this signal, NOT the live ScriptProcessor
-      // output capture: on headless SwiftShader under CPU contention the capture
-      // node underruns and drops the short kick/snare transient right after
-      // resume, so RMS off the live tap is non-deterministic (flaked to ~0 under
-      // make test-real's 4-job load). The BufferSources still schedule + play
-      // fine; only the live measurement instrument is unreliable for short
-      // transients — hence the rendered-PCM assertion (see the capturePlay poll
-      // in mobile_speaker_routing.browser.test.js).
+      // Asserted off the rendered PCM, not the live ScriptProcessor tap: on headless SwiftShader under load the tap drops the
+      // short transients right after resume, while the voices still play.
       window.__samples = [];
       window.__captureSamples = true;
 
@@ -569,8 +498,7 @@ try {
         return { error: `expected suspended, got ${ctx.state}` };
       }
 
-      // Enqueue audio events while context is suspended. These are deferred by
-      // flushAudioQueue's suspended guard until the context reaches 'running'.
+      // Deferred by the suspended guard until 'running'.
       await playSound("kick", 1.0);
       await playSound("snare", 1.0);
 
@@ -580,8 +508,7 @@ try {
       // Resume the context — statechange listener triggers the deferred flush.
       await ctx.resume();
 
-      // Poll until the flushed events render + record their PCM (fire-and-forget
-      // flush, deferred to setTimeout(0) under contention), up to a 2s deadline.
+      // The flush is fire-and-forget and may defer under contention.
       const deadline = performance.now() + 2000;
       while (window.__samples.length === 0 && performance.now() < deadline) {
         await new Promise((r) => setTimeout(r, 10));
@@ -609,15 +536,7 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 7: EQ'd circuit import while suspended → resume
-  // Warms the EQ'd circuit (like the launch circuit at boot), then suspends
-  // the AudioContext, re-imports it (triggering
-  // setChannelEQ → rewireChannel for each instrument), starts playback
-  // while still suspended, then resumes the context and verifies audio
-  // output. This exercises the full startup path: EQ setup during suspend
-  // + playback scheduling during suspend + deferred flush on resume.
-  // ========================================================================
+  // The full startup path: EQ set up while suspended, playback scheduled while suspended, the flush on resume.
   console.log("\n--- Scenario 7: EQ'd circuit import while suspended → resume ---");
   {
     const context = await browser.newContext({
@@ -651,10 +570,8 @@ try {
       const ctx = window.__audioCtx;
       if (!ctx) return { error: "no AudioContext" };
 
-      // Play is ignored until the readiness gate has warmed a newly loaded
-      // circuit's voices (scenarios/playback_ready.js), and warming resumes a
-      // suspended context. So warm the circuit FIRST, as the launch circuit is
-      // warm at boot: load it once while running and wait for the gate.
+      // Play is ignored until the gate warms a newly loaded circuit, and warming resumes the context, so it warms first as
+      // the launch circuit does at boot.
       const waitGate = async () => {
         const by = Date.now() + 20000;
         while (typeof window.warmupProgress === "function" && window.warmupProgress().ready !== true) {
@@ -675,9 +592,7 @@ try {
         return { error: `expected suspended after suspend(), got ${ctx.state}` };
       }
 
-      // Re-import while suspended — triggers setChannelEQ for each instrument,
-      // which calls rewireChannel internally. Its voices are warm, so the gate
-      // opens without rendering.
+      // Voices are warm, so the gate opens without rendering.
       importJSON?.(json);
       forceDraw?.();
       const gateOpenAtImport = typeof window.warmupProgress !== "function" || window.warmupProgress().ready === true;

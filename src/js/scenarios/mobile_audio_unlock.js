@@ -1,35 +1,17 @@
-// scenarios/mobile_audio_unlock.js
-//
-// Pure in-browser scenarios extracted from
-// src/js/mobile_audio_unlock.browser.test.js. Same assertions, two shells:
-//
-//   - The Playwright shell (the existing test file) wraps each scenario in
-//     a per-context page.evaluate so the mobile-device emulation +
-//     gesture-deferral plumbing keeps working.
-//   - The in-page test_runner.html invokes them directly on the real phone,
-//     where the AudioContext + touch unlock are already real.
-//
-// Only the two scenarios that are pure in-browser logic are factored here.
-// Scenarios 1 (deferred AudioContext) and 3 (re-suspension recovery) require
-// multi-context Playwright orchestration with synthetic suspends; they stay
-// in the Playwright shell.
+// Two shells, one set of assertions: the Playwright file wraps each scenario in a page.evaluate, test_runner.html runs
+// them on a real phone. Only the pure in-page scenarios live here; deferred-context and re-suspension need multi-context
+// orchestration.
 
 import { register } from "./registry.js";
 import { pressPlayWhenReady } from "./playback_ready.js";
 
-// ─── Scenario 2: queued channel ops applied after unlock ───────────────────
-// Verifies that setChannelVolume calls made before AudioContext creation are
-// queued and applied once the context is running, AND that audio plays at
-// the queued volume. The user's beatmo.io "click Play, no audio" failure
-// could surface as either "queued vol never applied" or "audio path silent
-// after unlock" — both are caught here.
+// Volume calls made before the context exists are applied once it runs AND audio plays at that volume: "click Play,
+// no audio" could be either failing.
 export async function scenarioQueuedChannelOpsAppliedAfterUnlock() {
-  // Queue the volume change first (may happen before or after ctx creation
-  // depending on autoplay policy — either way pendingChannelOps handles it).
+  // Before or after creation, pendingChannelOps handles it.
   try { window.setChannelVolume("kick", 0.5); } catch (e) { /* setter may not exist on stale builds */ }
 
-  // Trigger context creation/resume via a synthetic gesture. On real iOS,
-  // the user's tap already provided the gesture before this scenario runs.
+  // On real iOS the user's tap already supplied the gesture.
   try {
     document.dispatchEvent(new Event("pointerdown"));
     window.resumeAudio?.();
@@ -46,16 +28,13 @@ export async function scenarioQueuedChannelOpsAppliedAfterUnlock() {
     };
   }
 
-  // Ensure the C synth sample is warmed up before capture so async render
-  // doesn't push the trigger past the capture window.
+  // So an async render cannot push the trigger past the capture window.
   try { await window.audioReady; } catch (_) {}
   if (typeof window.ensureSynthSample === "function") {
     try { await window.ensureSynthSample("kick"); } catch (_) {}
   }
 
-  // Use the recordSamples capture path (window.__samples) — it fires
-  // synchronously inside processAudioEvent so it survives CPU contention
-  // that can starve a ScriptProcessorNode.
+  // Recorded synchronously inside processAudioEvent, so it survives contention that starves a ScriptProcessor.
   window.__samples = [];
   window.__captureSamples = true;
   try { await window.playSound("kick", 1.0); } catch (e) {
@@ -85,23 +64,17 @@ register({
   description: "Pre-unlock setChannelVolume sticks AND kick produces real audio energy",
 });
 
-// ─── Scenario 4: playback (Play button) produces audio after touch unlock ──
-// THIS is the scenario that reproduces the beatmo.io "click Play, nothing
-// happens" failure on iOS Safari: builds a 2-node loop, calls startPlay,
-// captures the live output for ~1.5s, asserts RMS > 0. If this fails on
-// the phone, the bug is reproduced and the report tells you whether it
-// failed at scheduler dispatch, audio routing, or context state.
+// The "click Play, nothing happens" repro on iOS: a 2-node loop, startPlay, ~1.5 s of live output, RMS > 0; the report
+// says whether dispatch, routing or context state failed.
 export async function scenarioPlaybackAfterUnlock() {
-  // Real iOS already provided a gesture (the button tap that started the
-  // suite). Synthetic gesture only matters in headless Chromium.
+  // Real iOS already had a gesture; this one matters only headless.
   try {
     document.dispatchEvent(new Event("pointerdown"));
     window.resumeAudio?.();
   } catch (_) {}
   await new Promise((r) => setTimeout(r, 200));
 
-  // Build a minimal circuit: two nodes in a loop. This mirrors the existing
-  // Playwright scenario 4 setup exactly so behavior matches CI.
+  // The same circuit as the Playwright scenario, so behaviour matches CI.
   try {
     window.addNode?.(0, 0, "regular");
     window.addNode?.(4, 0, "regular");
@@ -118,8 +91,7 @@ export async function scenarioPlaybackAfterUnlock() {
   try { window.startOutputCapture?.(); } catch (e) {
     return { pass: false, reason: "startOutputCapture_threw", error: String(e && e.message || e) };
   }
-  // Play is ignored while the circuit warm-up gate is closed (the button is
-  // disabled then) — press it the way a user can: once the gate opens.
+  // Play is ignored while the warm-up gate is closed.
   const play = await pressPlayWhenReady();
   if (!play.ok) return { pass: false, reason: play.reason, error: play.error };
 

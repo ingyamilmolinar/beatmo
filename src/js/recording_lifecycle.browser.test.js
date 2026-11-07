@@ -1,33 +1,6 @@
-/**
- * Recording subsystem browser test.
- *
- * Validates the off-thread WASM recording pipeline (AudioWorklet capture
- * + Web Worker encoding + Blob download) end-to-end:
- *
- *   Scenario A — Download trigger via real UI flow
- *     Start recording, play a deterministic pattern, stop recording,
- *     assert a Blob download fires within the user-activation window
- *     and the resulting zip is a valid PKZIP archive containing
- *     master.wav + per-instrument WAVs + session.json.
- *
- *   Scenario B — Output validation
- *     Decode the master.wav and verify it contains the expected number
- *     of audio peaks (one per beat), correct sample rate, and non-zero
- *     RMS energy. Per-instrument WAVs are checked for header validity.
- *
- *   Scenario C — Performance regression
- *     Run baseline playback (no recording) for 8s and capture
- *     audio scheduling metrics. Run the same playback with recording
- *     active for 8s and capture again. Assert the recording adds
- *     < 1 ms p90 lag and zero audio drops — proving capture+encode
- *     genuinely runs off the main+audio threads.
- *
- *   Scenario D — Main-thread idle budget
- *     With recording active, sample requestAnimationFrame intervals
- *     for 5s. Assert p95 frame interval ≤ 18 ms and max ≤ 33 ms
- *     (a single dropped frame budget — anything more means the main
- *     thread is being starved).
- */
+/** The off-thread WASM recording end to end: a real stop fires a zip download (master + per-instrument WAVs +
+ * session.json); the master holds one peak per beat at the right rate; recording adds < 1 ms p90 lag and no drops; the
+ * main thread's rAF stays within budget. */
 
 import { chromium } from "playwright";
 import http from "http";
@@ -82,9 +55,7 @@ function hardAssert(cond, msg) {
   if (!cond) { failed = true; errors.push(msg); throw new Error(msg); }
 }
 
-// ─── Minimal PKZIP reader ────────────────────────────────────────────────
-// Parses stored-only ZIP archives produced by recording_encoder_worker.js
-// (no compression, no encryption). Returns map { name → Uint8Array }.
+// Stored-only PKZIP as recording_encoder_worker.js writes it: {name → Uint8Array}.
 function parseZip(buf) {
   const u8 = new Uint8Array(buf);
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
@@ -208,8 +179,7 @@ async function newRecordingPage() {
   return page;
 }
 
-// Build a deterministic 4-beat pattern (kick on every beat) and start
-// playback. Returns once the row has settled.
+// A kick on every beat.
 async function buildKickPattern(page, bpm = 120) {
   await page.evaluate((b) => {
     resetAudioScheduleMetrics?.();
@@ -221,23 +191,14 @@ async function buildKickPattern(page, bpm = 120) {
   }, bpm);
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Scenario A: Download trigger via real UI flow
-// ════════════════════════════════════════════════════════════════════════
 console.log("\n=== Scenario A: Download trigger ===");
 let downloadedZipBytes = null;
 {
   const page = await newRecordingPage();
   await buildKickPattern(page, 120);
 
-  // Set up download listener BEFORE triggering. The download fires from a
-  // background goroutine that awaits the encoder Worker's Blob; that path has
-  // its own 30 s finalize budget (audio.js stopMultiChannelCapture +
-  // js_exports_recording.go). Under the 4-way-parallel `make test-real` run the
-  // headless browser + worker encode are CPU-contended, so a 15 s wait can
-  // expire before the code's own 30 s budget does (a false timeout). Match the
-  // test deadline to the code's deadline so this only fails if the download
-  // path genuinely fails.
+  // Armed BEFORE stopping. The download path has its own 30 s finalize budget, so the wait matches it and only a real
+  // failure times out under parallel load.
   const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
 
   await page.evaluate(async () => {
@@ -271,9 +232,6 @@ let downloadedZipBytes = null;
   await page.close();
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Scenario B: Output validation
-// ════════════════════════════════════════════════════════════════════════
 console.log("\n=== Scenario B: Output validation ===");
 {
   hardAssert(downloadedZipBytes !== null, "B: no zip from scenario A");
@@ -308,22 +266,18 @@ console.log("\n=== Scenario B: Output validation ===");
 
   const masterRMS = rms(master.samples);
   console.log(`  master RMS: ${masterRMS.toFixed(4)}`);
-  // RMS of a kick pattern should be well above silence; threshold is
-  // permissive because volume normalization may scale the signal.
+  // Permissive: normalization may scale the signal.
   hardAssert(masterRMS > 0.001,
     `B: master is silent (RMS=${masterRMS})`);
 
-  // Peak count: at 120 BPM, 4 beats in 2 s; allow 2-6 peaks (jitter and
-  // playback start lag).
+  // 4 beats in 2 s at 120 BPM; 2-6 allows for jitter and start lag.
   const minSep = Math.floor(0.4 * master.sampleRate);
   const peakCount = countPeaks(master.samples, masterRMS * 1.5, minSep);
   console.log(`  master peaks (>${(masterRMS * 1.5).toFixed(4)}): ${peakCount}`);
   softAssert(peakCount >= 2 && peakCount <= 8,
     `B: peak count out of range: ${peakCount}`);
 
-  // Per-instrument WAVs: each must have a valid header and non-zero
-  // sample count. They may be silent if the row's instrument ID didn't
-  // match a captured channel — that's OK.
+  // May be silent if a row's id matched no captured channel.
   for (const name of Object.keys(entries)) {
     if (!name.endsWith(".wav") || name === "master.wav") continue;
     const ch = decodeWav(entries[name]);
@@ -333,9 +287,6 @@ console.log("\n=== Scenario B: Output validation ===");
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Scenario C: Performance regression
-// ════════════════════════════════════════════════════════════════════════
 console.log("\n=== Scenario C: Performance regression ===");
 {
   const page = await newRecordingPage();
@@ -418,15 +369,7 @@ console.log("\n=== Scenario C: Performance regression ===");
   await page.close();
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Scenario D: Main-thread idle budget — A/B comparison
-// ════════════════════════════════════════════════════════════════════════
-//
-// Headless Chromium can throttle requestAnimationFrame under no-focus,
-// so absolute thresholds are unreliable. Instead we measure RAF intervals
-// during baseline playback vs playback+recording and assert recording
-// doesn't make them meaningfully worse — proving the recording pipeline
-// is genuinely off the main thread regardless of headless overhead.
+// A/B rather than absolute: headless throttles rAF without focus, so only "recording makes it no worse" is meaningful.
 console.log("\n=== Scenario D: Main-thread idle (A/B) ===");
 {
   const page = await newRecordingPage();
@@ -455,9 +398,7 @@ console.log("\n=== Scenario D: Main-thread idle (A/B) ===");
     }), durationMs);
   }
 
-  // Baseline: 6 s of playback, no recording. Headless Chromium throttles
-  // RAF to ~3-4 Hz when the page lacks focus, so we need a longer window
-  // to get enough samples for a stable percentile.
+  // Throttled to ~3-4 Hz without focus, so a longer window gives a stable percentile.
   await page.evaluate(() => startPlay());
   const baseline = (await sampleRAF(6000)).slice(1);
   await page.evaluate(() => stopPlay?.());
@@ -486,26 +427,13 @@ console.log("\n=== Scenario D: Main-thread idle (A/B) ===");
   console.log(`  baseline:   p50=${bP50.toFixed(2)}ms p95=${bP95.toFixed(2)}ms max=${bMax.toFixed(2)}ms (n=${baseline.length})`);
   console.log(`  recording:  p50=${rP50.toFixed(2)}ms p95=${rP95.toFixed(2)}ms max=${rMax.toFixed(2)}ms (n=${withRec.length})`);
 
-  // This scenario is INFORMATIONAL, not a hard gate. Headless Chromium
-  // throttles RAF to ~3-4 Hz when the page lacks focus, so each 6s window
-  // yields only n≈17-30 samples with intervals of ~200-285ms. At that
-  // throttle rate the median is dominated by Chromium's throttle scheduler,
-  // not by main-thread load: measured p50 ratios across repeated runs span
-  // 0.74-1.26 (recording is frequently FASTER than baseline), so any fixed
-  // cap near 1.0 lands inside the noise band and fails non-deterministically.
-  //
-  // The off-thread property this scenario gestures at — "recording adds no
-  // continuous main-thread work" — is proven rigorously by Scenario C, which
-  // measures audio-schedule lag/overdue/drops + updateAvgMS over an 8s window
-  // (and showed recording does NOT raise main-thread cost). So here we only
-  // log the A/B comparison and softAssert a gross sustained regression; we do
-  // NOT fail the suite on throttle noise.
+  // INFORMATIONAL: at that throttle each window holds ~20 samples dominated by Chromium's scheduler (p50 ratios span
+  // 0.74-1.26), so a cap near 1.0 is noise. Scenario C proves the off-thread property; this only warns on a gross shift.
   const p50Ratio = rP50 / Math.max(bP50, 1);
   const p95Ratio = rP95 / Math.max(bP95, 1);
   console.log(`  p50 ratio (rec/baseline): ${p50Ratio.toFixed(2)}`);
   console.log(`  p95 ratio (rec/baseline): ${p95Ratio.toFixed(2)}`);
-  // 1.6 sits comfortably above the observed ~1.26 noise ceiling, so only a
-  // genuine sustained regression (whole distribution shifted) surfaces a warn.
+  // Above the ~1.26 noise ceiling: only a whole-distribution shift warns.
   softAssert(p50Ratio <= 1.6,
     `D: recording p50 RAF ${rP50.toFixed(2)}ms is ${(p50Ratio * 100).toFixed(0)}% of baseline ${bP50.toFixed(2)}ms (>160%)`);
   softAssert(p95Ratio <= 2.0,

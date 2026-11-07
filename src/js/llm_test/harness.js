@@ -1,9 +1,4 @@
-/**
- * LLM Visual Testing — Test Integration Harness
- *
- * Drop-in wrapper around setupFullWasm() that adds recording + video
- * when LLM_RECORD=1 env var is set.
- */
+/** setupFullWasm() plus recording and video when LLM_RECORD=1; without it, zero overhead. */
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -13,21 +8,8 @@ import { createRecorder } from "./recorder.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const recordingsDir = path.resolve(__dirname, "../recordings");
 
-/**
- * Set up a full WASM test environment with optional recording.
- *
- * When LLM_RECORD=1 is set:
- *   - Enables Playwright video recording (WebM)
- *   - Wraps the page with recorder proxies
- *   - On cleanup, saves recording to src/js/recordings/<name>/
- *
- * When LLM_RECORD is not set, delegates directly to setupFullWasm() — zero overhead.
- *
- * @param {Object} options - All options from setupFullWasm() plus:
- * @param {string} options.recordingName - Recording session name (default: LLM_RECORD_NAME or timestamp)
- * @param {number} options.frameIntervalMs - Screenshot interval when recording (default 500)
- * @returns {Promise<{page, browser, server, cleanup, recorder?}>}
- */
+/** With LLM_RECORD=1: Playwright video, recorder proxies, saved to src/js/recordings/<name>/ on cleanup. options:
+ * setupFullWasm's, plus recordingName (default LLM_RECORD_NAME or a timestamp) and frameIntervalMs (500). */
 export async function setupWithRecording(options = {}) {
   const shouldRecord = process.env.LLM_RECORD === "1";
 

@@ -1,23 +1,6 @@
-/**
- * Wheel platform-dynamics boundary — REAL browser wheel events.
- *
- * COVERED-BY-GO (unit + integration layers):
- *   internal/ui/wheel_platform_parity_test.go  — raw->detent conversion,
- *       WheelNormalizer carry/cap, and detent->rows through the real Game.
- *   internal/ui/wheel_dynamics_discipline_test.go — no raw wheel() reads
- *       outside the two platform shims.
- *
- * WHAT ONLY THIS TEST CAN COVER (per the JS Test Charter, § "Real input
- * dispatch through the canvas"): the ACTUAL magnitudes the DOM produces.
- * Under `-tags test` ebiten.Wheel() is stubbed, so every Go test sees whatever
- * magnitude it injects — a Go test can prove the conversion is correct but
- * never that the constants match reality. That gap is exactly how the bug
- * shipped: one browser wheel notch scrolled a menu through its whole list.
- *
- * Also exercises the transport shim in index.html end-to-end: deltaMode
- * reporting (Ebiten discards it) and per-frame accumulation (Ebiten keeps only
- * the last event of a frame).
- */
+/** The ACTUAL magnitudes the DOM produces: under -tags test ebiten.Wheel() is stubbed, so Go can prove the conversion but
+ * never that the constants match reality (one notch once scrolled a whole menu). Also the index.html shim: deltaMode and
+ * per-frame accumulation. COVERED-BY-GO: wheel_platform_parity_test.go, wheel_dynamics_discipline_test.go */
 import { setupFullWasm, wheelAt } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
@@ -42,8 +25,7 @@ async function scrollState() {
   return await page.evaluate(() => overflowMenuScrollState());
 }
 
-/** Dispatch a real WheelEvent with an explicit deltaMode (Playwright's
- *  mouse.wheel is always DOM_DELTA_PIXEL, so Firefox's line mode needs this). */
+/** Playwright's mouse.wheel is always DOM_DELTA_PIXEL; Firefox's line mode needs this. */
 async function wheelWithDeltaMode(x, y, deltaY, deltaMode) {
   await page.evaluate(
     ({ x, y, deltaY, deltaMode }) => {
@@ -132,8 +114,7 @@ try {
   }
   console.log("  PASS");
 
-  // ---- Test 4: the shim accumulates within a frame (Ebiten keeps only the last
-  //      event, silently dropping motion during fast scrolls)
+  // Ebiten keeps only a frame's last event, dropping motion during fast scrolls.
   const accum = await page.evaluate(() => {
     const el = document.querySelector("canvas") || document.body;
     const mk = (dy) => new WheelEvent("wheel", { deltaY: dy, deltaMode: 0, bubbles: true });

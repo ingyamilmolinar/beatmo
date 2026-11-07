@@ -1,23 +1,6 @@
-// platform/browserstack.js
-//
-// Connects a Playwright session to a real BrowserStack device and returns
-// the same { browser, cleanup } contract as the local launchers in launch.js.
-//
-// Prereqs:
-//   BROWSERSTACK_USERNAME    (env)
-//   BROWSERSTACK_ACCESS_KEY  (env)
-//   `browserstack-local` (dev dep; already in src/js/package.json)
-//
-// Wire-up:
-//   1. Spawn a browserstack-local tunnel so the device can reach our test
-//      server on localhost:<port>.
-//   2. Build BrowserStack capabilities from the device registry + a build/name
-//      tag derived from the running test file.
-//   3. Connect via chromium.connect() or webkit.connect() — BrowserStack
-//      multiplexes both kinds through their cdp.browserstack.com endpoint.
-//   4. Cleanup tears the session down AND kills the tunnel; the tunnel keeps
-//      the BrowserStack session alive until stopped, which would otherwise
-//      bill until the session-timeout kicks in.
+// A real BrowserStack device with the local launchers' {browser, cleanup} contract: a browserstack-local tunnel reaches
+// our localhost server, capabilities come from the device registry, and cleanup ends the session AND the tunnel (which
+// otherwise keeps billing). Needs BROWSERSTACK_USERNAME / BROWSERSTACK_ACCESS_KEY.
 
 import path from "path";
 import { chromium, webkit } from "playwright";
@@ -103,8 +86,7 @@ export async function launchBrowserStack(deviceSlug, opts = {}) {
   }
 
   const cleanup = async () => {
-    // Always tear down both, even if one throws — orphan tunnels keep the
-    // BrowserStack session alive and accrue minutes.
+    // Orphan tunnels keep the session alive and accrue minutes.
     let firstErr = null;
     try { await browser.close(); } catch (e) { firstErr = e; }
     try { await tunnel.stop(); } catch (e) { firstErr = firstErr || e; }

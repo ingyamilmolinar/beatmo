@@ -1,20 +1,5 @@
-/**
- * LLM Visual Testing — Test Case Loader
- *
- * Parses .test.md files with YAML frontmatter + markdown body.
- * Resolves fixture paths and provides test enumeration.
- *
- * Test case format:
- *   ---
- *   name: play_stop_basic
- *   platform: desktop
- *   tags: [smoke, transport]
- *   fixture: simple_loop.json
- *   max_iterations: 15
- *   ---
- *   # Test Title
- *   Markdown body used as the agent prompt...
- */
+/** .test.md files: YAML frontmatter (name, platform, tags, fixture, max_iterations) and a markdown body that is the
+ * agent prompt. */
 
 import fs from "fs";
 import path from "path";
@@ -24,14 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const testsDir = path.resolve(__dirname, "tests");
 const fixturesDir = path.resolve(testsDir, "fixtures");
 
-/**
- * Parse YAML frontmatter from a .test.md file.
- * Simple parser — supports strings, numbers, booleans, and arrays.
- * No external YAML dependency needed.
- *
- * @param {string} content - Raw file content
- * @returns {{ meta: Object, body: string }}
- */
+/** A simple parser (strings, numbers, booleans, arrays), so no YAML dependency. */
 function parseFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n([\s\S]*))?$/);
   if (!match) {
@@ -89,18 +67,9 @@ function parseFrontmatter(content) {
   return { meta, body };
 }
 
-/**
- * Load a single test case by name.
- * Searches tests/desktop/ and tests/mobile/ directories.
- *
- * @param {string} name - Test name (without .test.md extension)
- * @returns {{ meta: Object, body: string, filePath: string } | null}
- */
+/** Searches tests/desktop/ and tests/mobile/; null if absent. */
 export function loadTest(name, platform) {
-  // When a platform is requested, search its directory FIRST so that a test
-  // name shared by both platforms (e.g. comprehensive_sanity) resolves to the
-  // right variant. Without this, desktop always wins and the mobile variant is
-  // unreachable via `--platform mobile`.
+  // The requested platform first, or a name both share always resolves to desktop.
   const subdirs = platform
     ? [platform, ...["desktop", "mobile"].filter((d) => d !== platform)]
     : ["desktop", "mobile"];
@@ -142,15 +111,7 @@ export function loadTest(name, platform) {
   return null;
 }
 
-/**
- * List all available test cases.
- *
- * @param {Object} options
- * @param {string} [options.filter] - Glob/substring pattern to match test names
- * @param {string[]} [options.tags] - Only include tests with at least one matching tag
- * @param {string} [options.platform] - Only include tests for this platform
- * @returns {Array<{ name: string, platform: string, tags: string[], filePath: string }>}
- */
+/** filter (glob/substring), tags (any match), platform. */
 export function listTests(options = {}) {
   const { filter, tags, platform } = options;
   const results = [];
@@ -199,12 +160,7 @@ export function listTests(options = {}) {
   return results;
 }
 
-/**
- * Load fixture JSON content.
- *
- * @param {string} fixtureName - Fixture filename (e.g., "simple_loop.json")
- * @returns {string | null} Raw JSON string, or null if not found
- */
+/** null if not found. */
 export function loadFixture(fixtureName) {
   const fixturePath = path.resolve(fixturesDir, fixtureName);
   if (!fs.existsSync(fixturePath)) return null;

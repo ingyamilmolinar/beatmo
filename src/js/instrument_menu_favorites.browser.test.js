@@ -1,25 +1,5 @@
-/**
- * Instrument-menu favorites: end-to-end localStorage round-trip
- *
- * COVERED-BY-GO:
- *   - SearchableList[T] favorites toggle / pin-ordering / stale-key:
- *     internal/ui/searchable_list_favorites_test.go
- *   - InMemoryFavoritesStore + global SetFavoritesStore:
- *     internal/ui/favorites_test.go
- *   - userprefs persistence (atomic writes, schema v1, race-clean):
- *     internal/userprefs/store_test.go
- *   - InstrumentMenuComponent star toggle hit areas:
- *     internal/ui/inst_menu_favorites_test.go
- *
- * What this test owns (per JS Test Charter §8 — "browser-only platform
- * features … browser storage"):
- *   1. The localStorage backend really persists across a page reload.
- *   2. The persisted-favorites adapter wired in js_bootstrap_wasm.go
- *      reads back what it wrote in a previous session.
- *
- * That's the only behavior Go can't reach. Logic correctness lives in
- * Go.
- */
+/** Only what Go cannot reach: localStorage really persists a favorite across a reload. COVERED-BY-GO:
+ * searchable_list_favorites_test.go, favorites_test.go, userprefs/store_test.go, inst_menu_favorites_test.go */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -113,9 +93,7 @@ if (isFavBefore !== true) {
   throw new Error(`instrumentIsFavorite(${FAV_ID}) before reload = ${isFavBefore}, expected true`);
 }
 
-// localStorage should now contain the favorite. Allow a tick for the
-// async write path on desktop builds (WASM writes synchronously, but
-// we're robust to either).
+// Robust to an async write path.
 await page.waitForFunction(
   ({ key, id }) => {
     const raw = localStorage.getItem(key);
@@ -139,8 +117,7 @@ await page.waitForFunction(() => typeof instrumentIsFavorite === "function", nul
   timeout: 30_000,
 });
 
-// Read-after-reload: persisted-favorites adapter must have loaded the
-// star from localStorage during js_bootstrap_wasm init.
+// Loaded from localStorage during bootstrap.
 const isFavAfter = await page.evaluate((id) => instrumentIsFavorite(id), FAV_ID);
 if (isFavAfter !== true) {
   throw new Error(`instrumentIsFavorite(${FAV_ID}) after reload = ${isFavAfter}, expected true`);

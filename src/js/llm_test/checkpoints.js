@@ -1,15 +1,5 @@
-/**
- * Objective checkpoint evaluation for the agent sanity tests.
- *
- * A "checkpoint" compares an `expect` object against the live engine state read
- * from fullLayoutSnapshot(). This converts the agent's subjective prose ("looks
- * like it played") into machine-verifiable facts ("state.isPlaying === true").
- *
- * The agent records checkpoints via the `checkpoint` tool (see agent.js); the
- * gate (evaluateGate) decides overall PASS/FAIL from the recorded ledger plus
- * the parsed "### PHASE RESULTS" block. cli.js turns the gate verdict into a
- * process exit code so a real regression fails CI instead of silently passing.
- */
+/** Turns the agent's prose into machine-checked facts: a checkpoint compares `expect` with fullLayoutSnapshot(), and the
+ * gate makes the run PASS/FAIL so a real regression fails CI instead of silently passing. */
 
 /** Loose equality: numbers compare numerically, booleans as booleans, else as strings. */
 function valuesEqual(actual, expected) {
@@ -18,13 +8,8 @@ function valuesEqual(actual, expected) {
   return String(actual) === String(expected);
 }
 
-/**
- * Match `actual` against `expected`. `expected` is either a literal (exact match
- * via valuesEqual) or a relational operator object — `{gt|lt|gte|lte|eq|ne: value}` —
- * used by gesture/stress tests whose result is directional, not exact
- * (e.g. {camScale:{gt:1.0}}, {camOffsetX:{ne:12.7}}, {totalNodes:{gt:4}}).
- * Multiple operators on one key are AND-ed. Unknown operators fail closed.
- */
+/** A literal, or {gt|lt|gte|lte|eq|ne: value} for directional results; several operators AND together, unknown ones
+ * fail closed. */
 export function matchesExpectation(actual, expected) {
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     const entries = Object.entries(expected);
@@ -46,18 +31,8 @@ export function matchesExpectation(actual, expected) {
   return valuesEqual(actual, expected);
 }
 
-/**
- * Compare an `expect` object against a fullLayoutSnapshot() result.
- *
- * Supported scalar keys (compared against snap.state.<key>):
- *   bpm, subdiv, totalRows, isPlaying, activeTab, viewMode, channel
- * Per-row keys (compared against snap.rows[row].<key>):
- *   { row: N, muted?: bool, soloed?: bool }
- *
- * @param {Object|null} snap - result of fullLayoutSnapshot()
- * @param {Object} expect
- * @returns {{pass: boolean, mismatches: Array<{key:string, expected:any, actual:any}>}}
- */
+/** Scalar keys (bpm, subdiv, totalRows, isPlaying, activeTab, viewMode, channel) against snap.state; {row, muted?,
+ * soloed?} against snap.rows. */
 export function compareCheckpoint(snap, expect) {
   const mismatches = [];
   if (!snap || !snap.state) {
@@ -101,10 +76,7 @@ export function formatMismatches(mismatches) {
     .join("; ");
 }
 
-/**
- * Parse the agent's "### PHASE RESULTS" block from its final summary.
- * Returns [{phase:number, result:"PASS"|"PARTIAL"|"FAIL", note:string}].
- */
+/** [{phase, result: "PASS"|"PARTIAL"|"FAIL", note}]. */
 export function extractPhaseResults(summary) {
   if (!summary) return [];
   const results = [];
@@ -117,27 +89,11 @@ export function extractPhaseResults(summary) {
   return results;
 }
 
-/**
- * Evaluate the overall pass/fail gate for an agent run.
- *
- * The gate fails if ANY of:
- *   - the agent threw a fatal error,
- *   - any recorded checkpoint failed,
- *   - a required checkpoint was never recorded,
- *   - a phase self-reported FAIL.
- *
- * @param {Object} result - agent result { checkpoints?, summary?, error? }
- * @param {string[]} requiredCheckpoints - names that MUST be present and passing
- * @returns {{ok:boolean, reasons:string[], checkpointsPassed:number,
- *            checkpointsFailed:number, missing:string[], phaseFails:Array}}
- */
+/** Fails on a fatal error, any failed checkpoint, a required one never recorded, or a phase that self-reported FAIL. */
 export function evaluateGate(result, requiredCheckpoints = []) {
   const reasons = [];
   const ledger = Array.isArray(result?.checkpoints) ? result.checkpoints : [];
-  // Collapse by name, LAST verdict wins. A checkpoint may be recorded more than
-  // once when the agent retries after a transient FAIL (e.g. a value that takes
-  // an extra frame to commit) and then self-corrects to PASS. Only the final
-  // verdict counts — otherwise legitimate recovery would fail the gate.
+  // LAST verdict wins: an agent that retries after a transient FAIL and recovers must pass.
   const finalByName = new Map();
   for (const c of ledger) finalByName.set(c.name, c);
 

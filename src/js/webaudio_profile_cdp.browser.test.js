@@ -41,41 +41,19 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-// ---------------------------------------------------------------------------
-// Scenario definitions
-// ---------------------------------------------------------------------------
 const DURATION_SEC = 15;
 
-// ---------------------------------------------------------------------------
-// CI gate configuration
-//
-// By DEFAULT this profiler is a hard gate: a regression in audio-scheduler
-// health or CPU/WASM overhead exits non-zero and fails CI. Set PROFILE_SOFT=1
-// to downgrade every hard failure to an informational WARN (recovers the old
-// flight-recorder behavior for ad-hoc profiling runs).
-//
-// IMPORTANT: lagP90/lagP99 are ONLY populated when an event is OVERDUE
-// (lead < 0). On a healthy run they are null/0, so they are NOT gated here —
-// they are printed for diagnostics only. We gate on the metrics that ARE
-// populated on a healthy run: overdue, minLead, smallLeadCount, and the
-// CPU/WASM-overhead figures from the CDP profile.
-// ---------------------------------------------------------------------------
+// A hard gate by default (PROFILE_SOFT=1 downgrades to warnings). lagP90/99 are populated only for OVERDUE events, so
+// they are printed, not gated; overdue, minLead, smallLeadCount and the CPU/WASM overhead are.
 const PROFILE_SOFT = process.env.PROFILE_SOFT === "1";
 
 const GATES = {
-  // Audio scheduler health (populated on every run). These are the load-bearing
-  // real-time-safety gates: a regression here means audible glitches.
+  // The real-time safety gates: a regression is audible.
   overdueMax: 0,            // no event may be scheduled in the past
   minLeadMinMs: 3,          // every event must be enqueued >=3ms ahead of its play time
   smallLeadMax: 0,          // no event may have <3ms lead (Go-side smallLeadCount)
-  // CPU / WASM overhead caps (from the CDP CPU profile). These are regression
-  // gates, not the aspirational 5%/15% design targets: the current healthy WASM
-  // build self-samples audio-flush ~0-2% and WASM/Go runtime ~16-19% (with
-  // CDP-sampling-interval jitter of a couple points). Caps carry headroom above
-  // the observed healthy baseline so they catch a genuine regression (e.g. a new
-  // per-event allocation or a doubling of runtime overhead) without flapping on
-  // the green build. Tighten these as the build improves toward the design
-  // targets noted in the informational tables above.
+  // Regression caps with headroom above the healthy baseline (audio flush ~0-2 %, runtime ~16-19 %, plus sampling
+  // jitter), not the design targets; tighten as the build improves.
   audioFlushPctMax: 8,      // healthy ~0-2%; trips on a real audio-flush hot path
   wasmOverheadPctMax: 25,   // healthy ~16-19%; trips on a real runtime-overhead regression
 };
@@ -105,8 +83,7 @@ const scenarios = [
   },
 ];
 
-// PROFILE_SCENARIOS=<n> limits the run to the first N scenarios (for fast
-// verification / CI smoke). Default: run all scenarios.
+// The first N scenarios only.
 const scenarioLimit = process.env.PROFILE_SCENARIOS ? parseInt(process.env.PROFILE_SCENARIOS, 10) : scenarios.length;
 const activeScenarios = scenarios.slice(0, Math.max(1, scenarioLimit || scenarios.length));
 
@@ -128,30 +105,16 @@ for (const scenario of activeScenarios) {
   const client = await page.context().newCDPSession(page);
 
   await page.goto(`http://localhost:${port}/`);
-  // Wait for EVERY Go export used below, not just one: Go registers them one
-  // at a time, and under load the page runs between registrations — `x?.()`
-  // does not guard an undeclared global (ReferenceError: resetPerfStats).
+  // Every export used: Go registers them one at a time, and `x?.()` does not guard an undeclared global.
   await page.waitForFunction(() => ["startPlay", "stopPlay", "resetPerfStats", "perfStats", "resetAudioScheduleMetrics",
     "getAudioScheduleMetrics", "buildPerfRect", "setBPM", "forceDraw", "totalRows"].every((f) => typeof window[f] === "function"),
     null, { timeout: 30000 });
 
-  // ---------------------------------------------------------------------------
-  // 1a. Capture CDP Performance.getMetrics BEFORE
-  // ---------------------------------------------------------------------------
   await client.send("Performance.enable");
   const metricsBefore = await client.send("Performance.getMetrics");
   const beforeMap = new Map(metricsBefore.metrics.map(m => [m.name, m.value]));
 
-  // ---------------------------------------------------------------------------
-  // 1b. Inject JS-side crossing instrumentation
-  //
-  // We wrap the Go→JS batch entry points (playSoundsBatch / playSoundsBatchFlat)
-  // to measure the time spent enqueuing each batch on the JS side. This is the
-  // only instrumentation that actually produces data; the previously-present
-  // __flushSampler / _origFlush / _origProcess hooks were dead (flushAudioQueue
-  // and processAudioEvent are module-scoped and never exposed on window), so
-  // they have been removed.
-  // ---------------------------------------------------------------------------
+  // Time spent enqueuing each Go→JS batch: the only JS-side hook that can see it (the queue internals are module-scoped).
   await page.evaluate(() => {
     window.__flushProfile = {
       batchArrivals: [],      // { timestamp, batchSize, source }
@@ -175,9 +138,7 @@ for (const scenario of activeScenarios) {
     }
 
     if (origBatchFlat) {
-      // Forward EVERY argument: the trailing ones carry the sequencer identity
-      // and the audio lane's voice ids — dropped, every lane note became an
-      // uncancellable vid-0 voice and the profile measured another engine.
+      // EVERY argument: dropping the trailing ones made every lane note an uncancellable vid-0 voice, profiling another engine.
       window.playSoundsBatchFlat = (ids, ...rest) => {
         const t0 = performance.now();
         const size = ids ? ids.length : 0;
@@ -189,9 +150,6 @@ for (const scenario of activeScenarios) {
     }
   });
 
-  // ---------------------------------------------------------------------------
-  // Build circuit and reset metrics
-  // ---------------------------------------------------------------------------
   await page.evaluate((setup) => {
     resetAudioScheduleMetrics?.();
     resetPerfStats?.();
@@ -199,9 +157,6 @@ for (const scenario of activeScenarios) {
     forceDraw?.(); forceDraw?.();
   }, scenario.setup);
 
-  // ---------------------------------------------------------------------------
-  // Start CDP CPU + Heap profiling
-  // ---------------------------------------------------------------------------
   await client.send("Profiler.enable");
   await client.send("Profiler.setSamplingInterval", { interval: 100 });
   await client.send("Profiler.start");
@@ -216,16 +171,10 @@ for (const scenario of activeScenarios) {
   });
   await page.waitForTimeout(300);
 
-  // ---------------------------------------------------------------------------
-  // Run playback
-  // ---------------------------------------------------------------------------
   await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
   await page.waitForTimeout(DURATION_SEC * 1000);
   await page.evaluate(() => stopPlay?.());
 
-  // ---------------------------------------------------------------------------
-  // Collect all metrics
-  // ---------------------------------------------------------------------------
   const audioMetrics = await page.evaluate(() => getAudioScheduleMetrics?.());
   const perfStatsResult = await page.evaluate(() => perfStats?.());
   const rowCount = await page.evaluate(() => totalRows?.());
@@ -255,9 +204,6 @@ for (const scenario of activeScenarios) {
   fs.writeFileSync(path.join(traceDir, `cpu_profile_${safeScenarioName}.json`), JSON.stringify(cpuProfile, null, 2));
   fs.writeFileSync(path.join(traceDir, `heap_profile_${safeScenarioName}.json`), JSON.stringify(heapProfile, null, 2));
 
-  // ---------------------------------------------------------------------------
-  // Parse CPU profile
-  // ---------------------------------------------------------------------------
   console.log("=== CPU Profile Analysis ===\n");
 
   const nodeMap = new Map();
@@ -325,9 +271,6 @@ for (const scenario of activeScenarios) {
     if (lc.includes("schedule") || lc.includes("enqueue") || lc.includes("observe")) schedulePct += f.pct;
   }
 
-  // ---------------------------------------------------------------------------
-  // Parse heap profile
-  // ---------------------------------------------------------------------------
   console.log("\n=== Heap Profile Analysis ===\n");
 
   const allocByFunc = new Map();
@@ -356,9 +299,6 @@ for (const scenario of activeScenarios) {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // CDP Performance Metrics delta
-  // ---------------------------------------------------------------------------
   console.log("\n=== CDP Performance Metrics (delta) ===\n");
   const interestingMetrics = [
     "JSHeapUsedSize", "JSHeapTotalSize", "ScriptDuration", "TaskDuration",
@@ -372,9 +312,6 @@ for (const scenario of activeScenarios) {
     console.log(`  ${name}: ${delta.toFixed(3)}${suffix}`);
   }
 
-  // ---------------------------------------------------------------------------
-  // Go-to-JS crossing analysis
-  // ---------------------------------------------------------------------------
   console.log("\n=== Go-to-JS Crossing Analysis ===\n");
   if (flushProfile && flushProfile.crossingTimings.length > 0) {
     const crossings = flushProfile.crossingTimings;
@@ -418,9 +355,6 @@ for (const scenario of activeScenarios) {
     console.log("  No crossing data captured (batch functions may not have been called)");
   }
 
-  // ---------------------------------------------------------------------------
-  // Audio metrics + perf stats
-  // ---------------------------------------------------------------------------
   console.log("\n=== Audio Schedule Metrics ===\n");
   if (audioMetrics) {
     console.log(`  count=${audioMetrics.count} overdue=${audioMetrics.overdue}`);
@@ -452,9 +386,6 @@ for (const scenario of activeScenarios) {
     console.log(`  Goroutines: ${perfStatsResult.goroutines}`);
   }
 
-  // ---------------------------------------------------------------------------
-  // Batch arrival pattern analysis
-  // ---------------------------------------------------------------------------
   console.log("\n=== Batch Arrival Patterns ===\n");
   if (flushProfile && flushProfile.batchArrivals.length > 0) {
     const arrivals = flushProfile.batchArrivals;
@@ -491,9 +422,6 @@ for (const scenario of activeScenarios) {
     console.log(`  Batch size histogram: ${JSON.stringify(sizeHist)}`);
   }
 
-  // ---------------------------------------------------------------------------
-  // Gate checks (hard by default) + informational warnings
-  // ---------------------------------------------------------------------------
   console.log("\n=== Gate Checks ===\n");
   const warnings = [];   // informational only — never affects exit code
   const failures = [];   // hard failures — set non-zero exit unless PROFILE_SOFT
@@ -524,8 +452,7 @@ for (const scenario of activeScenarios) {
     failures.push(`WASM/Go overhead ${wasmOverheadPct.toFixed(1)}% exceeds ${GATES.wasmOverheadPctMax}% cap`);
   }
 
-  // --- Informational only: lagP99 is null/0 on a healthy run (lead>=0), so
-  //     this is surfaced as a WARN, never a hard failure. ---
+  // Null or 0 on a healthy run, so a WARN, never a failure.
   if (audioMetrics && audioMetrics.lagP99 != null && audioMetrics.lagP99 > 0.020) {
     warnings.push(`lagP99 ${(audioMetrics.lagP99 * 1000).toFixed(2)}ms exceeds 20ms during profiling (diagnostic only)`);
   }
@@ -583,9 +510,6 @@ for (const scenario of activeScenarios) {
   await browser.close();
 }
 
-// ---------------------------------------------------------------------------
-// Cross-scenario comparison table
-// ---------------------------------------------------------------------------
 console.log(`\n${"=".repeat(100)}`);
 console.log("CROSS-SCENARIO COMPARISON");
 console.log(`${"=".repeat(100)}\n`);
@@ -625,9 +549,7 @@ fs.writeFileSync(path.join(traceDir, "cdp_profile_results.json"), JSON.stringify
 
 console.log(`\nProfiles saved to: ${traceDir}/`);
 
-// ---------------------------------------------------------------------------
-// Final verdict — set non-zero exit on any hard gate failure (default ON).
-// ---------------------------------------------------------------------------
+// Non-zero exit on any hard gate failure.
 server.close();
 
 if (hardFailures.length > 0) {

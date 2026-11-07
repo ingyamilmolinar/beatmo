@@ -1,21 +1,5 @@
-/**
- * Master-analyzer playback regression — Phase 0a of audio-panel redesign.
- *
- * Reproduces the bug seen in playback screenshots:
- *   - playback_eq_tab_spectrum.browser.png — Spectrum tab body is black
- *   - playback_eq_tab_levels.browser.png   — Levels reads `Pk -inf · RMS -inf`
- *   - playback_eq_tab_chain.browser.png    — Chain trace is flat
- * during clearly-audible playback (Beat 4–6, row hits visible).
- *
- * Verifies both halves of the wiring:
- *   1. getOutputCapture() proves master output is actually pumping audio.
- *   2. channelAnalyzerSnapshot("main") proves the analyzer sees it too.
- *
- * If (1) passes but (2) fails → analyzer is wired wrong (or not at all)
- * and the screenshots match a real bug. If both pass, the empty screenshots
- * were a screenshot-timing artifact (frame captured between hits) and the
- * fix is persistent peak-hold on the JS side, not a wiring re-route.
- */
+/** During audible playback, master output must pump audio AND the master analyzer must see it: (1) without (2) is a
+ * wiring bug; both passing makes an empty screenshot a timing artifact. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -97,9 +81,7 @@ try {
   );
   await waitForAudioReady(page);
 
-  // Start playback. The default circuit boots with active nodes so hits
-  // begin immediately. Settle 1s so several hits land in the analyser
-  // window across snapshot reads.
+  // Settle so several hits land in the analyser window.
   await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
   await page.waitForTimeout(1000);
 
@@ -126,10 +108,7 @@ try {
     throw new Error(`master output is silent (peak=${outputPeak}). Sequencer or audio routing is broken — the analyzer test cannot run.`);
   }
 
-  // Sample the master analyzer snapshot multiple times across ~1.5s while
-  // playback continues. We expect at least one snapshot to land during or
-  // shortly after a hit, so the per-snapshot peak should exceed a sane
-  // threshold (-60 dB → ~0.001 linear).
+  // At least one snapshot lands on or after a hit, above -60 dB (~0.001).
   const samples = await page.evaluate(async () => {
     const out = [];
     for (let i = 0; i < 90; i++) {
@@ -155,8 +134,7 @@ try {
     );
   }
 
-  // Sanity: analyzer peak should be on the same order of magnitude as output peak.
-  // Allow a wide margin because the analyser captures only the most recent 512 samples.
+  // Wide margin: the analyser holds only the last 512 samples.
   if (maxAnalyzerPeak < outputPeak * 0.05) {
     throw new Error(
       `MASTER ANALYZER UNDERREPORTS: max snapshot peak=${maxAnalyzerPeak.toFixed(4)} is <5% of output peak=${outputPeak.toFixed(4)}. Likely wired to wrong tap point.`

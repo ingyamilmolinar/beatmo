@@ -1,21 +1,5 @@
-/**
- * Node Click Real Input Test
- *
- * Tests that grid node clicks work via real canvas events in WASM.
- *
- * The game's click state machine in handleEditor() (game_input_editor.go)
- * requires two separate game-loop ticks:
- *   Tick N   (mouse down): left=true, leftPrev=false  → pendingClick=true
- *   Tick N+1 (mouse up):   left=false, leftPrev=true  → nodeMenuOpen=true
- *
- * Under CPU contention (parallel browser tests), requestAnimationFrame ticks
- * can be delayed beyond short hold times, so we use generous hold durations
- * and poll for the expected state change with retries.
- *
- * IMPORTANT: The target node must be well above the splitter's grab zone,
- * otherwise the splitter captures the mouse-down event. After importing
- * a demo, pan the camera so the target node sits near the grid pane center.
- */
+/** The click state machine needs two game-loop ticks (press, then release), and parallel tests delay rAF, so holds are
+ * generous and outcomes polled. The node must sit well above the splitter's grab zone, which would capture the press. */
 
 import {
   setupFullWasm,
@@ -24,11 +8,7 @@ import {
 } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
-/**
- * Pan the camera so the node at grid (i, j) is centered vertically in the
- * grid pane (between gridTopOffset=40 and splitY). Re-draws and returns
- * the updated node rect.
- */
+/** Between gridTopOffset and splitY. Returns the updated rect. */
 async function centerNodeInGridPane(page, i, j) {
   const splitYVal = await page.evaluate(() => splitY?.()) ?? 360;
   const gridTop = 40; // desktopTopOffset constant
@@ -52,12 +32,7 @@ async function centerNodeInGridPane(page, i, j) {
   return updated;
 }
 
-/**
- * Click a node and wait for the node menu to open.
- * Uses hold-and-poll: holds mouse down until the game loop registers
- * pendingClick, then releases and waits for nodeMenuOpen. Retries the
- * full cycle up to maxRetries times.
- */
+/** Holds until the loop registers the press, releases, waits for the menu; retries the whole cycle. */
 async function clickNodeAndWaitForMenu(page, x, y, maxRetries = 3) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     // Close any existing menu before each attempt
@@ -122,8 +97,7 @@ try {
   });
   await page.waitForTimeout(300);
 
-  // Pan the target node to the center of the grid pane so it's well
-  // above the splitter's grab zone.
+  // Well above the splitter's grab zone.
   const nodeR = await centerNodeInGridPane(page, 0, 0);
   assertValidRect(nodeR, "nodeRect(0,0)");
   const center = rectCenter(nodeR);
@@ -135,9 +109,6 @@ try {
     throw new Error(`Node center (y=${center.y}) too close to splitter (y=${sy})`);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Test 1: Click with fastPath=true (default WASM)
-  // ─────────────────────────────────────────────────────────────────────
   console.log("\n--- Test 1: Click with fastPath=true ---");
   await page.evaluate(() => setFastPath?.(true));
 
@@ -149,9 +120,6 @@ try {
   }
   console.log("node_click_real: Test 1 PASS (fastPath=true, nodeMenuOpen=true)");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Test 2: Click with fastPath=false
-  // ─────────────────────────────────────────────────────────────────────
   console.log("\n--- Test 2: Click with fastPath=false ---");
   await page.evaluate(() => {
     closeNodeMenu?.();

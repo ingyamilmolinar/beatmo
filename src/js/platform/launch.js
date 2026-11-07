@@ -1,34 +1,6 @@
-// platform/launch.js
-//
-// Single entry point for launching the browser used by browser tests.
-// Lets callers target Chromium-local (default, current behavior), WebKit-local
-// (closest local proxy for iOS Safari), or a real device through BrowserStack
-// without touching the bespoke test runner.
-//
-// Usage in tests:
-//   import { launchBrowser } from "./platform/launch.js";
-//   const { browser, cleanup, kind } = await launchBrowser();
-//   const page = await browser.newPage();
-//   ... run test ...
-//   await cleanup();   // closes browser + tears down any tunnel
-//
-// Platform selection (in order of precedence):
-//   1. opts.platform string
-//   2. process.env.TEST_PLATFORM
-//   3. "chromium-local"
-//
-// Supported platform strings:
-//   "chromium-local"            -> playwright chromium.launch()
-//   "chrome-local"              -> the installed Google Chrome (channel
-//                                  "chrome"): real codecs and, with
-//                                  TEST_HEADED=1, a real GPU-composited window —
-//                                  what a user runs. Headless Chromium rasterizes
-//                                  WebGL in software (400-600 ms frames), which
-//                                  hides or invents main-thread costs.
-//   "webkit-local"              -> playwright webkit.launch()
-//   "firefox-local"             -> playwright firefox.launch() (autoplay
-//                                  allowed, like the Chromium flag)
-//   "browserstack:<device-slug>" -> see ./browserstack.js (real iPhone/Pixel)
+// The one launcher for browser tests: opts.platform, else TEST_PLATFORM, else "chromium-local". Also "chrome-local"
+// (installed Chrome: real codecs and, with TEST_HEADED=1, a real GPU; headless rasterizes WebGL in software),
+// "webkit-local", "firefox-local", "browserstack:<slug>". launchBrowser() → {browser, cleanup, kind}.
 
 import { chromium, firefox, webkit } from "playwright";
 
@@ -47,9 +19,8 @@ function chromiumLaunchArgs(extra = []) {
   ];
 }
 
-// TEST_HEADED=1 shows the window. A headed window that is covered or on
-// another workspace is throttled by Chrome (rAF and timers) unless told not
-// to — a bench would then measure the throttle.
+// A covered or off-workspace headed window is throttled by Chrome unless told not to, and a bench would measure the
+// throttle.
 function headedFlags(headless) {
   return headless ? [] : [
     "--disable-renderer-backgrounding",
@@ -79,8 +50,7 @@ async function launchChromiumLocal(opts, channel) {
 }
 
 async function launchWebkitLocal(opts) {
-  // WebKit ignores Chromium-specific flags; autoplay still requires a real
-  // gesture, which tests must synthesize via clickAt() / page.mouse.click().
+  // WebKit ignores Chromium flags; autoplay needs a real synthesized gesture.
   const browser = await webkit.launch({
     headless: opts.headless ?? true,
   });

@@ -1,18 +1,5 @@
-/**
- * LLM Visual Testing — Agent Loop
- *
- * Drives a Claude Haiku agent that visually interacts with Beatmo in the browser.
- * The agent takes screenshots, sends them to Claude via the computer use API,
- * receives click/type/scroll actions, and executes them via Playwright.
- *
- * Supports two platforms:
- *   - "desktop" (default): Standard mouse/keyboard interaction
- *   - "mobile": Mouse actions auto-translate to CDP touch events; adds touch_gesture tool
- *
- * Usage:
- *   const agent = createAgent(page, { recorder });
- *   const result = await agent.run("Click Play, wait 3 seconds, click Stop.");
- */
+/** A Claude agent that screenshots Beatmo, receives computer-use actions and executes them through Playwright; on
+ * "mobile" mouse actions become CDP touch and a touch_gesture tool is added. createAgent(page, {recorder}).run(prompt). */
 
 import {
   cdpTap,
@@ -264,11 +251,8 @@ const REPEAT_CLICK_UI_TOOL = {
   },
 };
 
-// Deterministic surface-navigation tools. These wrap stable WASM JS exports
-// (openContextMenuJS / contextMenuClick / setEQTab / setViewMode) so the agent
-// reaches the row overflow menu, the 7-tab audio panel, and the mobile bottom-
-// nav by NAME instead of fragile pixel math. The old UI had inline row buttons
-// and a binary viewSwitch; both are gone (see the system prompt).
+// Wrapping stable exports lets the agent reach the row menu, the audio tabs and the bottom nav by NAME instead of
+// fragile pixel math.
 
 const OPEN_ROW_MENU_TOOL = {
   name: "open_row_menu",
@@ -503,13 +487,7 @@ const IMPORT_CIRCUIT_TOOL = {
   input_schema: { type: "object", properties: {}, required: [] },
 };
 
-/**
- * Query fullLayoutSnapshot() and build a compact coordinate hint string.
- * Returns null if the function is not available.
- *
- * @param {import('playwright').Page} page
- * @returns {Promise<string|null>}
- */
+/** null if the export is not available. */
 async function buildUIHints(page) {
   return page.evaluate(() => {
     if (typeof fullLayoutSnapshot !== "function") return null;
@@ -588,14 +566,7 @@ async function buildUIHints(page) {
   }).catch(() => null);
 }
 
-/**
- * Resolve a button name to its rect from a fullLayoutSnapshot.
- *
- * @param {Object} snap - Result of fullLayoutSnapshot()
- * @param {string} button - Button name
- * @param {number|undefined} row - Row index for per-row buttons
- * @returns {{x: number, y: number, w: number, h: number}|null}
- */
+/** row for per-row buttons; null if not found. */
 function resolveButtonRect(snap, button, row) {
   // Row buttons
   if (row !== undefined && row !== null) {
@@ -630,13 +601,6 @@ function resolveButtonRect(snap, button, row) {
   return null;
 }
 
-/**
- * Execute a touch gesture via CDP helpers.
- *
- * @param {import('playwright').Page} page
- * @param {Object} input - The touch_gesture tool input
- * @param {boolean} verbose
- */
 async function executeTouchGesture(page, input, verbose) {
   const { gesture, x, y, duration, delta_x, delta_y } = input;
 
@@ -682,16 +646,8 @@ async function executeTouchGesture(page, input, verbose) {
   }
 }
 
-/**
- * Capture the WebGL canvas content directly within the page, bypassing
- * CDP Page.captureScreenshot which hangs in headless mode when captureStream
- * is active. forceDraw() issues WebGL commands synchronously (WASM), and
- * drawImage() copies the drawing buffer before the browser presents/clears
- * it (same event-loop task, so preserveDrawingBuffer:false is fine).
- *
- * @param {import('playwright').Page} pg
- * @returns {Promise<Buffer|null>}
- */
+/** In-page, because CDP captureScreenshot hangs headless while captureStream runs. forceDraw() draws synchronously and
+ * drawImage() copies in the same task, so preserveDrawingBuffer:false is fine. */
 async function captureCanvas(pg) {
   const b64 = await pg.evaluate(() => {
     if (typeof forceDraw === "function") forceDraw();
@@ -707,16 +663,7 @@ async function captureCanvas(pg) {
   return b64 ? Buffer.from(b64, "base64") : null;
 }
 
-/**
- * Execute a Claude computer-use action via Playwright.
- * When platform is "mobile", mouse actions are translated to CDP touch events.
- *
- * @param {import('playwright').Page} page
- * @param {Object} action - Claude's tool_use input
- * @param {boolean} verbose - Log actions to console
- * @param {string} platform - "desktop" or "mobile"
- * @returns {Promise<Buffer|null>} Screenshot buffer if action was "screenshot", null otherwise
- */
+/** On "mobile" mouse actions become CDP touch. Returns the screenshot for "screenshot", else null. */
 async function executeAction(page, action, verbose, platform) {
   const { action: actionType, text, key, duration } = action;
   const coordinate = normCoord(action.coordinate);
@@ -810,10 +757,7 @@ async function executeAction(page, action, verbose, platform) {
       if (coordinate) {
         const mods = text ? text.split("+").map((m) => m.trim()) : [];
         for (const mod of mods) await page.keyboard.down(mod);
-        // Force a game tick with the mouse at the click position.
-        // In headless Chromium with SwiftShader, rAF fires infrequently
-        // so Ebiten's Update() may never see the pressed state.
-        // forceGameTick() overrides input and runs Update() directly.
+        // Headless SwiftShader fires rAF rarely, so Update() may never see the press; forceGameTick() runs it with the input.
         await page.mouse.move(coordinate[0], coordinate[1]);
         await page.mouse.down();
         await page.evaluate(([x, y]) => {
@@ -830,8 +774,7 @@ async function executeAction(page, action, verbose, platform) {
       if (coordinate) {
         await page.mouse.move(coordinate[0], coordinate[1]);
         await page.mouse.down({ button: "right" });
-        // forceGameTick only overrides left button; for right-click,
-        // fall back to rAF wait with long timeout.
+        // forceGameTick only overrides the left button.
         await page.evaluate(() => new Promise(r => {
           requestAnimationFrame(r);
           setTimeout(r, 5000);
@@ -900,8 +843,7 @@ async function executeAction(page, action, verbose, platform) {
 
     case "left_click_drag":
       if (start_coordinate && coordinate) {
-        // Prefer the force-ticked forceDrag (reliable headless); fall back to a
-        // real mouse drag if the export isn't present.
+        // Force-ticked forceDrag is reliable headless; a real drag when the export is absent.
         const usedForceDrag = await page.evaluate(([a, b, c, d]) => {
           if (typeof forceDrag === "function") { forceDrag(a, b, c, d, 10); return true; }
           return false;
@@ -956,19 +898,7 @@ async function executeAction(page, action, verbose, platform) {
   return null;
 }
 
-/**
- * Create an agent that drives Claude Haiku to interact with Beatmo.
- *
- * @param {import('playwright').Page} page - Playwright page (use recorder.getWrappedPage() for recording)
- * @param {Object} options
- * @param {string} options.model - Claude model (default: claude-haiku-4-5-20251001)
- * @param {number} options.maxIterations - Max agent turns (default: 50)
- * @param {Object} options.screenshotSize - {width, height} matching viewport
- * @param {string} options.apiKey - Anthropic API key
- * @param {boolean} options.verbose - Log actions to console (default: true)
- * @param {string} options.platform - "desktop" or "mobile" (default: "desktop")
- * @returns {Agent}
- */
+/** options: model (default claude-haiku-4-5-20251001), maxIterations (50), screenshotSize, apiKey, verbose, platform. */
 export function createAgent(page, options = {}) {
   const model = options.model ?? "claude-haiku-4-5-20251001";
   const maxIterations = options.maxIterations ?? 50;
@@ -1025,10 +955,7 @@ export function createAgent(page, options = {}) {
     tools.push(SWITCH_TAB_TOOL);
   }
 
-  /**
-   * Take a screenshot with retry logic. Falls back to a 1x1 transparent PNG
-   * placeholder if the page is unresponsive.
-   */
+  /** Falls back to a 1×1 transparent PNG when the page is unresponsive. */
   async function safeScreenshot(retries = 2) {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -1117,12 +1044,6 @@ export function createAgent(page, options = {}) {
   }
 
   return {
-    /**
-     * Run the agent loop with the given task prompt.
-     *
-     * @param {string} taskPrompt - What the agent should do
-     * @returns {Promise<AgentResult>}
-     */
     async run(taskPrompt) {
       const startTime = Date.now();
       const agentLog = [];    // Full message log for debugging
@@ -1228,8 +1149,7 @@ export function createAgent(page, options = {}) {
           },
         });
 
-        // Helper: detect positive/negated observations that should not count as issues.
-        // E.g. "✅ No overlapping elements" or "No broken UI components".
+        // Positive or negated observations ("✅ No overlapping elements") are not issues.
         const ISSUE_KEYWORDS_RE = /(?:overlap|broken|unresponsive|misalign|artifact|bug|glitch|rendering error|truncat|clipped|stuck|suggestion)/i;
         function isNegatedObservation(text) {
           if (/✅/.test(text)) return true;
@@ -1380,10 +1300,7 @@ export function createAgent(page, options = {}) {
                     }
                     await page.mouse.move(cx, cy);
                     await page.mouse.down();
-                    // Force a game tick with overridden input so the button
-                    // handler fires regardless of rAF timing. In headless
-                    // Chromium with SwiftShader, rAF fires infrequently and
-                    // Update() may never run while the mouse is held.
+                    // Headless rAF is rare, so Update() might never run while the button is held.
                     await page.evaluate(([x, y]) => {
                       if (typeof forceGameTick === 'function') {
                         forceGameTick(x, y);
@@ -1543,9 +1460,7 @@ export function createAgent(page, options = {}) {
                 }
                 toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
               } else if (block.name === "set_subdiv") {
-                // Deterministic subdivision set via the canonical SetSubdivisions
-                // handler (setSubdivisions), which doesn't depend on the dropdown
-                // menu being built/open. Falls back to the menu path if absent.
+                // The canonical handler, independent of the dropdown being open; the menu path is the fallback.
                 const v = Math.round(Number(block.input.value));
                 const ok = await page.evaluate((n) => {
                   if (typeof setSubdivisions === "function") {
@@ -1732,9 +1647,7 @@ export function createAgent(page, options = {}) {
                     if (typeof stopPlay === "function") stopPlay();
                   });
                   const downloadPromise = page.waitForEvent("download", { timeout: 20000 });
-                  // Instrument ids to trigger directly (robust signal source,
-                  // independent of whether the current circuit's sequencer is
-                  // triggering loudly — playSound bypasses the sequencer).
+                  // playSound bypasses the sequencer: a signal source independent of the circuit.
                   const instIds = await page.evaluate(() => {
                     try { return (JSON.parse(exportJSON()).instruments || []).map((i) => i.id); } catch (_) { return []; }
                   });
@@ -1742,8 +1655,7 @@ export function createAgent(page, options = {}) {
                     if (typeof startRecording === "function") await startRecording("wav24");
                     if (typeof startPlay === "function") startPlay();
                   });
-                  // Fire explicit hits on every instrument across the window so the
-                  // captured master has guaranteed loud transients.
+                  // Guaranteed loud transients in the captured master.
                   for (let round = 0; round < 8; round++) {
                     await page.evaluate((ids) => {
                       for (const id of ids) { try { if (window.playSound) window.playSound(id, 1.0); } catch (_) {} }
@@ -1798,9 +1710,7 @@ export function createAgent(page, options = {}) {
                 if (verbose) console.log(`  [checkpoint] ${text}`);
                 toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }] });
               } else if (block.name === "delete_node_longpress") {
-                // Faithful long-press → slide-to-Delete → release on a grid node.
-                // Reads the live longPressDeleteRect mid-hold (popup is open) so the
-                // slide targets the real Delete button. (See cdpLongPressAndSlide.)
+                // Reads the live Delete rect mid-hold, so the slide targets the real button.
                 const { x, y } = block.input;
                 let detail = "delete_node_longpress: ";
                 try {
@@ -1842,11 +1752,7 @@ export function createAgent(page, options = {}) {
                 // Delay for gesture to take effect
                 await page.waitForTimeout(500);
               } else {
-                // Handle computer tool actions. Weaker models sometimes call a
-                // BARE action verb as the tool name (e.g. name="left_click")
-                // instead of the canonical computer tool with input.action, and
-                // sometimes pass a stringified coordinate. normalizeComputerAction
-                // coerces both so the tap actually executes (see action_normalize.js).
+                // Weaker models call a bare verb as the tool name or stringify the coordinate; coerced so the tap executes.
                 const actionInput = normalizeComputerAction(block.name, block.input);
                 screenshotResult = await executeAction(page, actionInput, verbose, platform);
 
@@ -2005,15 +1911,7 @@ export function createAgent(page, options = {}) {
   };
 }
 
-/**
- * Prune old screenshot images from conversation history to prevent unbounded growth.
- * Keeps the first message (task prompt + initial screenshot) and the last `keepRecent`
- * message pairs intact. For older messages, replaces base64 image content with a
- * text placeholder.
- *
- * @param {Array} messages - The conversation messages array (mutated in place)
- * @param {number} keepRecent - Number of recent message pairs to keep images for (default: 6)
- */
+/** Keeps the first message and the last keepRecent pairs; older images become a text placeholder. Mutates in place. */
 function pruneConversationImages(messages, keepRecent = 6) {
   const protectedTail = keepRecent * 2;
   const pruneEnd = messages.length - protectedTail;
@@ -2039,9 +1937,6 @@ function pruneConversationImages(messages, keepRecent = 6) {
   }
 }
 
-/**
- * Estimate API cost based on token counts.
- */
 function estimateCost(inputTokens, outputTokens, model) {
   const isHaiku = model.includes("haiku");
   const inputRate = isHaiku ? 0.80 : 3.00;
@@ -2049,9 +1944,6 @@ function estimateCost(inputTokens, outputTokens, model) {
   return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
 }
 
-/**
- * Extract a summary from the last text block in the agent log.
- */
 function extractSummary(agentLog) {
   for (let i = agentLog.length - 1; i >= 0; i--) {
     const entry = agentLog[i];

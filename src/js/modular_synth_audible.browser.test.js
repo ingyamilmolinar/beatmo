@@ -1,15 +1,5 @@
-/**
- * Modular synth voice — end-to-end audible test.
- *
- * Proves the unified modular instrument ("modular") renders sound through the
- * real WASM↔WebAudio bridge and that editing its pipeline params (oscillator
- * type, filter cutoff) actually changes the rendered bytes via the
- * render_modular_p path + the modular param block in synth_param_abi.gen.js.
- *
- * COVERED-BY-GO: internal/audio/modular_render_test.go (C render correctness),
- * internal/audio/modular_param_schema_test.go (ABI schema). This test owns ONLY
- * the WASM↔WebAudio boundary for the modular param block.
- */
+/** Only the WASM↔WebAudio boundary for the modular block: the voice sounds and editing oscillator type or cutoff changes
+ * the rendered bytes. COVERED-BY-GO: modular_render_test.go, modular_param_schema_test.go */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -119,10 +109,7 @@ if (!restoredMatches) {
 }
 console.log("[TEST] reset restored the default modular voice");
 
-// 5) The second shipped preset (modular-pad) must render DISTINCTLY from the
-// base modular voice WITHOUT any user edit — proving each instrument's own
-// document block (Go → window.setInstrumentBlock) reaches render_modular_p in
-// the browser.
+// Each instrument's own document block must reach the render without any user edit.
 await page.evaluate(() => resetInstrumentParams("modular"));
 const padBase = await page.evaluate(() => window.__testCaptureSynthRender("modular"));
 const pad = await page.evaluate(() => window.__testCaptureSynthRender("modular-pad"));

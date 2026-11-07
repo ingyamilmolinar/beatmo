@@ -1,29 +1,6 @@
-/**
- * Mobile sanity — PROGRAMMATIC real-input parity with the agent mobile sanity
- * test (src/js/llm_test/tests/mobile/sanity_mobile.test.md), WITHOUT an LLM
- * agent and WITHOUT using JS exports as the action mechanism.
- *
- * Principle: every USER ACTION is performed with REAL touch input (CDP
- * Input.dispatchTouchEvent via touch_cdp_helpers.js) on the on-screen control;
- * JS exports are used ONLY to read geometry (where to tap) and to assert
- * resulting state. No set_bpm / setViewMode / importJSON / menu_click / agent.
- *
- * Charter §6 (real input dispatch through the canvas, mobile).
- *
- * Scenarios mirror sanity_mobile.test.md. ORDER MATTERS: every tap-sensitive
- * scenario runs BEFORE any playback — starting playback spins up the
- * sequencer/audio goroutines that, under headless software-GL, starve the game
- * loop's input processing and drop subsequent small-control taps. So:
- *   1  init rows            7  INSTRUMENT MENU (open, select, search keyboard,
- *   3  bpm (+button)           category nav)  <-- the user-reported bug area
- *   4  row mute toggle      8  subdiv (menu)  — heavy re-layout, runs late
- *   6  bottom-nav views     9  node delete (long-press; non-gating)
- *  10  pinch zoom          11  two-finger pan
- *  12  play / stop         13  audio/playback advances (best-effort, NON-gating)
- * (Scenario numbers have gaps from reordering; labels are cosmetic.)
- *
- * Run: GO=$(pwd)/.tools/go/bin/go node src/js/mobile_sanity.browser.test.js
- */
+/** The agent's mobile sanity scenarios with no LLM: every user action is REAL input on the on-screen control; exports
+ * only read geometry and assert state. ORDER MATTERS: playback starves the headless game loop and drops later small taps,
+ * so every tap-sensitive scenario runs first. Run: GO=… node src/js/mobile_sanity.browser.test.js */
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -89,19 +66,9 @@ const settle = (ms = 200) => page.waitForTimeout(ms);
 function center(r) { return [r.x + r.w / 2, r.y + r.h / 2]; }
 function validRect(r) { return r && typeof r.w === "number" && r.w > 1 && r.h > 1; }
 
-// Drive a BUTTON (resolved via a geometry export) and POLL a predicate.
-//
-// Uses MOUSE hold-and-poll, NOT touch. Headless software-GL runs the game loop
-// at a low, GPU-stall-jittery fps; the touch gesture detector samples per-frame
-// and mis-classifies an identical CDP tap as none / tap / long-press at random,
-// so real-touch button taps are irreducibly flaky here. Mouse input bypasses the
-// gesture detector entirely and is fps-agnostic — the established codebase
-// convention for buttons (see e2e_drum_row_controls.js → clickUntilStateChanges).
-// Real CDP touch is retained ONLY for genuine gestures (pinch, two-finger pan,
-// long-press) and the search field (its native keyboard needs a real touchend).
-//
-// Hold the button down while polling so the press is sampled across frames, then
-// release on success. pollMs is the per-attempt hold/poll budget.
+// MOUSE hold-and-poll for buttons: at headless software-GL frame rates the touch detector misclassifies an identical CDP
+// tap at random. Real touch is kept for gestures (pinch, pan, long-press) and the search field, whose keyboard needs a
+// real touchend.
 async function tapUntil(rectFn, predFn, label, { tapRetries = 6, pollMs = 2500, step = 100 } = {}) {
   for (let t = 0; t < tapRetries; t++) {
     const r = await rectFn();
@@ -123,8 +90,7 @@ async function tapUntil(rectFn, predFn, label, { tapRetries = 6, pollMs = 2500, 
   return false;
 }
 
-// Single mouse click on a control rect (no predicate) — for non-gating /
-// exploratory button taps. Holds briefly so the press is sampled across a frame.
+// For non-gating taps; held briefly so a frame samples the press.
 async function clickRect(r, holdMs = 160) {
   if (!validRect(r)) return false;
   const [x, y] = center(r);
@@ -136,8 +102,7 @@ async function clickRect(r, holdMs = 160) {
   return true;
 }
 
-// Idempotently ensure the instrument menu is open for a row. The row label is a
-// TOGGLE (tapping it while open closes it), so only tap when it is closed.
+// The row label TOGGLES, so it is tapped only when closed.
 async function ensureMenuOpen(row) {
   if (await read("instMenuOpenState") === true) return true;
   return tapUntil(() => read("rowLabelRect", row),
@@ -154,12 +119,8 @@ try {
   );
   await settle(500);
 
-  // Warm-up gate. Headless software-GL runs the game loop at only ~5–6fps; while
-  // anything else loads the CPU it dips lower. A real touch only registers when
-  // the loop ticks between touchStart and touchEnd, so taps fired into a starved
-  // window are silently dropped (the cause of the intermittent first-tap misses
-  // on the small mute / row-label targets). Wait until frames advance steadily
-  // before driving the tap scenarios so each tap lands on a live frame.
+  // A touch registers only if the loop ticks between touchStart and touchEnd, and a loaded CPU dips it near 0 fps, so this
+  // waits for steady frames.
   {
     const frameCount = async () => (await read("perfStats"))?.frames || 0;
     let steady = 0;
@@ -190,11 +151,7 @@ try {
   const bpm1 = await read("getBPM");
   assert(bpmInc > 0 && bpm1 > bpm0, `bpm: ${bpmInc}× real tap on +BPM raised ${bpm0}→${bpm1}`);
 
-  // ── Scenario 4: row mute toggle (real taps) ──────────────────────────────
-  // NOTE: ordered BEFORE subdiv on purpose. Tapping the subdiv item forces a
-  // heavy grid re-layout (e.g. →32) that briefly starves Update under headless
-  // software-GL and drops the immediately-following small-control taps. Doing
-  // the sensitive row/menu taps first keeps them reliable; subdiv runs late.
+  // Before subdiv: a subdiv change forces a heavy re-layout that starves Update and drops the next small taps.
   console.log("\n=== 4. row mute ===");
   const muteRow = 1;
   const m0 = await read("rowMuted", muteRow);
@@ -205,15 +162,11 @@ try {
     async () => await read("rowMuted", muteRow) === m0, "mute-off"),
     `mute: real tap toggled row ${muteRow} mute back to ${m0}`);
 
-  // ── Scenario 6: bottom-nav views (real taps on segments) ─────────────────
-  // Segment index == viewMode int (enum iota aligned with nav slug order):
-  //   pads=0 eq=1 wave=2 spectrum=3 levels=4 chain=5 synth=6 sampler=7
+  // Segment index == viewMode: pads 0, eq 1, wave 2, spectrum 3, levels 4, chain 5, synth 6, sampler 7.
   console.log("\n=== 6. bottom-nav views ===");
   for (const [slug, idx] of [["eq", 1], ["synth", 6], ["pads", 0]]) {
     if (slug === "synth") {
-      // The Synth view edits ONE instrument, so it is blocked while the audio
-      // panel's channel is Master (synthViewDisabled) — and Master is where the
-      // app starts. Pick row 0's instrument first, as a user must.
+      // The Synth view edits one instrument and is blocked on Master, where the app starts.
       await page.evaluate(() => setEQChannel(rowInstrument(0)));
       await page.waitForTimeout(150);
     }
@@ -242,12 +195,8 @@ try {
         `inst-menu (unscrolled): real tap selected "${pick.id}" (got "${after}")`);
     }
 
-    // 7b: category navigation both ways via real touch. NON-gating: this is
-    // exploratory (it hunts for a scrollable category to exercise scroll-then-
-    // select, which no category reaches at 390×844 — that path is covered
-    // deterministically by the Go test TestInstMenuMobileScrolledSelectRealTouch).
-    // The user-reported bugs (item select + search keyboard) are the gating
-    // assertions above/below; don't fail the suite on a flaky exploratory tap.
+    // Non-gating and exploratory: no category at 390×844 is scrollable, and the scrolled-select path is covered by Go
+    // (TestInstMenuMobileScrolledSelectRealTouch).
     await ensureMenuOpen(menuRow);
     const backOk = await tapUntil(() => read("instMenuBackBtnRect"),
       async () => ((await read("instMenuCategoryRects")) || []).length > 0, "back-to-categories");
@@ -279,8 +228,7 @@ try {
       if (scrollable) {
         const before2 = await read("rowInstrument", menuRow);
         const items0 = (await read("instMenuItemRects")) || [];
-        // Drag UP within the list to scroll DOWN (reveal later items). Drag
-        // magnitude well over the per-axis tap dead-zone so it commits a scroll.
+        // Well past the tap dead-zone so it commits a scroll.
         const colX = items0[0].x + items0[0].w / 2;
         const yLo = items0[items0.length - 1].y + items0[items0.length - 1].h / 2;
         const yHi = items0[0].y + items0[0].h / 2;
@@ -298,9 +246,7 @@ try {
         // Pick a middle visible row (one that was off-screen before the scroll).
         const mid = Math.min(items2.length - 1, Math.max(0, Math.floor(items2.length / 2)));
         const target = items2[mid];
-        // The id the menu CLAIMS at that visible row, and the id its rendered
-        // data-order says should be there. They must agree (consistency), and
-        // tapping the pixel must select exactly that id.
+        // The id claimed at that row and the rendered order must agree, and tapping the pixel must select exactly it.
         const renderedId = order[off + mid];
         assert(target.id === renderedId,
           `inst-menu (scrolled): item-rect id "${target.id}" matches rendered-order id "${renderedId}" at row ${mid}`);
@@ -314,16 +260,9 @@ try {
       }
     }
   }
-  // 7d: SEARCH field must open the mobile native keyboard. On mobile the
-  // native keyboard is raised by a real <input> the JS bridge creates on a
-  // touchend over a registered rect; tapping the search field must register +
-  // activate it. (Regression: dv.instSearchRect was never synced from the menu
-  // component, so the field was never registered and no keyboard appeared.)
+  // A tap must register and activate the native <input> the JS bridge creates on touchend over the field's rect.
   {
-    // Ensure the menu is open and in instruments mode (where the search field
-    // lives). The 7b/7c category exploration may have left it in categories
-    // mode — drill into a category rather than close/reopen (closing then
-    // re-tapping the label races the close animation).
+    // Drill into a category rather than close and reopen, which races the close animation.
     const reopened = await ensureMenuOpen(menuRow);
     if (((await read("instMenuItemRects")) || []).length === 0) {
       const cats = (await read("instMenuCategoryRects")) || [];
@@ -355,9 +294,7 @@ try {
   await read("closeInstMenu");
   await settle(200);
 
-  // ── Scenario 8: subdiv via the subdiv menu (real taps) ───────────────────
-  // Runs late (after the sensitive row/menu taps) because selecting a subdiv
-  // value forces a heavy grid re-layout that starves the headless game loop.
+  // Late, because a subdiv change starves the headless loop.
   console.log("\n=== 8. subdiv ===");
   {
     const sub0 = await read("gridSubdiv");
@@ -368,8 +305,7 @@ try {
       subItems = (await read("subdivMenuItemRects")) || [];
     }
     if (assert(subItems.length > 0, "subdiv: menu opened by real tap")) {
-      // Pick the LARGEST offered value (an increase). A decrease can be
-      // legitimately rejected when the graph holds nodes at finer resolution.
+      // A decrease can be rejected when nodes sit at finer resolution.
       const maxVal = Math.max(...subItems.map((it) => it.val || 0));
       const target = subItems.find((it) => it.val === maxVal && it.val !== sub0)
         || subItems.find((it) => it.val && it.val !== sub0) || subItems[0];
@@ -410,10 +346,7 @@ try {
       await settle(350);
       n1 = await read("totalNodes");
     }
-    // NON-gating: the long-press radial delete needs real wall-clock long-press
-    // timing + the slide target that only exists while held; headless CDP can't
-    // reliably drive it (the agent harness uses a bespoke delete_node_longpress).
-    // Log the outcome but don't fail the suite on it.
+    // Non-gating: headless CDP cannot reliably drive long-press timing plus the slide target that exists only while held.
     if (n1 < n0) console.log(`  OK: node-delete long-press+slide removed a node (${n0}→${n1})`);
     else console.log(`  NOTE (non-gating): node-delete long-press did not trigger under headless (${n0}→${n1}) — drivable only with real long-press timing`);
   }
@@ -450,11 +383,7 @@ try {
     assert(o1 !== o0, `pan: two-finger pan changed camera offset (${o0} -> ${o1})`);
   }
 
-  // ── Scenario 12: play / stop (real taps on transport) ────────────────────
-  // Ordered LAST among gating scenarios: starting playback spins up the
-  // sequencer/audio goroutines which, under headless software-GL, starve the
-  // game loop's input processing and make subsequent small-control taps
-  // unreliable. Run all the tap-sensitive scenarios first on a quiet loop.
+  // LAST among gating scenarios: playback starves the headless loop's input processing.
   console.log("\n=== 12. play / stop ===");
   assert(await tapUntil(() => read("playBtnRect"), async () => await read("isPlaying") === true,
     "play"), "play: real tap on Play started playback");

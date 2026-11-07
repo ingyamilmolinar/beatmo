@@ -1,23 +1,6 @@
-/**
- * Instrument-rename caret editing via REAL keyboard events — Space at the start.
- *
- * Reproduces the reported bug: open the instrument rename box, move the caret to
- * the START with ArrowLeft, press Space — the space MUST be inserted at the
- * beginning of the name (" kick"), not swallowed. Space is also the transport
- * play/pause shortcut, so this also verifies the focused rename box owns it.
- *
- * ROOT CAUSE this pins: the soft-keyboard proxy is kept EMPTY (the app draws its
- * own text), and on some browsers the proxy's 'input'/'beforeinput' event does
- * NOT fire for a key typed into an empty/off-screen input — the exact quirk the
- * code documents for Backspace (index.html). Space was captured ONLY via that
- * 'input' event (unlike Enter/Backspace/arrows, captured from 'keydown'), so on
- * such a browser the space is dropped while keydown-forwarded arrows still work.
- * The second scenario below simulates that browser by neutralizing the proxy's
- * 'input' event and asserts Space still lands (captured from 'keydown').
- *
- * Charter: real input dispatch through the canvas (item 6).
- * Go-side coverage with stubbed input: internal/ui/rename_space_caret_test.go
- */
+/** Space at the start of the rename box must insert, not be swallowed or toggle play. The proxy is kept EMPTY and some
+ * browsers fire no 'input' for a key into it, so Space is captured from keydown like Enter and Backspace; scenario 2
+ * neutralizes 'input' to prove it. COVERED-BY-GO: internal/ui/rename_space_caret_test.go */
 import { setupFullWasm, clickAndHold } from "./real_input_test_helpers.js";
 
 let cleanup;
@@ -73,13 +56,10 @@ try {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(150);
 
-  // --- Scenario 2: quirky browser — the proxy's 'input' event never reaches
-  // our handler (simulates the empty-proxy event-drop quirk). Space MUST still
-  // be captured from 'keydown'. Before the fix this fails (space is dropped). ---
+  // The proxy's 'input' never reaches the app, as on such a browser: Space must still land from keydown.
   await page.evaluate(() => {
     const p = document.getElementById("beatmo-kb-proxy");
-    // Swallow input/beforeinput in the capture phase so the app's own listeners
-    // never see them — as on a browser that doesn't emit them for the empty proxy.
+    // Capture-phase swallow, so the app's listeners never see them.
     p.addEventListener("beforeinput", (e) => e.stopImmediatePropagation(), true);
     p.addEventListener("input", (e) => e.stopImmediatePropagation(), true);
   });

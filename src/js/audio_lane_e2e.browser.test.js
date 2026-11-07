@@ -1,21 +1,6 @@
-// audio_lane_e2e.browser.test.js
-//
-// The audio lane's acceptance test in the real app (main.wasm + index.html),
-// lane ON (window.__beatmoEnv BEATMO_AUDIO_LANE=1), measured with the
-// playback probe (onsets on the audio thread — what the listener hears):
-//
-//   1. stall-300: a 300 ms main-thread block every 700 ms (a UI bug). With the
-//      lane committing 1 s ahead, no note may reach audio.js late, none may be
-//      >20 ms late in the output, none silent or dropped, no clicks.
-//   2. edit-storm: row-0 mute every 600 ms, row-1 volume steps every 400 ms
-//      and a synth knob on row 2 every 50 ms, under a 150 ms / 500 ms stall.
-//      Every edit must reach the next not-yet-started note: zero stale notes.
-//   3. stop mid-horizon: after Stop, nothing may start, and no instrument
-//      channel may show an onset later than 30 ms after it.
-//
-// These are hard gates — they are the lane's contract (spec §1).
-//
-// Run: GO=… [WASM_PREBUILT=1] [WASM_FILE=<lane build>] node src/js/audio_lane_e2e.browser.test.js
+// The lane's acceptance test in the real app, measured with the playback probe. Hard gates: under a 300 ms stall every
+// 700 ms no note arrives or sounds late, none silent, no clicks; under an edit storm every edit reaches the next
+// unstarted note; after Stop nothing starts. Run: GO=… [WASM_PREBUILT=1] node src/js/audio_lane_e2e.browser.test.js
 
 import http from "http";
 import { spawnSync } from "child_process";
@@ -89,11 +74,8 @@ try {
   check(r1.notes.missed === 0 && r1.notes.dropped === 0, `stall-300: none silent / dropped (${r1.notes.missed}/${r1.notes.dropped})`);
   check((r1.quality.masterClicks ?? 0) === 0, `stall-300: no clicks (${r1.quality.masterClicks})`);
 
-  // ── 2. edit-storm ──
-  // Driven by in-page timers (as real input arrives), not CDP round-trips:
-  // under the injected stall one page.evaluate takes ~0.4–0.7 s on BOTH
-  // paths, which starved a Node-side loop to a handful of edits. Each mark is
-  // stamped with the ctx time read in the same task as its edit.
+  // In-page timers, as real input arrives: under the stall one page.evaluate takes ~0.5 s, which starved a Node-side
+  // loop. Each mark carries the ctx time read in the same task as its edit.
   await startPlaybackProbe(page);
   await stallLoad(500, 150);
   check(!!knob, `edit-storm: found a synth knob on ${rows[2]}`);
@@ -151,12 +133,8 @@ try {
   const cancelled = new Set((raw.cancels || []).map((c) => c.pk));
   const lateStarts = raw.starts.filter((s) => s.startWhen > tStop + 0.03 && !cancelled.has(s.pk));
   check(lateStarts.length === 0, `stop: nothing starts after Stop (${lateStarts.length} starts > stop + 30 ms)`);
-  // Instrument channels (dry) only: __master__ carries the send tails, and
-  // the demo's 300 ms delay echoes a note played just before Stop. Stop does
-  // not cut a SOUNDING voice (neither path ever did), and the onset detector
-  // reads a ringing felt-piano envelope as fresh onsets — so a channel with a
-  // note started in the 1.5 s before Stop is judged by the start log above
-  // (every sequencer voice carries a pk), and its envelope is only logged.
+  // Stop does not cut a SOUNDING voice, and the detector reads a ringing envelope or an echo as fresh onsets, so a
+  // channel with a note started in the 1.5 s before Stop is judged by the start log and its envelope only logged.
   const ringing = new Set(raw.starts.filter((x) => x.startWhen > tStop - 1.5 && x.startWhen <= tStop + 0.03 && !cancelled.has(x.pk)).map((x) => x.id));
   const onsetsAll = Object.entries(raw.reports).filter(([id]) => id !== "__master__").flatMap(([id, reps]) => reps.flatMap((x) => x.onsets.map((o) => ({ id, t: o.f / raw.sampleRate })))).filter((o) => o.t > tStop + 0.03);
   const onsetsAfter = onsetsAll.filter((o) => !ringing.has(o.id));

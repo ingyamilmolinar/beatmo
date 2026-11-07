@@ -1,7 +1,4 @@
-/**
- * Unit tests for the objective checkpoint + gate logic (pure, no browser).
- * Run with: node --test src/js/llm_test/checkpoints.test.mjs
- */
+/** Pure, no browser: node --test src/js/llm_test/checkpoints.test.mjs */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compareCheckpoint, evaluateGate, extractPhaseResults } from "./checkpoints.js";

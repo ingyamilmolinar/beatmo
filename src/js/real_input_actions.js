@@ -1,12 +1,5 @@
-/**
- * Real Input Actions
- *
- * High-level action library for real-input browser tests. Wraps Playwright
- * mouse events with Beatmo's JS exports to provide semantic test actions
- * like "click grid cell", "shift-drag to create edge", etc.
- *
- * Builds on real_input_test_helpers.js for low-level mouse primitives.
- */
+/** Semantic real-input actions (click a grid cell, shift-drag an edge, …) over Playwright mouse events and Beatmo's
+ * geometry exports. */
 
 import {
   clickAndHold,
@@ -14,14 +7,7 @@ import {
   assertValidRect,
 } from "./real_input_test_helpers.js";
 
-// ─────────────────────────────────────────────────────────────────────
-// Grid Interaction
-// ─────────────────────────────────────────────────────────────────────
-
-/**
- * Click at a grid position to add or select a node.
- * Uses gridToScreen() for positions without nodes, nodeRect() for existing nodes.
- */
+/** gridToScreen() for empty positions, nodeRect() for existing nodes. */
 export async function clickGridCell(page, i, j) {
   // Try existing node first for precise centering
   const nr = await page.evaluate(([gi, gj]) => nodeRect?.(gi, gj), [i, j]);
@@ -40,9 +26,6 @@ export async function clickGridCell(page, i, j) {
   await page.waitForTimeout(100);
 }
 
-/**
- * Shift+drag between two grid positions to create an edge.
- */
 export async function shiftDragEdge(page, i1, j1, i2, j2) {
   // Close any open menu that might consume input
   await page.evaluate(() => closeNodeMenu?.());
@@ -86,16 +69,12 @@ export async function shiftDragEdge(page, i1, j1, i2, j2) {
   await page.keyboard.up("Shift");
   await page.waitForTimeout(100);
 
-  // Reset UI state after the drag completes to prevent leftPrev interference.
-  // The shift-drag return path in handleEditor doesn't update leftPrev,
-  // so the click-release handler may fire spuriously on subsequent drags.
+  // The shift-drag return path does not update leftPrev, so a stale menu state could make the next release fire
+  // spuriously.
   await page.evaluate(() => closeNodeMenu?.());
   await page.waitForTimeout(100);
 }
 
-/**
- * Right-click a node to delete it.
- */
 export async function rightClickNode(page, i, j) {
   // Close any menu first
   await page.evaluate(() => closeNodeMenu?.());
@@ -113,9 +92,6 @@ export async function rightClickNode(page, i, j) {
   await page.waitForTimeout(200);
 }
 
-/**
- * Double-click a node to open its popup.
- */
 export async function doubleClickNode(page, i, j) {
   const nr = await page.evaluate(([gi, gj]) => nodeRect?.(gi, gj), [i, j]);
   if (!nr) throw new Error(`No node at (${i}, ${j}) to double-click`);
@@ -123,10 +99,6 @@ export async function doubleClickNode(page, i, j) {
   await page.mouse.dblclick(c.x, c.y);
   await page.waitForTimeout(100);
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// Transport Controls
-// ─────────────────────────────────────────────────────────────────────
 
 async function clickBtnRect(page, fnName, label) {
   const rect = await page.evaluate((fn) => globalThis[fn]?.(), fnName);
@@ -171,10 +143,6 @@ export async function clickAddRow(page) {
   await clickBtnRect(page, "addRowBtnRect", "addRowBtn");
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Row Controls
-// ─────────────────────────────────────────────────────────────────────
-
 /** Click the Mute button for a drum row. */
 export async function clickRowMute(page, row) {
   const rect = await page.evaluate((r) => rowMuteBtnRect?.(r), row);
@@ -192,10 +160,6 @@ export async function clickRowSolo(page, row) {
   await clickAndHold(page, c.x, c.y, 50);
   await page.waitForTimeout(100);
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// Assertions
-// ─────────────────────────────────────────────────────────────────────
 
 /** Assert that a node exists at grid position. */
 export async function assertNodeExists(page, i, j, msg) {
@@ -235,23 +199,11 @@ export async function waitForCondition(page, evalFn, opts = {}) {
   throw new Error(opts.message || "waitForCondition timed out");
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Pixel Verification (via Playwright screenshot)
-// ─────────────────────────────────────────────────────────────────────
-
-/**
- * Capture a screenshot of the canvas and return raw RGBA pixel data.
- * Uses Playwright's screenshot API which works regardless of WebGL
- * preserveDrawingBuffer settings.
- *
- * @returns {{ width: number, height: number, data: Buffer }}
- */
+/** A Playwright screenshot works whatever WebGL's preserveDrawingBuffer is. */
 export async function captureCanvasPixels(page) {
   const canvas = page.locator("canvas");
   const buf = await canvas.screenshot({ type: "png" });
-  // Decode PNG to raw RGBA using Node.js sharp or manual parsing.
-  // Playwright returns a PNG buffer. We use page.evaluate to read
-  // pixel data from an off-screen canvas as a simpler approach.
+  // Decoded through an off-screen canvas in the page.
   const result = await page.evaluate(async (pngBase64) => {
     const img = new Image();
     const loaded = new Promise((resolve, reject) => {
@@ -266,19 +218,13 @@ export async function captureCanvasPixels(page) {
     const ctx = c.getContext("2d");
     ctx.drawImage(img, 0, 0);
     const id = ctx.getImageData(0, 0, c.width, c.height);
-    // Return dimensions and a subset of pixel data for efficiency.
-    // Full data would be too large; callers should use pixelAt instead.
+    // Only dimensions: the full data is large; callers use pixelAt.
     return { width: id.width, height: id.height };
   }, buf.toString("base64"));
   return { ...result, _buf: buf };
 }
 
-/**
- * Read a single pixel from the canvas at (x, y) coordinates.
- * Uses Playwright screenshot + offscreen canvas decode.
- *
- * @returns {{ r: number, g: number, b: number, a: number }}
- */
+/** Screenshot plus off-screen canvas decode: {r, g, b, a}. */
 export async function canvasPixelAt(page, x, y) {
   const canvas = page.locator("canvas");
   const buf = await canvas.screenshot({ type: "png" });
@@ -301,10 +247,7 @@ export async function canvasPixelAt(page, x, y) {
   return pixel;
 }
 
-/**
- * Assert that a node at grid position (i, j) is visually present on screen.
- * Checks that the pixel at the node's screen center is not the background color.
- */
+/** The pixel at the node's centre must not be the background colour. */
 export async function assertNodeVisible(page, i, j, msg) {
   const nr = await page.evaluate(([gi, gj]) => nodeRect?.(gi, gj), [i, j]);
   if (!nr || nr.w <= 0) {

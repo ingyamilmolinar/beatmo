@@ -1,44 +1,6 @@
-/**
- * Synth-tab Knob Touch Release — Bridge Plumbing Assertions
- *
- * COVERED-BY-GO: src/go/internal/ui/synth_knob_touch_lifecycle_test.go
- *   (drives globalTouchState → updateTouchOverride → DrumViewTree dispatcher
- *    → synthKnobHitAdapter.OnRelease with the real coord plumbing, asserts
- *    knob.Value and the audio param do NOT snap to max on touch lift)
- * COVERED-BY-GO: src/go/internal/ui/touch_release_position_test.go
- *   (asserts cursorPosition() holds the lift coords on the release frame,
- *    not stale (0,0))
- * COVERED-BY-GO: src/go/internal/ui/knob_release_no_remutate_test.go
- *   (asserts Knob.HandleInputResult on release does not recompute the
- *    value from incoming (mx,my) — release is commit-only)
- *
- * Per CLAUDE.md JS Test Charter, this file restricts itself to bridge
- * plumbing assertions: that the JS exports the regression depends on exist
- * and are callable, and that programmatic param writes propagate. The
- * full real-touch end-to-end (the touch-override → dispatcher → knob
- * release lifecycle, and the "value must not snap to max on lift" guard)
- * is covered by the Go tests above, which exercise the exact same
- * dispatcher + touch-override code paths.
- *
- * What this JS file actually asserts (and ONLY this):
- *   - the synth-tab exports (setEQTab, synthControlRects, getInstrumentParams,
- *     setInstrumentParam) are present and callable;
- *   - synthControlRects() returns a non-empty knob set with finite [min,max];
- *   - setInstrumentParam → getInstrumentParams is an EXACT round-trip for a
- *     value at ~30% of range (distinct from min, max, and the bipolar
- *     midpoint), across both a bipolar and a unipolar param — so a
- *     snap-to-min, snap-to-max, or snap-to-any-fixed-value bug in the audio
- *     bridge fails here. (It does NOT drive real touch/knob input; see the
- *     Go tests above for that.)
- *
- * CHIP-STRIP REDESIGN: the Synth tab now renders one chip per pipeline stage
- * (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·POST) with exactly ONE stage
- * expanded. synthControlRects() still returns one entry per wired knob with its
- * [min,max], but knobs of collapsed stages report ZERO-SIZE rects (w=0,h=0).
- * The round-trips below write via setInstrumentParam by param NAME (not by
- * rect), so they are layout-independent; we still call selectSynthSection so
- * the laid-out knob set is exercised and the plumbing matches the real flow.
- */
+/** Bridge plumbing only: the Synth exports exist, synthControlRects() has finite ranges, and setInstrumentParam →
+ * getInstrumentParams round-trips EXACTLY at 30 % of range. COVERED-BY-GO: synth_knob_touch_lifecycle_test.go,
+ * touch_release_position_test.go, knob_release_no_remutate_test.go */
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -58,8 +20,7 @@ const goDir = path.resolve(repoRoot, "src/go");
 const GO = resolveGoBinary();
 
 if (!shouldSkipWasmBuild("main.wasm")) {
-  // Build the root cmd package only; ./cmd/... would match sibling tool
-  // packages and fail with "multiple packages to non-directory".
+  // Only ./cmd: ./cmd/... would match tool packages and fail the single -o output.
   const build = spawnSync(
     GO,
     ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
@@ -134,16 +95,12 @@ try {
   assert(probes.getInstrumentParams, "getInstrumentParams export present");
   assert(probes.setInstrumentParam, "setInstrumentParam export present");
 
-  // CHIP-STRIP: open a knobbed stage so at least one stage's knobs are laid
-  // out (non-zero rects). VOICE is the first knobbed stage for drum recipes;
-  // guarded for safety since older builds lack the export.
+  // So at least one stage's knobs are laid out.
   await page.evaluate(() => { if (typeof selectSynthSection === "function") selectSynthSection("VOICE"); });
   await page.waitForTimeout(150);
   await page.evaluate(() => forceDraw());
 
-  // ── Plumbing 2: synthControlRects returns the wired knob set with finite
-  //    ranges, so the e2e test's coord computations always have data. (Knobs
-  //    of collapsed stages report zero-size rects; min/max are always present.)
+  // Collapsed stages report zero-size rects; min/max are always present.
   const knobs = await page.evaluate(() => synthControlRects());
   assert(Array.isArray(knobs) && knobs.length > 0, `synthControlRects returns ≥1 knob (got ${knobs.length})`);
   const allRanged = knobs.every(k =>
@@ -151,10 +108,7 @@ try {
   );
   assert(allRanged, "every knob has a finite [min, max] range and a name");
 
-  // ── Plumbing 3: programmatic param writes via setInstrumentParam round-
-  //    trip through getInstrumentParams. This is the bridge the dispatcher
-  //    uses on every OnDrag/OnRelease — if it breaks, every knob drag breaks
-  //    end-to-end.
+  // The bridge every drag and release uses.
   const instID = await page.evaluate(() => {
     try {
       const j = JSON.parse(exportJSON());
@@ -163,25 +117,15 @@ try {
     return "";
   });
   if (assert(instID, `Resolved an instrument id from exportJSON (${instID})`)) {
-    // Pick distinct probe params so a single-param coincidence can't mask a
-    // snap bug: one bipolar (min<0<max, e.g. pitch) and one unipolar
-    // (min>=0). For each, write a value at ~30% of the range — provably
-    // distinct from BOTH min and max — then assert EXACT round-trip equality.
-    // A snap-to-max, snap-to-min, OR snap-to-any-other-value bug now fails.
-    // Probe the WRITTEN instrument's own continuous knobs: the Synth tab's
-    // controls belong to whatever instrument it shows; instrumentParamDefs is
-    // the whole ABI schema, of which a document declares only its modules'
-    // values (getInstrumentParams — the Synth tab's visibility rule); and a
-    // discrete knob (enum) never holds a 30% value.
+    // One bipolar and one unipolar knob of the instrument's OWN continuous values, so a snap to min, max or any fixed
+    // value fails; an enum never holds a 30 % value.
     const { defs, declared } = await page.evaluate((id) => ({ defs: instrumentParamDefs(id), declared: getInstrumentParams(id) }), instID);
     const continuous = defs.filter(d => d.name in declared && d.group !== "hidden" && !(d.enum && d.enum.length) &&
       Number.isFinite(d.min) && Number.isFinite(d.max) && d.max > d.min);
     const bipolar = continuous.find(k => k.min < 0 && k.max > 0);
     const unipolar = continuous.find(k => k.min >= 0 && k.max > k.min);
 
-    // The original regression was "mid-range write snaps to max". The probe
-    // value at 30% of range is far from max, far from min, and far from the
-    // bipolar midpoint (0), so a wrong readback of any of those values fails.
+    // Far from min, max and the bipolar midpoint.
     const probeVal = (k) => k.min + (k.max - k.min) * 0.3;
 
     async function roundTrips(label, k) {

@@ -1,51 +1,6 @@
-/**
- * Non-destructive sample-edit descriptor — Go↔JS boundary coverage.
- *
- * A synth instrument with a saved Sampler edit KEEPS its C-synth render
- * (RENDER[id]); the edit (trim/pitch/gain/reverse/normalize/fade) is applied
- * to the freshly-rendered buffer inside ensureRenderedSample, mirroring the
- * native dispatcher (tryRecipeVoice → ApplySampleEditToBuffer). This test
- * pins the JS side of that boundary:
- *
- *  1. applySampleEdit matches Go's BakeSample bit-for-bit (within float32
- *     tolerance) on a deterministic golden generated from the REAL Go
- *     implementation (C renders are noise-seeded, so a re-render comparison
- *     would not be reproducible). Go-side dispatcher==BakeSample is pinned by
- *     TestSampleEditDispatch_TransformMatchesBakeSample (Go, native build).
- *  2. window.updateSampleEdit (the Go platformSampleEditChanged bridge target)
- *     edits the next render; the identity edit clears the descriptor.
- *  3. A SAMPLE-based instrument must keep its audio across updateSampleEdit
- *     (same renderCache-drop guard as _updateInstrumentParams — the cache
- *     holds a sample's ONLY PCM copy).
- *  4. captureInstrumentPCM(id, true) returns the UN-edited render for the
- *     Sampler editor (raw capture), longer than the trimmed edited render.
- *  5. FULL-PIPELINE parity: the production WASM render of a descriptor-bearing
- *     instrument (ensureRenderedSample: C render → normalize → gain →
- *     applySampleEdit) matches the native dispatcher's full pipeline
- *     (recipe.Render → normalizeAndScale → ApplySampleEditToBuffer) on a
- *     trim+gain+reverse edit. Item 1 pins the TRANSFORM in isolation; this
- *     pins WHERE in the pipeline it is applied — a regression that moved the
- *     edit before normalize/gain on either side passes 1 but fails 5.
- *     Golden (PIPE_GOLD): regenerate with
- *       cd src/go && BEATMO_AUDIO_SAMPLE_RATE=48000 \
- *         ../../.tools/go/bin/go run ./cmd/gen-sample-edit-golden
- *     Tolerances are xplat-style (CGo vs Emscripten float drift, see
- *     xplat_audio_compare.browser.test.js), far below pipeline-order errors.
- *
- * Golden vectors: generated from Go with BakeSample's transforms in its order
- * (TrimSample → ReverseSample → ResampleSemitones → NormalizePeak → ApplyGainDB
- * → ApplyFades) on
- *   src[i] = float32(sin(2π·4·i/64)·(1−i/64)), i in [0,64)
- *   edit = {StartFrac:0.125, EndFrac:0.875, TransposeSemis:3, DetuneCents:-15,
- *           GainDB:-6, Reverse:true, Normalize:true}, fade 0.25 ms
- *   sr = 48000
- * The fade is the wire `FadeMs` Go sends with a Fade-on edit (audio.SampleFadeMs
- * in the app; a shorter one here so the 40-sample vector keeps a middle). See
- * sample_edit.go BakeSample; regenerate with a scratch test against
- * internal/audio if the transform order ever changes.
- *
- * Run: GO=/abs/path/.tools/go/bin/go node src/js/sample_edit_descriptor.browser.test.js
- */
+/** The JS side of non-destructive Sampler edits: applySampleEdit equals Go's BakeSample on a Go-generated golden;
+ * updateSampleEdit edits the next render; a sample instrument keeps its only PCM; raw capture is the UN-edited render;
+ * and the full pipeline (render → normalize → gain → edit) matches native, which pins WHERE the edit is applied. */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 
@@ -53,10 +8,8 @@ const GOLD_INPUT = [0, 0.376704, 0.6850097, 0.8805727, 0.9375, 0.85170144, 0.640
 const GOLD_EXPECTED = [0, 0.006354005, 0.01803493, 0.030015977, 0.03500044, 0.025743587, -0.002397074, -0.047122397, -0.098744184, -0.14286375, -0.16273963, -0.14372216, -0.07505058, 0.031221665, 0.14023331, 0.22874738, 0.2758375, 0.2655928, 0.19147521, 0.071182534, -0.073118895, -0.21279998, -0.31814137, -0.35792005, -0.32029998, -0.21212934, -0.05184476, 0.13048586, 0.27322316, 0.33782676, 0.32331914, 0.2441628, 0.1281402, 0.008518636, -0.08396395, -0.12817833, -0.12319904, -0.0835312, -0.0336188, -0];
 const GOLD_EDIT = { StartFrac: 0.125, EndFrac: 0.875, TransposeSemis: 3, DetuneCents: -15, GainDB: -6, Fade: true, FadeMs: 0.25, Reverse: true, Normalize: true };
 
-// Full-pipeline golden: native render of "kick" with PIPE_EDIT applied by the
-// voice dispatcher (audio.RenderInstrumentOneShot). Fingerprint shape mirrors
-// __testCaptureSynthRender: head = data[0:64], tail = data[len-256:len-192].
-// Regenerate: cd src/go && BEATMO_AUDIO_SAMPLE_RATE=48000 ../../.tools/go/bin/go run ./cmd/gen-sample-edit-golden
+// Head = data[0:64], tail = data[len-256:len-192]. Regenerate: cd src/go && BEATMO_AUDIO_SAMPLE_RATE=48000
+// ../../.tools/go/bin/go run ./cmd/gen-sample-edit-golden
 const PIPE_EDIT = { StartFrac: 0.25, EndFrac: 0.875, GainDB: -6, Reverse: true };
 const PIPE_GOLD = {
   length: 15000, peak: 0.1150633841753006, rms: 0.03025083278811243,
@@ -79,13 +32,8 @@ const fail = (m) => { failed = true; console.error("[FAIL] " + m); };
 
 try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
-  // updateSampleEdit / __testApplySampleEdit / __testCaptureSynthRender are all
-  // defined at audio.js MODULE LOAD — they exist before the Go runtime boots.
-  // The full-pipeline parity (item 5) renders a MIGRATED instrument (kick →
-  // render_modular_p), whose param block (its document, flattened) Go pushes via
-  // setInstrumentBlock during its synchronous init. setInstrumentParam is
-  // registered in that SAME init, so gating on it guarantees the block is there;
-  // without this gate the test could render kick before any block arrives. Mirrors instrument_params_audible's gate.
+  // The pipeline case renders kick, whose block Go pushes in the same init that registers setInstrumentParam, so gating
+  // on it guarantees the block is there.
   await page.waitForFunction(() => typeof window.updateSampleEdit === "function" && typeof window.__testApplySampleEdit === "function" && typeof window.__testCaptureSynthRender === "function" && typeof window.setInstrumentParam === "function", null, { timeout: 30000 });
 
   // ── 1. Transform parity with Go BakeSample (golden) ──────────────────────
@@ -113,8 +61,7 @@ try {
     const edited = await window.__testCaptureSynthRender(id);
     out.editedLen = edited ? edited.length : 0;
 
-    // Raw capture (Sampler editor) must see the UN-edited length. First call
-    // kicks an async un-edited render; retry like the Go side does.
+    // The first call kicks an async un-edited render; retried like the Go side.
     let raw = null;
     for (let i = 0; i < 50 && !raw; i++) {
       raw = window.captureInstrumentPCM(id, true);
@@ -157,12 +104,9 @@ try {
   if (!pipe || !pipe.length) {
     fail("pipeline parity: kick render with descriptor produced nothing");
   } else {
-    // Length is integer math on both sides (floor(0.5*48000) trimmed by the
-    // same BakeSample port) — must match exactly.
+    // Integer math on both sides: exact.
     if (pipe.length !== PIPE_GOLD.length) fail(`pipeline parity: length=${pipe.length}, native golden=${PIPE_GOLD.length}`);
-    // CGo vs Emscripten float drift is ~1e-6..1e-4 (see xplat warnings); a
-    // pipeline-order regression (edit before normalize/gain) shifts peak/rms
-    // by >10x and head/tail samples wholesale.
+    // CGo vs Emscripten drift is ~1e-6..1e-4; a pipeline-order regression shifts peak and RMS by > 10×.
     const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-12);
     if (rel(pipe.peak, PIPE_GOLD.peak) > 0.02) fail(`pipeline parity: peak=${pipe.peak}, native=${PIPE_GOLD.peak} (>2% off — edit applied at the wrong pipeline stage?)`);
     if (rel(pipe.rms, PIPE_GOLD.rms) > 0.02) fail(`pipeline parity: rms=${pipe.rms}, native=${PIPE_GOLD.rms} (>2% off)`);

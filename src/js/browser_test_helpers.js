@@ -6,10 +6,7 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");
 
-/**
- * Check if WASM was pre-built. Returns true if build should be skipped.
- * Throws if WASM_PREBUILT=1 but the target file is missing.
- */
+/** Throws if WASM_PREBUILT=1 but the file is missing. */
 export function shouldSkipWasmBuild(wasmFile) {
   if (process.env.WASM_PREBUILT !== "1") return false;
   const wasmPath = path.resolve(__dirname, wasmFile);
@@ -28,15 +25,8 @@ export function resolveGoBinary() {
   return fs.existsSync(bundled) ? bundled : "go";
 }
 
-/**
- * loadDesktopAudioReference renders the NATIVE reference the xplat audio tests
- * compare the browser against, by running cmd/export_audio against the current
- * tree — never from a committed snapshot. The snapshot (desktop_audio.json) was
- * last regenerated two months before the config-first kick/snare conversion, so
- * the browser replayed push blocks from an older schema through today's C and
- * rendered SILENCE, and the "cross-platform" failure was really "stale file".
- * One producer (export_audio), consumed fresh: nothing to drift.
- */
+/** Rendered FRESH by cmd/export_audio against the current tree, never from a committed snapshot: a stale snapshot posed
+ * as a cross-platform bug. */
 export function loadDesktopAudioReference() {
   const { spawnSync } = childProcess;
   const env = { ...process.env, CGO_ENABLED: "1" };
@@ -76,20 +66,9 @@ export async function assertNoSchedulerMismatches(page, label = "scheduler misma
   throw new Error(`${label}: ${mismatches.length} mismatch(es)\n${JSON.stringify(sample, null, 2)}`);
 }
 
-// waitForAudioReady waits until window.audioReady (audio.js: the DSP engine is
-// loaded and warm) has SETTLED. Never `await page.evaluate(() => window.audioReady)`
-// or `page.evaluate(async () => { await window.audioReady; })` — CDP
-// (Runtime.callFunctionOn/evaluate with awaitPromise) reports
-// "Promise was collected" for an async wrapper that is still pending on
-// audioReady when the engine-warm worker renders resolve it, and Playwright
-// rewrites that into "Execution context was destroyed, most likely because of a
-// navigation" — although nothing navigated, and every IN-PAGE waiter on the
-// same promise resumes normally (measured: 4/5 raw-CDP awaits collected in a
-// run where the in-page async waiter completed every time). Settlement is
-// therefore observed through a flag set by a .then() inside the page and polled
-// with waitForFunction, which never awaits a page promise over the protocol.
-// A rejection counts as settled; it throws unless allowReject is set (the old
-// `try { await window.audioReady } catch {}` call sites).
+// Never await audioReady over CDP: Chromium reports "Promise was collected" when engine-warm renders resolve it
+// mid-await, which Playwright rewrites as "Execution context was destroyed". An in-page .then() flag polled with
+// waitForFunction is reliable. A rejection throws unless allowReject is set.
 export async function waitForAudioReady(page, { timeout = 30000, allowReject = false } = {}) {
   await page.waitForFunction(() => {
     const p = window.audioReady;

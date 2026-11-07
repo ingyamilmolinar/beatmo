@@ -1,13 +1,6 @@
-// audio_ready_gate.browser.test.js
-//
-// Verifies that the audio readiness gate works correctly:
-//   1. every instrument in the LOADED circuit is pre-rendered by Go's circuit
-//      warm-up (the circuit — not a hardcoded id list — decides what is warm)
-//   2. Game is not interactive until audioReady + WASM both resolve
-//   3. No stale-burst on first play (mobile emulation)
-//   4. Deferred render plays immediately (no stale when timestamp)
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/audio_ready_gate.browser.test.js
+// The readiness gate: the LOADED circuit's voices are pre-rendered by Go's warm-up (not a hardcoded list), the game is
+// not interactive before audioReady and WASM, the first play has no stale burst, a deferred render plays at once.
+// Usage: GO=… node src/js/webaudio_ready_gate.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -54,13 +47,7 @@ let browser;
 try {
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 
-  // ========================================================================
-  // Scenario 1: every voice the LOADED circuit plays is warm. Go's circuit
-  // warm-up gate renders them after seeding each instrument's recipe defaults;
-  // audio.js used to pre-render a hardcoded "core" list instead, which rendered
-  // the wrong (unseeded) voice for every config-first instrument and was then
-  // evicted — so it asserted a list that no longer described the app.
-  // ========================================================================
+  // Rendered by Go's warm-up after it pushes each document, so the circuit decides what is warm.
   console.log("--- Scenario 1: the loaded circuit's voices are warm ---");
   {
     const page = await browser.newPage();
@@ -69,8 +56,7 @@ try {
     await page.waitForFunction(() => typeof addNode === "function" && typeof rowInstrument === "function" &&
       typeof voiceCachedFor === "function" && typeof drumRowCount === "function" && drumRowCount() > 0, null, { timeout: 30000 });
 
-    // Non-melodic voices share one bare-id cache key; melodic ones are cached
-    // per node pitch, so for those any cached pitch proves the warm-up ran.
+    // Melodic voices are cached per pitch, so any cached pitch proves the warm-up ran.
     const probe = () => {
       const stats = getRenderCacheStats?.() || {};
       const ids = [];
@@ -101,17 +87,11 @@ try {
     await page.close();
   }
 
-  // ========================================================================
-  // Scenario 2: Game not interactive until audioReady resolves
-  // Verify that the gating in index.html actually works — WASM exports should
-  // not exist before Promise.all([wasmReady, audioReady]) resolves.
-  // ========================================================================
+  // Exports must not exist before both wasmReady and audioReady resolve.
   console.log("\n--- Scenario 2: Game gated on audioReady ---");
   {
     const page = await browser.newPage();
 
-    // We check that after navigation, audioReady is a Promise (exists on window).
-    // Then once WASM exports appear, audioReady has already resolved.
     await page.goto(`http://localhost:${port}/`);
 
     // audioReady should be a thenable on window immediately (set by audio.js module).
@@ -128,8 +108,7 @@ try {
     // Wait for WASM to be fully ready.
     await page.waitForFunction(() => typeof addNode === "function", null, { timeout: 30000 });
 
-    // At this point audioReady must have resolved (the game gate waited on it),
-    // which means the C DSP module is loaded and can render synchronously.
+    // So the C module is loaded and can render synchronously.
     const gate = await page.evaluate(async () => {
       let settled = false;
       window.audioReady.then(() => { settled = true; });
@@ -146,11 +125,7 @@ try {
     await page.close();
   }
 
-  // ========================================================================
-  // Scenario 3: No stale-burst on first play (mobile emulation)
-  // Build a circuit, start playback, verify audio starts promptly and doesn't
-  // pile up queued events.
-  // ========================================================================
+  // Audio starts promptly with no pile of queued events.
   console.log("\n--- Scenario 3: No stale-burst on first play (mobile) ---");
   {
     const iPhone = devices['iPhone 12 landscape'];
@@ -189,15 +164,10 @@ try {
     });
     await page.waitForTimeout(200);
 
-    // Play is DELIBERATELY ignored while the circuit readiness gate is warming
-    // (game_update.go: "never queue the press"), so wait for the app's own
-    // gate — the same signal the Play button renders from — before pressing.
+    // Play is DELIBERATELY ignored while warming ("never queue the press").
     await page.waitForFunction(() => typeof warmupProgress === "function" && warmupProgress().ready === true, null, { timeout: 20000 });
 
-    // Enable output capture and start playback.
-    // Use a polling warmup loop to wait for the WebAudio pipeline to produce
-    // real signal before measuring — pipeline warmup time is variable under
-    // CPU contention.
+    // Pipeline warm-up time varies under contention, so poll for real signal first.
     const result = await page.evaluate(async () => {
       enableOutputCapture?.();
       startOutputCapture?.();
@@ -248,8 +218,7 @@ try {
 
     console.log(`  Measured (post-warmup 500ms): ${result.samples} samples, peak=${result.peak.toFixed(6)}, RMS=${result.rms.toFixed(6)}`);
 
-    // After warmup confirms the pipeline is active, audio should be
-    // continuously present in the measurement window (no stale-burst).
+    // Once warm, audio must be continuously present.
     if (result.samples === 0) {
       throw new Error("Scenario 3 FAIL: no audio output captured");
     }
@@ -264,12 +233,7 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 4: Deferred render repopulates cache and audio plays
-  // Force a render cache miss, trigger a sound, verify the deferred render
-  // path re-renders the sample and that audio from the repopulated cache
-  // is audible.
-  // ========================================================================
+  // A forced miss must re-render, repopulate the cache and sound.
   console.log("\n--- Scenario 4: Deferred render repopulates cache and plays ---");
   {
     const page = await browser.newPage();
@@ -288,8 +252,7 @@ try {
     });
     await page.waitForTimeout(200);
 
-    // The probe voice is a NON-melodic instrument of the loaded circuit (one
-    // bare-id cache key), warmed by the circuit warm-up — not a hardcoded id.
+    // A non-melodic instrument of the loaded circuit (one cache key), warmed by the circuit warm-up.
     await page.waitForFunction(() => typeof rowInstrument === "function" && drumRowCount() > 0, null, { timeout: 30000 });
     await page.evaluate(() => {
       for (let i = 0; i < drumRowCount(); i++) {
@@ -297,9 +260,7 @@ try {
         if (id && !isMelodicInstrumentJS(id)) { window.__probeId = id; return; }
       }
     });
-    // Pre-warm the probe channel by playing once. This ensures the WebAudio
-    // channel pipeline (bus -> channel -> main -> limiter) is fully established
-    // before we test the deferred render path.
+    // So the channel pipeline is established before the deferred path is tested.
     await page.evaluate(() => playSound?.(window.__probeId, 1.0));
     await page.waitForFunction(() => { const s = getRenderCacheStats?.() || {}; return !!(s[window.__probeId] && s[window.__probeId].frames > 0); }, null, { timeout: 15000 }).catch(() => {});
 
@@ -324,8 +285,7 @@ try {
       throw new Error("Scenario 4 FAIL: cache not cleared");
     }
 
-    // Enable synchronous sample capture (records at WebAudio submission point,
-    // not dependent on real-time audio thread processing).
+    // Recorded at submission, independent of the audio thread.
     await page.evaluate(() => {
       window.__samples = [];
       window.__captureSamples = true;
@@ -348,8 +308,6 @@ try {
         return { error: "cache never repopulated by deferred render" };
       }
 
-      // Cache is now repopulated. Play multiple kicks from the repopulated
-      // cache to verify it produces audible audio.
       for (let j = 0; j < 3; j++) {
         playSound?.(window.__probeId, 1.0);
         await new Promise((r) => setTimeout(r, 150));

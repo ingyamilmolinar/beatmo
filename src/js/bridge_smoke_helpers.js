@@ -1,20 +1,6 @@
-/**
- * Bridge-smoke helpers
- *
- * Shared assertion utilities for wasm_bridge_smoke.browser.test.js. The point
- * of the bridge smoke test is to verify the WASM↔JS plumbing — every export
- * is registered, callable, and returns a value of the expected shape — WITHOUT
- * re-asserting anything about the underlying Go logic. Logic correctness lives
- * in the Go test suite.
- *
- * If you're adding a new JS export in Go, add a smoke entry HERE (in the
- * catalogue used by wasm_bridge_smoke.browser.test.js) — do NOT create a
- * dedicated `*.browser.test.js` file just to verify the export exists.
- */
+/** The bridge smoke verifies plumbing (registered, callable, right shape), never Go logic. A new export gets an entry
+ * in the catalogue, not a new test file. */
 
-/**
- * Assert that `name` is a function in the page's global scope after WASM init.
- */
 export async function assertExportExists(page, name) {
   const exists = await page.evaluate((n) => typeof globalThis[n] === "function", name);
   if (!exists) {
@@ -22,10 +8,7 @@ export async function assertExportExists(page, name) {
   }
 }
 
-/**
- * Call `name(...args)` in the page and return its result. Throws if the call
- * throws, with the error message attributed to the export name.
- */
+/** The error is attributed to the export name. */
 export async function callExport(page, name, args = []) {
   const result = await page.evaluate(
     ({ n, a }) => {
@@ -62,18 +45,8 @@ export async function callExport(page, name, args = []) {
   return result.value;
 }
 
-/**
- * Verify that a serialized return value matches an expected shape descriptor.
- *
- * Shape forms:
- *   "boolean" | "number" | "string" | "undefined" | "any"
- *   "array"                       — Array.isArray(v)
- *   "object"                      — typeof v === "object" && !Array.isArray(v)
- *   { kind: "object", keys: [...] } — required keys subset present
- *   "nullable"                    — null | undefined accepted (used for void exports)
- *
- * "any" matches anything (including undefined). Use sparingly.
- */
+/** Shapes: "boolean" | "number" | "string" | "undefined" | "any" | "array" | "object" | "nullable" (void exports) |
+ * {kind:"object", keys:[...]} (required subset). "any" matches anything; use sparingly. */
 export function assertReturnShape(name, value, shape) {
   if (shape === "any") return;
   if (shape === "nullable") {
@@ -121,9 +94,6 @@ export function assertReturnShape(name, value, shape) {
   throw new Error(`bridge-smoke: unknown shape descriptor ${JSON.stringify(shape)} for ${name}`);
 }
 
-/**
- * Run a smoke entry: assert export exists, call it with args, verify return shape.
- */
 export async function smokeExport(page, entry) {
   const { name, args = [], returns = "any", skipCall = false } = entry;
   await assertExportExists(page, name);

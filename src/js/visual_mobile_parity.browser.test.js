@@ -1,17 +1,5 @@
-/**
- * Visual Mobile Parity Test
- *
- * Compares desktop vs mobile screenshots of the same WASM build.
- * The drum row region should have similar visual structure (color variance,
- * non-background pixel ratio) on both. If mobile shows flat gray while
- * desktop shows cells, the test fails.
- *
- * Also validates structural layout: component positions, touch target sizes,
- * responsive breakpoints, widget overlap, and desktop-at-same-size parity.
- *
- * This detects the exact "flat gray on mobile" rendering bug AND layout
- * regressions that pixel-only checks would miss.
- */
+/** Desktop and mobile shots of one build must show similar drum-row structure: mobile flat gray while desktop shows cells
+ * fails. Plus structural layout checks that pixels alone would miss. */
 
 import { chromium } from "playwright";
 import {
@@ -156,8 +144,7 @@ for (const vp of MOBILE_VIEWPORTS) {
     saveDiagnostic(`parity_mobile_${vp.name}`, screenshot);
     saveDiagnostic(`parity_mobile_${vp.name}_region`, regionToPng(region));
 
-    // ── Core assertion: mobile should have visible content ──
-    // If desktop has content (>30% non-bg) but mobile is flat (<5%), that's the bug.
+    // Desktop with content (> 30 % non-bg) and mobile flat (< 5 %) is the bug.
     let pixelFailed = false;
     if (metrics.nonBgRatio < 0.05 && desktopMetrics.nonBgRatio > 0.3) {
       console.error(

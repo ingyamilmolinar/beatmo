@@ -13,8 +13,7 @@
 #define EQ_MAX_STAGES 64
 #define EQ_MAX_BANDS 64
 #define EQ_MAX_FILTERS 8
-/* Samples processed per pass over the stages; the filters are per sample,
- * so the chunk size never changes a result. */
+/* The filters are per sample, so the chunk size never changes a result. */
 #define EQ_CHUNK 256
 
 typedef struct {
@@ -64,9 +63,7 @@ static void bq_coeffs(eq_bq *q, const double *c) {
     q->b0 = c[0]; q->b1 = c[1]; q->b2 = c[2]; q->a1 = c[3]; q->a2 = c[4];
 }
 
-/* Parse prog into stages. With into == 0 it only validates; with keep != 0
- * it requires the shape already in `into` and swaps values only. Returns 1 on
- * success. */
+/* into == 0 only validates; keep != 0 requires the shape already in into and swaps values. Returns 1 on success. */
 static int eq_parse(eq_t *into, const double *p, int n, int keep) {
     int k = 0;
 #define NEXT(v) do { if (k >= n) return 0; (v) = p[k++]; } while (0)
@@ -142,8 +139,7 @@ EXPORT void *eq_create(const double *prog, int n) {
 EXPORT int eq_update(void *h, const double *prog, int n) {
     eq_t *e = h;
     if (!e || !prog || n < 1) return 0;
-    /* Validate the whole program against the live shape first, so a
-     * mismatch half way leaves the EQ untouched. */
+    /* So a mismatch half way leaves the EQ untouched. */
     eq_t *probe = calloc(1, sizeof(eq_t));
     if (!probe) return 0;
     int ok = eq_parse(probe, prog, n, 0);

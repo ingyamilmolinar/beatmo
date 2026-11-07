@@ -65,17 +65,12 @@ const result = await page.evaluate(async () => { window.resetRenderCache?.();
   await window.playSoundParams('snare', 0.6, 2, 1.0);
   await new Promise((r) => setTimeout(r, 30));
 
-  // ---- Audio-content teeth ---------------------------------------------
-  // 1) Inspect the cached renderCache Float32Array DIRECTLY (deterministic,
-  //    no audio tap). A cached buffer of zeros / garbage must fail downstream.
-  //    This is the authoritative non-silence check (see flakiness note).
+  // The cached Float32Array read DIRECTLY is the authoritative non-silence check: deterministic, no tap.
   const cachedData = (typeof window.getCachedRenderData === 'function')
     ? window.getCachedRenderData('snare')
     : null;
 
-  // 2) Additionally capture a LIVE cached playback through the output tap to
-  //    prove the cached buffer reaches the destination as real signal. This
-  //    play is a cache HIT (renders must stay 1; only cacheHits increments).
+  // A cache HIT through the live tap (renders stay 1) proves the buffer reaches the destination.
   let liveCapture = null;
   if (typeof window.startOutputCapture === 'function' && typeof window.stopOutputCapture === 'function') {
     try {
@@ -110,17 +105,14 @@ if (renders !== 1) { throw new Error(`expected single render after reset, got ${
 }
 if (!stats || typeof stats !== 'object' || !stats.snare) { throw new Error('render cache missing snare entry');
 }
-// frames/duration teeth — cache must hold the full voice: the document's
-// render.seconds at 48 kHz (audio.VoiceFrames = floor(sr * seconds)).
+// The full voice: render.seconds at 48 kHz.
 const FRAMES = Math.max(1, Math.floor(48000 * SNARE.seconds));
 if (stats.snare.frames !== FRAMES) { throw new Error(`expected ${FRAMES} frames (${SNARE.seconds} s), got ${stats.snare.frames}`);
 }
 if (Math.abs(stats.snare.duration - FRAMES / 48000) > 1e-9) { throw new Error(`expected duration ${FRAMES / 48000}, got ${stats.snare.duration}`);
 }
 
-// ---- Audio-content teeth: the cached buffer must hold REAL signal --------
-// A cache of zeros (or garbage below the floor) must FAIL here. This is the
-// deterministic, tap-free authority: it reads the renderCache Float32Array.
+// Deterministic and tap-free: a cache of zeros fails here.
 const cachedData = result.cachedData;
 if (!Array.isArray(cachedData) || cachedData.length !== FRAMES) {
   throw new Error(`getCachedRenderData('snare') did not return ${FRAMES} samples (got ${cachedData && cachedData.length})`);
@@ -135,10 +127,7 @@ if (!(cachedStats.rms > 0)) {
   throw new Error(`cached snare buffer has zero RMS: ${cachedStats.rms}`);
 }
 
-// ---- Live output-capture corroboration (best-effort) --------------------
-// Proves the cached buffer reaches the destination as audible signal. Under
-// CPU load the ScriptProcessor tap can read near-zero; the cached-data check
-// above is the hard gate, so the live tap is a soft/logged corroboration.
+// Soft: the ScriptProcessor tap can read near zero under load; the cached-data check is the gate.
 let liveStats = null;
 if (Array.isArray(result.liveCapture) && result.liveCapture.length > 0) {
   liveStats = peakRms(result.liveCapture);

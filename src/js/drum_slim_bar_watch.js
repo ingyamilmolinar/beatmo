@@ -1,25 +1,11 @@
-// drum_slim_bar_watch.js — runtime watcher for the intermittent, GPU-only
-// "slim bars" artifact in the drum-row cell grid (a few cells render ~1px wide
-// while neighbours are full width, persisting while the timeline is free).
-//
-// The artifact does not reproduce in software renderers, so this reads the REAL
-// canvas (where the GPU draws) each frame, measures per-row cell-width runs,
-// and when it catches a slim bar flanked by full-width cells it logs the exact
-// internal state (via the slimBarDiag() WASM export — which compositing path
-// drew the frame, offset, gen) and snapshots the canvas.
-//
-// Usage on a local serve-lan build (no rebuild of index.html needed):
-//   open the browser console and run:
-//     import('./drum_slim_bar_watch.js').then(m => m.startSlimBarWatch())
-//   then reproduce (play, toggle track/free, let it run). On a hit it prints
-//   "[slim-bar] ANOMALY ..." and stores the PNG on window.__slimBarCapture
-//   (a click-to-download link is also logged).
+// The GPU-only "slim bars" artifact (a few cells ~1 px wide) does not reproduce in software renderers, so this reads
+// the REAL canvas each frame and on a hit logs slimBarDiag() and snapshots it. In the console:
+// import('./drum_slim_bar_watch.js').then(m => m.startSlimBarWatch())
 
 const SLIM_MAX = 2; // logical px: at/below = a slim bar
 const WIDE_MIN = 5; // logical px: at/above = a full-width cell
 
-// Mirror of Go detectSlimBars (drum_render_diag.go): first slim run flanked on
-// both sides by full-width runs, else -1.
+// Mirrors Go's detectSlimBars: the first slim run flanked by full-width runs, else -1.
 function detectSlimBars(widths) {
   for (let i = 1; i < widths.length - 1; i++) {
     if (widths[i] <= SLIM_MAX && widths[i - 1] >= WIDE_MIN && widths[i + 1] >= WIDE_MIN) {
@@ -36,9 +22,7 @@ function saturated(r, g, b, a) {
   return mx > 90 && mx - mn > 50;
 }
 
-// Measure saturated-colour run widths along one scanline of `img` (ImageData),
-// then convert physical px -> logical px by dividing by `scale` so the
-// SLIM_MAX/WIDE_MIN thresholds match the Go detector's logical-pixel units.
+// Divided by scale so the thresholds match the Go detector's logical pixels.
 function runWidths(img, y, x0, x1, scale) {
   const W = img.width;
   const data = img.data;

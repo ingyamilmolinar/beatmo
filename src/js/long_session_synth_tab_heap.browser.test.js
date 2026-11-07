@@ -1,46 +1,6 @@
-/**
- * Long-session WASM heap soak — reproduces the production OOM scenario the
- * Go stub soak cannot reach.
- *
- *   The user-reported crash:
- *     row 1 solo on  → play started → ~1 s later
- *     runtime: out of memory: cannot allocate 4194304-byte block (2130444288 in use)
- *
- *   Stack: ui.Game.Draw → drawDrumPane → DrumView.Draw → DrumViewTree.Draw →
- *          EQPanelZone.Draw → drawSynthTab → drawSynthSectionCard →
- *          Knob.Draw → drawArc → vector.Path.AppendVerticesAndIndices…
- *
- *   The 40 KB allocation that failed inside drawArc is collateral damage —
- *   2.13 GB of Go-heap retention was already in place by the time the draw
- *   call ran. The retained data lives in a path the `-tags test` stub does
- *   not exercise (native voice_cache, WASM analyzer_wasm.go bridge, etc.),
- *   so this browser test is the only place the leak can surface.
- *
- *   Scenario A — Solo + play + synth tab + param drag
- *     1. Build a 4-beat kick pattern.
- *     2. Switch the EQ panel to the Synth tab so the production Draw stack
- *        is active. CHIP-STRIP: the Synth tab now renders a pipeline chip
- *        strip with one stage expanded; the soak also churns the selected
- *        stage (selectSynthSection cycling VOICE↔ENVELOPE) so the expand/
- *        collapse + per-stage knob layout path is exercised under load.
- *     3. Solo row 1 (mirrors the user's log line).
- *     4. Start playback.
- *     5. For 90 s, cycle audio.SetInstrumentParam('kick', 'pitch', ...) at
- *        ~10 Hz to mimic a synth-knob drag, while cycling the expanded chip.
- *     6. Read memSizes() and analyzerBridgeStats() periodically. Assert:
- *          - Final Go heapAlloc growth < 512 MB.
- *          - usedJSHeapSize stays below 1.5 GB (production crashed at 2.13 GB;
- *            1.5 GB gives a 30 % cushion so we trip on a regression long
- *            before the browser would actually OOM).
- *          - Analyzer bridge reads/sample stay below 20 — that's the per-Draw
- *            allocation rate the WASM single-threaded GC can tolerate.
- *          - timelineArchives + paritySeqDecisions rows stay bounded.
- *
- *   This test is justified under the JS Test Charter (CLAUDE.md §"JS Test
- *   Charter — what the JS suite owns"): item #1 (WebAudio behaviour) and #6
- *   (visual regression on a real canvas) cannot be reached from Go, and the
- *   crash itself only manifests against the WASM linear-memory ceiling.
- */
+/** The production OOM only shows against the WASM linear-memory ceiling: solo, play, the Synth tab open, a knob dragged
+ * at ~10 Hz for the soak. Bounded: Go heap growth, JS heap, analyzer bridge reads per sample, and the timeline / parity
+ * stores. */
 
 import { chromium } from "playwright";
 import http from "http";
@@ -61,25 +21,14 @@ const SOAK_SECONDS = parseInt(process.env.SOAK_SECONDS || "90", 10);
 const PARAM_HZ = parseFloat(process.env.SOAK_PARAM_HZ || "10");
 const SAMPLE_EVERY_MS = parseInt(process.env.SOAK_SAMPLE_MS || "5000", 10);
 
-// Bounds. Tightened post-Phase-A-C: forced GC pacing in heapProbeTick
-// (runtime_profile.ForceGCInterval=30s on WASM) makes Go heap oscillate
-// around the live-data baseline (~50 MB) instead of growing linearly
-// to the 2 GB WASM ceiling. 75 s soak now lands at go.alloc ~50 MB,
-// js.used ~260 MB with gcCount >= 2; the new bounds catch any
-// regression that re-introduces GC starvation. The previous bounds
-// (1.5 GB JS, 512 MB Go) would have passed even with the OOM-bound
-// growth pattern observed on 2026-05-17 (gc=0, 1.18 MB/s linear
-// growth) — tightening here is how we ratchet the regression net.
+// Forced GC pacing keeps the Go heap near its live baseline; these bounds sit far below the old OOM growth, so a
+// regression that brings back GC starvation trips them.
 const JS_HEAP_BOUND = 800 * 1024 * 1024;
 const GO_HEAP_GROWTH_BOUND = 96 * 1024 * 1024;
 const ANALYZER_READS_PER_SAMPLE_BOUND = 250_000;
 const PARITY_DECISIONS_PER_ROW_BOUND = 4096;
-// GC effectiveness invariant — single-threaded WASM Go GC starves
-// under sustained playback unless forced; gcCount==0 at the end of a
-// 75 s soak is the pre-fix signature. forcedGCRuns asserts the
-// trigger path actually fired (some WASM runtime versions don't
-// advance NumGC after every runtime.GC() call — the counter is the
-// authoritative signal that our pacing executed).
+// Single-threaded WASM Go GC starves under playback unless forced; forcedGCRuns is authoritative because some runtimes
+// do not advance NumGC on every runtime.GC().
 const GC_COUNT_BOUND_MIN = 2;
 const FORCED_GC_RUNS_BOUND_MIN = 2;
 
@@ -113,9 +62,7 @@ const port = server.address().port;
 const browser = await chromium.launch({
   args: [
     "--autoplay-policy=no-user-gesture-required",
-    // performance.memory.usedJSHeapSize is only exposed in Chromium with
-    // --enable-precise-memory-info; without it the value rounds to 100 MB
-    // granularity and the soak can't detect sub-100MB regressions.
+    // Without it usedJSHeapSize rounds to 100 MB and sub-100 MB regressions are invisible.
     "--enable-precise-memory-info",
   ],
 });
@@ -132,8 +79,7 @@ function hardAssert(cond, msg) {
 // ─── Page setup ─────────────────────────────────────────────────────────
 async function newSoakPage() {
   const page = await browser.newPage();
-  // Silence noisy INFO console output but surface ERROR + warnings so a
-  // failure printout includes browser-side context.
+  // Errors and warnings stay, so a failure carries browser-side context.
   page.on("console", (msg) => {
     const t = msg.type();
     if (t === "error" || t === "warning") {
@@ -167,11 +113,8 @@ console.log(`  config: SOAK_SECONDS=${SOAK_SECONDS} PARAM_HZ=${PARAM_HZ} SAMPLE_
 
 const page = await newSoakPage();
 
-// Build a 4-beat kick pattern then open the Synth tab BEFORE play starts,
-// so the very first Draw goes through the production OOM stack. Solo row
-// 1 to mirror the user's "row 1 solo on" log line. resetPerfStats /
-// resetAnalyzerBridgeStats wipe the cumulative counters so the per-sample
-// arithmetic below measures only this soak window.
+// The Synth tab opens BEFORE play, so the very first Draw goes through the OOM stack; counters reset so samples
+// measure only the soak.
 await page.evaluate(() => {
   resetPerfStats?.();
   resetAnalyzerBridgeStats?.();
@@ -184,8 +127,7 @@ await page.evaluate(() => {
 });
 
 await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
-// Let playback settle before the first sample so we don't capture the
-// startup transient.
+// Skip the startup transient.
 await page.waitForTimeout(500);
 
 const samples = [];
@@ -224,9 +166,7 @@ async function sample(tag) {
 
 await sample("baseline");
 
-// Drive the param drag at PARAM_HZ for SOAK_SECONDS, taking memory samples
-// every SAMPLE_EVERY_MS. Two params so the manager.params map exits its
-// degenerate one-key state, mirroring a real user knob session.
+// Two params, so the map leaves its degenerate one-key state.
 const dragIntervalMs = Math.max(1, Math.floor(1000 / PARAM_HZ));
 const totalIterations = Math.floor((SOAK_SECONDS * 1000) / dragIntervalMs);
 const samplesEveryIter = Math.max(1, Math.floor(SAMPLE_EVERY_MS / dragIntervalMs));
@@ -236,12 +176,8 @@ for (it = 0; it < totalIterations; it++) {
   const t = it / PARAM_HZ;
   const pitch = -12 + 24 * Math.sin(t / 17);
   const decay = 0.25 + 0.75 * Math.sin(t / 41);
-  // page.evaluate per iteration is slower than batching, but the goal is
-  // to provoke the same Go-side per-Set work the user's drag triggers —
-  // batching would let WASM coalesce and hide the regression. CHIP-STRIP:
-  // also churn the expanded stage (VOICE↔ENVELOPE) every ~20 iterations so
-  // the chip expand/collapse + per-stage knob (re)layout path runs under the
-  // OOM Draw stack. Guarded so older builds without the export still run.
+  // One evaluate per iteration, not batched: batching lets WASM coalesce and hides the regression. The drilled stage
+  // alternates too, so per-stage layout runs under the same stack.
   const stage = (it % 40) < 20 ? "VOICE" : "ENVELOPE";
   await page.evaluate(({ p, d, s }) => {
     setInstrumentParam("kick", "pitch", p);
@@ -259,8 +195,7 @@ for (it = 0; it < totalIterations; it++) {
   }
 }
 
-// Final sample taken after stopping playback so any pending highlight /
-// scheduler retention drops out of the picture.
+// After stopping, so pending highlight and scheduler retention drop out.
 await page.evaluate(() => { stopPlay?.(); });
 await page.waitForTimeout(500);
 await sample("post-stop");

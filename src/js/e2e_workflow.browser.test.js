@@ -1,9 +1,4 @@
-/**
- * E2E Workflow Browser Tests
- *
- * Multi-step scenario tests exercising the full user workflow:
- * build → play → edit → export → import → verify.
- */
+/** Build → play → edit → export → import → verify, end to end. */
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import {
@@ -25,9 +20,6 @@ try {
   await page.evaluate(() => forceDraw?.());
   await page.waitForTimeout(200);
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Scenario 1: Full Lifecycle (Build → Play → Edit → Export → Import)
-  // ═══════════════════════════════════════════════════════════════════════
   console.log("\n═══ Scenario 1: Full Lifecycle ═══");
 
   // Step 1: Build a 4-node circuit
@@ -132,9 +124,6 @@ try {
   console.log(`  Parity mismatches: ${mismatches1?.length ?? 0}`);
   console.log("═══ Scenario 1: PASS ═══\n");
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Scenario 2: Rapid BPM Stress
-  // ═══════════════════════════════════════════════════════════════════════
   console.log("═══ Scenario 2: Rapid BPM Stress ═══");
 
   // Build fresh circuit
@@ -189,9 +178,6 @@ try {
   await page.waitForTimeout(200);
   console.log("═══ Scenario 2: PASS ═══\n");
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Scenario 3: Row Add/Delete During Playback
-  // ═══════════════════════════════════════════════════════════════════════
   console.log("═══ Scenario 3: Row Add/Delete During Playback ═══");
 
   // Start with a fresh circuit
