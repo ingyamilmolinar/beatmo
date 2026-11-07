@@ -118,8 +118,6 @@ func TestSamplerHeaderButtonsFitLabels(t *testing.T) {
 	}
 }
 
-
-
 func TestSamplerResetMobileRelocatedToStickyBar(t *testing.T) {
 	g := samplerLayoutGame(t)
 	withSmallScreen(t, true)

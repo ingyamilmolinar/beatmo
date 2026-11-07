@@ -641,7 +641,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			rp := sineBase()
 			activateSlotNoiseTap(rp, 1)
 			// A second target distinct from the activate-context value.
-			target := 1.0
+			var target float64
 			if name == "noise_draws" {
 				target = 4
 			} else {

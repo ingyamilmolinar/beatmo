@@ -127,7 +127,6 @@ func (s stubSampleEditSource) LoadSampleEdits() (map[instrument.ID]map[string]fl
 	return s, nil
 }
 
-
 func TestSampleEditPlatformHookFiresOnSetAndClear(t *testing.T) {
 	resetSampleEditsForTest(t)
 	type call struct {

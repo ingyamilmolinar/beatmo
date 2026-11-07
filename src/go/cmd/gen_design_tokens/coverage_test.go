@@ -32,9 +32,9 @@ func TestPascal(t *testing.T) {
 		{"primary-bright", "PrimaryBright"},
 		{"a-b-c", "ABC"},
 		{"", ""},
-		{"-leading", "Leading"},                    // empty first segment skipped
-		{"trailing-", "Trailing"},                  // empty last segment skipped
-		{"middle--double", "MiddleDouble"},         // adjacent dashes
+		{"-leading", "Leading"},                     // empty first segment skipped
+		{"trailing-", "Trailing"},                   // empty last segment skipped
+		{"middle--double", "MiddleDouble"},          // adjacent dashes
 		{"already-pascalCase", "AlreadyPascalCase"}, // lowercase second char preserved
 	}
 	for _, c := range cases {
@@ -84,11 +84,11 @@ func TestParseHexRGBValid(t *testing.T) {
 
 func TestParseHexRGBInvalid(t *testing.T) {
 	for _, s := range []string{
-		"FF80",       // too short
-		"#FF80",      // too short with prefix
-		"#FF8040AA",  // too long
-		"#GGHHII",    // non-hex
-		"FF8040AA",   // too long without prefix
+		"FF80",      // too short
+		"#FF80",     // too short with prefix
+		"#FF8040AA", // too long
+		"#GGHHII",   // non-hex
+		"FF8040AA",  // too long without prefix
 	} {
 		if _, _, _, err := parseHexRGB(s); err == nil {
 			t.Errorf("parseHexRGB(%q): want error", s)
@@ -189,10 +189,10 @@ func TestParseRef(t *testing.T) {
 		{"{spacing.md}", "md", "spacing", true},
 		{"{rounded.lg}", "lg", "rounded", true},
 		{" {colors.x} ", "x", "colors", true}, // whitespace
-		{"colors.primary", "", "", false},      // missing braces
-		{"{colors}", "", "", false},            // no dot
-		{"{.primary}", "", "", false},          // empty kind
-		{"{colors.}", "", "", false},           // empty key
+		{"colors.primary", "", "", false},     // missing braces
+		{"{colors}", "", "", false},           // no dot
+		{"{.primary}", "", "", false},         // empty kind
+		{"{colors.}", "", "", false},          // empty key
 	}
 	for _, c := range cases {
 		key, kind, ok := parseRef(c.in)

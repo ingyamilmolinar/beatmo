@@ -337,4 +337,3 @@ func runHookAction(action string, _ hooks.Event, logger *game_log.Logger) {
 		}()
 	}
 }
-

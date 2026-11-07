@@ -176,16 +176,15 @@ func histAggregate(counts []uint64, buckets []float64) (n int64, p50, p99, max f
 	t50 := float64(total) * 0.50
 	t99 := float64(total) * 0.99
 	var cum float64
-	var got50, got99 bool
+	var got50 bool
 	for i := range counts {
 		cum += float64(counts[i])
 		if !got50 && cum >= t50 {
 			p50 = edge(i)
 			got50 = true
 		}
-		if !got99 && cum >= t99 {
+		if cum >= t99 {
 			p99 = edge(i)
-			got99 = true
 			break
 		}
 	}

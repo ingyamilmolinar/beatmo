@@ -89,7 +89,10 @@ func TestRenamedNamesUseNewSpelling(t *testing.T) {
 // TestHeapDiagLevels pins the three-state replacement for the two retired
 // heap booleans.
 func TestHeapDiagLevels(t *testing.T) {
-	for _, tc := range []struct{ set string; wantWatch, wantProbe bool }{
+	for _, tc := range []struct {
+		set                  string
+		wantWatch, wantProbe bool
+	}{
 		{"", false, false},
 		{"watch", true, false},
 		{"probe", true, true},
