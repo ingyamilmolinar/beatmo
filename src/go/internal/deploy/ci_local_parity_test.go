@@ -2,26 +2,106 @@ package deploy
 
 import (
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
-// A build command written inline in a workflow is one `make test` never runs.
-var rawGoBuildRe = regexp.MustCompile(`(?m)^\s*(?:run:\s*)?[^#\n]*\bgo\s+build\b`)
+type workflow struct {
+	Jobs map[string]struct {
+		Needs     any `yaml:"needs"`
+		Container any `yaml:"container"`
+		Steps     []struct {
+			Uses string `yaml:"uses"`
+			Run  string `yaml:"run"`
+		} `yaml:"steps"`
+	} `yaml:"jobs"`
+}
 
-func TestCIBuildsOnlyThroughMakeCIBuild(t *testing.T) {
-	root := repoRoot(t)
-	for _, f := range workflowFiles(t, root) {
-		src := stripYAMLComments(mustRead(t, f))
-		if loc := rawGoBuildRe.FindStringIndex(src); loc != nil {
-			t.Errorf("%s runs `go build` directly (%q) — put it in `make ci-build` so `make test` runs it too",
-				filepath.Base(f), strings.TrimSpace(src[loc[0]:loc[1]]))
+func readCI(t *testing.T) workflow {
+	t.Helper()
+	var w workflow
+	if err := yaml.Unmarshal([]byte(mustRead(t, filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))), &w); err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Jobs) == 0 {
+		t.Fatal("ci.yml has no jobs")
+	}
+	return w
+}
+
+func needsList(v any) []string {
+	switch n := v.(type) {
+	case string:
+		return []string{n}
+	case []any:
+		var out []string
+		for _, x := range n {
+			out = append(out, x.(string))
+		}
+		return out
+	}
+	return nil
+}
+
+// A command written inline in a workflow is one `make test` never runs.
+func TestCIRunsOnlyMakeTargets(t *testing.T) {
+	sawCIBuild := false
+	for id, job := range readCI(t).Jobs {
+		for _, st := range job.Steps {
+			run := strings.TrimSpace(st.Run)
+			if run == "" {
+				continue
+			}
+			if strings.Contains(run, "\n") || (!strings.HasPrefix(run, "make ")) {
+				t.Errorf("job %s runs %q — CI steps must be one `make <target>` so they run the same locally", id, run)
+			}
+			sawCIBuild = sawCIBuild || run == "make ci-build"
 		}
 	}
-	ci := stripYAMLComments(mustRead(t, filepath.Join(root, ".github", "workflows", "ci.yml")))
-	if !strings.Contains(ci, "make ci-build") {
+	if !sawCIBuild {
 		t.Error("ci.yml no longer runs `make ci-build` — the Build job and `make test` have diverged")
+	}
+}
+
+func TestEveryCIJobRunsInTheImage(t *testing.T) {
+	src := stripYAMLComments(mustRead(t, filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml")))
+	for _, banned := range []string{"actions/setup-go", "actions/setup-node", "apt-get"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("ci.yml uses %s — every tool comes from the pinned image", banned)
+		}
+	}
+	for id, job := range readCI(t).Jobs {
+		if hostJobs[id] {
+			continue
+		}
+		c, _ := yaml.Marshal(job.Container)
+		if !strings.Contains(string(c), "needs.images.outputs.") {
+			t.Errorf("job %s does not run in the CI image (container: %s)", id, strings.TrimSpace(string(c)))
+		}
+		if !slices.Contains(needsList(job.Needs), "images") {
+			t.Errorf("job %s does not need `images`, so its container ref is empty", id)
+		}
+	}
+}
+
+// Jobs that legitimately run on the runner host: one builds the images, one
+// only prints the browser matrix, one only reads the other jobs' results.
+var hostJobs = map[string]bool{"images": true, "browser-matrix": true, "verdict": true}
+
+func TestVerdictNeedsEveryJob(t *testing.T) {
+	w := readCI(t)
+	v, ok := w.Jobs["verdict"]
+	if !ok {
+		t.Fatal("ci.yml has no `verdict` job — the one required check")
+	}
+	got := needsList(v.Needs)
+	for id := range w.Jobs {
+		if id != "verdict" && !slices.Contains(got, id) {
+			t.Errorf("verdict does not need %s, so a failure there would not block a merge", id)
+		}
 	}
 }
 
@@ -36,29 +116,6 @@ func TestMakeTestRunsCIBuild(t *testing.T) {
 	}
 	if !strings.Contains(recipe, "$(MAKE) ci-build") {
 		t.Errorf("`make test` does not run `$(MAKE) ci-build`, so a local pass no longer implies a CI build pass:\n%s", recipe)
-	}
-}
-
-// A literal go-version runs CI on a different compiler than the toolchain
-// go.mod pins for every developer.
-func TestCIGoVersionComesFromGoMod(t *testing.T) {
-	root := repoRoot(t)
-	setups := 0
-	for _, f := range workflowFiles(t, root) {
-		src := stripYAMLComments(mustRead(t, f))
-		if strings.Contains(src, "go-version:") {
-			t.Errorf("%s pins a literal `go-version:` — use `go-version-file: src/go/go.mod`", filepath.Base(f))
-		}
-		setups += strings.Count(src, "actions/setup-go@")
-		if n, m := strings.Count(src, "actions/setup-go@"), strings.Count(src, "go-version-file: src/go/go.mod"); n != m {
-			t.Errorf("%s: %d setup-go step(s) but %d read src/go/go.mod", filepath.Base(f), n, m)
-		}
-	}
-	if setups == 0 {
-		t.Error("found no setup-go step in any workflow — the scan is reading the wrong files")
-	}
-	if !strings.Contains(mustRead(t, filepath.Join(root, "src", "go", "go.mod")), "\ntoolchain go") {
-		t.Error("src/go/go.mod has no toolchain line, so go-version-file cannot pin an exact compiler")
 	}
 }
 

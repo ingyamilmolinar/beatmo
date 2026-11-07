@@ -719,7 +719,13 @@ lint-go: $(GOLANGCI_LINT)
 lint-go-fix: $(GOLANGCI_LINT)
 	cd src/go && $(GOLANGCI_LINT) run --fix ./...
 
-lint-js:
+JS_DEPS = src/js/node_modules/.package-lock.json
+$(JS_DEPS): src/js/package-lock.json
+	cd src/js && npm ci
+	@touch $@
+js-deps: $(JS_DEPS)
+
+lint-js: $(JS_DEPS)
 	cd src/js && npx eslint .
 
 lint-js-fix:
@@ -879,20 +885,22 @@ run-cam-logs: $(C_LIB)
 	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd && DEBUG_DRAW_NODES=1 DEBUG_GEOM=1 /tmp/beatmo -log DEBUG $(RUN_ARGS)
 
 test: $(C_LIB)
-# -timeout is PER package binary. internal/ui is the pacing package: it runs
-# ~734s in ISOLATION (measured 2026-07-17), dominated by the testing.Short()-
-# gated soak/leak canaries (TestSoakHeapBounded_* ~185s, TestLongSessionMeters
-# TabHeapBounded ~66s, ...) that are //go:build test-only, so `make test` is
-# their sole runner and executes them full-length. Under `./...` those canaries
-# race sibling package binaries (internal/audio, internal/timeline) for CPU, and
-# the ~25% contention overhead pushed the effective wall clock past the old 900s
-# watchdog (the synth/engine/node-groups overhaul grew the package from ~609s to
-# ~734s). Bumped 900s->1500s for headroom. This has been raised as the suite grew
-# (1->10->20->60->300->600->900->1500); the pace is cumulative test work, not a hang.
 	$(MAKE) ci-build
-	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 1500s ./...
-# Untagged = real C DSP (no stubs), so this suite runs ~270s across ~880 tests.
-# The budget is whole-package, not per-test.
+	$(MAKE) test-go-tagged
+	$(MAKE) test-audio-real
+
+# -timeout is per package binary; internal/ui sets the pace (its soak/leak
+# canaries are -tags test only, so this is their one full-length runner).
+# COVER=1 also writes coverage/go.out and coverage/test-output.txt.
+TEST_GO_TAGGED_TIMEOUT ?= 1500s
+test-go-tagged: $(C_LIB)
+	@mkdir -p coverage
+	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout $(TEST_GO_TAGGED_TIMEOUT) \
+	  $(if $(COVER),-coverprofile=../../coverage/go.out -covermode=atomic) $(or $(PKGS),./...) \
+	  $(if $(COVER),> ../../coverage/test-output.txt 2>&1; s=$$?; cat ../../coverage/test-output.txt; exit $$s)
+
+# The real C DSP under the untagged build; the budget is whole-package.
+test-audio-real: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio
 
 # Run the concurrency-relevant Go packages under the race detector (-race is
@@ -916,7 +924,7 @@ test-race: $(C_LIB)
 
 # Run all browser tests (auto-discovered). Timing-sensitive tests run sequentially
 # after the parallel batch. BROWSER_JOBS=N controls parallelism (default: 4).
-test-browser: wasm-all
+test-browser: wasm-all $(JS_DEPS)
 	@if ! command -v node >/dev/null 2>&1; then echo 'Node not found'; exit 1; fi
 	GO=$(GO) BROWSER_JOBS=$(or $(BROWSER_JOBS),4) ./scripts/run-browser-tests.sh
 
@@ -953,8 +961,35 @@ test-debug: $(C_LIB)
 # Under -tags test (make test/test-debug) the synth is stubbed and stays fast, so
 # only this real-build target needs the longer cap.
 test-real: $(C_LIB)
-	cd src/go && BPM_TIMING_TEST=1 xvfb-run -a $(GO) test -timeout 30m ./...
+	$(MAKE) test-real-go
 	$(MAKE) test-browser
+
+test-real-go: $(C_LIB)
+	cd src/go && BPM_TIMING_TEST=1 xvfb-run -a $(GO) test -timeout 30m $(or $(PKGS),./...)
+
+# CI's reference-corpus checks. A failed upstream fetch only warns: refs-check
+# then skips loudly instead of failing on someone else's server.
+refs-ci: $(C_LIB)
+	$(MAKE) fetch-refs TIER=instrument ONLY_MISSING=1 || echo "::warning::reference WAV fetch failed; refs-check will skip"
+	cd src/go && $(GO) run ./cmd/refs verify
+	$(MAKE) refs-check
+
+# Writes the Go/C coverage tables to $GITHUB_STEP_SUMMARY (or stdout).
+coverage-summary:
+	@scripts/ci/coverage-summary.sh
+
+# One browser matrix entry: TESTS="a.browser.test.js b.browser.test.js".
+test-browser-batch: wasm-all $(JS_DEPS)
+	GO=$(GO) ./scripts/run-browser-tests.sh --no-fail-fast --tests "$(TESTS)"
+
+# Prints the browser matrix JSON (and hands it to the workflow under Actions).
+browser-matrix:
+	@m=$$(./scripts/browser-test-matrix.sh --batch-size $(or $(BATCH_SIZE),4)) && echo "$$m" && \
+	  if [ -n "$$GITHUB_OUTPUT" ]; then echo "matrix=$$m" >> "$$GITHUB_OUTPUT"; fi
+
+# Fails unless every job in $$NEEDS (the workflow's toJSON(needs)) succeeded.
+ci-verdict:
+	@scripts/ci/verdict.sh
 
 # Run cross-platform parity tests: Go golden files + browser comparison
 test-parity: $(C_LIB)
