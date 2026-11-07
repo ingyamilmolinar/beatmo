@@ -6,7 +6,7 @@
   "notes": "thereminSeed: the eerie theremin — a pure sine with a heavy expressive vibrato\nand a slow swell onset (the hands never touch the instrument). Sci-fi séance.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.442,
+    "amplitude": 0.4436,
     "gate_tail": 0,
     "melodic": true
   },

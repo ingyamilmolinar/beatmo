@@ -353,10 +353,10 @@
 {"id":343,"i":0,"j":208,"type":"regular","outputs":[324],"volume":0.62}
 ],"instrument_docs":{
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
-"ensemble-lead":{"ref":"sha256:e865a341ed730d94"},
+"ensemble-lead":{"ref":"sha256:651a9fc3eecd6fc0"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-electro":{"ref":"sha256:c1890c6cbf985260"},
-"moog-bass":{"ref":"sha256:5b5a6013abf9ca87"},
+"moog-bass":{"ref":"sha256:483dc38c97bbba68"},
 "snare":{"ref":"sha256:39717a9d6e0acf7d"}
 }}

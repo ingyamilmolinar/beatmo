@@ -349,8 +349,8 @@
 {"id":342,"i":0,"j":154,"type":"regular","outputs":[343],"pitch":2,"volume":0.33003000000000005,"duration":0.5,"groove_kind":"delay","groove_pct":0.25},
 {"id":343,"i":0,"j":152,"type":"regular","outputs":[248],"pitch":2,"volume":0.33003000000000005,"duration":0.5,"groove_kind":"delay","groove_pct":0.25}
 ],"instrument_docs":{
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--2":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--3":{"ref":"sha256:08b4fe02beed1d61"},
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--2":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--3":{"ref":"sha256:38f2e3bbc82646a7"},
 "voice-opera":{"ref":"sha256:83bd748e322c2caf"}
 }}

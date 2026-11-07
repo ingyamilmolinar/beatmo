@@ -301,11 +301,11 @@
 {"id":290,"i":0,"j":270,"type":"silent","outputs":[287]}
 ],"instrument_docs":{
 "crash":{"ref":"sha256:77b3f50171cf132d"},
-"guitar-electric-neck":{"ref":"sha256:b145cf6582a90db9"},
+"guitar-electric-neck":{"ref":"sha256:602e611204c8da07"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-tight":{"ref":"sha256:133089cf7fc4a9fe"},
-"organ":{"ref":"sha256:43451faa02efba5a"},
-"organ--2":{"ref":"sha256:43451faa02efba5a"},
+"kick-tight":{"ref":"sha256:39843f8c6069aa2f"},
+"organ":{"ref":"sha256:ba30fbc65bb28101"},
+"organ--2":{"ref":"sha256:ba30fbc65bb28101"},
 "snare-punch":{"ref":"sha256:e94c4b426e7820ca"},
-"voice-alien":{"ref":"sha256:125716327f41bc0e"}
+"voice-alien":{"ref":"sha256:227109a3811940e4"}
 }}

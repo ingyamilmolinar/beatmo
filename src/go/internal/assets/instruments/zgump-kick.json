@@ -6,7 +6,7 @@
   "notes": "zgumpKickSeed is the Organic Kick as shipped: zgumpKickBaseSeed (the\nreference-fitted tuning, which raw-kick still builds on) with the 2026-10-02\nFULLNESS RETUNE (user A/B at equal peak, approved): louder under the fixed\npeak, more punch and body, same variant, pitch and >250 Hz timbre.",
   "render": {
     "seconds": 0.35,
-    "amplitude": 0.7623,
+    "amplitude": 0.765,
     "gate_tail": 0,
     "melodic": false
   },

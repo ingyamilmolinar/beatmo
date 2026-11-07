@@ -292,9 +292,9 @@
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-snap":{"ref":"sha256:68196f19bd9283ea"},
-"music-box":{"ref":"sha256:769e9e13008470da"},
-"piano-felt":{"ref":"sha256:4b35d55cb1f161da"},
-"piano-felt--2":{"ref":"sha256:4b35d55cb1f161da"},
+"music-box":{"ref":"sha256:6362a9342676fe91"},
+"piano-felt":{"ref":"sha256:5091294646db1b85"},
+"piano-felt--2":{"ref":"sha256:5091294646db1b85"},
 "snare-deep":{"ref":"sha256:567d3802ebd8b1fa"},
-"sub-bass":{"ref":"sha256:b03b1642a71c96c6"}
+"sub-bass":{"ref":"sha256:61b1ced4db461aa1"}
 }}

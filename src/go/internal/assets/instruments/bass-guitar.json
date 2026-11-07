@@ -6,7 +6,7 @@
   "notes": "bassGuitarSeed: plucked/punchy electric bass — strong fundamental, controlled harmonics,\nclear attack + decay, not a sustained organ drone. (Renamed from synthBassSeed.)\nSaw OSC at -1 octave for that warm bass register; filter envelope gives the \"pluck wow\";\nsub-sine at moderate gain for body weight without mud; no drive (removes grit/saturation).\nPLUCKED electric bass (finger), matched to the reference (ixwolf C2~=65Hz). The\nref's harmonic profile (FFT, reliable at 65Hz; synth-analyze mis-detects low\nbass): H1:H2:H3:H4:H5 ~= 1:0.34:0.18:0.08:0.10 — fundamental-dominant, warm, a\nfew harmonics, NOT bright. A sine fundamental + that harmonic set + a short\nfinger-PLUCK noise click + a PLUCKED DECAY envelope (amp_sustain 0: each note\nplucks and rings DOWN over a few seconds, articulating — not a flat synth drone,\nnot the harsh sustained sizzle of the earlier attempt).",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.5486,
+    "amplitude": 0.5506,
     "gate_tail": 0,
     "melodic": true
   },

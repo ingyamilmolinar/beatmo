@@ -6,7 +6,7 @@
   "notes": "bassWobbleSeed: a dubstep wobble bass — a saw an octave down through a low\nresonant low-pass whose cutoff is swept by an LFO (the wobble), plus drive.\nNO osc_octave: every melodic instrument defaults to the same pitch (A3, node\npitch 0). It's a bass by timbre (low resonant filter) — pitch nodes down for\na bassline. (Existing bass-guitar/808/etc. keep their -1 octave; unchanged.)",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.4017,
+    "amplitude": 0.4032,
     "gate_tail": 0,
     "melodic": true
   },

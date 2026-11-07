@@ -6,7 +6,7 @@
   "notes": "rawKickSeed: a RAW / HEAVY / BRUTAL sibling of zgump-kick — literally CLONED\nfrom zgumpKickSeed's config (cloneSeed) and pushed toward the reference's\ngrittier natural character (which the clean zgump tuning smoothed out). Same\nMODAL variant-6 DSP; the overrides add broadband grit texture (kick_noise↑),\nsaturation drive (kick_sat↑), a heavier sub (lower voice_freq + stronger,\nlonger resonant mode) and a harder attack (kick_click/kick_attack↑).\nzgump-kick stays untouched; this is its rawer clone. Tuned in the harness.\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nfade 4→2.5, click 0.50→0.18, pe_rate 45→53, env0 11→24.5 (the first\nthree inherited from zgumpKickBaseSeed before), sat 2.5→2.8",
   "render": {
     "seconds": 0.35,
-    "amplitude": 0.6775,
+    "amplitude": 0.68,
     "gate_tail": 0,
     "melodic": false
   },

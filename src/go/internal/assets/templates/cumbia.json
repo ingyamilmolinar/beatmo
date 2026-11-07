@@ -296,8 +296,8 @@
 {"id":287,"i":0,"j":172,"type":"regular","outputs":[288],"volume":0.49500000000000005},
 {"id":288,"i":0,"j":171,"type":"regular","outputs":[193],"volume":0.49500000000000005}
 ],"instrument_docs":{
-"accordion":{"ref":"sha256:55f3916c6aa8d9eb"},
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"accordion":{"ref":"sha256:f8de3a3db1fe7e3e"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "conga-open":{"ref":"sha256:471d6d153834accb"},
 "conga-tumba":{"ref":"sha256:dd4de8961d633e4e"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},

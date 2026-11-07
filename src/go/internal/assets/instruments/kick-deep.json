@@ -6,7 +6,7 @@
   "notes": "drum-kick-deep -> C gen_kick_deep\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\npe_amt 0.15→0.6, sat 1.2→2.4, h2 0.15→0, click 0.2→0.16, noise\n0.1→0.075, attack 0.15→0.25",
   "render": {
     "seconds": 0.8,
-    "amplitude": 0.5731,
+    "amplitude": 0.5751,
     "gate_tail": 0,
     "melodic": false
   },

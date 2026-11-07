@@ -6,7 +6,7 @@
   "notes": "oboeFullSeed: fuller oboe — same SUBTRACTIVE saw→band-pass→filtenv architecture as\noboeSeed but BRIGHTER and louder (higher BP center, stronger upper-formant lift, bigger\nfiltenv bloom) for a fatter reed tone. Distinct from oboeSeed (seed-distinct guard).\nFULLER oboe — the additive oboe with a stronger fundamental + upper body and\nhigher gain for a fatter reed tone (no longer the clarinet reed waveguide).",
   "render": {
     "seconds": 1,
-    "amplitude": 0.7812,
+    "amplitude": 0.784,
     "gate_tail": 0,
     "melodic": true
   },

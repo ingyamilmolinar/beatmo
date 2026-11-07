@@ -6,7 +6,7 @@
   "notes": "trumpetMellowSeed: mellow/muted trumpet — the SAME subtractive brass\narchitecture as trumpetSeed (saw → band-pass formant → opening filtenv) but\nDARKER: a lower band-pass center, a gentler/slower filtenv bloom, a slightly\nslower attack and tighter unison. The lower BP center keeps the upper\npartials softer (muted-trumpet timbre) while the evolving filter still moves\nthe centroid (not a static organ).\nMELLOW trumpet — the SAME additive brass formant as the base trumpet but\nsofter/darker: more fundamental + gentler upper harmonics (less H3/H4\nbrilliance), darker roll-off, a smaller brass bloom, slower softer onset.\nWas an old saw; re-synced to the additive-formant model.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.7252,
+    "amplitude": 0.7278,
     "gate_tail": 0,
     "melodic": true
   },

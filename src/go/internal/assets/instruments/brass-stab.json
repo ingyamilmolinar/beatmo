@@ -6,7 +6,7 @@
   "notes": "brassStabSeed: a punchy synth-brass section stab — additive brass with a fast\nattack, a bright bloom and a detuned unison for section width; the classic\nanalog \"brass hit\".",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.8738,
+    "amplitude": 0.8769,
     "gate_tail": 0,
     "melodic": true
   },

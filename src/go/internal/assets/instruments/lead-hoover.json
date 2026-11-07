@@ -6,7 +6,7 @@
   "notes": "leadHooverSeed: the 90s rave \"hoover\" — heavily detuned saws with a downward\npitch-envelope \"wah\" and a resonant filter sweep, plus drive. Aggressive.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.4481,
+    "amplitude": 0.4497,
     "gate_tail": 0,
     "melodic": true
   },

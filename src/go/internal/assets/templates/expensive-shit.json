@@ -364,11 +364,11 @@
 {"id":354,"i":0,"j":225,"type":"regular","outputs":[355],"volume":0.9450000000000001,"groove_kind":"delay","groove_pct":0.083},
 {"id":355,"i":0,"j":217,"type":"regular","outputs":[344],"volume":0.36000000000000004,"groove_kind":"delay","groove_pct":0.083}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
-"guitar-electric":{"ref":"sha256:9cce893a476971f3"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
+"guitar-electric":{"ref":"sha256:e2e4968694a34c2b"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"sax":{"ref":"sha256:7b01fd9849591a70"},
+"sax":{"ref":"sha256:568092cf2ccd82ca"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"}
 }}

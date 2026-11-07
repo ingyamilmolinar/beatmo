@@ -6,7 +6,7 @@
   "notes": "guitarSteelSeed: STEEL-string acoustic — bright, ringing, metallic. The steel\ncharacter vs nylon: a brighter/sharper pluck (ks_pluck 0.6 vs nylon's 0.09), a\nlong bright sustain (the highs ring — that's the metallic zing), an open filter,\nAND the high-Q steel body (body_model:4) whose ringing upper modes give the\nbright acoustic \"presence\" a bare string lacks. Contrast guitarNylonSeed (warm\nbody_model:2, soft dark pluck).",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.8992,
+    "amplitude": 0.9024,
     "gate_tail": 0,
     "melodic": true
   },

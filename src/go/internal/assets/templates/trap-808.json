@@ -193,10 +193,10 @@
 {"id":184,"i":0,"j":343,"type":"regular","outputs":[185],"volume":0.49500000000000005,"groove_kind":"delay","groove_pct":0.333},
 {"id":185,"i":0,"j":341,"type":"regular","outputs":[94],"volume":0.49500000000000005,"groove_kind":"rush","groove_pct":0.333}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
 "clap-tight":{"ref":"sha256:e944af2d95c6c22c"},
-"flute":{"ref":"sha256:b04eb452e0aebe04"},
+"flute":{"ref":"sha256:1f90918c86c0710f"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-808":{"ref":"sha256:897a554c4972f0a6"},
-"snare-crack":{"ref":"sha256:85437546b64cdd18"}
+"kick-808":{"ref":"sha256:13fcc43969ca4ce3"},
+"snare-crack":{"ref":"sha256:12a5c9b297aabd0f"}
 }}

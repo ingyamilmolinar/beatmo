@@ -230,12 +230,12 @@
 {"id":219,"i":0,"j":260,"type":"regular","outputs":[220],"volume":0.62},
 {"id":220,"i":0,"j":244,"type":"regular","outputs":[209],"volume":0.62}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "hihat-lofi":{"ref":"sha256:26936071d9b036c5"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-boom-bap":{"ref":"sha256:4ea8330eed10e5bf"},
-"piano-rhodes":{"ref":"sha256:2c9ed5eae2b27b86"},
-"piano-rhodes--2":{"ref":"sha256:2c9ed5eae2b27b86"},
+"piano-rhodes":{"ref":"sha256:148858785326dca7"},
+"piano-rhodes--2":{"ref":"sha256:148858785326dca7"},
 "snare-lofi":{"ref":"sha256:43e241c0dbe0641e"},
-"vibraphone":{"ref":"sha256:18127cd2efee2536"}
+"vibraphone":{"ref":"sha256:2a90643a4a9b9af7"}
 }}

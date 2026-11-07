@@ -31,6 +31,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ type tunePick struct {
 	// tones, #33 on its own recording and closest to the cowbell). The
 	// candidate keeps the picked instrument's id and name.
 	From instrument.ID `json:"from,omitempty"`
+	// Skip names catalogued recordings filed under the instrument that are not what it should sound like (a snare hit
+	// with its snares off): averaged in, they drag the search toward the wrong instrument.
+	Skip []string `json:"skip,omitempty"`
 }
 
 // tuneStart is the document a pick's search starts from and the param
@@ -540,7 +544,7 @@ func (rec *tuneRec) settlePitchDoc(inst instrument.ID, d *instrument.Doc) error 
 	return nil
 }
 
-func tuneRecordings(inst instrument.ID, glob string, maxSec float64, tmp string, diag io.Writer) ([]tuneRec, error) {
+func tuneRecordings(inst instrument.ID, skip []string, glob string, maxSec float64, tmp string, diag io.Writer) ([]tuneRec, error) {
 	cat, err := loadCatalogue()
 	if err != nil {
 		return nil, err
@@ -556,6 +560,10 @@ func tuneRecordings(inst instrument.ID, glob string, maxSec float64, tmp string,
 		return nil
 	}
 	for _, r := range cat.ForInstrument(inst) {
+		if slices.Contains(skip, r.ID) {
+			seen[r.ID] = true // also keeps -wavs from adding the same file back
+			continue
+		}
 		p, ok := wavref.Resolve(r.ID)
 		if !ok {
 			fmt.Fprintf(diag, "  %s: reference %s is not in %s (make fetch-refs ID=%s)\n", inst, r.ID, wavref.Root(), r.ID)
@@ -738,7 +746,7 @@ func runTune(w, diag io.Writer, pick tunePick, o tuneRunOpts) (tuneMeta, error) 
 	}
 	defer os.RemoveAll(tmp)
 	fmt.Fprintf(diag, "== %s: loading recordings\n", inst)
-	recs, err := tuneRecordings(inst, o.Glob, o.MaxSec, tmp, diag)
+	recs, err := tuneRecordings(inst, pick.Skip, o.Glob, o.MaxSec, tmp, diag)
 	if err != nil {
 		return tuneMeta{}, err
 	}

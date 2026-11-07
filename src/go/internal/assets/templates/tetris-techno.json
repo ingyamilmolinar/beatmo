@@ -299,10 +299,10 @@
 {"id":290,"i":0,"j":176,"type":"regular","outputs":[291],"volume":0.62},
 {"id":291,"i":0,"j":172,"type":"regular","outputs":[256],"volume":0.62}
 ],"instrument_docs":{
-"bass-acid":{"ref":"sha256:d0bdc19919ee4815"},
+"bass-acid":{"ref":"sha256:c70e1c84f67270be"},
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-electro":{"ref":"sha256:c1890c6cbf985260"},
-"lead-chip":{"ref":"sha256:3f25effd0c8c3c48"}
+"lead-chip":{"ref":"sha256:9bb800e130a6417a"}
 }}

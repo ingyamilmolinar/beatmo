@@ -6,7 +6,7 @@
   "notes": "snareRimshotSeed is the RIMSHOT voice (C snare variant 1) as config — the\nformer drum-snare-rimshot C literals written out explicitly. Variant 1 does\nnot read tail_d or wire_m, which is why they are absent; the engine has no\ndefaults, so every parameter the branch actually READS is spelled out here.",
   "render": {
     "seconds": 0.25,
-    "amplitude": 0.8276,
+    "amplitude": 0.8306,
     "gate_tail": 0.5,
     "melodic": false
   },

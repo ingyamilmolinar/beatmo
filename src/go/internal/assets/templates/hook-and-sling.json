@@ -339,12 +339,12 @@
 {"id":328,"i":18,"j":270,"type":"regular","outputs":[329],"volume":0.62},
 {"id":329,"i":0,"j":270,"type":"silent","outputs":[324]}
 ],"instrument_docs":{
-"bass-guitar":{"ref":"sha256:174941a192180399"},
+"bass-guitar":{"ref":"sha256:8f31b14150ab8cb5"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"organ":{"ref":"sha256:43451faa02efba5a"},
-"organ--2":{"ref":"sha256:43451faa02efba5a"},
-"sax":{"ref":"sha256:7b01fd9849591a70"},
+"organ":{"ref":"sha256:ba30fbc65bb28101"},
+"organ--2":{"ref":"sha256:ba30fbc65bb28101"},
+"sax":{"ref":"sha256:568092cf2ccd82ca"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"}
 }}

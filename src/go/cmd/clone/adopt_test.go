@@ -135,3 +135,72 @@ func TestAdoptTunedKindReadsTheTunedDirectory(t *testing.T) {
 		t.Fatalf("unknown kind: exit %d", code)
 	}
 }
+
+// shipTestbar puts a shipped testbar document beside the index, as adopt finds an instrument it replaces.
+func shipTestbar(t *testing.T, repo string, d instrument.Doc) {
+	t.Helper()
+	b, err := instrument.MarshalFile(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "internal/assets/instruments", string(d.ID)+".json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readShipped(t *testing.T, repo string, id instrument.ID) instrument.Doc {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(repo, "internal/assets/instruments", string(id)+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := instrument.ParseFile(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func TestAdoptKeepsTheShippedLevelAndNoOrigin(t *testing.T) {
+	dir, repo, doc := adoptFixture(t)
+	shipped := doc.Clone()
+	shipped.Render.Amplitude = 0.77
+	shipTestbar(t, repo, shipped)
+	doc.Origin, doc.Render.Amplitude = doc.ID, 0.42
+	b, _ := instrument.MarshalFile(doc)
+	os.WriteFile(filepath.Join(dir, "candidate.json"), b, 0o644)
+	if code, msg := adopt(t, dir, repo, writeSessions(t, row("2026-11-07T10:00:00Z", clone.DocSHA(doc), "y"))); code != 0 {
+		t.Fatalf("exit %d: %s", code, msg)
+	}
+	got := readShipped(t, repo, doc.ID)
+	if got.Render.Amplitude != 0.77 || got.Origin != "" {
+		t.Fatalf("shipped amplitude %v origin %q, want the shipped 0.77 and no origin", got.Render.Amplitude, got.Origin)
+	}
+	if clone.DocSHA(got) != clone.DocSHA(doc) {
+		t.Fatal("adopt changed the sound the listener approved")
+	}
+}
+
+func TestAdoptRefusesACandidateOfAnOlderNoteLength(t *testing.T) {
+	dir, repo, doc := adoptFixture(t)
+	shipped := doc.Clone()
+	shipped.Render.Seconds = doc.Render.Seconds / 2
+	shipTestbar(t, repo, shipped)
+	sessions := writeSessions(t, row("2026-11-07T10:00:00Z", clone.DocSHA(doc), "y"))
+	code, msg := adopt(t, dir, repo, sessions)
+	if code != 2 || !strings.Contains(msg, "render.seconds") {
+		t.Fatalf("exit %d (%s), want 2 naming render.seconds", code, msg)
+	}
+	if got := readShipped(t, repo, doc.ID); got.Render.Seconds != shipped.Render.Seconds {
+		t.Fatal("wrote the candidate anyway")
+	}
+	meta := map[string]any{"set": map[string]float64{"render.seconds": doc.Render.Seconds}}
+	mb, _ := json.Marshal(meta)
+	os.WriteFile(filepath.Join(dir, "meta.json"), mb, 0o644)
+	if code, msg := adopt(t, dir, repo, sessions); code != 0 {
+		t.Fatalf("a pick that set the length: exit %d (%s)", code, msg)
+	}
+	if got := readShipped(t, repo, doc.ID); got.Render.Seconds != doc.Render.Seconds {
+		t.Fatalf("render.seconds %v, want the length the pick set (%v)", got.Render.Seconds, doc.Render.Seconds)
+	}
+}

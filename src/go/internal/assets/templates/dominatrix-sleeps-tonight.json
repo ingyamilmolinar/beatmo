@@ -364,10 +364,10 @@
 "clap-tight":{"ref":"sha256:e944af2d95c6c22c"},
 "conga":{"ref":"sha256:77077ec693bf6766"},
 "conga--2":{"ref":"sha256:77077ec693bf6766"},
-"fm-bass":{"ref":"sha256:5a84d3727757ddb5"},
-"glockenspiel":{"ref":"sha256:065420a923f2c5c5"},
+"fm-bass":{"ref":"sha256:517956ea54504412"},
+"glockenspiel":{"ref":"sha256:a198356392138e13"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-tight":{"ref":"sha256:133089cf7fc4a9fe"},
+"kick-tight":{"ref":"sha256:39843f8c6069aa2f"},
 "snare-punch":{"ref":"sha256:e94c4b426e7820ca"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"},
 "voice-ahh--2":{"ref":"sha256:e54ff2094b923c96"}

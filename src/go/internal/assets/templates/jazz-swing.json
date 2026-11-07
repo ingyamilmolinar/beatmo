@@ -182,10 +182,10 @@
 {"id":173,"i":0,"j":174,"type":"regular","outputs":[174],"volume":0.62},
 {"id":174,"i":0,"j":172,"type":"regular","outputs":[127],"volume":0.62,"groove_kind":"delay","groove_pct":0.667}
 ],"instrument_docs":{
-"double-bass":{"ref":"sha256:32a0428e550237e3"},
+"double-bass":{"ref":"sha256:707fbbe71abb1915"},
 "hihat-pedal":{"ref":"sha256:de8ba40f28a3f6b1"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
 "ride":{"ref":"sha256:d61c2ff6d3220d56"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"}
 }}

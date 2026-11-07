@@ -6,7 +6,7 @@
   "notes": "kickFatSeed: the plain base kick (variant 0) re-tuned to sit FULL under a\nfixed peak: real saturation (0.55 → 1.2) glues the harmonic stack, a bigger,\nfaster drop (0.6 at 40/s) loads the 60-200 Hz punch band, and the body and\ntail run longer. Loudest-300 ms RMS at equal peak −12.2 → −6.9 dB, crest 3.4.\nIt is a frozen literal (not a clone of drumKickSeed): `kick` itself was\nretuned afterwards and Fat Kick must not move with it.\nkickFatSeed: the plain base kick (variant 0) re-tuned to sit FULL under a\nfixed peak: real saturation (0.55 → 1.2) glues the harmonic stack, a bigger,\nfaster drop (0.6 at 40/s) loads the 60-200 Hz punch band, and the body and\ntail run longer. Loudest-300 ms RMS at equal peak −12.2 → −6.9 dB, crest 3.4.\nIt is a frozen literal (not a clone of drumKickSeed): `kick` itself was\nretuned afterwards and Fat Kick must not move with it.",
   "render": {
     "seconds": 0.5,
-    "amplitude": 0.6736,
+    "amplitude": 0.676,
     "gate_tail": 0,
     "melodic": false
   },

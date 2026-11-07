@@ -239,13 +239,13 @@
 {"id":227,"i":0,"j":276,"type":"regular","outputs":[228],"volume":0.9450000000000001},
 {"id":228,"i":0,"j":274,"type":"regular","outputs":[165],"volume":0.9450000000000001}
 ],"instrument_docs":{
-"glass-armonica":{"ref":"sha256:da9c612422a67570"},
-"glass-armonica--2":{"ref":"sha256:da9c612422a67570"},
+"glass-armonica":{"ref":"sha256:e14fd55cb8085d34"},
+"glass-armonica--2":{"ref":"sha256:e14fd55cb8085d34"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "hihat-open-bright":{"ref":"sha256:21583753d75e0732"},
 "kick-snap":{"ref":"sha256:68196f19bd9283ea"},
 "shaker":{"ref":"sha256:c29b7ec7c5bfe1cd"},
 "snare-deep":{"ref":"sha256:567d3802ebd8b1fa"},
-"sub-bass":{"ref":"sha256:b03b1642a71c96c6"},
-"voice-soprano":{"ref":"sha256:11a7f3360d76901e"}
+"sub-bass":{"ref":"sha256:61b1ced4db461aa1"},
+"voice-soprano":{"ref":"sha256:91fb94749d800c8c"}
 }}

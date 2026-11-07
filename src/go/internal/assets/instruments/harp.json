@@ -5,8 +5,8 @@
   "category": "modular",
   "notes": "harpSeed: CELTIC HARP — a bright, clean, long-RINGING plucked string (Karplus-\nStrong, like the guitars but more OPEN/shimmering): a brighter clear pluck, a\nmuch longer free sustain (the strings ring out), and a lighter soundboard than\na guitar's box. Reference: celtic harp G2 (daphne_in_wonderland, CC0).",
   "render": {
-    "seconds": 1,
-    "amplitude": 0.7649,
+    "seconds": 2,
+    "amplitude": 0.7676,
     "gate_tail": 0,
     "melodic": true
   },

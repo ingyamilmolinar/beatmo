@@ -6,7 +6,7 @@
   "notes": "celloWarmSeed: warm cello — same additive approach but emphasis on P2-P4 warmth,\nslower attack, deeper vibrato. osc_octave:-1 retained.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.8477,
+    "amplitude": 0.8507,
     "gate_tail": 0,
     "melodic": true
   },

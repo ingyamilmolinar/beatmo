@@ -6,7 +6,7 @@
   "notes": "leadChipSeed: an 8-bit chiptune square lead — a raw square wave, minimal\nfiltering, a snappy envelope and a fast vibrato (the NES \"trill\" character).",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.4663,
+    "amplitude": 0.468,
     "gate_tail": 0,
     "melodic": true
   },

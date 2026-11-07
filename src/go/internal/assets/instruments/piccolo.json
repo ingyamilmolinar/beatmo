@@ -6,7 +6,7 @@
   "notes": "piccoloSeed: the piccolo — a piercingly bright near-sine flute with lots of air\nand a fast light vibrato. Same air-reed model as the flute but thinner and much\nbrighter.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.7199,
+    "amplitude": 0.7225,
     "gate_tail": 0,
     "melodic": true
   },

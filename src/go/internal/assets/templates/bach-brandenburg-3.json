@@ -301,8 +301,8 @@
 {"id":294,"i":0,"j":92,"type":"regular","outputs":[295],"pitch":-14,"duration":0.5},
 {"id":295,"i":0,"j":91,"type":"regular","outputs":[227],"pitch":-12,"duration":0.25}
 ],"instrument_docs":{
-"cello":{"ref":"sha256:626990a48d0da623"},
-"harpsichord":{"ref":"sha256:df0f5238c372a8b3"},
+"cello":{"ref":"sha256:8c1ece4f90b0c12c"},
+"harpsichord":{"ref":"sha256:fadc90df4b59afb1"},
 "viola":{"ref":"sha256:b2df8f8f7241c531"},
-"violin":{"ref":"sha256:1df613b2f0179067"}
+"violin":{"ref":"sha256:36de018601badc27"}
 }}

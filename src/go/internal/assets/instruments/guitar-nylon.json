@@ -6,7 +6,7 @@
   "notes": "guitarNylonSeed: KS gen-bank slot; osc silent; warm nylon guitar body filter.\nReal nylon guitar: warm rolloff ~1500Hz, slow decay, plucked (near-instant attack),\nfundamental-dominant (P2 falls off naturally with KS). Less sustain than steel.\nTuned to a real nylon-strung guitar (kyster 2-oct-c, CC0, C5≈525Hz). The pluck is MELLOW and\nFUNDAMENTAL-DOMINANT: just after the pluck H2 −10, H3 −38 (H3+ nearly absent — a mandolin/banjo has\nstrong bright upper harmonics, which is why the old seed read as a mandolin). It RINGS ~1.1s (decay\nto −20dB) with the upper harmonics decaying faster than the fundamental (the natural KS loop-damping),\nand a soft ~40ms attack. So: high ks_sustain (long ring at this pitch), low ks_pluck (dark/soft pluck →\nkill the mid twang), a warm body LP, and a soft amp attack.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.8409,
+    "amplitude": 0.9998,
     "gate_tail": 0,
     "melodic": true
   },
@@ -15,7 +15,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "amp_attack": 0.009,
+        "amp_attack": 0.0030623019317920492,
         "amp_curve": 1,
         "amp_decay": 2.6,
         "amp_release": 0.3,
@@ -57,7 +57,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "filter_cutoff": 3600,
+        "filter_cutoff": 1797.8322397147606,
         "filter_resonance": 0.8,
         "filter_type": 0
       },
@@ -99,7 +99,7 @@
         "freq_mode": 0,
         "gain": 1,
         "ks_blow": 0,
-        "ks_pluck": 0.09,
+        "ks_pluck": 0.01763810226313397,
         "ks_sustain": 0.997,
         "out_scale": 1
       },

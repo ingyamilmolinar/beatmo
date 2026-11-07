@@ -6,7 +6,7 @@
   "notes": "glassArmonicaSeed: a glass armonica (Franklin's spinning wine-glasses) — an\nalmost-pure sine ensemble with a slow ethereal swell, a slight detuned shimmer,\nand a long sustain. Delicate, otherworldly, glassy.",
   "render": {
     "seconds": 1.25,
-    "amplitude": 0.418,
+    "amplitude": 0.4195,
     "gate_tail": 0,
     "melodic": true
   },

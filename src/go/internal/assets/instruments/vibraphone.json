@@ -6,7 +6,7 @@
   "notes": "vibraphoneSeed: aluminum bars with a LONG bright ring and the signature motor\ntremolo (an LFO on amplitude). Metal bar 2nd mode ~4:1 like the marimba but it\nrings far longer and the top is brighter.",
   "render": {
     "seconds": 1.25,
-    "amplitude": 0.5973,
+    "amplitude": 0.5994,
     "gate_tail": 0,
     "melodic": true
   },

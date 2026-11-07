@@ -157,9 +157,9 @@
 {"id":149,"i":0,"j":180,"type":"regular","outputs":[150],"pitch":-7,"volume":0.48996,"duration":1},
 {"id":150,"i":0,"j":176,"type":"regular","outputs":[124],"pitch":-2,"volume":0.48996,"duration":1}
 ],"instrument_docs":{
-"cello":{"ref":"sha256:626990a48d0da623"},
+"cello":{"ref":"sha256:8c1ece4f90b0c12c"},
 "viola":{"ref":"sha256:b2df8f8f7241c531"},
-"violin":{"ref":"sha256:1df613b2f0179067"},
-"violin--2":{"ref":"sha256:1df613b2f0179067"},
-"violin-ensemble":{"ref":"sha256:e046b6be8cdebdff"}
+"violin":{"ref":"sha256:36de018601badc27"},
+"violin--2":{"ref":"sha256:36de018601badc27"},
+"violin-ensemble":{"ref":"sha256:6ef1cb3c45c9ff26"}
 }}

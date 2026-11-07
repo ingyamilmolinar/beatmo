@@ -6,7 +6,7 @@
   "notes": "pianoGrandSeed: additive sine partials at ratios 1/2/3/4 + hammer noise tap.\nACOUSTIC-PIANO note (struck string). The previous version sounded ELECTRONIC\nbecause its partials were EXACT integer harmonics (freq 2,3,4). A real piano\nstring is STIFF, so its partials are STRETCHED progressively SHARP:\nf_n = n·f0·√(1+B·n²). Measured on the ref (pinkyfinger piano-g, G5≈792Hz):\nH3 +5, H4 +15, H5 +28, H6 +42 cents (B≈0.0013) — the inharmonic shimmer that\nreads as a real struck string, NOT a synth/organ. Also: more upper partials +\na brighter filter (the ref centroid is ~1686 Hz, not the old dark 1021), a\nslightly-detuned unison for beating, and a SHORT (~20 ms) percussive HAMMER\ntransient (the felt thunk of the strike — NOT sustained hiss).",
   "render": {
     "seconds": 1,
-    "amplitude": 0.7671,
+    "amplitude": 0.7698,
     "gate_tail": 0,
     "melodic": true
   },

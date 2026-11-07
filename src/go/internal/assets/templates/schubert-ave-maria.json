@@ -441,7 +441,7 @@
 {"id":435,"i":0,"j":139,"type":"regular","outputs":[436],"pitch":12,"volume":0.33003000000000005,"duration":0.16666666666666666,"groove_kind":"delay","groove_pct":0.333},
 {"id":436,"i":0,"j":137,"type":"regular","outputs":[245],"pitch":8,"volume":0.33003000000000005,"duration":0.16666666666666666,"groove_kind":"rush","groove_pct":0.333}
 ],"instrument_docs":{
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--2":{"ref":"sha256:08b4fe02beed1d61"},
-"voice-soprano":{"ref":"sha256:11a7f3360d76901e"}
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--2":{"ref":"sha256:38f2e3bbc82646a7"},
+"voice-soprano":{"ref":"sha256:91fb94749d800c8c"}
 }}

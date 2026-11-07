@@ -182,8 +182,8 @@
 {"id":175,"i":0,"j":150,"type":"regular","outputs":[176],"pitch":-19,"duration":0.5},
 {"id":176,"i":0,"j":146,"type":"regular","outputs":[149],"pitch":-2,"duration":1.5}
 ],"instrument_docs":{
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--2":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--3":{"ref":"sha256:08b4fe02beed1d61"},
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--2":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--3":{"ref":"sha256:38f2e3bbc82646a7"},
 "voice-whisper":{"ref":"sha256:8d8d6eba16e750fd"}
 }}

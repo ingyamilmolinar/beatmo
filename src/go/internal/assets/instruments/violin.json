@@ -6,7 +6,7 @@
   "notes": "violinSeed: additive synthesis — OSC disabled, gen slots define the harmonic spectrum.\nReal violin G3 (195Hz): P2-P3 dominate (10-12x fundamental), slow attack 0.20s.\nAdditive partials at harmonic ratios; formant-bank approach doesn't work well for violin\nbecause body formants (462, 551Hz) don't align with harmonics of G3 (195Hz).\nSOLO violin (bowed saw through the BODY-RESONATOR BANK), tuned to mtg violin-d5 (Good-Sounds, D5≈590Hz,\nA=442). A bowed string is a SAWTOOTH (Helmholtz); a violin's character is its BODY. The pure-saw version\nsounded like an \"organ\"; the body bank (`body_model:1`, 22 narrow violin signature modes incl. the\n~2.6kHz bridge hill, in modular.c) drives the bowed saw through the violin body → woody body coloration\n(`body_mix` suppresses the dry as it rises so the body SHAPES the tone). A GENTLE note-SAFE high-pass\n(130Hz, sub-bass only — a higher HP killed low notes) + the body's modal de-emphasis tame the boomy\nfundamental the user flagged. Vibrato sweeps harmonics across the sharp modes; airy bow noise; 1 voice.\nNOTE: the real violin's dramatic shimmer (centroid-wobble 0.29) is mostly the PLAYER's expressive bowing\n(amplitude/brightness over the note) = performance, not static timbre — the body bank gives the body\ncoloration; full expressiveness would need bowing-dynamics modelling.",
   "render": {
     "seconds": 1,
-    "amplitude": 1,
+    "amplitude": 0.5722,
     "gate_tail": 0,
     "melodic": true
   },
@@ -15,7 +15,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "amp_attack": 0.3,
+        "amp_attack": 0.5922333014019345,
         "amp_curve": 1,
         "amp_decay": 0.1,
         "amp_release": 0.2,
@@ -50,7 +50,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "drive": 0
+        "drive": 0.057818484778711
       }
     },
     "filter": {
@@ -58,7 +58,7 @@
       "on": true,
       "values": {
         "filter_cutoff": 3100,
-        "filter_resonance": 0.9,
+        "filter_resonance": 0.5028494284666865,
         "filter_type": 0
       },
       "notes": "filter_cutoff: centroid 2716Hz) — roll off the buzzy saw upper harmonics; LP cutoff just above\nfilter_resonance: the bridge hill (~2.5kHz) keeps the body color while taming H4+ richness.\nfilter_type: LOW-PASS: the mtg D5 ref is fundamental-dominated (Tristimulus T1=0.88,"
@@ -71,7 +71,7 @@
         "post_body": 0,
         "post_brightness": 0,
         "post_darken": 0,
-        "post_decay": 1,
+        "post_decay": 0.9989998822594579,
         "post_decay_rate": 8,
         "post_drive": 0,
         "post_pitch": 0
@@ -112,9 +112,9 @@
     "on": true,
     "values": {
       "osc_bow_loss": 0.55,
-      "osc_bow_pos": 0.13,
+      "osc_bow_pos": 0.13826234793509562,
       "osc_bow_slope": 3,
-      "osc_bow_vel": 0.25
+      "osc_bow_vel": 0.09837804909034008
     },
     "notes": "osc_type: BOWED-STRING PHYSICAL MODEL (digital waveguide)"
   },

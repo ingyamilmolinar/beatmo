@@ -6,7 +6,7 @@
   "notes": "bass808Seed: 808 sub-bass — a sine OSC with a fast downward PITCH envelope (the\n808 \"pew\" drop) and a long amp decay with zero sustain (the boom that rings\nout). Light drive thickens the low end without buzz.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.3937,
+    "amplitude": 0.3951,
     "gate_tail": 0,
     "melodic": true
   },

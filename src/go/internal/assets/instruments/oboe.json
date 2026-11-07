@@ -6,7 +6,7 @@
   "notes": "oboeSeed: SUBTRACTIVE reed synthesis (mirrors trumpetSeed's saw→band-pass→filtenv\narchitecture). The previous additive sine-bank version had a clean ~11ms onset because\nthe partial gen-slots fired at full gain on frame 1 — amp_attack could not slow the\nMEASURED time-to-80%-peak. A SAW source routed through the amp ADSR fixes this: the saw\nis the tone source so amp_attack produces a genuine slow reed onset (real oboe ≈0.08s).\nArchitecture:\n  - osc_enabled=1, osc_type=1 (SAW) — full harmonic series, shaped by the filter below.\n  - global BAND-PASS @1450Hz (filter_type=2) — the reed FORMANT: real oboe D4 (F0≈294Hz)\n    peaks at P4-P5 ≈ 1.2-1.5kHz, NOT at the fundamental. BP suppresses the strong saw\n    fundamental so the mid-harmonic reed \"vowel\" dominates (bright, nasal, reedy).\n  - filtenv +2.6 oct / 0.20s decay — BP center BLOOMS up on attack then settles, so the\n    centroid MOVES (evolving brightness, not a static organ).\n  - gen1 = upper-formant lift (band-pass saw @2400Hz) — keeps the bright nasal top the\n    main BP rolls off, pushing the centroid toward the real oboe's high Cmean.\n  - gen2 = reed CHIFF — light high-passed noise burst, fast decay for the breathy onset.\n  - amp_attack=0.05 — reed speaks fast but not instant; the saw routing makes this measure.\n  - 6Hz vibrato (lfo_target=1, pitch) for the characteristic oboe wobble.\nOBOE = ADDITIVE reed formant (osc_enabled:0, sine bank). The old reed\nWAVEGUIDE (osc_type:9 render_reed) was a CLARINET — inverting single-delay\nbell → odd harmonics only (measured even/odd 0.03 vs the real oboe's 0.53).\nThe conical two-delay model gives even+odd but its limit cycle wanders\n20–140 cents at the oboe's short bore (unstable). Additive is rock-stable\nand places the real oboe's H3-DOMINANT reedy spectrum directly: measured\n(acclivity A4) H1 1.0, H2 .26, H3 1.39 (peak), H4 .63, H5 .60, H6 .18 — a\nreed formant around H3–H5 that reads bright/nasal. A band-passed reed-buzz\nnoise supplies the ~0.5 broadband content; a fast reedy attack + subtle\nvibrato the movement.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.904,
+    "amplitude": 0.5301,
     "gate_tail": 0,
     "melodic": true
   },
@@ -15,11 +15,11 @@
       "v": 1,
       "on": true,
       "values": {
-        "amp_attack": 0.012,
+        "amp_attack": 0.09509476826189124,
         "amp_curve": 1,
         "amp_decay": 0.05,
         "amp_release": 0.1,
-        "amp_sustain": 0.92
+        "amp_sustain": 0.8915492064429493
       },
       "notes": "amp_attack: fast reedy speech"
     },
@@ -40,14 +40,14 @@
       "v": 1,
       "on": true,
       "values": {
-        "drive": 0
+        "drive": 0.006475394083721142
       }
     },
     "filter": {
       "v": 1,
       "on": true,
       "values": {
-        "filter_cutoff": 7000,
+        "filter_cutoff": 12470.858633610991,
         "filter_resonance": 1,
         "filter_type": 0
       },
@@ -103,10 +103,10 @@
       "v": 1,
       "on": true,
       "values": {
-        "env_fast_mix": 0.6,
+        "env_fast_mix": 0.05474390922285162,
         "env_fast_rate": 10,
         "env_tail_mix": 0.6,
-        "env_tail_rate": 0,
+        "env_tail_rate": 16.455568970479383,
         "filt_alpha": 0,
         "filt_freq": 1900,
         "filt_q": 0.35,
@@ -131,7 +131,7 @@
         "filt_type": 0,
         "freq": 1,
         "freq_mode": 0,
-        "gain": 0.42,
+        "gain": 0.17028673417350806,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -153,7 +153,7 @@
         "filt_type": 0,
         "freq": 2,
         "freq_mode": 0,
-        "gain": 0.12,
+        "gain": 0.5673943728927713,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -175,7 +175,7 @@
         "filt_type": 0,
         "freq": 3,
         "freq_mode": 0,
-        "gain": 0.58,
+        "gain": 1.0509298748965425,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -197,7 +197,7 @@
         "filt_type": 0,
         "freq": 4,
         "freq_mode": 0,
-        "gain": 0.27,
+        "gain": 0.4803141313727732,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -219,7 +219,7 @@
         "filt_type": 0,
         "freq": 5,
         "freq_mode": 0,
-        "gain": 0.25,
+        "gain": 0.005444497690539132,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -241,7 +241,7 @@
         "filt_type": 0,
         "freq": 6,
         "freq_mode": 0,
-        "gain": 0.08,
+        "gain": 0.32526531796936475,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -263,7 +263,7 @@
         "filt_type": 0,
         "freq": 7,
         "freq_mode": 0,
-        "gain": 0.05,
+        "gain": 0.14451651673004898,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0

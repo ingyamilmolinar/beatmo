@@ -6,7 +6,7 @@
   "notes": "violaPadSeed: lush vowel-morphing string pad — born as a \"voice-pad\" vocal\nattempt, kept as a synth (Strings) per ear review 2026-07-08; 7 detuned SAWS\n(deliberately synthy), slow ah↔oh morph, wide humanized ensemble.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.8,
+    "amplitude": 0.8029,
     "gate_tail": 0,
     "melodic": true
   },

@@ -46,6 +46,10 @@ func TestTunePicksAreValid(t *testing.T) {
 	if len(picks) == 0 {
 		t.Fatal("no picks")
 	}
+	cat, err := loadCatalogue()
+	if err != nil {
+		t.Fatal(err)
+	}
 	seen := map[string]bool{}
 	for _, p := range picks {
 		if !slices.Contains(rosterIDs(), p.Inst) {
@@ -75,6 +79,11 @@ func TestTunePicksAreValid(t *testing.T) {
 		for _, f := range p.Only {
 			if !slices.ContainsFunc(dims, func(d tuneDim) bool { return d.Field == f }) {
 				t.Errorf("%s: only-field %s is not a searchable value of the document", p.Inst, f)
+			}
+		}
+		for _, id := range p.Skip {
+			if !slices.ContainsFunc(cat.ForInstrument(p.Inst), func(r wavref.Ref) bool { return r.ID == id }) {
+				t.Errorf("%s: skip %s is not a catalogued recording of it", p.Inst, id)
 			}
 		}
 	}
@@ -201,6 +210,8 @@ func TestTuneDimStaysInItsBox(t *testing.T) {
 func TestAddedHarmonicsStartSilent(t *testing.T) {
 	reg := audio.BuiltinModuleRegistry()
 	ship := shippedDoc(t, roster.Trombone)
+	// Its five partials and breath, so the bank has room whatever later tuning raised above them.
+	ship.Layers = ship.Layers[:6]
 	d, added, err := addHarmonicLayers(ship, reg, 6)
 	if err != nil {
 		t.Fatal(err)

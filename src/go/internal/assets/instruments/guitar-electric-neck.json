@@ -6,7 +6,7 @@
   "notes": "guitarElectricNeckSeed: neck pickup — warmer, longer sustain.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.8222,
+    "amplitude": 0.8251,
     "gate_tail": 0,
     "melodic": true
   },

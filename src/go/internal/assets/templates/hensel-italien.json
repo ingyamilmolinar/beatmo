@@ -312,8 +312,8 @@
 {"id":305,"i":0,"j":154,"type":"regular","outputs":[306],"pitch":5,"volume":0.48996,"duration":0.5},
 {"id":306,"i":0,"j":152,"type":"regular","outputs":[243],"pitch":5,"volume":0.48996,"duration":0.5}
 ],"instrument_docs":{
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--2":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--3":{"ref":"sha256:08b4fe02beed1d61"},
-"voice-soprano":{"ref":"sha256:11a7f3360d76901e"}
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--2":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--3":{"ref":"sha256:38f2e3bbc82646a7"},
+"voice-soprano":{"ref":"sha256:91fb94749d800c8c"}
 }}

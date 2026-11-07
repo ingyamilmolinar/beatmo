@@ -6,7 +6,7 @@
   "notes": "moogBassSeed: a fat mono analog bass — a saw through a resonant low-pass swept\nby a filter envelope, with a sine sub-partial for weight. Round, punchy, ladder-\nfilter growl. Defaults to A3 (pitch nodes down for a bassline).",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.4039,
+    "amplitude": 0.4054,
     "gate_tail": 0,
     "melodic": true
   },

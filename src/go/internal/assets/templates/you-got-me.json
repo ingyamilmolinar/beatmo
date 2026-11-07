@@ -333,11 +333,11 @@
 {"id":323,"i":0,"j":206,"type":"regular","outputs":[324],"volume":0.62},
 {"id":324,"i":0,"j":205,"type":"regular","outputs":[198],"volume":0.62}
 ],"instrument_docs":{
-"ghost-bass":{"ref":"sha256:d271b77c7c6734ea"},
+"ghost-bass":{"ref":"sha256:d761e837c1fc7ae8"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
 "kick-acoustic":{"ref":"sha256:75de7158d04afeaa"},
-"piano-rhodes":{"ref":"sha256:2c9ed5eae2b27b86"},
-"piano-rhodes--2":{"ref":"sha256:2c9ed5eae2b27b86"},
+"piano-rhodes":{"ref":"sha256:148858785326dca7"},
+"piano-rhodes--2":{"ref":"sha256:148858785326dca7"},
 "snare-acoustic":{"ref":"sha256:8665dadd14b1d68a"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"}
 }}

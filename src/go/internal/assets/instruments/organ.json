@@ -6,7 +6,7 @@
   "notes": "organSeed: additive Hammond-style drawbars — sine partials at organ footage\nratios (16',8',5⅓',4',2⅔',2',1⅓') with a SUSTAINED envelope and a shallow\nLeslie chorus (LFO→pitch). OSC disabled; gen slots set the drawbar spectrum.\nA static additive sine spectrum is exactly the \"organ\" timbre the brass seed\nwarns against — here that is the intent. Used by Bach (full pipe voicing via\nper-template SynthParams), house pads, techno held chords, reggae bubble.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.6001,
+    "amplitude": 0.6022,
     "gate_tail": 0,
     "melodic": true
   },

@@ -159,8 +159,8 @@
 {"id":152,"i":0,"j":110,"type":"regular","outputs":[153],"pitch":-3,"duration":1},
 {"id":153,"i":0,"j":106,"type":"regular","outputs":[125],"pitch":7,"duration":1}
 ],"instrument_docs":{
-"cello":{"ref":"sha256:626990a48d0da623"},
-"flute":{"ref":"sha256:b04eb452e0aebe04"},
-"oboe":{"ref":"sha256:474c7ba576a2af1f"},
-"violin":{"ref":"sha256:1df613b2f0179067"}
+"cello":{"ref":"sha256:8c1ece4f90b0c12c"},
+"flute":{"ref":"sha256:1f90918c86c0710f"},
+"oboe":{"ref":"sha256:a798f83fc3c2cd55"},
+"violin":{"ref":"sha256:36de018601badc27"}
 }}

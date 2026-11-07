@@ -285,12 +285,12 @@
 {"id":274,"i":0,"j":243,"type":"regular","outputs":[275],"volume":0.62},
 {"id":275,"i":0,"j":242,"type":"regular","outputs":[172],"volume":0.62}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
-"guitar-steel":{"ref":"sha256:9d759ff6d7a7b250"},
+"guitar-steel":{"ref":"sha256:aedd3de295a32861"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-punchy":{"ref":"sha256:f98027e0e7b8e939"},
+"kick-punchy":{"ref":"sha256:a068154ce3d580b0"},
 "sidestick":{"ref":"sha256:48fab82ebcea6105"},
-"snare-crack":{"ref":"sha256:85437546b64cdd18"},
-"steel-drum":{"ref":"sha256:c156fbb098b22c41"}
+"snare-crack":{"ref":"sha256:12a5c9b297aabd0f"},
+"steel-drum":{"ref":"sha256:402805434c63df99"}
 }}

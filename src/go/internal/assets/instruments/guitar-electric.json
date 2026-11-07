@@ -6,7 +6,7 @@
   "notes": "guitarElectricSeed: electric guitar with very long sustain + mild resonance.",
   "render": {
     "seconds": 0.75,
-    "amplitude": 0.953,
+    "amplitude": 0.9563,
     "gate_tail": 0,
     "melodic": true
   },

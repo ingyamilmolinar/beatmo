@@ -6,7 +6,7 @@
   "notes": "frenchHornLoudSeed: forte horn — same SUBTRACTIVE saw→LP→filtenv architecture as\nfrenchHornSeed, but BRIGHTER (higher LP cutoff, bigger filtenv bloom) and a slightly\nfaster forte onset. Still mellow/dark vs trumpet, P1-dominated, with evolving brightness.\nLOUD/forte french horn — the SAME additive H2-dominant \"covered\" tone as the\nbase horn but brassier: boosted upper harmonics (more H3/H4/H5 = the forte\n\"blare\"), brighter roll-off, higher gain. Was an old saw; re-synced.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.7683,
+    "amplitude": 0.771,
     "gate_tail": 0,
     "melodic": true
   },

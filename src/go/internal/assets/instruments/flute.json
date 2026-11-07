@@ -6,7 +6,7 @@
   "notes": "fluteSeed: additive partials matching real flute profile + breath noise + vibrato.\nReal flute D4: strong 2nd harmonic (p2=0.83, near-equal), scattered even/odd upper\npartials (p4=0.24, p6=0.17), breath noise, big centroid motion, cMean=1812Hz.\nfluteSeed — BLOWN WAVEGUIDE (Surge XT \"Constant\" / STK / RipplerX open-tube). A real flute is a\nresonant air column driven by continuous breath, NOT a sum of static sines (which read as an organ).\ngen_source:3 (Karplus-Strong delay line) + gen_ks_blow>0 runs the blown branch in modular_gen_slot_ks:\ncontinuous filtered breath noise into a tuned delay with a tanh-bounded feedback loop (self-limiting\nlimit cycle → pitched, breathy, never-exactly-repeating). Verified by TestBlownKS_* (bounded + sustains\n+ pitched). gen_ks_sustain → blown loop gain (×1.05 inside; ~0.96-0.99 sustains), gen_ks_blow = breath\ndrive, gen_ks_pluck = reflection/air-color lowpass alpha.\nFLUTE = ADDITIVE near-sine tone + CONTINUOUS BREATH AIR (osc_enabled:0). The\nold Karplus-Strong blown tube (gen1_source:3) read HARPY: at low blow the KS\nexcitation decays like a PLUCKED STRING (that's what KS is) rather than a\ncontinuously BLOWN pipe — and raising blow to sustain it made it 5x too airy\nand warbly (the KS delay pitch-mod is nonlinear). Additive is the right model\n(same as the oboe fix): a sustained sparse harmonic series (real flute E5 is\nnear a sine — P1 1.0, P2 .27, P3 .10) + a PROMINENT, SUSTAINED band-passed\nbreath hiss = the defining \"blowing\" air, present the whole note, not a\ndecaying pluck. Additive pitch vibrato is stable, so the flute can actually\nwaver (~8 cents) without the KS wander.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.6801,
+    "amplitude": 0.5549,
     "gate_tail": 0,
     "melodic": true
   },
@@ -15,7 +15,7 @@
       "v": 1,
       "on": true,
       "values": {
-        "amp_attack": 0.04,
+        "amp_attack": 0.6278147265829611,
         "amp_curve": 1,
         "amp_decay": 0.05,
         "amp_release": 0.12,
@@ -40,15 +40,15 @@
       "v": 1,
       "on": true,
       "values": {
-        "drive": 0
+        "drive": 0.017688624321555706
       }
     },
     "filter": {
       "v": 1,
       "on": true,
       "values": {
-        "filter_cutoff": 2900,
-        "filter_resonance": 1,
+        "filter_cutoff": 2058.8326633188385,
+        "filter_resonance": 1.5022656947241497,
         "filter_type": 0
       },
       "notes": "filter_cutoff: the flute centroid is only ~2 kHz — roll off the top for a rounder, less whistly tone"
@@ -95,13 +95,13 @@
       "values": {
         "env_fast_mix": 0.4,
         "env_fast_rate": 4,
-        "env_tail_mix": 0.9,
+        "env_tail_mix": 0.004689245196564696,
         "env_tail_rate": 0,
         "filt_alpha": 0,
         "filt_freq": 2100,
         "filt_q": 0.45,
         "filt_type": 5,
-        "gain": 0.42,
+        "gain": 0.06791072104940751,
         "noise_offset": 0
       },
       "notes": "gen1_source: CONTINUOUS breath air — the flute's defining sound. Band-passed around the\nblowing frequencies, SUSTAINED for the whole note (tail_mix high, no decay),\nprominent (this is what makes it read as BLOWN, not plucked/organ)."
@@ -121,7 +121,7 @@
         "filt_type": 0,
         "freq": 1,
         "freq_mode": 0,
-        "gain": 0.55,
+        "gain": 0.5105196610399236,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -143,7 +143,7 @@
         "filt_type": 0,
         "freq": 2,
         "freq_mode": 0,
-        "gain": 0.15,
+        "gain": 0.6707230146292984,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0
@@ -165,7 +165,7 @@
         "filt_type": 0,
         "freq": 3,
         "freq_mode": 0,
-        "gain": 0.05,
+        "gain": 0.486686397608396,
         "phase": 0,
         "phase_mode": 0,
         "wave": 0

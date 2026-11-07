@@ -6,7 +6,7 @@
   "notes": "xylophoneSeed: a hard, bright xylophone — like the marimba but tuned to its 3rd\npartial (the wooden-bar signature), brighter and MUCH shorter (a hard mallet on\na small bar).",
   "render": {
     "seconds": 0.5,
-    "amplitude": 0.6145,
+    "amplitude": 0.6167,
     "gate_tail": 0,
     "melodic": true
   },

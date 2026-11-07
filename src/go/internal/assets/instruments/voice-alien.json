@@ -6,7 +6,7 @@
   "notes": "voiceAlienSeed: a morphing alien choir — a glottal-voice source through the\nformant vowel bank with a FAST vowel morph (Ah->Ee) so the pad seems to \"speak\",\na humanized detuned ensemble and vibrato. Uncanny, otherworldly.",
   "render": {
     "seconds": 1.25,
-    "amplitude": 0.7654,
+    "amplitude": 0.7681,
     "gate_tail": 0,
     "melodic": true
   },

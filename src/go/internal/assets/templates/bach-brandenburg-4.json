@@ -282,8 +282,8 @@
 {"id":275,"i":0,"j":126,"type":"regular","outputs":[276],"pitch":5,"duration":0.5},
 {"id":276,"i":0,"j":120,"type":"regular","outputs":[224],"duration":0.5}
 ],"instrument_docs":{
-"cello":{"ref":"sha256:626990a48d0da623"},
-"flute":{"ref":"sha256:b04eb452e0aebe04"},
-"flute-breathy":{"ref":"sha256:d4f75ba330859dc8"},
-"violin":{"ref":"sha256:1df613b2f0179067"}
+"cello":{"ref":"sha256:8c1ece4f90b0c12c"},
+"flute":{"ref":"sha256:1f90918c86c0710f"},
+"flute-breathy":{"ref":"sha256:d2b89d5f6d940968"},
+"violin":{"ref":"sha256:36de018601badc27"}
 }}

@@ -6,7 +6,7 @@
   "notes": "celestaSeed: a soft struck-metal keyboard (celesta/toy-piano) — like the\nglockenspiel but gentler and tinklier: lower partials, a softer strike, a\nslightly darker top.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.5864,
+    "amplitude": 0.5884,
     "gate_tail": 0,
     "melodic": true
   },

@@ -6,7 +6,7 @@
   "notes": "─────────────────────────────────────────────────────────────────────────────\nKICK family as CONFIG. Each seed is the C voice's former per-variant literals for its\nvariant, extracted from modular_stages.c rather than hand-transcribed — that\nincludes attack/fade/sat, which the legacy binding passed as NaN and which a\nseed MUST state explicitly (gen_kick_sat left at the schema identity 0\nsilences the voice outright).\n─────────────────────────────────────────────────────────────────────────────\ndrum-kick -> C gen_kick_base\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\npe_amt 0.1→0.25, click 0.35→0.15, attack 0.3→0, h2 0.4→0.16, sat\n0.55→0.85, noise 0.18→0.13, pe_rate 30→26",
   "render": {
     "seconds": 0.5,
-    "amplitude": 0.9414,
+    "amplitude": 0.9448,
     "gate_tail": 0,
     "melodic": false
   },

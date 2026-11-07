@@ -6,7 +6,7 @@
   "notes": "glassWashSeed: an ambient glass/waterphone wash — inharmonic partials in a slow\nswell-and-fade pad, a wide drifting detuned unison for shimmering beats, and a\nslow filter LFO that opens and closes the wash. Horror-film glass texture.",
   "render": {
     "seconds": 1.25,
-    "amplitude": 0.6051,
+    "amplitude": 0.6073,
     "gate_tail": 0,
     "melodic": true
   },

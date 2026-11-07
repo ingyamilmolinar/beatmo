@@ -3,10 +3,10 @@
   "id": "rimshot",
   "name": "Rimshot",
   "category": "modular",
-  "notes": "snareRimshotSeed is the RIMSHOT voice (C snare variant 1) as config — the\nformer drum-snare-rimshot C literals written out explicitly. Variant 1 does\nnot read tail_d or wire_m, which is why they are absent; the engine has no\ndefaults, so every parameter the branch actually READS is spelled out here.",
+  "notes": "rimshotSeed: a SNARE rimshot (stick on head and rim at once: head, wires and the rim's crack together),\nessence-tuned (`refs tune`, pick `from: snare-fat`) toward rimshot-vcsl and ear-approved in `make ab-tuned`\n(2026-11-07: \"ball park\"). It replaced two tuned tones (500 + 1050 Hz, a drum-machine clave) that\nranked #33 on the recording and read as a high tom or conga.",
   "render": {
-    "seconds": 0.3,
-    "amplitude": 0.9057,
+    "seconds": 1,
+    "amplitude": 1,
     "gate_tail": 0,
     "melodic": false
   },
@@ -32,14 +32,14 @@
         "osc_detune": 0,
         "osc_octave": 0,
         "pitch": 0,
-        "voice_freq_hz": 500
+        "voice_freq_hz": 186
       }
     },
     "drive": {
       "v": 1,
       "on": true,
       "values": {
-        "drive": 0
+        "drive": 0.13069100252295138
       }
     },
     "filter": {
@@ -63,8 +63,7 @@
         "post_decay_rate": 8,
         "post_drive": 0,
         "post_pitch": 0
-      },
-      "notes": "out_clamp: no output limit (these voices never had one)"
+      }
     }
   },
   "source": {
@@ -77,22 +76,23 @@
   },
   "layers": [
     {
-      "type": "snare.rimshot",
+      "type": "snare.main",
       "v": 1,
       "on": true,
       "values": {
         "freq": 1,
         "freq_mode": 0,
-        "snare_attack": 2,
-        "snare_noise_d": 200,
-        "snare_noise_m": 0.7,
-        "snare_tone2": 1050,
-        "snare_tone_d": 40,
-        "snare_tone_m": 1,
-        "snare_tune": 1,
+        "snare_attack": 0.02487,
+        "snare_noise_d": 93.20338106037384,
+        "snare_noise_m": 0.3073,
+        "snare_tail_d": 22.459062984131076,
+        "snare_tone2": 264.0113110858367,
+        "snare_tone_d": 76.05212127916481,
+        "snare_tone_m": 2.466985461072194,
+        "snare_tune": 0.4074,
+        "snare_wire_m": 1.9683,
         "wave": 0
-      },
-      "notes": "gen1_snare_variant: rimshot"
+      }
     }
   ]
 }

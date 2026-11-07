@@ -6,7 +6,7 @@
   "notes": "violinEnsembleSeed diverges the violin ensemble preset from the base modular voice:\nadditive core + detuned ensemble saw + bow-noise tap + filter envelope.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.8476,
+    "amplitude": 0.8506,
     "gate_tail": 0,
     "melodic": true
   },

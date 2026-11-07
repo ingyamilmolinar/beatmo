@@ -244,11 +244,11 @@
 {"id":234,"i":0,"j":208,"type":"regular","outputs":[235],"volume":0.62},
 {"id":235,"i":0,"j":206,"type":"regular","outputs":[164],"volume":0.62}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
-"brass-stab":{"ref":"sha256:36eac85c050c5a7b"},
-"brass-stab--2":{"ref":"sha256:36eac85c050c5a7b"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
+"brass-stab":{"ref":"sha256:0420b6a0af8a6d27"},
+"brass-stab--2":{"ref":"sha256:0420b6a0af8a6d27"},
 "clap":{"ref":"sha256:4654bc24ef59f65f"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-808":{"ref":"sha256:897a554c4972f0a6"},
+"kick-808":{"ref":"sha256:13fcc43969ca4ce3"},
 "voice-ahh":{"ref":"sha256:e54ff2094b923c96"}
 }}

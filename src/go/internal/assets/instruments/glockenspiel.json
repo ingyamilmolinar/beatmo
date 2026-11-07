@@ -6,7 +6,7 @@
   "notes": "glockenspielSeed: struck steel bars — very bright, glassy, long metallic ring.\nHigh inharmonic partials (5.4x, 10.4x, 17x) give the bell-tree sparkle; a thin\nHP strike chiff supplies the \"tink\".",
   "render": {
     "seconds": 1,
-    "amplitude": 0.64,
+    "amplitude": 0.6423,
     "gate_tail": 0,
     "melodic": true
   },

@@ -223,8 +223,8 @@
 {"id":216,"i":0,"j":206,"type":"regular","outputs":[217],"pitch":12,"duration":1},
 {"id":217,"i":0,"j":202,"type":"regular","outputs":[210],"pitch":10,"duration":1}
 ],"instrument_docs":{
-"piano-grand":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--2":{"ref":"sha256:08b4fe02beed1d61"},
-"piano-grand--3":{"ref":"sha256:08b4fe02beed1d61"},
+"piano-grand":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--2":{"ref":"sha256:38f2e3bbc82646a7"},
+"piano-grand--3":{"ref":"sha256:38f2e3bbc82646a7"},
 "voice-opera":{"ref":"sha256:83bd748e322c2caf"}
 }}

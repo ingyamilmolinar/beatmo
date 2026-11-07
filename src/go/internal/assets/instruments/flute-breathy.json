@@ -6,7 +6,7 @@
   "notes": "fluteBreathySeed: breathier flute — more noise + same harmonic structure.",
   "render": {
     "seconds": 1,
-    "amplitude": 0.826,
+    "amplitude": 0.829,
     "gate_tail": 0,
     "melodic": true
   },

@@ -6,7 +6,7 @@
   "notes": "punchyKickSeed: a PUNCHY, RAW, BRUTAL kick (tuned toward yellowtree\n\"hybrid-kick-1\") on the LAYERED kick DSP (variant 5). That voice resolves the\npunch-vs-raw tension a single distorted voice cannot: a pitch-swept body +\nenvelope-tracked grit fused through distortion (raw, decays with the body = no\nhiss) + a sharp POST-distortion click (high crest = the punch). The kick knobs\nare re-purposed by variant 5: sat = DISTORTION DRIVE, noise = GRIT amount,\nclick = the TRANSIENT SPIKE.\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nclick 0.30→0.22, noise 0.16→0, env0 12.0→13.5, sat 1.4→2.6, h2 0.22→0,\nenv1 12→0.5",
   "render": {
     "seconds": 0.25,
-    "amplitude": 0.8834,
+    "amplitude": 0.8865,
     "gate_tail": 0,
     "melodic": false
   },

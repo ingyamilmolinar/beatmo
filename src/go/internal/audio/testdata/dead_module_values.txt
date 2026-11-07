@@ -16,7 +16,6 @@ strike.* no shipped instrument is a WAV clone yet (liveness: TestModalStagesAreL
 noiseband.* no shipped instrument is a WAV clone yet (liveness: TestModalStagesAreLive)
 
 # ── FINISH ──
-finish.post_decay_rate read only when post_decay < 1 (a fade); every shipped instrument leaves Length at 1
 
 # ── FM oscillator: bass-fm, piano-rhodes and music-box (algorithm 0) set op2 depth
 #    1.3–3, yet op2 never reaches their output — they render as pure carriers.

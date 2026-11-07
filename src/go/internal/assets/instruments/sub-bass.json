@@ -6,7 +6,7 @@
   "notes": "subBassSeed: the analytic dual-oscillator sub bass (gen source 4) as a plain\nconfig seed — formerly the legacy drum-sub-bass recipe + bass translation\nlayer; values are exactly what that binding sent, keyed against the modular\ndefaults (bit-identical render, locked by TestSynthGoldenByteIdentity).",
   "render": {
     "seconds": 1,
-    "amplitude": 0.5119,
+    "amplitude": 0.5137,
     "gate_tail": 0,
     "melodic": false
   },

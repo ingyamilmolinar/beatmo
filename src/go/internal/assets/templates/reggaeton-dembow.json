@@ -305,10 +305,10 @@
 {"id":296,"i":0,"j":174,"type":"regular","outputs":[297],"volume":0.49500000000000005},
 {"id":297,"i":0,"j":172,"type":"regular","outputs":[234],"volume":0.49500000000000005}
 ],"instrument_docs":{
-"bass-808":{"ref":"sha256:3f4d23bbfd1fb493"},
-"guitar-nylon":{"ref":"sha256:4ebc137d7f2e6ab1"},
+"bass-808":{"ref":"sha256:eb3a3d2b0302d422"},
+"guitar-nylon":{"ref":"sha256:9d8f85e50d6fdd2e"},
 "hihat":{"ref":"sha256:a885782ce5a7dc5b"},
-"kick-punchy":{"ref":"sha256:f98027e0e7b8e939"},
-"marimba":{"ref":"sha256:719d627868502ec2"},
-"snare-crack":{"ref":"sha256:85437546b64cdd18"}
+"kick-punchy":{"ref":"sha256:a068154ce3d580b0"},
+"marimba":{"ref":"sha256:95d979b1377d9571"},
+"snare-crack":{"ref":"sha256:12a5c9b297aabd0f"}
 }}
