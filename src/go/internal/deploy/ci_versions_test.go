@@ -120,3 +120,12 @@ func stripDockerComments(src string) string {
 	}
 	return b.String()
 }
+
+// golangci-lint analysing under an older Go than go.mod's misreads the code:
+// a stale `go: "1.23"` turned every t.Fatal-guarded nil check into a SA5011.
+func TestLintConfigTakesGoFromGoMod(t *testing.T) {
+	cfg := mustRead(t, filepath.Join(repoRoot(t), ".golangci.yml"))
+	if regexp.MustCompile(`(?m)^\s+go:\s`).MatchString(cfg) {
+		t.Error(".golangci.yml pins `run.go` — leave it out so the linter reads go.mod")
+	}
+}
