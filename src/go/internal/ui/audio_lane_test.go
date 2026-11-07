@@ -120,7 +120,7 @@ func (g *gridSource) VoiceReady(n laneNote) bool {
 	}
 	return !g.notReady[n.Inst]
 }
-func (g *gridSource) Warm(n laneNote)            { g.warmed = append(g.warmed, n.Inst) }
+func (g *gridSource) Warm(n laneNote) { g.warmed = append(g.warmed, n.Inst) }
 func (g *gridSource) Retarget(n laneNote, inst instrument.ID) laneNote {
 	n.Inst = inst
 	n.Hash = g.noteHash(n)

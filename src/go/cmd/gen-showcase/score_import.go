@@ -573,7 +573,7 @@ func agogicBeats(part musicxml.Part, n musicxml.Note, l loadedLayer) (float64, b
 		return 0, false
 	}
 	if !haveEnd {
-		spanEnd, haveEnd = active.OnsetDiv+agogicSpanMeasures*measureLenAt(part, active.OnsetDiv, l.div), true
+		spanEnd = active.OnsetDiv + agogicSpanMeasures*measureLenAt(part, active.OnsetDiv, l.div)
 	}
 	if n.OnsetDiv > spanEnd {
 		return 0, false

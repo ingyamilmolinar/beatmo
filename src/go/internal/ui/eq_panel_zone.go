@@ -176,9 +176,9 @@ type EQPanelZone struct {
 	rect       image.Rectangle
 	needLayout bool
 	// layouts counts Layout calls (recalcButtons' layout gate is judged by it).
-	layouts int
-	callbacks  EQCallbacks
-	portal     *OverlayPortal // set by tree wiring
+	layouts   int
+	callbacks EQCallbacks
+	portal    *OverlayPortal // set by tree wiring
 
 	// UI elements
 	eqMuteBtns []*Button       // per-band mute

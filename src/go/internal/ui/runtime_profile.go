@@ -321,9 +321,9 @@ func browserRuntimeProfile() *RuntimeProfile {
 		LateToleranceSec:                   0.025,
 		LaneFullReconcileSec:               0.25,
 		LaneVoiceRecommitMinSec:            0.03,
-		LaneVoiceNearSec:                   0.25,  // = the desktop horizon. A whole-horizon (1 s) re-commit per knob-drag tick was ~3000 WebAudio voice starts/s in webaudio_all_knob_bpm_stress (2026-10-28 CPU profile), near-due replacements queuing 3-24 ms behind far ones
-		AudioBatchMax:                      32, // Phase F: 256 regressed drawAvg 25% — keep
-		SequencerTickMS:                    4,  // Phase F: 1ms tick regressed fps 19% — keep
+		LaneVoiceNearSec:                   0.25, // = the desktop horizon. A whole-horizon (1 s) re-commit per knob-drag tick was ~3000 WebAudio voice starts/s in webaudio_all_knob_bpm_stress (2026-10-28 CPU profile), near-due replacements queuing 3-24 ms behind far ones
+		AudioBatchMax:                      32,   // Phase F: 256 regressed drawAvg 25% — keep
+		SequencerTickMS:                    4,    // Phase F: 1ms tick regressed fps 19% — keep
 		ParityScanMinPeriod:                8,
 		AdaptivePanPad:                     true, // Phase F: disabling regressed drawAvg 23%
 		FastPanDetect:                      true, // Phase F: same — load-bearing

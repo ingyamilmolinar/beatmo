@@ -71,9 +71,9 @@ type TimelineZone struct {
 	rect       image.Rectangle
 	needLayout bool
 	// layouts counts Layout calls (recalcButtons' layout gate is judged by it).
-	layouts int
-	callbacks  TimelineCallbacks
-	portal     *OverlayPortal
+	layouts   int
+	callbacks TimelineCallbacks
+	portal    *OverlayPortal
 
 	// Computed sub-rects (set during Layout)
 	stepsRect       image.Rectangle // grid area for drag scrolling
