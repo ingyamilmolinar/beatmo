@@ -6,6 +6,26 @@ on:
   pull_request:
 
 jobs:
+  # Builds and pushes the CI images only when ci/ changed (the tag is a content
+  # hash); otherwise it finds both tags and finishes in seconds.
+  images:
+    name: CI images
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      build: ${{ steps.publish.outputs.build }}
+      browser: ${{ steps.publish.outputs.browser }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
+        run: make image-publish
+
   build:
     name: Build
     runs-on: ubuntu-latest

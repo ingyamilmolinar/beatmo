@@ -1,3 +1,5 @@
+include ci/versions.env
+
 GO ?= $(shell if [ -x $(CURDIR)/.tools/go/bin/go ]; then echo $(CURDIR)/.tools/go/bin/go; else echo go; fi)
 WASM_OUT = ../js/main.wasm
 MA_JS = src/js/drums.single.js
@@ -668,6 +670,29 @@ ci-build: $(C_LIB)
 	$(MAKE) gograph-test
 	$(MAKE) js-audit
 
+# ─── CI images (ci/versions.env + ci/images/) ───────────────────────────────
+# `make dev TARGET=test` runs any target in the CI image (podman or docker);
+# `make doctor` checks that the host's tools match the pins.
+CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+KIND ?= build
+IMAGE_REF = $(shell scripts/ci/image-tag.sh $(KIND))
+.PHONY: image-tag image-publish dev doctor
+image-tag:
+	@echo $(IMAGE_REF)
+
+image-publish:
+	scripts/ci/image-publish.sh
+
+dev:
+	@test -n "$(CONTAINER)" || { echo "make dev needs podman or docker"; exit 1; }
+	$(CONTAINER) run --rm -i $$([ -t 0 ] && echo -t) --init --ipc=host --user $$(id -u):$$(id -g) -e HOME=/tmp \
+	  -v $(CURDIR):$(CURDIR) -w $(CURDIR) \
+	  -v beatmo-gocache:/cache/go-build -v beatmo-gomod:/cache/gomod -v beatmo-npm:/cache/npm \
+	  $(IMAGE_REF) make $(TARGET)
+
+doctor:
+	@scripts/ci/doctor.sh
+
 # js-audit: no value js.ValueOf cannot convert (a typed id or enum) reaches
 # syscall/js — it panics in the browser only, invisible to the compiler and to
 # every native test. See scripts/jsaudit/main.go.
@@ -683,16 +708,16 @@ test-comment-census:
 	python3 scripts/comment_census_test.py
 
 # ─── Linting ─────────────────────────────────────────────────────────────────
-GOLANGCI_LINT = .tools/golangci-lint
+GOLANGCI_LINT ?= $(CURDIR)/.tools/golangci-lint
 
-$(GOLANGCI_LINT):
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b .tools latest
+$(CURDIR)/.tools/golangci-lint:
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b .tools v$(GOLANGCI_LINT_VERSION)
 
 lint-go: $(GOLANGCI_LINT)
-	cd src/go && ../../$(GOLANGCI_LINT) run ./...
+	cd src/go && $(GOLANGCI_LINT) run ./...
 
 lint-go-fix: $(GOLANGCI_LINT)
-	cd src/go && ../../$(GOLANGCI_LINT) run --fix ./...
+	cd src/go && $(GOLANGCI_LINT) run --fix ./...
 
 lint-js:
 	cd src/js && npx eslint .
