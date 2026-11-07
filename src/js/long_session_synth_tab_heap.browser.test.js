@@ -230,7 +230,7 @@ await sample("baseline");
 const dragIntervalMs = Math.max(1, Math.floor(1000 / PARAM_HZ));
 const totalIterations = Math.floor((SOAK_SECONDS * 1000) / dragIntervalMs);
 const samplesEveryIter = Math.max(1, Math.floor(SAMPLE_EVERY_MS / dragIntervalMs));
-let it = 0;
+let it;
 const startTs = Date.now();
 for (it = 0; it < totalIterations; it++) {
   const t = it / PARAM_HZ;

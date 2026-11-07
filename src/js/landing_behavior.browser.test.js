@@ -84,7 +84,7 @@ const BASE = `http://127.0.0.1:${deployed.address().port}`;
 const DEV = `http://127.0.0.1:${dev.address().port}`;
 
 const CHANNEL = process.env.LANDING_CHANNEL ?? "chrome";
-let browser, h264 = true;
+let browser, h264;
 try {
   browser = await chromium.launch({ channel: CHANNEL || undefined });
 } catch (_) {

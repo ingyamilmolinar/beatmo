@@ -35,6 +35,15 @@ export default [
       "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
+  // AudioWorklet and Worker scripts run in their own global scopes.
+  {
+    files: ["**/*_worklet.js"],
+    languageOptions: { globals: { ...globals.audioWorklet } },
+  },
+  {
+    files: ["**/*worker*.js", "landing_crystal.js"],
+    languageOptions: { globals: { ...globals.worker } },
+  },
   // Browser test files and helpers: disable no-undef because page.evaluate()
   // runs code in the browser WASM context where globals like startPlay,
   // stopPlay, forceDraw, etc. are injected by the Go WASM runtime.

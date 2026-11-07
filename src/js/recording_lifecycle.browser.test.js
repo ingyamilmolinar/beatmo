@@ -225,7 +225,7 @@ async function buildKickPattern(page, bpm = 120) {
 // Scenario A: Download trigger via real UI flow
 // ════════════════════════════════════════════════════════════════════════
 console.log("\n=== Scenario A: Download trigger ===");
-let downloadedZipBytes = null;
+let downloadedZipBytes;
 {
   const page = await newRecordingPage();
   await buildKickPattern(page, 120);
@@ -360,8 +360,8 @@ console.log("\n=== Scenario C: Performance regression ===");
   }));
   await page.evaluate(() => stopPlay?.());
 
-  console.log(`    lagP90=${(base.audio?.lagP90 * 1000 ?? 0).toFixed(2)}ms ` +
-    `lagP99=${(base.audio?.lagP99 * 1000 ?? 0).toFixed(2)}ms ` +
+  console.log(`    lagP90=${((base.audio?.lagP90 ?? 0) * 1000).toFixed(2)}ms ` +
+    `lagP99=${((base.audio?.lagP99 ?? 0) * 1000).toFixed(2)}ms ` +
     `overdue=${base.audio?.overdue} ` +
     `audioDrops=${base.perf?.audioDrops} ` +
     `updateAvg=${base.perf?.updateAvgMS?.toFixed(2)}ms ` +
@@ -385,8 +385,8 @@ console.log("\n=== Scenario C: Performance regression ===");
     await window.stopRecording();
   });
 
-  console.log(`    lagP90=${(rec.audio?.lagP90 * 1000 ?? 0).toFixed(2)}ms ` +
-    `lagP99=${(rec.audio?.lagP99 * 1000 ?? 0).toFixed(2)}ms ` +
+  console.log(`    lagP90=${((rec.audio?.lagP90 ?? 0) * 1000).toFixed(2)}ms ` +
+    `lagP99=${((rec.audio?.lagP99 ?? 0) * 1000).toFixed(2)}ms ` +
     `overdue=${rec.audio?.overdue} ` +
     `audioDrops=${rec.perf?.audioDrops} ` +
     `recordingDrops=${rec.perf?.recordingDrops} ` +

@@ -735,8 +735,9 @@ $(JS_DEPS): src/js/package-lock.json
 	@touch $@
 js-deps: $(JS_DEPS)
 
+# Tracked files only: a scratch script in the working tree is not part of what CI lints.
 lint-js: $(JS_DEPS)
-	cd src/js && npx eslint .
+	cd src/js && git ls-files -z -- '*.js' '*.mjs' | xargs -0 npx eslint --no-warn-ignored
 
 lint-js-fix:
 	cd src/js && npx eslint --fix .
