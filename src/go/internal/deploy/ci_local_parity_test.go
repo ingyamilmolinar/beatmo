@@ -1,7 +1,11 @@
 package deploy
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -147,4 +151,54 @@ func TestMakefileRunsGoOnlyThroughTheGOVariable(t *testing.T) {
 			t.Errorf("Makefile:%d names .tools/go directly — use $(GO): %s", i+1, strings.TrimSpace(line))
 		}
 	}
+}
+
+// A target that `go run`s a program linking libdrums.a works on any machine that
+// built the library before, and fails to link on a fresh clone or CI runner.
+func TestTargetsThatLinkCgoDependOnTheCLib(t *testing.T) {
+	root := repoRoot(t)
+	src := mustRead(t, filepath.Join(root, "Makefile"))
+	runRe := regexp.MustCompile(`\$\(GO\) run (\./cmd/[A-Za-z0-9_./-]+)`)
+	headerRe := regexp.MustCompile(`(?m)^([a-zA-Z0-9][a-zA-Z0-9._-]*):([^:=\n][^\n]*|)$`)
+	cgo := map[string]bool{}
+	linksCgo := func(pkg string) bool {
+		if v, ok := cgo[pkg]; ok {
+			return v
+		}
+		cmd := exec.Command(goBin(), "list", "-deps", "-f", "{{if .CgoFiles}}{{.ImportPath}}{{end}}", pkg)
+		cmd.Dir = filepath.Join(root, "src", "go")
+		out, err := cmd.Output()
+		cgo[pkg] = err == nil && strings.Contains(string(out), "github.com/ingyamilmolinar/beatmo/")
+		return cgo[pkg]
+	}
+	checked := 0
+	for _, h := range headerRe.FindAllStringSubmatchIndex(src, -1) {
+		name, deps := src[h[2]:h[3]], src[h[4]:h[5]]
+		deps, _, _ = strings.Cut(deps, "##")
+		recipe := targetRecipe(src, name)
+		for _, line := range strings.Split(recipe, "\n") {
+			m := runRe.FindStringSubmatch(line)
+			if m == nil || strings.Contains(line, "-tags test") {
+				continue
+			}
+			checked++
+			if linksCgo(m[1]) && !strings.Contains(deps, "$(C_LIB)") {
+				t.Errorf("target %s runs %s, which links libdrums.a, but does not depend on $(C_LIB)", name, m[1])
+				break
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("found no `$(GO) run ./cmd/...` recipes — the scan is broken")
+	}
+}
+
+func goBin() string {
+	if g := os.Getenv("GO"); g != "" {
+		return g
+	}
+	if p, err := exec.LookPath("go"); err == nil {
+		return p
+	}
+	return filepath.Join(runtime.GOROOT(), "bin", "go")
 }
