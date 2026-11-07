@@ -1,9 +1,6 @@
 package synthdial
 
-// Reading is the dial's position (0..1) for these param values: the weighted
-// mean of each live term's span coordinate, clamped to the span. A pure
-// function of the values — a dial stores nothing. Terms with no value in the
-// map do not count.
+// The weighted mean of each live term's clamped span coordinate: a pure function of the values. Absent params do not count.
 func (r Resolved) Reading(values map[string]float64) float64 {
 	sum, w := 0.0, 0.0
 	for _, t := range r.Terms {
@@ -20,13 +17,9 @@ func (r Resolved) Reading(values map[string]float64) float64 {
 	return sum / w
 }
 
-// Turn returns the param values that put the dial at target (0..1), starting
-// from start. Every term moves the same fraction k of its remaining travel
-// toward the end being turned to (u → u + (1−u)·k up, u → u·(1−k) down), so
-// each keeps its offset from the others and the reading lands exactly on
-// target; a term already at or past that end stays where it is. At target 0
-// or 1 every term sits exactly on its span end. A target equal to the current
-// reading returns start unchanged. Only the dial's own params are returned.
+// Every term moves the same fraction k of its remaining travel toward the end (u → u + (1−u)·k up, u·(1−k) down), so
+// offsets are kept and the reading lands exactly on target; a term already past that end stays. Ends are exact; the
+// current reading returns start unchanged.
 func (r Resolved) Turn(start map[string]float64, target float64) map[string]float64 {
 	target = clamp(target, 0, 1)
 	out := make(map[string]float64, len(r.Terms))

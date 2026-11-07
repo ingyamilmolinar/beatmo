@@ -1,48 +1,6 @@
-// Package scoreref is the catalogue of reference musical scores that the
-// built-in template circuits are generated from.
-//
-// # Why the scores are committed
-//
-// This package is deliberately NOT shaped like its sibling internal/wavref.
-// Reference WAVs cannot be committed — real instrument recordings carry mixed,
-// often restrictive licences — so wavref points at an uncommitted directory and
-// its consumers skip when it is absent. Scores are the opposite case: every
-// score admitted here is CC0, which permits redistribution outright. Committing
-// them keeps `cmd/gen-showcase` and its drift test fully offline and makes the
-// generated templates reproducible from a clean checkout with no network.
-//
-// # The admission rule
-//
-// A score is admissible only if it passes all three gates, each recorded as a
-// catalogue field and enforced by a test in this package:
-//
-//  1. The WORK is public domain: first published at least 96 years ago (US)
-//     AND every author — composer, arranger, lyricist — dead at least 71 years
-//     (EU life+70). Conservative on purpose: it clears both regimes at once,
-//     so no per-piece jurisdiction analysis is needed. The cut-offs move with
-//     the calendar (PublicationCutoff/DeathCutoff), so admission never goes
-//     stale and an admitted work can never fall back out. A TRADITIONAL work
-//     (folk tune, rhythmic idiom) has no author to outlive; it is admitted on
-//     a cited Reference instead, while any named arranger still has to clear
-//     the death gate. This gate matters even for a CC0 corpus: OpenScore
-//     contains Bartok, Berg and Webern, whose ENCODINGS are CC0 while the
-//     works themselves are not free everywhere.
-//  2. The ENCODING is permissively licensed: see AllowedLicenses.
-//  3. The PROVENANCE is verifiable: a named corpus, an exact upstream URL, and
-//     a SHA256 over the committed bytes. A MIDI edition also commits its
-//     LilyPond source (Companion), which is where its licence and its pickup
-//     are corroborated. Beatmo's own idiom scores (provider "beatmo") are the
-//     upstream: the committed file is the original.
-//
-// docs/score-sources.md records the full survey — every corpus considered,
-// its licence, and why it was admitted or rejected. Read it before adding a
-// source.
-//
-// # Do not import this from the app
-//
-// The embedded corpus is ~5 MB. Only cmd/gen-showcase and tests may import
-// this package; the shipped binaries embed only the GENERATED template JSON in
-// internal/assets. TestNoProductionImports enforces that.
+// Package scoreref catalogues the scores the templates are generated from. Unlike audio (never committed), every score is
+// CC0 or similar and committed, so generation is offline and reproducible. Admission gates: a public-domain WORK, a
+// permissive ENCODING, verifiable PROVENANCE (docs/score-sources.md). ~5 MB: never imported by a shipped binary.
 package scoreref
 
 import (
@@ -71,21 +29,12 @@ var scoreFS embed.FS
 // identifies the revision.
 const Format = "beatmo.scoreref-catalogue"
 
-// AllowedLicenses is the encoding-licence allowlist (Gate 2).
-//
-// CC0/PD/unrestricted mirror the bar internal/wavref sets for reference audio.
-// CC-BY-4.0 is admitted because attribution is satisfiable by a committed
-// notice file; entries using it MUST carry a non-empty Attribution.
-//
-// NonCommercial and ShareAlike licences are deliberately absent and must not be
-// added: NC forbids the use outright for a product that ships, and SA would
-// push its own terms onto the generated templates. That is what excludes the
-// KernScores/Sapp editions which four templates previously depended on.
+// CC-BY-4.0 is satisfiable by the committed notice, so its entries MUST carry an Attribution. NonCommercial and
+// ShareAlike must never be added: NC forbids a shipping product, SA would push its terms onto the generated templates.
 var AllowedLicenses = []string{"CC0-1.0", "PD", "unrestricted", "CC-BY-4.0"}
 
-// Gate 1 terms. A work published in year Y enters the US public domain on
-// 1 January of Y+96; an author who died in year Y releases their works in the
-// EU on 1 January of Y+71.
+// US: published in year Y enters the public domain on 1 January Y+96. EU: an author dying in Y releases on 1 January
+// Y+71. Clearing both at once needs no per-piece jurisdiction analysis.
 const (
 	usPublicationTermYears = 96
 	euLifePlusYears        = 71
@@ -140,11 +89,8 @@ type Work struct {
 	Traditional bool   `json:"traditional,omitempty"`
 	Reference   string `json:"reference,omitempty"`
 
-	// Rhythm marks a DRUM PATTERN encoded from a published transcription of a
-	// record's groove (the Amen break, the Funky Drummer). A short rhythm is
-	// generally not a protectable work of its own; it is admitted on
-	// Reference — the transcription it was encoded from — and only Beatmo's
-	// own CC0 encoding of it is committed.
+	// A DRUM PATTERN encoded from a published transcription of a record's groove: a short rhythm is generally not
+	// protectable, so it is admitted on its Reference and only Beatmo's own CC0 encoding is committed.
 	Rhythm bool `json:"rhythm,omitempty"`
 
 	// Original marks a piece Beatmo composed and dedicated to the public
@@ -161,9 +107,7 @@ type Source struct {
 	License  string `json:"license"`
 	// Attribution is the credit line reproduced in NOTICE-scores.md.
 	Attribution string `json:"attribution"`
-	// EmbeddedRights is the score's own <rights> element, verbatim. A test
-	// checks it corroborates License, so the catalogue cannot quietly claim a
-	// licence the file itself contradicts.
+	// Verbatim; a test checks it corroborates License, so the catalogue cannot claim a licence the file contradicts.
 	EmbeddedRights string `json:"embedded_rights"`
 	// SourceEdition is the printed edition the transcriber worked from, when
 	// the file names one.
@@ -177,9 +121,8 @@ type Score struct {
 	SHA256 string `json:"sha256"`
 	// Format is FormatMXL (default), FormatMusicXML or FormatMIDI.
 	Format string `json:"format,omitempty"`
-	// Pickup is the anacrusis of a MIDI edition as a LilyPond duration ("8",
-	// "8*2", "4."), corroborated against the companion's \partial. MIDI cannot
-	// express it, and without it every downbeat would be misplaced.
+	// The anacrusis as a LilyPond duration, checked against the companion's \partial: MIDI cannot express it, and without
+	// it every downbeat moves.
 	Pickup string `json:"pickup,omitempty"`
 	// Companion is the source a derived file was built from — a MIDI edition's
 	// LilyPond file — committed beside it so its licence can be checked.
@@ -243,9 +186,7 @@ func Catalogue() (Cat, error) {
 	return catVal, catErr
 }
 
-// MustCatalogue is Catalogue for callers that cannot proceed without it. The
-// catalogue is embedded and test-validated, so a failure here is a build defect,
-// never a runtime condition.
+// Embedded and test-validated, so a failure is a build defect.
 func MustCatalogue() Cat {
 	c, err := Catalogue()
 	if err != nil {
@@ -282,9 +223,7 @@ func IDs() []string {
 	return out
 }
 
-// Load returns the raw bytes of a score. The bytes are the upstream file
-// verbatim — a compressed .mxl container — so the SHA256 in the catalogue is
-// directly comparable to the upstream artifact. musicxml.Parse unwraps it.
+// The upstream file verbatim (a .mxl container), so the catalogue SHA256 compares directly with the upstream artifact.
 func Load(id string) ([]byte, error) {
 	s, ok := Ref(id)
 	if !ok {

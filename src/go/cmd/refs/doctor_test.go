@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Every registered instrument must be classified. An unclassified instrument
-// is a gap in the catalogue, and the golden below is what makes adding a new
-// instrument without a reference decision fail the build. Coverage is
-// reported per ROSTER id -- there is no folding of one id onto another.
+// The golden makes a new instrument without a reference decision fail the build; coverage is per ROSTER id, never folded.
 func TestCoverage_ClassifiesEveryBaseInstrument(t *testing.T) {
 	rows, err := coverage()
 	if err != nil {
@@ -40,9 +37,7 @@ func TestCoverage_ClassifiesEveryBaseInstrument(t *testing.T) {
 	}
 }
 
-// Coverage is reported per ROSTER id. Folding an id onto a shorter one hid
-// every renamed variant behind its base, so a variant with no reference of
-// its own looked covered.
+// Folding an id onto a shorter one hid every variant behind its base, so one with no reference looked covered.
 func TestCoverageReportsRenamedVariantsSeparately(t *testing.T) {
 	rows, err := coverage()
 	if err != nil {
@@ -106,12 +101,7 @@ func TestCoverage_StatusRowsExplainThemselves(t *testing.T) {
 	}
 }
 
-// doctor's coverage() only walks the ROSTER asking "is this instrument
-// covered?" — it is structurally blind to the reverse error: a catalogue
-// entry whose `instruments` array names an id that isn't in the roster at
-// all. Such a reference is orphaned; nothing can ever resolve it and no
-// other tool reports it. This test closes that gap directly against the
-// committed catalogue.json.
+// The reverse error coverage() cannot see: a catalogue entry naming an id not in the roster, which nothing can resolve.
 func TestCatalogue_EveryReferencedInstrumentExistsInRoster(t *testing.T) {
 	c, err := loadCatalogue()
 	if err != nil {

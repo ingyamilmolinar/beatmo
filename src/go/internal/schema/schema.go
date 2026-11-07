@@ -1,30 +1,6 @@
-// Package schema is the single source of truth for the on-disk schema
-// version carried by every Beatmo JSON format.
-//
-// It has no dependencies beyond the standard library so that ui, audio,
-// userprefs and uistate can all import it without introducing a cycle.
-//
-// # The version rule
-//
-// Every format applies the same rule when reading a document:
-//
-//	schema_version == Version      → accept
-//	anything else, absent included → reject (Validate returns an error)
-//
-// There is no migration arm: documents written before versioning are not
-// read.
-//
-// # Recovery is the caller's choice
-//
-// Validate reports a mismatch identically for every format. What a caller
-// does about it differs by format class:
-//
-//   - Documents the user opens explicitly (project JSON, instrument
-//     bundle) surface the error. The user picked the file; tell them.
-//   - Stores loaded automatically at boot (prefs, instruments, uistate)
-//     log a warning and start from empty, matching how they already treat
-//     a corrupt file. A fatal error there would fail startup on a file the
-//     app itself wrote.
+// Package schema holds the one on-disk version of every Beatmo JSON format (stdlib only, so anything may import it).
+// Exactly the current version is accepted, an absent one rejected (no migration). Opened documents surface the error;
+// stores loaded at boot warn and start empty, since a fatal error would fail startup on a file the app wrote.
 package schema
 
 import "fmt"
@@ -37,17 +13,8 @@ const Version = "0.0.1"
 // migration tooling can reference it without hardcoding the string.
 const Field = "schema_version"
 
-// Envelope carries the schema version. Embed it anonymously in a document
-// struct — encoding/json flattens anonymous structs, so it contributes a
-// top-level "schema_version" key rather than a nested object:
-//
-//	type projectFile struct {
-//	        schema.Envelope
-//	        BPM int `json:"bpm"`
-//	}
-//
-// The field is deliberately NOT omitempty: every document this codebase
-// writes must be self-describing, and an absent key is rejected on read.
+// Embedded anonymously, it flattens to a top-level "schema_version". Deliberately NOT omitempty: every document written
+// is self-describing, and an absent key is rejected on read.
 type Envelope struct {
 	SchemaVersion string `json:"schema_version"`
 }
@@ -56,11 +23,7 @@ type Envelope struct {
 // when constructing a document for writing.
 func Current() Envelope { return Envelope{SchemaVersion: Version} }
 
-// Validate checks the envelope against the current version: only an exact
-// match is accepted, an absent version included in the rejections.
-//
-// format names the document kind for the error message, e.g. "project" or
-// "instrument bundle".
+// Exactly the current version; format names the document kind for the error.
 func (e Envelope) Validate(format string) error {
 	if e.SchemaVersion == Version {
 		return nil
@@ -68,9 +31,7 @@ func (e Envelope) Validate(format string) error {
 	return &VersionError{Format: format, Want: Version, Got: e.SchemaVersion}
 }
 
-// VersionError reports a schema version this build cannot read. It is a
-// distinct type so callers can branch on it (e.g. to offer a migration
-// hint) instead of string-matching the message.
+// A distinct type, so callers branch on it instead of matching the message.
 type VersionError struct {
 	Format string
 	Want   string

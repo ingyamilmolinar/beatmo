@@ -1,31 +1,6 @@
-// Browser-side memory profile for the synth-tab playback session.
-//
-// Mirrors scripts/capture_browser_runner.mjs's static-server + Playwright
-// scaffolding, but instead of capturing screenshots, it:
-//   1. Loads the WASM page, awaits runScene/startPlay/setInstrumentParam
-//      registration.
-//   2. Applies the crop_synth_tab_drum scene (opens Synth tab on a known recipe).
-//   3. Starts playback at the requested BPM.
-//   4. Drives audio.setInstrumentParam at 12 Hz across every available
-//      instrument for 60 seconds (mirrors the desktop record-bench churn).
-//   5. Captures, at t = 5/30/60 s:
-//        - performance.memory.usedJSHeapSize (Chromium-only; logged "n/a"
-//          otherwise)
-//        - window.dumpHeapProbe() Go-side CSV (BEATMO_HEAP_PROBE=1 sets the
-//          per-second runtime.MemStats ring)
-//        - window.perfStats() snapshot
-//        - Chromium heap snapshot via CDP HeapProfiler.takeHeapSnapshot
-//   6. Writes everything under bench-results/synth-browser-<ts>/.
-//
-// Run as:
-//   GO=$(pwd)/.tools/go/bin/go node scripts/profile_browser_synth_60s.mjs
-//
-// Environment overrides:
-//   PROFILE_BROWSER_SECS         total duration in seconds (default 60)
-//   PROFILE_BROWSER_SCENE        scene name (default crop_synth_tab_drum)
-//   PROFILE_BROWSER_BPM          BPM (default 140)
-//   PROFILE_BROWSER_CHURN_HZ     param churn rate (default 12)
-//   PROFILE_BROWSER_SKIP_SNAPSHOT  if "1", skip CDP heap snapshots (faster)
+// Synth-tab memory profile: plays crop_synth_tab_drum while setInstrumentParam churns every instrument, capturing JS
+// heap, dumpHeapProbe, perfStats and a CDP heap snapshot → bench-results/synth-browser-<ts>/. Env: PROFILE_BROWSER_SECS
+// (60) _SCENE _BPM (140) _CHURN_HZ (12) _SKIP_SNAPSHOT=1 _SAMPLES.
 
 import { chromium } from "../src/js/node_modules/playwright/index.mjs";
 import path from "node:path";
@@ -132,8 +107,7 @@ try {
     await page.evaluate(() => window.forceDraw());
     await page.waitForTimeout(500);
 
-    // Resolve instrument set — enumerate every row's instrument so the churn
-    // mirrors the desktop record-bench (which iterates audio.Instruments()).
+    // Every row's instrument, as the desktop record-bench iterates audio.Instruments().
     const instruments = await page.evaluate(() => {
         const out = new Set();
         const n = (window.totalRows && window.totalRows()) || 0;
@@ -165,9 +139,7 @@ try {
     const t0 = Date.now();
     const period = Math.max(1, Math.round(1000 / CHURN_HZ));
 
-    // Param churn loop runs in the page so timing isn't bottlenecked by IPC.
-    // It uses setInterval so the JS event loop also exercises GC/scheduling
-    // the way a real user-driven session does.
+    // In the page, on setInterval, so IPC never paces it and the event loop sees GC/scheduling as a real session does.
     await page.evaluate(
         ({ insts, period, durMs }) => {
             window.__profileChurnStop = false;
@@ -186,8 +158,7 @@ try {
                         window.setInstrumentParam(id, "pitch", pitch);
                         window.setInstrumentParam(id, "decay", decay);
                     } catch (e) {
-                        // swallow per-tick — surface via console.warn so the
-                        // browser_console.log captures it once if it recurs.
+                        // Warned once, not per tick.
                         if (!window.__profileChurnWarned) {
                             console.warn("setInstrumentParam threw:", e);
                             window.__profileChurnWarned = true;
@@ -204,9 +175,7 @@ try {
         { insts: instruments, period, durMs: DUR_SEC * 1000 }
     );
 
-    // Capture schedule (offsets in seconds from t0). PROFILE_BROWSER_SAMPLES
-    // overrides the default 3-point capture with a denser schedule so we
-    // can see growth shape over the run.
+    // PROFILE_BROWSER_SAMPLES replaces the 3-point capture with a denser schedule, to see the growth shape.
     let offsets = [5, 30, DUR_SEC];
     if (process.env.PROFILE_BROWSER_DENSE === "1") {
         offsets = [];

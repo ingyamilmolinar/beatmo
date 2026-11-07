@@ -1,22 +1,6 @@
-// Command clone turns a reference recording of a struck / modal instrument
-// into a candidate instrument document (spec
-// docs/superpowers/specs/2026-10-12-wav-clone-modal-design.md):
-//
-//	clone -inst <id> [-ref <ref>] [-wav <path>] [-f0 <Hz>] [-as <newid> | -into <id>]
-//	      [-no-refine] [-seed N] [-gens N] [-workers N] [-json] [-out <dir>] [-cpuprofile <f>]
-//	clone adopt -inst <id>
-//
-// The first form analyses (Prepare → Analyze), inverts the analysis into a
-// document (model numbers only — never audio), refines it with seeded
-// parallel CMA-ES against the reference, and writes everything under
-// $BEATMO_WAV_REFS/clones/<inst>/: analysis.json, candidate.json, meta.json,
-// docs/<sha>.json, report.md / report.json and level-matched reference /
-// current / candidate WAVs. Listening is `make ab-session FAMILIES=<inst>
-// CLONE=1`; `clone adopt` ships the candidate only after that session
-// recorded accept = y for this exact document.
-//
-// Exit codes: 0 ok, 2 refused (not a struck/modal reference — the partial
-// analysis is still written), 1 error.
+// Command clone turns a struck / modal reference into a candidate document: analyse, invert into model numbers (never
+// audio), refine with seeded CMA-ES → $BEATMO_WAV_REFS/clones/<inst>/. `clone adopt -inst <id>` ships it only after a
+// y for that exact document. Exit: 0 ok, 2 refused (not struck/modal; partial analysis still written), 1 error.
 package main
 
 import (

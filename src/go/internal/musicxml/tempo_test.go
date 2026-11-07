@@ -2,14 +2,8 @@ package musicxml
 
 import "testing"
 
-// tempo_test.go — a score's tempo is a TIMELINE, not a single number.
-//
-// Score.TempoBPM used to be one field overwritten by every tempo marking in the
-// document, so a multi-tempo work reported whatever marking happened to appear
-// LAST. gen-showcase then stamped that on an excerpt taken from somewhere else
-// entirely: the Ode to Joy template (measures 92-107, which the score marks
-// quarter=160) shipped at 264 — the tempo of the Prestissimo coda at measure
-// 923 — and played 65% too fast.
+// A score's tempo is a TIMELINE: one field overwritten by every marking reports whichever appears last, not what the
+// excerpt's measures are marked.
 
 const tempoDoc = `<?xml version="1.0"?>
 <score-partwise version="4.0"><part-list><score-part id="P1"><part-name>P</part-name></score-part></part-list>
@@ -62,10 +56,7 @@ func TestTempoAtMeasureTracksTheTimeline(t *testing.T) {
 	}
 }
 
-// TestDominantTempoOverRange picks the single constant a fixed-BPM circuit
-// should run at: the tempo covering the most measures of the excerpt, not the
-// one that happens to be in force at its first bar. Ode to Joy is exactly this
-// case — one bar of quarter=88 followed by fifteen of quarter=160.
+// One bar of quarter=88, then fifteen of 160: the tempo covering most of the excerpt, not the first bar's.
 func TestDominantTempoOverRange(t *testing.T) {
 	sc, err := Parse([]byte(tempoDoc))
 	if err != nil {
@@ -95,11 +86,7 @@ const movementDoc = `<?xml version="1.0"?>
     <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration></note></measure>
 </part></score-partwise>`
 
-// TestMovementSplitsOnRenumber — a multi-movement file restarts measure
-// numbering per movement, so a measure number alone does not identify a bar.
-// gen-showcase selected "measures 1-10" by printed number and so pulled those
-// bars out of ALL FOUR movements of each quartet, building 336-668 bar loops
-// for 8-10 bar excerpts.
+// Numbering restarts per movement, so a measure number alone pulls bars from every movement.
 func TestMovementSplitsOnRenumber(t *testing.T) {
 	sc, err := Parse([]byte(movementDoc))
 	if err != nil {
@@ -122,9 +109,7 @@ func TestMovementSplitsOnRenumber(t *testing.T) {
 	}
 }
 
-// TestSingleMovementIsAllMovementOne guards the common case: a score whose
-// numbering never restarts must stay one movement, or every existing template
-// would silently lose its music.
+// A score whose numbering never restarts must stay one movement, or every template silently loses its music.
 func TestSingleMovementIsAllMovementOne(t *testing.T) {
 	sc, err := Parse([]byte(tempoDoc))
 	if err != nil {
@@ -137,10 +122,7 @@ func TestSingleMovementIsAllMovementOne(t *testing.T) {
 	}
 }
 
-// numberingExceptionDoc numbers a repeat ending "X1" the way engravers do.
-// It is NOT a movement boundary, and the parser must not treat it as one: the
-// printed number falls back to the ordinal there, so it reads as a decrease
-// against the bar before it.
+// An engraver's "X1" repeat ending, NOT a movement boundary, although its ordinal fallback reads as a decrease.
 const numberingExceptionDoc = `<?xml version="1.0"?>
 <score-partwise version="4.0"><part-list><score-part id="P1"><part-name>P</part-name></score-part></part-list>
 <part id="P1">

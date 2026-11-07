@@ -11,46 +11,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 )
 
-// diagnose_classifier_replay_test.go — THE regression gate for the registry
-// refactor.
-//
-// WHY THIS EXISTS SEPARATELY FROM diagnose_acceptance_test.go
-// -----------------------------------------------------------
-// The acceptance test deliberately runs against a FROZEN snapshot of
-// `refs diagnose -json` and only calls instrumentDiagnosis.Axis(), a pure
-// lookup over deserialized JSON. That is exactly right for its purpose (it
-// must not start failing when an instrument is deliberately retuned), but it
-// means it exercises NO classification code at all: it would pass unchanged
-// even if every classifier in the codebase were deleted and replaced with a
-// constant.
-//
-// So it cannot serve as the gate for moving the classifiers out of this
-// package and into internal/audio/fingerprint. This test supplies that gate.
-// It takes the same frozen baseline — whose `reference` and `synth` numbers
-// are REAL measurements taken against REAL audio at freeze time — and pushes
-// each pair back through the NEW registry comparators, asserting that the
-// verdict and direction come out byte-identical to the frozen ones.
-//
-// WHAT IT DOES AND DOES NOT COVER (corrected 2026-09-04). It replays through
-// CompareByKind(d.Kind, …), i.e. through the KIND's default thresholds. It
-// therefore does NOT read Descriptor.Drift/Mismatch and does NOT notice
-// threshold calibration at all — the earlier claim here that "if a threshold
-// … drifts during the refactor, this fails" was true only of Kind-level
-// thresholds. What it does gate is the classifier BRANCHES and the Kind
-// assignments, which is what the refactor could have broken; that is why the
-// 2026-08-22 baseline still replays byte-identically after calibration.
-//
-// The descriptor-threshold half is covered by
-// TestCalibratedComparatorsReproduceTheirGolden below, against its own
-// golden, plus internal/audio/fingerprint's TestEmbeddedThresholdsAreWellFormed
-// and TestDeltaMagReproducesTheVerdict.
+// The acceptance test reads frozen verdicts and runs no classifier, so this replays the frozen pairs (real measurements)
+// through the registry comparators at the KIND's defaults: it gates the classifier branches and Kind assignments, not
+// calibrated thresholds (TestCalibratedComparatorsReproduceTheirGolden covers those).
 
-// replaySkipNote marks the ring-T60 rows whose frozen verdict came from the
-// decay-RATE escalation path rather than the plain T60 ratio. Those rows are
-// not reproducible from the two stored scalars alone (the escalation needs
-// the extrapolation flags and the decay rates, which the baseline JSON does
-// not carry), so they are skipped here and covered instead by
-// TestRingT60EscalatesWhenBothSidesExtrapolated in the fingerprint package.
+// Rows whose frozen verdict came from the decay-RATE escalation cannot be reproduced from two scalars (they need the
+// extrapolation flags and rates); TestRingT60EscalatesWhenBothSidesExtrapolated covers them.
 const replaySkipNote = "T60 NOT OBSERVABLE"
 
 func TestClassifiersReproduceFrozenBaseline(t *testing.T) {
@@ -66,10 +32,7 @@ func TestClassifiersReproduceFrozenBaseline(t *testing.T) {
 		t.Fatal("frozen baseline is empty — the gate would be vacuous")
 	}
 
-	// Map the human-facing axis name to the registry descriptor that now owns
-	// it. Going through the registry (rather than a hand-written name->Kind
-	// table here) is deliberate: if a descriptor's Kind is changed, this test
-	// picks the change up and the frozen verdicts catch it.
+	// Through the registry, not a hand table, so a changed Kind is picked up and the frozen verdicts catch it.
 	byName := make(map[string]fingerprint.Descriptor)
 	for _, d := range fingerprint.DefaultRegistry().All() {
 		byName[d.Name] = d
@@ -102,9 +65,7 @@ func TestClassifiersReproduceFrozenBaseline(t *testing.T) {
 		}
 	}
 
-	// Guard against the gate silently going hollow: if a future change makes
-	// every row skip or every name miss, the loop above would pass while
-	// asserting nothing.
+	// Every row skipping or every name missing would pass while asserting nothing.
 	if checked < 50 {
 		t.Fatalf("only %d axis rows were actually checked (%d skipped) — the gate has gone hollow", checked, skipped)
 	}

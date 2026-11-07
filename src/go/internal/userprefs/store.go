@@ -1,20 +1,6 @@
-// Package userprefs persists per-user UI state outside of the project
-// file. The first consumer is the instrument-menu favorites set
-// (filled-star toggles); the package is structured so other per-user
-// preferences (pinned categories, recent items, layout overrides) can
-// land alongside without changing the storage contract.
-//
-// Backends are selected by build tag:
-//
-//   - //go:build js   — localStorage (synchronous, key beatmo.prefs)
-//   - //go:build !js  — JSON file at os.UserConfigDir()/beatmo/prefs.json
-//     written via atomic rename on a single-worker async.Pool named
-//     "userprefs.persist" (lazy-acquired on first SaveFavorites).
-//
-// Load semantics match across backends: missing/malformed data returns an
-// empty state without error so the caller can assume a Store always returns
-// a usable result. Logged warnings make a corrupted file recoverable by the
-// operator.
+// Package userprefs persists per-user state outside the project file (favorites, language, theme, audio-panel state,
+// notifications, knob steps, sample edits): localStorage key beatmo.prefs under js, else prefs.json under UserConfigDir,
+// written atomically on the lazily acquired userprefs.persist pool. Missing or malformed data loads empty, never fails.
 package userprefs
 
 import (
@@ -33,45 +19,24 @@ const LocalStorageKey = "beatmo.prefs"
 // under os.UserConfigDir()/beatmo/.
 const FileName = "prefs.json"
 
-// PoolName is the name registered with async.DefaultRegistry on
-// desktop builds the first time SaveFavorites is invoked. Surfaced as
-// a constant so tests and the CLAUDE.md standing-pools table reference
-// the same string.
+// A constant so tests and the CLAUDE.md standing-pools table name the same string.
 const PoolName = "userprefs.persist"
 
-// prefsDoc is the on-the-wire shape. (The retired recipe_overrides /
-// user_recipes sections of older files are ignored and dropped on the next
-// write: instruments live in the instrument store as documents.)
-//
-// Every section is omitempty, so a document only grows once the user
-// actually changes the corresponding setting. Adding a section is one
-// field here plus one sanitizer in the prefsSnapshot⇄prefsDoc pair — there
-// is deliberately no per-section marshal wrapper.
+// Every section is omitempty, so a document grows only once the user changes that setting. Adding a section is a field
+// here plus a sanitizer, never a per-section marshal wrapper. Retired recipe sections are ignored and dropped on write.
 type prefsDoc struct {
 	schema.Envelope
 	Favorites []string `json:"favorites,omitempty"`
-	// Phase 5 audio-panel redesign (userprefs v3): tab-specific
-	// audio-panel state that should survive across sessions. omitempty
-	// so v1/v2 prefs files don't grow until the user actually changes
-	// any value; SaveAudioPanelState writes nil when the whole struct
-	// is at defaults.
+	// Audio-panel state that survives sessions; nil when everything is at its default.
 	AudioPanel *AudioPanelStateDoc `json:"audio_panel,omitempty"`
-	// SampleEdits carries the non-destructive Sampler-edit descriptors:
-	// instrument-id → field-name → value (bools as 0/1). Tiny flat maps,
-	// so they live in prefs.json — NOT in the PCM
-	// SampleStore. The audio package owns the SampleEdit↔map conversion.
+	// Instrument id → field → value (bools 0/1): tiny maps, so in prefs.json, not the PCM SampleStore. audio owns the
+	// conversion.
 	SampleEdits map[instrument.ID]map[string]float64 `json:"sample_edits,omitempty"`
-	// Notifications carries the persisted user-notification history
-	// (bounded, oldest..newest). omitempty so older prefs files don't grow
-	// until the user actually raises a notification.
+	// Bounded, oldest to newest.
 	Notifications []NotificationRecord `json:"notifications,omitempty"`
-	// KnobSteps carries per-param-name chosen step-multiplier rungs for the
-	// synth/sampler knob step badges. param-name → step value. omitempty so
-	// older prefs files don't grow until the user actually changes any rung.
+	// param name → step rung for the synth/sampler step badges.
 	KnobSteps map[string]float64 `json:"knob_steps,omitempty"`
-	// Language carries the chosen UI locale (e.g. "es", "fr"). Empty =
-	// default (English) upstream. omitempty so older prefs files don't grow
-	// until the user actually picks a non-default language.
+	// "" = English.
 	Language string `json:"language,omitempty"`
 	// Theme carries the per-user UI color scheme + the circuit-override
 	// flag. omitempty so files don't grow until the user opens the Theme
@@ -99,35 +64,20 @@ type NotificationHistoryStore interface {
 	SaveNotifications(recs []NotificationRecord) error
 }
 
-// AudioPanelStateDoc mirrors the persisted shape of the audio-panel
-// state. Exposed via LoadAudioPanelState / SaveAudioPanelState. The
-// UI uses an internal struct that wraps this with sensible defaults
-// when the field is nil — we pin the JSON shape here so future
-// renames don't break older save files.
+// The JSON shape is pinned here so a rename in the UI's wrapping struct never breaks older save files.
 type AudioPanelStateDoc struct {
 	// SynthGraphDetails: the Synth graph shows its NUMBERS readout instead of
 	// the plain WORDS one (the graph's Details toggle).
 	SynthGraphDetails bool `json:"synth_graph_details,omitempty"`
 }
 
-// IsDefault reports whether every field is at its zero value. The
-// persistence layer uses this to skip serialising the section when
-// no user override is active, keeping older prefs files small.
+// An all-default section is not serialised at all.
 func (s AudioPanelStateDoc) IsDefault() bool {
 	return !s.SynthGraphDetails
 }
 
-// Store persists a single set of favorited instrument IDs. Implementations
-// must be safe for concurrent use from the UI goroutine (LoadFavorites,
-// SaveFavorites) and from the background worker that drains the queue.
-//
-// SaveFavorites is non-blocking on the desktop backend (returns once the
-// job is queued); WaitFlushed exists for tests and clean shutdown that
-// need to know the disk is consistent.
-//
-// Both concrete backends (fileStore, localStorageStore) also implement the
-// sibling section surfaces below — callers type-assert the return value from
-// NewBackingStore.
+// Safe from the UI goroutine and the background writer. SaveFavorites only queues on desktop; WaitFlushed is for tests
+// and shutdown. Both backends implement the sibling section surfaces too, reached by type assertion.
 type Store interface {
 	LoadFavorites() (map[instrument.ID]bool, error)
 	SaveFavorites(map[instrument.ID]bool) error
@@ -135,29 +85,19 @@ type Store interface {
 	Close() error
 }
 
-// AudioPanelStore is the sibling surface for audio-panel UI state
-// persistence (Phase 5 redesign). Implementations share the same
-// concrete struct that satisfies Store; expose this
-// view via type assertion. Save/Load are non-blocking on the
-// desktop backend and synchronous in localStorage on browser builds.
+// Non-blocking on desktop, synchronous localStorage in the browser.
 type AudioPanelStore interface {
 	LoadAudioPanelState() (AudioPanelStateDoc, error)
 	SaveAudioPanelState(state AudioPanelStateDoc) error
 }
 
-// SampleBlob is one persisted Sampler-tab user sample: raw little-endian
-// float32 PCM bytes plus the sample rate. The audio package owns the
-// float32↔bytes conversion (keeping userprefs audio-agnostic).
+// audio owns the float32 ↔ bytes conversion, keeping userprefs audio-agnostic.
 type SampleBlob struct {
 	SampleRate int
 	PCM        []byte
 }
 
-// SampleStore persists Sampler-tab user samples across sessions. PCM payloads
-// are large (MBs), so implementations store them OUTSIDE prefs.json /
-// localStorage: one file per sample on desktop, an IndexedDB object store in
-// the browser (localStorage's ~5 MB cap can't hold them). Expose via type
-// assertion on the Store returned by NewBackingStore.
+// PCM is large, so OUTSIDE prefs.json / localStorage: one file per sample on desktop, IndexedDB in the browser.
 type SampleStore interface {
 	// LoadSamples returns id → blob for every persisted sample (never nil).
 	LoadSamples() (map[instrument.ID]SampleBlob, error)
@@ -167,10 +107,7 @@ type SampleStore interface {
 	DeleteSample(id instrument.ID) error
 }
 
-// SampleEditStore is the sibling surface for the non-destructive sample-edit
-// descriptors (Sampler-tab Save on a synth source): instrument-id keyed flat
-// float maps inside the unified prefs document. Expose via type assertion on the Store
-// returned by NewBackingStore.
+// Instrument-id keyed flat maps inside the prefs document.
 type SampleEditStore interface {
 	// LoadSampleEdits returns instrument-id → field → value for every
 	// persisted descriptor. Empty map (never nil) when none exist.
@@ -182,10 +119,7 @@ type SampleEditStore interface {
 	DeleteSampleEdit(instID instrument.ID) error
 }
 
-// KnobStepStore is the sibling surface for per-param knob step-multiplier
-// rung persistence (synth/sampler step badges). param-name keyed flat
-// float64 map inside the unified prefs document. Expose via type assertion
-// on the Store returned by NewBackingStore.
+// param-name keyed values inside the prefs document.
 type KnobStepStore interface {
 	// LoadKnobSteps returns param-name → step value for every persisted rung.
 	// Empty map (never nil) when none exist.
@@ -211,14 +145,10 @@ type LanguageStore interface {
 // Options configure a Store at construction. Zero values pick
 // production defaults; tests pass overrides.
 type Options struct {
-	// Path overrides the desktop file location. Empty = use the
-	// platform default (os.UserConfigDir/beatmo/prefs.json).
-	// Ignored by the WASM backend.
+	// Empty = os.UserConfigDir/beatmo/prefs.json. Ignored on WASM.
 	Path string
 
-	// PoolName overrides the async-pool name. Empty = "userprefs.persist".
-	// Tests pass a per-test name to avoid sharing a long-lived production
-	// pool with sibling tests.
+	// Tests pass their own, so they never share the long-lived production pool.
 	PoolName string
 
 	// Logger receives non-fatal warnings (corrupt file, pool backpressure).
@@ -232,17 +162,8 @@ func NewBackingStore(opts Options) Store {
 	return newBackingStore(opts)
 }
 
-// prefsSnapshot is the in-memory form of a prefs document — one field per
-// section, shared by both backends (fileStore and localStorageStore) and by
-// both directions of serialization.
-//
-// It is the single currency of this package's IO: marshalPrefs takes one,
-// parsePrefs returns one. Historically each section was threaded through a
-// positional argument list that grew a new marshalPrefsV<N> wrapper every
-// time a section was added; that chain re-marshalled the whole document
-// once per section (6 marshals + 5 unmarshals for a full save) and had
-// drifted into two different error policies. Adding a section is now one
-// field here, one field on prefsDoc, and one sanitizer.
+// One field per section, the single currency of this package's IO for both backends and both directions: a section
+// is one field here, one on prefsDoc and one sanitizer, and the document is marshalled once.
 type prefsSnapshot struct {
 	favorites     map[instrument.ID]bool
 	audioPanel    AudioPanelStateDoc
@@ -263,14 +184,8 @@ func emptyPrefsSnapshot() prefsSnapshot {
 	}
 }
 
-// marshalPrefs serializes a snapshot to the on-the-wire document in a
-// single pass.
-//
-// Ordering is deterministic — important for a git-trackable dotfile and for
-// snapshot tests — but that falls out of the representation, not out of any
-// sequencing: encoding/json emits struct fields in declaration order and
-// sorts map keys itself. The one thing needing explicit care is the
-// favorites slice, which sanitizeFavorites sorts.
+// Deterministic (a dotfile people diff, snapshot tests) by representation: struct fields in order, map keys sorted by
+// encoding/json; only the favorites slice needs sorting.
 func marshalPrefs(snap prefsSnapshot) ([]byte, error) {
 	doc := prefsDoc{
 		Envelope:      schema.Current(),
@@ -291,20 +206,9 @@ func marshalPrefs(snap prefsSnapshot) ([]byte, error) {
 	return json.MarshalIndent(doc, "", "  ")
 }
 
-// parsePrefs is the cross-platform load path, the exact inverse of
-// marshalPrefs and likewise a single pass.
-//
-// Every returned map is fresh and non-nil so callers can assume a usable
-// result. Three failure modes all degrade to empty-but-usable state with a
-// logged warning, because prefs are loaded automatically at boot and a hard
-// error would fail startup on a file this app itself wrote:
-//
-//   - empty input (no file yet)
-//   - malformed JSON
-//   - a schema_version this build cannot read
-//
-// A document with NO schema_version is a legacy pre-versioning file: it is
-// accepted with its contents intact and gets stamped on the next write.
+// The inverse of marshalPrefs. Every map comes back fresh and non-nil. An empty input, malformed JSON or an unreadable
+// schema_version (absent included) degrade to empty with a warning: prefs load at boot, and a hard error would fail
+// startup on a file the app wrote.
 func parsePrefs(data []byte, logf func(string, ...any)) (prefsSnapshot, error) {
 	empty := emptyPrefsSnapshot()
 	if len(data) == 0 {
@@ -347,12 +251,8 @@ func parsePrefs(data []byte, logf func(string, ...any)) (prefsSnapshot, error) {
 	return snap, nil
 }
 
-// --- section sanitizers ---------------------------------------------------
-//
-// Each owns the boundary rules for one section and is shared by both
-// directions, so a hand-edited prefs file cannot smuggle in a value that
-// the writer would have rejected. They return nil for an empty section,
-// which pairs with prefsDoc's omitempty tags.
+// Shared by both directions, so a hand-edited file cannot smuggle in what the writer would reject; nil for an empty
+// section, pairing with omitempty.
 
 // sanitizeFavorites drops empty ids and false entries, and sorts — the one
 // piece of ordering that does not fall out of encoding/json.
@@ -381,11 +281,8 @@ func parseFavorites(ids []string) map[instrument.ID]bool {
 	return favs
 }
 
-// sanitizeNestedFloats deep-copies an id → field → value section, dropping
-// empty ids, empty groups, and non-finite values. Non-finite values are
-// dropped at the boundary because audio.SetInstrumentParam applies the same
-// rule — keeping it here means a hand-edited file cannot poison the
-// registry with NaN/Inf. Used by SampleEdits.
+// Drops empty ids, empty groups and non-finite values at the boundary, as SetInstrumentParam does, so a hand-edited file
+// cannot poison anything with NaN/Inf.
 func sanitizeNestedFloats(in map[instrument.ID]map[string]float64) map[instrument.ID]map[string]float64 {
 	if len(in) == 0 {
 		return nil
@@ -449,14 +346,9 @@ func boundNotifications(recs []NotificationRecord) []NotificationRecord {
 	return out
 }
 
-// isFiniteFloat is the boundary-sanitization predicate. Lives here so
-// parsePrefs and SaveSampleEdit apply the same rule. Avoids pulling
-// math/Inf checks into call sites and matches the contract
-// audio.sanitizeParamValue documents.
+// One predicate for parsePrefs and SaveSampleEdit, matching audio's sanitizeParamValue.
 func isFiniteFloat(v float64) bool {
-	// IEEE 754: NaN != NaN; ±Inf has absolute value larger than any
-	// finite. The expression below is the standard idiom that doesn't
-	// need a math import in a leaf package.
+	// NaN != NaN, and ±Inf exceeds every finite value: no math import in a leaf package.
 	if v != v {
 		return false
 	}

@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
-# Re-fetch every reference score from its upstream URL and check it against the
-# SHA256 recorded in internal/scoreref/catalogue.json.
-#
-# The scores are COMMITTED, so this is not needed to build or test — the Go test
-# TestGate3_CommittedBytesMatchCatalogue already proves the committed bytes match
-# the catalogue offline. What this script adds is the other half of the claim:
-# that those bytes are still what upstream serves, i.e. that our copy was not
-# silently edited and that the upstream file has not been revised under us.
-#
-# Usage: scripts/verify_scores.sh [score-id ...]
-#        (no arguments = every score in the catalogue)
+# Re-fetches every reference score and checks it against the catalogue SHA256. The offline test already proves the
+# committed bytes match the catalogue; this proves upstream still serves them. Usage: scripts/verify_scores.sh [score-id ...]
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,9 +14,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 wanted=("$@")
 
-# One row per committed file: the score itself, plus a MIDI edition's
-# LilyPond companion. Beatmo's own groove scores (provider "beatmo") ARE the
-# upstream — there is nothing to re-fetch — so they are reported, not fetched.
+# Beatmo's own groove scores ARE the upstream, so they are reported, not fetched.
 mapfile -t rows < <(python3 - "$cat_json" <<'PY'
 import json, sys
 for s in json.load(open(sys.argv[1]))["scores"]:

@@ -2,15 +2,9 @@
 
 package main
 
-// session.go -- `refs session`: the targeted audition round.
-//
-// Where `refs audition` asks one question per family ("does any of these
-// sound right?"), a session plays the REFERENCE, the family's CURRENT shipped
-// instrument and a small set of parameter-override candidates back to back,
-// then collects a rating and a relative verdict per candidate, a 1-5 answer on
-// each of the family's targeted perceptual questions, free adjectives from one
-// shared vocabulary, and a closing note. The result is one earSession line per
-// family in ear_sessions.jsonl, which `refs validate` scores.
+// Plays the REFERENCE, the CURRENT shipped instrument and a few candidates back to back, then collects per candidate a
+// rating, a relative verdict, the family's 1-5 questions, words from one shared vocabulary and a note: one earSession
+// line per family, scored by refs validate.
 
 import (
 	"crypto/sha256"
@@ -39,11 +33,8 @@ func readChoice(in io.Reader, out io.Writer, prompt string) (string, bool) {
 	return strings.TrimSpace(line), ok
 }
 
-// controlKind recognises the two control tokens shared by every prompt, so
-// "q" and "s" mean the same thing wherever the listener types them. Replay is
-// not a control any more: it is handled in place by replayer, so a prompt
-// re-asks the SAME question after any number of replays instead of the family
-// starting over.
+// q and s mean the same at every prompt. Replay is handled in place by replayer, so a prompt re-asks the SAME question
+// after any number of replays instead of the family starting over.
 func controlKind(tok string) (verdictKind, bool) {
 	switch tok {
 	case "q":
@@ -54,13 +45,8 @@ func controlKind(tok string) (verdictKind, bool) {
 	return verdictRecorded, false
 }
 
-// replayer plays clips on demand from any prompt.
-//
-// Tokens (case-insensitive, a bare single token): "r" reference, "c" current,
-// a candidate id ("a", "b", …), "all" every clip in order, "rel" only the
-// clips the current question is about. After a replay the caller re-asks the
-// same prompt, so answers already given are kept and the listener resumes at
-// exactly the question they had not answered.
+// Tokens: r reference, c current, a candidate id, all, rel (the clips this question is about). The caller then re-asks
+// the same prompt, keeping every answer already given.
 type replayer struct {
 	p     player
 	out   io.Writer
@@ -76,10 +62,7 @@ func (rp *replayer) keys() string {
 	return strings.Join(ks, " ") + " all rel"
 }
 
-// replay plays the clips named by tok and reports whether tok was a replay
-// line at all. A line may hold several tokens ("r a" plays the reference
-// then candidate A); it is a replay line only if EVERY token is a replay
-// key. relevant is the set "rel" expands to for this prompt.
+// A line is a replay only if EVERY token is a replay key ("r a" plays reference then A).
 func (rp *replayer) replay(tok string, relevant []string) bool {
 	if rp == nil {
 		return false
@@ -167,12 +150,8 @@ func promptRating(in io.Reader, out io.Writer, rp *replayer, id string) (int, ve
 	}
 }
 
-// promptVsCurrent asks how a candidate compares with the shipped instrument.
-//
-// The verdict keys are `+` better, `=` same and `-` worse (the words are
-// accepted too). Letters are deliberately NOT used: `b` is candidate B's
-// replay key and `s` skips everywhere, so a listener who has just typed `b`
-// to hear B again must not have that same key record "better" here.
+// + / = / - (or the words), never letters: b is candidate B's replay key and s skips, so typing b to hear B again must
+// not record "better".
 func promptVsCurrent(in io.Reader, out io.Writer, rp *replayer, id string) (string, verdictKind) {
 	relevant := []string{"R", "C", id}
 	for {
@@ -198,9 +177,7 @@ func promptVsCurrent(in io.Reader, out io.Writer, rp *replayer, id string) (stri
 	}
 }
 
-// promptAccept is the gate for a whole-document candidate (a WAV clone, spec
-// 2026-10-12 §6a, or a `refs tune` candidate): should this exact document
-// become the shipped instrument? `clone adopt` reads the answer.
+// Should this exact document become the shipped instrument? clone adopt reads the answer.
 func promptAccept(in io.Reader, out io.Writer, rp *replayer, id string) (string, verdictKind) {
 	relevant := []string{"R", "C", id}
 	for {
@@ -226,11 +203,8 @@ func promptAccept(in io.Reader, out io.Writer, rp *replayer, id string) (string,
 	}
 }
 
-// promptScaleOne asks one deep word about ONE clip ("1 not X enough · 3
-// about right · 5 too X"). The stored answer is centred and turned to the
-// axis (q.storedAnswer): 3 is 0 and +2 always means the synth reads HIGH on
-// q.Axis. A bare "-" leaves this clip unanswered.
-// answered is false when the listener skipped the clip.
+// "1 not X enough · 3 about right · 5 too X", stored centred and turned to the axis (+2 = the synth reads HIGH on
+// q.Axis). A bare "-" leaves the clip unanswered (answered false).
 func promptScaleOne(in io.Reader, out io.Writer, rp *replayer, q sessionQuestion, id string) (ans int, answered bool, kind verdictKind) {
 	relevant := []string{"R", id}
 	for {
@@ -323,11 +297,8 @@ func promptAdjectives(in io.Reader, out io.Writer, rp *replayer, vocab []string,
 	return res, verdictRecorded
 }
 
-// promptShip asks the one question the closeness rating cannot: which
-// version should actually SHIP. The listener may prefer a synth that is
-// nothing like the reference, so this is asked explicitly, independent of
-// similarity. Answers are digits (0 keep current, 1 = first candidate, …)
-// because the candidate letters are replay keys here.
+// Which version should SHIP, asked apart from closeness: the listener may prefer a synth nothing like the reference.
+// Digits (0 keep current), because the candidate letters are replay keys.
 func promptShip(in io.Reader, out io.Writer, rp *replayer, ids []string) (string, verdictKind) {
 	var opts []string
 	for i, id := range ids {
@@ -354,11 +325,7 @@ func promptShip(in io.Reader, out io.Writer, rp *replayer, ids []string) (string
 	}
 }
 
-// promptNote takes the closing free-text note. It honours the same replay,
-// s and q controls as every other prompt, but ONLY when the whole line is
-// that single bare token -- a real note that happens to start with one of
-// those letters ("really close", "all good") is several tokens long and is
-// stored as written.
+// Controls only as a single bare token: a note opening with one of those letters is prose and is kept.
 func promptNote(in io.Reader, out io.Writer, rp *replayer) (string, verdictKind) {
 	for {
 		line, ok := readChoice(in, out, fmt.Sprintf("Anything else? (Enter to skip)  %s\n> ", promptControls(rp)))
@@ -409,9 +376,7 @@ func promptReplayOrRate(in io.Reader, out io.Writer, rp *replayer) verdictKind {
 	}
 }
 
-// sessionIDs is the candidate id list for a family, uppercased -- the prompt
-// keys, the sessionClips keys and the record's candidate ids are all this one
-// derivation so they cannot drift apart.
+// One derivation for prompt keys, clip keys and record ids, so they cannot drift apart.
 func sessionIDs(fc familyCandidates) []string {
 	ids := make([]string, 0, len(fc.Candidates))
 	for _, cand := range fc.Candidates {
@@ -427,15 +392,10 @@ type sessionRenderMeta struct {
 	Dur   float64
 }
 
-// sessionRenderFn produces one family's level-matched clip set. Injecting it
-// is what lets the whole prompt/record flow be tested end to end without
-// rendering a note of audio: the production wiring is renderSessionClips.
+// Injected, so the whole prompt/record flow is tested without rendering audio.
 type sessionRenderFn func(fc familyCandidates, ref wavref.Ref) (sessionClips, sessionRenderMeta, error)
 
-// renderSessionClips is the production sessionRenderFn. Index 0 is the
-// family's CURRENT render (no overrides); the rest are the candidates.
-// Rendering them in ONE call is what level-matches every clip against a
-// single reference copy -- see renderFamilyCompareOverrides.
+// Index 0 is the CURRENT render; one call level-matches every clip against a single reference copy.
 func renderSessionClips(fc familyCandidates, ref wavref.Ref) (sessionClips, sessionRenderMeta, error) {
 	specs := []compareSpec{{Inst: fc.Base}}
 	for _, cand := range fc.Candidates {
@@ -463,11 +423,8 @@ func renderSessionClips(fc familyCandidates, ref wavref.Ref) (sessionClips, sess
 
 // ---- drafts: nothing the listener has answered is ever lost ----------------
 
-// sessionDraft is the in-progress record of one family, saved to disk after
-// EVERY accepted answer. A quit, a crash or a Ctrl-C mid-family therefore
-// costs nothing: the next run of the same family loads the draft, skips the
-// prompts already answered and resumes at the first unanswered one. Done is
-// keyed by prompt ("rating:A", "vs:A", "scale:<key>:A", "adj:A", "note").
+// Saved after EVERY accepted answer, so a quit or crash costs nothing: the next run resumes at the first unanswered
+// prompt. Done is keyed by prompt ("rating:A", "vs:A", "scale:<key>:A", "adj:A", "note").
 type sessionDraft struct {
 	Session earSession      `json:"session"`
 	Done    map[string]bool `json:"done"`
@@ -477,12 +434,8 @@ func draftPath(outPath string, family instrument.ID) string {
 	return outPath + "." + string(family) + ".draft.json"
 }
 
-// draftFile is the draft for family auditioning fc's candidates: the
-// family's draft when there is none or it is for these very candidates;
-// otherwise it belongs to another round (ab-session's A and B are not
-// ab-tuned's T) and this round keeps its own draft beside it, keyed by its
-// candidates, so the other round's answers are never resumed into the wrong
-// sound, overwritten or removed.
+// The family's draft when none exists or it is for these candidates; otherwise a draft of its own beside it, so
+// another round's answers are never resumed into the wrong sound, overwritten or removed.
 func draftFile(outPath string, family instrument.ID, fc familyCandidates) string {
 	p := draftPath(outPath, family)
 	d, ok := loadDraft(p)
@@ -547,11 +500,8 @@ func candidateClip(fc familyCandidates, cand candidateSpec, id string) sessionCl
 	return sessionClip{ID: id, Base: fc.Base, RecipeSHA: audio.InstrumentSoundHash(fc.Base, cand.Overrides), Overrides: cand.Overrides}
 }
 
-// reviewedSession is the latest record of family that already reviewed
-// EXACTLY these candidates (same ids, same sound hashes), so resuming skips
-// it. A re-tuned or re-cloned candidate is a new sound and is pending again.
-// A deep round counts only deep records: the quick round never asked its
-// word ratings.
+// The latest record that reviewed EXACTLY these candidates (ids and sound hashes); a re-tuned candidate is pending
+// again, and a deep round counts only deep records.
 func reviewedSession(records []earSession, family instrument.ID, fc familyCandidates, deep bool) (earSession, bool) {
 	ids := sessionIDs(fc)
 	for i := len(records) - 1; i >= 0; i-- {
@@ -574,20 +524,9 @@ func reviewedSession(records []earSession, family instrument.ID, fc familyCandid
 	return earSession{}, false
 }
 
-// runSessionFamily auditions one family. The catalogue lookup happens in the
-// caller so this stays pure apart from the injected render and the JSONL
-// append.
-//
-// The prompts run strictly in sequence and each one re-asks itself after a
-// replay, so the listener can hear any clip as often as they like at any
-// point and always resumes at the question they had not answered; nothing
-// already answered is lost and the family never starts over. Every accepted
-// answer is also written to a draft file, so the same holds across a quit or
-// a crash: rerunning the family resumes where it stopped.
-//
-// deep selects the round: quick (false) is the same steps for every
-// instrument -- rating, vs current, the word salad, ship, note; deep adds a
-// 1-5 rating of the instrument's own words (deepQuestions).
+// Prompts run in sequence, each re-asking after a replay, and every answer goes to the draft, so nothing is lost across
+// replays, quits or crashes. Quick: rating, vs current, the word salad, ship, note; deep adds the instrument's own 1-5
+// word ratings.
 func runSessionFamily(w io.Writer, in io.Reader, p player, name instrument.ID, fc familyCandidates, ref wavref.Ref, render sessionRenderFn, outPath string, planOnly, deep bool) (verdictKind, error) {
 	ids := sessionIDs(fc)
 	clips, meta, err := render(fc, ref)
@@ -653,8 +592,7 @@ func runSessionFamily(w io.Writer, in io.Reader, p player, name instrument.ID, f
 		}
 		return k, nil
 	}
-	// finish maps a prompt's control result: a skip discards the family's
-	// draft, a quit keeps it for next time.
+	// A skip discards the family's draft, a quit keeps it.
 	finish := func(k verdictKind) (verdictKind, error) {
 		if k == verdictSkipped {
 			removeDraft(draft)
@@ -777,17 +715,13 @@ var (
 	tunedCandidates = docCandidateKind{id: "t", label: "essence-tuned", hypothesis: "the document's own values moved toward every recording of it (refs tune)", makeHint: "make tune INST=%s"}
 )
 
-// withClone adds the WAV clone in clonesRoot/<name>/ (candidate.json +
-// meta.json, written by cmd/clone) to the family as candidate K. A family
-// absent from the candidates file auditions the clone alone, against the
-// reference the clone was fitted to.
+// A family absent from the candidates file auditions the clone alone, against the reference it was fitted to.
 func withClone(fc familyCandidates, inFile bool, name instrument.ID, clonesRoot string) (familyCandidates, error) {
 	return withDocCandidate(fc, inFile, name, clonesRoot, cloneCandidates)
 }
 
-// withDocCandidate adds the candidate in root/<name>/ to the family. A tuned
-// candidate (meta same_pitch) is played at the very note the current voice
-// is, since it keeps the shipped pitch frame; a clone at its own fit pitch.
+// A tuned candidate (same_pitch) plays at the current voice's note, keeping the shipped pitch frame; a clone at its fit
+// pitch.
 func withDocCandidate(fc familyCandidates, inFile bool, name instrument.ID, root string, kind docCandidateKind) (familyCandidates, error) {
 	dir := filepath.Join(root, string(name))
 	b, err := os.ReadFile(filepath.Join(dir, "candidate.json"))
@@ -841,17 +775,9 @@ func cloneFamilies(clonesRoot string) []instrument.ID {
 	return out
 }
 
-// runSession auditions families. With clonesRoot set, each family gains its
-// WAV clone (candidate K) on top of its file candidates; with tunedRoot set,
-// each family is auditioned with its tuned candidate (T) ALONE -- reference,
-// current, tuned, played as `refs tune` judged them (tunedSessionRender) --
-// so the listener judges exactly the one change.
-//
-// With resume, a family already reviewed for exactly its current candidates
-// (reviewedSession) is skipped, so a round picks up at the first family
-// still pending. A family named in families is always asked, and resume
-// false asks every family; either way a new answer is APPENDED, and nothing
-// already recorded is rewritten.
+// clonesRoot adds each family's WAV clone (K); tunedRoot auditions its tuned candidate (T) ALONE, played as refs tune
+// judged it. resume skips a family already reviewed for exactly its candidates; a named family is always asked; answers
+// are APPENDED, nothing rewritten.
 func runSession(w io.Writer, in io.Reader, p player, families []instrument.ID, candPath, outPath string, planOnly, deep, resume bool, clonesRoot, tuned string) error {
 	all, err := loadCandidates(candPath)
 	if err != nil {

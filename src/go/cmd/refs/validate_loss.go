@@ -18,14 +18,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// validate_loss.go — `refs validate -loss` (spec §4b): does each term of the
-// WAV-clone loss agree with the listener? Only rankings WITHIN a family mean
-// anything (a cymbal's spectral error and a bassoon's are on different
-// scales), and every preference pair is within one family by construction,
-// so the per-term agreement over the pairs is the within-family test. A term
-// that agrees with the ear less than half the time over ≥ 10 pairs is ANTI
-// and gets weight 0. fingerprint.Distance is scored the same way for
-// comparison. Advisory: the ear accepts candidates, the loss only ranks them.
+// Does each WAV-clone loss term agree with the listener? Every preference pair is within one family, where rankings mean
+// something; a term agreeing less than half the time over >= 10 pairs is ANTI and gets weight 0. Advisory: the ear
+// accepts candidates, the loss only ranks them.
 
 const (
 	lossAntiMinPairs = 10

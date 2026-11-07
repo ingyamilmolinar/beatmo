@@ -10,10 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// HookAction is a typed enumeration of supported hook action names.
-// Wire format stays string-based (HookRule.Do is a JSON string), but
-// the dispatcher operates on this type so typo'd actions surface as
-// "unknown" rather than silently dispatching the default branch.
+// The wire format stays a string; the dispatcher uses this type so a typo reports "unknown" instead of taking the default
+// branch.
 type HookAction string
 
 const (
@@ -22,9 +20,7 @@ const (
 	ActionDumpPProf HookAction = "dump_pprof"
 )
 
-// KnownActions returns the supported action set. Order is the
-// dispatcher's canonical order (log → exit → dump_pprof) so callers
-// rendering documentation get a stable list.
+// The dispatcher's canonical order, so rendered documentation is stable.
 func KnownActions() []HookAction {
 	return []HookAction{ActionLog, ActionExit, ActionDumpPProf}
 }
@@ -52,10 +48,7 @@ type HooksConfig struct {
 	Rules []HookRule `json:"rules"`
 }
 
-// ParseHooksConfig parses raw JSON bytes into a HooksConfig. Errors are
-// wrapped so the call site can prefix them ("hooks-config: ..."). The
-// returned config is always usable — empty Rules is valid and means
-// "config loaded but nothing to subscribe."
+// Errors are wrapped for the caller's prefix; empty Rules is valid ("loaded, nothing to subscribe").
 func ParseHooksConfig(data []byte) (HooksConfig, error) {
 	var cfg HooksConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -82,10 +75,7 @@ type ActionLogger interface {
 	Errorf(format string, args ...any)
 }
 
-// ActionRunner is the callback invoked when a subscribed event fires.
-// In production the runner dispatches "log" / "exit" / "dump_pprof";
-// tests inject a recorder instead so the dispatcher's switch can be
-// exercised without side effects.
+// Injected so tests exercise the dispatcher's switch without side effects.
 type ActionRunner func(action string, e hooks.Event)
 
 // ActionCounter is a process-wide counter map for hook actions. The
@@ -108,14 +98,8 @@ func (c *ActionCounter) Count(action string) int64 {
 	return v.(*atomic.Int64).Load()
 }
 
-// SubscribeRules registers each rule with the given hooks bus. Returns a
-// cleanup function that unsubscribes every registration; safe to call
-// multiple times.
-//
-// The runner callback is invoked synchronously from each subscriber, so
-// long-running actions should hand off to a goroutine themselves (the
-// bus already runs subscribers on a worker pool, but actions like
-// dump_pprof want to free the worker).
+// The runner is called synchronously from each subscriber, so a long action (dump_pprof) hands off to its own goroutine to
+// free the bus worker. The cleanup is safe to call more than once.
 func SubscribeRules(rules []HookRule, log ActionLogger, counter *ActionCounter, runner ActionRunner) (cleanup func()) {
 	unsubs := make([]func(), 0, len(rules))
 	for _, rule := range rules {

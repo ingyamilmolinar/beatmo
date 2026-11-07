@@ -2,24 +2,13 @@ package engine
 
 import "testing"
 
-// TestRebaseAtBackwardSeekResetsWindow validates the composition that the
-// timeline-seek chokepoint (Task 6) relies on: RebaseAt(abs) followed by
-// Ensure(...) must never leave the rewound region "frozen empty". When the
-// seek target sits below the current sliding-window start (the window has
-// already evicted that history), RebaseAt must reset windowStart to the
-// target and a subsequent Ensure must re-simulate forward from there,
-// re-populating visible/audible hits rather than leaving stale/empty
-// buffers.
-//
-// Reuses buildLoopedPredictor (predictor_window_bounded_test.go) — a 6-row
-// predictor whose row 0 loops a 2-node (n0<->n1) cycle — rather than
-// inventing a new graph builder.
+// RebaseAt(abs) + Ensure must never leave the rewound region frozen empty: with the target below the window start
+// (already evicted), RebaseAt resets windowStart and Ensure re-simulates forward from there.
 func TestRebaseAtBackwardSeekResetsWindow(t *testing.T) {
 	const windowCap = 4096
 	pred := buildLoopedPredictor(t, windowCap)
 
-	// Drive the window forward past several cap-fulls so windowStart advances
-	// well above 0 (forcing real eviction, not just an unfilled buffer).
+	// Several cap-fulls, so windowStart really evicts rather than leaving an unfilled buffer.
 	const forwardHorizon = 20_000
 	pred.Ensure(forwardHorizon)
 

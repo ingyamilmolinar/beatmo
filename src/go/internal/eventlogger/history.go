@@ -26,9 +26,7 @@ type LogHistory interface {
 	Record(LogRecord)
 	// Snapshot returns retained records NEWEST-FIRST (copy — caller may mutate).
 	Snapshot() []LogRecord
-	// LatestSeq returns the newest retained record's Seq (0 when empty). Cheap
-	// (no copy) — used by the UI as a change signal to avoid re-Snapshotting the
-	// whole ring every frame.
+	// Cheap (no copy): the UI's change signal, so it never re-Snapshots the ring every frame.
 	LatestSeq() int64
 	// Clear drops all retained records (the "Clear history" action). The sink
 	// remains usable and accepts new records afterwards.

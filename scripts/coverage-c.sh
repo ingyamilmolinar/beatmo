@@ -1,28 +1,7 @@
 #!/bin/bash
-# C coverage for our own DSP sources (src/c/, miniaudio excluded).
-#
-# Builds a gcov-instrumented build/libdrums.a (own files at -O0 -g --coverage;
-# miniaudio.c compiled WITHOUT coverage so it never produces counters), runs
-# the native (no -tags test) Go audio tests through the CGo bridge, and emits:
-#   coverage/c/<file>.c.gcov   annotated sources (uncovered lines marked #####)
-#   coverage/c-summary.txt     per-file table + TOTAL line coverage
-#   coverage/go-native.out     Go coverage of the native build of internal/audio
-#                              (the CGo bridge files that -tags test excludes)
-#
-# Key mechanics (do not "simplify" these away):
-#  - .gcno/.gcda paths are baked from the -o path at compile time, so compiling
-#    `-o build/<f>.o` from the repo root means counters land in <repo>/build/
-#    when the test process exits, regardless of the test cwd.
-#  - CGO_LDFLAGS="--coverage" links the gcov runtime AND changes the Go build
-#    ID, forcing a relink — Go's build cache does NOT hash static-lib content,
-#    so without this the freshly instrumented libdrums.a would be ignored.
-#  - .gcda accumulates across runs; we clear it up front so every run reports
-#    exactly what this run executed.
-#  - A trap restores build/ to a pristine state so the instrumented lib can
-#    never poison subsequent normal builds.
-#
-# Usage: [CC=cc] [GO=...] [COVERAGE_C_FLOOR=NN] [COVERAGE_C_XVFB=1] \
-#          ./scripts/coverage-c.sh
+# gcov over our own src/c through the native audio tests → coverage/c/*.c.gcov, c-summary.txt, go-native.out.
+# .gcno/.gcda paths are baked from -o at compile time; CGO_LDFLAGS=--coverage also forces a relink (the build cache does
+# not hash static-lib content); .gcda is cleared up front; a trap restores build/.
 
 set -euo pipefail
 
@@ -33,17 +12,14 @@ cd "$REPO_ROOT"
 GO="${GO:-$REPO_ROOT/.tools/go/bin/go}"
 CC="${CC:-cc}"
 
-# Own sources = C_SRC minus miniaudio.c (third-party, excluded from coverage).
-# modular_stages.c (the unified gen-bank / family-voice DSP) joined C_SRC in
-# the modular-unification migration and is very much "DSP under test".
+# miniaudio is third-party, so it is left out.
 OWN_SRC=(drums fmsynth insert_fx fx_host mix_dsp wavetable adsr noise modular modular_stages modal_bank)
 
 OUT="$REPO_ROOT/coverage/c"
 SUMMARY="$REPO_ROOT/coverage/c-summary.txt"
 mkdir -p "$OUT" "$REPO_ROOT/coverage"
 
-# Always leave build/ pristine — even on failure — so the next `make` rebuilds
-# a normal -O2 lib instead of linking against instrumented objects.
+# Always, even on failure, so the next make never links instrumented objects.
 cleanup() {
     rm -f "$REPO_ROOT"/build/*.o "$REPO_ROOT"/build/*.gcno \
         "$REPO_ROOT"/build/*.gcda "$REPO_ROOT/build/libdrums.a"
@@ -67,14 +43,10 @@ for f in "${OWN_SRC[@]}"; do
     $CC -O0 -g --coverage $extra -c "src/c/$f.c" -o "build/$f.o"
 done
 $CC -O2 -DMA_ENABLE_MP3 -c src/c/miniaudio.c -o build/miniaudio.o
-# The flush shim makes a STRONG __gcov_dump reference (-DBEATMO_GCOV) so the
-# defining member is pulled out of libgcov.a — a weak reference would not pull
-# it and the dump would silently no-op. Not itself instrumented (no .gcno):
-# it is tooling, not DSP under test.
+# A STRONG __gcov_dump reference (-DBEATMO_GCOV) so the member is pulled out of libgcov.a; a weak one would not, and
+# the dump would silently no-op. Tooling, so not instrumented.
 $CC -O2 -DBEATMO_GCOV -c src/c/gcov_flush.c -o build/gcov_flush.o
-# noise_ma_oracle.c is the REAL-ma_noise test oracle the native bridge links
-# (oracle_ma_noise_white_fill in modular_c.go) — tooling, not DSP under test,
-# so compiled without instrumentation, mirroring the Makefile's C_SRC_TEST.
+# The test oracle the native bridge links: tooling, so not instrumented (as C_SRC_TEST in the Makefile).
 $CC -O2 -c src/c/noise_ma_oracle.c -o build/noise_ma_oracle.o
 
 # --- 3. Archive at the path hardcoded in the #cgo LDFLAGS --------------------
@@ -85,13 +57,8 @@ ar rcs build/libdrums.a build/miniaudio.o build/gcov_flush.o build/noise_ma_orac
 export CGO_LDFLAGS="--coverage"
 export CGO_ENABLED=1
 
-# -linkmode=external is REQUIRED: gcov registers each object's counters via
-# C constructors (.init_array), which only run when the binary boots through
-# the libc startup path. Go's internal linker entry skips them, leaving
-# nothing registered for __gcov_dump to write.
-# The native audio suite runs ~8 min under -covermode=atomic on a loaded host;
-# the old fixed 360s killed it before __gcov_dump, reporting NO DATA for every
-# file (2026-10-02). Overridable for slower hosts.
+# -linkmode=external: gcov registers counters through C constructors, which Go's internal linker entry skips. The
+# native suite runs minutes under -covermode=atomic, and a timeout kills it before __gcov_dump.
 COVERAGE_C_TIMEOUT="${COVERAGE_C_TIMEOUT:-1500s}"
 test_rc=0
 (
@@ -132,9 +99,7 @@ for f in "${OWN_SRC[@]}"; do
         missing=1
         continue
     fi
-    # Run gcov from the repo root: the .gcno records the compile-relative
-    # source path (src/c/<f>.c), so annotation only resolves from here. The
-    # generated *.gcov land in the cwd and are moved to $OUT afterwards.
+    # From the repo root: the .gcno records src/c/<f>.c relative to it.
     summary_line=$(gcov --object-directory "$REPO_ROOT/build" \
         "src/c/$f.c" 2>/dev/null |
         grep -A1 "File 'src/c/$f\.c'" | grep 'Lines executed' | head -1)
@@ -151,9 +116,7 @@ for f in "${OWN_SRC[@]}"; do
     printf '%-14s %10s %8s %7s%%\n' "$f.c" "$exec_lines" "$lines" "$pct" | tee -a "$SUMMARY"
 done
 
-# Move the annotated files into $OUT, then drop annotations we don't own
-# (miniaudio + system headers picked up transitively). Our own header
-# annotations stay (any inline helper in our headers is ours to cover).
+# Our own header annotations stay (an inline helper there is ours to cover); miniaudio and system headers go.
 mv -f ./*.gcov "$OUT"/ 2>/dev/null || true
 rm -f "$OUT"/miniaudio.* "$OUT"/*'#'*.gcov 2>/dev/null || true
 

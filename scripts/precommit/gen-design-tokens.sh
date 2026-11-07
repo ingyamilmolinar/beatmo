@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# Pre-commit hook: regenerate UI design tokens from DESIGN.md and reject
-# the commit if any of the generated files (design_tokens.gen.go,
-# design_components.gen.go, design_profile.gen.go) is stale. Install via
-# `make install-hooks`.
-#
-# Skip with: SKIP_DESIGN_TOKENS_HOOK=1 git commit ...
-# (Use sparingly — the freshness test will fail in CI if you do.)
+# Rejects the commit when a design_*.gen.go is stale against DESIGN.md. SKIP_DESIGN_TOKENS_HOOK=1 skips it, but the
+# freshness test then fails in CI.
 
 set -euo pipefail
 
@@ -29,8 +24,6 @@ fi
 # Regenerate.
 make gen-design-tokens >/dev/null
 
-# If the generator changed any committed file, fail. Check all three
-# generated outputs (design_tokens, design_components, design_profile).
 stale_files=()
 for f in \
     src/go/internal/ui/design_tokens.gen.go \

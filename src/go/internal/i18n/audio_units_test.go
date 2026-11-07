@@ -2,8 +2,7 @@ package i18n
 
 import "testing"
 
-// Round-2 fixes: Fade wording, translatable units, sampler meta readout,
-// levels long-press tooltips. Keys listed by literal string for clean RED.
+// By literal wire string, so the test pins the names independently of the Key consts.
 var round2TranslatableWant = map[Key]struct{ en, es string }{
 	"unit.cents":               {"c", "ct"},
 	"sampler.meta_fmt":         {"%.2fs of %.2fs · %.1f kHz", "%.2fs de %.2fs · %.1f kHz"},

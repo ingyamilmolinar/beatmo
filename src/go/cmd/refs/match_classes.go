@@ -7,15 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// match_classes.go -- the BROAD kind of every roster instrument, for grading
-// `refs match -validate` only (never for ranking: the matcher must find the
-// kind from the sound).
-//
-// "Own family" (buildAuditionFamilies) is strict: a real cello whose closest
-// voice is the synth viola counts as a miss. The listener asked for the
-// instrument's essence -- is this a bowed string, a brass horn, a struck bar?
-// -- so -validate also reports whether the first-ranked voice is the right
-// KIND. TestEveryRosterInstrumentHasABroadClass keeps the table complete.
+// The broad kind of every instrument, for grading -validate only (the matcher must find the kind from the sound): a real
+// cello matched to the synth viola is a family miss but the right kind, which is the essence the listener asked for.
 
 var matchBroadClasses = map[string][]instrument.ID{
 	"bowed": {roster.Violin, roster.ViolinEnsemble, roster.Viola, roster.ViolaPad, roster.Cello, roster.CelloWarm, roster.DoubleBass},

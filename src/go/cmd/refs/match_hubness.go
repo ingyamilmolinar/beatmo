@@ -2,31 +2,9 @@
 
 package main
 
-// match_hubness.go -- hubness correction for the essence ranking.
-//
-// Nearest-neighbour ranking in a feature space has HUBS: a few voices whose
-// spectra are "central" (rich, steady, little noise -- harmonium, accordion,
-// a saw-ish bass) sit near every sustained recording, so they top ranking
-// after ranking for reasons that say nothing about THIS recording (harmonium
-// was first for 6 of the 43 sustained catalogue references). CSLS-style local
-// scaling (Conneau et al. 2018; for music similarity, Schnitzer et al. 2012)
-// corrects for it: each voice's distance is set against how close it
-// TYPICALLY comes to real recordings -- the mean of its matchHubnessK smallest
-// essence distances over the catalogued references (its hub) -- and half of
-// that is subtracted: CSLS ranks candidates by 2·sim − r(candidate), i.e. by
-// distance − ½·hub. Graded leave-one-out on the 64 references (spec
-// docs/superpowers/specs/2026-10-17-wav-match-essence-design.md): MRR
-// 0.350 -> 0.409, the right kind of instrument first 28 -> 35, the family in
-// the top 3 24 -> 29. Subtracting the WHOLE hub graded the same on recordings
-// (0.412) but over-rewarded the voices far from every recording (modular,
-// FM plucks), which then outranked a synth's own re-played sound.
-//
-// The hub values are a corpus CALIBRATION like fingerprint's thresholds.json:
-// derived from local reference audio, committed as numbers
-// (testdata/match_hubness.json), written by `refs match -calibrate` (`make
-// wav-match-calibrate`) and checked by `refs check -only match-hubness`. An
-// instrument retuned since (its sound hash moved), or new to the roster, gets
-// the MEDIAN hub -- neutral -- and the matcher says so.
+// A few "central" voices sit near every sustained recording and top ranking after ranking. CSLS-style scaling corrects
+// it: each voice's distance minus ½ of its hub (the mean of its k smallest distances to the catalogued references; the
+// whole hub over-rewards voices far from everything). A committed corpus calibration; a retuned voice gets the median.
 
 import (
 	_ "embed"
@@ -48,16 +26,9 @@ import (
 var matchHubnessJSON []byte
 
 const (
-	// matchHubnessK is how many of a voice's closest recordings define how
-	// close it typically comes. Fixed at 10 before measuring; graded
-	// leave-one-out, k = 5 / 10 / 20 / 40 give MRR 0.403 / 0.412 / 0.411 /
-	// 0.386, so the choice is not a spike.
+	// Fixed before measuring; leave-one-out grades k = 5..20 about equally, so the choice is not a spike.
 	matchHubnessK = 10
-	// matchHubnessVersion invalidates the calibration when the essence
-	// distance changes shape (2: the decay profile ends at 0.5 s; 3: attack
-	// times floored at the ear's onset resolution; 4: decay and harmonics
-	// read from the onset of the loud part, not the arg-max; 5: no harmonic
-	// profile term, pitch read without the harmonic sieve).
+	// Bumped whenever the essence distance changes shape.
 	matchHubnessVersion = 5
 	// matchHubnessAlpha is the share of the hub subtracted (CSLS: ½).
 	matchHubnessAlpha = 0.5
@@ -86,10 +57,7 @@ var committedHubness = sync.OnceValues(func() (matchHubness, error) {
 	return h, nil
 })
 
-// hubValues resolves each id's hub from h. stale lists the ids with no
-// current entry (retuned since the calibration, new, or a calibration of an
-// older distance); they get the median of the current entries, which leaves
-// their ranking uncorrected relative to a typical voice.
+// stale ids (retuned, new, or calibrated on an older distance) get the median, uncorrected relative to a typical voice.
 func (h matchHubness) hubValues(ids []instrument.ID) (hubs map[instrument.ID]float64, stale []instrument.ID) {
 	hubs = map[instrument.ID]float64{}
 	var fresh []float64
@@ -109,10 +77,7 @@ func (h matchHubness) hubValues(ids []instrument.ID) (hubs map[instrument.ID]flo
 	return hubs, stale
 }
 
-// computeHubs is each instrument's hub over per-reference raw essence
-// distances (one map per reference, instrument -> distance): the mean of its
-// k smallest finite distances. skip (-1 = none) leaves one reference out, so
-// -validate grades a reference against hubs it did not shape.
+// skip (-1 = none) leaves one reference out, so -validate grades it against hubs it did not shape.
 func computeHubs(rows []map[instrument.ID]float64, k, skip int) map[instrument.ID]float64 {
 	per := map[instrument.ID][]float64{}
 	for i, row := range rows {

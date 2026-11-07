@@ -17,29 +17,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// probe.go — `refs probe`: synthesise ISOLATED acoustic properties so the
-// listener can name them.
-//
-// WHY
-// ---
-// Every axis in the battery is calibrated against instrument comparisons, where
-// a dozen properties vary at once. That makes the listener's words ambiguous:
-// when they wrote "too airy", six axes fired, and it took a separate
-// specificity analysis to work out which one they meant. And it makes the
-// thresholds guesses -- "0.05 is an audible shift" is an assertion nobody has
-// tested.
-//
-// These probes vary ONE property at a time over a range, holding everything
-// else fixed, at a constant pitch and level. Played in order, each set answers
-// two questions no instrument comparison can:
-//
-//   - which WORD does this listener use for this property, in which direction?
-//   - at what STEP does the difference become audible to them?
-//
-// The second is what turns a threshold from a guess into a measurement. The
-// printed table gives the measured value of the target axis for every step, so
-// "steps 1 and 2 sound the same, 3 is clearly different" reads directly off as
-// a calibrated drift threshold.
+// Each set varies ONE property, everything else fixed, so the listener can name it: which WORD they use for it, and at
+// what STEP it becomes audible, which turns a threshold from a guess into a measurement. Instrument comparisons vary a
+// dozen properties at once.
 
 const (
 	probeSR      = 44100
@@ -151,9 +131,7 @@ func applyADSR(sig []float64, attackSec, decaySec, sustain float64) []float64 {
 	return out
 }
 
-// addVibrato applies sinusoidal pitch modulation via a modulated delay, with
-// optional rate jitter -- the same technique modular.c uses for the waveguides,
-// so what the listener hears here is what the engine produces.
+// A modulated delay, the technique modular.c uses for the waveguides, so the probe sounds like the engine.
 func addVibrato(sig []float64, depthSemis, rateHz, jitter float64) []float64 {
 	if depthSemis <= 0 || rateHz <= 0 {
 		return append([]float64(nil), sig...)

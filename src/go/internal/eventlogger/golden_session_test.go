@@ -17,15 +17,8 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestEventLoggerGoldenSession exercises the full publish → subscribe → format
-// → emit pipeline against a deterministic event sequence and diffs the captured
-// INFO log against testdata/golden_session.log. Any change to the user-facing
-// log shape (rename, reorder, new line) must update the golden — making the
-// intent visible in code review.
-//
-// The fixture intentionally uses only non-coalesced kinds so output ordering
-// matches publish ordering. Coalescer behavior is covered separately in
-// coalesce_test.go.
+// The full publish → subscribe → format → emit pipeline against testdata/golden_session.log, so any change to the
+// user-facing log shows in review. Non-coalesced kinds only, so output order is publish order.
 func TestEventLoggerGoldenSession(t *testing.T) {
 	restore := gamelog.SetTimestampFunc(func() string { return "00:00:00.000" })
 	defer restore()
@@ -44,10 +37,7 @@ func TestEventLoggerGoldenSession(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = logger.Close()
-		// Release the test pool from the registry so subsequent runs don't
-		// inherit a stale instance via the registry's name-based caching.
-		// (eventlogger.format is the standing pool, not test-private; we
-		// keep it for the goleak baseline.)
+		// eventlogger.format is the standing pool, kept for the goleak baseline.
 		_ = async.DefaultRegistry()
 	})
 
@@ -240,16 +230,10 @@ func TestEventLoggerCoalescesRapidScroll(t *testing.T) {
 	}
 }
 
-// fixedSource is the deterministic Source attached to every event published
-// via pubFixed. Pinning the source keeps the golden file stable across edits
-// to this test file (real runtime.Caller-derived sources would shift on
-// every refactor and produce noisy goldens).
+// A fixed Source keeps the golden stable: runtime.Caller sources would shift with every edit to this file.
 var fixedSource = hooks.Source{Pkg: "internal/test", File: "fixture.go", Line: 1}
 
-// pubFixed publishes via the source-aware API with a stable injected Source
-// so the golden output is deterministic. Production callers go through
-// emit helpers in internal/ui/event_helpers.go that use real runtime.Caller
-// capture; this fixture trades that fidelity for golden stability.
+// Production emit helpers capture the real caller; the fixture trades that for golden stability.
 func pubFixed(bus *hooks.Bus, k hooks.Kind, payload any) {
 	bus.PublishWithSource(k, payload, fixedSource)
 }

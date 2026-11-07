@@ -14,9 +14,8 @@ var Termination = errors.New("regular termination")
 type Image struct {
 	w, h int
 	pix  []color.RGBA
-	// clip, when non-empty, makes this Image a SubImage VIEW: it shares the
-	// parent's pix (same w/h stride, same coordinate system — exactly real
-	// ebiten's SubImage semantics) and every read/write is clipped to clip.
+	// Non-empty makes this a SubImage VIEW: it shares the parent's pix and coordinates (real ebiten's semantics) and clips
+	// every read and write.
 	clip image.Rectangle
 }
 
@@ -84,9 +83,8 @@ func (i *Image) DrawImage(src *Image, opts *DrawImageOptions) {
 	// Clip once: the destination's addressable rect (a view's clip ∩ the
 	// backing store) intersected with where the source lands.
 	clip := i.bounds().Intersect(image.Rect(0, 0, i.w, i.h))
-	// Unscaled multi-pixel blit (cached-surface draws): copy per-pixel so
-	// pixel-identity tests see real content. Scaled draws keep the legacy
-	// first-pixel fill (the 1x1 stretched drawRectBlit pattern).
+	// Unscaled multi-pixel blits copy per pixel so pixel-identity tests see real content; scaled draws keep the first-pixel
+	// fill (the 1x1 stretched drawRectBlit pattern).
 	if scaleX == 1 && scaleY == 1 && sb.Dx()*sb.Dy() > 1 {
 		dr := image.Rect(tx, ty, tx+sb.Dx(), ty+sb.Dy()).Intersect(clip)
 		tint := opts.ColorScale.set && FaithfulCompositing
@@ -150,10 +148,7 @@ func (i *Image) Clear() {
 	i.fillWith(color.RGBA{})
 }
 
-// Deallocate releases the image's internal storage. The Image object
-// remains valid; ebiten lazily reallocates on next use. Mirrors the
-// ebiten v2.8.8 API so production code that calls Deallocate to
-// reclaim atlas slots compiles under the test stub as well.
+// Mirrors ebiten's API so production code reclaiming atlas slots compiles under the stub.
 func (i *Image) Deallocate() {
 	if i == nil {
 		return
@@ -163,22 +158,14 @@ func (i *Image) Deallocate() {
 
 func (i *Image) Bounds() image.Rectangle { return i.bounds() }
 
-// FaithfulCompositing (tests only) turns on real-ebiten compositing semantics
-// in the stub: SubImage returns a pixel-SHARING view and DrawImage applies the
-// ColorScale tint. Off by default — the stub then discards draws into a
-// sub-image and ignores tints, which is what the thousands of non-pixel tests
-// (soak, alloc, perf budgets) were calibrated against and is far cheaper per
-// frame. Pixel guards that must SEE every zone (the theme-drift guards) turn
-// it on for their duration.
+// Tests only: SubImage returns a pixel-SHARING view and DrawImage applies the ColorScale tint. Off by default, the
+// cheaper mode the many non-pixel tests (soak, alloc, perf budgets) are calibrated against; pixel guards that must SEE
+// every zone turn it on.
 var FaithfulCompositing bool
 
-// SubImage mirrors real ebiten: a small view header (NO pixel allocation —
-// byte-budget tests stay honest) that, under FaithfulCompositing, SHARES the
-// parent's pixels, keeps the parent's coordinate system, and clips every read
-// and write to r. Without it the view is detached and draws into it are
-// discarded — so pixel tests that leave the flag off cannot see anything drawn
-// through a clipped zone (the reason the original theme-parity test never
-// caught a stale cached transport toolbar).
+// A view header with NO pixel allocation (byte-budget tests stay honest). Under FaithfulCompositing it shares the
+// parent's pixels and clips to r; otherwise draws into it are discarded and pixel tests see nothing drawn through a
+// clipped zone.
 func (i *Image) SubImage(r image.Rectangle) image.Image {
 	if i == nil {
 		return &Image{}
@@ -241,12 +228,8 @@ func TouchPosition(id TouchID) (int, int) {
 	return 0, 0
 }
 
-// ColorScale mirrors Ebiten's ColorScale: a multiplicative tint whose zero
-// value is the identity. Real ebiten applies it to the premultiplied source
-// color as (r·sr·sa, g·sg·sa, b·sb·sa, a·sa) — the convention every call site
-// here follows (it passes unpremultiplied ratios plus alpha). The stub used to
-// ignore it, so tinted glyphs (text, icons) rendered in the mask's own color
-// and a stale tint was invisible to pixel tests.
+// Zero value = identity. Applied to the premultiplied source as (r·sr·sa, g·sg·sa, b·sb·sa, a·sa), as every call site
+// passes it; ignoring it would hide a stale tint from pixel tests.
 type ColorScale struct {
 	r, g, b, a float32
 	set        bool
@@ -396,12 +379,8 @@ var mockCursorShape CursorShapeType
 func SetCursorShape(shape CursorShapeType) { mockCursorShape = shape }
 func CursorShape() CursorShapeType         { return mockCursorShape }
 
-// ─── Triangle / vector primitives (test stubs) ─────────────────────────
-//
-// The icon renderer (icon_renderer.go) uses Vertex / DrawTriangles to
-// rasterize antialiased paths. Under the test build none of this actually
-// renders — the stubs exist so the test build compiles. Field shapes
-// match real Ebiten v2.8.8 so call sites compile against either.
+// Vertex / DrawTriangles exist so the icon renderer compiles under the test build; nothing renders. Field shapes match
+// real Ebiten.
 
 // Vertex matches ebiten.Vertex's public fields.
 type Vertex struct {

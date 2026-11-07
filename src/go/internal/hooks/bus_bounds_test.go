@@ -1,17 +1,7 @@
 //go:build test
 
-// Bounds regression tests for the hooks.Bus subscriber slices.
-//
-// The post-OOM audit confirmed that bus.Subscribe / unsubscribe are
-// symmetric (line 119 appends, line 131 removes), so the subscriber
-// slice cannot leak in well-behaved code. These tests pin that
-// invariant: anyone refactoring the (un)subscribe code path must keep
-// the slice symmetric.
-//
-// Additionally: a publisher that emits faster than the fan-out pool
-// drains can saturate the pool's bounded queue. The test verifies the
-// drop counter (bus.dropped) bumps under saturation — i.e. Publish
-// silently drops rather than retaining unbounded backpressure.
+// Subscribe and unsubscribe must stay symmetric so the subscriber slice cannot leak, and a publisher outrunning the pool
+// must drop (counted) rather than retain unbounded backpressure.
 
 package hooks
 
@@ -22,10 +12,7 @@ import (
 	"time"
 )
 
-// TestSubscriberSliceShrinksOnUnsubscribe asserts the per-Kind slice
-// length returns to zero after every Subscribe is matched by its
-// returned unsubscribe closure. A regression that drops the splice in
-// bus.go:131 would make this test grow the slice without bound.
+// Every Subscribe matched by its unsubscribe returns the slice to zero; a missing splice would grow it without bound.
 func TestSubscriberSliceShrinksOnUnsubscribe(t *testing.T) {
 	b := NewBus(context.Background(), Options{PoolWorkers: 2, PoolQueue: 16})
 	defer b.Close()
@@ -58,10 +45,7 @@ func TestSubscriberSliceShrinksOnUnsubscribe(t *testing.T) {
 	}
 }
 
-// TestSubscriberSliceRepeatedSubUnsubStaysFlat exercises a thousand
-// sub/unsub cycles and asserts the slice never accumulates more than 1
-// entry. Catches a refactor that e.g. unsubscribes by zeroing the entry
-// instead of splicing it out.
+// Catches unsubscribing by zeroing an entry instead of splicing it out.
 func TestSubscriberSliceRepeatedSubUnsubStaysFlat(t *testing.T) {
 	b := NewBus(context.Background(), Options{PoolWorkers: 1, PoolQueue: 4})
 	defer b.Close()
@@ -79,10 +63,7 @@ func TestSubscriberSliceRepeatedSubUnsubStaysFlat(t *testing.T) {
 	}
 }
 
-// TestPublishDropsUnderPoolSaturation: when the fan-out queue fills, a
-// blocking subscriber callback must NOT cause Publish to block; instead
-// excess events bump the drop counter. The bound on retained events is
-// PoolQueue + PoolWorkers (running) — anything more must drop.
+// A blocking subscriber must not block Publish: past PoolQueue + PoolWorkers, events drop.
 func TestPublishDropsUnderPoolSaturation(t *testing.T) {
 	b := NewBus(context.Background(), Options{
 		PoolWorkers: 1,

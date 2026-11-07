@@ -89,9 +89,7 @@ func TestTunePicksAreValid(t *testing.T) {
 	}
 }
 
-// TestTuneStartsAtTheShippedDocument: the origin of the search IS the shipped
-// voice, bit for bit (plus only the pick's own edits and silent harmonics),
-// so a run that finds nothing better proposes nothing.
+// The origin IS the shipped voice bit for bit, so a run that finds nothing better proposes nothing.
 func TestTuneStartsAtTheShippedDocument(t *testing.T) {
 	reg := audio.BuiltinModuleRegistry()
 	picks, _ := loadTunePicks()
@@ -129,12 +127,8 @@ func TestTuneStartsAtTheShippedDocument(t *testing.T) {
 	}
 }
 
-// TestTuneFromStartsAtTheDonorDocument: a pick whose shipped voice is the
-// wrong instrument altogether (the rimshot, two tuned tones that the matcher
-// ranks #33 on its own recording, closest to the cowbell) starts from
-// ANOTHER instrument's document. The search then moves the donor's values,
-// and the candidate is still the picked instrument -- its id and name -- so
-// `make tune-adopt` replaces that instrument and nothing else.
+// A pick From a donor moves the donor's values while the candidate stays the picked instrument (id and name), so
+// tune-adopt replaces that instrument and nothing else.
 func TestTuneFromStartsAtTheDonorDocument(t *testing.T) {
 	reg := audio.BuiltinModuleRegistry()
 	p := tunePick{Inst: roster.Rimshot, From: roster.SnareFat, Why: "test"}
@@ -358,18 +352,12 @@ func stageTunedFixture(t *testing.T, root, inst, refID instrument.ID) string {
 	return clone.DocSHA(d)
 }
 
-// TestAbTunedResumesAtTheFirstUnreviewedFamily: `make ab-tuned` must not ask
-// about a family already reviewed -- the listener rated cello, clarinet,
-// flute, guitar-nylon, harp and oboe and was asked about the cello again.
-// Reviewed = a record of that family for EXACTLY the candidate now on disk
-// (a re-tuned candidate is pending again); a deep round only counts deep
-// records; a family named in -families is always asked; resume=false asks
-// everything. Nothing already recorded is ever rewritten.
+// Reviewed = a record for EXACTLY the candidate on disk (a re-tuned one is pending again); a deep round counts only deep
+// records; a named family is always asked; resume=false asks all. Nothing recorded is rewritten.
 func TestAbTunedResumesAtTheFirstUnreviewedFamily(t *testing.T) {
 	t.Setenv(wavref.EnvVar, t.TempDir()) // no reference audio: reaching a family's render fails, naming it
 	root := t.TempDir()
-	// Families run in name order: the reviewed clarinet comes first, as the
-	// cello did for the listener.
+	// Name order: the reviewed clarinet comes first.
 	clarSHA := stageTunedFixture(t, instrument.ID(root), roster.Clarinet, "clarinet-A4")
 	stageTunedFixture(t, instrument.ID(root), roster.Oboe, "oboe-A4")
 	out := filepath.Join(t.TempDir(), "ear_sessions.jsonl")

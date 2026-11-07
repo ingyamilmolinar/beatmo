@@ -22,10 +22,7 @@ const (
 	// ScopeVerbose is high-frequency telemetry (camera/drag/per-frame param),
 	// never an undo action.
 	ScopeVerbose
-	// ScopeInteraction is pure interaction telemetry (button tap, popup
-	// open/close, scroll, search, text commit, view switch). Never undoable;
-	// not document or session state — it records what the user touched, not a
-	// state change.
+	// What the user touched, not a state change: never undoable.
 	ScopeInteraction
 )
 
@@ -39,16 +36,8 @@ type ActionMeta struct {
 	ExcludedReason string // non-empty ⇒ ScopeDocument but deliberately not undoable yet
 }
 
-// ActionRegistry has exactly one entry per Kind in KindAll. It is the single
-// place that names and classifies every state-mutating user action. The undo
-// recorded-set (internal/ui documentScopeKinds) is derived from this registry's
-// Undoable() entries — the single source of truth; do not hand-maintain a
-// divergent list. The derivation is pinned by TestUndoableSetMatchesRegistry
-// (internal/ui); registry completeness by TestEveryKindClassified (this package).
-//
-// Labels for undoable (ScopeDocument, no ExcludedReason) entries are the
-// user-facing undo labels and must stay stable — TestUndoableSetMatchesRegistry
-// asserts they equal the derived documentScopeKinds.
+// One entry per Kind in KindAll: the single place that names and classifies every user action. The undo set is derived
+// from its Undoable() entries (never hand-maintained), and their labels are the user-facing undo labels.
 var ActionRegistry = []ActionMeta{
 	{EventPlayStart, "start playback", "play", ScopeTransport, ""},
 	{EventPlayStop, "stop playback", "play", ScopeTransport, ""},

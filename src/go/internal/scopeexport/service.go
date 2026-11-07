@@ -1,31 +1,6 @@
-// Package scopeexport provides a continuous flight-recorder service that
-// captures audio pipeline data at all 6 stages for every instrument and
-// the master bus, writing JSONL snapshots for automated verification and
-// human diagnosis.
-//
-// Activate via CLI flag (-scope-export) or env var (SCOPE_EXPORT=1).
-// Each JSONL line is a self-contained snapshot with per-channel metrics,
-// downsampled waveforms, and FFT peaks.
-//
-// Analysis with jq:
-//
-//	# Latest snapshot (pretty-printed)
-//	tail -1 scope_export.jsonl | jq .
-//
-//	# Kick peak_db at synth stage over time
-//	jq -r '.channels[] | select(.id=="kick") | .stages.synth.peak_db' scope_export.jsonl
-//
-//	# Master RMS trend
-//	jq -r '[.tick, .master.stages.master.rms_db] | @tsv' scope_export.jsonl
-//
-//	# Find clipping events
-//	jq 'select([.channels[].stages[].clip_count] | add > 0)' scope_export.jsonl
-//
-//	# Compare pre-EQ vs post-EQ
-//	jq -r '.channels[] | select(.id=="kick") | [.stages.antipop.peak_db, .stages.eq.peak_db] | @tsv' scope_export.jsonl
-//
-//	# Feed last 5 snapshots to LLM
-//	tail -5 scope_export.jsonl | jq -s .
+// Package scopeexport is a flight recorder: every pipeline stage for every instrument and the master as JSONL snapshots
+// (metrics, downsampled waveforms, FFT peaks). -scope-export or SCOPE_EXPORT=1; read with jq, e.g.
+// jq -r '.channels[] | select(.id=="kick") | .stages.synth.peak_db' scope_export.jsonl
 package scopeexport
 
 import (
@@ -158,9 +133,7 @@ func NewService(cfg Config) *Service {
 	}
 }
 
-// PushSamples is called from the audio thread to push samples for a
-// pipeline stage and instrument. Lock-free on the fast path when the
-// ring buffer already exists.
+// Audio thread; lock-free on the fast path when the ring exists.
 func (s *Service) PushSamples(stage scope.Stage, id channel.ID, samples []float64) {
 	if int(stage) < 0 || int(stage) >= len(s.stages) {
 		return
@@ -169,10 +142,7 @@ func (s *Service) PushSamples(stage scope.Stage, id channel.ID, samples []float6
 	rb.push(samples)
 }
 
-// Start launches the capture loop on a background goroutine. wg.Add is
-// performed synchronously here — before the goroutine is scheduled — so a
-// subsequent Stop()'s wg.Wait() cannot race the Add (the classic WaitGroup
-// misuse that arises when Add lives inside the spawned goroutine).
+// wg.Add happens here, before the goroutine runs, so Stop's Wait can never race it.
 func (s *Service) Start() {
 	s.wg.Add(1)
 	go s.run()

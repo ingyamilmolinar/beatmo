@@ -21,10 +21,8 @@ type Hit struct {
 	Pitch float64
 	Vol   float64 // 0 => omit (use instrument default)
 	Dur   float64 // 0 => omit
-	// Groove shifts this hit off the grid: "delay" (behind the beat) or
-	// "rush" (ahead of it), by GroovePct (0..1) of the groove window.
-	// Empty = straight. Matches node JSON groove_kind/groove_pct
-	// (importer: internal/ui/import.go).
+	// "delay" (behind) or "rush" (ahead) by GroovePct (0..1) of the groove window; empty = straight. Matches the node
+	// JSON's groove_kind / groove_pct.
 	Groove    string
 	GroovePct float64
 }
@@ -32,15 +30,12 @@ type RowSpec struct {
 	Inst instrument.ID
 	Hits []Hit
 
-	// Layer (0 melody, 1 groove) and Kit (a percussion row) record where the
-	// row came from. Generator metadata for the fidelity tests; not exported.
+	// Generator metadata for the fidelity tests; not exported.
 	Layer int
 	Kit   bool
 }
 type InstSpec struct {
-	// Colour is NOT a field: build() assigns every row its colour from
-	// templates.InstrumentSequence by row index, so a per-spec colour would be
-	// silently overridden.
+	// No colour field: build() colours every row from templates.InstrumentSequence by index, overriding any spec colour.
 	ID      instrument.ID
 	Name    string
 	Volume  float64
@@ -57,9 +52,7 @@ type EffectSpec struct {
 type Showcase struct {
 	Stem        string
 	BPM, Subdiv int // Subdiv = steps per four quarter notes
-	// TotalSteps is the loop length: the excerpt's NOTATED length in steps,
-	// so a circuit loops in meter (a 15-bar 2/4 excerpt is 30 quarters, not
-	// rounded up to whole 4/4 bars with a hole at the end).
+	// The excerpt's NOTATED length, so a circuit loops in meter.
 	TotalSteps int
 	Insts      []InstSpec
 	Rows       []RowSpec // row i uses Insts[i] (1:1, same order)
@@ -99,10 +92,7 @@ type doc struct {
 	BPM         int    `json:"bpm"`
 	Instruments []inst `json:"instruments"`
 	Nodes       []node `json:"nodes"`
-	// InstrumentDocs pins every row's instrument to the pack document it
-	// plays, by content hash (instance ids "x--N" pin x's document), so a
-	// template sounds the same whatever the user has saved over its
-	// instruments.
+	// Pinned by content hash (an instance "x--N" pins x's document), so a template plays the same on every machine.
 	InstrumentDocs map[instrument.ID]docRef `json:"instrument_docs"`
 }
 
@@ -141,17 +131,8 @@ func build(s Showcase) ([]byte, error) {
 	if totalSteps <= 0 || totalSteps%4 != 0 {
 		return nil, fmt.Errorf("showcase %q: %d steps — the loop is laid out as a square, so it must be a positive multiple of 4", s.Stem, totalSteps)
 	}
-	// ONE grid unit per step, and the exported "subdiv" (units per BEAT to the
-	// engine) is therefore steps per quarter.
-	//
-	// The engine's groove window — the span a node's delay/rush percentage is a
-	// fraction of — is one grid unit (nodeNudgeSecondsAt). Templates used to
-	// lay four units per step, so a 100% delay was a quarter of a sixteenth and
-	// swing (an offbeat eighth sits two thirds of a step late at 2:1) could not
-	// be written at all. With one unit per step the window is the step itself.
-	// On screen nothing moves: a unit is Step/MaxDiv, so a step is still a
-	// quarter of a beat wide at 16 steps per bar.
-	// Guard: TestGrooveWindowIsOneStep.
+	// ONE grid unit per step, so the exported subdiv is steps per beat: the engine's groove window is one grid unit, and at
+	// four units per step swing could not be written. On screen nothing moves.
 	const unitsPerStep = 1
 	stepsPerQuarter := s.Subdiv / 4
 	perimeter := totalSteps * unitsPerStep
@@ -215,9 +196,7 @@ func build(s Showcase) ([]byte, error) {
 				return nil, fmt.Errorf("showcase %q: %w", s.Stem, err)
 			}
 		}
-		// Auto-assign color from canonical InstrumentSequence (row index wraps),
-		// overriding any spec-level color. This ensures every generated template
-		// satisfies TestTemplateColorsDeriveFromSequence without per-spec hex literals.
+		// Every row coloured from the canonical sequence (wrapping), never a per-spec hex literal.
 		seq := templates.InstrumentSequence
 		color := seq[ri%len(seq)]
 		var fx []effectJSON
@@ -247,11 +226,8 @@ func build(s Showcase) ([]byte, error) {
 	return encodeDoc(d)
 }
 
-// encodeDoc writes a template as compact JSON with one instrument or node per
-// line. The templates are embedded verbatim in every shipped binary, and
-// indented JSON cost 0.77 MiB of raw WASM once the groove templates landed —
-// enough to break TestWasmAssetSizeBudget's raw budget on its own. One object
-// per line keeps a regenerated template's diff readable node by node.
+// Compact, one instrument or node per line: templates ship verbatim in every binary and indented JSON blew the raw
+// WASM budget; one object per line keeps a regenerated diff readable.
 func encodeDoc(d doc) ([]byte, error) {
 	head, err := json.Marshal(struct {
 		schema.Envelope

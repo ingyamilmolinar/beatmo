@@ -10,13 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// families_filter_test.go — `-families` restricts a session to a named subset.
-//
-// Re-auditing after a pipeline change is a targeted job, not a full pass: when
-// the render or level-match changes, a specific, computable set of families has
-// stale verdicts and the rest are still valid. Without a filter the only way to
-// revisit twenty-four of forty-four families is twenty-four separate
-// `-instrument` invocations.
+// Re-auditing after a pipeline change is targeted: a computable set of families has stale verdicts, and the rest are
+// still valid.
 
 func famsFixture() []auditionFamily {
 	return []auditionFamily{

@@ -9,30 +9,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestPredictorEnsureBoundedAllocation asserts that calling Predictor.Ensure
-// repeatedly with horizon advancing one step at a time (the production
-// scheduler pattern: seqScheduleTime calls Ensure(target+1) every ~4 ms with
-// target advancing by one each tick) does NOT allocate quadratically.
-//
-// Background:
-//
-//	Ensure grows audibleByRow / visibleByRow / triggeredByRow with
-//	  tmp := make([]bool, len(...), horizon)
-//	  copy(tmp, oldSlice)
-//	When the cap is exactly horizon and horizon then advances by one, the next
-//	call hits cap < horizon again and allocates a fresh slice. The cumulative
-//	allocation across N steps is sum(1..N) = O(N^2) bytes — for production-scale
-//	N (tens of thousands) on WASM (single-threaded GC, 2 GB linear-memory
-//	ceiling) this exceeds what the runtime can reclaim during gameplay and
-//	manifests as the 2 GB OOM observed at ~10 minutes of playback.
-//
-// The fix is geometric growth: when cap < horizon, reallocate to at least
-// 2× the old cap (or some other amortized policy). After the fix, total
-// allocations across N steps must be O(N) — a small constant per step
-// for amortized growth, plus a handful of doublings.
-//
-// The production OOM stack (predictor_compute.go:47, ~14 835-element slice)
-// is reproduced by horizon advancing one step at a time across many rows.
+// Ensure advancing one step at a time (the scheduler's pattern) must allocate O(N), not O(N²): with cap == horizon each
+// advance reallocated, and on WASM (single-threaded GC, 2 GB ceiling) that garbage rate OOMed long sessions.
 func TestPredictorEnsureBoundedAllocation(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -72,9 +50,7 @@ func TestPredictorEnsureBoundedAllocation(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&pre)
 
-	// Simulate ~600 s of production playback at 24 abs-index/s (BPM 120,
-	// subdiv 12). 14400 single-step horizon advances; matches the production
-	// crash horizon of ~14 835.
+	// ~600 s of playback at 24 abs/s (120 BPM, subdiv 12), the scale of the OOM horizon.
 	const N = 14400
 	for h := 101; h <= 100+N; h++ {
 		pred.Ensure(h)
@@ -84,12 +60,7 @@ func TestPredictorEnsureBoundedAllocation(t *testing.T) {
 	allocBytes := post.TotalAlloc - pre.TotalAlloc
 	bytesPerStep := float64(allocBytes) / float64(N)
 
-	// With O(N^2) reallocation: cumulative bytes ≈ rows * 3 * N * (N/2 + start)
-	// ≈ 6 * 3 * 14400 * 7300 = 1.89 GB. With geometric growth we expect under
-	// ~256 bytes/step amortized — give 4x headroom (1 KB/step) for noise from
-	// map updates and the per-step prediction work. A regression to O(N^2)
-	// pushes bytes/step to ~131 KB at N=14400, four orders of magnitude past
-	// the bound.
+	// Geometric growth stays far under 1 KB/step (4x headroom for map updates); O(N²) is four orders of magnitude past it.
 	const maxBytesPerStep = 1024
 	if bytesPerStep > maxBytesPerStep {
 		t.Errorf("Predictor.Ensure allocates %.0f bytes/step over %d single-step horizon advances "+

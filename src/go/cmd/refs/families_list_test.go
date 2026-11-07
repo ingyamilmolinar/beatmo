@@ -25,9 +25,7 @@ func testRef(id string, f0 float64, insts ...instrument.ID) wavref.Ref {
 // filesystem, so every test injects its own answer.
 func allPresent(wavref.Ref) string { return "present" }
 
-// renderReport keeps every test hermetic: unless a test says otherwise the
-// roster is exactly the catalogue's own instruments, so a report never
-// reaches for the real 133-instrument registry.
+// Hermetic: the roster is the catalogue's own instruments unless a test says otherwise.
 func renderReport(t *testing.T, rep familiesReport) string {
 	t.Helper()
 	if rep.Roster == nil {
@@ -68,10 +66,7 @@ func line(t *testing.T, out, want string) string {
 	return hits[0]
 }
 
-// memberLine returns the indented member line for inst -- the line whose
-// first non-marker field is exactly inst. Matching on the field rather than
-// a substring keeps "cello" from also matching "cello-warm" and the family
-// header line.
+// Matching the field, not a substring, keeps "cello" off "cello-warm" and the family header.
 func memberLine(t *testing.T, out string, inst instrument.ID) string {
 	t.Helper()
 	var hits []string
@@ -163,10 +158,7 @@ func TestFamilies_UsesTheLastVerdictForAFamily(t *testing.T) {
 	}
 }
 
-// A member can join a family by naming convention while carrying its OWN
-// reference (conga-tumba joins conga but is not covered by conga's ref).
-// Auditing needs that visible: it is judged against one clip and hashed
-// against another.
+// conga-tumba joins conga by name but has its OWN reference: it is judged against one clip and hashed against another.
 func TestFamilies_ShowsAMembersOwnReferenceWhenItDiffers(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{
 		testRef("conga-alt", 0, roster.Conga, roster.CongaOpen),
@@ -287,11 +279,8 @@ func TestFamilies_FilterAcceptsAMemberName(t *testing.T) {
 	}
 }
 
-// The real catalogue has families where the SHARED audition reference does
-// not cover every member: cello-A3 covers only cello-warm, while "cello"
-// itself is covered by two other refs. Every one of those must be listed --
-// an instrument carrying two candidate references is a `refs choose`
-// decision nobody has made yet, and that is precisely what an audit is for.
+// The shared audition reference need not cover every member, and every reference covering one must be listed: two
+// candidates on one instrument is a refs choose decision nobody has made.
 func TestFamilies_ListsEveryReferenceCoveringAMemberOutsideTheFamilyReference(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{
 		testRef("cello-A3", 220.0, roster.CelloWarm),
@@ -312,9 +301,7 @@ func TestFamilies_ListsEveryReferenceCoveringAMemberOutsideTheFamilyReference(t 
 	}
 }
 
-// Notes are free prose and one of the real recorded ones runs to 300+
-// characters. The report is a scan view: a note that wraps the terminal
-// destroys the column alignment that makes it scannable.
+// One real note runs past 300 characters; wrapping would destroy the scan view's alignment.
 func TestFamilies_TruncatesALongVerdictNote(t *testing.T) {
 	long := strings.Repeat("very ", 60) + "wrong"
 	c := wavref.Cat{Refs: []wavref.Ref{testRef("harp-alt", 0, roster.Harp)}}
@@ -384,10 +371,8 @@ func TestFamilies_EmitsNoTrailingWhitespace(t *testing.T) {
 	}
 }
 
-// The audit must be driven by the GAME's instrument registration, not by
-// whatever catalogue.json happens to mention. 18 registered ids (snare-crack,
-// kick-lofi, fm-bell-soft, ...) appear in no ref at all; enumerating the catalogue
-// kept them invisible, which is exactly the gap this report exists to close.
+// Driven by the GAME's roster, not by what catalogue.json mentions: enumerating the catalogue kept unmentioned
+// registered ids invisible.
 func TestFamilies_ListsRegisteredInstrumentsTheCatalogueNeverMentions(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{testRef("snare-vcsl", 0, roster.Snare)}}
 
@@ -405,9 +390,7 @@ func TestFamilies_ListsRegisteredInstrumentsTheCatalogueNeverMentions(t *testing
 	}
 }
 
-// A variant carrying its OWN factory recipe is a different sound, so the
-// base's clip is not valid ground truth for it. It must be flagged as
-// needing its own reference, not quietly shown as covered.
+// A variant with its OWN document is a different sound: the base's clip is not its ground truth.
 func TestFamilies_FlagsADistinctRecipeVariantAsNeedingItsOwnReference(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{testRef("snare-vcsl", 0, roster.Snare)}}
 
@@ -428,9 +411,7 @@ func TestFamilies_FlagsADistinctRecipeVariantAsNeedingItsOwnReference(t *testing
 	}
 }
 
-// A true instance variant that resolves to the base's recipe IS the base's
-// sound, so it legitimately borrows the base's reference -- and the report
-// says so, rather than letting a borrowed clip pass for adopted ground truth.
+// A variant with the base's document IS the base's sound, so it borrows legitimately, and the report says so.
 func TestFamilies_ShowsASameRecipeVariantAsBorrowingTheBaseReference(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{testRef("organ-vcsl", 0, roster.Organ)}}
 
@@ -487,11 +468,8 @@ func TestFamilies_ListsARegisteredInstrumentWithNoFamilyAtAll(t *testing.T) {
 	}
 }
 
-// "No acoustic counterpart exists for a kick" is a statement about the
-// instrument, not about one recipe: kick-snap and kick-lofi are synthetic kicks
-// too. A variant whose BASE is status-classified inherits that
-// classification, or the to-do list fills with work nobody intends to do
-// and buries the ids that genuinely need a recording.
+// A variant of a status-classified base inherits the classification, or the to-do list fills with work nobody
+// intends to do.
 func TestFamilies_AVariantOfAStatusClassifiedBaseIsNotATodo(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{
 		testRef("snare-vcsl", 0, roster.Snare),
@@ -541,12 +519,8 @@ func TestFamilies_FilteredViewOmitsOrphans(t *testing.T) {
 	}
 }
 
-// The summary's missing count has to agree with the rows above it. It
-// counted only the family-level reference, so a member carrying its OWN
-// reference -- which is exactly what `refs adopt` creates -- could print
-// "missing" on its row and still be reported as "0 references missing
-// locally", telling you nothing needed fetching when a `make ab` run was
-// about to skip silently.
+// The summary must agree with the rows: a member's OWN missing reference (what refs adopt creates) must count, or the
+// summary says nothing needs fetching while make ab is about to skip.
 func TestFamilies_SummaryCountsAMissingMemberReference(t *testing.T) {
 	c := wavref.Cat{Refs: []wavref.Ref{
 		testRef("cello-A3", 220.0, roster.CelloWarm),

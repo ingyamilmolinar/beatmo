@@ -6,13 +6,8 @@ import (
 	"sync"
 )
 
-// Under `go test` a silenced Logger (no BEATMO_TEST_LOG=1, no -v) does not
-// discard its lines: it writes them, at its own level, into one bounded
-// process-wide ring. A passing test prints nothing; a test that registered
-// TailOnFailure and failed prints the latest lines logged while it ran. That
-// keeps suites quiet (an offline render used to print two "[AUDIO CAPTURE]"
-// lines per render, hundreds per run) without throwing away the context a
-// failure needs.
+// A silenced Logger under go test writes into one bounded process-wide ring: a passing test prints nothing, a failing
+// one that registered TailOnFailure prints the latest lines, so suites stay quiet without losing a failure's context.
 
 // testTailCap is how many lines the ring keeps; testTailShown is how many of
 // the latest a failing test prints.
@@ -66,8 +61,7 @@ func (r *tailRing) since(start uint64, n int) (lines []string, omitted uint64) {
 	return lines, from - start
 }
 
-// FailureReporter is the slice of testing.TB that TailOnFailure needs (this
-// package is linked into the shipped binaries, so it must not import testing).
+// This package ships in the binaries, so it must not import testing.
 type FailureReporter interface {
 	Helper()
 	Cleanup(func())
@@ -77,11 +71,8 @@ type FailureReporter interface {
 
 var tailRegistered sync.Map // FailureReporter → struct{}
 
-// TailOnFailure arranges for tb, if it fails, to print the latest log lines
-// written by any silenced Logger since this call (at most testTailShown; the
-// ring is process-wide, so a parallel test's lines can appear too). Calling it
-// again for the same tb is a no-op, so test helpers may call it freely. It
-// does nothing when test logging is already printing (BEATMO_TEST_LOG=1 / -v).
+// The ring is process-wide, so a parallel test's lines can appear. Idempotent per tb, so helpers call it freely; a no-op
+// when test logging already prints.
 func TailOnFailure(tb FailureReporter) {
 	tb.Helper()
 	if !inTests || testLogVerbose() {

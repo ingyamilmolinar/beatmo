@@ -19,37 +19,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// validate.go — `refs validate`: does each descriptor actually predict what a
-// listener hears?
-//
-// WHY THIS EXISTS
-// ---------------
-// The battery grew to ~50 descriptors with no evidence that any of them tracks
-// perceived quality. Running `refs diagnose -all` over the corpus shows the
-// problem plainly: `MFCC profile` reports MISMATCH on 56 of 57 instruments,
-// `centroid spread` on 48, `partial stretch` on 34 of 37. An axis that fires on
-// nearly everything cannot rank anything -- it is a constant, not a
-// measurement, and it crowds out the axes that do carry signal.
-//
-// ear_verdicts.jsonl is the missing ground truth: a listener's judgement of
-// every family, collected for exactly this purpose. This command joins the two.
-// For each descriptor it asks a single falsifiable question:
-//
-//	do the instruments the listener liked score LOWER on this axis than the
-//	ones they disliked?
-//
-// The answer is an AUC (area under the ROC curve) over the good-vs-bad split:
-// 1.0 means the axis orders them perfectly, 0.5 means it is no better than a
-// coin flip, and below 0.5 means it is ANTI-correlated -- actively pointing the
-// wrong way, which is worse than useless for tuning.
-//
-// This does not replace listening. It says which measurements have earned the
-// right to be believed when nobody is listening.
+// Does each descriptor predict what a listener hears? An axis firing on nearly every instrument is a constant, not a
+// measurement. Per descriptor: do the families the listener liked score LOWER than those they disliked (an AUC: 1.0
+// perfect, 0.5 chance, below it ANTI-correlated)? It says which measurements may be believed when nobody is listening.
 
-// verdictClass buckets an ear verdict into the three groups the AUC is computed
-// over. The numbered picks ("1", "2", ...) mean "this option is closest", which
-// is a comparative statement and not an absolute quality judgement, so they sit
-// with "partly" in the middle rather than counting as good.
+// A numbered pick ("this option is closest") is comparative, not absolute, so it sits with "partly" in the middle.
 type verdictClass int
 
 const (
@@ -82,27 +56,16 @@ func classify(verdict string) verdictClass {
 
 // axisScore is one descriptor's validation result.
 type axisScore struct {
-	// ID is the registry descriptor ID. Axis is the human-facing name; the ID
-	// is what the calibration file and the Demoted flag are keyed on, so it
-	// has to travel with the row rather than being re-derived from the name.
+	// The calibration file and the Demoted flag are keyed on ID, so it travels with the row.
 	ID    string
 	Axis  string
 	Group string
 
-	// FlagDemoted mirrors Descriptor.Demoted -- a demotion recorded in the
-	// registry by hand, from evidence gathered outside this run.
+	// A demotion recorded in the registry by hand, from evidence outside this run.
 	FlagDemoted bool
 
-	// GoodFiresRate is the share of GOOD-graded families on which this axis
-	// reads at or past its mismatch threshold (Norm >= 1), over
-	// NGoodMeasured families where it was measurable at all.
-	//
-	// This is the self-demotion signal, and it is a different question from
-	// MismatchRate below. Firing on most of the CORPUS can be honest -- most
-	// instruments really are wrong on most axes. Firing on most of the
-	// families the listener ACCEPTED cannot be: the axis is calling a defect
-	// where a human heard none, so whatever it measures is not what makes an
-	// instrument sound right.
+	// Share of GOOD families where the axis reads past mismatch: the self-demotion signal. Firing on most of the corpus
+	// can be honest; firing on what the listener ACCEPTED cannot, since it calls a defect where a human heard none.
 	GoodFiresRate float64
 	NGoodMeasured int
 
@@ -111,25 +74,16 @@ type axisScore struct {
 	MeanMid           float64
 	MeanBad           float64
 
-	// PrefAgree/PrefTotal come from scorePreferences: over every preference
-	// pair (chosen vs rejected) where this descriptor was measurable on both
-	// clips, PrefAgree counts the pairs where the CHOSEN clip's Norm read
-	// strictly lower (closer to the reference) than the rejected clip's.
-	// This is a second, independent evidence source from the AUC's
-	// good/bad-family split above: it uses within-family relative
-	// preferences (including session data) rather than absolute per-family
-	// verdicts.
+	// Over every (chosen, rejected) pair measurable on both clips, how often the CHOSEN clip read closer: an evidence
+	// source independent of the AUC's good/bad split (within-family preferences, sessions included).
 	PrefAgree, PrefTotal int
 
 	// AUC over the good-vs-bad split, computed on Norm. Undefined (and
 	// Comparable=false) when either class is empty for this axis.
 	AUC        float64
 	Comparable bool
-	// SE is the Hanley-McNeil standard error of AUC. With a corpus of ~7 good
-	// and ~6 bad families this is LARGE -- around 0.16 -- and reporting a bare
-	// AUC without it would invite treating a 0.70 as established when its
-	// confidence interval comfortably spans chance. Every label below is gated
-	// on AUC being separated from 0.5 by more than 1.96 SE.
+	// Hanley-McNeil SE, LARGE on a corpus this small: every label is gated on AUC clearing 0.5 by 1.96 SE, so a 0.70
+	// whose interval spans chance is never treated as established.
 	SE float64
 
 	// MismatchRate is the share of ALL measured instruments the axis flags.
@@ -139,11 +93,8 @@ type axisScore struct {
 	NUnavailable int
 }
 
-// auc computes the probability that a randomly chosen BAD instrument scores
-// higher on this axis than a randomly chosen GOOD one, counting ties as half.
-// This is the Mann-Whitney U statistic normalized to 0..1 -- rank-based, so it
-// is insensitive to the axis's units and to outliers, which matters when the
-// axes span seconds, hertz, decibels and unit fractions.
+// Mann-Whitney U normalised to 0..1 (ties half): rank-based, so insensitive to units and outliers across axes in
+// seconds, hertz, decibels and fractions.
 func auc(good, bad []float64) (float64, bool) {
 	if len(good) == 0 || len(bad) == 0 {
 		return 0, false
@@ -162,13 +113,8 @@ func auc(good, bad []float64) (float64, bool) {
 	return wins / float64(len(good)*len(bad)), true
 }
 
-// aucStandardError is the Hanley-McNeil (1982) estimator for the standard
-// error of an AUC, which accounts for both class sizes.
-//
-// It exists so this command cannot overstate what 13 labelled families can
-// support. The exponential approximations for Q1/Q2 are the standard ones and
-// are adequate here: the point is the ORDER OF MAGNITUDE of the uncertainty,
-// not a precise interval.
+// So the command cannot overstate what a handful of labelled families supports; the standard approximations are fine,
+// since the point is the order of magnitude.
 func aucStandardError(a float64, nGood, nBad int) float64 {
 	if nGood == 0 || nBad == 0 {
 		return math.NaN()
@@ -189,9 +135,7 @@ func significantlyBetterThanChance(a, se float64) bool {
 	return !math.IsNaN(se) && a-1.96*se > 0.5
 }
 
-// significantlyWorseThanChance reports whether the axis is confidently
-// ANTI-correlated -- the case that matters most, since acting on such an axis
-// actively degrades the instrument.
+// The case that matters most: acting on an anti-correlated axis degrades the instrument.
 func significantlyWorseThanChance(a, se float64) bool {
 	return !math.IsNaN(se) && a+1.96*se < 0.5
 }
@@ -207,10 +151,7 @@ func mean(vs []float64) float64 {
 	return s / float64(len(vs))
 }
 
-// meanCell renders a mean(good)/mean(bad) column. An EMPTY group has no mean,
-// and mean() says so with NaN -- but "%.2f" of a NaN prints the literal text
-// "NaN" in a numeric column, which reads as a computed value that went wrong
-// rather than as "this group was empty". A dash says the latter.
+// A dash, not "%.2f" of NaN: "NaN" in a numeric column reads as a computation that went wrong.
 func meanCell(v float64) string {
 	if math.IsNaN(v) {
 		return "   - "
@@ -227,14 +168,8 @@ const prefBackwardsMaxRate = 0.5
 // it, 1/3 (p=1.00) would be marked backwards on three pairs of noise.
 const prefBackwardsMaxP = 0.05
 
-// prefCell renders the PREF column.
-//
-// A SIGNIFICANTLY backwards axis is marked. "2/11 p=0.02" is a strong result
-// -- the axis tracks the listener's preference reliably, in the opposite
-// direction -- and scanning a column of AGREE/TOTAL fractions for the small
-// ones is exactly the reading mistake that let bright.centroid look
-// reasonable for as long as it did. The arrow says which way it points; the
-// legend under the table says what to do about it.
+// A SIGNIFICANTLY backwards axis is marked: "2/11 p=0.02" is a strong result pointing the wrong way, and reading small
+// fractions as weak is the mistake that hid bright.centroid.
 func prefCell(s axisScore) string {
 	if s.PrefTotal == 0 {
 		return "-"
@@ -257,12 +192,7 @@ type validationSample struct {
 	Diagnosis instrumentDiagnosis
 }
 
-// chosenMember returns the instrument whose sound the verdict describes.
-//
-// For a numbered pick that is the chosen option. For "neither" there is no
-// single culprit, so the FIRST option stands in -- the listener rejected the
-// whole family, which means every member failed, and option 1 is as
-// representative as any. For a single-option family it is simply that member.
+// For "neither" every member failed, so option 1 stands in as representative as any.
 func chosenMember(v earVerdict) instrument.ID {
 	if v.Chosen != "" {
 		return v.Chosen
@@ -273,11 +203,7 @@ func chosenMember(v earVerdict) instrument.ID {
 	return v.Family
 }
 
-// staleness reports whether a recorded verdict's RecipeSHA still matches
-// what the chosen instrument renders with today: "" (current), "unhashed"
-// (recorded before RecipeSHA existed -- provenance unknown, not a lie), or
-// "STALE" (the recipe has changed since the listener judged it, so the
-// verdict no longer describes what's playing).
+// "" current, "unhashed" (provenance unknown, not a lie), or "STALE" (the document changed since the listener judged it).
 func staleness(v earVerdict) string {
 	if v.RecipeSHA == "" {
 		return "unhashed"
@@ -288,17 +214,9 @@ func staleness(v earVerdict) string {
 	return ""
 }
 
-// collectValidationSamples diagnoses every recorded family against the SAME
-// reference the listener judged it against.
-//
-// Using the verdict's own recorded reference rather than `refs compare`'s
-// default candidate is essential: for a variant family the audition renders
-// every member against one shared family reference, which need not be the
-// instrument's own first candidate. The shipped cello is the worked case --
-// the listener judged it at A3 against cello-A3, while `refs diagnose
-// -instrument cello` defaults to cello-C2 two octaves down. Correlating a
-// verdict about one render with a diagnosis of a different render would
-// measure nothing.
+// Against the verdict's OWN recorded reference, not refs compare's default: a family is auditioned against one shared
+// reference (cello at A3 against cello-A3, where diagnose defaults to cello-C2), and a diagnosis of another render
+// measures nothing.
 func collectValidationSamples(diag io.Writer, verdicts []earVerdict) []validationSample {
 	out := make([]validationSample, 0, len(verdicts))
 	for _, v := range verdicts {
@@ -384,11 +302,7 @@ func scoreAxes(samples []validationSample) []axisScore {
 		}
 		out = append(out, sc)
 	}
-	// Most discriminating first; demoted axes sink below the trusted set and
-	// incomparable ones to the bottom. The top of the table is meant to be
-	// readable as "the axes to believe", so an axis that has been excluded
-	// from that set must not sit in it however well it happens to order this
-	// particular corpus.
+	// Most discriminating first, demoted below the trusted set, incomparable last: the top must read as "the axes to believe".
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Comparable != out[j].Comparable {
 			return out[i].Comparable
@@ -401,22 +315,8 @@ func scoreAxes(samples []validationSample) []axisScore {
 	return out
 }
 
-// scorePreferencesFromNorms is scorePreferences's pure counting core: given,
-// for each pair (by index), the chosen and rejected clip's per-descriptor
-// Norm map (nil when that clip could not be diagnosed), it counts, per
-// descriptor ID, the pairs where the chosen clip's Norm read strictly lower
-// (closer to the reference) than the rejected clip's. Split out from
-// scorePreferences so the counting rule is testable against precomputed norm
-// maps, without rendering or diagnosing anything.
-//
-// This is a preference test, distinct from scoreAxes's AUC: scoreAxes asks
-// "does this axis order GOOD families ahead of BAD ones", using one absolute
-// verdict per family. This asks "within a single head-to-head comparison,
-// does this axis agree with which clip the listener preferred", using every
-// relative preference the corpus records (numbered picks from
-// ear_verdicts.jsonl, plus the richer better/worse/rating comparisons from
-// ear_sessions.jsonl). An axis can pass one test and fail the other; both are
-// reported.
+// The pure counting core (testable on precomputed norms). A preference test, distinct from the AUC: within one
+// head-to-head, does the axis agree with the clip the listener preferred? An axis can pass one and fail the other.
 func scorePreferencesFromNorms(pairs []prefPair, chosenNorms, rejectedNorms []map[string]float64) map[string][2]int {
 	out := map[string][2]int{}
 	for i := range pairs {
@@ -468,11 +368,7 @@ func scorePreferences(diag io.Writer, pairs []prefPair) map[string][2]int {
 	return scorePreferencesFromNorms(pairs, chosenNorms, rejectedNorms)
 }
 
-// mergePreferenceScores copies each axis's preference-pair tally (from
-// scorePreferences/scorePreferencesFromNorms, keyed by descriptor ID) onto
-// the matching axisScore's PrefAgree/PrefTotal fields. An axis absent from
-// prefByID (no preference pair ever measured it) is left at its zero value,
-// which the PREF column renders as "-".
+// An axis no pair measured stays zero, rendered "-".
 func mergePreferenceScores(scores []axisScore, prefByID map[string][2]int) []axisScore {
 	for i := range scores {
 		if pt, ok := prefByID[scores[i].ID]; ok {
@@ -482,9 +378,7 @@ func mergePreferenceScores(scores []axisScore, prefByID map[string][2]int) []axi
 	return scores
 }
 
-// binomialPMF is P(X=k) for X ~ Binomial(n, 0.5), computed from the log
-// binomial coefficient (math.Lgamma) rather than raw factorials so it stays
-// accurate at realistic corpus sizes without overflowing.
+// Through Lgamma, so it stays accurate without factorial overflow.
 func binomialPMF(k, n int) float64 {
 	if k < 0 || k > n {
 		return 0
@@ -495,12 +389,7 @@ func binomialPMF(k, n int) float64 {
 	return math.Exp(logNFact-logKFact-logNKFact) * math.Pow(0.5, float64(n))
 }
 
-// signTestP is the two-sided exact binomial sign-test p-value for observing
-// `agree` agreements out of `total` preference pairs under the null
-// hypothesis that the axis is no better than a coin flip (p=0.5): twice the
-// smaller of the two tail probabilities P(X<=agree) and P(X>=agree), capped
-// at 1. An exact test rather than a normal approximation, because `total` is
-// routinely single digits here, where the approximation is unreliable.
+// Exact, not a normal approximation: total is routinely single digits here.
 func signTestP(agree, total int) float64 {
 	if total <= 0 {
 		return math.NaN()
@@ -526,10 +415,7 @@ const (
 	aucAnti       = 0.45 // below this it is actively pointing the wrong way
 )
 
-// aucLabel bands an axis, but only ever asserts a DIRECTION the sample size can
-// support. A high AUC whose interval still covers 0.5 is reported as
-// "unproven", not as predictive -- the whole point of this command is to say
-// what may be believed, so it must not be the first thing to overclaim.
+// Only a DIRECTION the sample can support: a high AUC whose interval covers 0.5 is "unproven", never predictive.
 func aucLabel(s axisScore) string {
 	if !s.Comparable {
 		return "n/a"
@@ -555,35 +441,15 @@ func aucLabel(s axisScore) string {
 // whatever its AUC says.
 const saturatedRate = 0.85
 
-// prefPredictiveMinTotal/prefPredictiveMinRate gate the PREDICTIVE (pref) flag:
-// an axis needs at least this many measured preference pairs, and to agree
-// with the listener's choice on at least this share of them, before the
-// preference test will vouch for it.
-//
-// 6 is the smallest sample at which the exact two-sided sign-test p-value
-// (signTestP) can clear the conventional p<0.05 significance bar at all: with
-// n=6, 6/6 agreements gives p=2*0.5^6=0.03125, just under 0.05, while n=5
-// tops out at p=2*0.5^5=0.0625 -- 5/5 can never be significant, whatever the
-// rate. 0.75 (three-in-four) is a deliberately blunt "clearly more than a
-// coin flip" bar, the same kind of round-number choice goodFiresDemoteRate
-// makes for the good-group self-demotion rule below, rather than tuning a
-// second rate to the letter on a corpus this small. Both this rate and the
-// minimum sample size will tighten as the preference corpus (numbered-pick
-// verdicts plus recorded sessions) grows.
+// 6 is the smallest sample at which the exact two-sided sign test can clear p < 0.05 at all (6/6 gives 0.031; 5/5 only
+// 0.0625). 0.75 is a deliberately blunt "clearly better than a coin" bar for a corpus this small.
 const (
 	prefPredictiveMinTotal = 6
 	prefPredictiveMinRate  = 0.75
 )
 
-// goodFiresDemoteRate is the good-group fires-rate above which an axis
-// demotes itself.
-//
-// Half. An axis that flags more than half the families a listener called
-// right is not measuring rightness; whether its AUC happens to order the
-// corpus is beside the point, because acting on it would mean "fixing"
-// instruments that are already correct. The threshold is deliberately blunt:
-// the good group is 8 families, so anything finer than a half would be
-// reading noise.
+// Half: an axis flagging more than half the families a listener called right is not measuring rightness, and acting on
+// it would "fix" correct instruments. Blunt because the good group is small.
 const goodFiresDemoteRate = 0.5
 
 // Demoted reports whether the axis is excluded from the trusted set, for
@@ -604,24 +470,8 @@ func (s axisScore) DemotionReason() string {
 	}
 }
 
-// axisFlag renders the VERDICT column.
-//
-// A demoted axis prints DEMOTED and NOTHING ELSE from the AUC vocabulary. It
-// used to be downgraded to "unproven+", which was worse than useless: every
-// word in that vocabulary makes a claim about how far to trust the axis, and
-// demotion is the statement that none of them applies. The AUC and its
-// interval are still in their own columns for anyone who wants to look.
-//
-// SATURATED still appends, because it names a different failure (cannot rank)
-// than demotion (must not be trusted) and an axis can have both.
-//
-// PREDICTIVE (pref) is a THIRD, independent signal from the preference test
-// (scorePreferences): it appends when there are at least prefPredictiveMinTotal
-// pairs measured on this axis and the chosen clip read lower at least
-// prefPredictiveMinRate of the time. It is not folded into aucLabel's own
-// PREDICTIVE because the two tests use different corpora (absolute
-// good/bad-family verdicts vs. head-to-head preference pairs) and an axis can
-// earn one without the other.
+// DEMOTED prints alone: every AUC word claims how far to trust the axis, and demotion says none applies. SATURATED still
+// appends (cannot rank ≠ must not be trusted). PREDICTIVE (pref) is the preference test's own, independent signal.
 func axisFlag(s axisScore) string {
 	flag := aucLabel(s)
 	if s.Demoted() {
@@ -636,10 +486,7 @@ func axisFlag(s axisScore) string {
 	return flag
 }
 
-// calLabel renders the CAL column: where this descriptor's drift/mismatch
-// thresholds came from. "hand" is a real state, not a blank -- a reader has
-// to be able to tell a threshold nobody has validated from one the corpus or
-// a listener produced.
+// "hand" is a real state: a reader must tell an unvalidated threshold from one the corpus or a listener produced.
 func calLabel(id string) string {
 	if src := fingerprint.DefaultRegistry().CalibratedFrom(id); src != "" {
 		return src
@@ -772,24 +619,13 @@ type sessionScaleScore struct {
 	Hits         []sessionScaleHit
 }
 
-// scaleDirection is one axis's diagnosed Direction plus whether it was
-// measurable at all -- the per-clip input scoreCandidateScales needs to score
-// one candidate's scale answers without re-deriving it from a full
-// instrumentDiagnosis.
+// scaleDirection is one axis's diagnosed Direction and whether it was measurable: what scoreCandidateScales needs.
 type scaleDirection struct {
 	Direction  string
 	Measurable bool
 }
 
-// scoreCandidateScales is scoreSessionScales's pure per-candidate counting
-// core: given one candidate's answered scales and its diagnosed axis
-// directions (keyed by descriptor ID), it appends one sessionScaleHit per
-// non-zero answer to byAxis/order and updates that axis's running
-// agree/total tally. Split out from scoreSessionScales so the sign-agreement
-// rule -- Answer > 0 ("synth should read HIGH on this axis") agrees with a
-// measured Direction of "high", Answer < 0 agrees with "low", and Answer == 0
-// ("no opinion") is skipped entirely, neither hit nor tally -- is testable
-// against a precomputed direction map, without diagnosing anything.
+// The pure per-candidate core: Answer > 0 agrees with a measured "high", < 0 with "low", 0 is skipped entirely.
 func scoreCandidateScales(family instrument.ID, candID string, scales []sessionScale, directions map[string]scaleDirection, byAxis map[string]*sessionScaleScore, order *[]string) {
 	for _, sc := range scales {
 		if sc.Answer == 0 {
@@ -824,11 +660,7 @@ func scoreCandidateScales(family instrument.ID, candID string, scales []sessionS
 	}
 }
 
-// scoreSessionScales diagnoses every session candidate that carries at least
-// one answered sessionScale, then delegates the counting to
-// scoreCandidateScales. A candidate is diagnosed once and its answers checked
-// against that single diagnosis, rather than once per scale, since multiple
-// scales commonly name axes on the same clip.
+// Each candidate is diagnosed once for all its scales.
 func scoreSessionScales(diag io.Writer, sessions []earSession) []sessionScaleScore {
 	byAxis := map[string]*sessionScaleScore{}
 	var order []string

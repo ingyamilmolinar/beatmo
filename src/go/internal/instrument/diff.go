@@ -141,10 +141,8 @@ func BlockHashWith(block []float64, idx int, v float64) uint64 {
 	return h.Sum64()
 }
 
-// ContentHash identifies a document's content (not its ID or Origin):
-// "sha256:" + the first 16 hex digits over its canonical JSON. encoding/json
-// writes struct fields in declaration order and map keys sorted, so the
-// encoding is canonical for a given Doc value.
+// "sha256:" + 16 hex digits over the canonical JSON (fields in declaration order, map keys sorted): content only, never
+// ID or Origin.
 func ContentHash(d Doc) string {
 	d.ID, d.Origin = "", ""
 	b, err := json.Marshal(d)

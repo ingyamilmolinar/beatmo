@@ -17,14 +17,8 @@ import (
 
 // --- Classification --------------------------------------------------
 
-// classifyVerdict maps a recorded earVerdict onto one of "y" / "p" / "n"
-// for -only filtering. Single-option families already record exactly one
-// of those three tokens in Verdict, so classification is the identity.
-// Multi-option families never record an absolute "y" -- "n" means
-// "neither option is close" (kept as "n"), and picking a specific option
-// ("1".."N") is a COMPARATIVE judgement, not proof the instrument sounds
-// right, so it classifies as "p" (partly): worth a note explaining what's
-// still wrong with even the winning option.
+// Single-option families record y / p / n as is. Picking option "1".."N" is COMPARATIVE, not proof the instrument
+// sounds right, so it classifies as "p": worth a note on what is still wrong with the winner.
 func classifyVerdict(fam auditionFamily, v earVerdict) string {
 	if len(fam.Members) > 1 {
 		if v.Verdict == "n" {
@@ -35,9 +29,7 @@ func classifyVerdict(fam auditionFamily, v earVerdict) string {
 	return v.Verdict
 }
 
-// parseOnlySet parses the -only flag ("n", "p", or "n,p") into a lookup
-// set, rejecting anything outside {y, n, p} so a typo fails loudly instead
-// of silently selecting nothing.
+// Anything outside {y, n, p} is rejected, so a typo fails loudly instead of selecting nothing.
 func parseOnlySet(raw string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, tok := range strings.Split(raw, ",") {
@@ -60,9 +52,7 @@ func parseOnlySet(raw string) (map[string]bool, error) {
 
 // --- Selection ---------------------------------------------------------
 
-// noteCandidate pairs a family with its already-recorded verdict, for the
-// notes pass -- unlike the verdict pass, notes never operates on a family
-// with no recorded verdict at all (there is nothing yet to explain).
+// The notes pass only revisits families with a verdict: there is nothing yet to explain otherwise.
 type noteCandidate struct {
 	Family  auditionFamily
 	Verdict earVerdict
@@ -93,14 +83,8 @@ func pendingNoteCandidates(families []auditionFamily, verdicts []earVerdict, onl
 	return out
 }
 
-// pickNotesFamily resolves which family THIS invocation revisits for
-// notes, mirroring pickFamily's shape: an explicit -instrument always
-// wins, bypassing -only and the already-noted check (asking for a family
-// by name is an explicit override), but it still requires a recorded
-// verdict to exist -- notes cannot explain a family that was never
-// audited. Auto-pick walks pendingNoteCandidates in order, skipping
-// sessionSkip (the -skip flag's non-persisted "s" accumulator, same
-// convention as the verdict pass).
+// An explicit -instrument wins over -only and the already-noted check but still needs a recorded verdict; auto-pick
+// walks pendingNoteCandidates, skipping the session's -skip list.
 func pickNotesFamily(families []auditionFamily, verdicts []earVerdict, inst instrument.ID, only map[string]bool, reannotate bool, sessionSkip map[instrument.ID]bool) (auditionFamily, earVerdict, bool, error) {
 	if inst != "" {
 		var fam auditionFamily
@@ -133,12 +117,8 @@ func pickNotesFamily(families []auditionFamily, verdicts []earVerdict, inst inst
 
 // --- Tag vocabulary ------------------------------------------------------
 
-// recognizedNoteTags is the failure-vocabulary menu shown to the listener,
-// drawn from this project's own tuning history (see
-// docs/superpowers/specs/2026-08-21-ear-verdict-round-1-findings.md and
-// reference_instrument_synth_tuning). Longer/multi-word entries are
-// matched as whole phrases; order here is display order, not match
-// priority.
+// The failure vocabulary from this project's tuning history; multi-word entries match as whole phrases, and the order is
+// display order.
 var recognizedNoteTags = []string{
 	"attack", "sustain", "bright", "dark", "nasal", "thin", "boomy",
 	"noisy", "too clean", "decay", "vibrato", "metallic", "synthetic", "ensemble",
@@ -154,11 +134,7 @@ var noteTagPatterns = func() map[string]*regexp.Regexp {
 	return m
 }()
 
-// parseNoteTags extracts every recognized tag present in note, in order of
-// first appearance, deduplicated. Free text with no recognized vocabulary
-// returns an empty (nil) slice -- that's a perfectly valid outcome, not an
-// error; the note itself is always stored verbatim by the caller
-// regardless of what this returns.
+// No recognised vocabulary returns nil, which is fine: the note itself is always stored verbatim.
 func parseNoteTags(note string) []string {
 	normalized := strings.ToLower(note)
 	type hit struct {
@@ -181,11 +157,7 @@ func parseNoteTags(note string) []string {
 
 // --- In-place update -----------------------------------------------------
 
-// updateVerdictNote returns a COPY of verdicts with the matching family's
-// Note and Tags set, preserving every other field and every other row
-// untouched -- never appending a duplicate. A family with no existing
-// entry is an error (there is nothing to attach the note to), reported by
-// name rather than silently doing nothing or crashing.
+// A copy with that family's Note and Tags set, never a duplicate row; a family with no entry is an error by name.
 func updateVerdictNote(verdicts []earVerdict, family instrument.ID, note string, tags []string) ([]earVerdict, error) {
 	out := make([]earVerdict, len(verdicts))
 	copy(out, verdicts)
@@ -201,12 +173,8 @@ func updateVerdictNote(verdicts []earVerdict, family instrument.ID, note string,
 
 // --- Atomic write ----------------------------------------------------------
 
-// writeVerdictsAtomic rewrites path's entire contents as one JSON line per
-// verdict, atomically: it writes to a temp file in the SAME directory
-// (so the final rename is same-filesystem and therefore atomic), fsyncs,
-// then renames over path. This file holds irreplaceable human judgements,
-// so a partial/truncating write is not an acceptable failure mode -- any
-// error along the way removes the temp file and leaves path untouched.
+// Atomic (temp file in the SAME directory, fsync, rename): these are irreplaceable human judgements, so a failure
+// leaves path untouched.
 func writeVerdictsAtomic(path string, verdicts []earVerdict) (err error) {
 	dir := filepath.Dir(path)
 	if dir != "" {
@@ -304,10 +272,8 @@ func describeVerdict(fam auditionFamily, v earVerdict) string {
 	return v.Verdict
 }
 
-// notesPromptLine renders the notes-only prompt: what was already decided,
-// the failure-vocabulary menu, and the control tokens. Unlike
-// promptLine's choice+optional-note shape, the ENTIRE line here is note
-// prose -- there is no separate choice token to parse out.
+// notesPromptLine: what was decided, the failure vocabulary and the controls. The WHOLE line is note prose; there is no
+// choice token to parse out.
 func notesPromptLine(fam auditionFamily, v earVerdict) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "notes for %s (recorded verdict: %s", fam.Key, describeVerdict(fam, v))
@@ -321,17 +287,8 @@ func notesPromptLine(fam auditionFamily, v earVerdict) string {
 	return b.String()
 }
 
-// promptNotes writes the prompt for fam/v to out, reads exactly one answer
-// from in (re-prompting on blank input), and returns it. "r"/"s"/"q" as
-// the WHOLE line (case-insensitive) are the control tokens; any other
-// non-empty line is note prose in full -- there is no verdict to parse out
-// here, unlike promptVerdict. Tags are parsed from the note but the note
-// itself is always the verbatim, untouched text the listener typed.
-//
-// Reads via readLine (byte-at-a-time, unbuffered) for the SAME reason
-// promptVerdict does: ab-notes runs one `refs audition -notes` process per
-// family sharing one piped stdin, so this process must never read ahead
-// into the next family's answer.
+// The whole line is note prose unless it is exactly r / s / q; tags are parsed, the note is kept verbatim. Unbuffered
+// (readLine): one process per family shares the piped stdin.
 func promptNotes(in io.Reader, out io.Writer, fam auditionFamily, v earVerdict) (kind verdictKind, note string, tags []string, err error) {
 	for {
 		fmt.Fprint(out, notesPromptLine(fam, v))
@@ -367,13 +324,8 @@ func formatNoteConfirmation(fam auditionFamily, note string, tags []string) stri
 
 // --- Plan / prompt entry points -------------------------------------------
 
-// runNotesPlan mirrors runAuditionPlan's shape for the notes pass: resolve
-// the SAME family pickNotesFamily/runNotesPrompt would pick, render the
-// reference plus every member's synth option (identical render path to
-// the verdict pass -- notes replays exactly what was judged), and print
-// the eval-able BEATMO_AB_* plan. It also reports how many families are
-// pending before starting, so a listener sees the scope of the pass up
-// front (see CLAUDE.md's "prompt for something specific" requirement).
+// runNotesPlan renders exactly what was judged (the verdict pass's render path) and reports how many families are
+// pending, so the listener sees the scope up front.
 func runNotesPlan(w, diag io.Writer, inst instrument.ID, only map[string]bool, reannotate bool, outPath, skip, familiesOnly string) error {
 	c, err := loadCatalogue()
 	if err != nil {
@@ -408,9 +360,7 @@ func runNotesPlan(w, diag io.Writer, inst instrument.ID, only map[string]bool, r
 		return nil
 	}
 
-	// One family-wide render, for the same reason runAuditionPlan uses it:
-	// per-member renderCompare calls each re-derive the reference's gain from
-	// their own synth, and only the first member's copy is ever played.
+	// One family-wide render: per-member renders re-derive the reference's gain from their own synth.
 	results, err := renderFamilyCompare(diag, fam.Members, fam.Reference, 0, matchRMS)
 	if err != nil {
 		return err
@@ -419,10 +369,7 @@ func runNotesPlan(w, diag io.Writer, inst instrument.ID, only map[string]bool, r
 	return nil
 }
 
-// runNotesPrompt mirrors runAuditionPrompt's shape for the notes pass: no
-// rendering, resolve the same family, print the header + notes prompt,
-// read exactly one answer, and on a real note (not skip/replay/quit)
-// update the existing verdict row in place via applyNoteToFile.
+// runNotesPrompt: no rendering; reads one answer and updates the existing row in place.
 func runNotesPrompt(w io.Writer, in io.Reader, inst instrument.ID, only map[string]bool, reannotate bool, outPath, skip, familiesOnly string) (verdictKind, error) {
 	c, err := loadCatalogue()
 	if err != nil {

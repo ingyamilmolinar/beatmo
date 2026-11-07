@@ -1,22 +1,7 @@
 #!/usr/bin/env bash
-# Capture screenshots of every UI surface in the beatmo scene catalog.
-#
-# Iterates ui.SceneNames() and runs each scene through both:
-#   - Desktop (native Ebiten via xvfb-run + -scene flag)
-#   - Browser (Playwright + window.runScene)
-#
-# Scenes whose name starts with "crop_" declare a Subject in the catalog
-# (see internal/ui/scene_catalog.go); the desktop binary and Playwright
-# runner both crop the resulting PNG to that surface's bounds. Other
-# scenes capture full-screen.
-#
-# Set MOBILE=1 to additionally capture mobile-viewport browser scenes.
-# Set SCENES=name1,name2 to filter to specific scenes. To capture only
-# the cropped subjects, pass a comma-separated list of crop_* names —
-# e.g. SCENES=$(./tmp/beatmo_screenshot -list-scenes | grep '^crop_' | paste -sd ,).
-#
-# Output: screenshots/all/{desktop,mobile}/<scene>.png + manifest.json
-# Usage:  make screenshots-all [MOBILE=1] [SCENES=transport_idle,context_menu_open]
+# Every scene in the catalog, desktop (xvfb + -scene) and browser (Playwright + runScene); crop_* scenes are cropped
+# to their Subject on both. → screenshots/all/{desktop,mobile}/<scene>.png + manifest.json.
+# Usage: make screenshots-all [MOBILE=1] [SCENES=a,b]
 
 set -euo pipefail
 
@@ -26,13 +11,8 @@ OUTDIR="${OUTDIR:-$ROOT/screenshots/all}"
 SCENES="${SCENES:-}"
 MOBILE="${MOBILE:-0}"
 
-# Resolve OUTDIR to an absolute path: the desktop build below cds into
-# $ROOT/src/go and stays there for the desktop capture loop. A relative
-# OUTDIR (e.g. the Makefile default "screenshots/all") would then write
-# under src/go/, where the pre-mkdir-ed directory doesn't exist — and
-# xvfb-run silently fails without writing the PNG (every desktop scene
-# reports "no PNG written"). Make OUTDIR absolute up front so neither
-# the mkdir nor the xvfb-run -screenshot path depends on cwd.
+# Absolute because the desktop build cds into src/go: a relative OUTDIR would land there, where xvfb-run silently
+# writes no PNG.
 if [[ "$OUTDIR" != /* ]]; then
     OUTDIR="$(pwd)/$OUTDIR"
 fi

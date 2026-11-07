@@ -8,22 +8,9 @@ import (
 	"testing"
 )
 
-// TestNoTestReadsReferenceAudio: reference recordings are local tuning
-// material (~/.beatmo/wav-refs, a dropped-in sample library) -- never
-// committed, and never a test input. A test that reads them passes, fails or
-// skips by accident of what one machine has on disk: under the default root,
-// eleven `-tags test` tests ran on a developer machine and silently skipped
-// everywhere else, and a browser stress test assigned whatever WAV the local
-// assets/wav held to every row, so it measured synths on one machine and
-// samples on another. Test audio is GENERATED (internal/wavgen, testwav); the
-// corpus calibrations run as `refs check` (`make refs-check`), not as tests.
-//
-// This scans test sources for the ways a test has reached real audio:
-//   - a wavref lookup (Path/Resolve/Dir/Root/SourcePath/SourcesDir) in a file
-//     that never points $BEATMO_WAV_REFS at a scratch directory;
-//   - a relative path literal to an audio file (the repo-root sandyrb kick);
-//   - listing a directory for audio by extension;
-//   - a browser test reading assets/wav or an audio file off disk.
+// Reference recordings are never a test input: a test reading them passes, fails or skips by accident of one machine's
+// disk. Scans for a wavref lookup without a scratch $BEATMO_WAV_REFS, a relative audio path, listing a directory for
+// audio, a browser test reading audio off disk. Test audio is generated; corpus calibrations run as refs check.
 func TestNoTestReadsReferenceAudio(t *testing.T) {
 	root := repoRoot(t)
 	var offenders []string
@@ -105,9 +92,7 @@ func scanTestSourceForAudioReads(rel, src string, isGo bool) []string {
 	return offenders
 }
 
-// stripLineComments drops // comments (Go and JS share the syntax) so prose that NAMES a forbidden pattern
-// (e.g. "it used to load the local assets/wav library") is not mistaken for
-// code that does it.
+// So prose that NAMES a forbidden pattern is not mistaken for code doing it.
 func stripLineComments(src string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(src, "\n") {
@@ -120,9 +105,7 @@ func stripLineComments(src string) string {
 	return b.String()
 }
 
-// TestAudioReadScanCatchesKnownOffenders feeds the scanner the exact shapes
-// that reached real audio before the guard existed, plus the shapes it must
-// leave alone, so the walk above cannot pass by matching nothing.
+// The shapes that reached real audio before, plus those it must leave alone, so the walk cannot pass by matching nothing.
 func TestAudioReadScanCatchesKnownOffenders(t *testing.T) {
 	caught := []struct{ rel, src string }{
 		{"src/go/x/kick_flux_test.go", `const path = "../../../../../36010__sandyrb__dnb-kick-003.wav"`},

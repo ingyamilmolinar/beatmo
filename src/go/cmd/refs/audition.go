@@ -14,28 +14,20 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// errAuditionQuit and errAuditionReplay are sentinel errors cmdAudition
-// returns instead of calling os.Exit directly, so the dispatch logic stays
-// unit-testable (killing the test process with os.Exit would defeat that).
-// main() maps them to distinct process exit codes the `ab-all` Makefile
+// Sentinels rather than os.Exit, so the dispatch stays unit-testable; main() maps them to the exit codes the ab-all
 // recipe branches on.
 var (
 	errAuditionQuit   = errors.New("refs audition: quit requested")
 	errAuditionReplay = errors.New("refs audition: replay requested")
 )
 
-// Process exit codes cmdAudition signals via the sentinel errors above.
-// 1 is already used for generic errors (see main.go); these are additional,
-// private to the ab-all shell loop.
+// 1 is the generic error code; these are private to the ab-all shell loop.
 const (
 	exitAuditionReplay = 4
 	exitAuditionQuit   = 3
 )
 
-// printAuditionHeader writes the compact per-family header: family name,
-// reference id, measured pitch, and option count. Pure metadata -- no
-// render required, so both plan mode (after rendering) and prompt mode
-// (never renders) can print an identical header.
+// Pure metadata, so plan mode (after rendering) and prompt mode (never renders) print the same header.
 func printAuditionHeader(w io.Writer, fam auditionFamily) {
 	n := len(fam.Members)
 	noun := "option"
@@ -52,12 +44,8 @@ func printAuditionHeader(w io.Writer, fam auditionFamily) {
 	fmt.Fprintf(w, "    members: %s\n", strings.Join(instrument.Strings(fam.Members), ", "))
 }
 
-// formatVerdictConfirmation renders a plain-English statement of exactly
-// what a recorded verdict means, so the user never has to guess what went
-// into the JSONL -- critical because a stray "1" on a single-option family
-// (accepted as a synonym for "y") records a MUCH stronger claim ("sounds
-// like the real thing") than "1" means on a multi-option family ("option 1
-// is closest"). Printed immediately after every accepted answer.
+// Spelled out after every answer: a "1" on a single-option family means "sounds like the real thing", a much stronger
+// claim than "option 1 is closest" on a multi-option one.
 func formatVerdictConfirmation(fam auditionFamily, verdict string, chosen instrument.ID, note string) string {
 	var msg string
 	switch {
@@ -78,18 +66,13 @@ func formatVerdictConfirmation(fam auditionFamily, verdict string, chosen instru
 	return msg
 }
 
-// formatAuditionSh renders the eval-able BEATMO_AB_* plan for one family --
-// the reference clip plus one option per family member -- mirroring
-// `refs compare -sh`'s shQuote'd assignment convention so `ab-all` can
-// `eval` it safely even when a path contains a quote or a metacharacter. The Go tool never invokes a player itself; this is the entire
-// hand-off to the Makefile.
+// formatAuditionSh is the whole hand-off to the Makefile (the tool never runs a player): shQuote'd assignments like
+// refs compare -sh, safe to eval with any path.
 func formatAuditionSh(fam auditionFamily, results []compareResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "BEATMO_AB_FAMILY=%s\n", shQuote(string(fam.Key)))
 	fmt.Fprintf(&b, "BEATMO_AB_REF=%s\n", shQuote(fam.Reference.ID))
-	// results[0].RealPath is now the ONE shared reference clip every member was
-	// level-matched against (renderFamilyCompare writes exactly one), not
-	// member 0's private copy.
+	// The ONE shared reference every member was level-matched against.
 	fmt.Fprintf(&b, "BEATMO_AB_REAL=%s\n", shQuote(results[0].RealPath))
 	fmt.Fprintf(&b, "BEATMO_AB_DUR=%s\n", shQuote(fmt.Sprintf("%.2f", results[0].Dur)))
 	fmt.Fprintf(&b, "BEATMO_AB_N=%s\n", shQuote(fmt.Sprintf("%d", len(fam.Members))))
@@ -100,9 +83,7 @@ func formatAuditionSh(fam auditionFamily, results []compareResult) string {
 	return b.String()
 }
 
-// formatAuditionDone is the sentinel `-sh` output when no family is left to
-// audition (everything answered, or an empty catalogue) -- the shell loop's
-// termination signal.
+// The shell loop's termination signal (everything answered, or an empty catalogue).
 func formatAuditionDone() string {
 	return "BEATMO_AB_DONE='1'\n"
 }
@@ -124,15 +105,8 @@ func printResumeNote(w io.Writer, resume bool, families []auditionFamily, answer
 	}
 }
 
-// runAuditionPlan resolves the family to audition (explicit -instrument, or
-// auto-picked per -resume/-skip) and renders the reference plus every member's
-// synth option, level-matched, reusing computeCompare's renderCompare core
-// (the SAME render/level-match path `refs compare` uses -- no duplicate
-// logic). It prints render diagnostics (NOT the family header -- that's
-// printed exactly once, by runAuditionPrompt, so the user doesn't see it
-// twice across the two invocations) to diag, and the eval-able
-// BEATMO_AB_* plan to w. It never touches stdin and never appends a
-// verdict.
+// runAuditionPlan renders the reference and every member's option, level-matched, through refs compare's path, and
+// prints the eval-able plan. The header is printed once, by runAuditionPrompt; this never reads stdin or records.
 func runAuditionPlan(w, diag io.Writer, inst instrument.ID, resume bool, outPath, skip, only string) error {
 	c, err := loadCatalogue()
 	if err != nil {
@@ -161,11 +135,8 @@ func runAuditionPlan(w, diag io.Writer, inst instrument.ID, resume bool, outPath
 		return nil
 	}
 
-	// ONE renderFamilyCompare call for the whole family, never one
-	// renderCompare per member: the reference's level-match gain depends on the
-	// synth it is paired with, so per-member calls produced N differently-scaled
-	// copies of the same reference while only the first was ever played. See
-	// renderFamilyCompare's doc comment.
+	// ONE family-wide render: the reference's level-match gain depends on its paired synth, so per-member renders made N
+	// differently scaled copies of which only the first was played.
 	results, err := renderFamilyCompare(diag, fam.Members, fam.Reference, 0, matchRMS)
 	if err != nil {
 		return err
@@ -175,12 +146,8 @@ func runAuditionPlan(w, diag io.Writer, inst instrument.ID, resume bool, outPath
 	return nil
 }
 
-// runAuditionPrompt resolves the SAME family selection runAuditionPlan
-// would (explicit -instrument, or auto-picked per -resume/-skip) but does no
-// rendering at all -- everything it needs (family key, reference id,
-// measured pitch, option list) is catalogue metadata. It prints the header
-// and choice menu to w, reads exactly one answer from in, and on a real
-// verdict (not skip/replay/quit) appends it to outPath immediately.
+// runAuditionPrompt picks the same family without rendering (the header and menu are catalogue metadata), reads one
+// answer and records a real verdict at once.
 func runAuditionPrompt(w io.Writer, in io.Reader, family instrument.ID, resume bool, outPath, skip, only string) (verdictKind, error) {
 	c, err := loadCatalogue()
 	if err != nil {
@@ -208,11 +175,7 @@ func runAuditionPrompt(w io.Writer, in io.Reader, family instrument.ID, resume b
 	}
 
 	printAuditionHeader(w, fam)
-	// in is read directly (NOT wrapped in a buffered reader) -- see
-	// promptVerdict's doc comment: ab-all runs one process per family
-	// sharing the same piped stdin, and a bufio read-ahead would silently
-	// strand the next family's answer in a buffer that dies with this
-	// process.
+	// Unbuffered: ab-all runs a process per family on one piped stdin, and a read-ahead would strand the next answer.
 	kind, verdict, chosen, note, err := promptVerdict(in, w, fam)
 	if err != nil {
 		return 0, err

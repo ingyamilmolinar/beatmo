@@ -399,13 +399,8 @@ func TestBuildTapData(t *testing.T) {
 	}
 }
 
-// TestServicePushAllStages verifies that every Stage in the pipeline can be
-// pushed through the scope service and surface as an active TapData with the
-// correct stage, instrument id, and non-empty samples. Previously only
-// StageSynth/StageEQ/StageMaster were exercised; this pins the full
-// five-stage contract that the Chain panel relies on after the
-// StageInsertFX desktop tap was added (engine_stop.go) and the WASM bridge
-// was extended to cover AntiPop/InsertFX.
+// Every Stage pushes through and surfaces as an active TapData with the right stage, id and samples: the full contract
+// the Chain panel relies on.
 func TestServicePushAllStages(t *testing.T) {
 	for _, stage := range AllStages() {
 		stage := stage // capture
@@ -417,8 +412,7 @@ func TestServicePushAllStages(t *testing.T) {
 
 			id := roster.Kick
 			if stage == StageMaster {
-				// Master-path stages carry the composite mix; the service
-				// records its inst id as "master" (see engine_stop.go).
+				// Master-path stages carry the composite mix, recorded as "master".
 				id = "master"
 			}
 

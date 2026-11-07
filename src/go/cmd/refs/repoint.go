@@ -10,27 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// repointInstrument makes winnerID the ONLY reference that is ground truth
-// for inst, and returns the resulting ref list. It is the shared body of
-// both commands that change which clip an instrument is judged against:
-// `refs choose` (promote an already-catalogued candidate) and `refs adopt`
-// (bring in a local recording).
-//
-// Every other non-status ref serving inst loses it, and is recorded on the
-// winner as an Alternative carrying reason -- so the decision is reversible,
-// and so the losers survive as labelled data for the analysis tooling. A ref
-// left serving nothing is dropped: it would fail Cat.Validate on the next
-// load.
-//
-// The input slice and every Instruments slice inside it are treated as
-// READ-ONLY. Callers reach here holding refs that can still alias the
-// package-level memoized wavref.Catalogue() singleton's backing arrays (a
-// shallow append([]Ref(nil), c.Refs...) copies the outer slice but not each
-// Ref's nested Instruments header), and writing through that would silently
-// corrupt every later Catalogue() call in the same process -- invisible in a
-// one-shot CLI run, but order-dependent across a `go test` binary. So this
-// builds a fresh slice and uses withoutString, which allocates rather than
-// filtering in place.
+// repointInstrument makes winnerID the ONLY ground truth for inst (refs choose and refs adopt). The losers are recorded
+// as Alternatives (reversible, and labelled data); a ref left serving nothing is dropped. Read-only inputs: they can
+// alias the memoized catalogue's nested slices, and writing through them makes tests order-dependent.
 func repointInstrument(refs []wavref.Ref, inst instrument.ID, winnerID, reason string) []wavref.Ref {
 	out := make([]wavref.Ref, 0, len(refs))
 	var alts []wavref.Alternative

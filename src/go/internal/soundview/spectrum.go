@@ -12,16 +12,12 @@ import (
 type Spectrum struct {
 	Hz []float64
 	DB []float64
-	// RefDB is the level of DB's 0: the loudest band's mean power per frame in
-	// dB re full scale. Curves of several notes share one scale by shifting
-	// each by its RefDB (a quieter note sits lower — it is never re-normalised).
+	// Curves share one scale by shifting each by its RefDB: a quieter note sits lower, never re-normalised.
 	RefDB float64
 }
 
-// Spectrogram is tone colour over time: Cols short-time spectra (column c
-// centred at T0 + c*HopSec), each on Rows log-spaced bands FreqLo..FreqHi, in
-// dB relative to the loudest cell, floored at -60. CentroidHz is each
-// column's brightness centre (0 where the column is silent).
+// Cols short-time spectra on Rows log bands, dB re the loudest cell, floored at -60; CentroidHz per column (0 when
+// silent).
 type Spectrogram struct {
 	Cols, Rows     int
 	T0, HopSec     float64
@@ -89,9 +85,7 @@ func (a *Analysis) Noise() NoiseSplit {
 	return a.noise
 }
 
-// stftSize is the power of two NEAREST to ~43 ms at sr: 2048 at both 44.1
-// and 48 kHz (rounding up gave 4096 at 48 kHz — the browser's rate — so the
-// two platforms read different noise shares for the same sound).
+// NEAREST, not up: rounding up gave 4096 at 48 kHz, and the platforms read different noise shares for one sound.
 func stftSize(sr int) int {
 	target := float64(sr) * 0.0427
 	n := 1
@@ -104,9 +98,8 @@ func stftSize(sr int) int {
 	return n
 }
 
-// computeSTFT runs ONE short-time transform (Hann, ~43 ms, hop a quarter) and
-// derives the average spectrum, the spectrogram and the tone/noise split from
-// it, so the frames are never kept.
+// ONE transform (Hann, ~43 ms, hop a quarter) feeds the spectrum, spectrogram and tone/noise split, so frames are
+// never kept.
 func (a *Analysis) computeSTFT() {
 	defer a.markDone(NeedSTFT)
 	size := stftSize(a.sr)
@@ -306,10 +299,7 @@ func logSpectrum(pw []float64, binHz float64) Spectrum {
 
 // --- harmonics ---
 
-// Harmonics is a pitched note's harmonic ladder: the spectrum over its
-// audible part on a LINEAR axis 0..12·F0 (so harmonics fall on even 1x, 2x,
-// 3x … ticks), dB re its maximum, and the level of each harmonic 1..12
-// (Peaks, same reference, parabolic-interpolated).
+// LINEAR axis 0..12·F0 so harmonics land on even ticks; dB re its maximum, and harmonics 1..12 (interpolated).
 type Harmonics struct {
 	F0    float64
 	Hz    []float64
@@ -429,10 +419,8 @@ func nonSilentFraction(a *Analysis) float64 {
 	return float64(n) / float64(len(tr.Hz))
 }
 
-// Pitched reports whether the note has a pitch to speak of: a steady f0 over
-// enough of its sounding part (the rule the harmonic ladder uses). A drum
-// hit, a cymbal or noise is not pitched; a wave close-up of it shows only
-// noise, so the views fall back to its tone colour.
+// A steady f0 over enough of the sounding part. A drum hit, cymbal or noise is not, so the views fall back to tone
+// colour (a close-up would show only noise).
 func (a *Analysis) Pitched() bool {
 	tr := a.Pitch()
 	return tr.MedianHz() > 0 && tr.VoicedFraction() >= harmMinVoiced*nonSilentFraction(a)

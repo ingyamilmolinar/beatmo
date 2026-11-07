@@ -1,12 +1,7 @@
 package deploy
 
-// The screenshot scene catalog (internal/ui/scene_catalog*.go) is dev tooling:
-// ~150 KB of code that drives the UI into canned states for the screenshot
-// harness and the browser tests. `make wasm` -- the binary deploy-wasm-gcs.sh
-// ships and TestWasmAssetSizeBudget measures -- builds with -tags noscenes, so
-// none of it reaches a visitor; `make wasm-dev` keeps it for test-browser and
-// the screenshot targets. These guards keep that true when a scene file is
-// added or the Makefile recipe is edited.
+// The screenshot scene catalog is dev tooling: make wasm (what ships) builds with noscenes, make wasm-dev keeps it for
+// test-browser and the screenshot targets. These keep that true when a scene file or the Makefile recipe changes.
 
 import (
 	"go/ast"

@@ -11,10 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// refsFrom builds a minimal literal catalogue for family-grouping tests.
-// Every ref is instrument-tier, non-status (real audio), so it participates
-// in comparableInstruments/buildAuditionFamilies exactly like a real
-// catalogue entry.
+// Every ref instrument-tier and non-status, so it participates like a real catalogue entry.
 func refsFrom(refs ...wavref.Ref) wavref.Cat {
 	for i := range refs {
 		refs[i].Tier = wavref.TierInstrument
@@ -87,10 +84,7 @@ func TestBuildAuditionFamilies_NamingConventionRoute(t *testing.T) {
 }
 
 func TestBuildAuditionFamilies_ThreeMembersPreferReferenceCoveringMost(t *testing.T) {
-	// conga: freesound-alt covers {conga, conga-open} directly (share=2);
-	// conga-tumba only joins via the naming-convention route and its own
-	// ref (conga-vcsl) covers just itself (share=1). The family reference
-	// must be the one shared by the most members.
+	// conga-tumba joins by name with its own single-member ref; the family reference is the one most members share.
 	c := refsFrom(
 		wavref.Ref{ID: "conga-freesound-alt", Instruments: []instrument.ID{roster.Conga, roster.CongaOpen}, File: "conga_freesound.wav", Measured: measured(22)},
 		wavref.Ref{ID: "conga-vcsl", Instruments: []instrument.ID{roster.CongaTumba}, File: "conga_vcsl.wav", Measured: measured(-17)},

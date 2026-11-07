@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// BenchmarkWarmOneSecondNote is the cost of every view of a 1 s note — the
-// work one graph render adds (spec 2026-10-24 §4.4 budget: ≤ 15 ms native).
+// The work one graph render adds; the budget is ≤ 15 ms native.
 func BenchmarkWarmOneSecondNote(b *testing.B) {
 	rng := rand.New(rand.NewSource(3))
 	pcm := gen(1, func(t float64) float64 {

@@ -59,9 +59,7 @@ func TestVersionErrorNamesFormatWantGot(t *testing.T) {
 	}
 }
 
-// TestEnvelopeFlattensIntoDocument is the load-bearing assumption of the
-// whole design: an embedded Envelope must produce a TOP-LEVEL
-// "schema_version" key, not a nested object.
+// The load-bearing assumption: an embedded Envelope yields a TOP-LEVEL key.
 func TestEnvelopeFlattensIntoDocument(t *testing.T) {
 	type doc struct {
 		Envelope

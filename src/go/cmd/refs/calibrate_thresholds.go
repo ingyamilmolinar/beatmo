@@ -16,71 +16,21 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// calibrate_thresholds.go — `refs calibrate-thresholds`: earn the drift and
-// mismatch thresholds from the corpus instead of guessing them.
-//
-// The hand-written thresholds saturated (see internal/audio/fingerprint/
-// thresholds.go for the numbers). This command replaces the guess with the
-// only ground truth available: the families the listener graded "y". Those
-// are, by definition, instruments whose distance from their reference is
-// ACCEPTABLE, so their per-descriptor spread IS the threshold — a descriptor
-// should stay quiet inside it and speak outside it.
-//
-// Percentiles rather than mean+k·sigma: these distributions are heavy-tailed
-// and small (single-digit families per axis), so a mean is dragged by one
-// outlier and a sigma is barely estimable. p50/p90 are rank statistics —
-// they degrade gracefully and are meaningful at n=3.
+// Earns the drift / mismatch thresholds from the only ground truth there is: the families graded "y" are ACCEPTABLY
+// far from their reference, so their per-descriptor spread IS the threshold. Percentiles, not mean+k·sigma: the
+// distributions are heavy-tailed and tiny, and p50/p90 stay meaningful at small n.
 
-// goodGroupCalibrationMinN is the smallest good-group sample an axis may be
-// calibrated from.
-//
-// Five, not three. Even at the corpus's current 8 good families the p90 sits
-// between the top two values; at n=3 it IS the maximum, so the "threshold"
-// would be one family's worst reading with no evidence that anything else
-// resembles it. An axis below the floor keeps its hand threshold, which was at
-// least chosen by someone who knew what the units meant.
+// Five, not three: at n=3 the p90 IS the maximum, one family's worst reading. Below the floor an axis keeps its hand
+// threshold.
 const goodGroupCalibrationMinN = 5
 
-// axisMagnitudeFunc resolves one axis row to the magnitude its classifier
-// actually compared against the drift/mismatch pair.
-//
-// It is a parameter rather than a hardcoded expression because that quantity
-// is NOT the same thing on every axis (see registryAxisMagnitude), while the
-// percentile statistics being calibrated are; separating them keeps the
-// statistics unit-testable without a registry and a corpus.
+// A parameter because the compared quantity differs per axis while the percentile statistics do not, which keeps the
+// statistics testable without a registry and a corpus.
 type axisMagnitudeFunc func(axisResult) (float64, bool)
 
-// registryAxisMagnitude is the production resolver.
-//
-// WHY NOT |Signed| (the obvious choice, and wrong). Signed is the raw
-// difference in the descriptor's own units, but that is only the quantity the
-// classifier compares for the absolute-delta kinds. compareScalar compares a
-// KindSeconds/KindRatio axis as a FOLDED RATIO (>= 1 by construction) and a
-// KindHz axis as a PERCENTAGE of the reference. Calibrating on |Signed|
-// silently changes the unit: it produced drift=0.07 / mismatch=0.17 for
-// `env.attack`, and a folded ratio below 1 means EVERY instrument reads
-// MISMATCH forever; and mismatch=1314 for `bright.centroid`, which as a
-// percentage means "never fires". Neither is visible in the JSON.
-//
-// WHY NOT Norm x mismatch either (the next obvious choice, also wrong). Norm
-// is magnitude/mismatch in every DEFAULT comparator, so the product looks
-// like it recovers the magnitude — and it does, until a comparator
-// TRANSFORMS its thresholds. band.t60 declares T60 ratios and compares
-// mean|log2 ratio|, so Norm x mismatch there is neither a ratio nor a log2.
-//
-// So the comparator that knows its own domain reports the magnitude itself,
-// in the units the thresholds are declared in: fingerprint.Delta.Mag. The
-// invariant that makes it trustworthy — classifying Mag against the
-// descriptor's thresholds reproduces the comparator's verdict — is gated for
-// every descriptor by fingerprint's TestDeltaMagReproducesTheVerdict.
-//
-// Rows refused rather than guessed:
-//   - MagOK false: the "one side had no event at all" sentinel branches,
-//     where Norm is set to 1 by fiat rather than measured;
-//   - an unavailable measurement on either side;
-//   - a Demoted descriptor, which is excluded from the trusted set anyway —
-//     spending corpus evidence on thresholds nobody is allowed to believe
-//     buys nothing, and leaves its documented hand values interpretable.
+// Not |Signed|: a KindSeconds/KindRatio axis is compared as a folded ratio and KindHz as a percentage. Not Norm x
+// mismatch: a comparator may transform its thresholds (band.t60). The comparator reports Delta.Mag in its own units;
+// rows refused: MagOK false (sentinel branches), an unavailable side, a Demoted descriptor.
 func registryAxisMagnitude(a axisResult) (float64, bool) {
 	if a.ID == "" || a.RefNA != "" || a.SynthNA != "" || !a.MagOK {
 		return 0, false
@@ -95,13 +45,8 @@ func registryAxisMagnitude(a axisResult) (float64, bool) {
 	return a.Mag, true
 }
 
-// goodGroupThresholds computes, per descriptor ID, the p50/p90 of the
-// compared magnitude over the families the listener graded "y".
-//
-// Axes magOf refuses (unavailable on either side, custom comparator, "n/a"
-// sentinel) carry no usable magnitude and are skipped, so an axis that could
-// not be measured on the good group is left at its hand threshold rather than
-// calibrated from the handful of families where it happened to resolve.
+// Axes magOf refuses are skipped, so one unmeasurable on the good group keeps its hand threshold rather than one
+// calibrated from the few families where it resolved.
 func goodGroupThresholds(samples []validationSample, magOf axisMagnitudeFunc) fingerprint.ThresholdFile {
 	byID := map[string][]float64{}
 	for _, s := range samples {
@@ -124,17 +69,8 @@ func goodGroupThresholds(samples []validationSample, magOf axisMagnitudeFunc) fi
 		sort.Float64s(vs)
 		drift := fingerprint.Percentile(vs, 50)
 		mismatch := fingerprint.Percentile(vs, 90)
-		// A degenerate good group (every family identical on this axis)
-		// collapses the two bands into one. Spreading them keeps "drift" and
-		// "MISMATCH" distinguishable rather than making every flagged row a
-		// mismatch.
-		//
-		// The spread is SYNTHESISED, not measured, so it is recorded in the
-		// entry's Note. Source stays "corpus" -- the drift half really is the
-		// corpus p50, and "hand"/"probe" mean pinned-against-recalibration,
-		// which this is not -- but a reader comparing two corpus entries has
-		// to be able to tell a p90 earned from eight families apart from a
-		// 1.5x multiple of the p50, and previously could not.
+		// A degenerate good group (all identical here) would collapse the two bands; the spread is SYNTHESISED, so the Note
+		// says so and a reader can tell an earned p90 from 1.5x the p50.
 		var note string
 		if mismatch <= drift {
 			mismatch = drift * 1.5
@@ -143,17 +79,8 @@ func goodGroupThresholds(samples []validationSample, magOf axisMagnitudeFunc) fi
 		if mismatch <= 0 {
 			continue
 		}
-		// A p50 of exactly zero (the good group matches the reference on this
-		// axis more often than not) would leave Drift at 0, which
-		// Descriptor.Thresholds reads as "no override" and silently falls
-		// back to the KIND's drift — potentially larger than the calibrated
-		// mismatch, inverting the two bands. Anchor it below mismatch
-		// instead, keeping the same 1.5x separation the degenerate case uses.
-		//
-		// This is the OTHER synthesised half, and it needs saying for the
-		// same reason: mode.harmonicity's 0.349/0.524 pair read like two
-		// percentiles when the drift is a derived fraction of the mismatch
-		// and no drift was measured at all.
+		// A p50 of exactly zero would read as "no override" and fall back to the KIND's drift, possibly above the calibrated
+		// mismatch. Anchored at mismatch/1.5 instead, and noted as derived.
 		if drift <= 0 {
 			drift = mismatch / 1.5
 			note = fmt.Sprintf("p50 == 0 over n=%d; drift synthesised as mismatch/1.5", len(vs))
@@ -163,16 +90,8 @@ func goodGroupThresholds(samples []validationSample, magOf axisMagnitudeFunc) fi
 	return out
 }
 
-// mergeProbeEntries carries the PINNED entries of the existing file over a
-// fresh calibration.
-//
-// Two sources are pinned. "probe" is a listener-measured audibility step from
-// `refs probe` — a number an ear produced, which outranks a percentile over a
-// corpus. "hand" is a deliberate exclusion: a descriptor whose calibrated
-// value stopped cmd/refs's acceptance gate reproducing a listener complaint,
-// pinned back to the value that does. Neither may be silently overwritten by
-// re-running calibration, or the evidence would be lost the first time
-// somebody regenerated the file.
+// PINNED entries survive recalibration: "probe" is an ear-measured audibility step, which outranks a percentile;
+// "hand" pins a descriptor back to the value that keeps the acceptance gate reproducing a listener complaint.
 func mergeProbeEntries(fresh, existing fingerprint.ThresholdFile) fingerprint.ThresholdFile {
 	for id, e := range existing {
 		if e.Source == "probe" || e.Source == "hand" {
@@ -182,15 +101,8 @@ func mergeProbeEntries(fresh, existing fingerprint.ThresholdFile) fingerprint.Th
 	return fresh
 }
 
-// readThresholdFileAt loads the calibration that is ON DISK at path.
-//
-// Deliberately not fingerprint.LoadThresholdFile(): that returns the copy
-// EMBEDDED in this binary, which is the state of the file at the last build.
-// Pinning a hand exclusion is a hand edit followed by a recalibration, and
-// reading the embedded copy would drop the edit unless the operator happened
-// to rebuild in between — losing exactly the evidence the pin exists to
-// preserve, silently. A missing file is not an error: the first run has
-// nothing to carry over.
+// The file ON DISK, never the embedded copy (the file as of the last build): pinning is a hand edit followed by a
+// recalibration, and the embedded copy would silently drop the edit. A missing file is not an error.
 func readThresholdFileAt(path string) (fingerprint.ThresholdFile, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {

@@ -7,11 +7,8 @@ import (
 	"strings"
 )
 
-// The Mutopia Project's MIDI files are generated from LilyPond sources, and
-// the facts a MIDI file cannot carry live in that source: the licence the
-// typesetter placed the edition under, and the pickup (\partial) that shifts
-// every downbeat. These helpers read exactly those two things — nothing in
-// the generator depends on parsing LilyPond music.
+// What a MIDI file cannot carry lives in the LilyPond source: the edition's licence and the \partial pickup. Only those
+// two are read; nothing parses LilyPond music.
 
 var (
 	lyHeaderField = regexp.MustCompile(`(?m)^\s*([a-zA-Z]+)\s*=\s*"((?:[^"\\]|\\.)*)"`)

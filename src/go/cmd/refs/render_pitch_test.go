@@ -9,15 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// render_pitch_test.go — the synth must be rendered at the reference's ACTUAL
-// pitch, not at the rounded semitone.
-//
-// measured.semis_from_a3 is an integer, so rendering from it detunes the synth
-// against the very recording it is being A/B'd with. Across the committed
-// corpus the median error is 11 cents, fifteen references exceed a quarter-tone
-// and six exceed 40 cents -- audible as "out of tune" to a listener, and a
-// systematic bias on every frequency-scaled diagnostic axis. F0Hz was already
-// stored; only its fractional part was discarded.
+// Rendering from the rounded semis_from_a3 detunes the synth against the very recording it is A/B'd with, audibly for
+// many references.
 
 func TestRenderPitch_UsesExactF0WhenReliable(t *testing.T) {
 	// singing-bowl-freesound: 100.00 Hz, stored as -14 semis (+35.0 cents).
@@ -38,9 +31,8 @@ func TestRenderPitch_UsesExactF0WhenReliable(t *testing.T) {
 }
 
 func TestRenderPitch_FallsBackWhenF0Unreliable(t *testing.T) {
-	// hihat-vcsl: 56.52 Hz detected at confidence 0.00 -- an artifact of the
-	// octave guard, not a pitch. Rendering "precisely" at a meaningless number
-	// buys nothing and would move existing percussion renders for no reason.
+	// Confidence 0.00: an artifact of the octave guard, not a pitch; rendering "precisely" there would move percussion
+	// renders for nothing.
 	m := wavref.Measured{F0Hz: 56.52, SemisFromA3: -24}
 	if got := renderPitch(m, false); got != -24 {
 		t.Errorf("renderPitch = %v, want the stored -24 when f0 is unreliable", got)

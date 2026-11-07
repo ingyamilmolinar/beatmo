@@ -102,16 +102,8 @@ func (k GrooveKind) Seconds(pct, stepSec float64) float64 {
 	return 0
 }
 
-// NodeParams centralizes per‑node behavior and is kept within the model so
-// callers (UI, engine) can query a node’s intent without scattering logic.
-//
-// Volume/Pitch/Duration are multiplicative adjustments applied on top of any
-// row/global settings. They default to 1, 0, 1 respectively.
-//
-// Logic, when present, can further adjust playback parameters or disable a
-// node on a per‑trigger basis. It may also suggest routing decisions via
-// RouteNext, which higher layers may optionally use. The model itself remains
-// traversal‑agnostic; UI decides whether to honor routing suggestions.
+// Volume/Pitch/Duration multiply onto row/global settings (defaults 1, 0, 1). Logic may adjust or disable a node per
+// trigger and suggest RouteNext; the model stays traversal-agnostic and the UI decides whether to honour it.
 type NodeParams struct {
 	Volume   float64   // multiplicative gain (default 1)
 	Pitch    float64   // semitone offset (default 0)

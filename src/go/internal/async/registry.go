@@ -7,15 +7,8 @@ import (
 	"sync"
 )
 
-// Registry holds named async pools that share a single concurrency
-// budget. Use Get to obtain (or lazily create) a named pool — the
-// registry rejects new pools whose worker count would push the total
-// over Budget.
-//
-// One process-wide registry (DefaultRegistry) owns the budget so audio,
-// hooks, recording, and observability all draw from the same pot. This
-// is the only place that knows the system's total background-worker
-// budget; individual subsystems just request a slice.
+// Named pools sharing ONE worker budget (DefaultRegistry is process-wide), so every subsystem draws from the same pot;
+// a pool that would exceed Budget is refused.
 type Registry struct {
 	mu     sync.Mutex
 	pools  map[string]*Pool
@@ -28,22 +21,9 @@ type Registry struct {
 // would exceed the registry's total worker budget.
 var ErrBudgetExhausted = errors.New("async: registry budget exhausted")
 
-// minDefaultBudget is the floor for the default budget (see NewRegistry).
-// It MUST cover the whole standing-pool footprint documented in CLAUDE.md:
-//
-//	hooks.fanout 2 + eventlogger.format 1 + eventstream.persist 1 +
-//	audio.timers 1 + audio.prewarm 4 + synth.preview 1 +
-//	recording.lifecycle 1 + ui.dialog 1 + userprefs.persist 1 = 13
-//
-// audio.prewarm went 2 → 4 with the import warm-up gate (2026-09-13): the
-// gated warm set is fed with SubmitBlocking, so worker count is the gate's
-// wall-clock divisor.
-//
-// A floor below that saves nothing — every caller with a private-pool
-// fallback allocates the same workers anyway, just outside the budget —
-// while breaking the two callers that have no fallback: ui.dialog (WAV
-// upload silently fails) and recording.lifecycle (MustGet panics the app).
-// registry_footprint_test.go pins this constant to that table.
+// MUST cover the whole standing-pool footprint (CLAUDE.md's table, pinned by registry_footprint_test.go). A lower floor
+// saves nothing (fallback callers allocate the same workers privately) and breaks the callers with no fallback:
+// ui.dialog (WAV upload fails) and recording.lifecycle (MustGet panics).
 const minDefaultBudget = 13
 
 // NewRegistry creates a registry with an explicit budget. parent is the
@@ -53,11 +33,8 @@ func NewRegistry(parent context.Context, budget int) *Registry {
 		parent = context.Background()
 	}
 	if budget <= 0 {
-		// Default leaves headroom for Ebitengine's 3 locked OS threads
-		// (main/GLFW, render, game-thread) and oto's audio thread, but
-		// also enforces a floor so the standard subsystem footprint fits
-		// on small/test machines without every caller having to fall back
-		// to private pools.
+		// Leaves Ebitengine's locked OS threads and oto's audio thread their cores, with a floor so the standard footprint fits
+		// small machines without private-pool fallbacks.
 		budget = max(minDefaultBudget, runtime.NumCPU()-4)
 	}
 	return &Registry{
@@ -67,11 +44,7 @@ func NewRegistry(parent context.Context, budget int) *Registry {
 	}
 }
 
-// Get returns the pool registered under name, creating it on first call.
-// If creating the pool would exceed Budget, returns ErrBudgetExhausted
-// and the pool is not created. Subsequent Get calls with the same name
-// return the existing pool regardless of opts (opts apply only on
-// creation).
+// opts apply only on creation; a later Get returns the existing pool whatever they say.
 func (r *Registry) Get(name string, opts Options) (*Pool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -129,11 +102,7 @@ func (r *Registry) BudgetStats() BudgetStats {
 	return BudgetStats{Budget: r.budget, Used: r.used, Pools: len(r.pools)}
 }
 
-// Release closes the pool registered under name and frees its worker
-// slots back to the budget. No-op if name is not registered. Use for
-// transient pools (e.g., ad-hoc work in tests) so the registry's budget
-// doesn't leak. Long-lived subsystem pools should generally NOT be
-// released — Shutdown handles them at process exit.
+// For transient pools (tests), so the budget never leaks; standing pools are left to Shutdown.
 func (r *Registry) Release(name string) error {
 	r.mu.Lock()
 	p, ok := r.pools[name]
@@ -142,8 +111,7 @@ func (r *Registry) Release(name string) error {
 		return nil
 	}
 	delete(r.pools, name)
-	// Pool.workers reflects the configured count, which is what we
-	// charged against the budget at creation. Refund the same amount.
+	// The configured count is what was charged at creation.
 	r.used -= p.workers
 	if r.used < 0 {
 		r.used = 0

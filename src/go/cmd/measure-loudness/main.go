@@ -1,15 +1,8 @@
 //go:build !test && !js
 
-// Command measure-loudness renders every instrument through the real C DSP
-// engine, measures its crest factor (scale-invariant RMS-to-peak), and computes
-// a per-instrument playback amplitude that lands each instrument at a common
-// perceived-loudness (flat-RMS) target. It prints a before/after dB report and
-// (with -write) stores each amplitude as the shipped instrument document's
-// render.amplitude (internal/assets/instruments/<id>.json); `make
-// measure-loudness` then rebuilds the embedded pack (`make asset-pack`).
-//
-// MUST be built as a production binary (NOT -tags test): the test build swaps
-// in a pure-Go approximation synth instead of the real engine.
+// Command measure-loudness sets each instrument's render.amplitude (with -write) so every voice lands at one flat-RMS
+// loudness target, from its crest factor through the real C DSP. Never -tags test: that build's synth is a pure-Go
+// approximation.
 package main
 
 import (
@@ -39,13 +32,8 @@ type row struct {
 	newAmp     float64
 }
 
-// measureRMSNorm renders one instrument and returns rms/peak over its loudest
-// window. Returns ok=false when the instrument cannot be rendered or is silent.
-//
-// It first tries the synthmatch recipe path (real C DSP). Legacy bespoke drums
-// (snare/kick/hihat/...) that have no recipe binding fall back to the registered
-// Voice via audio.ExportVoice. rms/peak is scale-invariant, so an
-// already-normalized voice output yields the same rmsNorm as the raw render.
+// measureRMSNorm returns rms/peak over the loudest window (ok=false when silent or unrenderable). It is scale-invariant,
+// so a normalised voice gives the same value as the raw render.
 func measureRMSNorm(id instrument.ID, durSec float64) (float64, bool) {
 	if rn, ok := measureFromWave(renderRecipe(id, durSec)); ok {
 		return rn, true
@@ -88,8 +76,7 @@ func measureFromWave(w wave.Wave, ok bool) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
-	// The one crest rule (loudest 300 ms RMS/peak) — a WAV clone's amplitude
-	// is measured by the same function.
+	// The one crest rule, shared with WAV clones.
 	return clone.LoudnessNorm(w.Samples, w.SampleRate)
 }
 
@@ -190,9 +177,7 @@ func spread(v []float64) float64 {
 	return hi - lo
 }
 
-// writeDocs stores each measured amplitude as its document's render.amplitude,
-// rewriting only the documents whose value changes (the file is the document
-// generator's own format, so an unchanged document stays byte-identical).
+// Only documents whose value changes are rewritten, in the generator's own format, so the rest stay byte-identical.
 func writeDocs(rows []row) {
 	changed := 0
 	for _, r := range rows {

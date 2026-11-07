@@ -159,10 +159,7 @@ func TestFFTObserver_DC(t *testing.T) {
 		t.Fatalf("DC PeakFreq: want 0Hz (DC), got %fHz", o.PeakFreq)
 	}
 
-	// Bins far from DC should be well below bin[0]. The Hann window
-	// causes spectral leakage into the first few adjacent bins, so we
-	// only check bins beyond index 4. Those should be at least 30dB
-	// below the DC bin.
+	// Hann leakage spreads into the first few bins, so only bins past 4 must sit 30 dB under DC.
 	for i := 4; i < len(o.Bins); i++ {
 		if o.Bins[i] > o.Bins[0]-30 {
 			t.Fatalf("DC bin[%d] = %fdB, want < %fdB (bin[0]-30dB)", i, o.Bins[i], o.Bins[0]-30)
@@ -190,13 +187,8 @@ func TestFFTObserver_ParsevalTheorem(t *testing.T) {
 		timeEnergy += s * s
 	}
 
-	// Frequency-domain: observe, then convert dB bins back to magnitude
-	// and compute energy. The observer stores normalized magnitudes:
-	//   bins_dB[k] = 20*log10(|X[k]| / N)
-	// So the unnormalized DFT magnitude is: |X[k]| = 10^(dB/20) * N.
-	// Parseval's theorem: sum(|x[n]|^2) = (1/N) * sum(|X[k]|^2).
-	// Because the input is real, bins 1..N/2-1 are doubled (positive +
-	// negative frequency). Bin 0 (DC) and bin N/2 (Nyquist) appear once.
+	// bins_dB[k] = 20·log10(|X[k]|/N), so |X[k]| = 10^(dB/20)·N; Parseval: Σ|x|² = (1/N)·Σ|X|², with bins 1..N/2-1 doubled
+	// (real input) and DC / Nyquist once.
 	obs := NewFFTObserver(fftSize)
 	o := obs.Observe(w)
 

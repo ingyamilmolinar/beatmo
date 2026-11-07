@@ -2,10 +2,7 @@ package bench
 
 import "runtime"
 
-// AudioCounters is the minimal audio surface RuntimeStatsSnapshot needs.
-// internal/audio adapts to this interface so internal/bench stays
-// dependency-free of internal/audio (avoids an import cycle and lets
-// tests substitute a recorder).
+// Keeps internal/bench free of internal/audio (no import cycle; tests substitute a recorder).
 type AudioCounters interface {
 	RecordingDrops() int64
 	IsRecording() bool

@@ -1,20 +1,7 @@
 #!/usr/bin/env bash
-# compare-bench.sh — diff two record-bench runs (recording-on vs baseline)
-# and exit non-zero if any acceptance threshold is breached.
-#
-# Usage:
-#   scripts/compare-bench.sh <recording-perf_stats.json> <baseline-perf_stats.json>
-#
-# Thresholds (clean run):
-#   audioCallMax delta < 5%
-#   updateMaxMS  delta < 10%
-#   recordingDrops == 0
-#   goroutines delta <= 10
-#
-# Thresholds (noisy run, set NOISY=1):
-#   audioCallMax delta < 30%
-#   updateMaxMS  delta < 50%
-#   recordingDrops < 1% of audio_enq
+# Exits non-zero when a record-bench run breaches a threshold against its baseline: audioCallMax +5 %, updateMaxMS
+# +10 %, recordingDrops 0, goroutines +10 (NOISY=1: +30 %, +50 %, drops < 1 % of audio_enq).
+# Usage: scripts/compare-bench.sh <recording-perf_stats.json> <baseline-perf_stats.json>
 
 set -eo pipefail
 
@@ -44,8 +31,7 @@ rec_audio_enq=$(get AudioEnq "$REC")
 
 # Compute relative deltas using bc (handles floats).
 delta_pct() {
-  # $1 = current, $2 = baseline. Returns abs((cur-base)/base * 100), or 0
-  # if base is 0/missing.
+  # abs((cur-base)/base * 100), or 0 when the baseline is 0 or missing.
   local cur=$1 base=$2
   if [[ -z "$base" || "$base" == "0" || "$base" == "0.0" ]]; then
     echo "0"

@@ -28,13 +28,7 @@ func TestFormatOrganicTable_PlacesEveryOrganicAxis(t *testing.T) {
 	}
 }
 
-// A locally adopted ref (`refs adopt`, Source.Provider == "local") is
-// catalogued in the committed catalogue.json but its audio lives at a path on
-// one machine, so `refs fetch` cannot materialize it anywhere else. It must
-// therefore stay OUT of the committed organic_range.json baseline that
-// `refs check` re-derives (locally via `make refs-check`, and in CI after the
-// corpus is fetched). Adopting one snare on 2026-09-14 moved 10 descriptors'
-// percentiles and every one of their n by +1.
+// Its audio lives on one machine, so it must stay OUT of the committed baseline refs check re-derives elsewhere.
 func TestLocallyAdoptedRefsAreExcludedFromTheCommittedBaseline(t *testing.T) {
 	cases := []struct {
 		name string

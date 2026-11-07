@@ -1,10 +1,5 @@
 #!/bin/bash
-# Runs browser tests with Go coverage instrumentation and produces a
-# merged coverage profile.
-#
-# Prerequisites: build WASM with `make wasm-cover` first, or let
-# `make coverage-browser` do it for you.
-#
+# Browser tests with Go coverage, merged into one profile (needs make wasm-cover, or make coverage-browser).
 # Usage: COVERAGE=1 WASM_PREBUILT=1 GO=... ./scripts/run-browser-coverage.sh
 
 set -euo pipefail

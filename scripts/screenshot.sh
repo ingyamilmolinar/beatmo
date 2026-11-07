@@ -1,12 +1,5 @@
 #!/bin/bash
-# Capture screenshots of beatmo in three modes:
-#   1. Desktop (native Ebiten app via xvfb-run)
-#   2. Browser desktop layout (WASM, 1280x720)
-#   3. Browser mobile layout (WASM, 390x844)
-#
-# Output: screenshots/ directory with timestamped PNGs
-# Usage: make screenshot
-#        make screenshot OUTDIR=/tmp/shots
+# Desktop (xvfb), browser desktop (1280x720) and browser mobile (390x844) → screenshots/. Usage: make screenshot [OUTDIR=]
 
 set -euo pipefail
 

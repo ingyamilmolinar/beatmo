@@ -111,11 +111,8 @@ func (s Suppression) matches(c *Candidate) bool {
 // agent judged.
 var riskFactor = map[string]float64{"L": 1, "M": 0.85, "H": 0.6}
 
-// ApplyOverlays merges agent verdicts and suppressions into the candidates and
-// re-sorts them. A verdict rescales confidence: a dismissed candidate (Real
-// false) keeps 0.1 of its score and is marked contested, as is one the agent
-// re-classified; a confirmed one scales by how accidental its complexity is
-// and by the regression risk.
+// ApplyOverlays rescales by verdict: a dismissed or re-classified candidate keeps 0.1 of its score and is contested; a
+// confirmed one scales by how accidental its complexity is and by the regression risk.
 func ApplyOverlays(cs []*Candidate, verdicts map[string]*Verdict, sups []Suppression) Overlay {
 	var ov Overlay
 	used := make([]bool, len(sups))

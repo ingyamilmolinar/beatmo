@@ -6,27 +6,9 @@ import (
 	"time"
 )
 
-// scratch names a throwaway variable for one test and removes it from the
-// global registry when the test ends. Without this, every scratch var
-// declared in a test body stays in All() for the rest of the process and
-// corrupts the table-size guard in vars_test.go.
-//
-// INCOMPATIBLE WITH t.Parallel(). t.Cleanup runs when the test finishes, and
-// a parallel test does not finish until the parallel-resume phase — which
-// happens strictly after every serial test, including TestTableSize, has
-// already completed and read All(). So a parallel test that registers a
-// scratch var via this helper leaks it into the count for the whole rest of
-// the run, even though the leak looks "cleaned up" from the test's own
-// perspective. (Calling t.Parallel() BEFORE registering is fine, since
-// registration and its cleanup both simply happen later — in the
-// parallel-resume phase, before that test's own assertions run.)
-//
-// Most tests in this file are protected only by accident: they also call
-// t.Setenv, and Go hard-panics if t.Setenv is combined with t.Parallel(). But
-// TestAllIsSortedAndContainsRegistered and TestDuplicateNamePanics call
-// scratch without ever calling t.Setenv, so nothing today stops a future
-// edit from adding t.Parallel() to either one and silently reintroducing the
-// leak.
+// Removes the scratch variable when the test ends, or it would stay in All() and break TestTableSize. NOT with
+// t.Parallel(): a parallel test's cleanup runs after every serial test, TestTableSize included, has read All(). (Calling
+// t.Parallel() before registering is fine.)
 func scratch(t *testing.T, name string) string {
 	t.Helper()
 	t.Cleanup(func() { unregister(name) })
@@ -171,12 +153,8 @@ func TestDurIsSetUnparseableFallsBackToDefault(t *testing.T) {
 	}
 }
 
-// TestBoolGarbageIsSetTrue documents the asymmetry between Bool and the
-// numeric types: an unrecognized boolean string is still a value the
-// environment explicitly provided (unlike a parse error, there is no
-// "invalid" bool literal to detect), so IsSet reports true even though Get
-// falls back to the default. Numeric types report IsSet()==false in the
-// analogous case because a parse error there is unambiguous.
+// An unrecognised bool string is still a value the environment provided (there is no "invalid" bool literal), so
+// IsSet is true while Get falls back; a numeric parse error is unambiguous, so those report unset.
 func TestBoolGarbageIsSetTrue(t *testing.T) {
 	v := Bool(scratch(t, "BEATMO_TEST_BOOL_ISSET_GARBAGE"), false, ScopeTest, "unit test var")
 	t.Setenv("BEATMO_TEST_BOOL_ISSET_GARBAGE", "banana")
@@ -210,9 +188,7 @@ func TestAllIsSortedAndContainsRegistered(t *testing.T) {
 }
 
 func TestDuplicateNamePanics(t *testing.T) {
-	// Register the cleanup before triggering the panic: the first Str call
-	// below succeeds and adds "BEATMO_TEST_DUP" to the registry, and
-	// t.Cleanup runs regardless of the panic the second call causes.
+	// Cleanup registered before the panic: the first Str registers the name, and t.Cleanup runs regardless.
 	name := scratch(t, "BEATMO_TEST_DUP")
 	defer func() {
 		if recover() == nil {

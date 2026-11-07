@@ -15,9 +15,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// candidateDir is the review directory for one instrument's competing
-// references. It lives under $BEATMO_WAV_REFS so review audio never lands
-// in the tree.
+// Under $BEATMO_WAV_REFS so review audio never lands in the tree.
 func candidateDir(inst instrument.ID) (string, error) {
 	base, ok := wavref.Dir()
 	if !ok {
@@ -64,12 +62,7 @@ func runCandidates(w io.Writer, inst instrument.ID, n int) error {
 		r := real[i]
 		p, ok := wavref.Resolve(r.ID)
 		if !ok {
-			// r is a local copy from the `real` slice (itself built by
-			// value from c.ForInstrument), so fetchOne's in-place update
-			// of *r (Measured/PCMSHA256) mutates only this disposable
-			// local copy, never the loaded catalogue c or the package's
-			// memoized singleton. runCandidates is read-only with respect
-			// to the catalogue; it never calls writeCatalogue/catalogueWriter.
+			// r is a disposable local copy, so fetchOne's in-place update never touches c or the memoized singleton.
 			if _, err := fetchOne(w, &r, false); err != nil {
 				fmt.Fprintf(w, "FAIL %v\n", err)
 				continue
@@ -105,10 +98,7 @@ func runCandidates(w io.Writer, inst instrument.ID, n int) error {
 // different registers or instruments" — one octave.
 const pitchSpreadOctaveSemis = 12
 
-// pitchSpreadSemis returns the max-min spread, in semitones, across refs'
-// measured offsets from A3. Refs with no Measured block are ignored (a
-// spread can't be computed on a note that hasn't been detected yet). Zero
-// or one contributing ref spreads 0.
+// Refs with no Measured block are ignored; zero or one contributing ref spreads 0.
 func pitchSpreadSemis(refs []wavref.Ref) int {
 	var lo, hi int
 	have := false
@@ -134,12 +124,8 @@ func pitchSpreadSemis(refs []wavref.Ref) int {
 	return hi - lo
 }
 
-// printPitchSpreadWarning flags candidates recorded at different pitches: an
-// instrument's timbre genuinely changes across its range, so "which sounds
-// more like a violin" is unanswerable when one candidate is A4 and the
-// other D5. A non-zero spread means the ear comparison above cannot judge
-// timbre; a spread of an octave or more means the candidates may not even
-// be the same instrument.
+// Timbre changes across an instrument's range, so candidates at different pitches cannot be judged on timbre; an octave
+// or more apart they may not be the same instrument.
 func printPitchSpreadWarning(w io.Writer, refs []wavref.Ref) {
 	spread := pitchSpreadSemis(refs)
 	if spread == 0 {
@@ -164,16 +150,8 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, b, 0o644)
 }
 
-// runChoose persists its mutated catalogue through catalogueWriter, the
-// package-level var declared alongside catalogueLoader in fetch.go. Both
-// catalogue-mutating commands (runChoose here, runFetch there) share that
-// one seam so a test can redirect either write path to a throwaway file
-// instead of mutating the committed catalogue.json as a side effect of
-// running `go test ./cmd/refs/`.
-//
-// runChoose promotes one candidate to be inst's reference. The losers stay
-// in the catalogue as Alternatives so the decision is recorded, reversible,
-// and available to SP2 as labelled data.
+// runChoose promotes one candidate; the losers stay as Alternatives, so the decision is recorded and reversible. It
+// writes through catalogueWriter, so a test never mutates the committed catalogue.json.
 func runChoose(w io.Writer, inst instrument.ID, id string) error {
 	c, err := loadCatalogue()
 	if err != nil {
@@ -194,13 +172,8 @@ func runChoose(w io.Writer, inst instrument.ID, id string) error {
 		return fmt.Errorf("refs choose: ref %q is not a reference for instrument %q", id, inst)
 	}
 
-	// repointInstrument owns the whole "winner takes the instrument, losers
-	// are recorded as alternatives and dropped if they now serve nothing"
-	// rule, shared with `refs adopt`. It treats c.Refs and every nested
-	// Instruments slice as read-only, which matters here: c came from
-	// wavref.Catalogue(), which returns the process-wide memoized singleton
-	// by value, so an in-place edit would corrupt every later
-	// Catalogue()/loadCatalogue() call in this process.
+	// repointInstrument (shared with refs adopt) treats c.Refs and every Instruments slice as read-only: c is the memoized
+	// singleton by value, and an in-place edit would corrupt every later Catalogue() call.
 	nAlts := countAlternatives(c.Refs, inst, id)
 	refs := repointInstrument(c.Refs, inst, id, repointReason(inst, id))
 

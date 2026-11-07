@@ -6,19 +6,8 @@ import (
 	"strings"
 )
 
-// CaptureSource records the file:line of the caller's caller (or further up
-// the stack via skip). The returned Source is intended to be passed into
-// PublishWithSource so the originating user-code site flows through the bus
-// to subscribers, rather than the middleware (helper / bus / formatter) site.
-//
-// skip semantics: skip=0 returns the immediate caller of CaptureSource;
-// skip=1 returns the caller of *that* caller, and so on. Emit helpers in
-// internal/ui/event_helpers.go that call CaptureSource directly typically
-// pass skip=1 (they want to identify their own caller — the user-action
-// site — not themselves). Wrapper helpers add to the skip count.
-//
-// Returns Source{} if the runtime can't unwind that far (e.g. inlining
-// too aggressive); callers must handle the zero value (renderers do).
+// skip=0 is CaptureSource's immediate caller; emit helpers pass 1 to name THEIR caller, the user-action site, and wrappers
+// add more. Source{} when the stack is too shallow (inlining); renderers handle it.
 func CaptureSource(skip int) Source {
 	// runtime.Caller(0) reports CaptureSource itself, so we add 1 to skip
 	// to make skip=0 mean "my caller" — the most natural API.
@@ -30,11 +19,8 @@ func CaptureSource(skip int) Source {
 	return Source{Pkg: pkg, File: base, Line: line}
 }
 
-// splitPkgFile turns an absolute Go source path into (pkg, basefile) where
-// pkg is rooted at the project's `internal/`, `core/`, `cmd/`, or `src/js/`
-// segment so the rendered source is stable across machines (no $HOME prefix)
-// and short enough to fit in an INFO log column. Falls back to the parent
-// dir + base file if no known root segment is found.
+// Rooted at internal/, core/, cmd/ or src/js/ so the source is stable across machines (no $HOME) and fits an INFO
+// column; else the parent dir + base file.
 func splitPkgFile(absPath string) (pkg, base string) {
 	base = filepath.Base(absPath)
 	dir := filepath.Dir(absPath)
@@ -56,6 +42,5 @@ func splitPkgFile(absPath string) (pkg, base string) {
 	return pkg, base
 }
 
-// projectRoots are the path segments under which Beatmo Go source lives.
-// Order matters only for performance (most-common first).
+// Order matters only for speed (most common first).
 var projectRoots = []string{"internal", "core", "cmd"}

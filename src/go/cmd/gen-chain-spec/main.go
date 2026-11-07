@@ -1,15 +1,7 @@
 //go:build !test && !js
 
-// gen-chain-spec emits src/js/chain_spec.gen.js from CanonicalChainSpec
-// (internal/audio/chain_spec.go): every value the audio path between a voice
-// and the speaker uses on both platforms.
-//
-// Usage:
-//
-//	cd src/go && go run ./cmd/gen-chain-spec > ../js/chain_spec.gen.js
-//
-// A drift test (internal/audio/chain_spec_test.go) regenerates and diffs so
-// commits cannot land with a stale gen file. Mirrors cmd/gen-synth-abi.
+// gen-chain-spec emits src/js/chain_spec.gen.js from CanonicalChainSpec: every value the path between a voice and the
+// speaker uses on both platforms. cd src/go && go run ./cmd/gen-chain-spec > ../js/chain_spec.gen.js
 package main
 
 import (
@@ -62,8 +54,7 @@ func generate() []byte {
 	return buf.Bytes()
 }
 
-// formatFloat renders v compactly: integers without a trailing decimal so the
-// gen-file diff stays minimal. Mirrors cmd/gen-synth-abi.
+// Integers without a trailing decimal keep the gen-file diff minimal.
 func formatFloat(v float64) string {
 	if v == float64(int64(v)) {
 		return fmt.Sprintf("%d", int64(v))

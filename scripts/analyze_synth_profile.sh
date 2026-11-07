@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
-# Analyze a paired desktop + browser synth-tab profiling run.
-#
-# Inputs:
-#   $1  desktop record-bench output dir (bench-results/record-<ts>/)
-#         must contain: heap_warmup.pprof, heap_mid.pprof, heap_end.pprof,
-#         allocs.pprof, heap.pprof
-#   $2  browser profile output dir (bench-results/synth-browser-<ts>/)
-#         must contain: summary.json
-#
-# Emits REPORT.md to the desktop output dir, citing the absolute paths of
-# every artifact it references so downstream readers can re-run the diffs.
-#
-# Pass/fail bounds mirror the existing soak helper
-# (soak_heap_bound_helper_test.go:82-99): the 256 B-per-frame steady-state
-# slope and the 200 MB HeapAlloc cap that the production-comparable scenarios
-# already assert at 8400 frames.
+# Analyses a paired desktop ($1: record-bench dir with the heap/alloc pprofs) + browser ($2: summary.json) synth-tab run
+# into REPORT.md. Bounds mirror the soak helper: a 256 B/frame steady-state slope and a 200 MB HeapAlloc cap.
 
 set -euo pipefail
 

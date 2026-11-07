@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
-# One-time helper to create and configure a public GCS bucket suitable
-# for static site hosting / Cloud CDN origin.
-#
-# Usage:
-#   GCP_PROJECT=my-project \
-#   GCS_BUCKET=www-beatmo-io-static \
-#   GCS_LOCATION=us-central1 \
-#   ./scripts/setup-gcs-static-bucket.sh
-#
-# This will:
-#   - Create the bucket (if it does not exist) with uniform bucket access.
-#   - Configure index/error pages.
-#   - Grant public read access to objects (storage.objectViewer for allUsers).
-#
-# You still need to wire Cloud CDN / HTTPS Load Balancer + DNS
-# (point www.beatmo.io at the load balancer IP / hostname).
+# One-time: a public GCS bucket (uniform access, index/error pages, allUsers objectViewer) for a Cloud CDN origin; the
+# load balancer and DNS are still yours to wire. Usage: GCP_PROJECT=... GCS_BUCKET=... GCS_LOCATION=us-central1 ./scripts/setup-gcs-static-bucket.sh
 
 set -euo pipefail
 

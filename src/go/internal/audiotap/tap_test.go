@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-// A digest framework that agrees with everything is worse than none: it
-// converts "we have a test" into "we believe we have a test". These pin
-// that each encoding actually DISCRIMINATES, and that the two digests
-// differ in exactly the intended way.
+// A digest that agrees with everything is worse than none: each encoding must DISCRIMINATE, and the two digests differ
+// only as intended.
 
 func cap1(name string, v ...float64) *Snapshot {
 	s := New("c", 48000)
@@ -39,10 +37,7 @@ func TestASingleChangedValueIsCaught(t *testing.T) {
 	}
 }
 
-// A length change must be reported AS a length change, not as "values
-// differ" — that distinction is the whole diagnostic value of the package.
-// It is also the shape the browser-only blank Spectrum took: 64 bins where
-// 1024 were expected.
+// Reported AS a length change, the diagnostic the package exists for (the browser's blank Spectrum had 64 bins for 1024).
 func TestALengthChangeIsReportedAsShape(t *testing.T) {
 	a := cap1("shape.bins", 1, 2, 3, 4)
 	b := cap1("shape.bins", 1, 2)
@@ -91,9 +86,7 @@ func TestQuantizedDigestAbsorbsOneULPButNotRealChange(t *testing.T) {
 	}
 }
 
-// Integer and boolean sections carry the SAME bytes in both digests, so for
-// them the cross-platform comparison remains exact-bits. shape.* is built
-// from integers precisely so it keeps that property.
+// shape.* is built from integers so its cross-platform comparison stays exact bits.
 func TestIntegerSectionsAreExactInBothDigests(t *testing.T) {
 	s := New("c", 48000)
 	s.Ints("shape.spectrum", 1024, 1024, 23437, 48000)

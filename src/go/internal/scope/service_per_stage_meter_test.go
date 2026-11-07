@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestService_LatestPeakReflectsLastPush — Phase 3 chain per-stage
-// meters: every stage that received samples (even if not currently
-// tapped) must expose its latest peak/RMS via LatestPeak so the UI can
-// paint a glanceable signal-flow display.
+// Every stage that received samples, tapped or not, exposes its latest peak/RMS for the per-stage meters.
 func TestService_LatestPeakReflectsLastPush(t *testing.T) {
 	svc := NewService(Config{MaxWindowMs: 100, SampleRate: 44100})
 

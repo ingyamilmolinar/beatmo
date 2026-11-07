@@ -1,8 +1,5 @@
-// Package instrument holds the instrument config document — ONE document per
-// instrument holding every value its synth voice depends on — and the pure
-// functions over it. Nothing here touches audio or globals: a *Registry of
-// module types is passed in. Spec:
-// docs/superpowers/specs/2026-10-04-instrument-config-documents-design.md.
+// Package instrument holds the instrument document (ONE per instrument, every value its voice depends on) and pure
+// functions over it; a *Registry of module types is passed in, nothing touches audio or globals.
 package instrument
 
 import (
@@ -41,10 +38,8 @@ type Module struct {
 	Notes  string `json:"notes,omitempty"`
 }
 
-// Render is the voice's render metadata. Seconds is the voice's length — a
-// fixed time, never a number of beats: a note sounds the same at every tempo
-// and on every platform. Amplitude is the effective playback amplitude
-// (loudness included); GateTail 0 means no gate.
+// Seconds is a fixed time, never beats: a note sounds the same at every tempo and on every platform. Amplitude
+// includes loudness; GateTail 0 = no gate.
 type Render struct {
 	Seconds   float64 `json:"seconds"`
 	Amplitude float64 `json:"amplitude"`
@@ -106,9 +101,7 @@ type File struct {
 	Doc
 }
 
-// ParseFile decodes a standalone document strictly (unknown fields are an
-// error) and checks its schema version. It does NOT Validate against a
-// registry — callers Migrate then Validate.
+// Strict (unknown fields are an error) with the schema version checked; not Validated: callers Migrate then Validate.
 func ParseFile(data []byte) (Doc, error) {
 	var f File
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -122,8 +115,7 @@ func ParseFile(data []byte) (Doc, error) {
 	return f.Doc, nil
 }
 
-// MarshalFile encodes d as a standalone, current-version document: indented,
-// with no HTML escaping (notes stay readable: "->", not "\u003e").
+// No HTML escaping, so notes stay readable ("->", not ">").
 func MarshalFile(d Doc) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

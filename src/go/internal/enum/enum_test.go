@@ -68,12 +68,8 @@ func TestRoundTripAndStrictDecode(t *testing.T) {
 	}
 }
 
-// TestNamesHasNoMethods pins the package's size contract: Names exposes its
-// operations as generic functions, never as exported methods. Ebiten links
-// text/template, so the linker keeps EVERY exported method of a type that
-// reaches an interface -- a method on Names cost each enum a wrapper per
-// method (and per pointer method) in main.wasm, ~58 KB over 15 enums, none
-// of it ever called.
+// Names exposes no exported methods: the linker keeps every one of them (text/template), a wrapper per method per enum
+// in main.wasm that nothing calls.
 func TestNamesHasNoMethods(t *testing.T) {
 	for _, typ := range []reflect.Type{reflect.TypeFor[Names[color]](), reflect.TypeFor[*Names[color]]()} {
 		for i := range typ.NumMethod() {

@@ -4,16 +4,8 @@ import (
 	"testing"
 )
 
-// excerpt_test.go — does a template contain the bars the spec asked for, and
-// only those?
-//
-// A published multi-movement work is one MusicXML file whose measure numbering
-// RESTARTS each movement, so "measures 1-10" names four different passages in a
-// quartet. Selecting on the printed number alone took all of them: the five
-// four-movement chamber works in the corpus generated 336-668 bar circuits for
-// 8-10 bar excerpts, carrying material from every movement at once. Nothing
-// noticed, because no test related the SIZE of a generated circuit to the size
-// of the passage it was cut from.
+// A multi-movement MusicXML file RESTARTS its measure numbering each movement, so "measures 1-10" names several
+// passages; these tests relate a circuit's size to the passage it was cut from.
 
 // TestExcerptStaysInOneMovement is the direct property: every note the importer
 // keeps must come from the movement the spec selects.
@@ -41,18 +33,8 @@ func TestExcerptStaysInOneMovement(t *testing.T) {
 	}
 }
 
-// TestLoopLengthMatchesExcerpt relates the generated circuit's LENGTH to the
-// notated length of the passage. It is the cheap invariant that would have
-// caught the movement leak on the day it appeared: a 10-bar excerpt cannot
-// honestly produce a 370-bar loop.
-//
-// The loop is the excerpt's notated length EXACTLY. It used to be rounded up
-// to whole 4/4 bars from the last sounding note, so a 15-bar 2/4 excerpt
-// looped with a silent half bar and fell out of meter at every repeat — and a
-// groove layer, which must land on the melody's downbeats, cannot survive that.
-// The expectation is re-derived from each bar's METER here (the generator sums
-// measured bar lengths), so the two agree only when the excerpt is made of
-// whole bars of the meter in force.
+// The loop is the excerpt's notated length EXACTLY, re-derived from each bar's meter: rounding up to whole 4/4 bars
+// left a 2/4 excerpt out of meter at every repeat, which a groove layer on the melody's downbeats cannot survive.
 func TestLoopLengthMatchesExcerpt(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		spec := spec
@@ -69,8 +51,7 @@ func TestLoopLengthMatchesExcerpt(t *testing.T) {
 					continue
 				}
 				bars++
-				// A leading pickup is not part of the loop's length: it wraps
-				// to the end, ahead of bar one.
+				// A leading pickup wraps to the end, ahead of bar one.
 				if bars == 1 && spec.To > spec.From && m.LengthDiv < part.Divisions*4*m.Beats/m.BeatType {
 					continue
 				}
@@ -89,11 +70,8 @@ func TestLoopLengthMatchesExcerpt(t *testing.T) {
 	}
 }
 
-// TestMovementBoundariesAreRealRestarts pins the detection rule itself against
-// the live corpus: the multi-movement quartets must split, and a score whose
-// numbering merely carries an engraver's repeat-ending exception ("X1") must
-// not. Aloha Oe is the second case, and an over-eager rule cut it to its first
-// four bars.
+// Multi-movement quartets must split; an engraver's repeat-ending number ("X1") must not (an over-eager rule cut Aloha
+// Oe to four bars).
 func TestMovementBoundariesAreRealRestarts(t *testing.T) {
 	for _, c := range []struct {
 		score string
@@ -120,11 +98,7 @@ func TestMovementBoundariesAreRealRestarts(t *testing.T) {
 	}
 }
 
-// TestExcerptOpensWithSound: a template starts on its first selected bar's
-// downbeat, so a spec whose first bar is silent in every mapped part ships a
-// circuit that opens with dead air. The loop used to hide that by anchoring on
-// the first sounding note — which also slid every bar line off the score's.
-// The range itself must start where the music does.
+// A template starts on its first selected bar's downbeat, so the range must start where the music does, not on dead air.
 func TestExcerptOpensWithSound(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		sc := mustScore(t, spec.ScoreID)

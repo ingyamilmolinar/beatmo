@@ -21,17 +21,8 @@ type State struct {
 	ClipsLastWindow int
 }
 
-// ChannelMetrics holds computed analysis for a single channel.
-//
-// Phase 5 schema: WaveformL/R, FFTBinsL/R, PeakDBL/R, RMSDBL/R carry
-// stereo data when the analyzer pipeline produces it. The existing
-// mono fields (Waveform, FFTBins, PeakDB, RMSDB) remain the canonical
-// "downmixed" view. Renderers can call HasStereo() / PeakL() / PeakR()
-// / RMSL() / RMSR() and get a sensible value either way — the helpers
-// fall back to the mono field when stereo data isn't present. The data
-// path that populates the L/R fields is wired separately (mixer +
-// analyzer changes); the schema landing first lets the renderer side
-// migrate independently.
+// The L/R fields carry stereo when a producer fills them; the mono fields stay the downmixed view, and HasStereo /
+// PeakL / PeakR / RMSL / RMSR fall back to them, so renderers use one accessor either way.
 type ChannelMetrics struct {
 	ID              channel.ID
 	Name            string
@@ -47,7 +38,6 @@ type ChannelMetrics struct {
 	Envelope        []float64 // amplitude envelope (nil if not computed)
 	Active          bool
 
-	// ── Phase 5: stereo extensions ────────────────────────────────────
 	WaveformL []float64
 	WaveformR []float64
 	FFTBinsL  []float64
@@ -58,14 +48,7 @@ type ChannelMetrics struct {
 	RMSDBR    float64
 }
 
-// HasStereo reports whether any of the L/R fields are populated. False
-// means the renderer should treat this channel as mono and use the
-// canonical Waveform / FFTBins / PeakDB / RMSDB fields directly.
-//
-// NOTE: as of Phase 5 the analyzer/service compute path and engine mixer
-// taps remain mono — this returns false for all real data in production.
-// The renderer L/R branches in render_meters.go and render_waveform.go
-// are dormant until the upstream wiring lands (see plan §Phase 5.2-5.3).
+// False: use the mono fields directly.
 func (c *ChannelMetrics) HasStereo() bool {
 	return len(c.WaveformL) > 0 || len(c.WaveformR) > 0 ||
 		len(c.FFTBinsL) > 0 || len(c.FFTBinsR) > 0 ||
@@ -127,13 +110,6 @@ type CaptureBuffer struct {
 	TriggerIdx int64
 }
 
-// ClipsLastWindow is the rolling 10-second clip count summed across all
-// channels (set by Service from Config.ClipsLastWindowGetter). The UI
-// reads this for the LevelsAggregates "CLIPS" line so a long-running
-// session doesn't keep showing an ever-climbing monotonic counter.
-//
-// Access via State.ClipsLastWindow (see below).
-
 // Config configures the analyzer service.
 type Config struct {
 	FFTSize        int // power of 2 (default SpectrumFFTSize)
@@ -141,19 +117,11 @@ type Config struct {
 	MaxInstruments int // max instrument slots (default 32)
 	SampleRate     int // audio sample rate (default 44100)
 
-	// MasterLUFSGetter, when non-nil, is called once per processTick and
-	// its return value is written into State.Master.LUFSShortTermDB.
-	// Lets the audio package own the K-weighting filter + 3 s
-	// integrator (audio/loudness.go) without creating a circular
-	// dependency on this package. Returns -120 when integrator is
-	// empty / silent.
+	// Called once per tick into LUFSShortTermDB, so the audio package owns the K-weighting integrator without an import
+	// cycle. -120 when silent.
 	MasterLUFSGetter func() float64
 
-	// ClipsLastWindowGetter, when non-nil, returns the rolling 10 s
-	// clip count (sum of all per-channel clips that occurred in the
-	// last sliding window). Wired through Service.State() so the UI's
-	// LevelsAggregates side panel can display "Clips last 10 s" instead
-	// of a session-total monotonic counter.
+	// The rolling 10 s clip count, so the Levels CLIPS line never shows an ever-climbing session total.
 	ClipsLastWindowGetter func() int
 }
 

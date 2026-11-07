@@ -2,19 +2,9 @@
 
 package main
 
-// match_nuisance.go -- `refs match -nuisance`: does the matcher hear the
-// INSTRUMENT, whatever the player and the recording did to the note?
-//
-// Every case re-plays a shipped voice with ONE nuisance -- a different note,
-// a note cut short (half its shipped length, and the shipped length where a
-// drum stops), a room, a reverb, a brighter or darker microphone -- and
-// ranks the whole roster against it exactly as `refs
-// match` ranks a download. The voice must still find itself (or a twin with
-// the identical shipped sound): whatever moves its rank is something the
-// essence distance mistakes for identity. The `all` row applies them at once.
-// It needs no reference audio. TestEssenceSelfIdentifiesUnderNuisance runs
-// the combined case on a fixed set as a gate; this sweeps each nuisance on
-// its own so a regression says WHICH nuisance leaked into the ranking.
+// Does the matcher hear the INSTRUMENT whatever the player and the recording did to the note? Each case re-plays a
+// shipped voice with ONE nuisance and ranks the roster as refs match ranks a download; the voice must still find itself.
+// Per nuisance, so a regression names which one leaked. Needs no reference audio.
 
 import (
 	"fmt"
@@ -39,12 +29,8 @@ type matchNuisance struct {
 	Name string
 	// Semis plays the note this far from the voice's natural pitch.
 	Semis float64
-	// Hold sets the note length as a multiple of the shipped voice's
-	// render.seconds. 0 = the voice rings out the way a recording of it does
-	// (synthmatch.HeldSeconds the analysis window): the shipped conga is a
-	// 0.25 s voice, cut off mid-ring -- a recording never is, and a reverb
-	// tail after that cut was judged against the matcher's (correctly)
-	// un-truncated conga.
+	// Note length as a multiple of render.seconds; 0 = ring out as a recording does (HeldSeconds): a recording is never
+	// cut off mid-ring the way a short shipped voice is.
 	Hold float64
 	// Room puts the note 10 dB down in a room: 0.15 s of room tone before the
 	// onset and a noise floor RoomFloorDB under the peak, as a download has.

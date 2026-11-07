@@ -1,18 +1,8 @@
 package deploy
 
-// No audio file is ever committed or shipped. Reference recordings are local
-// dev tooling that live in $BEATMO_WAV_REFS (default ~/.beatmo/wav-refs, see
-// internal/wavref) and every instrument the game plays is synthesized, so
-// there is nothing to license and nothing that may reach git or the bucket.
-//
-// Four layers, each tested here:
-//   - .gitignore hides audio of every extension in every letter case (sample
-//     libraries ship .WAV / .Wav / .MP3; the old `*.wav` rule missed them and
-//     left a 17,996-file local sample library one `git add -A` from the repo);
-//   - the pre-commit hook (scripts/precommit/no-audio-files.sh) rejects a
-//     staged audio file, which is how `git add -f` gets caught;
-//   - this test fails `make test` on any audio file git tracks or has staged;
-//   - the deploy script refuses to upload one.
+// No audio file is ever committed or shipped: references are local tooling and every instrument is synthesised. Four
+// layers, each tested: .gitignore (every extension in every case), the pre-commit hook (catches git add -f), this test,
+// and the deploy script's refusal.
 
 import (
 	"bytes"
@@ -25,10 +15,7 @@ import (
 	"testing"
 )
 
-// audioExts is every audio container extension the guards cover. It must
-// stay in step with .gitignore, scripts/precommit/no-audio-files.sh and the
-// find(1) regex in scripts/deploy-wasm-gcs.sh; TestAudioExtensionListsAgree
-// keeps the shell copies honest.
+// Must match .gitignore, the pre-commit hook and the deploy find regex; TestAudioExtensionListsAgree checks the shells.
 var audioExts = []string{
 	"wav", "wave", "mp3", "aif", "aiff", "aifc", "flac",
 	"ogg", "oga", "opus", "m4a", "aac", "wma", "caf",
@@ -38,8 +25,7 @@ var audioPathRE = regexp.MustCompile(`(?i)\.(` + strings.Join(audioExts, "|") + 
 
 func isAudioPath(p string) bool { return audioPathRE.MatchString(p) }
 
-// git runs a git command in dir. It skips the test when git or a work tree
-// is unavailable (a source tarball has neither), never fails it.
+// Skips, never fails, without git or a work tree (a source tarball has neither).
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -69,10 +55,8 @@ func splitNUL(s string) []string {
 	return out
 }
 
-// TestNoAudioFilesInRepository fails on any audio file git tracks or has
-// staged. A tracked file already deleted from the work tree is a pending
-// removal -- the fix in progress -- and passes; a STAGED add/modify fails even
-// then, because that version is what the next commit would record.
+// A tracked file already deleted from the work tree is the fix in progress and passes; a STAGED add/modify fails,
+// since that version is what the next commit records.
 func TestNoAudioFilesInRepository(t *testing.T) {
 	root := repoRoot(t)
 	var offenders []string

@@ -90,12 +90,8 @@ func main() {
 	// through the default, so their lines honour -log too.
 	game_log.SetDefault(logger)
 
-	// Apply runtime config (GC tuning, profile rates) before any
-	// goroutine spawns so settings take effect for the whole process.
-	// On WASM we set aggressive defaults: a 1500 MB soft heap cap and
-	// GOGC=50 so the runtime collects garbage well before the ~2 GB
-	// linear-memory ceiling that crashes the browser tab. Both can be
-	// overridden via BEATMO_MEMORY_LIMIT_MB / BEATMO_GC_PERCENT envs.
+	// Before any goroutine spawns, so it holds for the whole process. On WASM: a 1500 MB soft heap cap and GOGC=50, well
+	// under the ~2 GB linear-memory ceiling that crashes the tab (BEATMO_MEMORY_LIMIT_MB / BEATMO_GC_PERCENT override).
 	rtSnap := async.ConfigureRuntime(wasmFriendlyRuntimeOpts())
 	logger.Infof("[runtime] startup snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d",
 		rtSnap.NumCPU, rtSnap.GOMAXPROCS, rtSnap.GCPercent, rtSnap.MemoryLimit)
@@ -105,9 +101,7 @@ func main() {
 		defer stop()
 	}
 
-	// Optional pprof server for profiling: enable with PPROF=1 and visit http://localhost:6060.
-	// Desktop-only; a no-op on js/wasm (see profiling_js.go) so the browser build
-	// never pulls in net/http + crypto/tls.
+	// PPROF=1 → http://localhost:6060. A no-op on js/wasm, so the browser build never pulls in net/http + crypto/tls.
 	maybeStartPprofServer()
 
 	// CPU profiling for benchmark mode (write to file, avoids HTTP race).
@@ -143,9 +137,7 @@ func main() {
 		defer hookCleanup()
 	}
 
-	// Open the event-stream JSONL sink if a path was provided. Also auto-
-	// open one inside the record-bench output dir so every bench run is
-	// self-documenting (events.jsonl alongside the profiles).
+	// A record-bench run also opens one inside its output dir, so events.jsonl sits beside the profiles.
 	eventLogPath := *eventLog
 	if eventLogPath == "" {
 		eventLogPath = os.Getenv("BEATMO_EVENT_LOG")
@@ -166,16 +158,10 @@ func main() {
 		}
 	}
 
-	// Retain a bounded in-memory event history for the UI Logs panel. Fed by the
-	// same eventlogger consumer opened below (one line per emitted event), so
-	// this must be set before Open subscribes. Runs on both desktop and browser
-	// (the wasm build compiles ./cmd, so this main runs there too). Session-only.
+	// Must be set before Open subscribes: the Logs panel is fed by the same eventlogger consumer. Runs on both platforms.
 	eventlogger.SetLogHistory(eventlogger.NewRingHistory(1000))
 
-	// Wire the human-readable INFO narrative consumer of hooks.Bus. This is
-	// the canonical "what is the user doing / what is the engine doing" view;
-	// disable with BEATMO_INFO_LOG=off (default: on). Verbose kinds (camera
-	// pan/zoom, drag progress) are filtered unless BEATMO_EVENT_LOG_VERBOSE=1.
+	// The INFO narrative (BEATMO_INFO_LOG=off disables it); verbose kinds need BEATMO_EVENT_LOG_VERBOSE=1.
 	if os.Getenv("BEATMO_INFO_LOG") != "off" {
 		infoLog, err := eventlogger.Open(hooks.GlobalBus(), logger, eventlogger.Options{
 			Verbose: verbose,
@@ -191,8 +177,7 @@ func main() {
 		audio.EnableScopeExport()
 	}
 
-	// Wire user-preference persistence (favorites). Failures here are
-	// non-fatal; the UI degrades to in-memory favorites for the session.
+	// Non-fatal: the UI falls back to in-memory favorites for the session.
 	prefsStore := userprefs.NewBackingStore(userprefs.Options{
 		Logger: func(format string, args ...any) { logger.Infof(format, args...) },
 	})
@@ -205,12 +190,8 @@ func main() {
 		ui.SetNotificationHistoryStore(ui.NewPersistedNotificationHistory(ns))
 	}
 
-	// The user's instrument LIBRARY (saved instrument documents, spec
-	// 2026-10-04 §6) lives in its OWN store — separate file from prefs.json —
-	// so instruments can be shared/imported without touching favorites /
-	// language / UI state. Loaded before the first ResetInstruments a project
-	// sees, so saved instruments are playable and listed from frame 1; Save /
-	// Save As / Restore shipped persist through the same store.
+	// The instrument library has its OWN store, apart from prefs.json, so instruments can be shared without touching
+	// favorites / language / UI state. Loaded before the first ResetInstruments, so saved instruments play from frame 1.
 	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
 	defer instStore.Close()
 	audio.SetInstrumentLibrarySink(instStore)
@@ -222,9 +203,7 @@ func main() {
 	}
 	audio.ResetInstruments()
 
-	// Sampler tab: cross-session user-sample persistence (per-file under the
-	// prefs dir on desktop). Mirrors the recipe wiring above; ApplySavedSamples
-	// re-registers persisted samples for playback before the UI starts.
+	// ApplySavedSamples re-registers persisted user samples for playback before the UI starts.
 	if ss, ok := prefsStore.(userprefs.SampleStore); ok {
 		adapter := ui.NewSamplePersistAdapter(ss)
 		audio.SetSampleSink(adapter)
@@ -251,9 +230,7 @@ func main() {
 	// Create an instance of our game
 	g := ui.New(logger)
 
-	// User theme: seed the profile theme from prefs and apply it before the
-	// first Layout so frame 1 already renders in the user's colors. Shared by
-	// desktop (prefs.json) and WASM (localStorage) — this file builds for both.
+	// Before the first Layout so frame 1 renders in the user's colors (prefs.json on desktop, localStorage on WASM).
 	if ts, ok := prefsStore.(userprefs.ThemeStore); ok {
 		ui.SetThemeSink(ts)
 		ui.ApplyStoredTheme(g)
@@ -263,9 +240,7 @@ func main() {
 		g.SetForceMobileProfile(true)
 	}
 
-	// Boot order for the screenshot harness: import circuit first, then
-	// apply ui-state config, then run the named scene. Scene Setup runs last
-	// so menus/sidebar opened by scenes overlay the imported circuit cleanly.
+	// Circuit, then ui-state, then the scene, so menus a scene opens overlay the imported circuit.
 	if *importPath != "" {
 		data, err := os.ReadFile(*importPath)
 		if err != nil {
@@ -337,9 +312,7 @@ func main() {
 	// Optional window settings (not used in WASM, but for desktop builds)
 	ebiten.SetWindowSize(*winW, *winH)
 	ebiten.SetWindowTitle("Beatmo - Node Music Game")
-	// Keep simulation running at a fixed TPS even if rendering falls behind. This
-	// decouples Update() (audio/scheduler) from Draw() so slow frames on web do not
-	// stall playback timing.
+	// A fixed TPS decouples Update (audio/scheduler) from Draw, so slow frames on web do not stall playback timing.
 	ebiten.SetTPS(60)
 
 	// Run the game. On WASM, this will create a <canvas> in index.html

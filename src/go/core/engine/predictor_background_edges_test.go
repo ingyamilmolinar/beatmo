@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// TestStopBackgroundOnNeverStartedIsNoOp covers the documented "safe to
-// call when no worker is running" branch of StopBackground — exercising
-// the `quit == nil` and `done == nil` paths that the start-stop happy
-// case never reaches.
+// The quit == nil / done == nil paths the start-stop case never reaches.
 func TestStopBackgroundOnNeverStartedIsNoOp(t *testing.T) {
 	p := newTestPredictor(t)
 	// No StartBackground was ever called.
@@ -17,10 +14,7 @@ func TestStopBackgroundOnNeverStartedIsNoOp(t *testing.T) {
 	p.StopBackground()
 }
 
-// TestStopBackgroundClearsCASGate proves the "Start → Stop → Start"
-// cycle works because Stop clears bgRunning AFTER the worker has
-// returned. We don't call StartBackground (and a real worker), only
-// StopBackground twice — the second call hits the bgRunning=false path.
+// The second Stop hits the bgRunning=false path, which is what makes Start → Stop → Start work.
 func TestStopBackgroundClearsCASGate(t *testing.T) {
 	p := newTestPredictor(t)
 	p.StartBackground(func() int { return 0 })
@@ -30,10 +24,6 @@ func TestStopBackgroundClearsCASGate(t *testing.T) {
 	}
 }
 
-// TestSetBackgroundTarget_NoWorkerSpawn covers the test seam used by
-// callers who want to evaluate target logic without spinning a
-// goroutine. After SetBackgroundTarget, BackgroundTargetForTest returns
-// the same function pointer.
 func TestSetBackgroundTarget_NoWorkerSpawn(t *testing.T) {
 	p := newTestPredictor(t)
 	var calls atomic.Int64
@@ -57,9 +47,6 @@ func TestSetBackgroundTarget_NoWorkerSpawn(t *testing.T) {
 	}
 }
 
-// TestSetBackgroundTargetReplacesPrevious covers the overwrite path:
-// calling SetBackgroundTarget twice swaps the function pointer
-// in-place.
 func TestSetBackgroundTargetReplacesPrevious(t *testing.T) {
 	p := newTestPredictor(t)
 	p.SetBackgroundTarget(func() int { return 1 })
@@ -73,9 +60,6 @@ func TestSetBackgroundTargetReplacesPrevious(t *testing.T) {
 	}
 }
 
-// TestHorizonReturnsWindowEnd is the unit-level guard for the public
-// horizon accessor. A fresh predictor has windowEnd == 0; after Ensure
-// it advances.
 func TestHorizonReturnsWindowEnd(t *testing.T) {
 	p := newTestPredictor(t)
 	if h := p.Horizon(); h != 0 {

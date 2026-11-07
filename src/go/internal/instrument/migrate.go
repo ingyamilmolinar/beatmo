@@ -5,9 +5,7 @@ import (
 	"fmt"
 )
 
-// Migrate brings every module to its type's current version by applying the
-// type's Steps in order (spec §9). Unknown types are left for Validate. A
-// version newer than this build is an error naming the path. d is not changed.
+// Applies each type's Steps in order; unknown types are left for Validate, a version newer than this build names its path.
 func Migrate(d Doc, reg *Registry) (Doc, error) {
 	out := d.Clone()
 	var errs []error

@@ -2,12 +2,8 @@ package deploy
 
 import "testing"
 
-// wasm_section_test.go — unit-tests the section walker TestWasmAssetSizeBudget
-// uses to tell a `make wasm` binary (-s -w, no `name` section) from the
-// UNSTRIPPED one a *.browser.test.js suite leaves behind in src/js/main.wasm.
-// The distinction is worth a test of its own because getting it wrong is
-// silent in both directions: a false positive skips the size gate forever, a
-// false negative reports the 0.82 MiB `name` section as a code-size regression.
+// Wrong either way is silent: a false positive skips the size gate forever, a false negative reports the name section as
+// a code-size regression.
 
 // wasmModule assembles a minimal module: magic + version, then each section as
 // (id, ULEB payload length, payload).

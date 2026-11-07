@@ -7,16 +7,9 @@ import (
 	"testing"
 )
 
-// Beatmo authors its groove scores itself, so the score is not an outside
-// oracle for them the way an OpenScore edition is for a Lied. This file is the
-// second entry of a double-entry book: each idiom's DEFINING instrument must
-// strike exactly the textbook pattern the catalogue cites. A typo in a groove
-// file — a clave on the wrong sixteenth — fails here instead of shipping a
-// salsa that is not in clave.
-//
-// Patterns are positions on a grid of `perQuarter` steps, counted from the
-// first downbeat across the whole groove. Only full-strength hits count (a
-// ghost note is decoration, not the idiom).
+// Beatmo writes its groove scores, so the score is not an outside oracle: each idiom's DEFINING instrument must strike
+// exactly the textbook pattern the catalogue cites, so a clave on the wrong sixteenth fails here. Positions on a
+// perQuarter grid from the first downbeat; only full-strength hits count (a ghost note is decoration).
 type fingerprint struct {
 	score      string
 	gmKey      int
@@ -70,8 +63,7 @@ var idiomFingerprints = []fingerprint{
 	{"groove-dancehall", 36, 4, []int{0, 4, 8, 12, 16, 20, 24, 28}, "dancehall: kick on every beat"},
 	{"groove-dancehall", 39, 4, []int{6, 22, 26}, "dancehall clap pushes"},
 
-	// ── Second batch: kick patterns of the RYM-canon beats, typed from the
-	// drum-patterns.com grids the catalogue cites (the bars it names) ──
+	// Kick patterns of the canon beats, from the drum-patterns.com grids the catalogue cites.
 	{"groove-hook-and-sling", 36, 4, []int{0, 2, 9, 13, 14, 29, 32, 33, 44, 45, 47, 48, 50, 53, 59, 61, 62}, "Hook and Sling kick (Eddie Bo)"},
 	{"groove-look-ka-py-py", 36, 4, []int{0, 3, 5, 10, 13, 14, 16, 19, 21, 23, 24, 26, 29, 30}, "Look-Ka Py Py kick (The Meters)"},
 	{"groove-synthetic-substitution", 36, 4, []int{0, 2, 7, 9, 10, 11, 15, 16, 18, 23, 25, 26, 27, 31}, "Synthetic Substitution kick (Melvin Bliss)"},
@@ -150,10 +142,7 @@ func TestGrooveScoresMatchTheirIdiom(t *testing.T) {
 	}
 }
 
-// TestGrooveSwingIsNotated pins which grooves swing, and by how much: swing
-// is part of the idiom (an MPC 60% for boom-bap, triplet swing for jazz), and a
-// lost <swing> element would straighten the template without any other test
-// noticing.
+// Swing is part of the idiom, and a lost <swing> would straighten a template with no other test noticing.
 func TestGrooveSwingIsNotated(t *testing.T) {
 	want := map[string][2]float64{ // ratio, unit in quarters
 		"groove-jazz-swing":             {2, 0.5},
@@ -196,10 +185,7 @@ func TestGrooveSwingIsNotated(t *testing.T) {
 	}
 }
 
-// TestTrapRollIsATuplet: the trap groove's hi-hat roll is written as real
-// sixteenth-note triplets, the one place in the corpus where a percussion
-// onset falls between grid steps — which the generator must turn into
-// rush/delay rather than collapse onto the grid.
+// The one place a percussion onset falls between grid steps, which the generator must turn into rush/delay.
 func TestTrapRollIsATuplet(t *testing.T) {
 	sc, err := ParseScore("groove-trap")
 	if err != nil {
@@ -217,10 +203,8 @@ func TestTrapRollIsATuplet(t *testing.T) {
 	}
 }
 
-// TestKorobeiniki is the second entry for the one TRANSCRIBED melody: its
-// pitches, typed from the cited public-domain sheet (Commons,
-// File:Korobeiniki.jpg — C minor, 2/4, both strains), must be the score's,
-// in order. The Tetris theme is this tune.
+// The one TRANSCRIBED melody: its pitches, typed from the cited public-domain sheet (Commons, Korobeiniki.jpg, C minor,
+// 2/4, both strains), must be the score's, in order.
 func TestKorobeinikiMatchesTheSheet(t *testing.T) {
 	sheet := []string{
 		"G5", "D5", "Eb5", "F5", "Eb5", "D5", "C5", "C5", "Eb5", "G5", "F5", "Eb5",

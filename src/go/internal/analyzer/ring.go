@@ -5,20 +5,9 @@ import (
 	"sync/atomic"
 )
 
-// RingBuffer is a single-producer, single-consumer (SPSC) circular buffer
-// for float64 samples. It uses monotonically increasing atomic counters for
-// the read and write positions, enabling lock-free operation between one
-// producer goroutine and one consumer goroutine.
-//
-// The producer calls Write, which overwrites the oldest data on overflow
-// (never blocks). The consumer calls Read, which drains available samples.
-//
-// Because Write overwrites the oldest slots on overflow, the producer can
-// legitimately clobber a physical slot the consumer is mid-read on (the ring
-// is lossy by design — see Write). Each slot is therefore stored as an
-// atomic.Uint64 (float64 bits) so those unavoidable overlapping accesses are
-// well-defined instead of a data race; the consumer may still observe a
-// newer-generation value in an overflowed slot, which the doc contract allows.
+// A lock-free SPSC ring on monotonic atomic counters. Write overwrites the oldest data and never blocks, so it can clobber
+// a slot the consumer is reading: each slot is an atomic.Uint64, which keeps that overlap well-defined (the consumer may
+// see a newer value there, which the contract allows).
 type RingBuffer struct {
 	buf  []atomic.Uint64
 	cap  int64
@@ -38,10 +27,7 @@ func NewRingBuffer(capacity int) *RingBuffer {
 	}
 }
 
-// Write appends data to the buffer. If the incoming data exceeds the buffer
-// capacity, only the last cap samples are kept. If writing would overflow
-// the unread region, the read pointer is advanced so the buffer always
-// contains the most recent samples. Write never blocks.
+// Never blocks: on overflow the read pointer advances, so the buffer always holds the most recent samples.
 func (r *RingBuffer) Write(data []float64) {
 	n := int64(len(data))
 	if n == 0 {
@@ -58,9 +44,7 @@ func (r *RingBuffer) Write(data []float64) {
 
 	wPos := r.wPos.Load()
 
-	// Copy data into the circular buffer using modular indexing. Each slot
-	// is written atomically so an overflow that clobbers a slot the consumer
-	// is reading stays well-defined rather than a data race.
+	// Atomic per slot, so an overflow clobbering a slot mid-read is well-defined, not a data race.
 	for i := int64(0); i < n; i++ {
 		r.buf[(wPos+i)%cap].Store(math.Float64bits(data[i]))
 	}
@@ -102,10 +86,7 @@ func (r *RingBuffer) Read(dst []float64) int {
 	return int(n)
 }
 
-// Reset discards all currently-unread samples by advancing the read pointer to
-// the write pointer. Must be called from the consumer side (the goroutine that
-// calls Read); it is a no-op-safe single store of rPos. Used on circuit load so
-// leftover pre-load samples don't produce one last non-flat analysis tick.
+// Consumer side only. On circuit load, so pre-load samples never produce one last non-flat tick.
 func (r *RingBuffer) Reset() {
 	r.rPos.Store(r.wPos.Load())
 }

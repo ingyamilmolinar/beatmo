@@ -7,30 +7,13 @@ import (
 	"testing"
 )
 
-// family_levels_test.go — every option in a multi-option family must be
-// level-matched against the SAME reference clip.
-//
-// THE BUG THIS PINS
-// -----------------
-// runAuditionPlan rendered each family member through its own renderCompare
-// call, and each call re-derived the reference gain from THAT member's synth
-// RMS. formatAuditionSh then played results[0].RealPath and nothing else, so
-// options 2..N were matched against a reference copy the listener never heard.
-// With realRMS=0.10, opt1 RMS=0.10 and opt2 RMS=0.40 the second option played
-// 5.93 dB louder than the first, relative to the one reference actually on the
-// speakers.
-//
-// That is exactly the confound level-matching exists to remove -- computeCompare's
-// own doc says the louder source is reliably judged fuller/better -- and it
-// affected 11 of the 44 families in ear_verdicts.jsonl, 7 of which recorded an
-// explicit "option N is closest" pick.
+// Every option of a family is level-matched against the SAME reference clip: per-member renders each re-derived the
+// reference gain and only the first copy was played, so options sat several dB apart, the very confound level-matching
+// removes (the louder source is judged fuller).
 
 const levelEps = 1e-9
 
-// TestComputeGainsN_MatchesPairwiseForOneOption pins backward compatibility:
-// the single-option path must produce byte-identical gains to the pairwise
-// helper `refs compare` and `refs diagnose` still use, so neither command's
-// output moves.
+// The single-option path must give byte-identical gains to the pairwise helper, so refs compare / refs diagnose do not move.
 func TestComputeGainsN_MatchesPairwiseForOneOption(t *testing.T) {
 	for _, tc := range [][2]float64{{0.1, 0.1}, {0.1, 0.4}, {0.35, 0.02}, {0, 0.2}, {0.2, 0}} {
 		wantRef, wantSynth := computeGains(tc[0], tc[1])
@@ -41,9 +24,7 @@ func TestComputeGainsN_MatchesPairwiseForOneOption(t *testing.T) {
 	}
 }
 
-// TestComputeGainsN_PutsEveryClipOnOneLevel is the property that kills the
-// confound: after scaling, the reference and EVERY option sit at the same
-// level, so the listener compares timbre and nothing else.
+// After scaling, the reference and EVERY option sit at one level: the listener compares timbre and nothing else.
 func TestComputeGainsN_PutsEveryClipOnOneLevel(t *testing.T) {
 	levels := []float64{0.10, 0.10, 0.40, 0.05}
 	gains := computeGainsN(levels)
@@ -70,9 +51,7 @@ func TestComputeGainsN_LeavesSilentClipsAlone(t *testing.T) {
 	}
 }
 
-// TestClampFamilyGains_PreservesRelativeLevels: the clip guard must scale the
-// WHOLE set by one factor, never just the offending clip -- otherwise it
-// reintroduces the very level difference the matching removed.
+// One factor for the WHOLE set, never just the offending clip, or the guard reintroduces the level difference.
 func TestClampFamilyGains_PreservesRelativeLevels(t *testing.T) {
 	gains := []float64{4.0, 4.0, 8.0}
 	peaks := []float64{0.30, 0.30, 0.20}

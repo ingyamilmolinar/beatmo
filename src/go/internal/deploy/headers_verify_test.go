@@ -1,14 +1,7 @@
 package deploy
 
-// Wraps scripts/verify_deploy_headers.sh with two kinds of automated coverage:
-//
-//   1. A self-contained test that spawns a Go HTTP test server emulating the
-//      deployed bucket (correct + broken header variants) and asserts the
-//      script returns 0 on the correct case and non-zero on each broken case.
-//      This runs by default in the fast test path.
-//
-//   2. An opt-in live probe gated by BEATMO_VERIFY_DEPLOY_URL: when set, the
-//      same script runs against the real deployed URL. Skipped otherwise.
+// A fake bucket (correct and broken header variants) the script must accept and reject, by default; an opt-in live probe
+// against BEATMO_VERIFY_DEPLOY_URL.
 
 import (
 	"bytes"
@@ -84,9 +77,7 @@ func startFakeBucket(t *testing.T, override func(rel string, h http.Header)) *ht
 			return
 		}
 		w.Header().Set("Content-Type", contentTypeFor(rel))
-		// Default Cache-Control mirrors the deploy script's choices, including
-		// the no-transform directive that protects the gzipped objects from
-		// GCS decompressive transcoding.
+		// no-transform protects the gzipped objects from GCS decompressive transcoding.
 		if rel == "index.html" || strings.HasSuffix(rel, ".gen.js") {
 			w.Header().Set("Cache-Control", "no-cache, must-revalidate, no-transform")
 		} else {
@@ -199,8 +190,7 @@ func TestVerifyHeadersScript_FlagsMissingCacheControl(t *testing.T) {
 
 func TestVerifyHeadersScript_Flags404(t *testing.T) {
 	script := verifyScriptPath(t)
-	// Bucket that 404s the recording worker -- simulates a missing-from-deploy
-	// regression that survived the manifest drift test (defense in depth).
+	// Defence in depth: a missing file that survived the manifest drift test.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/recording_encoder_worker.js") {
 			http.NotFound(w, r)
@@ -229,9 +219,7 @@ func TestVerifyHeadersScript_FlagsMissingWASMGzipEncoding(t *testing.T) {
 	script := verifyScriptPath(t)
 	srv := startFakeBucket(t, func(rel string, h http.Header) {
 		if rel == fakeWasm {
-			// Simulate a deploy that forgot Content-Encoding: gzip -- the
-			// browser would receive raw gzip bytes as identity and fail to
-			// compile, or (with GCS transcoding) the 28 MiB uncompressed body.
+			// Without it the browser gets raw gzip bytes as identity and fails to compile.
 			h.Del("Content-Encoding")
 		}
 	})

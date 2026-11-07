@@ -93,11 +93,7 @@ func TestCoalescerFlushAllForcesEmission(t *testing.T) {
 	}
 }
 
-// TestCoalescerKeepsLastSource verifies that the trailing-emit semantics
-// extend to source attribution: when 5 events for the same Kind arrive with
-// different Source values, the surviving emission carries the LAST event's
-// source. Matches the user-facing semantics ("BPM landed at 120 from
-// drumview_transport.go:118").
+// The trailing emission carries the LAST event's source too ("BPM landed at 120 from drumview_transport.go:118").
 func TestCoalescerKeepsLastSource(t *testing.T) {
 	var (
 		mu        sync.Mutex
