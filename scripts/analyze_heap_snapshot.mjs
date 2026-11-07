@@ -1,16 +1,7 @@
 #!/usr/bin/env node
-// Quick-and-dirty Chromium heap snapshot analyzer. Reads a .heapsnapshot
-// JSON dump, aggregates self_size by (type, name), and prints the top-N
-// constructors by retained bytes. Optionally diffs two snapshots to
-// surface what grew.
-//
-// Usage:
-//   node analyze_heap_snapshot.mjs <snapshot.heapsnapshot> [topN]
-//   node analyze_heap_snapshot.mjs --diff <warmup.heapsnapshot> <end.heapsnapshot>
-//
-// Output is the dominant retainers. For a Go-WASM workload, "system /
-// Map" and "wasmtable" entries dominate; what we care about is whether
-// any user-named constructor grows monotonically (leak indicator).
+// Aggregates a Chromium .heapsnapshot's self_size by (type, name), or diffs two: a user-named constructor that grows
+// monotonically is the leak signal (system / Map and wasmtable dominate any Go-WASM heap).
+// Usage: node analyze_heap_snapshot.mjs <snapshot> [topN] | --diff <warmup> <end>
 
 import fs from "node:fs";
 

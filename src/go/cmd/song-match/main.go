@@ -1,12 +1,7 @@
 //go:build !test && !js
 
-// song-match: song-level analysis tooling (Plan 1: the `timeline` subcommand; Plan 2: the `render` subcommand; Plan 3: the `compare` subcommand).
-//
-// Usage:
-//
-//	song-match timeline -file <wav> [-config c.json] [-hop 0.5] [-out tl.csv]
-//	song-match render -template <stem> [-out <dir>] [-bars N] [-sr N]
-//	song-match compare -template <stem> -ref <wav> [-manifest m.json] [-config c.json] [-bars N] [-sr N] [-tune] [-dry-run]
+// song-match: song-level analysis. timeline -file <wav> [-config] [-hop] [-out] | render -template <stem> [-out] [-bars]
+// [-sr] | compare -template <stem> -ref <wav> [-manifest] [-config] [-bars] [-sr] [-tune] [-dry-run]
 package main
 
 import (

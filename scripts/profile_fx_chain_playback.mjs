@@ -1,40 +1,6 @@
-// profile_fx_chain_playback.mjs
-//
-// Diagnostic profiler for the "choppy/inconsistent audio under heavy FX load"
-// investigation (see src/js/webaudio_fx_chain_stress.browser.test.js, which is
-// the failing reproducer). The stress test fails INTERMITTENTLY — clicks and
-// queue-latency spikes appear on some runs, not all. This script gathers the
-// evidence to localize that transient:
-//
-//   1. Builds the heavy circuit (every instrument: 3 insert effects, shaped
-//      EQ + HPF + LPF, all modular synth stages incl. the
-//      default-OFF PITCH/LFO/BURST modulators).
-//   2. Plays for PROFILE_SECS, sampling a TIME SERIES every second:
-//        - wall-clock vs AudioContext.currentTime  → per-second audio-thread
-//          realtime drift (the smoking gun for render-thread underrun)
-//        - perfStats: drawAvg/drawMax, updateMax, audioQLatMax, GC counters,
-//          heapAlloc, goroutines
-//        - getAudioScheduleMetrics history (per-second lead/overdue)
-//        - getThreeStageLatency (Stage A seqFire / B bridge / C lead+lag)
-//   3. Captures a CDP main-thread CPU profile across the whole window and
-//      aggregates SELF time by function so we can see whether Draw, the
-//      Go→JS bridge, or GC dominates the main thread.
-//   4. (Optional) A/B sweep: re-run the same circuit with components removed
-//      one at a time (PROFILE_AB=1) to attribute drift/clicks to a component.
-//
-// CDP's CPU profiler samples the MAIN thread only — AudioWorklet render
-// threads (the per-channel insert-FX worklets + the recording-capture tap)
-// are NOT in the profile. The per-second drift series is the proxy for
-// audio-thread health: when the worklets can't render realtime, ctx.currentTime
-// falls behind wall-clock and that second's drift spikes.
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node scripts/profile_fx_chain_playback.mjs
-// Env:
-//   PROFILE_SECS=25     playback window
-//   PROFILE_BPM=200     tempo
-//   PROFILE_AB=1        also run the component-isolation A/B sweep
-//   PROFILE_RECORD=1    also run the recording capture tap during the main run
+// Localises the intermittent clicks under heavy FX load: plays every instrument with 3 insert effects + shaped EQ,
+// sampling audio-clock drift (the proxy for audio-thread health: CDP profiles the main thread only) and the schedule
+// metrics per second. Env: PROFILE_SECS=25 PROFILE_BPM=200 PROFILE_AB=1 (component sweep) PROFILE_RECORD=1.
 
 import { chromium } from "../src/js/node_modules/playwright/index.mjs";
 import path from "node:path";

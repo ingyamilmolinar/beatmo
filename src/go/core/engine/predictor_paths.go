@@ -2,10 +2,7 @@ package engine
 
 import "github.com/ingyamilmolinar/beatmo/core/model"
 
-// SetPaths replaces the per-row traversal info. Call when the graph or row
-// origins change. The optional nodes snapshot lets callers avoid touching the
-// live graph from background predictor goroutines. Slices are copied for
-// thread-safety.
+// The optional nodes snapshot keeps background predictor goroutines off the live graph; slices are copied.
 func (p *Predictor) SetPaths(paths [][]model.BeatInfo, isLoop []bool, loopStart []int, nodes map[model.NodeID]model.Node) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -44,9 +41,7 @@ func (p *Predictor) SetPaths(paths [][]model.BeatInfo, isLoop []bool, loopStart 
 		p.nodes = make(map[model.NodeID]model.Node)
 	}
 	p.resetBuffersLocked(n)
-	// Drop per-row context entries for rows that no longer exist; otherwise the
-	// maps grow unboundedly across long sessions where rows are added and
-	// removed (the maps are keyed by row index).
+	// Keyed by row index, so without this they grow without bound as rows come and go.
 	for r := range p.countsByRow {
 		if r >= n {
 			delete(p.countsByRow, r)
@@ -73,8 +68,7 @@ func (p *Predictor) resetBuffersLocked(n int) {
 	p.triggeredByRow = make([][]bool, n)
 	p.windowStart = 0
 	p.windowEnd = 0
-	// Stale anchor from before a path change would prevent the new circuit
-	// from windowing at all; the UI will set this again on the next refresh.
+	// An anchor from before the path change would stop the new circuit windowing at all; the UI sets it on the next refresh.
 	p.visibleMinAbs = -1
 	p.countsByRow = make(map[int]map[model.NodeID]int)
 	p.triggerCountsByRow = make(map[int]map[model.NodeID]int)

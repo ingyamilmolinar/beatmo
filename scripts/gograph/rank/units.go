@@ -220,10 +220,8 @@ func (ix *unitIndex) at(file string, line int) *Unit {
 	return best
 }
 
-// computeFans records, from the type-checked syntax of every production
-// config, which unit references which in-module function: calls and function
-// values alike (a callback registration is a dependency too). Interface method
-// calls resolve to the interface, not to a unit, and are not counted.
+// computeFans counts calls and function values alike (a callback registration is a dependency); interface method
+// calls resolve to the interface and are not counted.
 func computeFans(l *Loaded, m *Model) {
 	ix := newUnitIndex(m.Units)
 	for _, c := range l.Prod {

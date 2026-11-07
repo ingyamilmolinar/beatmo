@@ -63,10 +63,7 @@ type envelopeObserver struct {
 	releaseMs float64
 }
 
-// NewEnvelopeObserver returns an Observer that follows the amplitude
-// envelope with configurable attack and release times in milliseconds.
-// Attack controls how fast the envelope rises; release controls how
-// fast it falls.
+// Attack sets how fast the envelope rises, release how fast it falls (milliseconds).
 func NewEnvelopeObserver(attackMs, releaseMs float64) Observer {
 	return &envelopeObserver{attackMs: attackMs, releaseMs: releaseMs}
 }

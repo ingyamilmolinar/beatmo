@@ -2,20 +2,9 @@
 
 package main
 
-// match_listen.go -- the ear half of `refs match`, plus its self-check.
-//
-// -listen plays each recording, then the instrument the analysis ranked
-// closest, with the blocking player `refs session` uses (paplay/aplay/ffplay,
-// so clips never overlap). The listener approves (y), half-approves (p) or
-// rejects (n) the match, with a free-text note about the SYNTH -- that note is
-// the tuning brief. A rejection plays the two runners-up and asks whether one
-// of them is closer, because "not that one, but this one" is the most useful
-// thing a rejection can say.
-//
-// -validate grades the matcher itself: every catalogued reference already
-// names its instrument, so ranking the roster against it says how often the
-// matcher puts the right family first. A match the ear rejects is only
-// informative if the matcher is usually right.
+// -listen plays each recording then its closest voice (blocking player, never overlapping), asks y/p/n plus a note on the
+// SYNTH (the tuning brief), and on a rejection plays the runners-up: "not that one, but this one" is the most useful
+// answer. -validate grades the matcher on catalogued references, since a rejection informs only if it is usually right.
 
 import (
 	"bufio"
@@ -34,10 +23,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// matchVerdictsRel is where -listen records answers, relative to the module
-// root. It is deliberately NOT ear_verdicts.jsonl: those rows grade a
-// family's catalogued reference and feed `refs validate`; these grade an
-// uncatalogued recording against the roster.
+// NOT ear_verdicts.jsonl: those grade a family's catalogued reference and feed refs validate.
 const matchVerdictsRel = "internal/audio/testdata/wav_match_verdicts.jsonl"
 
 // matchVerdict is one line of wav_match_verdicts.jsonl.
@@ -62,8 +48,7 @@ type matchVerdict struct {
 	// (InstrumentSoundHash), so a later retune can tell its verdict is stale.
 	SoundHash string   `json:"sound_hash"`
 	Ranking   []string `json:"ranking"`
-	// Metric is the ranking distance (always "essence" since the legacy
-	// distances were removed; older rows may name one of them).
+	// Always "essence" now; older rows may name a removed distance.
 	Metric string `json:"metric"`
 	Date   string `json:"date"`
 }
@@ -150,9 +135,7 @@ func (c matchClips) playAlts() {
 	}
 }
 
-// replay handles the replay vocabulary shared by both prompts and reports
-// whether line was one. Letters only, so they can never collide with an
-// answer (y/p/n at the first prompt, a digit at the second).
+// Letters only, so they never collide with an answer (y/p/n, or a digit).
 func (c matchClips) replay(line, matchName string) bool {
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "r", "replay", "again":
@@ -257,11 +240,7 @@ func joinNotes(a, b string) string {
 	return a + "; " + b
 }
 
-// runMatchListen walks the manifest's recordings in order and records one
-// verdict per recording.
-//
-// newPlayer is the clip player for one recording (defaultPlayer in
-// production), injected so the whole loop runs under test.
+// newPlayer is injected so the whole loop runs under test.
 func runMatchListen(out io.Writer, in io.Reader, man matchManifest, verdictsPath string, resume bool, only string, top int, newPlayer func(durSec float64) player) error {
 	prior, err := loadMatchVerdicts(verdictsPath)
 	if err != nil {
@@ -463,16 +442,8 @@ func rawEssenceRows(rows []matchCorpusRow) []map[instrument.ID]float64 {
 	return out
 }
 
-// runMatchValidate ranks the roster against every catalogued instrument
-// reference and reports how often the reference's OWN family ranks first /
-// in the top 3, its mean reciprocal rank, and how often the first-ranked
-// voice is at least the right broad KIND (matchBroadClasses) -- a real cello
-// matched to the synth viola is a family miss but the right kind of
-// instrument, which is the essence the matcher is meant to hear.
-//
-// The ranking is graded LEAVE-ONE-OUT: each reference is ranked with hubs
-// measured over the OTHER references (computeHubs), so the hubness
-// correction is never graded on a recording that shaped it.
+// Own family first / in the top 3, MRR, and the first voice's broad KIND (a cello matched to the viola is a family miss
+// but the right kind). LEAVE-ONE-OUT: hubs measured over the OTHER references.
 func runMatchValidate(out, diag io.Writer, workers int) error {
 	rows, err := collectMatchCorpus(diag, workers, nil)
 	if err != nil {

@@ -5,17 +5,8 @@ import (
 	"time"
 )
 
-// TestStateAccessorsRoundTrip locks every (setter, getter) pair on State
-// into a contract: calling the setter writes the value, calling the getter
-// returns it. This catches the class of bug where someone changes the
-// backing field type or atomic pointer without updating both sides — the
-// kind of error that would otherwise show up as "playback dies after a
-// BPM change" three weeks later.
-//
-// The accessors here are *not* covered transitively from Game tests
-// because either the calling site uses the alias (e.g. SetPlaying ↔
-// SetPlayingForTest) or the field is only mutated by the engine, never
-// from a test.
+// Every setter/getter pair round-trips, catching a backing field changed on one side only; these are not covered
+// through Game tests.
 func TestStateAccessorsRoundTrip(t *testing.T) {
 	s := New(120)
 
@@ -95,10 +86,7 @@ func TestStateAccessorsRoundTrip(t *testing.T) {
 	})
 }
 
-// TestSnapshotReflectsAllSetters is the integration-flavored counterpart
-// to the round-trip test: drive every public setter, then verify that
-// Snapshot() reports each value. This guards against the bug where
-// Snapshot stops mirroring a field after a refactor.
+// Guards Snapshot silently ceasing to mirror a field after a refactor.
 func TestSnapshotReflectsAllSetters(t *testing.T) {
 	s := New(100)
 
@@ -121,9 +109,7 @@ func TestSnapshotReflectsAllSetters(t *testing.T) {
 	}
 }
 
-// TestSeekFreezeFramesDecrementClampsToZero validates the small but
-// important invariant that DecSeekFreezeFrames stops at 0 instead of
-// going negative — the freeze counter is consulted as `> 0` elsewhere.
+// The freeze counter is read as > 0, so it must stop at 0.
 func TestSeekFreezeFramesDecrementClampsToZero(t *testing.T) {
 	s := New(120)
 	s.SetSeekFreezeFrames(2)
@@ -135,11 +121,7 @@ func TestSeekFreezeFramesDecrementClampsToZero(t *testing.T) {
 	}
 }
 
-// TestPlayStartTimePropagation locks the contract that SetPlayStart and
-// SetAudioStart are the canonical write paths consulted by tests when
-// faking transport. We don't exercise the engine here — just the
-// accessor pair — but a regression in either direction has caused
-// silent hangs in past audits.
+// The canonical write paths tests use to fake transport.
 func TestPlayStartTimePropagation(t *testing.T) {
 	s := New(120)
 	now := time.Now().Truncate(time.Millisecond)

@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/musicxml"
 )
 
-// percussionPartName recognises a percussion part by name. Timpani are
-// PITCHED in MusicXML — a part of ordinary notes — so they can only be told
-// apart by what the part is called; an unpitched part announces itself.
+// Timpani are PITCHED notes in MusicXML, so only the part's name tells them apart; an unpitched part announces itself.
 var percussionPartName = regexp.MustCompile(`(?i)timpan|kettle|pauke|drum|cymbal|becken|triang|tambour|tamburin|percussion|schlagwerk|snare|tam-tam|gong|castanet|woodblock|cajon|conga|bongo|clave`)
 
 func isPercussionPart(p musicxml.Part) bool {
@@ -24,11 +22,8 @@ func isPercussionPart(p musicxml.Part) bool {
 	return false
 }
 
-// TestEveryPercussionPartInRangeIsMapped: a template includes its score's
-// drums. Before 2026-10-02 no template had a single drum row, although five
-// of the classical excerpts' scores carry timpani or orchestral percussion —
-// a drum machine whose templates silently dropped the drums. A percussion part
-// that SOUNDS inside the selected measures must be mapped to rows.
+// A percussion part that SOUNDS inside the selected measures must be mapped to rows: a drum machine's templates must
+// not drop the score's drums.
 func TestEveryPercussionPartInRangeIsMapped(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		sc := mustScore(t, spec.ScoreID)
@@ -54,9 +49,7 @@ func TestEveryPercussionPartInRangeIsMapped(t *testing.T) {
 	}
 }
 
-// TestTemplatesHaveDrums: every template either maps a percussion part of its
-// own score or loops a groove under it — except where the score has no
-// percussion sounding in the excerpt (a string quartet, a Lied).
+// Every template maps a percussion part of its own score or loops a groove, unless its score has none sounding there.
 func TestGrooveTemplatesHaveDrumRows(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		if spec.Groove == nil {

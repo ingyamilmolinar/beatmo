@@ -30,9 +30,8 @@ func newLoopPredictorForTest(t *testing.T) (*Predictor, []model.NodeID) {
 	return p, list
 }
 
-// The audio lane fingerprints the predictor by Epoch: it must move on every
-// change that can alter an already-computed cell, and must NOT move when
-// Ensure merely extends forward (or the lane would re-reconcile every tick).
+// Epoch must move on every change that can alter a computed cell and NOT on a forward extend, or the lane would
+// re-reconcile every tick.
 func TestPredictorEpochBumpsOnChangeNotOnExtend(t *testing.T) {
 	p, ids := newLoopPredictorForTest(t)
 	e0 := p.Epoch()
@@ -53,9 +52,7 @@ func TestPredictorEpochBumpsOnChangeNotOnExtend(t *testing.T) {
 	}
 }
 
-// DecisionAt exposes the custom Params.Logic decision (volume/pitch/duration
-// multipliers) the predictor evaluated for an audible cell, so the audio
-// lane's pure note function can apply it without re-running stateful logic.
+// So the audio lane's pure note function applies custom-logic multipliers without re-running stateful logic.
 func TestPredictorDecisionAtRecordsCustomLogic(t *testing.T) {
 	p, ids := newLoopPredictorForTest(t)
 	n := p.graph.Nodes[ids[1]]

@@ -1,14 +1,5 @@
 #!/usr/bin/env node
-/**
- * bench-compare.js — Cross-platform benchmark comparison report
- *
- * Reads bench-results/desktop.json and bench-results/browser.json, produces
- * a side-by-side comparison table and saves bench-results/REPORT.md.
- *
- * Usage:
- *   node scripts/bench-compare.js
- *   node scripts/bench-compare.js --results-dir /path/to/bench-results
- */
+/** Side-by-side desktop.json vs browser.json → bench-results/REPORT.md. Usage: node scripts/bench-compare.js [--results-dir DIR] */
 
 import fs from "fs";
 import path from "path";
@@ -112,11 +103,8 @@ for (const bpm of allBPMs) {
 
 both("");
 
-// ── Playback probe (browser): what the listener actually heard ──
-// Onset-level measurement on the audio thread (src/js/audio_probe_*.js):
-// lag = detected onset − scheduler request; IOI err = rhythm evenness vs the
-// predictor; arrLate = notes that reached audio.js already overdue (the Go
-// sequencer was starved by the main thread); jsQ = request → start() wait.
+// Playback probe: lag = onset − scheduler request, IOI err = rhythm vs the predictor, arrLate = notes that reached
+// audio.js already overdue (Go starved by the main thread), jsQ = request → start() wait.
 if (browser.some((r) => r.probeNotesJudged != null)) {
   both("## Browser Playback Probe (heard audio)");
   both("");

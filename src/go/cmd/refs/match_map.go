@@ -2,19 +2,9 @@
 
 package main
 
-// match_map.go -- `refs match -map`: the coverage map between a set of
-// recordings and the roster, both ways round.
-//
-// Per RECORDING: its three closest voices, what the catalogue (or the
-// filename) says it is, and where that instrument actually ranked -- with the
-// direction the voice differs in (darker, noisier, decays faster) when it is
-// not the closest. Per INSTRUMENT: the recordings of it in the set and how it
-// ranks on them, which recordings it is the closest voice to anyway, and what
-// it is missing. The map is written to MAP.md beside the match clips; the
-// terminal gets the gaps.
-//
-// Nothing here changes a ranking: it reads the manifest `refs match` just
-// wrote.
+// Both ways round: per RECORDING its closest voices beside what it is labelled as, and how the labelled instrument
+// differs when it is not first; per INSTRUMENT its recordings, where it stands in, what it misses. Reads the manifest
+// refs match just wrote, so it never changes a ranking.
 
 import (
 	"fmt"
@@ -87,9 +77,7 @@ type mapRecording struct {
 	// instruments, else the filename's namesake; source says which.
 	label  []instrument.ID
 	source string
-	// refID is the catalogue reference it is a copy of ("" = none); name is
-	// how the map shows it -- a raw download of a catalogued recording is
-	// tagged, since it often shares the catalogue copy's filename.
+	// A raw download of a catalogued recording is tagged, since it often shares the catalogue copy's filename.
 	refID, name string
 	// want is the label plus every member of the label's families.
 	want map[instrument.ID]bool
@@ -214,14 +202,15 @@ type mapOwn struct {
 	term string
 }
 
-// catalogueStatusOf is how the catalogue covers inst: "ref <id>[, <id>]",
-// "synthetic", "needs-source" or "-".
+// sameFile compares inodes: the catalogue copy and an adopted source can be one file under two paths.
 func sameFile(a, b string) bool {
 	sa, err1 := os.Stat(a)
 	sb, err2 := os.Stat(b)
 	return err1 == nil && err2 == nil && os.SameFile(sa, sb)
 }
 
+// catalogueStatusOf is how the catalogue covers inst: "ref <id>[, <id>]",
+// "synthetic", "needs-source" or "-".
 func catalogueStatusOf(inst instrument.ID, c wavref.Cat) string {
 	var refs []string
 	status := ""

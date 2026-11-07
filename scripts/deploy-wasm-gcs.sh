@@ -1,32 +1,7 @@
 #!/usr/bin/env bash
-# Build the WASM bundle and sync it to a GCS bucket for CDN/static hosting.
-#
-# Usage:
-#   GCP_PROJECT=my-project \
-#   GCS_BUCKET=www-beatmo-io-static \
-#   ./scripts/deploy-wasm-gcs.sh [--purge-cdn]
-#
-# Auth:
-#   - Locally: run `gcloud auth login` (and `gcloud config set project` if desired),
-#     or set up a service account and run
-#       gcloud auth activate-service-account --key-file=key.json
-#   - In CI: activate a service account before invoking this script.
-#
-# Why this is more than a copy/rsync:
-#   - index.html uses WebAssembly.instantiateStreaming(fetch("main.wasm"), ...),
-#     which mandates Content-Type: application/wasm. Letting gcloud infer the
-#     MIME is non-deterministic (depends on the host's Python mimetypes db) and
-#     a wrong MIME breaks the streaming compile on Safari + Chrome.
-#   - audio.js fetches worklets and workers via relative URLs at runtime
-#     (recording_capture_worklet.js, recording_encoder_worker.js,
-#     synth_render_worker.js — the off-thread synth renderer, which in turn
-#     imports drums.single.js and voice_post.js; dsp_worklet.js — the C stages
-#     after the voice, which import drums.single.js and dsp_host.js) and
-#     statically imports synth_param_abi.gen.js, dsp_host.js and played_voice.js.
-#     They must all ship together; the drift test
-#     src/go/internal/deploy/manifest_drift_test.go enforces this.
-#   - Cloud CDN happily caches both the entry HTML and the assets; we must set
-#     Cache-Control so users pick up new bundles instead of half-old/half-new.
+# Usage: GCP_PROJECT=... GCS_BUCKET=... ./scripts/deploy-wasm-gcs.sh [--purge-cdn] (gcloud auth login, or a service account).
+# More than an rsync: streaming compile needs Content-Type application/wasm and gcloud's inferred MIME depends on the host;
+# every runtime import must ship together; and Cache-Control must keep users off half-old/half-new bundles.
 
 set -euo pipefail
 
@@ -86,32 +61,9 @@ echo "[deploy] Staging static site into ${BUILD_DIR}..."
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-# ---------------------------------------------------------------------------
-# Deploy manifest: every file the browser fetches at runtime.
-#
-# Buckets:
-#   ENTRY_FILES   -> Cache-Control: no-cache, must-revalidate
-#                   (index.html + codegen output -- always re-validate so new
-#                    bundles take effect on the next visit)
-#   ASSET_FILES   -> Cache-Control: public, max-age=300, must-revalidate
-#                   (5-minute TTL until we adopt content-hashed filenames)
-#   WASM_FILES    -> Content-Type: application/wasm (mandatory for streaming
-#                   compile; without it Safari/Chrome reject the WebAssembly
-#                   instantiation). main.wasm is renamed to its content hash
-#                   (main.<sha16>.wasm, the only reference is stamped into
-#                   index.html), cached immutable, and brotli-compressed
-#                   (Content-Encoding: br): 6.57 MB gzip -> 4.60 MB br,
-#                   cold time-to-ready -11% on the 4G profile (2026-10-23,
-#                   src/js/landing_load.browser.test.js).
-#   MEDIA_FILES   -> the landing page's recordings, posters and cue files
-#                   (spec docs/superpowers/specs/2026-10-23-landing-page-design.md).
-#                   Uploaded UNcompressed: gzip would break the HTTP Range
-#                   requests video playback relies on, and mp4/webp are
-#                   already compressed.
-#
-# Adding a new runtime dependency? Add it here AND update the drift test
-# src/go/internal/deploy/manifest_drift_test.go in the same change.
-# ---------------------------------------------------------------------------
+# Every file the browser fetches at runtime; a new runtime dependency goes here AND in manifest_drift_test.go. ENTRY =
+# always revalidated; ASSET = 5-minute TTL; WASM = content-hashed, immutable, brotli; MEDIA = uploaded uncompressed,
+# since gzip would break the Range requests video playback relies on.
 ENTRY_FILES=(
   "index.html"
   "synth_param_abi.gen.js"
@@ -171,10 +123,7 @@ if (( ${#MISSING[@]} > 0 )); then
   exit 1
 fi
 
-# No audio file is ever shipped: reference recordings are local dev tooling
-# and every instrument is synthesized. Refuse to upload one even if a manifest
-# edit or a stray copy put it in the staging dir. Guard:
-# TestDeployShipsNoAudioFiles (src/go/internal/deploy).
+# No audio file ever ships, even if a manifest edit or a stray copy put one in the staging dir.
 AUDIO_STAGED="$(find "${BUILD_DIR}" -type f -regextype posix-extended \
   -iregex '.*\.(wav|wave|mp3|aif|aiff|aifc|flac|ogg|oga|opus|m4a|aac|wma|caf)$' -print)"
 if [[ -n "${AUDIO_STAGED}" ]]; then
@@ -183,9 +132,7 @@ if [[ -n "${AUDIO_STAGED}" ]]; then
   exit 1
 fi
 
-# Content-hash the game's wasm and stamp the name into index.html (its only
-# reference). The name doubles as the build id the landing's returning-visitor
-# skip compares against (localStorage "beatmo.booted").
+# index.html is the content-hashed name's only reference.
 WASM_HASH="$(sha256sum "${BUILD_DIR}/main.wasm" | cut -c1-16)"
 WASM_NAME="main.${WASM_HASH}.wasm"
 mv "${BUILD_DIR}/main.wasm" "${BUILD_DIR}/${WASM_NAME}"
@@ -200,14 +147,8 @@ echo "[deploy] main.wasm -> ${WASM_NAME}"
 echo "[deploy] Contents staged:"
 (cd "${BUILD_DIR}" && find . -type f | sort)
 
-# ---------------------------------------------------------------------------
-# Gzip-compress every staged object in place (same filename). The objects are
-# then uploaded as gzip and stamped with Content-Encoding: gzip + no-transform
-# below, so the browser downloads the compressed bytes and decompresses
-# transparently. This is the single biggest load-time win -- main.wasm goes
-# from ~28 MiB to ~6.5 MiB on the wire (see internal/deploy/asset_size_test.go).
-# The size/streaming guards live in src/js/wasm_load_startup.browser.test.js.
-# ---------------------------------------------------------------------------
+# Uploaded gzip-compressed under the same names and stamped Content-Encoding: gzip below, so the browser downloads the
+# compressed bytes: the biggest load-time win.
 echo "[deploy] Gzip-compressing staged objects..."
 for f in "${ENTRY_FILES[@]}" "${ASSET_FILES[@]}"; do
   staged="${BUILD_DIR}/${f}"
@@ -270,15 +211,8 @@ else
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Stamp Content-Type and Cache-Control on every object after rsync. gcloud's
-# inferred MIME is unreliable for .wasm; explicit beats inferred for the few
-# files we ship.
-# ---------------------------------------------------------------------------
-# Every object is uploaded gzip-compressed (see the gzip pass below), so each
-# carries Content-Encoding: gzip. no-transform is mandatory: it stops GCS from
-# decompressively transcoding the gzipped object, which would strip
-# Content-Length and break WebAssembly.instantiateStreaming on main.wasm.
+# Stamped explicitly: gcloud's inferred MIME is unreliable for .wasm. no-transform stops GCS from decompressively
+# transcoding, which strips Content-Length and breaks instantiateStreaming.
 ENTRY_CACHE="no-cache, must-revalidate, no-transform"
 ASSET_CACHE="public, max-age=300, must-revalidate, no-transform"
 WASM_CACHE="public, max-age=31536000, immutable, no-transform"   # content-hashed name
@@ -332,11 +266,7 @@ for f in "${MEDIA_FILES[@]}"; do
   esac
 done
 
-# ---------------------------------------------------------------------------
-# Optional CDN invalidation. Off by default; use --purge-cdn for the first
-# deploy after a Content-Type/Cache-Control fix and any time index.html
-# changes shape in a way that needs an immediate cutover.
-# ---------------------------------------------------------------------------
+# Off by default; --purge-cdn after a Content-Type/Cache-Control fix or an index.html change that needs an immediate cutover.
 if [[ "${PURGE_CDN}" == "1" ]]; then
   if [[ "${DRY_RUN}" == "1" ]]; then
     echo "[deploy:dry] would purge Cloud CDN: url-map=${URL_MAP} path=/*"

@@ -1,8 +1,7 @@
 package instrument
 
-// Flatten builds the engine param block: a zero block where each present, ON
-// module writes its values, its type's Set/Global constants and its Enable
-// field. Nothing else is written — no identity, no defaults. d must be valid.
+// A zero block where each present ON module writes its values, its type's Set/Global constants and its Enable field.
+// Nothing else: no identity, no defaults. d must be valid.
 func Flatten(d Doc, reg *Registry) []float64 {
 	b := make([]float64, len(reg.fields))
 	put := func(f string, v float64) {
@@ -50,9 +49,7 @@ func writeTable(td *TableDecl, tb *Table, put func(string, float64)) {
 	put(td.CountField, float64(n))
 }
 
-// OwnedFields reports, by ABI field, everything the document's modules say —
-// ON or OFF. A module's enable field reads Enable.Value when on and 0 when off.
-// It is the bridge to the flat-field world (UI adapter, tests).
+// ON or OFF: an enable field reads Enable.Value when on, 0 when off. The bridge to the flat-field world.
 func OwnedFields(d Doc, reg *Registry) map[string]float64 {
 	out := map[string]float64{}
 	eachModule(d, reg, func(t *ModuleTypeDecl, slot int, on bool, vals Values, tb *Table) {
@@ -80,8 +77,7 @@ func OwnedFields(d Doc, reg *Registry) map[string]float64 {
 	return out
 }
 
-// FieldValues is the UI's flat view (sub-project 1 adapter): every ABI field's
-// creation value, overlaid by OwnedFields. The engine never reads it.
+// The UI's flat view: every field's creation value overlaid by OwnedFields. The engine never reads it.
 func FieldValues(d Doc, reg *Registry) map[string]float64 {
 	out := make(map[string]float64, len(reg.fields))
 	for _, f := range reg.fields {

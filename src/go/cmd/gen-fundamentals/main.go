@@ -1,19 +1,6 @@
-// Command gen-fundamentals emits internal/audio/instrument_fundamentals.gen.go:
-// the base sounding fundamental of every built-in instrument, so the UI can name
-// the note a node sounds for EVERY instrument rather than only the curated
-// melodic set.
-//
-// Why generated rather than computed at runtime: resolving a fundamental means
-// rendering the voice through the C DSP and running YIN over it. That is far too
-// expensive for nodeNoteLabel (once per visible node per FRAME), and the real
-// render path exists only in the native cgo build — under `-tags test` it is a
-// stub and on js/wasm it is absent, so a runtime measurement would silently
-// disagree across platforms. Baking it makes the answer one map lookup and
-// identical everywhere.
-//
-// Regenerate with `make gen-fundamentals` (needs CGO + build/libdrums.a).
-// TestInstrumentFundamentalsUpToDate re-measures and fails when the committed
-// table drifts.
+// Command gen-fundamentals emits instrument_fundamentals.gen.go, the base fundamental of every built-in. Generated, not
+// computed at runtime: a measurement is a C render + YIN (far too slow per node per frame), and the real render exists
+// only in the native cgo build, so a runtime answer would differ across platforms. make gen-fundamentals.
 package main
 
 import (
@@ -99,10 +86,7 @@ func printReport(w *os.File, ms []Measurement) {
 		if m.DeclaredKey != "" {
 			decl = fmt.Sprintf("%s=%.0f", m.DeclaredKey, m.DeclaredHz)
 		}
-		// Surfacing the floor rejection is the difference between "why is the
-		// 808 kick F1 and not G1?" being a mystery and being an explanation:
-		// its 50.00 Hz reading is the detector's ceiling on how low it can see,
-		// not a measurement of the voice.
+		// A floor rejection is reported: a 50.00 Hz reading is the detector's lower limit, not the voice.
 		note := ""
 		switch {
 		case m.FloorPinned:

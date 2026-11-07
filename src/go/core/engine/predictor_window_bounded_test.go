@@ -113,11 +113,7 @@ func TestPredictorEvictionDropsAncientReads(t *testing.T) {
 	}
 }
 
-// TestPredictorAllocationStaysBoundedToWindowCap mirrors
-// TestPredictorEnsureBoundedAllocation but runs 100_000 single-step horizon
-// advances — well past the windowCap=4096 plateau. Once the cap is reached,
-// future advances slide in place and allocate nothing; bytesPerStep should
-// drop to a small constant.
+// Past the windowCap plateau advances slide in place, so bytes per step drop to a small constant.
 func TestPredictorAllocationStaysBoundedToWindowCap(t *testing.T) {
 	const windowCap = 4096
 	pred := buildLoopedPredictor(t, windowCap)
@@ -141,10 +137,7 @@ func TestPredictorAllocationStaysBoundedToWindowCap(t *testing.T) {
 	allocBytes := post.TotalAlloc - pre.TotalAlloc
 	bytesPerStep := float64(allocBytes) / float64(N)
 
-	// Post-cap, slide is in-place copy; per-step work allocates only via
-	// per-eval map updates and small temporaries. Bound at 1 KB/step gives
-	// generous headroom for noise; a regression would jump several orders
-	// of magnitude.
+	// A regression would jump several orders of magnitude past this.
 	const maxBytesPerStep = 1024
 	if bytesPerStep > maxBytesPerStep {
 		t.Errorf("Predictor.Ensure allocates %.0f bytes/step over %d post-cap advances "+

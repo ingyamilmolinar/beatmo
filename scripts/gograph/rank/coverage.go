@@ -9,14 +9,9 @@ import (
 	"golang.org/x/tools/cover"
 )
 
-// applyCoverage sets each unit's statement coverage from one or more Go
-// coverage profiles. Profiles merge per block: a block counts as covered when
-// any profile covered it (the tagged `make coverage-go` run never compiles the
-// `!test` files, an untagged run covers those). A unit absent from every
-// profile stays unknown (nil), never 0%; js-only units are always unknown.
-// A profile older than a source file says nothing about that file (its line
-// ranges point at code that has moved), so it is ignored for that file and
-// counted in the returned warnings.
+// applyCoverage merges profiles per block (covered in any = covered: the tagged run never compiles !test files). A unit
+// in no profile, and every js-only unit, stays unknown, never 0 %. A profile older than a file is ignored for that file
+// (its line ranges point at moved code) and reported.
 func applyCoverage(m *Model, root, module string, covers []string) ([]string, error) {
 	if len(covers) == 0 {
 		return nil, nil

@@ -2,10 +2,8 @@
 
 package main
 
-// match_explain.go -- `refs match -explain`: WHY did the matcher rank a
-// recording the way it did? For one recording it prints every essence term
-// of the top candidates and of any instrument asked about, so a surprising
-// ranking can be traced to the term that decided it instead of guessed at.
+// Every essence term of the top candidates and of named instruments, so a surprising ranking is traced to the term
+// that decided it.
 
 import (
 	"fmt"

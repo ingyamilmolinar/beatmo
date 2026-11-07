@@ -93,9 +93,7 @@ func TestArchiveCapEvictsOldest(t *testing.T) {
 	const evictChunk = archiveEvictChunk
 	s.SetArchiveMaxEntries(cap)
 
-	// Drive enough entries to overflow the cap by several chunks. Each commit
-	// goes to immutables first; once immutables exceeds 1024, older entries
-	// migrate to the archive.
+	// Overflows the cap by several chunks: commits go to immutables first and migrate once it exceeds 1024.
 	const N = cap + evictChunk*2 + 1000
 	const windowLen = 64
 	for abs := 0; abs < N; abs++ {
@@ -112,9 +110,7 @@ func TestArchiveCapEvictsOldest(t *testing.T) {
 	}
 }
 
-// TestArchiveSurvivesTrimAndSeed verifies that TrimBefore/TrimAfter propagate
-// to the archive (so trimmed-away entries don't reappear via cold reads) and
-// that the archive coexists correctly with seed flows.
+// Trimmed entries must not reappear through cold reads, and the archive must coexist with seed flows.
 func TestArchiveSurvivesTrimAndSeed(t *testing.T) {
 	s := NewService()
 	const windowLen = 64

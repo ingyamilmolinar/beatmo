@@ -13,9 +13,7 @@ func NewService() *Service {
 	}
 }
 
-// SetArchiveMaxEntries overrides the per-row cold-archive ceiling. Values <= 0
-// disable the ceiling (archive grows without bound, intended only for tests
-// that drive abs to known finite limits). Idempotent.
+// <= 0 disables the ceiling (tests driving abs to known finite limits only).
 func (s *Service) SetArchiveMaxEntries(n int) {
 	s.mu.Lock()
 	s.archiveMaxEntries = n
@@ -60,23 +58,13 @@ func (s *Service) ensureArchiveLocked(row int) *rowArchive {
 	return a
 }
 
-// commitRingCapMultiplier scales the caller's capacity hint to determine the
-// hard ceiling on the per-row commitRing. Eight loop-lengths gives enough
-// past-history depth for reconcileFrozen on the visible window while keeping
-// long-session memory bounded — without this, the ring doubled forever and
-// participated in the production WASM OOM (see commit_ring_bound_test.go).
+// Eight loop lengths give reconcileFrozen its lookback on the visible window while keeping long sessions bounded.
 const commitRingCapMultiplier = 8
 
-// immutablesPerRowMax bounds the immutables sidecar map per row. Mirrors
-// parityAudioMax = 1024 (game_parity_state.go:150). Older entries are dropped
-// at write time; reconcileFrozen only queries abs values inside the visible
-// window (game_refresh_drum_row.go:115), so dropped history is not consulted.
+// reconcileFrozen queries only the visible window, so history dropped from here is never consulted.
 const immutablesPerRowMax = 1024
 
-// RingLenForTest exposes the per-row commit ring size and capacity plus the
-// immutables sidecar size. Test-only diagnostic for soak/regression tests
-// that assert bounded growth: the underlying ring and the immutables map are
-// unexported, so this is the canonical seam.
+// The ring and the map are unexported; this is the seam soak tests assert bounded growth through.
 func (s *Service) RingLenForTest(row int) (ringSize, ringCap, immutables int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -113,13 +101,10 @@ func (s *Service) RecordCommitKind(row, abs int, val bool, typ model.NodeType, k
 	if seg == nil {
 		return
 	}
-	// Lock in the per-row ring ceiling on first commit. setCapMax is idempotent;
-	// the largest capacity ever requested defines the bound.
+	// Set on first commit; the largest capacity ever requested is the bound.
 	seg.commits.setCapMax(capacity * commitRingCapMultiplier)
-	// If the immutable sidecar already contains a playback/import entry for this
-	// absolute index, never overwrite it—even if the ring has trimmed the entry.
-	// This is critical for ensuring past immutability during long sessions where
-	// the ring buffer no longer holds the earliest commits.
+	// A playback/import entry in the sidecar is never overwritten, even after the ring trimmed it: past immutability in
+	// long sessions depends on it.
 	if m := s.immutables[row]; m != nil {
 		if _, ok := m[abs]; ok {
 			return
@@ -161,11 +146,8 @@ func (s *Service) RecordCommitKind(row, abs int, val bool, typ model.NodeType, k
 	}
 }
 
-// pruneImmutablesRowLocked migrates entries below the retention window from
-// the live sidecar into the cold archive so the per-row map stays within
-// immutablesPerRowMax. Caller must hold s.mu. Playback/import entries are
-// preserved (in the archive, not deleted); other kinds are dropped because
-// the user-visible scroll-back contract only covers true playback history.
+// Below the retention window Playback/Import migrate to the archive (kept), other kinds drop: scroll-back covers only
+// real playback. Caller holds s.mu.
 func (s *Service) pruneImmutablesRowLocked(row, latestAbs int) {
 	rowMap := s.immutables[row]
 	if len(rowMap) <= immutablesPerRowMax {

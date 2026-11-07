@@ -115,8 +115,6 @@ func TestSchedulerWrapsBeatLength(t *testing.T) {
 	}
 }
 
-// --- Phase 2: Beat Scheduler Edge Cases ---
-
 func TestSetBPMNonPositive(t *testing.T) {
 	s := NewScheduler(nil)
 	s.BPM = 120
@@ -169,9 +167,7 @@ func TestSetBPMSameValue(t *testing.T) {
 func TestSetBPMBeforeStart(t *testing.T) {
 	s := NewScheduler(nil)
 	s.BPM = 60
-	// s.last is zero because Start() hasn't been called.
-	// SetBPM should still update BPM but skip the rebasing block
-	// (s.last.IsZero() is true).
+	// last is zero before Start, so SetBPM updates BPM and skips the rebase.
 	s.SetBPM(90)
 	if s.BPM != 90 {
 		t.Fatalf("expected BPM=90, got %d", s.BPM)
@@ -265,8 +261,7 @@ func TestTickNilOnTick(t *testing.T) {
 	s.Tick()
 	now = base.Add(3 * time.Second)
 	s.Tick()
-	// If we reach here, no panic occurred. Verify step advanced correctly.
-	// 4 beats elapsed (initial + 3 seconds at 60BPM), step = 4 % 16 = 4.
+	// 4 beats elapsed (initial + 3 s at 60 BPM): step 4.
 	if s.currentStep != 4 {
 		t.Fatalf("expected currentStep=4 after 4 ticks with nil OnTick, got %d", s.currentStep)
 	}
@@ -318,9 +313,7 @@ func TestSetBPMFracPreservation(t *testing.T) {
 		t.Fatalf("progress drift after BPM 60→120: before=%v after=%v", progBefore, progAfter)
 	}
 
-	// At 120 BPM, 0.75 fraction of 0.5s = 0.375s remaining.
-	// The next tick should fire after 0.25 * 0.5s = 0.125s (since 0.75 * 0.5 = 0.375s elapsed).
-	// Actually, let's verify by advancing just past the beat boundary.
+	// 0.75 of a 0.5 s beat is done, so the next tick is 0.125 s away.
 	var steps []int
 	s.OnTick = func(step int) { steps = append(steps, step) }
 
@@ -356,11 +349,8 @@ func TestProgressBPMZero(t *testing.T) {
 	}
 }
 
-// TestSchedulerStartStopWithLogger covers the non-nil-logger branches in
-// Start()/Stop(). We don't assert log output: the log package silences
-// everything when running under `go test` (BEATMO_TEST_LOG opt-in only),
-// and routing capture through stdout would couple the beat tests to log's
-// internals. Just verify the branch runs without panic.
+// Log output is not asserted: logging is silent under go test, and capturing it would couple these tests to log's
+// internals.
 func TestSchedulerStartStopWithLogger(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	s := NewScheduler(logger)

@@ -19,9 +19,7 @@ func TestShQuote_SurvivesEval(t *testing.T) {
 		"/with`backtick`/file.wav",
 		"/with\\backslash/file.wav",
 	} {
-		// eval the assignment exactly as the Makefile recipes do, then print
-		// it back: the round trip must be lossless and must not execute
-		// anything.
+		// Evaluated exactly as the recipes do: the round trip must be lossless and execute nothing.
 		script := "eval " + shQuote("V="+shQuote(in)) + "; printf %s \"$V\""
 		got, err := exec.Command("bash", "-c", script).Output()
 		if err != nil {

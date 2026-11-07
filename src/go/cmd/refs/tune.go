@@ -2,25 +2,9 @@
 
 package main
 
-// tune.go -- `refs tune`: an essence-driven candidate document for one
-// instrument, judged against every recording of it, and handed to the ear.
-//
-// Spec docs/superpowers/specs/2026-10-19-organic-instrument-fidelity-design.md
-// (T1 + T3). The objective is the RAW essence distance (no hubness) the
-// matcher ranks by, averaged over every recording labelled as the
-// instrument, each played the way `refs match` plays it: at the recording's
-// measured note (matchPitchPlan), held as long as it sounds (VoiceBPMFor),
-// onset-trimmed. The search is the clone's CMA-ES over the document's own
-// continuous values (partial gains, noise layer, filter, envelopes, FINISH,
-// the string or bow), each in a trust box around its shipped value, so the
-// instrument keeps its character. Nothing here writes a shipped document: the
-// candidate lands in $BEATMO_WAV_REFS/tuned/<inst>/ (candidate.json +
-// meta.json + report.md), `make ab-tuned` plays it beside the reference and
-// the current voice, and `make tune-adopt` ships it only after a `y`.
-//
-// What the run cannot fix is said in the picks file (testdata/
-// tune_picks.json): a bow bite, pulsed noise and in-tune strings are engine
-// work (spec D1-D3), not document values.
+// An essence-driven candidate document for one instrument: CMA-ES over the document's own continuous values, each in
+// a trust box around its shipped value, minimising the RAW essence distance over every recording of it played as refs
+// match plays it. It never writes a shipped document: make ab-tuned plays it, make tune-adopt ships it after a y.
 
 import (
 	_ "embed"
@@ -44,21 +28,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// tunePick is one curated instrument to improve and how (testdata/
-// tune_picks.json): why it was picked (the listener's own words + the map's
-// gap), extra harmonics the search may raise from silence, a restriction of
-// the search to named fields, and edits applied before the search.
+// tunePick (testdata/tune_picks.json): why it was picked, harmonics the search may raise from silence, a restriction to
+// named fields, edits applied before the search.
 type tunePick struct {
 	Inst         instrument.ID      `json:"inst"`
 	Why          string             `json:"why"`
 	AddHarmonics int                `json:"add_harmonics,omitempty"`
 	Only         []string           `json:"only,omitempty"`
 	Set          map[string]float64 `json:"set,omitempty"`
-	// From starts the search from ANOTHER shipped instrument's document,
-	// when the picked voice is the wrong instrument altogether and no move
-	// near its own values can reach the recording (the rimshot: two tuned
-	// tones, #33 on its own recording and closest to the cowbell). The
-	// candidate keeps the picked instrument's id and name.
+	// From starts from ANOTHER instrument's document when the picked voice is the wrong instrument altogether and no move
+	// near its own values can reach the recording (the rimshot). The candidate keeps the picked id and name.
 	From instrument.ID `json:"from,omitempty"`
 	// Skip names catalogued recordings filed under the instrument that are not what it should sound like (a snare hit
 	// with its snares off): averaged in, they drag the search toward the wrong instrument.
@@ -104,10 +83,8 @@ func loadTunePicks() ([]tunePick, error) {
 // tuneSetSeconds is the render field a pick may set besides flat ABI fields.
 const tuneSetSeconds = "render.seconds"
 
-// tuneSkippedStages hold nothing an essence term can judge or nothing the
-// search may move: core (gain is normalised away, pitch is the player's),
-// the vibrato LFO, unison and the burst gate (rhythmic, not timbral), formant
-// (vowel tables are discrete).
+// Nothing an essence term judges or the search may move: core (gain normalised, pitch the player's), vibrato LFO,
+// unison and burst (rhythmic), formant (discrete vowel tables).
 var tuneSkippedStages = map[string]bool{"core": true, "lfo": true, "unison": true, "burst": true, "formant": true}
 
 // tuneSkippedValues are structural or pitch-setting values (a layer's partial
@@ -171,10 +148,8 @@ func (d tuneDim) unit(v float64) float64 {
 	return math.Min(1, math.Max(0, (v-d.Lo)/(d.Hi-d.Lo)))
 }
 
-// value maps a CMA-ES coordinate (0 = the start) into the box through the
-// clone's sin mapping, shifted so the origin is the shipped value. The origin
-// returns Start verbatim, so the starting document is the shipped one bit for
-// bit.
+// Through the clone's sin mapping, shifted so the origin returns Start verbatim: the starting document is the
+// shipped one bit for bit.
 func (d tuneDim) value(y float64) float64 {
 	if y == 0 {
 		return d.Start
@@ -186,10 +161,7 @@ func (d tuneDim) value(y float64) float64 {
 	return d.Lo + (d.Hi-d.Lo)*u
 }
 
-// tuneSpace prepares the document a search starts from (the pick's edits, any
-// harmonics raised from silence) and derives the searched dimensions from
-// the modules it carries. Only ON modules count: a value of an off stage
-// moves nothing.
+// Only ON modules count: a value of an off stage moves nothing.
 func tuneSpace(d instrument.Doc, defs map[string]audio.ParamDef, pick tunePick) (instrument.Doc, []tuneDim, error) {
 	reg := audio.BuiltinModuleRegistry()
 	d = d.Clone()
@@ -286,11 +258,8 @@ func sortedValueNames(v instrument.Values) []string {
 	return out
 }
 
-// addHarmonicLayers appends up to n gen.wavetable partials above the
-// document's highest harmonic, each a copy of its last partial at gain 0 --
-// silent, so the document still sounds as shipped -- for the search to raise.
-// Only a document whose partials are a harmonic series (ratio mode, integer
-// ratios) qualifies; the gen bank's slot capacity caps n.
+// Silent copies of the last partial above the highest harmonic, for the search to raise; only a harmonic-series document
+// (ratio mode, integer ratios) qualifies, and the gen bank's slot capacity caps n.
 func addHarmonicLayers(d instrument.Doc, reg *instrument.Registry, n int) (instrument.Doc, map[string]bool, error) {
 	var last *instrument.Module
 	maxH := 0.0
@@ -362,9 +331,7 @@ func tuneRegularizer(dims []tuneDim, y []float64) float64 {
 // sees a finite, terrible score.
 const tuneSilentPenalty = 10.0
 
-// tuneRec is one recording of the instrument: the target it is judged
-// against and the pitch the shipped voice sounds closest at (fixed during the
-// search; the final scoring re-runs the whole pitch plan).
+// The search pitch is fixed during the search; the final scoring re-runs the whole pitch plan.
 type tuneRec struct {
 	Name  string
 	RefID string
@@ -464,11 +431,9 @@ func tuneSearch(d0 instrument.Doc, dims []tuneDim, recs []tuneRec, eval tuneEval
 	if res.Y == nil {
 		return res, nil
 	}
-	// Prune: put every value back to its shipped setting unless the move
-	// pays for itself, smallest moves first, while the reverted moves together
-	// cost at most tunePruneBudget of the searched objective. CMA-ES leaves every dimension a little off its
-	// start; a candidate should carry only the changes that matter, so the
-	// listener (and the diff) hears and reads exactly those.
+	// Every value goes back to its shipped setting unless the move pays for itself, smallest first, while the reverted
+	// moves together cost at most tunePruneBudget: CMA-ES leaves every dimension a little off, and a candidate should carry
+	// only the changes that matter.
 	order := make([]int, len(dims))
 	for i := range order {
 		order[i] = i
@@ -505,12 +470,7 @@ func tuneSearch(d0 instrument.Doc, dims []tuneDim, recs []tuneRec, eval tuneEval
 // the fix.
 const tunePruneBudget = 0.01
 
-// tuneRecordings loads every recording labelled as inst: its catalogue
-// references, plus any -wavs file whose label (catalogue or filename) names
-// it and that is not a copy of a catalogue reference already loaded.
-// newTuneRec loads one recording exactly as `refs match` plays it (the
-// ffmpeg conversion, leading-silence trim, maxSec cap with a faded cut) and
-// measures what every rendition is judged against.
+// newTuneRec loads one recording exactly as refs match plays it (conversion, silence trim, maxSec cap with a faded cut).
 func newTuneRec(path, name, refID, tmp string, maxSec float64) (tuneRec, error) {
 	ref, err := loadMatchReference(path, tmp, maxSec)
 	if err != nil {
@@ -525,9 +485,7 @@ func newTuneRec(path, name, refID, tmp string, maxSec float64) (tuneRec, error) 
 // under its own pitch plan (a melodic voice: the recording's note).
 func (rec *tuneRec) settlePitch(inst instrument.ID) error { return rec.settlePitchDoc(inst, nil) }
 
-// settlePitchDoc is settlePitch for the document the search starts from
-// (nil = the shipped one): a pick From another instrument sounds closest at
-// its OWN pitch, not where the voice it replaces did.
+// A pick From another instrument sounds closest at its OWN pitch, not where the voice it replaces did.
 func (rec *tuneRec) settlePitchDoc(inst instrument.ID, d *instrument.Doc) error {
 	s := newMatchSearch(inst, rec.f0)
 	s.doc = d
@@ -625,10 +583,7 @@ type tuneRecReport struct {
 	RefTraits fingerprint.EssenceTraits `json:"ref_traits"`
 	Shipped   tuneScore                 `json:"shipped"`
 	Candidate tuneScore                 `json:"candidate"`
-	// SearchPitch is the pitch the search scored the candidate at (its start
-	// document's settled pitch). `refs session -tuned` plays T there; C is
-	// played where the shipped voice settles. Absent in older runs, whose
-	// search pitch was always the shipped voice's.
+	// refs session -tuned plays T here and C where the shipped voice settles. Absent in older runs (the shipped voice's).
 	SearchPitch *float64 `json:"search_pitch,omitempty"`
 }
 

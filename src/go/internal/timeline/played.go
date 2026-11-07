@@ -2,21 +2,9 @@ package timeline
 
 import "github.com/ingyamilmolinar/beatmo/core/model"
 
-// Played-cell tier: the immutable record of what the grid SHOWED for each cell
-// at the moment the playhead passed it. It is the single source the DrumView
-// renders past cells from, so nothing that happens afterwards — a node edit,
-// a solo, a dropped or late highlight, a predictor rebuild — can reach a cell
-// that has already played.
-//
-// Commits (ring → immutables → archive) record provenance for the scheduler
-// and parity; they are written by several paths and some kinds are mutable by
-// design. The played tier is deliberately separate and much simpler: one byte
-// per cell, append-mostly, first write wins, never demoted.
-//
-// Storage is chunked so a sparse or far-seeked row costs only the chunks it
-// touches: 1 byte per cell per row (≈1 MB per million subdivisions per row),
-// kept for the whole session (full-history retention; cleared on Stop,
-// truncated by a backward seek).
+// The immutable record of what each cell SHOWED as the playhead passed it, the single source past cells render from,
+// so no later edit, solo, lost highlight or predictor rebuild can reach a played cell. One byte per cell, first write
+// wins, chunked so a sparse row pays only what it touches; kept all session, cleared on Stop, cut by a backward seek.
 
 const playedChunkBits = 12
 const playedChunkSize = 1 << playedChunkBits // 4096 cells per chunk
@@ -28,8 +16,7 @@ const (
 	playedTypeSh  = 2
 )
 
-// PlayedHistory is one row's played cells, detached from any row index so it
-// can follow the row through a document restore (see TakePlayed/PutPlayed).
+// Detached from any row index, so it follows its row through a document restore.
 type PlayedHistory = playedLog
 
 type playedLog struct {
@@ -86,8 +73,7 @@ func (p *playedLog) freeze(abs int, val bool, typ model.NodeType) bool {
 	return true
 }
 
-// truncateFrom forgets every cell at or after abs (backward seek: the rewound
-// region is re-simulated and re-recorded on the next pass).
+// The rewound region is re-simulated and re-recorded on the next pass.
 func (p *playedLog) truncateFrom(abs int) {
 	if p == nil || abs > p.max {
 		return
@@ -117,9 +103,7 @@ func (p *playedLog) truncateFrom(abs int) {
 	}
 }
 
-// FreezePlayed records what the grid rendered for (row, abs) as the playhead
-// passed it. First write wins: a cell that has played is never rewritten.
-// Reports whether this call stored the cell.
+// First write wins: a played cell is never rewritten. Reports whether this call stored it.
 func (s *Service) FreezePlayed(row, abs int, val bool, typ model.NodeType) bool {
 	if row < 0 || abs < 0 {
 		return false
@@ -181,10 +165,8 @@ func (s *Service) PutPlayed(row int, h *PlayedHistory) {
 	s.played[row] = h
 }
 
-// RemoveRow deletes row's history and shifts every later row's history down
-// one index, across every tier. Rows are addressed by index, so without this
-// the row that slides into the vacated slot would read its neighbour's past.
-// The removed row's played history is returned so an undo can bring it back.
+// Rows are addressed by index, so every later row's history shifts down across every tier, or the row sliding into
+// the slot reads its neighbour's past. Returns the removed history for undo.
 func (s *Service) RemoveRow(row int) *PlayedHistory {
 	if row < 0 {
 		return nil

@@ -113,8 +113,7 @@ func TestPrefs_MarshalIsDeterministic(t *testing.T) {
 }
 
 func TestPrefs_PoolLazyAcquired(t *testing.T) {
-	// A session that only loads must not allocate the userprefs.persist
-	// worker — the pool is acquired on the first write.
+	// A load-only session must not start the persist worker: the pool is acquired on the first write.
 	name := PoolName + ".test." + t.Name()
 	t.Cleanup(func() { _ = releaseAsyncPool(name) })
 
@@ -148,10 +147,8 @@ func TestPrefs_PoolLazyAcquired(t *testing.T) {
 	}
 }
 
-// TestPrefs_RetiredRecipeSectionsAreDropped: a prefs file from the recipe era
-// (recipe_overrides / user_recipes) still loads its other sections, and the
-// next write drops the retired ones — instruments live in the instrument store
-// as documents now, and there is no migration.
+// Other sections still load, and the next write drops the retired ones: instruments are documents in the instrument
+// store, with no migration.
 func TestPrefs_RetiredRecipeSectionsAreDropped(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)

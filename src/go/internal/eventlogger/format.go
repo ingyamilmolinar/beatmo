@@ -6,16 +6,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// formatter converts a hook payload into a one-line human message. Returning
-// "" suppresses the line. The bracket tag is NOT chosen here — it comes from
-// the canonical hooks.ActionRegistry (ActionMeta.Tag), read in writeEvent.
+// "" suppresses the line. The bracket tag is not chosen here: it is hooks.ActionRegistry's.
 type formatter func(payload any) string
 
-// Format renders the one-line narrative message for an event (no bracket tag —
-// the tag comes from hooks.MetaFor(Kind).Tag). Returns "" when the kind has no
-// formatter or the formatter suppresses the line. Exported so the UI logs panel
-// can render the same text the INFO narrative uses without duplicating the
-// per-kind formatter table.
+// Exported so the Logs panel renders the INFO narrative's exact text without a second formatter table. "" when the
+// kind has none or it suppresses the line.
 func Format(e hooks.Event) string {
 	f, ok := lookupFormatter(e.Kind)
 	if !ok {
@@ -24,9 +19,7 @@ func Format(e hooks.Event) string {
 	return f(e.Payload)
 }
 
-// formatters maps each hooks.Kind to its narrative one-liner. Coverage is
-// enforced by coverage_test.go; adding a new Kind without an entry here
-// fails CI.
+// A new Kind without an entry fails coverage_test.go.
 var formatters = map[hooks.Kind]formatter{
 	// ── Playback / transport ────────────────────────────────────────────
 	hooks.EventPlayStart: func(_ any) string { return "play started" },
@@ -42,17 +35,13 @@ var formatters = map[hooks.Kind]formatter{
 	hooks.EventRecordStart: func(_ any) string { return "recording started" },
 	hooks.EventRecordStop:  func(_ any) string { return "recording stopped" },
 	hooks.EventRecordDropped: func(_ any) string {
-		// This is a degraded-state signal; we still emit one line so the
-		// narrative shows it happened. Repeated drops inside a single
-		// session are coalesced (see coalesceKinds).
+		// A degraded-state signal: one line so the narrative shows it; repeats are coalesced.
 		return "recording dropped frame(s)"
 	},
 
 	// ── Transport / time ────────────────────────────────────────────────
 	hooks.EventBPMChange: func(p any) string {
-		// Canonical payload is hooks.BPMPayload; we keep float64/int
-		// fallbacks so legacy raw-int callers (none in production after
-		// the round-2 cleanup, but useful for tests) still render.
+		// The float64/int fallbacks render raw values tests publish.
 		switch v := p.(type) {
 		case hooks.BPMPayload:
 			return fmt.Sprintf("BPM = %d", v.BPM)
@@ -304,7 +293,6 @@ var formatters = map[hooks.Kind]formatter{
 			w.Rendered, w.ElapsedMS, w.Cached)
 	},
 
-	// ── Phase 4 synth-recipe lifecycle ──────────────────────────────────
 	hooks.EventRecipeSaved: func(p any) string {
 		r, _ := p.(hooks.RecipePayload)
 		inst := string(r.InstrumentID)

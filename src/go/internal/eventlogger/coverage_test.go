@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestEventLoggerCoversAllNonVerboseKinds asserts that every non-verbose
-// hooks.Kind has a formatter in this package. Adding a new Kind without a
-// formatter trips this test, forcing the author to consider whether the new
-// Kind belongs in the user-facing INFO narrative.
+// A new Kind without a formatter fails, forcing the decision whether it belongs in the INFO narrative.
 func TestEventLoggerCoversAllNonVerboseKinds(t *testing.T) {
 	for _, k := range hooks.KindAll {
 		if hooks.IsVerbose(k) {
@@ -35,9 +32,7 @@ func TestEventLoggerCoversVerboseKindsToo(t *testing.T) {
 	}
 }
 
-// TestEventLoggerNoUnknownKindsInTable catches typos: every key in the
-// formatters map must correspond to an entry in hooks.KindAll. Otherwise a
-// renamed Kind would silently lose its formatter.
+// A key with no hooks.KindAll entry is a renamed Kind that silently lost its formatter.
 func TestEventLoggerNoUnknownKindsInTable(t *testing.T) {
 	known := make(map[hooks.Kind]struct{}, len(hooks.KindAll))
 	for _, k := range hooks.KindAll {

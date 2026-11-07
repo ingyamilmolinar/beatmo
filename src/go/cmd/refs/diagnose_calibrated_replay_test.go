@@ -13,38 +13,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 )
 
-// diagnose_calibrated_replay_test.go — the gate on what CALIBRATED thresholds
-// do to the frozen verdicts.
-//
-// THE HOLE THIS FILLS
-// -------------------
-// TestClassifiersReproduceFrozenBaseline replays the 2026-08-22 baseline
-// through CompareByKind(d.Kind, …) — the KIND's defaults. It never touches
-// Descriptor.Drift/Mismatch, so every descriptor could be recalibrated to
-// nonsense and it would stay green. The acceptance tests are no help either:
-// they read `verdict` straight out of the frozen JSON and run no classifier
-// at all. Between them, nothing in the tree noticed a threshold change.
-//
-// So this file replays the SAME frozen (ref, synth) pairs — real measurements
-// against real audio, taken before any 2026-08-22 tuning — through
-// d.CompareWith, which DOES apply the calibrated thresholds, and pins the
-// result against its own golden. Two independent assertions:
-//
-//  1. every replayed row matches the golden exactly, so a threshold cannot
-//     move without a reviewed regeneration of this file;
-//  2. every axis the LISTENER named in diagnose_acceptance_test.go's tables
-//     still reads non-ok under the calibrated thresholds. This is the
-//     falsifiable version of "a calibration that stops the tool reproducing
-//     the ear is wrong by definition" — the acceptance gate itself cannot
-//     check it, because it reads pre-calibration verdicts out of a file.
-//
-// Regeneration protocol (deliberate threshold changes only):
-//
-//	cd src/go && CALIBRATED_REPLAY_UPDATE=1 ../../.tools/go/bin/go test \
-//	  -tags test -modfile=go.test.mod ./cmd/refs/ -run TestCalibratedComparators -v
-//
-// then re-run without the env var, confirm assertion (2) still passes, and
-// commit the JSON in the same change.
+// The Kind-level replay never applies Descriptor.Drift/Mismatch and the acceptance tests read frozen verdicts, so
+// this replays the frozen pairs through d.CompareWith: rows must match the golden, and every listener-named axis must
+// still read non-ok. Regenerate: CALIBRATED_REPLAY_UPDATE=1 go test -tags test ./cmd/refs/ -run TestCalibratedComparators
 
 const calibratedReplayGolden = "testdata/diagnose_calibrated_verdicts_2026-09-04.json"
 
@@ -59,15 +30,7 @@ type calibratedRow struct {
 	Mismatch   float64 `json:"mismatch"`
 }
 
-// replayCalibrated pushes every frozen pair through the descriptor's own
-// comparator (calibrated thresholds included) and returns the rows sorted so
-// the golden is stable.
-//
-// Rows the frozen baseline cannot express are skipped for the same reason
-// the Kind-level replay skips them: the ring-T60 escalation needs the
-// extrapolation flags and decay rates, which the baseline JSON does not
-// carry, so a scalar replay of those rows would compare a quantity the real
-// comparator never looked at.
+// Ring-T60 escalation rows are skipped: they need extrapolation flags and decay rates the baseline does not carry.
 func replayCalibrated(t *testing.T) []calibratedRow {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/diagnose_baseline_2026-08-22.json")
@@ -169,14 +132,7 @@ func TestCalibratedComparatorsReproduceTheirGolden(t *testing.T) {
 	t.Logf("replayed %d frozen pairs through the CALIBRATED descriptor comparators", len(got))
 }
 
-// TestCalibratedThresholdsStillReproduceTheListener is the assertion that
-// makes calibration falsifiable: every axis the listener named must still
-// speak under the calibrated thresholds.
-//
-// It re-derives the verdict rather than reading it, which is exactly what
-// diagnose_acceptance_test.go cannot do (it reads pre-calibration verdicts
-// out of the frozen JSON). A threshold that silences a listener complaint
-// fails here even though the acceptance gate would stay green.
+// Re-derived, not read: a threshold that silences a listener complaint fails here though the acceptance gate stays green.
 func TestCalibratedThresholdsStillReproduceTheListener(t *testing.T) {
 	rows := replayCalibrated(t)
 	byKey := make(map[string]calibratedRow, len(rows))
@@ -188,9 +144,7 @@ func TestCalibratedThresholdsStillReproduceTheListener(t *testing.T) {
 	for _, c := range append(append([]verdictCase{}, primaryVerdicts...), bonusVerdicts...) {
 		r, ok := byKey[string(c.instrument)+"/"+c.axis]
 		if !ok {
-			// Skipped above (compound comparator / escalation row). Those
-			// axes are covered by the Kind-level replay and the acceptance
-			// gate; nothing to assert here.
+			// Covered by the Kind-level replay and the acceptance gate.
 			continue
 		}
 		checked++

@@ -8,11 +8,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Scheduler is driven concurrently: the engine's run loop calls Tick() on its
-// own goroutine every ~16ms while the UI/BPM goroutines call Start/Stop/SetBPM
-// and read Progress()/CurrentBPM(). mu serialises all access to the mutable
-// fields below (BPM, last, running, currentStep). Fields set once before the
-// run loop starts (now, OnTick, BeatLength, logger) are read without the lock.
+// Tick runs on the engine loop's goroutine while UI/BPM goroutines call Start/Stop/SetBPM and read Progress; mu guards
+// the mutable fields, and the ones set before the loop starts are read without it.
 type Scheduler struct {
 	mu          sync.Mutex
 	BPM         int
@@ -38,9 +35,7 @@ func NewScheduler(logger *game_log.Logger) *Scheduler {
 func (s *Scheduler) SetBPM(bpm int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Preserve fractional progress across BPM changes to avoid immediate
-	// catch-up bursts. Map the elapsed fraction using the old spb into the
-	// new spb so the next tick fires smoothly on the new timeline.
+	// The elapsed fraction maps from the old spb into the new, so a BPM change never causes a catch-up burst.
 	old := s.BPM
 	if bpm <= 0 {
 		s.BPM = bpm
@@ -118,9 +113,7 @@ func (s *Scheduler) Progress() float64 {
 	return float64(s.now().Sub(s.last)) / float64(spb)
 }
 
-// CurrentBPM returns the BPM under the scheduler lock. Concurrent callers
-// (the engine's public BPM() accessor) must use this rather than reading the
-// exported BPM field directly, which the run loop and SetBPM mutate.
+// The run loop and SetBPM mutate the exported BPM field, so concurrent readers use this.
 func (s *Scheduler) CurrentBPM() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

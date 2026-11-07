@@ -9,11 +9,8 @@ import (
 	"go.uber.org/goleak"
 )
 
-// syncBuffer is a concurrency-safe capture buffer for tests. The eventlogger
-// emits on the coalescer's AfterFunc timer goroutines and its drain goroutine,
-// so a test reading a raw bytes.Buffer while a straggler line is still being
-// written races the writer (a wall-clock sleep is not a happens-before edge).
-// Routing both writes and reads through one mutex removes that race.
+// Lines are written from timer and drain goroutines, and a sleep is no happens-before edge, so reads and writes share a
+// mutex.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -31,9 +28,7 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// TestMain enables goleak verification. Pre-allocate the standing pool so
-// its worker goroutine exists before IgnoreCurrent snapshots the baseline;
-// tests that legitimately leak (Loggers not Closed) will still trip.
+// The standing pool's worker exists before IgnoreCurrent snapshots the baseline; an unclosed Logger still trips it.
 func TestMain(m *testing.M) {
 	_, _ = async.DefaultRegistry().Get("eventlogger.format", async.Options{
 		MaxConcurrent: 1, QueueSize: 8, Name: "eventlogger.format",

@@ -113,10 +113,7 @@ func TestConcurrentSPSC(t *testing.T) {
 		producerDone.Store(true)
 	}()
 
-	// Consumer: read until producer is done and buffer is drained.
-	// Note: with overflow, values within a chunk may not be monotonic
-	// because the producer can overwrite the oldest data. We just verify
-	// that data is being consumed without panics or data races.
+	// With overflow values within a chunk need not be monotonic; only consumption without races is checked.
 	dst := make([]float64, 128)
 	for {
 		n := r.Read(dst)
@@ -130,15 +127,8 @@ func TestConcurrentSPSC(t *testing.T) {
 	}
 
 	got := totalRead.Load()
-	// This is a lossy, non-blocking overflow ring: Write never blocks and
-	// overwrites the oldest unread data, so a consumer that loses the race
-	// legitimately drops most samples (RingBuffer.Write doc). Under scheduler
-	// starvation — e.g. this test running inside the full `make test-real`
-	// suite where hundreds of goroutines contend — the producer can outrun the
-	// consumer entirely; the only guaranteed floor is one full buffer drained
-	// after the producer finishes. Asserting a keep-pace threshold (total/4)
-	// made this test flaky (observed 576 reads under load). Assert the real
-	// contract: the buffer is drainable and data flows.
+	// Lossy by design: under heavy contention the producer can outrun the consumer entirely, so the only guaranteed floor
+	// is one full buffer drained after the producer stops. A keep-pace threshold was flaky; this asserts the real contract.
 	if got < capacity {
 		t.Fatalf("consumer read %d samples, expected at least one full buffer (%d)", got, capacity)
 	}

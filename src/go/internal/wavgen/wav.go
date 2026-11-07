@@ -1,12 +1,6 @@
-// Package wavgen produces and parses WAV audio for tests and the cmd/wavgen
-// tool. Encoding reuses the app's recording WAV encoder
-// (audio.NewEncoder(FormatWAV24)); decoding is a small self-contained pure-Go
-// RIFF parser (the desktop app decodes via C miniaudio, which is unavailable in
-// the `test` build, and there is no other pure-Go decoder in the repo).
-//
-// It exists so tests and sharing flows never depend on real/copyrighted WAV
-// files — sine/noise (and, in the CLI, a synth-instrument hit) are generated on
-// the fly.
+// Package wavgen makes and parses WAV for tests and cmd/wavgen, so nothing depends on real audio. Encoding uses the
+// app's recording encoder; decoding is a small pure-Go RIFF parser (the desktop decodes through C miniaudio, absent under
+// -tags test).
 package wavgen
 
 import (
@@ -18,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// EncodeWAV encodes mono float32 PCM to 24-bit WAV bytes via the app's recording
-// WAV encoder. Deterministic: the same PCM always yields identical bytes (so a
-// content hash of the bytes is a stable "file version" pin).
+// Deterministic, so a content hash of the bytes pins a file version.
 func EncodeWAV(pcm []float32, sampleRate int) ([]byte, error) {
 	enc, err := audio.NewEncoder(audio.FormatWAV24)
 	if err != nil {

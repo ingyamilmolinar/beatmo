@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-// What the simplified Synth-tab views read (spec 2026-10-25 §3.3): a spectrum
-// that keeps its absolute level (curves share ONE scale), the first moment at
-// 1 ms with how far a click stands over the body, whether a note is pitched,
-// and analyses that stop where the note does.
+// A spectrum keeping its absolute level, the first moment at 1 ms with its click height, pitchedness, and analyses that
+// stop where the note does.
 
 func TestSpectrumCarriesItsAbsoluteLevel(t *testing.T) {
 	loud := New(gen(1, func(t float64) float64 { return 0.5 * math.Sin(2*math.Pi*440*t) }), sr, 1)

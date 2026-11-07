@@ -7,23 +7,9 @@ import (
 	"unicode"
 )
 
-// ID is an instrument's identity. It has exactly one of four shapes, and only
-// this package mints them:
-//
-//   - a built-in roster id ("oboe"), named in code through package roster;
-//   - a user library instrument, UserID ("user.<slug>.<hash>");
-//   - a user sample, UserSampleID ("user.sample.<hash>");
-//   - a circuit instance of another instrument, Instance ("<base>--N"),
-//     minted when a circuit carries the same instrument on several rows.
-//
-// Catalog samples carry the slug of their file path. An id that arrives as
-// data (JSON, the JS bridge, a flag, a file name) goes through ParseID once,
-// where it is read; the empty ID is "no instrument", never a valid one.
-//
-// The wire spelling is the string itself: JSON and map keys encode exactly as
-// a plain string did. syscall/js does NOT accept a named string type
-// (js.ValueOf panics), so an ID crossing into JavaScript is passed as
-// string(id).
+// One of four shapes, minted only here: a roster id, UserID ("user.<slug>.<hash>"), UserSampleID ("user.sample.<hash>"),
+// Instance ("<base>--N"); catalog samples carry their path's slug. Data goes through ParseID once; "" is no instrument.
+// js.ValueOf panics on a named string type, so it crosses into JavaScript as string(id).
 type ID string
 
 // ReservedMasterName is the master bus's wire spelling ("main"): no
@@ -67,9 +53,7 @@ func ParseIDs(ss []string) ([]ID, error) {
 	return out, nil
 }
 
-// instanceSep separates an instance's base from its number. No roster id
-// contains it (the roster generator rejects an empty part between dashes),
-// so an instance can never shadow a built-in.
+// No roster id contains it (the generator rejects an empty dash part), so an instance can never shadow a built-in.
 const instanceSep = "--"
 
 // Instance mints the id of the n-th row (2..9) of base in one circuit.
@@ -80,9 +64,7 @@ func Instance(base ID, n int) (ID, error) {
 	return ID(fmt.Sprintf("%s%s%d", base, instanceSep, n)), nil
 }
 
-// Base returns the instrument an instance id plays ("organ--2" → "organ"),
-// and the id itself for anything else. Only a single digit 1..9 after "--"
-// makes an instance; "bass-808" or "x--10" is just an id.
+// Only a single digit 1..9 after "--" makes an instance; "bass-808" and "x--10" are plain ids.
 func (id ID) Base() ID {
 	if n := len(id); n > len(instanceSep)+1 && strings.HasSuffix(string(id[:n-1]), instanceSep) {
 		if c := id[n-1]; c >= '1' && c <= '9' {
@@ -100,9 +82,7 @@ const (
 	userSamplePrefix = "user.sample."
 )
 
-// UserID mints a user library instrument's id from its display name and the
-// first hex digits of its document's content hash: content addressed, so the
-// same tone saved under the same name is the same id.
+// Content addressed: the same tone saved under the same name is the same id.
 func UserID(name, hashHex string) ID {
 	return ID(userPrefix + Slug(name) + "." + hashHex)
 }
@@ -115,10 +95,8 @@ func UserSampleID(sum uint32) ID {
 // sampleSlugReplacer maps every path/punctuation character to '-'.
 var sampleSlugReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", "\\", "-", ":", "-", "+", "-", ".", "-", "(", "-", ")", "-", "[", "-", "]", "-", "{", "-", "}", "-", ",", "-", "'", "-", "\"", "-", "#", "-", "$", "-", "%", "-", "@", "-", "!", "-", "^", "-", "&", "-", "*", "-", "?", "-", "|", "-", "<", "-", ">", "-", "~", "-", "`", "-")
 
-// SampleID mints a catalog sample's id from its path under the catalog root
-// (extension already trimmed): lowercased, every separator or punctuation
-// run one '-' ("Snare/Hit 01" → "snare-hit-01"). Runs collapse, so a sample
-// id never contains "--" and can never be read as an instance.
+// Separator and punctuation runs collapse to one '-' ("Snare/Hit 01" → "snare-hit-01"), so a sample id never contains
+// "--" and is never read as an instance.
 func SampleID(relPath string) ID {
 	slug := sampleSlugReplacer.Replace(strings.ToLower(relPath))
 	for strings.Contains(slug, "--") {

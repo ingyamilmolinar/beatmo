@@ -85,10 +85,7 @@ func TestSemisFromA3(t *testing.T) {
 	}
 }
 
-// The whole point of measuring is to stop trusting filenames. Assert the
-// measurement against a file whose true pitch we know independently: a
-// GENERATED A4 harmonic tone saved under a name that claims a different note
-// (tests never read reference recordings -- see internal/wavref).
+// Against a file whose true pitch is known: a GENERATED A4 tone under a name claiming another note.
 func TestMeasureFile_DetectsPitchFromAudioNotName(t *testing.T) {
 	const sr = 44100
 	pcm := make([]float32, 2*sr)
@@ -144,12 +141,8 @@ func TestDestDir_EveryTierGoesToTheRoot(t *testing.T) {
 	}
 }
 
-// runFetch is the ONE command that rewrites catalogue.json, so it must
-// refuse to operate on a structurally invalid catalogue rather than
-// laundering the corruption back into the source of truth (unlike list,
-// verify, doctor -- which already gate on loadCatalogue()'s Validate()).
-// The embedded catalogue.json is always valid, so this exercises the guard
-// via the overridable catalogueLoader seam rather than corrupting real data.
+// The one command that rewrites catalogue.json must refuse an invalid one rather than launder it; exercised through
+// the catalogueLoader seam, since the embedded file is always valid.
 func TestRunFetch_RefusesToOperateOnInvalidCatalogue(t *testing.T) {
 	orig := catalogueLoader
 	defer func() { catalogueLoader = orig }()
@@ -200,10 +193,7 @@ func TestWriteCatalogueAtomic_WritesAndLeavesNoTempFile(t *testing.T) {
 	}
 }
 
-// localFixtureWAV writes a small, deterministic sine-wave WAV to dir and
-// returns its path. Using internal/wavgen keeps this fixture free of any
-// real/copyrighted audio, matching how the rest of the repo avoids
-// committing real WAVs to git.
+// Generated (internal/wavgen), so the fixture carries no real audio.
 func localFixtureWAV(t *testing.T, dir, name string, freqHz float64) string {
 	t.Helper()
 	pcm := wavgen.Sine(freqHz, 0.5, 1.0, 44100)
@@ -218,13 +208,7 @@ func localFixtureWAV(t *testing.T, dir, name string, freqHz float64) string {
 	return p
 }
 
-// provider "local" is documented on wavref.Source ("uiowa-mis | vcsl |
-// freesound | archive-org | imslp | local") but fetchOne had no branch for
-// it -- it always did an HTTP GET of Source.URL. This is the recovery route
-// promised for the lossy freesound-preview entries: drop a lossless
-// original on disk, point Source.URL at it, flip Provider to "local".
-// Source.URL non-empty case: the path is the RAW source and goes through
-// the same ffmpeg convert step as every other provider.
+// A URL is the RAW source and goes through the same ffmpeg convert as every provider.
 func TestFetchOneLocal_URLPathGoesThroughConvertPipeline(t *testing.T) {
 	srcDir := t.TempDir()
 	destDirPath := t.TempDir()
@@ -304,9 +288,7 @@ func TestFetchOneLocal_EmptyURLUsesDestinationInPlace(t *testing.T) {
 	}
 }
 
-// A missing local source (either the URL path, or the destination when URL
-// is empty) must error clearly, not silently skip -- it is a configuration
-// mistake the caller needs to see.
+// A missing local source is a configuration mistake the caller must see, never a silent skip.
 func TestFetchOneLocal_MissingSourceErrorsClearly(t *testing.T) {
 	destDirPath := t.TempDir()
 	out := filepath.Join(destDirPath, "never-written.wav")
@@ -334,16 +316,8 @@ func TestFetchOneLocal_MissingSourceErrorsClearly(t *testing.T) {
 	})
 }
 
-// runFetch must persist a changed catalogue through the SAME injectable
-// seam runChoose already uses (catalogueWriter), not by calling
-// writeCatalogue directly. No test previously drove runFetch into its
-// changed>0 write branch, so this hazard was only incidental: the moment a
-// test exercises a real write path (trivial now that the local provider
-// makes fixtures cheap), an unguarded runFetch would silently clobber the
-// real, tracked internal/wavref/catalogue.json as a side effect of `go
-// test`. This drives runFetch down exactly that write path (a local-provider
-// ref with -force) with catalogueWriter redirected to a throwaway file, and
-// asserts the REAL catalogue.json on disk is byte-for-byte unchanged.
+// runFetch must persist through catalogueWriter, never writeCatalogue directly: driven down its real write path, the
+// REAL catalogue.json must stay byte-for-byte unchanged.
 func TestRunFetch_WritesThroughCatalogueWriterSeam(t *testing.T) {
 	root, ok := wavref.ModuleRoot()
 	if !ok {
@@ -354,9 +328,7 @@ func TestRunFetch_WritesThroughCatalogueWriterSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read real catalogue.json before test: %v", err)
 	}
-	// Safety net independent of the assertion below: if the seam under test
-	// is broken and this test DOES clobber the real tracked file, restore it
-	// unconditionally so a red run never leaves the working tree corrupted.
+	// Independent of the assertion: if the seam is broken, restore the tracked file so a red run never corrupts the tree.
 	t.Cleanup(func() {
 		if err := os.WriteFile(realPath, before, 0o644); err != nil {
 			t.Errorf("failed to restore real catalogue.json after test: %v", err)
@@ -406,10 +378,7 @@ func TestRunFetch_WritesThroughCatalogueWriterSeam(t *testing.T) {
 	}
 }
 
-// End-to-end through fetchOne (not just fetchOneLocal directly): provider
-// "local" must be routed correctly and skip the HTTP download path
-// entirely -- Source.URL here is a filesystem path, not a URL, so any code
-// path that tried to http.Get it would fail loudly.
+// Source.URL is a filesystem path, so any route that tried to http.Get it would fail loudly.
 func TestFetchOne_RoutesLocalProviderAwayFromHTTPDownload(t *testing.T) {
 	srcDir := t.TempDir()
 	rawPath := localFixtureWAV(t, srcDir, "raw-source.wav", 440.0)

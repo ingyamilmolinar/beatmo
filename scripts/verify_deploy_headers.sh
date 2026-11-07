@@ -1,22 +1,7 @@
 #!/usr/bin/env bash
-# Verify a deployed beatmo bundle by HEAD-fetching each runtime asset and
-# asserting the HTTP status + Content-Type + Cache-Control come back correctly.
-#
-# Usage:
-#   BEATMO_VERIFY_DEPLOY_URL=https://beatmo.io ./scripts/verify_deploy_headers.sh
-#
-#   # or pass the URL positionally:
-#   ./scripts/verify_deploy_headers.sh https://staging.beatmo.io
-#
-# Exits non-zero on the first failed assertion and prints a punch list of all
-# problems discovered before exiting. Designed to run in CI after a staging
-# deploy and on demand against prod.
-#
-# Why this exists: deploy-wasm-gcs.sh is the only place that stamps
-# Content-Type and Cache-Control headers on the GCS objects. If those flags
-# regress (or if a CDN cache rule starts overriding them), the user sees a
-# broken site -- not the deploy script. This is the after-the-fact ground
-# truth.
+# HEAD-checks every runtime asset's status, Content-Type and Cache-Control on a deployed site: the deploy script is the
+# only place that stamps them, and a regression or a CDN rule shows up only here. Usage: BEATMO_VERIFY_DEPLOY_URL=<url>
+# ./scripts/verify_deploy_headers.sh (or the URL positionally). Prints every problem, exits non-zero.
 
 set -uo pipefail
 
@@ -33,8 +18,7 @@ fi
 
 URL="${URL%/}"   # strip trailing slash
 
-# Same buckets as scripts/deploy-wasm-gcs.sh -- if you change one, change the
-# other (and the drift test will fail if you miss a file).
+# The same buckets as deploy-wasm-gcs.sh; change both together.
 ENTRY_FILES=(
   "index.html"
   "synth_param_abi.gen.js"
@@ -103,8 +87,7 @@ check_one() {
     return
   fi
 
-  # Use grep with -i for case-insensitive matching (POSIX-portable; awk's
-  # IGNORECASE is gawk-only).
+  # grep -i, not awk's IGNORECASE (gawk-only).
   local status_line
   status_line="$(printf '%s\n' "$resp" | grep -i '^HTTP/' | tail -n1 | tr -d '\r')"
   local status_code
@@ -127,10 +110,8 @@ check_one() {
   if [[ -z "$cc" ]]; then
     ERRORS+=("${rel}: Cache-Control header is missing (empty); deploy must set it explicitly")
   fi
-  # The deploy gzip-compresses the bundle: every asset must come back
-  # gzip-encoded (Content-Encoding: gzip) and carry no-transform so GCS does
-  # not decompressively transcode the gzipped object -- transcoding strips
-  # Content-Length and breaks WebAssembly.instantiateStreaming on main.wasm.
+  # Every asset must come back gzip-encoded with no-transform: GCS transcoding strips Content-Length and breaks
+  # instantiateStreaming.
   case "$rel" in
     *.wasm)
       if [[ "$ce" != *"gzip"* && "$ce" != *"br"* ]]; then

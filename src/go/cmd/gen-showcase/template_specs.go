@@ -6,37 +6,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/smf"
 )
 
-// This table is the whole of the template definition. Every built-in circuit is
-// one row here: a committed public-domain score, a measure range, and a mapping
-// from score parts to Beatmo instruments. There is no per-piece imperative code
-// and no hand-entered note anywhere in this package — which is precisely what
-// lets TestTemplateIsDerivedFromScore treat the score as an oracle instead of
-// as documentation.
-//
-// Provenance for every ScoreID lives in internal/scoreref/catalogue.json, and
-// the survey behind the admission rule is docs/score-sources.md. Adding a
-// template is: add a catalogue entry + committed .mxl, add a row here, add the
-// stem to internal/assets/templates.go's templateGroups, regenerate.
-//
-// Octave policy: NONE needed. An instrument that renders away from node pitch 0
-// (cello, cello-warm and the basses an octave down; voice-soprano an octave up)
-// is cancelled automatically by instrumentPitchShift in score_import.go, which
-// asks audio.InstrumentPitchInfo rather than trusting a comment here. The rows
-// below used to carry Octave: 1 for that, and the list drifted from the engine:
-// double-bass was corrected for an offset it does not have (its contrabass line
-// sounded in unison with the cello instead of an octave below it) while
-// voice-soprano's real +1 octave was corrected nowhere. Set Octave only to
-// re-voice a part deliberately. Transposing instruments (Bb clarinet, F horn)
-// need no correction either — internal/musicxml applies <transpose> and reports
-// SOUNDING pitch.
+// The whole template definition: each row a committed public-domain score, a measure range and a part → instrument
+// map, with no hand-entered note. Instrument transposition is cancelled by instrumentPitchShift and <transpose> is applied
+// upstream, so set Octave only to re-voice a part. New template: catalogue + .mxl, a row here, a templateGroups stem.
 
-// PartMap binds one part of a score to one Beatmo instrument.
-//
-// Index is authoritative and Name is a checked assertion: several scores carry
-// duplicate part names (Boulanger's orchestration has three parts literally
-// named "Violoncello"), so selection must be by index — but an index alone
-// would silently point at a different instrument if the upstream score were
-// ever re-ordered. TestPartMapNamesMatchScore compares the two.
+// Index selects (scores repeat part names); Name asserts it still points there.
 type PartMap struct {
 	Index   int           // part index within the score
 	Name    string        // expected part name, asserted against the score
@@ -55,15 +29,10 @@ type PartMap struct {
 	// Lowest lanes a part bottom-up: lane 0 takes the LOWEST note at each
 	// onset — a bass line — instead of the highest.
 	Lowest bool
-	// BelowMIDI is a keyboard split: only notes below this MIDI key are kept
-	// (0 keeps everything). A ragtime left hand alternates a low bass note with
-	// a mid-register chord; splitting below the chords gives a bass row the
-	// "oom" without the "pah". Notes above the split are counted, not lost.
+	// A keyboard split: only notes below this MIDI key (0 = all). A ragtime bass row gets the "oom" without the "pah"; the
+	// notes above are counted, not lost.
 	BelowMIDI int
-	// SoundingPitch cancels a NON-melodic instrument's whole measured pitch
-	// offset so its nodes sound the written pitch — how a timpani part plays
-	// on a drum voice. Melodic instruments are always corrected
-	// (instrumentPitchShift); this is only for drums asked to play notes.
+	// Cancels a NON-melodic instrument's whole measured offset so its nodes sound the written pitch (timpani on a drum).
 	SoundingPitch bool
 	// Kit routes a percussion part's GM keys to Beatmo instruments, overriding
 	// gmKit key by key. Ignored for pitched parts.
@@ -152,9 +121,7 @@ type TemplateSpec struct {
 	Stem    string
 	ScoreID string
 
-	// From/To are printed measure numbers, 1-based inclusive, in the score's
-	// own numbering and BEFORE any repeat expansion (repeats are not expanded —
-	// see internal/musicxml).
+	// Printed measure numbers, 1-based inclusive, before any repeat expansion (repeats are not expanded).
 	From, To int
 
 	Subdiv int
@@ -300,14 +267,10 @@ var (
 	}
 )
 
-// templateSpecs is the menu, in menu order. The grouping that drives the
-// template menu's section headers lives in internal/assets/templates.go; the
-// order here must agree with it (TestTemplateOrderMatchesAssets).
+// Menu order, which must agree with internal/assets/templates.go's grouping.
 func templateSpecs() []TemplateSpec {
 	return []TemplateSpec{
-		// ── Funk · Soul · Jazz ────────────────────────────────────────────
-		// Famous beats, encoded from published step transcriptions (rhythm
-		// patterns), under original Beatmo tunes.
+		// ── Funk · Soul · Jazz: famous beats from published step transcriptions, under original Beatmo tunes.
 		{
 			Stem: "funky-drummer", ScoreID: "beatmo-cold-coffee",
 			From: 1, To: 8, Subdiv: 16,
@@ -1139,9 +1102,7 @@ func templateSpecs() []TemplateSpec {
 			},
 		},
 		{
-			// Subdiv 32, not 16: the piano writes continuous sextuplets — six
-			// notes per beat, which four 16th-note steps cannot hold. At 16 a
-			// third of the notes collided onto an occupied step.
+			// Subdiv 32: the piano writes continuous sextuplets, which four steps per beat cannot hold.
 			Stem: "schubert-ave-maria", ScoreID: "schubert-ave-maria",
 			From: 1, To: 8, Subdiv: 32,
 			Parts: voicePiano("Singstimme Voice", "Pianoforte", roster.VoiceSoprano),

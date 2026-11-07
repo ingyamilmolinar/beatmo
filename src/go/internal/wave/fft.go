@@ -46,11 +46,8 @@ func fft(buf []complex128) {
 	}
 }
 
-// twiddleCache holds each butterfly stage's twiddles (keyed by stage size),
-// computed once. Recomputing one cmplx.Rect per butterfly made Sincos ~45 %
-// of every spectral analysis. The values are produced by the SAME expression
-// the loop used, so the transform is bit-identical
-// (TestCachedFFTIsBitIdentical): the audio-tab digests compare raw bits.
+// Recomputing a cmplx.Rect per butterfly was a large share of every analysis. The SAME expression the loop used, so the
+// transform is bit-identical: the audio-tab digests compare raw bits.
 var twiddleCache sync.Map // int -> []complex128
 
 func stageTwiddles(size int) []complex128 {
@@ -67,10 +64,8 @@ func stageTwiddles(size int) []complex128 {
 	return v.([]complex128)
 }
 
-// swapCache holds each size's bit-reversal permutation as the (i, j > i)
-// pairs it swaps, computed once: reversing every index's bits on every
-// transform was a fifth of the FFT's time. Same swaps, same order, so the
-// transform is unchanged bit for bit (TestCachedFFTIsBitIdentical).
+// Bit-reversing every index on every transform was a fifth of the FFT; the same swaps in the same order keep it
+// bit-identical.
 var swapCache sync.Map // int -> [][2]int32
 
 func bitReversalSwaps(n int) [][2]int32 {
@@ -101,24 +96,15 @@ func bitReverse(v, bits int) int {
 	return r
 }
 
-// MagnitudeSpectrum returns the linear magnitude spectrum (DC..Nyquist) of the
-// first fftSize samples of w (zero-padded if shorter), after applying the given
-// window. binHz is the per-bin frequency resolution.
-//
-// fftSize is rounded UP to the next power of two (n); the returned slice has
-// n/2+1 bins and binHz = sampleRate/n. Pass a power-of-two fftSize (as the
-// fingerprint library does: 16384, 2048) to get exactly fftSize/2+1 bins.
-// This is the single shared FFT entry point for analysis; NewFFTObserver
-// builds its dB output on top of it.
+// The single shared analysis FFT (NewFFTObserver builds on it). fftSize rounds UP to a power of two n: n/2+1 bins,
+// binHz = sampleRate/n; zero-padded if shorter.
 func MagnitudeSpectrum(w Wave, fftSize int, window WindowType) (mag []float64, binHz float64) {
 	n := nextPow2(fftSize)
 	sr := w.SampleRate
 	if sr == 0 {
 		sr = sr44100Default
 	}
-	// Window straight into the transform buffer, from the start: truncates
-	// if longer, zero-pads if shorter. Each product is the one
-	// applyWindowInPlace forms, so the spectrum is unchanged bit for bit.
+	// Each product is the one applyWindowInPlace forms, so the spectrum is bit-identical.
 	buf := make([]complex128, n)
 	coeffs := windowCoeffs(n, window)
 	for i, s := range w.Samples[:min(n, len(w.Samples))] {
@@ -139,17 +125,8 @@ type fftObserver struct {
 	size int // FFT window size (power of 2).
 }
 
-// NewFFTObserver returns an Observer that performs an FFT on the wave.
-// size is the FFT window size (rounded up to the next power of 2).
-// If the wave is longer than size, the last size samples are used.
-// If shorter, the wave is zero-padded.
-// A Hann window is applied before the FFT.
-// The returned Observation has Kind=ObsFFT with:
-//   - Bins: magnitude spectrum in dB (N/2+1 bins, from DC to Nyquist)
-//   - FreqBins: Hz label for each bin
-//   - BinHz: frequency resolution per bin
-//   - PeakFreq: dominant frequency (Hz)
-//   - PeakMag: magnitude at dominant frequency (dB)
+// The LAST size samples (zero-padded if shorter), Hann-windowed: Bins in dB (N/2+1, DC..Nyquist), FreqBins, BinHz,
+// PeakFreq, PeakMag.
 func NewFFTObserver(size int) Observer {
 	return &fftObserver{size: nextPow2(size)}
 }
@@ -161,9 +138,7 @@ func (o *fftObserver) Observe(w Wave) Observation {
 		sr = sr44100Default
 	}
 
-	// Extract the last n samples (or use all if shorter), preserving the
-	// "last N" contract.  Pass a trimmed Wave to MagnitudeSpectrum so it
-	// reads from the start of the slice (which is our last-N window).
+	// A trimmed Wave, because MagnitudeSpectrum reads from the start of what it is given.
 	var lastN []float64
 	if len(w.Samples) >= n {
 		lastN = w.Samples[len(w.Samples)-n:]

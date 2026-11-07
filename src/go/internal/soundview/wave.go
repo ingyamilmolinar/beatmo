@@ -2,10 +2,8 @@ package soundview
 
 import "math"
 
-// WaveWindow is a close-up of the waveform itself: Samples from T0 (seconds),
-// starting on a rising zero crossing and spanning whole periods of the note's
-// pitch at T0 (PeriodSec), or a fixed 20 ms window when the note is unpitched
-// there (PeriodSec 0). Samples is a read-only view of the analysed PCM.
+// From a rising zero crossing, whole periods of the pitch at T0, or a fixed 20 ms when unpitched (PeriodSec 0).
+// Samples is a read-only view of the analysed PCM.
 type WaveWindow struct {
 	Samples   []float32
 	T0        float64
@@ -14,9 +12,8 @@ type WaveWindow struct {
 
 const waveFixedSec = 0.02
 
-// WaveMoment is where the close-up looks: 25% into the audible part of a
-// sustained note, or just after the loudest moment of a percussive one (whose
-// shape a quarter of the way into its tail no longer shows).
+// 25 % into a sustained note, or just after a percussive note's loudest moment (a quarter into its tail no longer shows
+// its shape).
 func (a *Analysis) WaveMoment() float64 {
 	aud := a.AudibleSec()
 	if aud <= 0 {

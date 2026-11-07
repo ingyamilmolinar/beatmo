@@ -1,13 +1,6 @@
 //go:build !test && !js
 
-// synth-analyze: spectral + envelope fingerprint tool for comparing real
-// instrument recordings against synthesized equivalents.
-//
-// Usage:
-//
-//	synth-analyze ref   -file <audio> [-offset <sec>] [-length <sec>] [-json] [-label <name>]
-//	synth-analyze synth -inst <id>    [-pitch <semi>]  [-dur <sec>]   [-json] [-label <name>]
-//	synth-analyze diff  -a <fp.json>  -b <fp.json>
+// synth-analyze: fingerprints a recording (ref -file), a synth voice (synth -inst) or the difference (diff -a -b).
 package main
 
 import (

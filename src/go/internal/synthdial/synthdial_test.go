@@ -128,9 +128,8 @@ func TestTurnLandsExactlyAndIsMonotone(t *testing.T) {
 	}
 }
 
-// At 0 and 100 every term sits exactly on its span end (unless it already
-// sat past it); turning to the
-// current reading returns the start values bit for bit.
+// At 0 and 100 every term sits exactly on its span end (unless already past it); turning to the current reading
+// returns the start bit for bit.
 func TestTurnEndpointsAreExactAndIdentityAtTheReading(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < 500; i++ {
@@ -360,10 +359,8 @@ func TestRequirementThresholds(t *testing.T) {
 	}
 }
 
-// Only a value at or below zero floors to a log span's start (0 = instant /
-// off / no decay). A POSITIVE value below the span is out of span like any
-// other — Coord < 0 for a rising span, > 1 for a falling one — so Turn moves
-// it on its continuous path and the discipline guard can see it.
+// Only a value at or below zero floors; a POSITIVE value below the span is out of span, so Turn moves it continuously
+// and the discipline guard sees it.
 func TestLogFloorsOnlyNonPositiveValues(t *testing.T) {
 	up := lt("cut", SpaceLog, 80, 18000, 1, Range{20, 20000})
 	if u := up.Coord(20); u >= 0 {

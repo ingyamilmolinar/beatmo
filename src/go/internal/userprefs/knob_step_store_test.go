@@ -56,9 +56,7 @@ func TestKnobStepStoreEmptyOmitted(t *testing.T) {
 	}
 }
 
-// TestKnobStepStoreAbsentSectionCompat verifies a document written without
-// a knob_steps key at all (every prefs file before the section existed) is
-// read back as an empty map without error.
+// A document with no knob_steps key reads back as an empty map without error.
 func TestKnobStepStoreAbsentSectionCompat(t *testing.T) {
 	b, err := marshalPrefs(prefsSnapshot{
 		favorites:  map[instrument.ID]bool{roster.Snare: true},

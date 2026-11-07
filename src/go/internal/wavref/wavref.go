@@ -1,17 +1,6 @@
-// Package wavref locates local reference audio for tests and analysis tools.
-//
-// Reference recordings are LOCAL DEV TOOLING: they are never committed and
-// never shipped, so there is no licence to clear -- any recording you have
-// may serve as ground truth. Synth-*matching* tests inherently need real
-// timbres (a generated sine can't stand in for a violin), so the audio lives
-// outside the repo under one root (Root(): $BEATMO_WAV_REFS, default
-// ~/.beatmo/wav-refs). Tests skip cleanly when a file is missing, so a clean
-// checkout / CI stays green.
-//
-// No audio file is ever versioned: test audio that must exist everywhere is
-// GENERATED (internal/wavgen / cmd/wavgen). TestNoAudioFilesInRepository
-// (internal/deploy), the .gitignore and the pre-commit hook
-// (scripts/precommit/no-audio-files.sh) enforce it.
+// Package wavref locates local reference audio for the analysis tools: LOCAL DEV TOOLING, never committed or shipped (so
+// no licence), under Root() ($BEATMO_WAV_REFS, default ~/.beatmo/wav-refs). No test reads it; test audio that must exist
+// everywhere is generated (internal/wavgen).
 package wavref
 
 import (

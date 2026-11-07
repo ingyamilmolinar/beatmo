@@ -1,9 +1,7 @@
 package rank
 
-// Weights is every threshold and weight the ranking uses, in one place. The
-// payoff scale is "complexity points", calibrated to cognitive complexity:
-// splitting a function removes roughly the cognitive complexity above
-// SplitKeepCog, and every other payoff is expressed on that scale.
+// Weights is every threshold and weight the ranking uses. Payoffs are in "complexity points", calibrated to cognitive
+// complexity: splitting a function removes roughly the cognitive complexity above SplitKeepCog.
 type Weights struct {
 	// split-function: cognitive at or above SplitCog, or SLOC at or above SplitSLOC.
 	SplitCog, SplitSLOC int
@@ -41,10 +39,8 @@ type Weights struct {
 	// restructure-area: the top AreaTop areas with at least AreaMinUnits units.
 	AreaTop, AreaMinUnits int
 	AreaPayoffScale       float64 // payoff = scale × sqrt(compound)
-	// restructure-type: the top TypeTop god types (GodMinMethods methods);
-	// payoff = AreaPayoffScale × √(Σ method cognitive^1.3) + TypeFieldWeight ×
-	// fields, because a god type's cost is partly its state, which no function
-	// metric sees.
+	// restructure-type: the top TypeTop god types; payoff = AreaPayoffScale × √(Σ method cognitive^1.3) + TypeFieldWeight
+	// × fields, because part of a god type's cost is its state, which no function metric sees.
 	TypeTop         int
 	TypeFieldWeight float64
 	// data-to-asset: data units of at least DataMinLOC lines.

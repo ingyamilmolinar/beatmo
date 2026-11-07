@@ -10,11 +10,7 @@ import (
 	"path/filepath"
 )
 
-// ModuleRoot walks up from the working directory to the directory holding
-// go.mod. Callers run from different cwds (go test uses the package dir,
-// go run uses src/go), so an absolute anchor is required. Exported because
-// cmd/refs needs it to locate the templates dir and catalogue.json without
-// counting filepath.Dir calls.
+// go test runs from the package dir and go run from src/go, so cmd/refs needs an absolute anchor.
 func ModuleRoot() (string, bool) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -32,10 +28,7 @@ func ModuleRoot() (string, bool) {
 	}
 }
 
-// Resolve locates the audio file for a catalogue id inside the one
-// reference-audio root (Root()). There is no in-tree fallback: reference
-// audio is never committed. ok=false when the id is unknown, carries a status
-// instead of audio, or the file is absent — callers skip rather than fail.
+// Inside Root() only, with no in-tree fallback. ok=false when unknown, a status entry, or absent: callers skip.
 func Resolve(id string) (string, bool) {
 	c, err := Catalogue()
 	if err != nil {
@@ -52,16 +45,8 @@ func Resolve(id string) (string, bool) {
 	return p, true
 }
 
-// PCMHash hashes DECODED audio — sample rate, sample count, then every
-// sample as a big-endian int16 — rather than container bytes. ffmpeg builds
-// differ in the metadata chunks they emit; the audio does not, so hashing
-// PCM is what makes verification mean "same sound".
-//
-// This package deliberately does NOT import internal/audio to decode the
-// file itself: internal/audio's own test files (wavref_ref_test.go) import
-// internal/wavref, so wavref -> audio would close an import cycle
-// (audio [test] -> wavref -> audio). Callers decode first (e.g. via
-// audio.DecodeWAVToPCM) and pass the resulting samples/rate in here.
+// Rate, count, then every sample as big-endian int16: the same sound, whatever metadata an ffmpeg build wrote. Callers
+// decode first: importing internal/audio would close an import cycle through audio's tests.
 func PCMHash(samples []float32, rate int) string {
 	h := sha256.New()
 	var scratch [8]byte
@@ -77,12 +62,8 @@ func PCMHash(samples []float32, rate int) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// VerifyHash compares a caller-computed PCM hash against the catalogue's
-// recorded value for id. A ref with no recorded hash verifies vacuously —
-// absence is a fetch concern, not a corruption concern. The caller is
-// responsible for resolving and decoding the audio (and for PCMHash) before
-// calling this, for the same import-cycle reason PCMHash takes samples
-// rather than a path.
+// No recorded hash verifies vacuously: absence is a fetch concern, not corruption. The caller resolves, decodes and
+// hashes (the import cycle again).
 func VerifyHash(id, gotHash string) error {
 	c, err := Catalogue()
 	if err != nil {
@@ -95,10 +76,7 @@ func VerifyHash(id, gotHash string) error {
 	return verifyRefHash(r, gotHash)
 }
 
-// verifyRefHash is the pure comparison VerifyHash delegates to, split out so
-// the mismatch path is unit-testable without depending on catalogue.json
-// carrying a populated pcm_sha256 (that population is Task 5's job; today's
-// 5 refs all ship without one).
+// Split out so the mismatch path is testable without a catalogue entry carrying a pcm_sha256.
 func verifyRefHash(r Ref, gotHash string) error {
 	if r.PCMSHA256 == "" {
 		return nil

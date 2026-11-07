@@ -1,39 +1,6 @@
-// profile_live_mutation_stress.mjs
-//
-// Live-mutation audio-jitter profiler for the WASM build. Extends
-// scripts/profile_fx_chain_playback.mjs (which only mutates the circuit BEFORE
-// playback) to drive the mutations users actually perform DURING playback:
-// BPM changes, node-logic/graph edits, insert-effect add/remove, synth-param
-// knob turns, and EQ band moves. It answers two questions:
-//
-//   1. BASELINE — is plain playback (no mutations, no FX) already choppy?
-//      Measured by Stage A seqFireLate, draw cost split (grid vs drum), audio
-//      clock drift, and queue latency while just playing the startup demo.
-//
-//   2. WHICH live mutation hurts? — during a second playback window we fire one
-//      mutation type per "tick" on a rotating schedule and tag each per-second
-//      sample with the mutation that ran in it, so a draw/Stage-A/qlat spike
-//      can be attributed to BPM vs graph-edit vs FX-add vs synth vs EQ.
-//
-// Rich per-second metrics (beyond the FX profiler): drawGridMS / drawDrumMS
-// split, rowsRepaints / rowCacheFull / gridTileBlits / imagesAllocatedTotal
-// deltas (the Ebiten draw-churn the prior investigation fingered), heap + GC.
-//
-// CAVEAT (carried from the prior investigation): headless Chromium uses
-// SwiftShader, which inflates Ebiten draw ~4-5x and whose audio thread is too
-// fast to underrun — so absolute drift/click numbers do NOT match real HW. The
-// RELATIVE attribution (which phase / which mutation spikes draw + Stage A)
-// holds on any platform. For deterministic audio-thread cost use
-// scripts/bench_audio_node_cost.mjs instead.
-//
-// Run:
-//   WASM_PREBUILT=1 GO=$(pwd)/.tools/go/bin/go node scripts/profile_live_mutation_stress.mjs
-// Env:
-//   MUT_BASELINE_SECS=14   plain-playback baseline window
-//   MUT_LIVE_SECS=24       live-mutation window
-//   MUT_BPM=200            base tempo
-//   MUT_INTERVAL_MS=700    gap between live mutations
-//   MUT_PROFILE=1          capture a CDP main-thread CPU profile per phase
+// Which LIVE edit (BPM, graph, FX, synth knob, EQ) makes playback choppy? A plain-playback baseline, then a rotating
+// mutation per tick with each per-second sample tagged by it. SwiftShader inflates draw and never underruns, so trust the
+// RELATIVE attribution only. Env: MUT_BASELINE_SECS MUT_LIVE_SECS MUT_BPM MUT_INTERVAL_MS MUT_PROFILE=1
 
 import { chromium } from "../src/js/node_modules/playwright/index.mjs";
 import path from "node:path";
@@ -81,9 +48,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-// Snapshot of the cumulative perf counters we track as per-second deltas.
-// IIFE string: page.evaluate(string) evaluates the expression, so an IIFE
-// returns the object (a bare `() => ({...})` string would return the function).
+// An IIFE string: page.evaluate(string) evaluates the expression, and a bare arrow string would return the function.
 const sampleExpr = `(() => ({
   wall: performance.now(),
   audio: window.__audioCtx ? window.__audioCtx.currentTime : null,
@@ -215,15 +180,13 @@ async function playPhase(label, secs, mutate, withProfile) {
 
 const report = { ts, bpm: BPM, baselineSecs: BASELINE_SECS, liveSecs: LIVE_SECS, intervalMs: INTERVAL_MS, phases: {} };
 
-// ── Phase 1: baseline plain playback, no mutations ──
 console.log(`\n[live-mut] BASELINE plain playback (${BASELINE_SECS}s @ ${BPM}bpm)...`);
 const baseline = await playPhase("baseline", BASELINE_SECS, null, DO_PROFILE);
 report.phases.baseline = { rows: baseline.rows, final: baseline.final, top: baseline.top };
 printRun("baseline (no mutations)", baseline.rows, baseline.final, baseline.top);
 if (baseline.profile) fs.writeFileSync(path.join(outdir, "baseline.cpuprofile"), JSON.stringify(baseline.profile));
 
-// ── Phase 2: live mutations during playback ──
-// Rotating mutation schedule. Each returns a short tag for the per-second log.
+// Each returns a short tag for the per-second log.
 const MUT_TYPES = ["bpm", "graph", "fx", "synth", "eq"];
 const synthKeys = ["brightness", "drive", "body"];
 let roamN = 0, lastRoamCell = null, lastFxByInst = {};
@@ -235,8 +198,7 @@ async function liveMutate(n) {
         setBPM(BPM + ((n % 5) * 16)); // sweep 200..264
         break;
       case "graph": {
-        // Roam a free cell far from the demo: add a node + edge from anchor,
-        // delete the previous one → bounded graph churn → predictor rebuild.
+        // Add a node + edge far from the demo and delete the previous one: bounded churn that still rebuilds the predictor.
         const i = 6 + (n % 7), j = 9 + ((n >> 1) % 5);
         if (window.__lastRoam) deleteNodeGrid(window.__lastRoam.i, window.__lastRoam.j);
         addNode(i, j, "regular");

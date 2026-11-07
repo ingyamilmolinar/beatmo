@@ -115,10 +115,8 @@ func TestParse_MeasureNumbers(t *testing.T) {
 		`</part></score-partwise>`
 	p := parseOne(t, doc)
 	got := []int{p.Notes[0].Measure, p.Notes[1].Measure, p.Notes[2].Measure}
-	// "0" is a real printed number (a pickup); "X2" is not an integer: it is a
-	// fragment of the bar before it (a mid-bar repeat or system break) and
-	// keeps that bar's number. It used to take its ordinal (3), which
-	// collided with a real bar 3 in Haydn Op.76 and Aloha Oe.
+	// "0" is a printed number (a pickup); "X2" is a fragment of the bar before it and keeps that bar's number, never an
+	// ordinal that would collide with a real bar.
 	want := []int{0, 1, 1}
 	for i := range want {
 		if got[i] != want[i] {

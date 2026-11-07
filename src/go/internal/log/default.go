@@ -5,13 +5,9 @@ import (
 	"sync/atomic"
 )
 
-// The process-wide default logger, for packages that have no Logger injected
-// (internal/audio's engine, recorder and library code). The binary points it
-// at its own -log logger at startup (SetDefault), so those lines share the
-// format, level and destination of every other line; under `go test` it is a
-// silenced DEBUG logger like any other, so its lines go to the failure tail
-// (TailOnFailure) instead of the console. Never import the standard library's
-// "log" in production code — it bypasses both.
+// For packages with no injected Logger (internal/audio). The binary points it at its -log logger, so those lines share
+// format, level and destination; under go test it is silenced into the failure tail like any other. Never import the
+// standard "log" in production: it bypasses both.
 var defaultLogger atomic.Pointer[Logger]
 
 func init() {

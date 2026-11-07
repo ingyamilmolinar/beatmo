@@ -1,35 +1,7 @@
 //go:build !test && !js
 
-// refs: manage the Beatmo reference-audio corpus.
-//
-// Provenance lives in internal/wavref/catalogue.json; audio lives either in
-// the committed corpus (instrument clips) or in $BEATMO_WAV_REFS (song
-// recordings, too large to commit).
-//
-// Usage:
-//
-//	refs list       [-tier instrument|song]
-//	refs families   [-instrument <family-or-member>]
-//	refs verify     [-id <ref-id>]
-//	refs doctor
-//	refs fetch      [-id <ref-id>] [-instrument <inst>] [-tier <t>] [-only-missing] [-force]
-//	refs candidates -instrument <inst> [-n 3]
-//	refs choose     -instrument <inst> -id <ref-id>
-//	refs adopt      -wav <name-or-path> [-instrument <inst>] [-note <n>] [-id <ref-id>] [-start-sec N] [-max-sec N]
-//	refs adopt      -scan [-note <n>] [-start-sec N] [-max-sec N]
-//	refs compare    -instrument <inst> [-ref <ref-id>] [-dur <sec>] [-match rms|peak|none] [-sh]
-//	refs compare    -list
-//	refs match      [-wavs <glob>] [-top 3] [-metric timbre|full] [-listen [-resume] [-only <text>]] [-validate]
-//	refs diagnose   [-instrument <inst>] [-all] [-json]
-//	refs audition   [-instrument <family-base>] [-out <verdicts.jsonl>] [-resume] [-sh]
-//	refs audition   -notes [-instrument <family-base>] [-only n,p] [-reannotate] [-out <verdicts.jsonl>] [-sh]
-//	refs validate   [-out <verdicts.jsonl>] [-min-samples N]
-//	refs session    [-families a,b] [-candidates <json>] [-out <sessions.jsonl>] [-plan] [-clone | -tuned]
-//	refs tune       -inst <id[,id]> | -picks [-gens N] [-seed S] [-add-harmonics N] [-wavs <glob>] [-score <candidate>]
-//	refs organic    -instrument <inst> [-pitch <semis>] [-dur <sec>]
-//	refs calibrate-organic [-out <organic_range.json>]
-//	refs calibrate-thresholds [-verdicts <verdicts.jsonl>] [-out <thresholds.json>]
-//	refs check      [-only thresholds,organic,f0,f0-outliers,candidates] [-v]
+// refs manages the reference-audio corpus: provenance in internal/wavref/catalogue.json, the audio only under
+// $BEATMO_WAV_REFS, never in the repository. usage() lists every subcommand.
 package main
 
 import (

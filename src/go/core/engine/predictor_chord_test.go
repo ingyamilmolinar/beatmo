@@ -8,10 +8,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// chordLoopPredictor builds a 4-node loop whose second node has type `typ`.
-// The third node depends on the second through trigger_if_prev_triggered,
-// and the second skips every 2nd trigger, so the logic walk actually reads
-// the second node's type.
+// The third node depends on the second through trigger_if_prev_triggered and the second skips every 2nd trigger, so
+// the logic walk reads the second node's type.
 func chordLoopPredictor(t *testing.T, typ model.NodeType) *Predictor {
 	t.Helper()
 	graph := model.NewGraph(game_log.New(io.Discard, game_log.LevelError))

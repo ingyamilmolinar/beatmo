@@ -12,23 +12,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// auditionFamily groups roster instruments that model the SAME real
-// instrument -- e.g. cello and cello-warm, or oboe and oboe-full -- so
-// `refs audition` compares them together against one shared reference
-// instead of asking the listener to judge the same real instrument twice
-// against two different recordings.
+// Roster instruments modelling the SAME real instrument (cello / cello-warm) are compared together against one shared
+// reference, rather than judging one real instrument twice against two recordings.
 type auditionFamily struct {
-	// Key is the family's display name: the shortest member id (ties
-	// broken alphabetically), which in every family in the current
-	// catalogue happens to be the "base" instrument (cello, oboe, conga,
-	// tom, ...).
+	// The shortest member id (ties alphabetical), which is the base instrument in every current family.
 	Key instrument.ID
 	// Members lists every roster instrument in the family, sorted
 	// alphabetically. A family with exactly one member has no sibling.
 	Members []instrument.ID
-	// Reference is the single wavref.Ref every member is rendered against,
-	// at its own Measured pitch, so the family's comparison is
-	// like-for-like.
+	// Every member renders against it at its own Measured pitch, so the comparison is like for like.
 	Reference wavref.Ref
 }
 
@@ -60,20 +52,9 @@ func (u *familyUnionFind) union(a, b instrument.ID) {
 	}
 }
 
-// buildAuditionFamilies is the SINGLE source of truth for "which roster
-// instruments belong together". It starts from comparableInstruments (every
-// covered, non-status instrument) and unions two ways:
-//
-//  1. Instruments-array route: any non-status instrument-tier ref whose
-//     Instruments array lists 2+ covered instruments -- they're already
-//     grouped by the catalogue itself (e.g. oboe-A4 -> [oboe-full, oboe],
-//     conga-freesound-alt -> [conga, conga-open]).
-//  2. Naming-convention route: instrument "X-<qualifier>" joins base "X"
-//     when both are covered (e.g. cello + cello-warm, conga-tumba joining
-//     the conga family via its "conga" prefix even though its own
-//     reference is different from conga-freesound-alt's).
-//
-// Families are returned sorted by Key.
+// The SINGLE source of truth for which instruments belong together, over comparableInstruments: a ref whose Instruments
+// list names 2+ covered ids (oboe-A4 → oboe-full, oboe), and "X-<qualifier>" joining a covered base "X" (cello-warm).
+// Sorted by Key.
 func buildAuditionFamilies(c wavref.Cat) ([]auditionFamily, error) {
 	covered := comparableInstruments(c)
 	coveredSet := make(map[instrument.ID]bool, len(covered))
@@ -104,10 +85,7 @@ func buildAuditionFamilies(c wavref.Cat) ([]auditionFamily, error) {
 		}
 	}
 
-	// Route 2: naming-convention grouping. Only the LAST hyphen segment is
-	// stripped, and only when the resulting base is itself covered -- this
-	// is what keeps dnb-kick/zgump-kick from being folded into a
-	// nonexistent "kick" family.
+	// Only the LAST hyphen segment, and only onto a covered base, which keeps dnb-kick out of a nonexistent "kick" family.
 	for _, inst := range covered {
 		idx := strings.LastIndex(string(inst), "-")
 		if idx < 0 {
@@ -142,13 +120,7 @@ func buildAuditionFamilies(c wavref.Cat) ([]auditionFamily, error) {
 	return families, nil
 }
 
-// filterFamilies restricts families to the comma-separated set in raw, leaving
-// them in their existing (Key-sorted) order. An empty raw is a no-op.
-//
-// Used by `-families` to re-audition a targeted subset. An entry naming no
-// known family is an ERROR rather than a silent no-match: a typo would
-// otherwise cost a long listening session spent on the wrong instruments, or
-// none at all.
+// A name matching no family is an ERROR: a typo would cost a long listening session on the wrong instruments.
 func filterFamilies(families []auditionFamily, raw string) ([]auditionFamily, error) {
 	want := parseSkipSet(raw) // same "comma-separated, tolerate empties" parsing
 	if len(want) == 0 {
@@ -179,10 +151,7 @@ func filterFamilies(families []auditionFamily, raw string) ([]auditionFamily, er
 	return out, nil
 }
 
-// familyKey picks the family's display name: the shortest member id, ties
-// broken alphabetically. In every family the current catalogue produces,
-// this is the natural "base" instrument (cello over cello-warm, tom over
-// high-tom-organic, conga over conga-open/conga-tumba, ...).
+// The shortest member id, ties alphabetical: the natural base instrument in every current family.
 func familyKey(members []instrument.ID) instrument.ID {
 	key := members[0]
 	for _, m := range members[1:] {
@@ -193,12 +162,7 @@ func familyKey(members []instrument.ID) instrument.ID {
 	return key
 }
 
-// pickFamilyReference chooses ONE reference for every member of a family to
-// render against. Candidates are every non-status ref that covers at least
-// one member; the winner is the one covering the MOST members (the
-// reference "the most members share"), tie-broken by the smallest ref id so
-// the choice is deterministic and doesn't depend on catalogue.json's
-// ordering.
+// The ref covering the MOST members, ties by smallest id, so the choice never depends on catalogue order.
 func pickFamilyReference(c wavref.Cat, members []instrument.ID) (wavref.Ref, error) {
 	memberSet := make(map[instrument.ID]bool, len(members))
 	for _, m := range members {

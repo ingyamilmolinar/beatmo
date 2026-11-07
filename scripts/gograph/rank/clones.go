@@ -20,13 +20,9 @@ const (
 	repeatWindow        = 3
 )
 
-// Clone tiers, from most to least certain. exact renames only the unit's own
-// locals (parameters, := and var declarations): a copy with renamed locals
-// matches, but code touching different fields, functions or package variables
-// does not. renamed renames every identifier consistently, so it also catches
-// copies that differ only in which names they touch (three toggles over three
-// different overlays). structural abstracts every identifier and literal: the
-// same shape holding different data.
+// Clone tiers, most certain first. exact renames only the unit's own locals; renamed renames every identifier
+// consistently (copies that touch different names); structural abstracts identifiers and literals (the same shape
+// holding different data).
 const (
 	tierExact      = "exact"
 	tierRenamed    = "renamed"
@@ -369,10 +365,8 @@ type region struct {
 	ends    []*window // last window of each member
 }
 
-// regions groups windows by hash, drops members overlapping an earlier member
-// of the same list, and extends each starting group while every member's next
-// window still forms the same group. A group whose members all continue the
-// same previous group is part of that region, not a start.
+// regions groups windows by hash, drops members overlapping an earlier member of the same list, and extends each start
+// while every member's next window forms the same group (one continuing a previous group is not a start).
 func regions(wins []*window, key func(*window) string) []*region {
 	at := map[[2]int]*window{}
 	for _, w := range wins {

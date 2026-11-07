@@ -1,27 +1,7 @@
 #!/bin/bash
-# Auto-discovers and runs browser tests with parallel execution support.
-# Timing-sensitive tests (SEQUENTIAL_TESTS) run one-at-a-time after the
-# parallel batch finishes, to avoid CPU contention.
-#
-# Usage: ./scripts/run-browser-tests.sh [--filter PATTERN] [--no-fail-fast]
-#                                       [--jobs N] [--sequential] [--list]
-#                                       [--tests "file1.js file2.js ..."]
-#
-# Options:
-#   --filter PAT   Only run tests matching pattern (e.g., "touch" or "audio")
-#   --no-fail-fast Continue running tests even after failures
-#   --jobs N       Number of parallel test jobs (default: $BROWSER_JOBS or 4)
-#   --sequential   Run ALL tests one at a time (equivalent to --jobs 1)
-#   --list         List tests that would run without executing them
-#   --tests LIST   Explicit space-separated list of test filenames to run
-#                  (skips auto-discovery)
-#
-# Environment:
-#   GO              Path to Go binary (default: auto-detect)
-#   BROWSER_JOBS    Default parallelism level (overridden by --jobs)
-#   WASM_PREBUILT   Set to 1 to skip WASM builds in test files (auto-set when
-#                   invoked via make test-browser)
-#   BROWSER_TEST_PORT_BASE  Port base for deterministic port assignment (auto-set)
+# SEQUENTIAL_TESTS run one at a time after the parallel batch, away from CPU contention. Usage: [--filter PAT]
+# [--no-fail-fast] [--jobs N] [--sequential] [--list] [--tests "a.js b.js"]. Env: GO, BROWSER_JOBS (4), WASM_PREBUILT=1,
+# BROWSER_TEST_PORT_BASE.
 
 set -euo pipefail
 
@@ -208,9 +188,6 @@ build_test_cmd_env() {
 # Track global test index for port assignment
 GLOBAL_IDX=0
 
-# ──────────────────────────────────────────────────────────────────────
-# Phase 1: Parallel tests
-# ──────────────────────────────────────────────────────────────────────
 PARALLEL_COUNT=${#PARALLEL_FILES[@]}
 STOP_EARLY=false
 
@@ -327,9 +304,7 @@ if [[ $PARALLEL_COUNT -gt 0 ]]; then
     fi
 fi
 
-# ──────────────────────────────────────────────────────────────────────
-# Phase 2: Sequential tests (timing-sensitive)
-# ──────────────────────────────────────────────────────────────────────
+# Timing-sensitive tests, one at a time.
 SEQ_COUNT=${#SEQUENTIAL_FILES[@]}
 
 if [[ $SEQ_COUNT -gt 0 ]] && [[ "$STOP_EARLY" == false ]]; then

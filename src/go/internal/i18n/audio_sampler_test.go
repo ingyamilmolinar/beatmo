@@ -2,9 +2,7 @@ package i18n
 
 import "testing"
 
-// Keys added for the audio-panel + Sampler i18n pass. Listed by literal wire
-// string so this test compiles (clean RED) before the Key consts exist and so
-// it independently pins the on-the-wire key names.
+// By literal wire string, so the test pins the on-the-wire names independently of the Key consts.
 
 // Translatable keys: ES MUST differ from EN (real Spanish DAW term).
 var audioTranslatableWant = map[Key]struct{ en, es string }{

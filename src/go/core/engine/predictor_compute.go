@@ -6,18 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// growBoolBuf returns buf grown to length n, doubling cap when it is exceeded
-// so repeated single-step extensions amortize to O(1) per step. When max > 0,
-// length and capacity are both clamped at max — once that ceiling is reached,
-// future calls return buf[:max] without reallocating, and Ensure slides the
-// retained range forward in place via slideAllRowsLocked.
-//
-// Without this, Ensure with cap=horizon reallocated on every horizon advance —
-// at production scale (~24 abs/s × 6 rows × 3 buffers) the cumulative O(N²)
-// garbage rate exceeded WASM's single-threaded GC throughput and OOMed the
-// 2 GB linear-memory ceiling at ~10 min of playback. The plateau-at-max
-// behavior is the additional fix for multi-hour sessions where geometric
-// growth alone still retained tens of MB.
+// Doubles cap, so single-step extensions amortise to O(1); at max both length and cap plateau and Ensure slides in
+// place. Per-advance reallocation OOMed WASM's 2 GB ceiling; geometric growth alone still kept tens of MB in long sessions.
 func growBoolBuf(buf []bool, n, max int) []bool {
 	if max > 0 && n > max {
 		n = max
@@ -43,9 +33,7 @@ func growBoolBuf(buf []bool, n, max int) []bool {
 	return tmp
 }
 
-// slideBoolSliceInPlace drops the first delta entries of buf in-place. The
-// underlying capacity is retained so subsequent writes can extend without
-// reallocation. Returns the resliced view.
+// Keeps the capacity, so later writes extend without reallocating.
 func slideBoolSliceInPlace(buf []bool, delta int) []bool {
 	if delta <= 0 || len(buf) == 0 {
 		return buf
@@ -58,8 +46,7 @@ func slideBoolSliceInPlace(buf []bool, delta int) []bool {
 		return buf[:0]
 	}
 	copy(buf, buf[delta:])
-	// Zero the freed tail so reused slots don't leak stale predictions if
-	// Ensure later returns a smaller horizon than windowEnd (defensive).
+	// So reused slots never leak stale predictions if a later horizon is shorter (defensive).
 	for i := len(buf) - delta; i < len(buf); i++ {
 		buf[i] = false
 	}
@@ -83,10 +70,8 @@ func (p *Predictor) slideAllRowsLocked(delta int) {
 	}
 }
 
-// Ensure grows prediction buffers to at least horizon. Once the per-row buffer
-// reaches windowCap subdivisions, further advances slide the retained range
-// forward in place rather than growing — bounding memory at O(rows × 3 ×
-// windowCap) regardless of session length.
+// Past windowCap subdivisions per row, advances slide the window in place instead of growing: memory stays
+// O(rows × 3 × windowCap) however long the session.
 func (p *Predictor) Ensure(horizon int) {
 	if horizon < 0 {
 		horizon = 0
@@ -103,11 +88,7 @@ func (p *Predictor) Ensure(horizon int) {
 	if p.windowCap <= 0 {
 		p.windowCap = defaultPredictorWindowCap
 	}
-	// The early-exit must consider visibleMinAbs: when the UI scrolls below
-	// the retained windowStart, "horizon already covered" is misleading —
-	// the LOWER edge is missing. Skip early-exit in that case so the
-	// backward-extend branch below can run. The -1 sentinel ("no anchor
-	// declared") keeps engine-only callers on the original early-exit path.
+	// Not when the UI scrolled below windowStart: then the LOWER edge is missing and the backward extend must run.
 	if !p.predDirty && horizon <= p.windowEnd && (p.visibleMinAbs < 0 || p.visibleMinAbs >= p.windowStart) {
 		if logLargeHorizon {
 			p.logger.Debugf("[predictor] Ensure early-exit (not dirty, horizon satisfied) elapsed=%v", time.Since(ensureStart))
@@ -120,13 +101,8 @@ func (p *Predictor) Ensure(horizon int) {
 		p.resetBuffersLocked(n)
 	}
 
-	// Backward extend: if the UI's visible region has scrolled below the
-	// retained window (visibleMinAbs < windowStart), the previously-evicted
-	// abs range must be rebuilt. Reset the window to start at visibleMinAbs
-	// and force a dirty rebuild so the existing context-walk + main-loop
-	// path below repopulates [visibleMinAbs, horizon). Without this branch
-	// long playback followed by a scroll-back leaves the visible cells
-	// reading false from the predictor and the grid renders all grey.
+	// The visible region scrolled below the window: restart it at visibleMinAbs and force a dirty rebuild, or a scroll-back
+	// after long playback reads false everywhere and the grid renders grey.
 	if p.visibleMinAbs >= 0 && p.visibleMinAbs < p.windowStart {
 		for row := 0; row < n; row++ {
 			if len(p.audibleByRow[row]) > 0 {
@@ -144,28 +120,13 @@ func (p *Predictor) Ensure(horizon int) {
 		p.predDirty = true
 	}
 
-	// On a dirty rebuild, the entire retained window's buffer becomes stale
-	// (the per-row counters reset, so values written before the param change
-	// no longer reflect current logic). Extend the rebuild target to cover
-	// the previously-valid range so stale buf entries at idx ∈ (horizon,
-	// p.windowEnd) cannot leak through subsequent reads. Without this,
-	// monotonically increasing Ensure calls trigger the early-exit
-	// `horizon <= windowEnd` and never overwrite the stale tail.
+	// A dirty rebuild covers the whole previously valid range, or stale entries past horizon would survive the early exit.
 	if p.predDirty && horizon < p.windowEnd {
 		horizon = p.windowEnd
 	}
 
-	// Pre-slide so the writable range [windowStart, horizon) fits within
-	// windowCap. Must happen BEFORE we choose mainStart so the dirty rebuild
-	// uses the post-slide windowStart.
-	//
-	// The slide is clamped at visibleMinAbs — the UI-declared lower edge of
-	// the currently visible region. Without this clamp the window can evict
-	// cells the user is looking at (e.g. after long playback the user pauses,
-	// resumes, and scrolls back: drum.Offset can land below windowStart and
-	// every read returns false → grey grid). Honoring visibleMinAbs lets the
-	// buffer grow above windowCap for the active region; the cap is still
-	// enforced once visibleMinAbs == 0 or follows the playhead.
+	// Before choosing mainStart, so the rebuild uses the post-slide windowStart. Clamped at visibleMinAbs so the window never
+	// evicts cells on screen (the buffer may exceed windowCap for the active region).
 	if horizon-p.windowStart > p.windowCap {
 		newStart := horizon - p.windowCap
 		if p.visibleMinAbs >= 0 && newStart > p.visibleMinAbs {
@@ -176,18 +137,13 @@ func (p *Predictor) Ensure(horizon int) {
 		}
 	}
 
-	// Compute from current windowEnd (incremental) or from windowStart (dirty
-	// rebuild). When dirty, the per-row context (counts/triggerCounts/
-	// lastTrig/lastFired/gates) is reset and re-walked across [0, windowStart)
-	// so the main loop sees correct cumulative state at idx=windowStart.
+	// Dirty: the per-row context resets and re-walks [0, windowStart) so the main loop sees correct cumulative state.
 	startIdx := p.windowEnd
 	if p.predDirty {
 		startIdx = p.windowStart
 	}
-	// The bounded dirty-rebuild optimization requires no custom programmatic
-	// Logic funcs (those use triggerCounts, which depends on actual trigger
-	// history and is not analytically seedable). Built-in LogicKind rules only
-	// use `counts` (== appearances, pure loop geometry) + last-loop state.
+	// The bounded rebuild needs no custom Logic funcs: their triggerCounts depend on real trigger history, while built-in
+	// rules use only counts (loop geometry) and last-loop state.
 	hasCustomLogic := false
 	for _, nd := range p.nodes {
 		if nd.Params.Logic != nil {
@@ -237,19 +193,9 @@ func (p *Predictor) Ensure(horizon int) {
 			lastFired = model.InvalidNodeID
 			gate = 0
 			visGate = -1
-			// Re-walk historical positions to rebuild per-row context. A full
-			// walk is O(windowStart) per dirty event — and windowStart grows
-			// unbounded with session length, so editing a node rule mid-song
-			// cost O(session) and starved the audio scheduler (the deterministic
-			// root cause of "choppy when I add node rules"; see the cost table
-			// in internal/audio/node_logic_cost_test.go). For a looping row with
-			// only built-in logic, the cumulative `counts` are pure loop
-			// geometry (counts == appearances) and seedable analytically, while
-			// last-loop state (lastTrig/lastFired/gate/visGate) settles within a
-			// couple of loops — so we seed counts and re-walk only the last few
-			// loops. boundedRewalkStart returns 0 (full walk) when this is not
-			// safe. Equivalence is pinned byte-for-byte by
-			// TestDirtyRebuildEquivalentToFullWalk.
+			// A full re-walk is O(session) per edit, which starved the scheduler mid-song. With built-in logic on a looping row,
+			// counts are loop geometry (seeded analytically) and last-loop state settles within a couple of loops, so only those are
+			// re-walked; boundedRewalkStart returns 0 (full walk) when unsafe.
 			rewalkFrom := 0
 			if !p.forceFullRebuild {
 				rewalkFrom = p.boundedRewalkStart(row, startIdx, loop, start, seg, hasCustomLogic, counts)
@@ -354,11 +300,7 @@ func (p *Predictor) Ensure(horizon int) {
 	}
 }
 
-// RebaseAt trims predictions from idx onward and rebuilds contexts up to idx
-// so future Ensure() calls extend from that point under current rules. When
-// idx is below the current sliding-window start, the buffers are reset and
-// windowStart is moved to idx; the predictor cannot recover predictions that
-// were already evicted.
+// Below the window start the buffers reset to start at idx: evicted predictions cannot be recovered.
 func (p *Predictor) RebaseAt(idx int) {
 	if idx < 0 {
 		idx = 0

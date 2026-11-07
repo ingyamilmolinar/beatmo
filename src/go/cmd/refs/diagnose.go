@@ -22,26 +22,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// diagnose.go — `refs diagnose`: a PER-AXIS synth-vs-reference diagnostic.
-//
-// This is deliberately the opposite shape of internal/audio/synthmatch's
-// Distance(): that collapses every metric into one weighted scalar, which is
-// exactly how a 7x decay-time error and a small spectral improvement can
-// cancel out (a real regression: winds work scored +17..+42% while sounding
-// worse -- see docs/superpowers/specs/2026-08-22-verdict-to-metric-mapping.md).
-// Every axis here is reported SEPARATELY, signed (delta = synth - reference),
-// with its own verdict -- never folded into a combined score.
-//
-// It reuses cmd/refs/compare.go's computeCompare (renders the synth at the
-// reference's own measured pitch, level-matches both, writes both WAVs) so
-// the diagnostic analyzes EXACTLY the clips a listener would A/B -- then runs
-// the shared internal/audio/fingerprint analyzers (used by both this CLI and
-// the game's own analyzer) on each.
+// Per-axis on purpose, the opposite of synthmatch's Distance(): one weighted scalar lets a 7x decay error and a small
+// spectral gain cancel out. Every axis is reported separately and signed (synth - reference), on exactly the clips a
+// listener would A/B (computeCompare), through the fingerprint analyzers the game uses.
 
-// The verdict and kind vocabularies now live in internal/audio/fingerprint,
-// which owns the descriptor registry and therefore owns classification. These
-// aliases keep this file's (and the acceptance test's) existing spellings
-// working unchanged while the single source of truth moves.
+// The vocabularies live in internal/audio/fingerprint, which owns classification; these aliases keep this file's spellings.
 type (
 	axisVerdict = fingerprint.Verdict
 	axisKind    = fingerprint.Kind
@@ -63,106 +48,58 @@ const (
 
 // axisResult is one (instrument, axis) row of the diagnostic.
 type axisResult struct {
-	// ID is the descriptor's stable machine key (fingerprint.Descriptor.ID),
-	// carried through so a caller can key on it instead of the human-facing
-	// Group/Name pair, which is free to change wording.
+	// The stable machine key, so callers never key on the Group/Name wording.
 	ID    string   `json:"id,omitempty"`
 	Group string   `json:"group"`
 	Name  string   `json:"axis"`
 	Kind  axisKind `json:"-"`
 	Unit  string   `json:"unit,omitempty"`
 
-	// Delta is the comparator's own rendering ("7.1x short", "+36%",
-	// "+0.341"). Stored rather than recomputed so there is ONE formatting
-	// source of truth: the pre-registry code formatted deltas here while the
-	// classifiers decided verdicts elsewhere, and the two could disagree.
+	// The comparator's own rendering ("7.1x short", "+36%"), stored so formatting and verdict have ONE source.
 	Delta string  `json:"delta,omitempty"`
 	Ref   float64 `json:"reference"`
 	Synth float64 `json:"synth"`
-	// Norm is the descriptor's scale-normalized magnitude: >=1 means at or
-	// past this axis's mismatch threshold, whatever its Kind or unit. It is
-	// the only quantity comparable ACROSS axes, so it is what `refs validate`
-	// correlates against the listener's verdicts. Never summed into a
-	// composite -- see fingerprint.Delta's own doc for why.
+	// Scale-normalised: >= 1 means at or past this axis's mismatch threshold. The only quantity comparable ACROSS axes
+	// (what refs validate correlates); never summed into a composite.
 	Norm float64 `json:"norm"`
-	// Signed is the descriptor's own raw signed difference (synth - ref, in
-	// the descriptor's units), carried through from fingerprint.Delta.Signed
-	// unnormalized -- Norm is the cross-axis-comparable magnitude, Signed
-	// keeps the sign + real units for callers that need the actual value
-	// rather than a mismatch ratio.
+	// The raw signed difference in the descriptor's units, for callers that need the value rather than a ratio.
 	Signed float64 `json:"signed"`
 
-	// Mag / MagOK carry fingerprint.Delta.Mag: the UNSIGNED magnitude the
-	// comparator actually weighed against this axis's drift and mismatch, in
-	// the units those thresholds are DECLARED in, and whether it is a
-	// measurement at all. It is what `refs calibrate-thresholds` takes
-	// percentiles of; nothing else in this struct is in the right units for
-	// that (Signed is the raw difference, which is only the compared
-	// quantity for the absolute-delta kinds).
+	// The UNSIGNED magnitude the comparator weighed, in the units its thresholds are declared in, and whether it is a
+	// measurement at all: what refs calibrate-thresholds takes percentiles of.
 	Mag   float64 `json:"mag"`
 	MagOK bool    `json:"mag_ok"`
 
 	Verdict axisVerdict `json:"verdict"`
 	Note    string      `json:"note"`
 
-	// TooLow/TooHigh describe the SIGN of the delta in axis-appropriate terms
-	// (e.g. "too short" for a seconds axis, "too low" for a Hz/fraction axis).
-	// Exposed so callers (including the acceptance-gate test) can assert
-	// direction without re-deriving it from Ref/Synth.
+	// The delta's sign in axis terms ("too short", "too low"), so callers assert direction without re-deriving it.
 	Direction string `json:"direction"` // "high" | "low" | "" (ok / undefined)
 
-	// RefNA/SynthNA carry the reason a side could not be measured, empty when
-	// it was. They exist so the report can print "n/a" instead of a zero that
-	// reads as a measurement -- and, more importantly, so an ASYMMETRY (one
-	// side measurable, the other not) is reported as the finding it is rather
-	// than buried under a generic "not measurable". A reference that decays
-	// where the synth sustains is exactly the kind of defect this tool exists
-	// to catch.
+	// Why a side could not be measured, so the report prints "n/a" rather than a zero, and an ASYMMETRY (a reference that
+	// decays where the synth sustains) is reported as the finding it is.
 	RefNA   string `json:"ref_na,omitempty"`
 	SynthNA string `json:"synth_na,omitempty"`
 
-	// Demoted mirrors fingerprint.Descriptor.Demoted: the axis is still
-	// measured and still printed (a demoted row can be the most informative
-	// thing on the page when you already know why it was demoted), but it is
-	// excluded from every ranking this report drives -- the stage-sensitivity
-	// routing list and the cross-instrument MISMATCH matrix -- because a row
-	// calibration showed to mislead must not be what sends someone to a knob.
-	// Rendered as a "[demoted]" suffix on the VERDICT cell so a reader of the
-	// table never has to remember which axes are on the list.
+	// Still measured and printed, tagged "[demoted]", but excluded from every ranking (stage routing, the MISMATCH matrix):
+	// a row calibration showed to mislead must not send someone to a knob.
 	Demoted bool `json:"demoted,omitempty"`
 
-	// RefText/SynthText are Descriptor.Headline's rendering for a measurement
-	// whose Primary() would mislead -- an all-peer vector or a track, where
-	// component 0 is just the first band/mode and carries no more authority
-	// than any other. When set they REPLACE the numeric column; Ref/Synth
-	// keep their raw Primary() so nothing downstream changes shape.
+	// Headline text for a measurement whose Primary() would mislead (an all-peer vector, a track); it REPLACES the
+	// numeric column while Ref/Synth keep their raw values.
 	RefText   string `json:"ref_text,omitempty"`
 	SynthText string `json:"synth_text,omitempty"`
 }
 
-// Per-axis thresholds and the four classifiers moved to
-// internal/audio/fingerprint (kind.go + classify.go) when the descriptor
-// registry took ownership of classification. They were moved VERBATIM;
-// diagnose_classifier_replay_test.go replays every measured (reference,
-// synth) pair in the frozen baseline through the new comparators and asserts
-// the verdicts and directions come out identical.
-
-// seriesDevCaveatTh is the reference-side partial-series-deviation above which
-// the noise-ish axes get an explicit unreliability caveat. It matches
-// fingerprint.KindSeriesDeviation's mismatch threshold: if the reference's own
-// partials diverge from a consecutive harmonic series by that much, the
-// harmonic-bin assumption underneath NoiseRatio no longer holds for it.
+// Above KindSeriesDeviation's mismatch, the reference's partials are far from a harmonic series, so NoiseRatio's
+// harmonic-bin assumption no longer holds and the noise axes get a caveat.
 var seriesDevCaveatTh = func() float64 {
 	_, mismatch := fingerprint.KindSeriesDeviation.Thresholds()
 	return mismatch
 }()
 
-// ringT60Note renders the ring-T60 row's bespoke note. When BOTH clips still
-// ring above -60dB at their end, the T60 values are equally-CLAMPED lower
-// bounds and comparing them is vacuous, so the descriptor's comparator
-// escalated to the post-peak decay RATE -- say so plainly rather than
-// printing a ratio of two bounds. When only one side is clamped the ordinary
-// ratio still carries signal, but the note names which value is a bound.
+// With BOTH clips ringing above -60 dB at their end the T60s are clamped bounds, so the comparator escalated to the
+// post-peak decay RATE; with one side clamped the ratio still carries signal and the note names the bound.
 func ringT60Note(refM, synthM fingerprint.Measurement, delta fingerprint.Delta) string {
 	if !delta.OK {
 		return "NOT MEASURABLE: " + delta.NA
@@ -195,15 +132,8 @@ func ringT60Note(refM, synthM fingerprint.Measurement, delta fingerprint.Delta) 
 	return axisNote("ring T60", delta.Direction)
 }
 
-// asymmetryNote explains why an axis could not be compared.
-//
-// The interesting case is ASYMMETRY: when one side measures fine and the other
-// does not, the reason the other failed is itself a finding about the signal,
-// not merely a gap in the tooling. A reference snare that decays cleanly while
-// the synth establishes a sustain plateau cannot be compared on body-decay --
-// but "the synth sustains where the reference does not" is precisely the
-// defect worth reporting, so it is stated rather than flattened into a shared
-// "not measurable".
+// An ASYMMETRY is itself a finding: "the synth sustains where the reference does not" is the defect, so it is stated,
+// not flattened into "not measurable".
 func asymmetryNote(refM, synthM fingerprint.Measurement, delta fingerprint.Delta) string {
 	switch {
 	case refM.OK && !synthM.OK:
@@ -283,35 +213,19 @@ type instrumentDiagnosis struct {
 	RefID      string        `json:"reference_id"`
 	Axes       []axisResult  `json:"axes"`
 
-	// Pitch/DurSec/SR record the EXACT render this diagnosis describes: the
-	// semitone offset from A3 the synth was rendered at (the reference's own
-	// measured pitch, not its stored label), the render duration, and the
-	// sample rate. They are carried so a follow-up analysis -- `-ablate`,
-	// which re-renders the same instrument once per synthesis stage -- can
-	// reproduce this render exactly. Re-deriving them would silently drift the
-	// moment renderPitch's f0-reliability rule or the -dur default changes,
-	// and an ablation of a DIFFERENT render than the one reported is a
-	// plausible-looking answer to the wrong question.
+	// The EXACT render this diagnosis describes, so -ablate reproduces it: re-deriving would drift the moment renderPitch
+	// or the -dur default changes, ablating a different render than the one reported.
 	Pitch  float64 `json:"pitch,omitempty"`
 	DurSec float64 `json:"dur_sec,omitempty"`
 	SR     int     `json:"sample_rate,omitempty"`
 
-	// RefPartialRatios/SynthPartialRatios are the raw partial-to-f0 ratio
-	// lists (fingerprint.PartialRatios.Ratios) printed side by side so a
-	// reader can see the STRUCTURE difference directly -- e.g.
-	// "ref 1.00, 4.02, 9.15 / synth 1.00, 2.00, 3.00" makes "reference is a
-	// bar, synth is a harmonic series" legible in a way no single scalar
-	// can. Not rendered as a normal axis row since they are lists, not a
-	// single ref/synth pair.
+	// The raw partial-ratio lists side by side ("ref 1.00, 4.02, 9.15 / synth 1.00, 2.00, 3.00") show a STRUCTURE
+	// difference no scalar can.
 	RefPartialRatios   []float64 `json:"ref_partial_ratios,omitempty"`
 	SynthPartialRatios []float64 `json:"synth_partial_ratios,omitempty"`
 
-	// RefClipTruncatedSec is nonzero when the reference's measured duration
-	// is at (or past) the corpus's own convert.max_sec fetch cap -- i.e.
-	// this reference WAV was truncated at fetch time, so any decay/ring
-	// axis measured against it may be looking at less of the real
-	// instrument than actually exists. Surfaced explicitly rather than
-	// silently comparing against a truncated tail (see ringT60Axis).
+	// Nonzero when the reference was truncated at fetch time (at convert.max_sec), so a decay axis may see less of the
+	// instrument than exists.
 	RefClipTruncatedSec float64 `json:"ref_clip_truncated_sec,omitempty"`
 }
 
@@ -342,50 +256,20 @@ func toWave(samples []float32, sr int, label string) wave.Wave {
 	return wave.Wave{Samples: out, SampleRate: sr, Label: label}
 }
 
-// diagnoseInstrument runs the full render+level-match+analyze pipeline for
-// inst against refID (""=default candidate) and returns the per-axis report.
-//
-// When refID is explicitly given, resolution goes through the catalogue's
-// bare Ref(id) lookup + renderCompare directly -- NOT computeCompare's
-// instrument-owns-this-ref gate (compareCandidates/pickReference) -- because
-// the acceptance-gate test needs to pin the EXACT reference a human listener
-// judged against (recorded in ear_verdicts.jsonl), which for some instruments
-// (e.g. cello-A3) was a shared family reference used by `refs audition`, not
-// one of the instrument's own `refs compare` candidates. This mirrors how
-// cmdAudition itself renders a family against a reference outside its own
-// candidate set (see renderCompare's doc comment). refID=="" keeps the
-// ordinary computeCompare path (used by -all and the bare CLI default).
+// An explicit refID resolves through the bare catalogue lookup, not computeCompare's ownership gate: the acceptance
+// test pins the EXACT reference a listener judged, which can be a shared family reference. "" takes computeCompare.
 func diagnoseInstrument(diag io.Writer, inst instrument.ID, refID string) (instrumentDiagnosis, error) {
 	return diagnoseInstrumentDur(diag, inst, refID, 0)
 }
 
-// diagnoseInstrumentDur is diagnoseInstrument's -dur-aware core. durFlag>0
-// overrides the SYNTH's render duration only (renderCompare's durFlag
-// parameter never affects the reference side, which is always whatever's
-// decoded from the corpus WAV on disk). This matters because the reference
-// clip length is fixed by the corpus's own `convert.max_sec` fetch config
-// (typically 2-3s) -- there is no way to get MORE reference audio without
-// re-fetching from the network, which is out of scope for a diagnostic
-// read. What -dur DOES let you do is render the SYNTH for longer to see how
-// it behaves past the reference's own clip length -- useful when the
-// reference's ring genuinely outlasts its clip (see refClipTruncatedSec
-// below and ringT60Axis's escalation for the case where BOTH sides clamp).
+// durFlag > 0 lengthens only the SYNTH render: the reference is whatever the corpus clip holds, so this shows how the
+// synth behaves past it when the reference's ring outlasts its clip.
 func diagnoseInstrumentDur(diag io.Writer, inst instrument.ID, refID string, durFlag float64) (instrumentDiagnosis, error) {
 	return diagnoseInstrumentOpts(diag, inst, refID, durFlag, nil)
 }
 
-// diagnoseInstrumentOpts is diagnoseInstrumentDur's param-override-aware
-// core: overrides, when non-nil, renders inst on top of its shipped defaults
-// via renderCompareOverrides (see synthmatch.RenderWithParams) instead of
-// inst's plain shipped sound -- this is how a session candidate's proposed
-// knob tweak gets diagnosed against the reference exactly like a shipped
-// instrument would.
-//
-// When refID == "" and overrides is set, there is no computeCompare
-// equivalent to fall back on (computeCompare always renders the instrument's
-// OWN default candidate reference with no override support), so the first of
-// the instrument's own candidate references (compareCandidates) is used
-// directly, mirroring computeCompare's own "no -ref given" default pick.
+// overrides render on top of inst's document, so a session candidate is diagnosed like a shipped instrument. With
+// refID "" and overrides set, the instrument's first own candidate reference is used, as computeCompare defaults.
 func diagnoseInstrumentOpts(diag io.Writer, inst instrument.ID, refID string, durFlag float64, overrides map[string]float64) (instrumentDiagnosis, error) {
 	var res compareResult
 	switch {
@@ -435,8 +319,7 @@ func diagnoseInstrumentOpts(diag io.Writer, inst instrument.ID, refID string, du
 	refWave := toWave(realSamples, realRate, res.Ref.ID)
 	synthWave := toWave(synthSamples, synthRate, string(inst))
 
-	// Bundles memoize every shared artifact (fingerprint, envelope segmentation,
-	// STFTs) so a 150-descriptor report computes each one exactly once.
+	// Each shared artifact (fingerprint, envelope, STFTs) is computed once per report.
 	refB := fingerprint.NewBundle(refWave, res.Ref.ID)
 	synthB := fingerprint.NewBundle(synthWave, string(inst))
 	refFp := refB.Fingerprint()
@@ -447,14 +330,8 @@ func diagnoseInstrumentOpts(diag io.Writer, inst instrument.ID, refID string, du
 		out.RefClipTruncatedSec = maxSec
 	}
 
-	// ---- Registry-driven axes -------------------------------------------
-	//
-	// Every axis comes from internal/audio/fingerprint's descriptor registry.
-	// This loop is the WHOLE axis-construction path: adding a measurement is a
-	// registry row, never an edit here. Applicability is evaluated against the
-	// REFERENCE bundle, because the reference defines what kind of instrument
-	// this is -- letting a synth that failed to sustain suppress the sustain
-	// axes would hide exactly the defect being looked for.
+	// Every axis comes from the descriptor registry; adding one is a registry row. Applicability is judged on the
+	// REFERENCE, which defines the instrument: a synth that failed to sustain must not suppress the sustain axes.
 	for _, d := range fingerprint.DefaultRegistry().Applicable(refB) {
 		refM := d.Extract(refB)
 		synthM := d.Extract(synthB)
@@ -502,13 +379,8 @@ func diagnoseInstrumentOpts(diag io.Writer, inst instrument.ID, refID string, du
 		out.Axes = append(out.Axes, ax)
 	}
 
-	// The noise-ish axes carry an explicit caveat when the REFERENCE itself is
-	// strongly non-harmonic: NoiseRatio counts any energy outside +/-1 bin of an
-	// ASSUMED harmonic series as noise, which is the wrong model for a bell or
-	// bar whose real partials are tonal but not where that assumption expects
-	// them. Tubular-bells is the worked case -- ref noise fraction reads 0.875,
-	// implausibly high for a bell, while ref spectral flatness reads 0.030
-	// (very pure). That contradiction is the tell.
+	// NoiseRatio counts energy off an ASSUMED harmonic series as noise, wrong for a bell whose tonal partials sit
+	// elsewhere: tubular bells read noise 0.875 with flatness 0.030, a contradiction that is the tell.
 	refSeriesDev := refFp.PartialRatioProfile.SeriesDeviation
 	if refSeriesDev >= seriesDevCaveatTh {
 		caveat := fmt.Sprintf(" (CAVEAT: reference partial series deviation=%.2f -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)", refSeriesDev)
@@ -561,8 +433,7 @@ func formatValue(a axisResult, v float64, na string) string {
 	if na != "" {
 		return "n/a"
 	}
-	// An explicit Unit wins: a rate (Hz/s, dB/s, 1/s^2) must not print with
-	// the bare "Hz" its Kind's default would supply.
+	// A rate (Hz/s, dB/s) must not print with its Kind's bare "Hz".
 	if a.Unit != "" {
 		return fmt.Sprintf("%.4g %s", v, a.Unit)
 	}
@@ -576,11 +447,7 @@ func formatValue(a axisResult, v float64, na string) string {
 	}
 }
 
-// formatValueText is formatValue with the descriptor's Headline override
-// applied: an all-peer vector or track prints what it IS ("(vector: 6/10
-// bands measurable)") instead of offering component 0 as if it were the
-// reading. The n/a case still wins -- a side that could not be measured has
-// no headline either.
+// A vector or track prints what it IS ("(vector: 6/10 bands measurable)"); n/a still wins.
 func formatValueText(a axisResult, v float64, na, text string) string {
 	if na != "" {
 		return "n/a"
@@ -591,11 +458,7 @@ func formatValueText(a axisResult, v float64, na, text string) string {
 	return formatValue(a, v, na)
 }
 
-// formatVerdict renders the VERDICT cell, tagging demoted axes so the reader
-// of the table does not have to carry the demotion list in their head. A
-// demoted row is still shown with its real verdict -- the demotion says "do
-// not RANK on this", not "this measurement is meaningless" -- but the tag
-// travels with it everywhere it is printed.
+// The demotion says "do not RANK on this", not "meaningless", so the real verdict shows with the tag.
 func formatVerdict(a axisResult) string {
 	v := string(a.Verdict)
 	if !a.Demoted {
@@ -651,11 +514,7 @@ func printDiagnosis(w io.Writer, d instrumentDiagnosis) {
 	}
 }
 
-// formatRatios renders a partial-ratio list as "1.00, 4.02, 9.15" (or
-// "(none)" when empty) -- printed directly beside the axis table so the
-// STRUCTURE difference between two partial sequences is legible at a
-// glance, which no single scalar delta can convey (see instrumentDiagnosis's
-// RefPartialRatios/SynthPartialRatios doc comment).
+// Printed beside the table, where a structure difference is legible at a glance.
 func formatRatios(ratios []float64) string {
 	if len(ratios) == 0 {
 		return "(none)"
@@ -667,11 +526,7 @@ func formatRatios(ratios []float64) string {
 	return strings.Join(parts, ", ")
 }
 
-// warnAblateIgnoredByJSON says out loud that -ablate did nothing on the -json
-// path. The matrix is a report shape, not an axis row, so it has no JSON
-// rendering -- and a flag that exits 0 having silently done nothing is exactly
-// what sends someone looking for a bug in the analysis instead of in their
-// command line.
+// The matrix has no JSON shape, and a flag that exits 0 having done nothing sends people hunting bugs in the analysis.
 func warnAblateIgnoredByJSON(diag io.Writer, ablate bool) {
 	if !ablate {
 		return
@@ -679,25 +534,14 @@ func warnAblateIgnoredByJSON(diag io.Writer, ablate bool) {
 	fmt.Fprintln(diag, "refs diagnose: -ablate is a report-only addendum; ignored with -json")
 }
 
-// printAblation prints, for the axes the report called MISMATCH, which
-// synthesis stages actually move them -- the bridge from "what is wrong" to
-// "which knob group to reach for".
-//
-// Only MISMATCH rows are listed: the whole point is to route the axes that
-// need fixing, and a full stage x axis matrix (which -all -ablate does print)
-// buries them. An axis no stage moves is reported as such rather than omitted:
-// "nothing in the parameter set touches this" is a finding -- it means the gap
-// is engine-level (a missing model), not a tuning job.
+// Only MISMATCH rows (the full matrix is -all -ablate's), and an axis no stage moves is reported, not omitted: the gap
+// is then engine-level, a missing model, not a tuning job.
 func printAblation(w io.Writer, d instrumentDiagnosis, rep synthdiag.Report) {
 	fmt.Fprintln(w, "\n-- stage sensitivity (which stage moves each MISMATCH axis; not a decomposition, does not sum) --")
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "AXIS\tTOP STAGES (\u0394norm above the no-effect floor when the stage is at identity)")
 	for _, a := range d.Axes {
-		// Demoted axes are excluded: this list is a ROUTING table ("which
-		// knob group should I reach for"), and routing someone to a stage on
-		// the strength of an axis calibration showed to mislead is the exact
-		// failure the demotion exists to prevent. The row is still in the
-		// table above, tagged, for anyone who wants to look at it.
+		// A routing table must not send anyone to a stage on an axis calibration showed to mislead; it stays tagged above.
 		if a.Verdict != verdictMismatch || a.ID == "" || a.Demoted {
 			continue
 		}
@@ -715,10 +559,7 @@ func printAblation(w io.Writer, d instrumentDiagnosis, rep synthdiag.Report) {
 	tw.Flush()
 }
 
-// printAblationMatrix prints the FULL stage x axis sensitivity matrix. Used by
-// -all -ablate, where the cross-instrument question is "does the same stage
-// dominate the same axis everywhere", which needs every cell, not just the
-// MISMATCH rows.
+// -all -ablate asks whether one stage dominates one axis everywhere, which needs every cell.
 func printAblationMatrix(w io.Writer, rep synthdiag.Report) {
 	fmt.Fprintf(w, "\n-- stage x axis sensitivity matrix: %s (\u0394norm above the no-effect floor; 0 = no effect, '-' = not comparable) --\n", rep.Instrument)
 	if len(rep.Stages) == 0 {
@@ -746,15 +587,10 @@ func printAblationMatrix(w io.Writer, rep synthdiag.Report) {
 	tw.Flush()
 }
 
-// printSummaryMatrix prints, for -all, a compact instrument x axis matrix
-// showing ONLY the MISMATCHes -- the cross-instrument-pattern view. Rows are
-// sorted by instrument; columns are the union of axis names encountered, in
-// first-seen order.
+// printSummaryMatrix shows only the MISMATCHes, instrument × axis (columns in first-seen order): the cross-instrument view.
 func printSummaryMatrix(w io.Writer, all []instrumentDiagnosis) {
-	// Demoted axes get no column at all: this matrix exists to expose
-	// CROSS-INSTRUMENT patterns, and an axis that misleads on one instrument
-	// misleads on all of them -- a demoted row would paint a column of
-	// MISMATCHes that reads as the strongest pattern on the page.
+	// A demoted axis gets no column: it misleads on every instrument, and a column of MISMATCHes would read as the
+	// strongest pattern on the page.
 	var axisOrder []string
 	seenAxis := map[string]bool{}
 	for _, d := range all {
@@ -868,10 +704,7 @@ func runDiagnose(w, diag io.Writer, inst instrument.ID, all bool, asJSON bool, d
 	return nil
 }
 
-// emitAblation runs the ablation for d's OWN render (same pitch, duration,
-// sample rate and param overrides) and prints it. A failure is reported to
-// diag and does not fail the diagnosis: the per-axis report is the command's
-// answer, and the stage routing is an addendum to it.
+// A failure goes to diag without failing the diagnosis: the stage routing is an addendum.
 func emitAblation(w, diag io.Writer, d instrumentDiagnosis, full bool, overrides map[string]float64) {
 	rep, err := synthdiag.Ablate(d.Instrument, d.Pitch, d.SR, d.DurSec, overrides)
 	if err != nil {
@@ -885,15 +718,8 @@ func emitAblation(w, diag io.Writer, d instrumentDiagnosis, full bool, overrides
 	printAblation(w, d, rep)
 }
 
-// parseOverrideList parses a `-override` value: a comma-separated list of
-// `key=value` pairs, each value a float. It is the CLI door onto
-// diagnoseInstrumentOpts's overrides argument, so a candidate's proposed knob
-// tweak can be diagnosed WITHOUT editing a seed — which is exactly what
-// authoring audition_candidates.json needs (the candidates are overrides, and
-// seeds are off-limits to that authoring loop).
-//
-// An empty string yields a nil map (meaning "no overrides", the shipped
-// sound), so callers can pass the flag's zero value straight through.
+// The CLI door onto the overrides, so a candidate tweak is diagnosed without editing a document; "" = nil = the shipped
+// sound.
 func parseOverrideList(s string) (map[string]float64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -925,13 +751,8 @@ func parseOverrideList(s string) (map[string]float64, error) {
 	return out, nil
 }
 
-// validateOverrideKeys rejects an override key that is not a parameter of
-// inst's recipe. Without this an unknown key is silently DROPPED by the render
-// path, so the operator measures the shipped sound while believing they
-// measured a candidate — the same failure mode
-// TestShippedCandidates_AreLive guards for the shipped candidates file, moved
-// to the CLI door. The known set is the recipe defaults merged with the
-// instrument's own overrides, which is exactly what that test uses.
+// An unknown key would be silently dropped by the render, measuring the shipped sound while the operator believes it
+// is the candidate. Known = the instrument's merged params.
 func validateOverrideKeys(inst instrument.ID, ov map[string]float64) error {
 	if len(ov) == 0 {
 		return nil

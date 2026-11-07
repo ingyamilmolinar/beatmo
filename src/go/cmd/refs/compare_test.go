@@ -35,9 +35,7 @@ func TestComputeGains_SilentInputReturnsUnityGain(t *testing.T) {
 }
 
 func TestClampGainsForPeak_PreventsClipping(t *testing.T) {
-	// realPeak 0.5 with gain 3 would clip to 1.5; the guard must bring the
-	// WORST resulting peak down to the ceiling while keeping the two gains'
-	// ratio (their relative loudness) intact.
+	// 0.5 x 3 would clip: the WORST peak comes down to the ceiling, the gains' ratio intact.
 	realGain, synthGain := 3.0, 1.5
 	realPeak, synthPeak := 0.5, 0.6
 	origRatio := realGain / synthGain
@@ -212,12 +210,8 @@ func TestRunCompare_UnknownMatchModeErrors(t *testing.T) {
 	}
 }
 
-// bassoon has exactly one candidate reference (bassoon-A2), staged here as a
-// generated fixture -- so this exercises the full render + level-match +
-// write pipeline with no network and no real recording. The synth
-// render itself is the -tags test stub (see render_stub.go): its content is
-// deliberately NOT asserted here, only that the pipeline completes and
-// writes both files where documented.
+// The full pipeline with no network or recording: bassoon's one reference as a generated fixture, and the -tags test synth
+// stub, whose content is not asserted.
 func TestRunCompare_FullRun_WritesLevelMatchedFilesUnderEnvDir(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(wavref.EnvVar, tmp)
@@ -345,9 +339,7 @@ func TestRunCompareSh_PrintsOnlyTheFourKeysOnStdout(t *testing.T) {
 		t.Errorf("runCompareSh must still write the SYNTH wav: %v", err)
 	}
 
-	// The human-readable report must land on diag (stderr in practice), not
-	// be silently dropped -- runCompareSh renders it there instead of doing
-	// a second full pipeline run.
+	// The report must land on diag, not be dropped: -sh renders it there instead of running the pipeline twice.
 	diagOut := diag.String()
 	for _, want := range []string{"F0 (Hz)", "REAL", "SYNTH", "What to listen for"} {
 		if !strings.Contains(diagOut, want) {
@@ -374,9 +366,7 @@ func TestRunCompareList_ExcludesStatusOnlyInstrument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Catalogue: %v", err)
 	}
-	// accordion has only a status (needs-source/synthetic) entry in the
-	// catalogue -- no real reference audio -- so it must not be listed as
-	// comparable.
+	// Only a status entry and no real audio: not comparable.
 	for _, r := range c.ForInstrument(roster.Accordion) {
 		if r.Status == "" {
 			t.Skip("accordion now has a real reference; pick another status-only instrument for this test")
@@ -396,11 +386,7 @@ func TestRunCompareList_ExcludesStatusOnlyInstrument(t *testing.T) {
 	}
 }
 
-// stageGeneratedRefs writes a generated sine fixture under each named
-// reference's catalogue filename inside root, so a test that drives the real
-// render pipeline needs no recording. Reference audio is never committed: these
-// tests used to resolve it from an in-tree corpus that no longer exists (and
-// most of whose files were never tracked, so CI could not run them either).
+// A generated sine under each reference's catalogue filename, so a test drives the real pipeline with no recording.
 func stageGeneratedRefs(t *testing.T, root string, ids ...string) {
 	t.Helper()
 	c, err := wavref.Catalogue()

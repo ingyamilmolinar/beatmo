@@ -14,28 +14,11 @@ import (
 // generatedPath is the committed table this guard defends.
 const generatedPath = "../../internal/audio/instrument_fundamentals.gen.go"
 
-// TestInstrumentFundamentalsUpToDate re-measures every instrument and fails
-// when the committed table no longer matches.
-//
-// This is the whole answer to "what happens when an instrument gets retuned?".
-// The table records what each voice SOUNDED at generation time, so a seed
-// change that moves a fundamental makes it stale — and a stale table is a wrong
-// note name, silently, on both platforms. Rather than recomputing at runtime
-// (impossible in the browser: the C DSP is Emscripten-side, so Go on wasm never
-// holds PCM), the staleness is made impossible to ignore: this fails the build
-// and `make gen-fundamentals` fixes it, so a retune is caught in review.
-//
-// It compares the RENDERED SOURCE rather than the parsed values so that a
-// change to the generator's output — a new field, a different rounding — is
-// caught too, matching how the repo's other *.gen.go files are guarded.
+// A stale table is a wrong note name, silently, on both platforms, and the browser cannot re-measure (Go on wasm never
+// holds the C render's PCM). It compares the rendered SOURCE, so a generator output change is caught too.
 func TestInstrumentFundamentalsUpToDate(t *testing.T) {
 	if renderIsStub {
-		// Deliberately a visible skip and not a build tag. Under `-tags test`
-		// synthmatch renders a deterministic pure-Go stub, so re-measuring here
-		// would compare the real committed values against synthetic ones and
-		// fail for no reason. Build-tagging the file out instead would make
-		// `go test -tags test ./...` report a silent pass — which is exactly how
-		// a byte-identity guard in this repo went unnoticed for a whole phase.
+		// A visible skip, not a build tag: under -tags test the render is a stub, and a tagged-out file would report a silent pass.
 		t.Skip("render path is the -tags test stub; run without -tags test (needs CGO + build/libdrums.a)")
 	}
 
@@ -61,14 +44,8 @@ func TestInstrumentFundamentalsUpToDate(t *testing.T) {
 	}
 }
 
-// TestAgreementBandIsCalibrated pins the empty band agreementToleranceSemis
-// sits in, so a DSP change that narrows it fails here rather than silently
-// reclassifying an instrument.
-//
-// The guard distinguishes a legitimate pitch-envelope drop (a recipe whose
-// `pitch` post stage bends the voice below its oscillator setting) from an
-// octave-class detector error. Those two populations must stay separated by a
-// wide, empty margin for a single threshold to tell them apart at all.
+// The band agreementToleranceSemis sits in must stay wide and empty: it separates a pitch-envelope drop below the
+// oscillator setting from an octave-class detector error.
 func TestAgreementBandIsCalibrated(t *testing.T) {
 	if renderIsStub {
 		t.Skip("render path is the -tags test stub; run without -tags test (needs CGO + build/libdrums.a)")
@@ -104,25 +81,14 @@ func TestAgreementBandIsCalibrated(t *testing.T) {
 		worst, worstID, agreementToleranceSemis, octaveClassSemis)
 }
 
-// TestF0SupportBandIsCalibrated pins the empty band that
-// fingerprint.f0SupportMaxPartialRatio sits inside, the same way
-// TestAgreementBandIsCalibrated pins the agreement tolerance.
-//
-// The gate separates two populations by where the spectrum's lowest significant
-// partial sits relative to the claimed f0: a real pitch has one within its first
-// few harmonics (even a missing-fundamental voice, at ~3x), while a cymbal or a
-// hi-hat has none until 6x or beyond. A single threshold can only tell them
-// apart while that gap stays wide and empty, so the gap is asserted rather than
-// assumed — a DSP change that narrows it fails here instead of silently
-// renaming an instrument's note or taking one away.
+// The lowest significant partial of a real pitch sits within its first few harmonics (~3x for a missing fundamental);
+// a cymbal's sits at 6x or beyond. One threshold separates them only while that gap stays wide and empty.
 func TestF0SupportBandIsCalibrated(t *testing.T) {
 	if renderIsStub {
 		t.Skip("render path is the -tags test stub; run without -tags test (needs CGO + build/libdrums.a)")
 	}
 
-	// Widest lowest-partial ratio among instruments we DO name a note for,
-	// and narrowest among those we do not. The threshold must sit between them
-	// with real margin on each side.
+	// The threshold must sit between these with real margin on each side.
 	supportedMax, supportedMaxID := 0.0, ""
 	rejectedMin, rejectedMinID := math.Inf(1), ""
 

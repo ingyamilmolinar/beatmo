@@ -7,11 +7,7 @@ import (
 	"time"
 )
 
-// global_bus_test.go covers the package-level Publish/PublishKind/Subscribe
-// forwarders against the lazily-initialized process-wide GlobalBus(), plus
-// IsVerbose and Stats(). Round 1 hit these helpers transitively from
-// other packages, but coverage attributes those calls to the call sites
-// — these direct tests make the contract explicit.
+// Direct tests of the package-level forwarders: calls from other packages attribute coverage to their call sites.
 
 func awaitEvent(t *testing.T, k Kind, do func()) Event {
 	t.Helper()
@@ -86,8 +82,7 @@ func TestGlobalBusPublishMatchesPublishKind(t *testing.T) {
 }
 
 func TestStatsCountsPublished(t *testing.T) {
-	// Use a private bus so the count is deterministic (the global bus
-	// is shared across the whole test binary).
+	// A private bus, so the count is deterministic (the global one is shared by the whole binary).
 	b := NewBus(context.TODO(), Options{Name: "test.stats"})
 	t.Cleanup(func() { _ = b.Close() })
 
@@ -116,10 +111,8 @@ func TestStatsCountsPublished(t *testing.T) {
 }
 
 func TestIsVerbose(t *testing.T) {
-	// Spec lives in events.go: only drag-progress and instrument-param-changed
-	// are verbose. Camera pan+zoom were promoted out of verbose (they now emit
-	// once per gesture, not per frame). Lock the contract to prevent quiet
-	// additions that would expand sink filtering.
+	// Only drag-progress and instrument-param are verbose (camera kinds fire once per gesture); pinned so the filtered set
+	// never grows quietly.
 	verbose := []Kind{EventDragProgress, EventInstrumentParamChanged}
 	for _, k := range verbose {
 		if !IsVerbose(k) {

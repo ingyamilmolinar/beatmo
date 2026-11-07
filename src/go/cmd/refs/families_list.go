@@ -26,31 +26,19 @@ const chosenMarker = "*"
 // prose lives in ear_verdicts.jsonl; this view is for scanning.
 const noteEllipsis = "..."
 
-// noteMaxLen is how much of a verdict note survives into the scan view.
-// One recorded note runs past 300 characters; wrapping the terminal would
-// destroy the column alignment that makes the report scannable at all.
+// A note that wraps the terminal destroys the column alignment that makes the report scannable.
 const noteMaxLen = 60
 
-// noRefLabel marks a registered instrument that has NO valid reference: it
-// renders its own sound (its document differs from its base's), so its base
-// instrument's clip is not ground truth for it. These are the audit's
-// to-do list -- `refs adopt` is how each one gets a reference.
+// A registered instrument with NO valid reference: its document differs from its base's, so the base's clip is not
+// its ground truth. The to-do list for refs adopt.
 const noRefLabel = "NO REF"
 
-// viaLabel marks a registered instrument BORROWING its base's reference.
-// Legitimate only when the variant renders exactly the base's sound,
-// i.e. it is the same sound; the label keeps a borrowed clip from being
-// mistaken for ground truth adopted for that variant.
+// Borrowing the base's reference, legitimate only when the variant IS the base's sound; labelled so a borrowed clip is
+// never taken for adopted ground truth.
 const viaLabel = "via"
 
-// familiesReport renders the audit view of the corpus: every instrument
-// family, the reference its members are auditioned against, and what the
-// listener last said about it.
-//
-// It is a value with an explicit Presence seam rather than a function that
-// calls wavref.Resolve directly, so the rendering is testable against a
-// synthetic catalogue without depending on which audio happens to be on
-// the developer's disk.
+// The audit view: every family, its reference and the listener's last word. Presence is an explicit seam, so the
+// rendering is testable without depending on the developer's disk.
 type familiesReport struct {
 	Cat      wavref.Cat
 	Verdicts []earVerdict
@@ -99,28 +87,19 @@ func baseOf(id instrument.ID, roster []instrument.ID) instrument.ID {
 func rosterExtras(roster []instrument.ID, covered, classified map[instrument.ID]bool, familyOf map[instrument.ID]instrument.ID, soundOf func(instrument.ID) string) map[instrument.ID][]rosterMember {
 	out := map[instrument.ID][]rosterMember{}
 	for _, id := range roster {
-		// An instrument the catalogue has already classified as
-		// synthetic or needs-source is deliberately without a
-		// reference, not an oversight. Listing it as NO REF would bury
-		// the genuinely unclassified ids -- the ones adoption is for --
-		// under decisions that were already made and recorded.
+		// Already classified as synthetic / needs-source: a recorded decision, not an oversight, and listing it as NO REF would
+		// bury the ids adoption is for.
 		if covered[id] || classified[id] {
 			continue
 		}
 		base := baseOf(id, roster)
-		// A variant inherits its base's classification. "No acoustic
-		// counterpart exists for a kick" is a statement about the
-		// instrument, not about one recipe: kick-snap and kick-lofi are
-		// synthetic kicks too, and listing them as work to do would
-		// bury the ids that genuinely need a recording.
+		// A variant inherits its base's classification: "no acoustic counterpart exists for a kick" is about the instrument,
+		// so kick-snap and kick-lofi are synthetic kicks too.
 		if base != "" && classified[base] {
 			continue
 		}
 		m := rosterMember{ID: id, Base: base}
-		// Borrowing is only sound when the variant IS the base's sound.
-		// A variant with its own document (snare-crack, kick-lofi) renders
-		// differently, so judging it against the base's clip would
-		// measure the wrong thing.
+		// Borrowing only when the variant IS the base's sound; one with its own document would be judged against the wrong clip.
 		if base != "" && soundOf(id) != "" && soundOf(id) == soundOf(base) {
 			m.Borrows = true
 		}
@@ -132,10 +111,8 @@ func rosterExtras(roster []instrument.ID, covered, classified map[instrument.ID]
 	return out
 }
 
-// latestVerdicts indexes verdicts by family, keeping the LAST row for each.
-// recordVerdict supersedes by appending, so an older opinion can still be
-// sitting above the current one in the file; showing a stale verdict would
-// be worse than showing none.
+// recordVerdict supersedes by appending, so an older opinion can sit above the current one; a stale verdict is worse
+// than none.
 func latestVerdicts(vs []earVerdict) map[instrument.ID]earVerdict {
 	out := make(map[instrument.ID]earVerdict, len(vs))
 	for _, v := range vs {
@@ -144,10 +121,8 @@ func latestVerdicts(vs []earVerdict) map[instrument.ID]earVerdict {
 	return out
 }
 
-// verdictSummary renders one family's recorded judgement for the header
-// line: the raw verdict letter (the same alphabet `refs audition` records --
-// "1"/"2"/"y" an option won, "p" partly, "n" none close), which member won,
-// and the prose note if one was captured.
+// The raw verdict letter (refs audition's alphabet: "1"/"2"/"y" an option won, "p" partly, "n" none close), the
+// winner, and the note.
 func verdictSummary(v earVerdict, ok bool) string {
 	if !ok {
 		return "unaudited"
@@ -177,9 +152,7 @@ func truncateNote(s string) string {
 // for further columns.
 func quoteNote(s string) string { return `"` + s + `"` }
 
-// f0Label renders a reference's measured fundamental. Percussion clips
-// legitimately have no usable f0, and a measured 0 means "not measurable"
-// rather than "DC" -- so it prints as a dash rather than 0.0Hz.
+// Percussion has no usable f0, and a measured 0 means "not measurable", so it prints as a dash.
 func f0Label(r wavref.Ref) string {
 	if r.Measured == nil || r.Measured.F0Hz <= 0 {
 		return "f0=-"
@@ -187,14 +160,8 @@ func f0Label(r wavref.Ref) string {
 	return fmt.Sprintf("f0=%.1fHz", r.Measured.F0Hz)
 }
 
-// ownReferences lists every real reference covering inst, sorted by id.
-//
-// A family member is auditioned against the family's SHARED reference, which
-// need not cover it: cello-A3 covers only cello-warm, while "cello" itself
-// is covered by cello-C2 and cello-freesound-alt. An audit has to show both
-// halves of that -- the member is JUDGED against one clip and HASHED against
-// another -- and it has to show ALL of them, because an instrument carrying
-// two candidate references is a `refs choose` decision nobody has made yet.
+// A member is auditioned against the family's SHARED reference, which need not cover it, so its own references show
+// too: all of them, since two candidates on one instrument is a refs choose decision nobody has made.
 func ownReferences(c wavref.Cat, inst instrument.ID) []wavref.Ref {
 	var out []wavref.Ref
 	for _, r := range c.ForInstrument(inst) {
@@ -216,10 +183,7 @@ func coversInstrument(r wavref.Ref, inst instrument.ID) bool {
 	return false
 }
 
-// statusCounts tallies the instruments that form no family because their
-// ref carries a status instead of audio. "What is NOT auditable" is half of
-// an audit, but listing them here would drown the families -- refs doctor
-// already enumerates them, so the report only counts them.
+// Counted, not listed: refs doctor already enumerates them, and listing would drown the families.
 func statusCounts(c wavref.Cat) (synthetic, needsSource int) {
 	for _, r := range c.Refs {
 		switch r.Status {
@@ -253,20 +217,15 @@ func familyKeyFor(fams []auditionFamily, name string) string {
 	return name
 }
 
-// render writes the report. Families come from buildAuditionFamilies -- the
-// same grouping `refs audition` uses -- so the listing can never disagree
-// with what `make ab-all` will actually ask you about.
+// From buildAuditionFamilies, the grouping refs audition uses, so the listing never disagrees with what make ab-all asks.
 func (rep familiesReport) render(w io.Writer) error {
 	fams, err := buildAuditionFamilies(rep.Cat)
 	if err != nil {
 		return err
 	}
 	allFams := fams
-	// Reuses `refs audition`'s own -families parser, so a typo is rejected
-	// with the same message and the same list of valid keys rather than
-	// silently rendering an empty report. The filter is resolved through
-	// familyKeyFor first: you audit by instrument id, and the family key is
-	// not printed anywhere you would have seen it before running this.
+	// refs audition's own -families parser (same rejection, same valid keys), resolved through familyKeyFor first: you
+	// audit by instrument id, and the family key is printed nowhere you would have seen it.
 	if rep.Filter != "" {
 		fams, err = filterFamilies(fams, familyKeyFor(fams, rep.Filter))
 		if err != nil {
@@ -288,10 +247,7 @@ func (rep familiesReport) render(w io.Writer) error {
 	}
 	byFamily := latestVerdicts(rep.Verdicts)
 
-	// Every registered instrument a family already covers, plus which
-	// family covers it -- computed over ALL families (not the filtered
-	// view) so a roster extra is attributed to its real family even when
-	// the report is narrowed to one.
+	// Over ALL families, not the filtered view, so a roster extra is attributed to its real family when the report is narrowed.
 	covered := map[instrument.ID]bool{}
 	familyOf := map[instrument.ID]instrument.ID{}
 	for _, f := range allFams {
@@ -310,17 +266,12 @@ func (rep familiesReport) render(w io.Writer) error {
 	}
 	extras := rosterExtras(roster, covered, classified, familyOf, soundOf)
 
-	// tabwriter pads every cell, including the empty trailing ones member
-	// rows emit to hold the column alignment. That leaves trailing spaces
-	// on most lines of a report people pipe to a file, so the table is
-	// buffered and each line right-trimmed on the way out.
+	// tabwriter pads the empty trailing cells member rows emit for alignment, so each line is right-trimmed on the way out.
 	var table bytes.Buffer
 	tw := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "FAMILY / MEMBER\tREFERENCE\tSTATE\tF0\tVERDICT")
 	instruments, audited, needRef := 0, 0, 0
-	// Counted as a SET of reference ids, not a tally of rows. The summary
-	// reports references, and one unresolvable reference shared by three
-	// members is one thing to go and fetch, not three.
+	// A SET of ref ids: one unresolvable reference shared by three members is one thing to fetch.
 	missing := map[string]bool{}
 	for _, fam := range fams {
 		v, ok := byFamily[fam.Key]
@@ -341,13 +292,8 @@ func (rep familiesReport) render(w io.Writer) error {
 			if ok && v.Chosen == m {
 				marker = chosenMarker
 			}
-			// A member the family reference already covers repeats
-			// nothing; one it does not gets its own reference(s)
-			// spelled out.
-			// A member's OWN reference -- which is what `refs adopt`
-			// creates -- has to reach the summary too. Counting only the
-			// family reference let a row print "missing" under a summary
-			// claiming nothing was missing locally.
+			// A member the family reference does not cover gets its own references spelled out, and they reach the missing count:
+			// a member's own reference is what refs adopt creates.
 			var ids, states []string
 			if !coversInstrument(fam.Reference, m) {
 				for _, r := range ownReferences(rep.Cat, m) {
@@ -376,11 +322,7 @@ func (rep familiesReport) render(w io.Writer) error {
 		}
 	}
 
-	// Registered instruments whose base belongs to no family at all still
-	// have to appear: silently dropping one is the blind spot this report
-	// exists to remove.
-	// Orphans belong to no family, so a view narrowed to one family must
-	// not drag them along.
+	// A registered instrument whose base is in no family must still appear; a view narrowed to one family leaves orphans out.
 	if orphans := extras[""]; len(orphans) > 0 && rep.Filter == "" {
 		fmt.Fprintf(tw, "(no family)\t\t\t\t\n")
 		for _, e := range orphans {

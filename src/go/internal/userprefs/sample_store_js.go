@@ -9,15 +9,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Browser SampleStore backend. PCM payloads (MBs) exceed localStorage's ~5 MB
-// cap, so samples live in IndexedDB via a small JS shim (idbGetAllSamples /
-// idbPutSample / idbDeleteSample in audio.js). IndexedDB is async; the Go
-// SampleStore surface is synchronous, so we keep an in-memory cache hydrated
-// once from IndexedDB (blocking on the read Promise via a channel, the same
-// pattern audio.SelectWAV uses) and write through on Save/Delete. Hydration
-// happens on the first LoadSamples — which the bootstrap calls (through
-// audio.ApplySavedSamples) before the first Layout, so the picker is populated
-// in time.
+// PCM payloads exceed localStorage's ~5 MB, so samples live in IndexedDB (audio.js shims). IndexedDB is async and the
+// SampleStore surface is not, so a cache is hydrated once (blocking on the Promise) and written through; the bootstrap
+// hydrates before the first Layout.
 var (
 	sampleCacheMu  sync.RWMutex
 	sampleCache    = map[instrument.ID]SampleBlob{}

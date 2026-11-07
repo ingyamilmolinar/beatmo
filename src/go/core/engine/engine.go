@@ -28,10 +28,7 @@ type Engine struct {
 	subs   []chan Event
 	ctx    context.Context
 	cancel context.CancelFunc
-	// runDone is closed by run() on exit so Close() can join the goroutine
-	// deterministically. Without this, Close() returned while run was still
-	// finishing its select case, allowing goleak to observe a transient
-	// "leaked" goroutine in callers that immediately verify (e.g., UI tests).
+	// Closed by run() on exit, so Close joins the goroutine deterministically and goleak never sees a transient one.
 	runDone chan struct{}
 	logger  *game_log.Logger
 	// Predictor holds prediction buffers/contexts outside the UI.
@@ -145,9 +142,7 @@ func (e *Engine) SetBPM(bpm int) { e.sched.SetBPM(bpm) }
 // BPM returns the current scheduler BPM.
 func (e *Engine) BPM() int { return e.sched.CurrentBPM() }
 
-// Close terminates the engine goroutine and waits for it to exit. Bounded by
-// engineCloseJoinTimeout so a hung run() loop surfaces as a logged warning
-// instead of a TestMain-level goleak panic 60s later.
+// Bounded by engineCloseJoinTimeout, so a hung run() is a logged warning instead of a goleak panic later.
 func (e *Engine) Close() {
 	if e == nil {
 		return
@@ -169,9 +164,7 @@ func (e *Engine) Close() {
 	}
 }
 
-// engineCloseJoinTimeout caps how long Engine.Close waits for run() to
-// observe ctx cancellation and return. The select case <-e.ctx.Done() fires
-// within one ticker quantum (~16ms); 100ms is comfortably above that.
+// ctx.Done fires within one ticker quantum (~16 ms).
 const engineCloseJoinTimeout = 100 * time.Millisecond
 
 // BeatLength exposes the scheduler's beat length.

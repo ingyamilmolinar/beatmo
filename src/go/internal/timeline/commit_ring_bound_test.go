@@ -6,18 +6,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestCommitRingBounded asserts that commitRing capacity and the immutables
-// sidecar both stay bounded under sustained playback-kind appends. The
-// production WASM OOM at ~55 min of playback was driven in part by these two
-// timeline structures growing unbounded (the other half being
-// game.paritySeqDecisions; see TestParityDecisionsBoundedUnderScanStarvation).
-//
-// Bounds reflect the retention policy in service.go:
-//   - commitRing cap ≤ commitRingCapMultiplier × loopLen (= 8 × 64 = 512).
-//     setCapMax in append() drops the oldest entry once the ceiling is hit;
-//     immutables preserves the trimmed history for any consumer that needs it.
-//   - immutables[row] ≤ immutablesPerRowMax (= 1024). pruneImmutablesRow
-//     drops abs below (latestAbs - cap + 1) at each write.
+// The ring and the immutables sidecar stay bounded under sustained playback appends (unbounded, they fed a WASM OOM in
+// long sessions): ring ≤ commitRingCapMultiplier × loopLen, immutables[row] ≤ immutablesPerRowMax, the trimmed history
+// kept elsewhere.
 func TestCommitRingBounded(t *testing.T) {
 	const loopLen = 64
 	const appends = 100_000

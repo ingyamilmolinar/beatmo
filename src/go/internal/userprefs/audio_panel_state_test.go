@@ -79,7 +79,4 @@ func TestAudioPanelStateDoc_OmittedInDefaultPrefs(t *testing.T) {
 		t.Fatalf("SaveAudioPanelState (default): %v", err)
 	}
 	_ = store.WaitFlushed()
-	// We don't read the file content directly here — the parity test
-	// above + the roundtrip test cover the meaningful invariants. This
-	// test just pins the "save default is acceptable" branch.
 }

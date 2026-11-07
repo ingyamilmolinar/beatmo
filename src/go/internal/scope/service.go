@@ -9,14 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// ringBuf is a simple mutex-protected append buffer used by the scope
-// service to collect samples pushed from the audio thread.
-//
-// lastPeak / lastRMS hold the latest batch statistics as float64 bits
-// stored atomically — populated in push() so UI consumers can read
-// per-stage stats without taking the buf mutex. Both default to NaN
-// (Float64bits(0) == 0), which LatestPeak() maps to -Inf for "silent"
-// rendering. Each push() overwrites them with stats for that batch.
+// lastPeak / lastRMS are the latest batch's stats as atomic float64 bits, so UI readers never take the buf mutex; 0
+// until the first push, which LatestPeak maps to -Inf.
 type ringBuf struct {
 	mu       sync.Mutex
 	buf      []float64
@@ -26,9 +20,7 @@ type ringBuf struct {
 	hasData  atomic.Bool
 }
 
-// push appends samples and records the instrument ID. Also computes
-// the batch's peak/RMS and stores them atomically so consumers can
-// read per-stage stats without locking the buf mutex.
+// Also stores the batch's peak/RMS atomically, for lock-free readers.
 func (r *ringBuf) push(id channel.ID, samples []float64) {
 	r.mu.Lock()
 	r.buf = append(r.buf, samples...)
@@ -63,12 +55,8 @@ func (r *ringBuf) stats() (peak, rms float64, has bool) {
 	return math.Float64frombits(r.lastPeak.Load()), math.Float64frombits(r.lastRMS.Load()), true
 }
 
-// drain returns up to the last maxSamples samples, clears the buffer,
-// and returns the instrument ID. If the buffer is empty the returned
-// slice is nil. The returned slice is retained by TapData.Samples →
-// atomic.Pointer[State]; external State() readers may keep their copy of
-// State past the next tick, so the slice cannot be pooled/recycled
-// without a lifetime hazard.
+// The returned slice is retained through TapData.Samples and State() readers may keep it past the next tick, so it can
+// never be pooled or recycled.
 func (r *ringBuf) drain(maxSamples int) ([]float64, channel.ID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -90,14 +78,8 @@ func (r *ringBuf) drain(maxSamples int) ([]float64, channel.ID) {
 	return out, id
 }
 
-// clear discards any buffered samples without allocating. Used by tick()
-// for stages that are not currently tapped — those rings still receive
-// pushes from the audio thread (the mixer pushes unconditionally to keep
-// the synth/insertFX/EQ/sends/master stages live for tap switching) but
-// their contents are never read. Before this clear() was added the tick
-// loop called drain on every stage every cycle, allocating a maxSamples
-// slice (~172 KB) only to discard it — observed at 508 MB cumulative in
-// the synth-tab profile.
+// Allocation-free, for stages not tapped: the mixer keeps pushing every stage so tap switching is live, and draining
+// them would allocate a maxSamples slice per stage per tick only to discard it.
 func (r *ringBuf) clear() {
 	r.mu.Lock()
 	r.buf = r.buf[:0]
@@ -191,12 +173,8 @@ func (s *Service) State() *State {
 	return s.state.Load()
 }
 
-// LatestPeak returns the most recent batch's peak/RMS for the named
-// stage as dB values. Stages that have never received any samples
-// return -Inf for both. Phase 3 UI consumes this to paint a per-stage
-// signal-flow display (every stage gets a mini-meter, not only the
-// currently-tapped pair). Lock-free atomic read; safe from the UI
-// goroutine while the audio thread is pushing.
+// dB for the named stage (-Inf if it never received samples), so every stage gets a mini-meter, not only the tapped
+// pair. Lock-free while the audio thread pushes.
 func (s *Service) LatestPeak(stage Stage) (peakDB, rmsDB float64) {
 	if int(stage) < 0 || int(stage) >= int(stageCount) {
 		return math.Inf(-1), math.Inf(-1)
@@ -208,8 +186,7 @@ func (s *Service) LatestPeak(stage Stage) (peakDB, rmsDB float64) {
 	return linearToDB(peak), linearToDB(rms)
 }
 
-// linearToDB converts a linear amplitude to dB. Zero / negative maps
-// to -Inf so callers can distinguish silence from a quantised floor.
+// Zero or negative is -Inf, so silence never reads as a quantised floor.
 func linearToDB(v float64) float64 {
 	if v <= 0 {
 		return math.Inf(-1)
@@ -268,8 +245,7 @@ func (s *Service) tick() {
 	// Load previous state for carry-forward when a tap has no new data.
 	prev := s.state.Load()
 
-	// If frozen, clear all rings to prevent unbounded growth but
-	// don't update published state. clear() is allocation-free.
+	// Frozen: clear every ring (allocation-free) so nothing grows, without publishing.
 	if s.frozen.Load() {
 		for i := 0; i < int(stageCount); i++ {
 			s.rings[i].clear()
@@ -283,8 +259,7 @@ func (s *Service) tick() {
 	// Process tap A.
 	if tapAStage >= 0 && int(tapAStage) < int(stageCount) {
 		samples, id := s.rings[tapAStage].drain(max)
-		// Master-path stages always pass the instrument filter because
-		// they contain the composite mix, not per-instrument signals.
+		// Master-path stages carry the composite mix, so they always pass the instrument filter.
 		if len(samples) > 0 && (isMasterStage(tapAStage) || instID.IsZero() || id == instID) {
 			td := buildTapData(tapAStage, id, samples)
 			tapA = &td
@@ -300,9 +275,7 @@ func (s *Service) tick() {
 		}
 	}
 
-	// Clear unused rings to prevent unbounded growth. clear() is allocation-
-	// free; the previous code path called drain() which always allocated a
-	// maxSamples-sized slice (~172 KB) just to discard it.
+	// clear() is allocation-free; drain would allocate a full slice only to discard it.
 	for i := 0; i < int(stageCount); i++ {
 		stage := Stage(i)
 		if stage == tapAStage || stage == tapBStage {
@@ -311,9 +284,7 @@ func (s *Service) tick() {
 		s.rings[i].clear()
 	}
 
-	// Publish new state, carrying forward previous tap data when no
-	// new samples arrived for a tap this tick. The stage-match guard
-	// prevents carrying stale data when the user switches tap points.
+	// Carries forward a tap's previous data when no samples arrived; the stage-match guard drops it when the tap moved.
 	if tapAStage >= 0 || tapBStage >= 0 {
 		st := &State{
 			Timestamp: time.Now().UnixNano(),

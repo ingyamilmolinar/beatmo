@@ -1,47 +1,6 @@
-// Package audiotap captures the data behind an audio tab as a LAYERED,
-// byte-exact digest, so "the same circuit renders the same thing" is a
-// mechanical check rather than a screenshot someone has to look at.
-//
-// # Why layered
-//
-// The defect this package exists to catch (2026-09-19, Spectrum tab) had a
-// correct audio path, a correct renderer, and an empty plot. The browser's
-// analyser bridge delivered 64 spectrum bins spanning 0..Nyquist — 375 Hz
-// apart — while the narrowest display band is 24 Hz wide, so the four
-// lowest bands contained no bin at all and reported the reference floor.
-// Every byte of audio was right. Every line of drawing code was right. The
-// SHAPE of the data between them was wrong, and nothing in the repo
-// compared shapes.
-//
-// A single end-to-end digest would have gone red and said nothing useful.
-// So a Snapshot is a list of independently-digested SECTIONS, ordered from
-// the audio outwards:
-//
-//	shape.*     — bin counts, bin width, sample rate, buffer lengths.
-//	              Cross-platform comparable, and the layer that broke.
-//	analysis.*  — the analyzer input a tab reads (FFTBins, Waveform, levels).
-//	render.*    — the numbers the tab will actually draw, derived through
-//	              the SAME functions the renderer calls.
-//
-// Diff reports which sections moved, so a failure reads "shape.spectrum
-// changed, analysis and render followed" rather than "the digest changed".
-//
-// # Why byte-exact is legitimate here
-//
-// Encoding is IEEE-754 bit patterns, little-endian, length-prefixed — no
-// rounding, no formatting, no map iteration. Identical inputs through
-// identical Go code produce identical bytes, natively and under GOOS=js
-// (the property internal/ui's cross-platform parity suite already relies
-// on). That makes a native golden a legitimate expectation for the browser
-// to meet.
-//
-// What is NOT comparable across platforms, and must not be faked: the
-// values a LIVE analyser reports. Go's observer uses a Hann window and its
-// own FFT; a WebAudio AnalyserNode uses Blackman and the browser's. Same
-// audio, different last bits — by design. Cross-platform assertions
-// therefore run over shape and over render-from-canonical-input; live
-// values are compared only on the shape layer, which is exactly where the
-// defect lived.
+// Package audiotap captures the data behind an audio tab as LAYERED byte-exact digests: shape.* (bin counts, widths,
+// rates, lengths), analysis.* (what a tab reads), render.* (what it draws, through the renderer's own functions), so a
+// failure names the layer that moved. Live analyser values are compared only on shape (Hann vs Blackman, different FFTs).
 package audiotap
 
 import (
@@ -54,29 +13,9 @@ import (
 	"strings"
 )
 
-// Section is one independently-digested slice of a capture.
-//
-// TWO digests, because there are two different questions and only one
-// answer is honest for each:
-//
-//	Digest  — sha256 over raw IEEE-754 bits. Exact. Use it WITHIN a
-//	          platform: determinism, and the committed golden. Any change
-//	          whatsoever moves it.
-//	DigestQ — sha256 over the same values quantized to QuantumStep. Use it
-//	          ACROSS platforms.
-//
-// The cross-platform digest exists because raw bits are NOT reproducible
-// between amd64 and wasm for anything downstream of a transcendental.
-// Measured on this repo's own fixture: math.Exp(-1000/90) returns
-// 0.034329453106454272 natively and 0.03432945310645428 under GOOS=js —
-// one ULP apart, because amd64's implementation uses FMA and wasm's does
-// not. It propagates to ~8e-15 dB.
-//
-// That is not a defect and must not be papered over with "close enough"
-// float comparisons scattered through the tests. It is a known, bounded,
-// one-ULP property of the platform, so the canonical form quantizes it
-// away ONCE, here, at a step chosen to sit far above the noise and far
-// below anything observable — and the comparison stays byte-for-byte.
+// Digest is sha256 over raw IEEE-754 bits, exact, for use WITHIN a platform; DigestQ quantises to QuantumStep for use
+// ACROSS platforms, because amd64 (FMA) and wasm differ by one ULP downstream of a transcendental. Quantised ONCE here,
+// never with "close enough" comparisons scattered through tests.
 type Section struct {
 	Name    string `json:"name"`
 	Count   int    `json:"count"`    // elements encoded (not bytes)
@@ -84,19 +23,11 @@ type Section struct {
 	DigestQ string `json:"digest_q"` // hex sha256, quantized to QuantumStep
 }
 
-// QuantumStep is the grid the cross-platform digest snaps values to.
-//
-// Nine orders of magnitude above the ~1e-15 inter-platform noise, so a
-// value can effectively never straddle a boundary and hash differently on
-// the two platforms. Four orders below anything renderable: a 42 dB window
-// across a ~500 px plot resolves ~0.08 dB, and amplitudes live in [-1,1].
-// A real difference this test should catch is thousands of quanta wide; the
-// noise it must ignore is a millionth of one.
+// Nine orders above the ~1e-15 inter-platform noise (a value never straddles a boundary), four below anything a pixel
+// can show.
 const QuantumStep = 1e-6
 
-// Snapshot is an ordered set of sections plus the identity of what was
-// captured. JSON-serializable so the browser can hand one back to a test
-// and it can be compared against a committed native golden.
+// JSON-serialisable, so the browser hands one back to compare against the native golden.
 type Snapshot struct {
 	Circuit    string    `json:"circuit"`
 	SampleRate int       `json:"sample_rate"`
@@ -113,9 +44,7 @@ func New(circuit string, sampleRate int) *Snapshot {
 func (s *Snapshot) add(name string, count int, write func(w func([]byte), quantized bool)) {
 	digest := func(quantized bool) string {
 		h := sha256.New()
-		// Length-prefix so [a] and [a,0] cannot collide, and so a section
-		// that changes ONLY in length — the bin-count defect — always moves
-		// the digest even if every surviving value is unchanged.
+		// Length-prefixed, so [a] and [a,0] never collide and a length-only change (the bin-count defect) moves the digest.
 		var n [8]byte
 		binary.LittleEndian.PutUint64(n[:], uint64(count))
 		h.Write(n[:])
@@ -130,13 +59,7 @@ func (s *Snapshot) add(name string, count int, write func(w func([]byte), quanti
 	})
 }
 
-// Floats adds a float64 slice as raw IEEE-754 bits.
-//
-// Bits, not a formatted decimal: a %.6f would quietly equate two values
-// that differ, which is the opposite of what a byte-for-byte check is for.
-// NaN is normalized to a single quiet-NaN pattern so two NaNs from
-// different arithmetic compare equal (they are equally "no reading"), and
-// -0 is normalized to +0 for the same reason.
+// Bits, never a formatted decimal, which would equate different values. NaN and -0 are normalised: equally "no reading".
 func (s *Snapshot) Floats(name string, v ...float64) {
 	s.add(name, len(v), func(w func([]byte), quantized bool) {
 		var b [8]byte
@@ -246,15 +169,10 @@ func (s *Snapshot) Overall() string {
 // Diff compares exactly (raw IEEE-754 bits). Use within one platform.
 func (s *Snapshot) Diff(want *Snapshot) []string { return s.diff(want, false) }
 
-// DiffCrossPlatform compares on the QuantumStep grid. Use between native
-// and wasm, where raw bits legitimately differ by ~1 ULP through the
-// transcendental math (see Section).
+// Between native and wasm, where raw bits legitimately differ by ~1 ULP through transcendental math.
 func (s *Snapshot) DiffCrossPlatform(want *Snapshot) []string { return s.diff(want, true) }
 
-// diff reports, per section, how this capture differs from want. It is the
-// point of the whole package: the report names the LAYER, so a reader
-// learns whether the audio moved, the analysis shape moved, or only the
-// drawing did.
+// Names the LAYER that moved: the audio, the analysis shape, or only the drawing.
 func (s *Snapshot) diff(want *Snapshot, quantized bool) []string {
 	var out []string
 	if want == nil {
@@ -292,9 +210,7 @@ func (s *Snapshot) diff(want *Snapshot, quantized bool) []string {
 		case !eok:
 			out = append(out, fmt.Sprintf("%s: UNEXPECTED (%d elements)", n, g.Count))
 		case g.Count != e.Count:
-			// Called out separately because it is the failure this package
-			// was built for: a length change means the SHAPE of the data
-			// moved, which silently redraws everything downstream.
+			// A length change means the data's SHAPE moved, which silently redraws everything downstream.
 			out = append(out, fmt.Sprintf("%s: length %d, want %d — the data's SHAPE changed, "+
 				"not just its values", n, g.Count, e.Count))
 		default:

@@ -61,10 +61,7 @@ func TestLoadCatalogue_SucceedsOnRealCatalogue(t *testing.T) {
 	}
 }
 
-// TestRefTargets and TestPresence cover the song-tier and status-only
-// branches, which the current catalogue.json never exercises (today it
-// carries zero song-tier and zero status-only refs). Both functions take a
-// wavref.Ref value directly, so no catalogue fixture is needed.
+// The song-tier and status-only branches, which the catalogue may not exercise; both take a Ref directly.
 func TestRefTargets(t *testing.T) {
 	cases := []struct {
 		name string

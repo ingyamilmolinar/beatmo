@@ -27,10 +27,8 @@ func demotedFakeDiagnosis() instrumentDiagnosis {
 	}
 }
 
-// A demoted axis is still MEASURED and still PRINTED -- suppressing it would
-// throw away a reading that is often the most informative thing on the page
-// once you know why it was demoted. What must change is that the reader can
-// see the demotion without carrying the list in their head.
+// A demoted axis is still MEASURED and PRINTED (often the most informative row); the reader must see the demotion
+// without carrying the list.
 func TestPrintDiagnosis_TagsDemotedAxes(t *testing.T) {
 	var buf bytes.Buffer
 	printDiagnosis(&buf, demotedFakeDiagnosis())
@@ -128,10 +126,8 @@ func TestPrintSummaryMatrix_DemotedOnlyInstrumentNotListed(t *testing.T) {
 	}
 }
 
-// The -1 sentinel must NEVER reach the report as a value. band.t60 marks an
-// unfittable band with -1 so the vector stays aligned with the band labels;
-// printing Values[0] put "-1.000 s" in the REFERENCE column of an axis whose
-// verdict came from the mean over the bands that WERE fittable.
+// band.t60 marks an unfittable band -1 to keep the vector aligned; printing Values[0] put "-1.000 s" in the REFERENCE
+// column of an axis whose verdict came from the fittable bands.
 func TestPrintDiagnosis_VectorRowsPrintAHeadlineNotComponentZero(t *testing.T) {
 	d := instrumentDiagnosis{
 		Instrument: roster.TubularBells,

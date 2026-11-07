@@ -1,20 +1,6 @@
 #!/bin/bash
-# Outputs a JSON matrix of browser test batches for GitHub Actions.
-#
-# Usage: ./scripts/browser-test-matrix.sh [--batch-size N] [--filter PATTERN]
-#
-# Output format (to stdout):
-# {
-#   "include": [
-#     {"index": 1, "tests": "audio.browser.test.js bpm.browser.test.js ..."},
-#     {"index": 2, "tests": "connect_mode.browser.test.js ..."},
-#     ...
-#   ]
-# }
-#
-# Options:
-#   --batch-size N Number of tests per job (default: 4)
-#   --filter PAT   Only include tests matching pattern
+# A JSON matrix of browser test batches for GitHub Actions: {"include":[{"index":1,"tests":"a.browser.test.js ..."}]}.
+# Usage: ./scripts/browser-test-matrix.sh [--batch-size N (default 4)] [--filter PATTERN]
 
 set -euo pipefail
 

@@ -8,9 +8,7 @@ import (
 
 var updateNotice = flag.Bool("update", false, "rewrite NOTICE-scores.md from the catalogue")
 
-// TestNoticeIsUpToDate keeps the committed attribution notice in step with the
-// catalogue. Attribution that silently goes stale is worse than none: it
-// credits the wrong people for the files actually shipped.
+// Stale attribution is worse than none: it credits the wrong people for the files shipped.
 func TestNoticeIsUpToDate(t *testing.T) {
 	want, err := RenderNotice()
 	if err != nil {

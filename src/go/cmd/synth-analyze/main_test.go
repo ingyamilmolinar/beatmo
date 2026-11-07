@@ -1,16 +1,6 @@
 //go:build !js
 
-// Package main tests for synth-analyze CLI tool.
-// These tests exercise the analyzeFile function and printFP output against the
-// real API. The old self-contained FFT/fingerprint helpers (fft, nextPow2,
-// computeFingerprint, renderSynth, rmsEnvelope, peakNormalize,
-// computeTemporalFingerprint) were removed when those concerns were subsumed by
-// the fingerprint package and its own tests.
-//
-// COVERED-BY-GO: internal/audio/fingerprint/*_test.go covers all DSP
-// correctness (FFT, F0 detection, vibrato, harmonics, formants, coupling,
-// noise profile, STFT flux/centroid). This file tests the CLI layer only:
-// analyzeFile integration, printFP human-readable output sections.
+// COVERED-BY-GO: internal/audio/fingerprint's tests own the DSP; these cover only the CLI layer (analyzeFile, printFP).
 package main
 
 import (

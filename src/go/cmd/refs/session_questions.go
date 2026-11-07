@@ -11,27 +11,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// session_questions.go -- the words a session asks about.
-//
-// Two rounds share ONE vocabulary, the word salad:
-//
-//   - QUICK (the default): the listener ticks the words that describe each
-//     clip. Same words, same order, for every instrument, so the numbers
-//     become muscle memory and a word means the same thing on every family.
-//   - DEEP (`refs session -deep`, `make ab-tuned DEEP=1`): on top of that,
-//     a 1-5 rating of a few words that matter for THIS instrument --
-//     "1 not X enough · 3 about right · 5 too X" -- each a word a
-//     descriptor measures, so `refs validate` can check the answer against
-//     the measurement.
-//
-// The listener always reads the WORD; the stored answer is turned to the
-// word's axis (sessionScale: +2 always means "the synth reads HIGH on Axis").
-// "warm" is the brightness axis read backwards, so "too warm" (5) is stored
-// as -2 on brightness.
+// One vocabulary, two rounds. QUICK: tick the words that describe each clip, the same words in the same order for every
+// instrument. DEEP (-deep): plus 1-5 ratings of a few words a descriptor measures for THIS instrument. The listener reads
+// the WORD; the answer is stored on its axis ("too warm" = -2 on brightness).
 
-// sessionWord is one word of the salad. Axis is the descriptor that measures
-// it ("" = describe only: no descriptor measures it yet, so it is never a
-// deep word); Falls says more of the word reads LOWER on Axis.
+// Axis "" = describe only (no descriptor measures it, so never a deep word); Falls = more of the word reads LOWER on Axis.
 type sessionWord struct {
 	Word  string
 	Group string
@@ -39,10 +23,8 @@ type sessionWord struct {
 	Falls bool
 }
 
-// wordSalad is the shared vocabulary, in menu order. Every word is one the
-// listener was offered before (the former global and per-family lists) or
-// wrote in a note; every binding is one an earlier question or a `refs
-// validate -terms` rule already made (validate_terms.go), cited per line.
+// Every word was offered before or written in a note; every binding is one an earlier question or a refs validate
+// -terms rule made.
 var wordSalad = []sessionWord{
 	// colour
 	{Word: "bright", Group: "colour", Axis: fingerprint.IDBrightnessRatio},                // oboe warmth: "too bright"; guitar note "too pitched up or bright"

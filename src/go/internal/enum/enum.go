@@ -1,29 +1,6 @@
-// Package enum is the one spelling table behind every closed enum: a Go int
-// type whose values are indexes into a Names table. The type's own methods
-// (String, MarshalText, UnmarshalText, Parse) are one-liners over the table,
-// so the spellings live in exactly one place and an unknown spelling read
-// from data is an error, never a new value.
-//
-//	type Role int
-//	const (RoleNone Role = iota; RoleKick)
-//	var roleNames = enum.Names[Role]{Kind: "kit role", Names: []string{"", "kick"}}
-//	func (r Role) String() string               { return enum.String(roleNames, r) }
-//	func (r Role) MarshalText() ([]byte, error) { return enum.Marshal(roleNames, r) }
-//	func (r *Role) UnmarshalText(b []byte) error { return enum.Unmarshal(roleNames, b, r) }
-//
-// An empty name at index 0 makes the zero value the enum's "none": it is what
-// an absent or empty field decodes to. Without it the empty spelling is
-// rejected like any other unknown one.
-//
-// The operations are generic FUNCTIONS, not methods on Names, on purpose:
-// Ebiten links text/template, whose reflect.Value.MethodByName puts the Go
-// linker in a mode that keeps every exported method of every type that ever
-// reaches an interface. As methods, each enum's Names[E] carried six method
-// wrappers (and six more for *Names[E]) into main.wasm that nothing calls --
-// ~58 KB of code over 15 enums. A function instantiates once per GC shape
-// (one body for every ~int enum) with the same per-type dictionary a method
-// call used, so type safety and the call cost are unchanged.
-// TestNamesHasNoMethods keeps it that way.
+// Package enum is the one spelling table behind every closed enum (an int type indexing a Names table), so an unknown
+// spelling from data is an error, never a new value; index 0 named "" is the enum's "none". The operations are generic
+// FUNCTIONS: Ebiten links text/template, so the linker keeps every exported method of a type reaching an interface.
 package enum
 
 import "fmt"

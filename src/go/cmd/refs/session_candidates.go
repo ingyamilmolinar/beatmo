@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// candidatesRel is the module-root-relative path to the shipped audition
-// candidates file: one entry per family under audition, each naming the
-// reference ref, the base instrument to render, and a small set of
-// override candidates to A/B against that base.
+// Per family under audition: the reference, the base instrument, and a few override candidates to A/B against it.
 const candidatesRel = "internal/audio/testdata/audition_candidates.json"
 
 // candidateSpec is one named parameter-override variant to audition against
@@ -36,9 +33,7 @@ type candidateSpec struct {
 	SamePitch bool `json:"-"`
 }
 
-// familyCandidates is the audition set for one instrument family: the
-// reference wavref ID to compare against, the base instrument whose recipe
-// the candidates override, and the candidates themselves.
+// familyCandidates: the reference to compare against, the base instrument the candidates override, the candidates.
 type familyCandidates struct {
 	Reference  string          `json:"reference"`
 	Base       instrument.ID   `json:"base"`
@@ -55,10 +50,7 @@ func defaultCandidatesPath() (string, error) {
 	return filepath.Join(root, candidatesRel), nil
 }
 
-// loadCandidates reads and validates a candidates file: every family needs a
-// non-empty Reference and Base, at least one candidate, and every candidate
-// needs a unique ID plus non-empty Label and Hypothesis. A candidate with no
-// overrides would render identically to the base, so that's rejected too.
+// A candidate with no overrides would render as the base, so it is rejected with the other structural faults.
 func loadCandidates(path string) (map[instrument.ID]familyCandidates, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

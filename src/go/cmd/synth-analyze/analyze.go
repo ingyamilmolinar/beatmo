@@ -1,8 +1,6 @@
 //go:build !js
 
-// analyze.go — testable core of synth-analyze. Split from main.go so that
-// analyzeFile, analyzeOpts, and printFP are all available under -tags test
-// (main.go is excluded by its !test guard).
+// Split from main.go (which is !test) so these are testable under -tags test.
 package main
 
 import (
@@ -30,13 +28,7 @@ type analyzeOpts struct {
 	Label     string
 }
 
-// analyzeFile decodes the audio at path at its NATIVE sample rate (no
-// resampling) and returns the computed Fingerprint. Under -tags test,
-// audio.DecodeWAVToPCM is the pure-Go stdlib decoder; under production builds
-// it is the miniaudio-backed decoder. Either way no resampling is applied
-// before fingerprint.FromWave.
-//
-// If opts.Label is empty the file path is used as the fingerprint label.
+// At the file's NATIVE rate, never resampled before fingerprint.FromWave. An empty Label uses the path.
 func analyzeFile(path string, opts analyzeOpts) (fingerprint.Fingerprint, error) {
 	pcm, sr, err := audio.DecodeWAVToPCM(path)
 	if err != nil {
@@ -59,9 +51,7 @@ func analyzeFile(path string, opts analyzeOpts) (fingerprint.Fingerprint, error)
 		w.Samples = w.Samples[skip:]
 	}
 
-	// Retain the full (post-offset, pre-segment) wave to compute whole-note
-	// macro coupling after segmentation, so fp.Coupling.MacroCentroidRMSCorr
-	// reflects the true attack+sustain+decay coupling, not a window-local value.
+	// The whole note, kept so the macro coupling reflects attack+sustain+decay, not one window.
 	fullW := w
 
 	// Crop or auto-segment.
@@ -77,9 +67,7 @@ func analyzeFile(path string, opts analyzeOpts) (fingerprint.Fingerprint, error)
 
 	fp := fingerprint.FromWave(w, lbl)
 
-	// Overwrite MacroCentroidRMSCorr with the whole-note value so the printed
-	// and returned fingerprint reflects the full-note expressive coupling rather
-	// than the window-local value computed by FromWave over the segmented clip.
+	// The whole-note value replaces FromWave's window-local one.
 	if fp.Coupling != nil {
 		fp.Coupling.MacroCentroidRMSCorr = fingerprint.WholeSignalCentroidRMSCorr(fullW, fingerprint.DefaultAnalysisConfig())
 	}
@@ -87,9 +75,7 @@ func analyzeFile(path string, opts analyzeOpts) (fingerprint.Fingerprint, error)
 	return fp, nil
 }
 
-// printFP writes the human-readable fingerprint summary to w. Callers pass
-// os.Stdout for normal output and os.Stderr in -json mode (so the summary does
-// not corrupt the machine-readable JSON on stdout — e.g. `... -json > fp.json`).
+// os.Stderr in -json mode, so the summary never corrupts the JSON on stdout.
 func printFP(w io.Writer, fp *fingerprint.Fingerprint) {
 	fmt.Fprintf(w, "\n=== Fingerprint: %q ===\n", fp.Label)
 	fmt.Fprintf(w, "  Sample rate:       %d Hz\n", fp.SampleRate)

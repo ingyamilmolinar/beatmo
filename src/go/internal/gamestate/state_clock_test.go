@@ -83,9 +83,7 @@ func TestDtOfStepIsInverseOfPosBeats(t *testing.T) {
 	}
 }
 
-// TestClockSingleSource pins that the display path and the scheduler path
-// derive the SAME position from the SAME inputs — the drift this refactor
-// eliminates stays eliminated.
+// The display and the scheduler derive the SAME position from the SAME inputs.
 func TestClockSingleSource(t *testing.T) {
 	s := New(120)
 	s.SetPlaying(true)

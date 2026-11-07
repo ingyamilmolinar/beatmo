@@ -13,9 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
-// testTone is a generated note for the listening-contract checks: a sine
-// that starts at once and fades over its last 20 ms, like every clip the
-// session writes.
+// Starts at once and fades over its last 20 ms, like every clip the session writes.
 func testTone(t *testing.T, sec float64) wave.Wave {
 	t.Helper()
 	pcm := wavgen.Sine(440, 0.5, sec, 44100)
@@ -75,8 +73,7 @@ func TestClipFaultsHearBrokenPlayback(t *testing.T) {
 	}
 }
 
-// TestHoldFaultHearsAVoiceThatStopsEarly is the first ab-tuned defect: a
-// 1 s voice padded with silence against a 2 s held recording.
+// A 1 s voice padded with silence against a 2 s held recording.
 func TestHoldFaultHearsAVoiceThatStopsEarly(t *testing.T) {
 	ref := testTone(t, 2)
 	if f := holdFault("C", ref, padTo(testTone(t, 1), 2)); !strings.Contains(f, "C is cut at 0.80 s while the recording still holds") {
@@ -104,8 +101,7 @@ func TestHoldFaultHearsAVoiceThatStopsEarly(t *testing.T) {
 	}
 }
 
-// TestGappedPlayerPausesAfterEveryClip is the second defect: a blocking
-// player returned the moment a clip ended, so R, C and T ran together.
+// A blocking player returns the moment a clip ends, so R, C and T ran together.
 func TestGappedPlayerPausesAfterEveryClip(t *testing.T) {
 	var log []string
 	p := gappedPlayer{p: funcPlayer(func(path string) error { log = append(log, "play "+path); return nil }),
@@ -122,9 +118,7 @@ func TestGappedPlayerPausesAfterEveryClip(t *testing.T) {
 	}
 }
 
-// fs4Sine is a sine at a quarter of the sample rate, phased 45° off the
-// samples: every sample lands at ±0.707 of the wave's true peak, the
-// textbook inter-sample over.
+// Every sample lands at ±0.707 of the true peak: the textbook inter-sample over.
 func fs4Sine(amp float64, n int) []float64 {
 	s := make([]float64, n)
 	for i := range s {
@@ -133,9 +127,7 @@ func fs4Sine(amp float64, n int) []float64 {
 	return s
 }
 
-// TestTruePeakSeesBetweenTheSamples: the DAC and every resampler on the way
-// (PipeWire plays 44.1 kHz clips at 48 kHz) reconstruct the wave between the
-// samples; a clip whose SAMPLES peak at 0.99 can swing past full scale there.
+// The DAC and every resampler reconstruct between samples: a 0.99 sample peak can swing past full scale.
 func TestTruePeakSeesBetweenTheSamples(t *testing.T) {
 	s := fs4Sine(1, 4410)
 	if got := truePeak(s[100:4300]); math.Abs(got-1) > 0.02 {
@@ -151,9 +143,7 @@ func TestTruePeakSeesBetweenTheSamples(t *testing.T) {
 	}
 }
 
-// TestClipFaultsHearAnInterSampleOver is the clipping the listener heard as a
-// noisy, vibrating reference: the references were driven to a 0.99 SAMPLE
-// peak and came out of the DAC at 1.03-1.04, clipped.
+// References driven to a 0.99 SAMPLE peak came out of the DAC clipped: the "noisy, vibrating reference".
 func TestClipFaultsHearAnInterSampleOver(t *testing.T) {
 	s := fs4Sine(0.8, 44100) // samples at 0.57, true peak 0.80: inside the headroom
 	fadeOutTail(s, 882)
@@ -168,10 +158,7 @@ func TestClipFaultsHearAnInterSampleOver(t *testing.T) {
 	}
 }
 
-// TestTunedLevelsKeepTheReferenceAtItsOwnLevel: the level match must move the
-// SYNTHS to the recording, never the recording to the synths. Raising a quiet
-// recording (the oboe ×6.06, +15.6 dB) raised its hiss and room tone with it
-// and pushed it into the DAC's clip: "the reference does not sound clean".
+// The SYNTHS move to the recording, never the reverse: raising a quiet recording raised its hiss into the DAC's clip.
 func TestTunedLevelsKeepTheReferenceAtItsOwnLevel(t *testing.T) {
 	// A quiet recording (rms 0.02, true peak 0.11) against two loud,
 	// peak-normalised voices.
@@ -193,10 +180,8 @@ func TestTunedLevelsKeepTheReferenceAtItsOwnLevel(t *testing.T) {
 	}
 }
 
-// TestClipFaultsHearAStepAtTheStart: the onset trim (5 ms before the note
-// crosses -20 dB) cut references mid-rise -- the violin's first sample sat
-// at -26 dB of its peak, a click from silence that headphones expose. A clip
-// whose first sample IS its attack (a rimshot) is the voice, not a fault.
+// The onset trim cut references mid-rise, a click from silence that headphones expose; a clip whose first sample IS
+// its attack (a rimshot) is the voice.
 func TestClipFaultsHearAStepAtTheStart(t *testing.T) {
 	tone := testTone(t, 1)
 	cut := wave.Wave{Samples: append([]float64(nil), tone.Samples[30:]...), SampleRate: 44100}

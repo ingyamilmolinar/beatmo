@@ -36,10 +36,7 @@ func matchTestTone(f0 float64, amps []float64, durSec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// A double-reed tone whose fundamental is weaker than its second harmonic is
-// the oboe case: whatever the detector locks onto, the pitch reported must be
-// the fundamental, because rendering the roster an octave above the recording
-// judges every instrument in the wrong register.
+// The oboe case: the fundamental must be reported, or every instrument renders in the wrong register.
 func TestMatchRefPitchFindsAWeakFundamental(t *testing.T) {
 	w := matchTestTone(220, []float64{0.35, 1, 1, 0.25, 0.6, 0.4}, 2)
 	if got := matchRefPitch(w); math.Abs(got-220) > 3 {
@@ -281,9 +278,7 @@ func TestRunMatchListenRecordsVerdictsAndRunnerUps(t *testing.T) {
 		t.Errorf("resumed run played %v / said %q", played, out.String())
 	}
 
-	// A filename filter that matches nothing says so -- it must not pose as
-	// "already answered" (the Makefile's ab-notes default ONLY=n,p once
-	// leaked into ab-match and emptied the queue with exactly that message).
+	// A filter matching nothing says so, never "already answered".
 	out.Reset()
 	if err := runMatchListen(&out, strings.NewReader(""), man, vp, false, "n,p", 3, newPlayer); err != nil {
 		t.Fatal(err)
@@ -436,11 +431,8 @@ func partialsTone(partials map[float64]float64, durSec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// A dense inharmonic cluster -- the synth kalimba's own partials -- has no
-// single note: no pitch YIN reads accounts for its partials, so the matcher
-// must treat it as unpitched (search the pitch per voice) instead of playing
-// every voice on whichever divisor YIN locked onto under the nuisance of
-// the day.
+// No pitch YIN reads accounts for a dense inharmonic cluster's partials, so every voice must pitch-search instead of
+// playing on whichever divisor YIN locked onto.
 func TestMatchRefPitchDeclinesAnInharmonicCluster(t *testing.T) {
 	kalimba := map[float64]float64{220: 0.009, 756.8: 0.97, 886.6: 1, 996.6: 0.6, 1122: 0.35, 1342: 0.2}
 	w := partialsTone(kalimba, 1.5)
@@ -461,11 +453,7 @@ func TestMatchRefPitchDeclinesAnInharmonicCluster(t *testing.T) {
 	}
 }
 
-// A double reed's formant lifts a high partial over the low ones: the
-// acclivity oboe's A 440 peaks at its 6th harmonic (2.66 kHz), with the 2nd
-// and 3rd 2-3 dB under it. It is still one clear note -- requiring the
-// LOUDEST partial to be harmonic 1..5 matched it as unpitched (bassoon
-// first, the oboe #11).
+// The 6th harmonic is loudest with the 2nd and 3rd 2-3 dB under it, and it is still one clear note.
 func TestMatchRefPitchHearsAFormantPeakedReed(t *testing.T) {
 	db := func(d float64) float64 { return math.Pow(10, d/20) }
 	oboe := partialsTone(map[float64]float64{
@@ -560,10 +548,8 @@ func TestScoutedSearchSettlesWhereAFullSearchDoes(t *testing.T) {
 	}
 }
 
-// Pruning only spares renders that cannot win: the top 3 is the exhaustive
-// ranking's, no instrument scores closer than its exhaustive score, and an
-// instrument the caller names (the map's label, -explain's list) settles
-// exactly even when it is out of the running.
+// Pruning spares only renders that cannot win: the exhaustive top 3, no score closer than its exhaustive one, and every
+// named instrument settled exactly.
 func TestRankRosterSettlesTheContenders(t *testing.T) {
 	ids := rosterIDs()[:matchContenders+12]
 	// A tone ranked as if unpitched, so every voice pitch-searches: its note

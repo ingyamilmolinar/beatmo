@@ -12,21 +12,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// The f0 checks — the calibration behind fingerprint.F0ReliableConfidence,
-// run against the reference corpus rather than against synthetic tones.
-//
-// The threshold gates every descriptor that assumes a harmonic series
-// (noise.fraction, the partial.* family, the per-harmonic tracks). Picking it
-// from synthetic signals would prove nothing: a synthetic tone scores 1.000
-// and synthetic noise scores 0.000 whatever the threshold is. What matters is
-// that REAL unpitched percussion and REAL pitched instruments separate, with
-// the threshold in the empty space between the two populations.
+// F0ReliableConfidence must separate REAL unpitched percussion from REAL pitched instruments, with the threshold in the
+// empty space between: synthetic tones score 1.000 and synthetic noise 0.000 whatever the threshold.
 
-// unpitchedRefs are corpus clips with no fundamental to find: the harmonic-
-// series assumption is simply false for them, whatever number the octave
-// guard returns. Every id must be catalogued (TestF0CheckTablesNameCataloguedRefs):
-// a clip that is not fetched here is skipped, so a REMOVED one would vanish
-// from the check silently -- ride-vcsl did when ride-local replaced it.
+// Every id must be catalogued: a clip not on this machine is skipped, so a REMOVED one would vanish from the check.
 var unpitchedRefs = []string{
 	"hihat-vcsl", "shaker-vcsl", "crash-vcsl", "cowbell-vcsl",
 	"rimshot-vcsl", "snare-vcsl", "snare-freesound-alt",
@@ -46,15 +35,8 @@ var pitchedRefs = []string{
 	"kalimba-vcsl", "pan-flute-vcsl", "organ-church-vcsl", "harpsichord-vcsl",
 }
 
-// lowConfidencePitchedRefs are nominally pitched clips that score BELOW the
-// threshold, recorded here deliberately rather than papered over.
-//
-// These are corpus-quality findings, not detector bugs. In each case YIN finds
-// periodicity in only a small share of the clip's energy, which means the
-// harmonic-series assumption really is shaky FOR THAT RECORDING — so reporting
-// the harmonic descriptors as "not measurable" is the honest outcome, and the
-// fix is a better reference clip, not a looser threshold. `refs doctor`
-// surfaces the same numbers so they stay visible.
+// Nominally pitched clips below the threshold, recorded rather than papered over: YIN finds periodicity in little of
+// the clip's energy, so "not measurable" is honest and the fix is a better clip, not a looser threshold.
 var lowConfidencePitchedRefs = map[string]string{
 	"koto-vcsl":                  "fast pluck; detected 106.5 Hz may be an octave error (koto strings sit ~D3+)",
 	"piano-felt-vcsl":            "felt-damped struck string; energy is dominated by an inharmonic attack",
@@ -141,8 +123,7 @@ func checkF0ConfidenceSeparation(r *checkReport) error {
 			hiUnpitched.id, hiUnpitched.conf, loPitched.id, loPitched.conf)
 		return nil
 	}
-	// Require the threshold to sit inside the gap with room on both sides, so
-	// a small detector change cannot silently flip a clip across it.
+	// Room on both sides, so a small detector change cannot flip a clip across silently.
 	const minMargin = 0.10
 	if fingerprint.F0ReliableConfidence-hiUnpitched.conf < minMargin {
 		r.Errorf("threshold %.2f is only %.3f above the highest unpitched clip (%s) — want >= %.2f margin",
@@ -155,9 +136,7 @@ func checkF0ConfidenceSeparation(r *checkReport) error {
 	return nil
 }
 
-// checkF0LowConfidenceOutliers keeps the documented corpus-quality outliers
-// honest: if a clip is replaced and starts scoring reliably, this fails so the
-// note in lowConfidencePitchedRefs gets deleted rather than rotting.
+// A replaced clip that starts scoring reliably fails this, so its note is deleted rather than rotting.
 func checkF0LowConfidenceOutliers(r *checkReport) error {
 	ids := make([]string, 0, len(lowConfidencePitchedRefs))
 	for id := range lowConfidencePitchedRefs {

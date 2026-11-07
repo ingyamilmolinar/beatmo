@@ -197,9 +197,7 @@ func TestScheduler_HeadReplacementWakesRunner(t *testing.T) {
 }
 
 func TestScheduler_DoesNotSpawnPerEventGoroutine(t *testing.T) {
-	// The whole point of the Scheduler vs `go time.Sleep + fn` is one
-	// timer goroutine regardless of pending count. Schedule N events and
-	// assert NumGoroutine doesn't grow proportional to N.
+	// One timer goroutine regardless of pending count: NumGoroutine must not grow with N.
 	p := NewPool(context.Background(), Options{MaxConcurrent: 2, QueueSize: 256})
 	defer p.Close()
 	s := NewScheduler(p)
@@ -217,8 +215,7 @@ func TestScheduler_DoesNotSpawnPerEventGoroutine(t *testing.T) {
 		}
 	}
 
-	// Peek at goroutine count BEFORE entries fire — this is the moment
-	// the old "go func per event" code would have ballooned.
+	// Before anything fires, when goroutine-per-event would have ballooned.
 	peak := runtime.NumGoroutine()
 	if delta := peak - before; delta > N/4 {
 		t.Fatalf("goroutine count grew by %d for %d pending entries; scheduler is leaking", delta, N)

@@ -2,12 +2,8 @@
 
 package main
 
-// Real-build audio tests for `make ab-tuned`: they render the shipped engine,
-// write the clips the session plays and listen to the FILES -- the stub
-// synth of -tags test has no note length to get wrong. No reference audio is
-// read: each recording is the instrument's own voice held in a room
-// (nuisanceRecording), staged where the catalogue expects it under a temp
-// $BEATMO_WAV_REFS.
+// Real build: render the shipped engine, write the session's clips and judge the FILES (the -tags test stub has no
+// note length to get wrong). Each recording is the instrument's own voice in a room, staged under a temp $BEATMO_WAV_REFS.
 
 import (
 	"encoding/json"
@@ -28,12 +24,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// stageTuned writes what `make ab-tuned` reads for pick: a generated
-// recording at the catalogue path of the instrument's first reference, and
-// a candidate moved half-way across every searched value's trust box (the
-// way a `refs tune` result moves) in root/<inst>/, from the pick's start
-// document (tuneStart: the donor's, for a pick From another instrument),
-// with the search pitch runTune would record.
+// A generated recording at the instrument's first catalogue path, and a candidate moved half-way across every searched
+// value's trust box (as a refs tune result moves) from the pick's start document, with the search pitch runTune records.
 func stageTuned(t *testing.T, root string, pick tunePick) (instrument.Doc, wavref.Ref) {
 	t.Helper()
 	cat, err := loadCatalogue()
@@ -114,12 +106,8 @@ func needFFmpeg(t *testing.T) {
 	}
 }
 
-// sameUpToLevel asserts a played file is want times one gain, and returns
-// that gain. The bound is the WAV writer's own error: it truncates
-// s*8388607 toward zero (<= 1 step) and the reader divides by 8388608 (<= 1
-// step) -- two 24-bit steps, ~-132 dBFS. A gain within 1e-5 of unity is
-// taken as unity: the truncation biases a least-squares fit, and the
-// recording played at its own level is the case this must prove exactly.
+// The bound is the WAV writer's own error (truncation to 24 bits, two steps, ~-132 dBFS). A gain within 1e-5 of unity
+// is unity: truncation biases the fit, and the recording at its own level must be proved exactly.
 func sameUpToLevel(t *testing.T, file wave.Wave, want []float64) float64 {
 	t.Helper()
 	if len(file.Samples) != len(want) {
@@ -158,16 +146,9 @@ func decodeClip(t *testing.T, path string) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: rate, Label: filepath.Base(path)}
 }
 
-// TestAbTunedPlaysEveryPickAsItWasTuned drives `refs session -tuned` for
-// every curated pick, exactly as `make ab-tuned` does, through a recording
-// player, and listens to the files it played:
-//   - R, C, T in that order, each followed by the clip gap;
-//   - every clip passes the listening contract (sounds, starts with the
-//     note, no dropout, no click at the end, -1 dBTP of headroom) and C and
-//     T hold their note wherever the recording holds its own;
-//   - R is the recording itself at its own level or quieter, never raised;
-//   - T as played is the sound `refs tune` scored: its essence distance to R,
-//     measured on the two FILES, is the search's own objective term.
+// Every curated pick through refs session -tuned with a recording player: R, C, T in order with gaps; every clip passes
+// the listening contract and C, T hold where the recording holds; R at its own level or quieter; T's essence distance to
+// R, measured on the FILES, is the search's own objective term.
 func TestAbTunedPlaysEveryPickAsItWasTuned(t *testing.T) {
 	needFFmpeg(t)
 	t.Setenv(wavref.EnvVar, t.TempDir())
@@ -209,10 +190,7 @@ func TestAbTunedPlaysEveryPickAsItWasTuned(t *testing.T) {
 				}
 			}
 
-			// What was played IS what the search scored: the recording as
-			// newTuneRec loaded it, and the held renders matchTarget.eval /
-			// evalDoc measured at the search pitch -- equal up to the level
-			// match and 24-bit rounding.
+			// What was played IS what the search scored, equal up to the level match and 24-bit rounding.
 			path, _ := wavref.Resolve(ref.ID)
 			rec, err := newTuneRec(path, ref.ID, ref.ID, t.TempDir(), adoptMaxSecDefault)
 			if err != nil {
@@ -240,9 +218,7 @@ func TestAbTunedPlaysEveryPickAsItWasTuned(t *testing.T) {
 				t.Fatal(err)
 			}
 			refS := listeningCopy(rec.w).Samples
-			// The reference is the recording AT ITS OWN LEVEL (or quieter,
-			// when a voice needs the headroom) -- never raised, which raised
-			// its hiss and drove it into the DAC's clip.
+			// Never raised: raising it raised its hiss into the DAC's clip.
 			if g := sameUpToLevel(t, r, refS); g > 1+1e-6 {
 				t.Errorf("the reference is played %.1f dB LOUDER than the recording (gain %.3f)", 20*math.Log10(g), g)
 			}
@@ -255,10 +231,8 @@ func TestAbTunedPlaysEveryPickAsItWasTuned(t *testing.T) {
 	}
 }
 
-// TestCompareRenderBreaksTheHoldContract keeps the contract honest: the
-// render the first ab-tuned used (the generic compare set, every voice at
-// 120 BPM) must FAIL it on a held wind -- the 1 s oboe against a held note
-// that the listener heard as chopped.
+// The generic compare render (every voice at its shipped length) must FAIL the contract on a held wind, or the
+// contract proves nothing.
 func TestCompareRenderBreaksTheHoldContract(t *testing.T) {
 	t.Setenv(wavref.EnvVar, t.TempDir())
 	root := t.TempDir()

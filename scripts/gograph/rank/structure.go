@@ -346,10 +346,8 @@ type testFile struct {
 	idents   map[string]bool
 }
 
-// collectTestRefs records, per unit, the test files of its own package that
-// mention its name (evidence of which tests guard a refactor of it), and, for
-// exported unreachable units, test files of other packages that import its
-// package and name it (test-support API that cannot move into _test.go).
+// collectTestRefs records each unit's own-package test mentions (what guards a refactor) and, for exported unreachable
+// units, other packages' tests that name it (test-support API that cannot move into _test.go).
 func collectTestRefs(m *Model, root, module string) {
 	var tests []*testFile
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {

@@ -2,15 +2,9 @@ package timeline
 
 import "github.com/ingyamilmolinar/beatmo/core/model"
 
-// commitRing keeps the most recent committed beats in-order. Entries are
-// addressed by absolute subdivision index; once written they are immutable.
-//
-// capMax bounds the underlying slice length. When zero (uninitialized) the
-// ring grows geometrically without limit — the historical behavior, retained
-// for callers that have not opted in to a retention policy. When set, the
-// ring stops doubling at capMax and drops the oldest entry on append. The
-// per-row immutables sidecar in Service preserves history that the ring has
-// trimmed, so reconcileFrozen lookups for past abs still resolve correctly.
+// Immutable once written. capMax 0 grows without limit (callers with no retention policy); set, the ring stops doubling
+// there and drops the oldest on append, while Service's immutables sidecar keeps what it trims, so past lookups still
+// resolve.
 type commitRing struct {
 	base   int // absolute index stored at head
 	size   int // number of valid entries
@@ -21,9 +15,7 @@ type commitRing struct {
 	kinds  []CommitKind
 }
 
-// setCapMax records the hard ceiling on ring capacity. Idempotent: only the
-// largest value sticks, so a caller cannot accidentally shrink an existing
-// ceiling on a row whose ring already grew.
+// Only the largest value sticks, so a caller can never shrink a ring that already grew.
 func (r *commitRing) setCapMax(n int) {
 	if n <= 0 || r == nil {
 		return
@@ -43,9 +35,7 @@ func (r *commitRing) ensureCapacity(capacity int) {
 	if capacity <= 0 {
 		capacity = 0
 	}
-	// Honor the ring's hard ceiling. Callers asking for more than capMax
-	// receive a ring sized to capMax; append() handles the wrap-and-drop on
-	// further writes.
+	// Capped at capMax; append wraps and drops after that.
 	if r.capMax > 0 && capacity > r.capMax {
 		capacity = r.capMax
 	}
@@ -155,10 +145,7 @@ func (r *commitRing) append(abs int, val bool, typ model.NodeType, kind CommitKi
 	if len(r.vals) == 0 {
 		return
 	}
-	// Grow the ring instead of evicting immutable history when capacity is
-	// exhausted, up to capMax. Past playback/import commits beyond the ceiling
-	// are preserved by Service.immutables, so dropping the oldest ring entry
-	// here is safe.
+	// Grow rather than evict up to capMax; past that, dropping the oldest is safe because Service.immutables keeps it.
 	if r.size == len(r.vals) {
 		newCap := len(r.vals) * 2
 		if newCap == 0 {
@@ -246,8 +233,7 @@ func (r *commitRing) value(abs int) (bool, model.NodeType, CommitKind, bool) {
 	return r.vals[idx], r.types[idx], r.kinds[idx], true
 }
 
-// replace updates an existing commit in-place. It is safe for seeded/gap
-// entries; callers should avoid mutating immutable playback/import history.
+// For seeded/gap entries; never mutate playback/import history through it.
 func (r *commitRing) replace(abs int, val bool, typ model.NodeType, kind CommitKind) bool {
 	if r.size == 0 || abs < r.base || abs >= r.base+r.size || len(r.vals) == 0 {
 		return false

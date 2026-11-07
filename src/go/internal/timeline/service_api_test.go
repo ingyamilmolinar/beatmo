@@ -6,11 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestServiceRecordCommitImmutableAndRange exercises the canonical write
-// path: RecordCommit lays down a Playback entry, CommittedRange reports
-// the [base, last] window, Committed reads it back. This is the entry
-// point that ~every UI write to the timeline funnels through, but it had
-// no direct unit test.
+// The canonical write path nearly every UI timeline write funnels through.
 func TestServiceRecordCommitImmutableAndRange(t *testing.T) {
 	s := NewService()
 	const row = 0
@@ -36,9 +32,7 @@ func TestServiceRecordCommitImmutableAndRange(t *testing.T) {
 	}
 }
 
-// TestServiceRecordCommitPreservesImmutables — once Playback has been
-// recorded, a subsequent attempt to overwrite with any kind must be a
-// no-op. This is the "past is immutable" contract.
+// Once Playback is recorded, any overwrite is a no-op: the past is immutable.
 func TestServiceRecordCommitPreservesImmutables(t *testing.T) {
 	s := NewService()
 	s.RecordCommit(0, 5, true, model.NodeTypeRegular, 16, 16)
@@ -129,8 +123,7 @@ func TestServiceTrimAfterMutablePreservesImmutable(t *testing.T) {
 		s.RecordCommit(0, abs, true, model.NodeTypeRegular, 16, 16)
 	}
 	s.TrimAfterMutable(0, 4)
-	// Immutables ≥5 must survive in the sidecar even though the ring
-	// trimAfterMutable bails at the first immutable entry it sees.
+	// Immutables >= 5 survive in the sidecar though the ring's trim stops at the first immutable.
 	for abs := 5; abs < 8; abs++ {
 		if _, _, ok := s.Committed(0, abs); !ok {
 			t.Errorf("immutable abs=%d lost after TrimAfterMutable", abs)
@@ -201,9 +194,7 @@ func TestServiceHasImmutable(t *testing.T) {
 	}
 }
 
-// TestServiceSnapshotReturnsDeepCopy — the returned slices must not
-// share storage with the live segments, so callers can hold them across
-// subsequent service calls without races / mutation.
+// Callers may hold the slices across later calls without sharing storage.
 func TestServiceSnapshotReturnsDeepCopy(t *testing.T) {
 	s := NewService()
 	s.UpdateRowSegments(0, 0, 4, 4, []bool{true, false, true, false}, func(SegmentsView) {})
@@ -231,10 +222,7 @@ func TestServiceSnapshotOutOfRange(t *testing.T) {
 	}
 }
 
-// TestServiceUpdateRowSegmentsRunsCallbackWithLiveSlices — the callback
-// API hands the caller live (not copied) slices for hot-path rendering.
-// We verify the windowing math: past gets values from the commit ring,
-// present/future come from the supplied steps argument.
+// Live (uncopied) slices for the hot render path: past from the ring, present and future from steps.
 func TestServiceUpdateRowSegmentsRunsCallbackWithLiveSlices(t *testing.T) {
 	s := NewService()
 	s.RecordCommit(0, 1, true, model.NodeTypeRegular, 4, 4)
@@ -333,8 +321,7 @@ func TestServiceTrimAfterPathChangeReport(t *testing.T) {
 	if report.LastImmutable != 2 {
 		t.Errorf("report.LastImmutable=%d, want 2", report.LastImmutable)
 	}
-	// Mutable Seeded at abs=5 must have been pruned (cutoff−1=2 ≥
-	// freezeLimit and ≥ lastImm, so maxKeep=2).
+	// cutoff−1 = 2 >= freezeLimit and >= lastImm, so maxKeep = 2.
 	if _, _, ok := s.Committed(0, 5); ok {
 		t.Error("Seeded at abs=5 survived TrimAfterPathChange(cutoff=3)")
 	}
@@ -343,10 +330,7 @@ func TestServiceTrimAfterPathChangeReport(t *testing.T) {
 	}
 }
 
-// TestServiceSetArchiveMaxEntriesShrinksCeiling — the ceiling drives
-// pruneImmutablesRow → archive eviction. Setting a low ceiling and
-// pushing past immutablesPerRowMax exercises the cold-archive migration
-// path; archive then capped by the new ceiling.
+// A low ceiling and pushes past immutablesPerRowMax exercise the archive migration, then the new cap.
 func TestServiceSetArchiveMaxEntriesShrinksCeiling(t *testing.T) {
 	s := NewService()
 	s.SetArchiveMaxEntries(8)
@@ -360,18 +344,13 @@ func TestServiceSetArchiveMaxEntriesShrinksCeiling(t *testing.T) {
 	if got > 8+archiveEvictChunk {
 		t.Errorf("archive grew to %d after SetArchiveMaxEntries(8); want ≤ %d (cap + 1 evict chunk)", got, 8+archiveEvictChunk)
 	}
-	// Reads for the oldest abs that aged out of the sidecar but landed
-	// in the archive must still resolve via the archive tier — unless
-	// the eviction chunk dropped them. We pick abs=total-1 which we
-	// just wrote; it should still be live in the ring or sidecar.
+	// abs=total-1 was just written, so it is still live in the ring or sidecar.
 	if _, _, ok := s.Committed(0, total-1); !ok {
 		t.Error("most-recent commit no longer reachable")
 	}
 }
 
-// TestServiceRingLenForTestAndArchiveLenForTest are surfaced for soak
-// regressions; cover them so a refactor that breaks the seam fails
-// loudly.
+// The soak tests' seams: a refactor that breaks one fails here.
 func TestServiceRingLenForTestAndArchiveLenForTest(t *testing.T) {
 	s := NewService()
 	if ring, cap, imm := s.RingLenForTest(0); ring != 0 || cap != 0 || imm != 0 {

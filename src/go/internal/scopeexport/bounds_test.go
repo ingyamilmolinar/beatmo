@@ -1,27 +1,8 @@
 //go:build test
 
-// Bounds regression tests for the scopeexport per-instrument map.
-//
-// scopeexport is gated by `SCOPE_EXPORT=1`; it's only active when an
-// operator opts into the JSONL flight recorder. In that mode it
-// maintains a `map[string]*ringBuf` per stage, keyed by instrument ID.
-// drainAll() empties the ring buffers but never deletes the map keys,
-// so a session that creates many transient instrument IDs would
-// accumulate map entries indefinitely.
-//
-// The audit identified this as a leak suspect. The tests below assert
-// two invariants — what's true today plus the documented bound:
-//
-//   1. The per-stage map size never exceeds the set of unique IDs ever
-//      pushed (i.e. the leak is keyed-by-id, not unbounded-per-push).
-//   2. drainAll() returns one entry per non-empty ring even when the
-//      map itself has accumulated stale keys with empty rings.
-//
-// These tests make the leak vector observable: if someone refactors
-// drainAll() to *also* prune empty rings, the first test will start
-// failing (and they can decrement the bound). If someone introduces a
-// new path that adds entries faster than instrument churn, the test
-// catches the leak.
+// Opt-in (SCOPE_EXPORT=1). Each stage keeps a ring per instrument id, and drainAll empties rings but keeps keys, so the
+// map is bounded by unique ids ever pushed, never by pushes. These pin that bound; a refactor that prunes empty rings or
+// adds entries faster than instrument churn fails.
 
 package scopeexport
 
@@ -36,10 +17,7 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestStageRingsMapBoundedByUniqueIDs asserts the per-stage map size
-// equals the number of unique instrument IDs ever pushed. This is the
-// CURRENT contract — documenting that the map does NOT shrink. A future
-// refactor that adds eviction must update this test.
+// The CURRENT contract: the map never shrinks; adding eviction must update this.
 func TestStageRingsMapBoundedByUniqueIDs(t *testing.T) {
 	svc := NewService(Config{SampleRate: 44100})
 
@@ -60,9 +38,7 @@ func TestStageRingsMapBoundedByUniqueIDs(t *testing.T) {
 			"(scopeexport/service.go:90 getOrCreate)", got, uniqueIDs)
 	}
 
-	// drainAll drains every ring but does NOT delete entries with
-	// empty rings (current behaviour). Map size should remain
-	// unchanged.
+	// drainAll keeps keys with empty rings, so the map size is unchanged.
 	_ = svc.stages[scope.StageSynth].drainAll()
 
 	svc.stages[scope.StageSynth].mu.Lock()
@@ -100,9 +76,7 @@ func TestStageRingsMapDoesNotGrowOnRepeatedPush(t *testing.T) {
 	}
 }
 
-// TestStageRingsBufCapacityBoundedByDrainCadence asserts the underlying
-// ringBuf.buf capacity stays at the largest single-push size — the
-// drain loop preserves capacity but length must return to 0.
+// Draining keeps capacity at the largest single push while length returns to 0.
 func TestStageRingsBufCapacityBoundedByDrainCadence(t *testing.T) {
 	svc := NewService(Config{SampleRate: 44100})
 	pushSize := 4096
@@ -132,10 +106,7 @@ func TestStageRingsBufCapacityBoundedByDrainCadence(t *testing.T) {
 	}
 }
 
-// TestServiceMemoryFootprintConstantUnderSteadyPlayback drives the
-// service through a long soak with a *fixed* set of instruments and
-// asserts no monotonic heap growth. This is the regression guard for
-// the kind of OOM the user reported.
+// A long soak with a fixed instrument set: no monotonic heap growth.
 func TestServiceMemoryFootprintConstantUnderSteadyPlayback(t *testing.T) {
 	svc := NewService(Config{SampleRate: 44100})
 	samples := make([]float64, 1024)

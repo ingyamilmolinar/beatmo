@@ -10,9 +10,7 @@ type GroupIndex struct {
 	memberByNode map[NodeID]bool
 }
 
-// BuildGroupIndex flattens groups into a per-node rule list. Deterministic:
-// groups are folded in ascending GroupID order (stacking is order-independent
-// mathematically, but keep iteration stable anyway). Nil-safe.
+// Folded in ascending GroupID order: stacking is order-independent, but iteration stays stable. Nil-safe.
 func BuildGroupIndex(groups map[GroupID]*NodeGroup) *GroupIndex {
 	idx := &GroupIndex{
 		rulesByNode:  map[NodeID][]GroupRule{},
@@ -27,10 +25,7 @@ func BuildGroupIndex(groups map[GroupID]*NodeGroup) *GroupIndex {
 		grp := groups[id]
 		for _, n := range grp.NodeIDs {
 			idx.memberByNode[n] = true
-			// RulesEnabled is the independent status gate (task-enabled-status
-			// brief, Part C): a group's Rules only feed the per-node rule index
-			// when the group is enabled — membership/ring rendering (Member)
-			// is untouched by the flag, only rule application is gated.
+			// Only an enabled group's Rules feed the index; membership (ring rendering) ignores the flag.
 			if grp.RulesEnabled && len(grp.Rules) > 0 {
 				idx.rulesByNode[n] = append(idx.rulesByNode[n], grp.Rules...)
 			}
@@ -55,9 +50,7 @@ func (idx *GroupIndex) HasRules(n NodeID) bool {
 	return len(idx.rulesByNode[n]) > 0
 }
 
-// GroupRound maps an absolute subdivision index to a loop round. Indices at
-// or before loopStart, and non-loop rows (loopLen <= 0), are round 0. This is
-// the same cycle math the mute-node every_n_triggers logic uses.
+// The same cycle math as the mute node's every_n_triggers.
 func GroupRound(idx, loopStart, loopLen int) int {
 	if loopLen <= 0 || idx <= loopStart {
 		return 0
@@ -75,22 +68,9 @@ func clampGroupF(v, min, max float64) float64 {
 	return v
 }
 
-// GroupEffect returns the stacked rule effect for n at absIdx (an absolute
-// subdivision index; loopStart/loopLen give the row's loop span, see
-// GroupRound): pitchDelta in semitones (sums across rules), volMul and durMul
-// as multipliers (multiply across rules; each rule contributes
-// clamp(1 + Delta×steps, Min, Max)). Pure. Identity is (0, 1, 1).
-//
-// Each rule's steps accumulate from its own AnchorIdx — the absolute index at
-// which it was enabled — not from the timeline origin:
-//
-//	steps = max(0, GroupRound(absIdx,...) − GroupRound(min(r.AnchorIdx, absIdx),...)) / r.EveryN
-//
-// min(AnchorIdx, absIdx) makes seeking to a point BEFORE the anchor collapse
-// to round-vs-itself (steps 0, i.e. identity) rather than going negative.
-// AnchorIdx 0 (the timeline origin, and the zero-value default for rules
-// created before this field existed) reproduces the pre-anchor behavior
-// exactly: steps = GroupRound(absIdx,...) / EveryN.
+// Pitch deltas sum; vol/dur multiply, each rule clamp(1 + Delta×steps, Min, Max). Identity (0, 1, 1). steps =
+// max(0, round(absIdx) − round(min(AnchorIdx, absIdx))) / EveryN: counted from the rule's own anchor, and a seek before
+// the anchor is identity, never negative.
 func GroupEffect(idx *GroupIndex, n NodeID, absIdx, loopStart, loopLen int) (float64, float64, float64) {
 	pitchDelta, volMul, durMul := 0.0, 1.0, 1.0
 	if idx == nil {

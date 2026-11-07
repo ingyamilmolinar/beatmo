@@ -1,18 +1,7 @@
 #!/usr/bin/env node
-// audio_lane_ab.mjs — interleaved A/B/C runner for the audio lane
-// (docs/superpowers/specs/2026-10-02-audio-lane-scheduling-horizon-design.md §7).
-//
-// Arms run in rotation ROUNDS times so slow drift in machine load hits every
-// arm alike. Each run records the 1-minute load before and after; runs above
-// MAX_LOAD are discarded and retried once. Arms:
-//   baseline — the frozen pre-change build ($AB_SCRATCH/baseline_site)
-//   legacy   — the new build with the lane OFF (proves the old path unchanged)
-//   lane     — the new build with the lane ON
-// Output: bench-results/audio_lane_ab_<date>.{json,md}
-//
-// Usage: AB_SCRATCH=<dir with baseline_site/ and lane.wasm> [ROUNDS=3]
-//        [ARMS=baseline,legacy,lane] [SCENARIOS=a,b] [MAX_LOAD=15] [TAG=before]
-//        node scripts/audio_lane_ab.mjs
+// Arms (baseline / legacy = lane off / lane) run in rotation ROUNDS times so machine-load drift hits each alike; runs
+// above MAX_LOAD are discarded and retried once. Usage: AB_SCRATCH=<dir with baseline_site/ and lane.wasm> [ROUNDS=3]
+// [ARMS=] [SCENARIOS=] [MAX_LOAD=15] [TAG=] node scripts/audio_lane_ab.mjs
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";

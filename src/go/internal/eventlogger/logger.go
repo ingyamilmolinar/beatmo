@@ -1,14 +1,6 @@
-// Package eventlogger subscribes to a hooks.Bus and emits one human-readable
-// INFO line per event through a *log.Logger. It is the canonical "narrative
-// view" of the bus — sibling to internal/eventstream, which writes the same
-// stream to a JSONL file for offline analysis.
-//
-// High-rate events (BPM/volume drag, EQ slider, insert-effect param tweaks,
-// node drag-to-cell) are coalesced through a debounce-trailing window so a
-// 50ms slider drag becomes one INFO line, not fifty. See coalesce.go.
-//
-// Verbose kinds (camera pan/zoom, drag progress) are filtered out by default;
-// callers opt in via Options.Verbose or the BEATMO_EVENT_LOG_VERBOSE=1 env.
+// Package eventlogger renders one human-readable INFO line per hooks.Bus event (eventstream writes the same stream as
+// JSONL). High-rate kinds go through a debounce-trailing window, so a slider drag is one line; verbose kinds are off
+// unless Options.Verbose or BEATMO_EVENT_LOG_VERBOSE=1.
 package eventlogger
 
 import (
@@ -35,9 +27,7 @@ type Options struct {
 	// QueueSize is the per-logger event-queue depth. Events queued past
 	// this depth are dropped (counted via Dropped()). Default: 1024.
 	QueueSize int
-	// CoalesceWindow is the debounce-trailing window for high-rate
-	// events (BPM/volume drag, EQ band, insert-effect param, node move).
-	// Default: 250 ms. Set to 0 to disable coalescing entirely.
+	// Debounce-trailing window for high-rate events; 0 disables coalescing.
 	CoalesceWindow time.Duration
 }
 
@@ -91,9 +81,7 @@ func Open(bus *hooks.Bus, lg *gamelog.Logger, opts Options) (*Logger, error) {
 		stopCh: make(chan struct{}),
 		opts:   opts,
 	}
-	// Coalescer's emit callback is the synchronous-emit path; it runs from
-	// the drain goroutine (when pulling a non-coalesced event) and from the
-	// AfterFunc timer goroutine (when a coalesced window elapses).
+	// Runs from the drain goroutine (non-coalesced events) and from the AfterFunc timers (a closed window).
 	l.coal = newCoalescer(opts.CoalesceWindow, func(e hooks.Event) {
 		l.writeEvent(e)
 	})
@@ -104,8 +92,7 @@ func Open(bus *hooks.Bus, lg *gamelog.Logger, opts Options) (*Logger, error) {
 		Name:          "eventlogger.format",
 	})
 	if err != nil {
-		// Registry budget exhausted; fall back to a private pool so the
-		// logger still works rather than silently dropping the narrative.
+		// Budget exhausted: a private pool, so the narrative is never silently dropped.
 		pool = async.NewPool(context.Background(), async.Options{
 			MaxConcurrent: 1,
 			QueueSize:     8,
@@ -126,9 +113,7 @@ func Open(bus *hooks.Bus, lg *gamelog.Logger, opts Options) (*Logger, error) {
 		if !opts.Verbose && hooks.IsVerbose(k) {
 			continue
 		}
-		// Skip Kinds without a formatter so we never log "<unknown kind=X>".
-		// coverage_test enforces that every non-verbose Kind has a formatter,
-		// so this only filters new Kinds added without a corresponding entry.
+		// Never "<unknown kind=X>"; coverage_test makes every non-verbose Kind have a formatter.
 		if _, ok := lookupFormatter(k); !ok {
 			continue
 		}
@@ -187,11 +172,8 @@ func (l *Logger) dispatch(e hooks.Event) {
 	l.writeEvent(e)
 }
 
-// writeEvent runs the per-Kind formatter and emits one INFO line. When the
-// event carries a non-zero Source (captured at the user-action call site by
-// the emit helper), it is appended as a trailing "src=pkg/file.go:line"
-// column so the reader can grep directly to the source. The middleware
-// layer (helper, bus, this formatter) is intentionally NOT what gets logged.
+// A non-zero Source (captured at the user-action call site) is appended as "src=pkg/file.go:line" to grep to; the
+// middleware (helper, bus, formatter) is never what gets logged.
 func (l *Logger) writeEvent(e hooks.Event) {
 	f, ok := lookupFormatter(e.Kind)
 	if !ok {

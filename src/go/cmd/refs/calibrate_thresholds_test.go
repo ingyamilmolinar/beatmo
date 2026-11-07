@@ -12,11 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 )
 
-// absSigned is the magnitude resolver the pure percentile tests inject. It
-// exercises the statistics on rows the test constructs by hand, without
-// needing a registry; registryAxisMagnitude, the production resolver, gets its
-// own tests below AND is exercised end to end by
-// TestGoodGroupThresholds_WithProductionResolver.
+// The injected resolver for the pure percentile tests; the production resolver is tested below and end to end.
 func absSigned(a axisResult) (float64, bool) {
 	if a.RefNA != "" || a.SynthNA != "" {
 		return 0, false
@@ -111,10 +107,7 @@ func TestGoodGroupThresholds_BelowFloor(t *testing.T) {
 	}
 }
 
-// TestGoodGroupThresholds_DriftIsAlwaysPositive: a p50 of exactly zero would
-// leave Drift at 0, which Descriptor.Thresholds reads as "no override" and
-// falls back to the KIND's drift -- potentially larger than the calibrated
-// mismatch, inverting the two bands.
+// A zero p50 would read as "no override" and could invert the two bands.
 func TestGoodGroupThresholds_DriftIsAlwaysPositive(t *testing.T) {
 	e := goodGroupThresholds(goodSamples("a.x", 0, 0, 0, 0, 5), absSigned)["a.x"]
 	if e.Drift <= 0 {
@@ -127,16 +120,9 @@ func TestGoodGroupThresholds_DriftIsAlwaysPositive(t *testing.T) {
 
 // --- the production resolver -------------------------------------------------
 
-// TestRegistryAxisMagnitude_RecoversTheComparedQuantity is the unit-correctness
-// gate the first calibration attempt failed.
-//
-// It drives the REAL comparator with real measurements and asserts the
-// magnitude that comes back is the quantity that comparator weighs: a folded
-// RATIO for a KindSeconds axis (0.01s vs 0.03s is 3x, not 0.02) and a
-// PERCENTAGE for a KindHz one (1000 Hz vs 1400 Hz is 40%, not 400). Asserting
-// against d.Thresholds() -- the same numbers the resolver would use -- would
-// have been a tautology; these expectations are computed from the definition
-// of the comparison instead.
+// The REAL comparator's magnitude must be the quantity it weighs: a folded RATIO for KindSeconds (0.01s vs 0.03s is
+// 3x, not 0.02), a PERCENTAGE for KindHz (1000 vs 1400 Hz is 40 %). Expectations come from the definition, not from
+// d.Thresholds(), which would be a tautology.
 func TestRegistryAxisMagnitude_RecoversTheComparedQuantity(t *testing.T) {
 	cases := []struct {
 		id         string
@@ -173,9 +159,7 @@ func TestRegistryAxisMagnitude_RecoversTheComparedQuantity(t *testing.T) {
 	}
 }
 
-// TestRegistryAxisMagnitude_TransformingComparator covers the case that broke
-// the Norm x mismatch reconstruction: band.t60 DECLARES T60 ratios and
-// COMPARES mean|log2 ratio|. The magnitude must come back as a ratio.
+// band.t60 DECLARES T60 ratios and COMPARES mean|log2 ratio|: the magnitude must come back as a ratio.
 func TestRegistryAxisMagnitude_TransformingComparator(t *testing.T) {
 	d, ok := fingerprint.DefaultRegistry().ByID(fingerprint.IDBandT60)
 	if !ok || d.Compare == nil {
@@ -201,9 +185,7 @@ func TestRegistryAxisMagnitude_TransformingComparator(t *testing.T) {
 	}
 }
 
-// TestRegistryAxisMagnitude_RefusesUncalibratable pins the exclusions. Each
-// would otherwise write an entry that is inert or meaningless while the
-// report's CAL column claimed the axis was earned from the corpus.
+// Each would otherwise write an inert entry while the report's CAL column claimed it was earned from the corpus.
 func TestRegistryAxisMagnitude_RefusesUncalibratable(t *testing.T) {
 	d, ok := fingerprint.DefaultRegistry().ByID(fingerprint.IDEnvRingT60)
 	if !ok || !d.Demoted {
@@ -226,12 +208,7 @@ func TestRegistryAxisMagnitude_RefusesUncalibratable(t *testing.T) {
 	}
 }
 
-// TestGoodGroupThresholds_WithProductionResolver runs the whole path the
-// command runs: real comparators produce the axis rows, registryAxisMagnitude
-// resolves them, and the percentiles land in the comparator's own units.
-//
-// Without this the resolver and the statistics were only ever tested apart,
-// and the units bug lived exactly in the seam between them.
+// The whole command path: the resolver and the statistics tested apart miss a unit error in the seam between them.
 func TestGoodGroupThresholds_WithProductionResolver(t *testing.T) {
 	reg := fingerprint.DefaultRegistry()
 	attack, ok := reg.ByID(fingerprint.IDEnvAttack)
@@ -316,12 +293,7 @@ func TestMergeProbeEntriesWins(t *testing.T) {
 	}
 }
 
-// TestHandPinOnDiskSurvivesRecalibration is the escape hatch's real gate.
-//
-// A hand exclusion is written by EDITING the JSON, and recalibration must
-// carry it over WITHOUT an intervening rebuild -- reading the embedded copy
-// (which is the file as of the last build) would silently drop the edit and
-// lose the evidence the pin exists to preserve.
+// A hand pin is an edit to the JSON; recalibration must carry it over WITHOUT a rebuild.
 func TestHandPinOnDiskSurvivesRecalibration(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "thresholds.json")
@@ -392,11 +364,8 @@ func thresholdFileOf(m map[string][2]float64) fingerprint.ThresholdFile {
 	return out
 }
 
-// TestCalibrate_SynthesisedMismatchIsRecorded is I5's regression. When the
-// good group is degenerate on an axis (p90 <= p50), the mismatch threshold is
-// not a measurement at all -- it is 1.5x the drift. Two entries that look
-// identical in the file were arrived at by completely different routes, and
-// without the Note a reader cannot tell which is which.
+// A degenerate good group's mismatch is 1.5x the drift, not a measurement; the Note is how a reader tells two
+// identical-looking entries apart.
 func TestCalibrate_SynthesisedMismatchIsRecorded(t *testing.T) {
 	// Six good families, all reading exactly the same magnitude: p50 == p90.
 	var samples []validationSample
@@ -435,10 +404,7 @@ func TestCalibrate_SynthesisedMismatchIsRecorded(t *testing.T) {
 	}
 }
 
-// The OTHER synthesised half: a p50 of exactly zero (the good group matches
-// the reference on this axis more often than not) leaves no measured drift,
-// so it is derived as mismatch/1.5. mode.harmonicity's 0.349/0.524 pair read
-// like two percentiles until this note existed.
+// A zero p50 leaves no measured drift, so it is derived as mismatch/1.5 and noted.
 func TestCalibrate_SynthesisedDriftIsRecorded(t *testing.T) {
 	// Five good families: three read exactly 0, the top two read high, so
 	// p50 == 0 while p90 is a real number.

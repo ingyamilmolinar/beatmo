@@ -14,9 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// verdictsRel is the corpus of `refs audition` verdicts, relative to the Go
-// module root -- the labelled corpus later analysis-metric validation work
-// reads from.
+// The labelled corpus the analysis-metric validation reads.
 const verdictsRel = "internal/audio/testdata/ear_verdicts.jsonl"
 
 // earVerdict is one line of the verdicts JSONL file: one listener's
@@ -30,10 +28,8 @@ type earVerdict struct {
 	Note        string          `json:"note,omitempty"`
 	Tags        []string        `json:"tags,omitempty"`
 	SemisFromA3 int             `json:"semis_from_a3"`
-	// RecipeSHA is the hash of the exact instrument recipe params the chosen
-	// member was heard against (InstrumentSoundHash), so `refs validate` can
-	// tell a verdict recorded against an old seed apart from one still
-	// current. Empty for verdicts recorded before this field existed.
+	// The chosen member's sound hash (InstrumentSoundHash), so refs validate can tell a verdict on an old document from a
+	// current one. May be empty on old rows.
 	RecipeSHA string `json:"recipe_sha,omitempty"`
 }
 
@@ -49,10 +45,7 @@ func unmarshalVerdict(b []byte) (earVerdict, error) {
 	return v, nil
 }
 
-// defaultVerdictsPath resolves the committed verdicts file location from
-// the module root, so the default works regardless of the caller's cwd
-// (cmd/refs is invoked both via `go run ./cmd/refs` from src/go and via
-// `go test` from cmd/refs itself).
+// From the module root, so it works from src/go (go run) and from cmd/refs (go test).
 func defaultVerdictsPath() (string, error) {
 	root, ok := wavref.ModuleRoot()
 	if !ok {
@@ -61,10 +54,7 @@ func defaultVerdictsPath() (string, error) {
 	return filepath.Join(root, verdictsRel), nil
 }
 
-// appendVerdict writes one verdict as a single JSON line, appending to
-// path without disturbing whatever is already there -- the whole point of
-// "append immediately" is that an interrupted session loses nothing already
-// recorded.
+// Appended at once: an interrupted session loses nothing already recorded.
 func appendVerdict(path string, v earVerdict) error {
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -86,22 +76,9 @@ func appendVerdict(path string, v earVerdict) error {
 	return nil
 }
 
-// recordVerdict persists v, SUPERSEDING any existing verdict for the same
-// family rather than appending a second one.
-//
-// Re-auditioning is a first-class workflow: any change to the render or
-// level-match pipeline invalidates the affected families' recorded judgements,
-// and the only fix is to listen again. Appending would leave two rows for one
-// family in a file that is the labelled ground truth for downstream metric
-// validation, distinguishable only by line order.
-//
-// Note/Tags handling is the one subtlety. A note explains WHY a family sounded
-// the way it did, so it survives a re-recording that reaches the SAME verdict
-// and is dropped when the verdict CHANGES -- prose written about "no, it's too
-// buzzy" must not silently reattach itself to a later "yes". A note supplied
-// with the new verdict always wins.
-//
-// New families still append, so ordering follows first-audition order.
+// recordVerdict SUPERSEDES the family's existing row: re-auditioning after a render change is the workflow, and two rows
+// in the labelled ground truth would differ only by line order. A note survives a re-recording with the SAME verdict and
+// is dropped when it changes (prose about "too buzzy" must not reattach to a "yes"); a new note always wins.
 func recordVerdict(path string, v earVerdict) error {
 	existing, err := readVerdicts(path)
 	if err != nil {
@@ -120,9 +97,7 @@ func recordVerdict(path string, v earVerdict) error {
 	return appendVerdict(path, v)
 }
 
-// readVerdicts reads every recorded verdict from path. A missing file
-// reads as zero verdicts, not an error -- a fresh session hasn't created
-// it yet.
+// A missing file is zero verdicts: a fresh session has not created it yet.
 func readVerdicts(path string) ([]earVerdict, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -135,8 +110,7 @@ func readVerdicts(path string) ([]earVerdict, error) {
 
 	var out []earVerdict
 	sc := bufio.NewScanner(f)
-	// Notes are free text and could run long; keep the scanner's buffer
-	// generous rather than choking on a verbose line.
+	// Notes are free text and can run long.
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
 		line := sc.Bytes()
@@ -169,23 +143,9 @@ func loadAnsweredFamilies(path string) (map[instrument.ID]bool, error) {
 	return out, nil
 }
 
-// pickFamily resolves which family the CLI operates on this invocation.
-//
-// An explicit instrument (family key) always wins, regardless of resume or
-// sessionSkip -- asking for a family by name is an explicit override of
-// both "skip what I've already answered" and "skip what I just skipped".
-// Left empty, it auto-picks the first family in families' (already
-// Key-sorted) order, excluding:
-//   - already-answered families, when resume is true (persisted across
-//     runs, via the verdicts file)
-//   - families in sessionSkip (NOT persisted -- see cmdAudition's -skip
-//     flag: the `ab-all` shell loop accumulates "s"-skipped families across
-//     ITS OWN loop iterations and re-passes them each invocation, so "s"
-//     moves on to the next family for the rest of THIS session without
-//     writing anything to the verdicts file; a future run still offers a
-//     skipped family again)
-//
-// found=false with a nil error means "nothing left to do", not a failure.
+// An explicit instrument always wins over resume and the session skip. Otherwise the first family in Key order that is
+// neither answered (with resume, persisted) nor in sessionSkip (ab-all's in-session "s" list, never persisted, so a
+// later run offers it again). found=false with nil error = nothing left to do.
 func pickFamily(families []auditionFamily, inst instrument.ID, resume bool, answered, sessionSkip map[instrument.ID]bool) (auditionFamily, bool, error) {
 	if inst != "" {
 		for _, f := range families {
@@ -207,10 +167,7 @@ func pickFamily(families []auditionFamily, inst instrument.ID, resume bool, answ
 	return auditionFamily{}, false, nil
 }
 
-// parseSkipSet parses the -skip flag's comma-separated family-key list into
-// a lookup set. Empty entries (from a leading/trailing/doubled comma, or an
-// entirely empty flag) are ignored so the Makefile's accumulator can grow
-// via straightforward string concatenation without fussy quoting.
+// Empty entries are ignored, so the Makefile's accumulator can grow by plain concatenation.
 func parseSkipSet(raw string) map[instrument.ID]bool {
 	out := map[instrument.ID]bool{}
 	for _, key := range strings.Split(raw, ",") {

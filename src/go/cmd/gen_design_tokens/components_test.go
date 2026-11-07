@@ -7,11 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// components_test.go covers parseComponents → resolveComponent → emitComponents,
-// the actual heart of Phase-2 codegen. Round 1 tested only the top-level
-// helpers (pascal, parseHexRGB, etc.); these tests exercise the resolution
-// algorithm itself, including every error branch in resolveComponent.
-
 // makeResolver builds a tokenResolver populated with a known set of names
 // that the component fixtures below reference.
 func makeResolver() *tokenResolver {
@@ -306,9 +301,7 @@ toggle:
 }
 
 func TestEmitComponentsCategoryFallback(t *testing.T) {
-	// A component without a category should still emit valid Go source —
-	// the template's `categoryConst` helper has a fallback for the empty
-	// string case.
+	// No category must still emit valid Go (categoryConst falls back for "").
 	src := "no-cat:\n  backgroundColor: \"{colors.primary}\"\n"
 	comps, _ := parseComponents(parseComponentNode(t, src), makeResolver())
 	if _, err := emitComponents(comps); err != nil {
@@ -316,10 +309,8 @@ func TestEmitComponentsCategoryFallback(t *testing.T) {
 	}
 }
 
-// TestComponentEmitReferencesTokenIdents guards the runtime-theme contract:
-// the emitted spec table must reference the genColor* token IDENTIFIERS (not
-// literal RGB) so ui.rebuildComponentSpecs() can re-derive it after a theme
-// overwrites the tokens.
+// The spec table must reference genColor* IDENTIFIERS, never literal RGB, so rebuildComponentSpecs can re-derive it
+// after a theme overwrites the tokens.
 func TestComponentEmitReferencesTokenIdents(t *testing.T) {
 	r := newTokenResolver([]keyVal{{"primary", "#FF0000"}, {"border", "#FFFFFF"}}, nil, []keyVal{{"control", "4"}}, []keyVal{{"border-thin", "8"}})
 	raw := &componentRaw{Category: "button", BackgroundColor: "{colors.primary}", IconColor: "{colors.border}",

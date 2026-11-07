@@ -40,11 +40,8 @@ func TrimTransform(startMs, endMs float64) Transform {
 	})
 }
 
-// applyWindowInPlace multiplies seg by the given window function in place.
-// Uses the periodic (DFT-even) form — divisor is len(seg), not len(seg)-1 —
-// which is the standard choice for spectral analysis. See also WindowTransform,
-// which uses the symmetric (n-1) form for filter design; the two conventions are
-// deliberately distinct, so the coefficient arms are not shared.
+// The periodic (DFT-even, ÷ len) form for spectral analysis. WindowTransform uses the symmetric (n-1) form for filter
+// design, so the arms are deliberately not shared.
 func applyWindowInPlace(seg []float64, wt WindowType) {
 	if len(seg) == 0 {
 		return
@@ -84,9 +81,7 @@ func windowCoeffs(n int, wt WindowType) []float64 {
 	return v.([]float64)
 }
 
-// WindowTransform returns a Transform that applies the given window function.
-// Note: uses the symmetric (n-1 divisor) form, suitable for filter design.
-// For FFT spectral analysis, prefer applyWindowInPlace (periodic/n form).
+// The symmetric (n-1) form, for filter design; spectral analysis uses applyWindowInPlace.
 func WindowTransform(wt WindowType) Transform {
 	return TransformFunc(func(w Wave) Wave {
 		n := len(w.Samples)

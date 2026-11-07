@@ -1,11 +1,5 @@
-// Package eventstream persists every event published on a hooks.Bus to
-// a newline-delimited JSON file (JSONL). Modeled on internal/scopeexport's
-// flight-recorder pattern: env-gated, append-only, periodic flush, lossy
-// under saturation (drops counted, never blocks the publisher).
-//
-// Writes happen on a single dedicated worker pulled from the process-wide
-// async.Registry so the sink never spawns more goroutines than the
-// system budget allows.
+// Package eventstream persists every hooks.Bus event as JSONL: env-gated, append-only, periodic flush, lossy under
+// saturation (drops counted, the publisher never blocks), on one worker from the shared async budget.
 package eventstream
 
 import (
@@ -75,9 +69,7 @@ type Sink struct {
 	path   string
 }
 
-// Open creates a Sink that writes to path and subscribes to every Kind
-// in hooks.KindAll on bus. Returns a no-op Sink (with a nil queue) when
-// path is empty so callers can unconditionally Open + Close.
+// An empty path returns a no-op Sink, so callers can always Open + Close.
 func Open(bus *hooks.Bus, path string, opts Options) (*Sink, error) {
 	if path == "" {
 		return &Sink{}, nil // no-op sink
@@ -121,9 +113,7 @@ func Open(bus *hooks.Bus, path string, opts Options) (*Sink, error) {
 	}
 	s.pool = pool
 
-	// Spawn the writer goroutine via the pool. We use one long-running
-	// task here instead of one task per event; this keeps the pool's
-	// queue free for other consumers and avoids per-event submit cost.
+	// One long-running task, not one per event: the pool's queue stays free and there is no per-event submit cost.
 	s.wg.Add(1)
 	if err := s.pool.SubmitBlocking(context.Background(), func(_ context.Context) {
 		defer s.wg.Done()
@@ -133,8 +123,7 @@ func Open(bus *hooks.Bus, path string, opts Options) (*Sink, error) {
 		return nil, fmt.Errorf("eventstream: submit writer: %w", err)
 	}
 
-	// Subscribe to every Kind. Subscribers run on the bus's fan-out pool;
-	// they do not write to disk — they enqueue to s.queue (non-blocking).
+	// Subscribers run on the bus's pool and only enqueue (non-blocking); they never write to disk.
 	for _, k := range hooks.KindAll {
 		if !opts.Verbose && hooks.IsVerbose(k) {
 			continue
@@ -153,11 +142,7 @@ func (s *Sink) enqueue(e hooks.Event) {
 	if s == nil || s.queue == nil || s.closed.Load() {
 		return
 	}
-	// Note: Seq is assigned in writeOne when the record is actually
-	// written, NOT here. Subscriber callbacks run concurrently on the
-	// bus's fan-out pool — assigning Seq here would interleave under
-	// contention because (atomic.Add, channel send) is not atomic as a
-	// pair. Assign-on-write guarantees Seq matches write order.
+	// Seq is assigned at write, not here: subscribers run concurrently, and (atomic.Add, send) is not atomic as a pair.
 	rec := Record{
 		At:      e.At,
 		MonoNs:  monotonicNow() - s.startMono,
@@ -188,10 +173,7 @@ func (s *Sink) run() {
 			s.flush()
 			s.maybeRotate()
 		case ack := <-s.flushReq:
-			// FlushNow barrier: drain everything currently queued and flush,
-			// all on this goroutine (the sole owner of bufW), then ack so the
-			// caller observes a consistent on-disk view without touching bufW
-			// concurrently.
+			// Drained and flushed on this goroutine, bufW's sole owner, then acked, so the caller sees a consistent file.
 			s.drainAndFlush()
 			close(ack)
 		case <-s.stopCh:
@@ -209,9 +191,7 @@ func (s *Sink) run() {
 	}
 }
 
-// drainAndFlush writes every record currently in the queue, then flushes the
-// buffered writer. Called only from run()'s goroutine (via the flushReq case
-// and the stopCh drain) so bufW stays single-owner.
+// Only from run()'s goroutine, so bufW stays single-owner.
 func (s *Sink) drainAndFlush() {
 	for {
 		select {
@@ -227,9 +207,7 @@ func (s *Sink) drainAndFlush() {
 func (s *Sink) writeOne(rec Record) {
 	rec.Seq = s.seq.Add(1)
 	if err := s.enc.Encode(rec); err != nil {
-		// Encoder errors are fatal for this record but not the sink.
-		// We track them implicitly — the next successful flush will
-		// resume normal operation.
+		// Fatal for this record, not the sink.
 		_ = err
 		return
 	}
@@ -321,22 +299,15 @@ func (s *Sink) close() error {
 	return err
 }
 
-// monotonicNow returns the monotonic clock in ns. We use time.Now's
-// monotonic component indirectly: the difference between two
-// time.Now().UnixNano() calls is wall-clock; we want monotonic. Go's
-// runtime exposes monotonic via time.Since on a reference time.Time,
-// so we wrap that.
+// Differences of UnixNano are wall-clock; time.Since on a reference time is monotonic.
 var startWall = time.Now()
 
 func monotonicNow() int64 {
 	return int64(time.Since(startWall))
 }
 
-// FlushNow is exposed for tests that want a deterministic flush before
-// reading the file back. It waits briefly for any in-flight async bus
-// fan-out to land in the queue, then asks the run() goroutine to drain the
-// queue and flush — the flush happens on run()'s goroutine so bufW is never
-// touched concurrently (the previous direct s.flush() here raced run()).
+// Waits briefly for in-flight fan-out to reach the queue, then has run() drain and flush on its own goroutine, so bufW is
+// never touched concurrently.
 func (s *Sink) FlushNow() {
 	if s == nil || s.queue == nil {
 		return
@@ -353,6 +324,4 @@ func (s *Sink) FlushNow() {
 	}
 }
 
-// _ unused interface — kept for forward compatibility with future
-// abstraction (e.g., binary sink, S3 sink).
 var _ io.Closer = (*Sink)(nil)

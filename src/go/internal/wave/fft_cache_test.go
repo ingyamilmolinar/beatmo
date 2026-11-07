@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// fftUncached is the FFT as it was before twiddles were cached: one
-// cmplx.Rect per butterfly. The cached FFT must reproduce it BIT FOR BIT --
-// the audio-tab digests (internal/audiotap) compare raw IEEE-754 bits of
-// values computed downstream of this transform.
+// The cached FFT must reproduce this BIT FOR BIT: the audio-tab digests compare raw IEEE-754 bits downstream of it.
 func fftUncached(buf []complex128) {
 	n := len(buf)
 	bits := 0
@@ -93,10 +90,7 @@ func TestCachedWindowIsBitIdentical(t *testing.T) {
 	}
 }
 
-// MagnitudeSpectrum windows straight into the transform buffer; it must give
-// exactly what the original seg copy -> window -> FFT pipeline gave, for a
-// clip shorter than the transform (zero padded), longer (truncated) and
-// exact, under every window.
+// Exactly the old copy → window → FFT result, zero-padded, truncated and exact, under every window.
 func TestMagnitudeSpectrumIsBitIdentical(t *testing.T) {
 	r := rand.New(rand.NewSource(11))
 	for _, wt := range []WindowType{WindowHann, WindowHamming, WindowBlackman} {

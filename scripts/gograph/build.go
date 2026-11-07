@@ -39,12 +39,8 @@ func BuildGraph(cfg Config) (*Graph, error) {
 	return g, nil
 }
 
-// depthOr1 looks up a func's call-graph depth, defaulting to 1 when the
-// function is absent from the map. ResolveEdges only populates depth entries
-// for functions that appear in the in-module call graph; a leaf or fully
-// isolated function (calls nothing in-module, called by nothing in-module) is
-// absent, and its correct call-graph depth is 1 (itself) — consistent with
-// how computeDepths returns 1 for leaves that ARE in the graph.
+// depthOr1 defaults to 1: ResolveEdges records depth only for functions in the in-module call graph, and an isolated
+// function's depth is itself, as computeDepths gives leaves.
 func depthOr1(m map[string]int, id string) int {
 	if d, ok := m[id]; ok {
 		return d

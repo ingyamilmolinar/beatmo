@@ -2,11 +2,7 @@ package i18n
 
 import "testing"
 
-// synth_control_test.go pins the Synth-tab KNOB-LABEL and value-ENUM i18n keys
-// (the gap that left "Triangle", "Pitch", "Cutoff", … hard-coded English on the
-// Synth tab). Keys are listed by their literal wire-format string — not the Key
-// consts — so this test compiles and fails cleanly BEFORE the consts/catalog
-// entries exist, and independently pins the on-the-wire key names.
+// By literal wire string, not the Key consts, so the test pins the on-the-wire names independently.
 
 // synthControlLabelKeys are the curated knob-label keys (one per distinct caption
 // value; several param ids share a key, e.g. every "Wave" knob).
@@ -31,9 +27,7 @@ var synthControlNounKeys = []Key{
 	"synth.noun.ratio", "synth.noun.level", "synth.noun.time", "synth.noun.hit",
 }
 
-// synthEnumKeys are the value-enum keys (the knob VALUE that reads "Triangle",
-// "Low-pass", "Exponential", …). "FM" and "2-op" are universal and intentionally
-// keyless (they pass through unchanged), so they are not listed here.
+// "FM" and "2-op" are universal and keyless, so they are not listed.
 var synthEnumKeys = []Key{
 	"synth.enum.wave-sine", "synth.enum.wave-saw", "synth.enum.wave-square",
 	"synth.enum.wave-triangle", "synth.enum.wave-noise-white", "synth.enum.wave-noise-pink",

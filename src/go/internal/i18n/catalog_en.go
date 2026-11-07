@@ -858,8 +858,7 @@ var en = map[Key]string{
 	KeySynthStageNoiseSub:     "the hiss and thud around the tone",
 	KeySynthStageFinishSub:    "shape the finished sound",
 
-	// Synth-tab knob labels — EN mirrors the canonical captions in
-	// internal/ui/synth_param_display.go verbatim (zero behavior change).
+	// EN mirrors the canonical captions in internal/ui/synth_param_display.go verbatim.
 	KeySynthControlTune:          "Tune",
 	KeySynthControlDecayMult:     "Decay ×",
 	KeySynthControlTone:          "Tone",

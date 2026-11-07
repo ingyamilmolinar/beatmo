@@ -31,15 +31,8 @@ func (p *GroupParam) UnmarshalText(b []byte) error { return enum.Unmarshal(group
 // ParseGroupParam reads a rule param spelled in data.
 func ParseGroupParam(s string) (GroupParam, error) { return enum.Parse(groupParamNames, s) }
 
-// GroupRule: every EveryN rounds, accumulate Delta on Param. The accumulated
-// effect (Delta × steps) clamps to [Min, Max]. Zero Min+Max on input means
-// "use per-param defaults" (set at store time by SetGroupRules).
-//
-// AnchorIdx is the absolute subdivision index at which the rule was enabled
-// (0 = timeline origin, backward compatible with rules created before this
-// field existed). Steps accumulate from AnchorIdx's round, not from the
-// timeline origin — see GroupEffect. Negative values normalize to 0 in
-// normalizeGroupRules.
+// Delta × steps, every EveryN rounds, clamped to [Min, Max] (zero Min+Max = per-param defaults). AnchorIdx is where
+// the rule was enabled (0 = origin): steps count from its round. Negative normalises to 0.
 type GroupRule struct {
 	Param     GroupParam
 	Delta     float64
@@ -49,20 +42,9 @@ type GroupRule struct {
 	AnchorIdx int
 }
 
-// NodeGroup is a persistent set of nodes sharing batch edits and rules.
-// A node may belong to several groups; rule effects stack (pitch deltas sum,
-// volume/duration multipliers multiply).
-//
-// RulesEnabled is an INDEPENDENT status bit, decoupled from whether Rules is
-// non-empty (task-enabled-status brief, Part C): a group can carry configured
-// delta rules while RulesEnabled is false (edited but not yet turned on), or
-// have RulesEnabled true with an empty Rules slice (a no-op — HasRules is
-// still false either way). BuildGroupIndex is the single gate: it only folds
-// a group's Rules into the per-node rule index when RulesEnabled is true —
-// Member() (ring rendering) is unaffected by the flag. Defaults false (the
-// zero value), so every freshly created group — including a marquee
-// provisional one — starts Disabled until explicitly enabled and saved.
-// Mutated only via SetGroupRulesEnabled; SetGroupRules never touches it.
+// A node may be in several groups; effects stack (pitch sums, vol/dur multiply). RulesEnabled is an INDEPENDENT bit:
+// BuildGroupIndex folds Rules only while it is set, Member() ignores it, and it defaults false so every new group starts
+// disabled. Only SetGroupRulesEnabled changes it.
 type NodeGroup struct {
 	ID           GroupID
 	Name         string
@@ -78,12 +60,7 @@ var (
 	ErrGroupBadRule     = errors.New("invalid group rule")
 )
 
-// NodePitchMin / NodePitchMax bound a node's semitone pitch offset: two
-// octaves either side of the instrument's base note.
-//
-// Exported because it is not only the group-rule clamp — the UI's note-matrix
-// picker enumerates exactly this range, and the two must not drift. Any other
-// consumer that needs "how far can a node's pitch move" reads these.
+// Two octaves either side of the instrument's base note. Exported: the note-matrix picker enumerates exactly this range.
 const (
 	NodePitchMin = -24.0
 	NodePitchMax = 24.0
@@ -132,30 +109,14 @@ func (g *Graph) dedupValidateNodeIDs(nodeIDs []NodeID) ([]NodeID, error) {
 	return out, nil
 }
 
-// ResetGroups clears every group, unlike assigning an empty map to Groups
-// directly (kept as its own method for symmetry with the rest of the
-// document-replace reset helpers, and so call sites don't need to know
-// Groups' zero value). Import's replace-not-merge reset uses this.
-//
-// Group numbering is allocated fresh by lowestFreeGroupID on every
-// CreateGroup (see its doc comment) — there is no counter to reset here:
-// re-importing the SAME document twice mints the same GroupIDs each time
-// (file order -> IDs 1..n), keeping exported bytes deterministic/byte-stable
-// (undo/redo's byte-for-byte round-trip depends on this).
+// There is no counter to reset: lowestFreeGroupID mints ids fresh, so re-importing a document gives the same ids
+// every time, which undo/redo's byte-for-byte round trip depends on.
 func (g *Graph) ResetGroups() {
 	g.Groups = map[GroupID]*NodeGroup{}
 }
 
-// lowestFreeGroupID returns the smallest positive GroupID not currently
-// present in g.Groups (linear scan — group counts are tiny). This subsumes
-// the old tail-rollback allocator (nextGroupID + ReleaseGroupID, removed):
-// a group's number becomes reusable the instant it's deleted, whether that's
-// a discarded provisional (GroupMenu.discardProvisional), an explicit delete
-// (the menu's Delete button), or a node-deletion auto-delete
-// (removeNodeFromAllGroups) — no separate release call needed, and no
-// aliasing risk (a stale UI handle onto a deleted-then-reused id is safe by
-// construction: consumers close/refresh on vanish via the group-changed
-// hook — see GroupMenu.group()/onGroupsChanged).
+// A freed number is reusable at once, whatever freed it; a stale UI handle on a reused id is safe because consumers close
+// or refresh on the group-changed hook.
 func (g *Graph) lowestFreeGroupID() GroupID {
 	id := GroupID(1)
 	for {
@@ -166,9 +127,7 @@ func (g *Graph) lowestFreeGroupID() GroupID {
 	}
 }
 
-// CreateGroup creates a group over nodeIDs (deduped). Empty name gets
-// "Group N". Returns the new GroupID — the lowest free id (see
-// lowestFreeGroupID), not a monotonically growing counter.
+// The lowest free id, not a growing counter.
 func (g *Graph) CreateGroup(name string, nodeIDs []NodeID) (GroupID, error) {
 	ids, err := g.dedupValidateNodeIDs(nodeIDs)
 	if err != nil {
@@ -302,13 +261,8 @@ func (g *Graph) SetGroupRules(id GroupID, rules []GroupRule) error {
 
 func (g *Graph) ClearGroupRules(id GroupID) error { return g.SetGroupRules(id, nil) }
 
-// SetGroupRulesEnabled sets the group's independent RulesEnabled status bit
-// (task-enabled-status brief, Part C) — it NEVER touches Rules. Firing the
-// group-changed hook here is what makes toggling live: onGroupsChanged
-// rebuilds the GroupIndex (BuildGroupIndex re-reads RulesEnabled) and, while
-// playing, drops in-flight audio so the very next re-predicted trigger
-// reflects the new gate — enabling a group with nonzero deltas is
-// immediately audible, disabling silences the ramp back to identity.
+// Never touches Rules. The hook makes the toggle live: the index is rebuilt and, while playing, in-flight audio drops so
+// the next trigger reflects it.
 func (g *Graph) SetGroupRulesEnabled(id GroupID, on bool) error {
 	grp, ok := g.Groups[id]
 	if !ok {
@@ -319,24 +273,9 @@ func (g *Graph) SetGroupRulesEnabled(id GroupID, on bool) error {
 	return nil
 }
 
-// ReanchorAllGroupRules re-anchors EVERY rule of EVERY rule-bearing group to
-// anchor (clamped to >= 0), firing fireGroupChanged exactly ONCE PER GROUP
-// touched (not once per rule), and returns the count of groups touched.
-// Groups with no rules are skipped entirely (no-op, no hook fire).
-//
-// This is runtime ramp state, like a trigger counter — NOT a document edit:
-// callers must NEVER wrap this in an undo/emit (see
-// internal/ui/game_seek.go's handlePlaybackTransition, the single production
-// call site). Semantics: AnchorIdx is ramp state for the CURRENT play
-// session, so every fresh playback start (stop→play, not resume-from-pause)
-// re-anchors all rules to the session's starting absolute subdivision index —
-// otherwise a rule saved mid-session N (anchored at, say, abs 640) collapses
-// to steps=0 for the entire region below that anchor once the playhead
-// restarts at abs 0 in session N+1, per GroupEffect's
-// anchor=min(anchor,absIdx) collapse (see GroupEffect's doc comment for the
-// root-cause bug this fixes). Mid-play edit continuity (writeRules preserving
-// a param's existing anchor on an in-place edit) is untouched — that applies
-// WITHIN a session; this applies BETWEEN sessions.
+// Runtime ramp state, NOT a document edit: never undo/emit it. Each fresh play (not resume) re-anchors every rule to the
+// session's start, or a rule anchored late in one session collapses to steps 0 below that anchor in the next. Fires the
+// hook once per group touched; returns the count.
 func (g *Graph) ReanchorAllGroupRules(anchor int) int {
 	if anchor < 0 {
 		anchor = 0
@@ -399,9 +338,7 @@ func (g *Graph) GroupsForNode(n NodeID) []GroupID {
 	return out
 }
 
-// removeNodeFromAllGroups strips n from every group (auto-deleting emptied
-// groups). Called by Graph.RemoveNode so the "no dangling NodeIDs" invariant
-// holds regardless of which code path deletes a node.
+// Called by Graph.RemoveNode, so no path that deletes a node leaves a dangling NodeID.
 func (g *Graph) removeNodeFromAllGroups(n NodeID) {
 	for id, grp := range g.Groups {
 		for _, m := range grp.NodeIDs {

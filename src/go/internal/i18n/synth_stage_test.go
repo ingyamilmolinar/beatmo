@@ -2,11 +2,7 @@ package i18n
 
 import "testing"
 
-// synthStageLabelKeys / synthStageSubKeys are the pipeline stage label and
-// kid-friendly subtitle keys added for the synth-tab i18n pass. They are listed
-// here by their literal wire-format string (not the Key consts) so this test
-// compiles and produces a clean assertion failure BEFORE the consts/catalog
-// entries exist — and so the test independently pins the on-the-wire key names.
+// By literal wire string, not the Key consts, so the test pins the on-the-wire names independently.
 var synthStageLabelKeys = []Key{
 	"synth.stage.voice", "synth.stage.osc", "synth.stage.fm",
 	"synth.stage.pitch", "synth.stage.lfo", "synth.stage.burst",

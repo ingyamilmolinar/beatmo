@@ -1,11 +1,6 @@
-// Package channel names a mixer channel: the master bus or one instrument's
-// own channel. Volume, pan, EQ, sends, insert effects and the analysers are
-// all keyed by it.
-//
-// An ID is opaque: code gets one from Master or Of, and data (the JS bridge,
-// a file) goes through Parse. Each bus has exactly one name — the master bus
-// is "main", an instrument's channel is spelled like its instrument id — and
-// the zero ID is "no channel", never the master bus.
+// Package channel names a mixer channel: the master bus or one instrument's. Volume, EQ, insert effects and the analysers
+// key on it. Opaque: from Master / Of, or Parse for data; the master is "main", and the zero ID is no channel, never the
+// master.
 package channel
 
 import (

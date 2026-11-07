@@ -35,10 +35,7 @@ func TestPromptScale_ParsesAndCentres(t *testing.T) {
 	if kind != verdictRecorded {
 		t.Fatalf("kind %v", kind)
 	}
-	// The listener rates the WORD ("1 not warm enough · 5 too warm"); the
-	// stored answer is on the AXIS, so +2 ALWAYS means the synth reads HIGH
-	// on it. Warm falls on brightness: "not warm enough" (1) is a synth that
-	// reads too bright, +2.
+	// Warm falls on brightness: "not warm enough" (1) is a synth that reads too bright, +2.
 	if ans["A"] != 2 || ans["B"] != -2 {
 		t.Fatalf("got %+v", ans)
 	}
@@ -101,10 +98,7 @@ func TestPromptAdjectives(t *testing.T) {
 	}
 }
 
-// TestPromptNote_HonoursControls: the closing note prompt must obey the same
-// replay/s/q controls as every other prompt, but only for a BARE single
-// token -- a real note that happens to open with one of those letters is
-// prose, not a control, and losing it would lose the only record of WHY.
+// Controls only as a BARE single token: a note opening with one of those letters is the only record of WHY.
 func TestPromptNote_HonoursControls(t *testing.T) {
 	for _, tc := range []struct {
 		in     string
@@ -256,10 +250,7 @@ func TestRunSessionFamily_HappyPathWritesOneRecord(t *testing.T) {
 	}
 }
 
-// A replay at ANY prompt plays the clips asked for and returns to the same
-// unanswered question; everything already answered is kept and one record is
-// written at the end. This is the regression for the original behaviour,
-// where "r" restarted the whole family and threw the answers away.
+// A replay at ANY prompt returns to the same unanswered question with every answer kept, and one record at the end.
 func TestRunSessionFamily_ReplayResumesAtTheSameQuestion(t *testing.T) {
 	fc, ref, render := sessionFixture(t)
 	out := filepath.Join(t.TempDir(), "ear_sessions.jsonl")
@@ -406,10 +397,8 @@ func TestReplayer_MultiTokenLine(t *testing.T) {
 	}
 }
 
-// The QUICK round (the default) is the same short set of steps for every
-// instrument: rating, vs current, the word salad, ship, note -- no 1-5 word
-// ratings. Both modes write the mode into the record, so a missing scale
-// later reads as "not asked", never as "about right".
+// Quick is the same short steps for every instrument; the mode is recorded, so a missing scale reads "not asked", never
+// "about right".
 func TestRunSessionFamily_QuickRoundAsksNoWordRatings(t *testing.T) {
 	fc, ref, render := sessionFixture(t)
 	out := filepath.Join(t.TempDir(), "ear_sessions.jsonl")
@@ -458,9 +447,7 @@ func TestRunSessionFamily_QuickRoundAsksNoWordRatings(t *testing.T) {
 	}
 }
 
-// A quit mid-family keeps a draft; rerunning the family resumes at the first
-// unanswered question with every earlier answer intact, writes one record,
-// and removes the draft. This is what makes a Ctrl-C cost nothing.
+// A quit keeps a draft; the rerun resumes at the first unanswered question, writes one record, removes the draft.
 func TestRunSessionFamily_QuitThenResumeKeepsAnswers(t *testing.T) {
 	fc, ref, render := sessionFixture(t)
 	out := filepath.Join(t.TempDir(), "ear_sessions.jsonl")
@@ -552,11 +539,7 @@ func TestPromptShip(t *testing.T) {
 	}
 }
 
-// TestADraftOfOtherCandidatesIsNeverResumedOrLost: a family's draft from
-// another round (the September ab-session snare draft, candidates A and B,
-// half answered) must not be resumed by a round auditioning different
-// candidates (ab-tuned's T), and nothing that round does -- answer, skip,
-// quit -- may overwrite or delete it. The round keeps its own draft beside it.
+// Another round's draft (other candidates) is never resumed, overwritten or deleted, whatever this round answers.
 func TestADraftOfOtherCandidatesIsNeverResumedOrLost(t *testing.T) {
 	fc, ref, render := sessionFixture(t)
 	out := filepath.Join(t.TempDir(), "ear_sessions.jsonl")

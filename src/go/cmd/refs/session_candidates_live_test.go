@@ -10,11 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/synthmatch"
 )
 
-// Every candidate must (a) only carry overrides that land on the base's document
-// (applied together, so a layer the candidate adds counts) and (b)
-// render differently from the base — a candidate cannot silently be the
-// current version, and a dead override key cannot ship (118 such keys are
-// already on the dead-seed ratchet).
+// Every candidate's overrides must land on the base's document (applied together, so a layer it adds counts) and
+// render differently: a candidate cannot silently be the current version, nor ship a dead override key.
 func TestShippedCandidates_AreLive(t *testing.T) {
 	p, _ := defaultCandidatesPath()
 	fams, err := loadCandidates(p)

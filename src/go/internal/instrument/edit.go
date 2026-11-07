@@ -215,9 +215,7 @@ func RemoveModule(d Doc, reg *Registry, ref Ref) (Doc, error) {
 	return withModule(d, ref, nil), nil
 }
 
-// SwitchType replaces the source or layer at ref with a module of typ. Values
-// the new type shares by name are carried over; the rest start at Init. The
-// on/off state is kept (an absent module becomes an OFF one).
+// Values shared by name carry over, the rest start at Init; on/off is kept (an absent module becomes an OFF one).
 func SwitchType(d Doc, reg *Registry, ref Ref, typ string) (Doc, error) {
 	t, ok := reg.byType[typ]
 	if !ok || t.Kind != ref.Kind || (ref.Kind != KindSource && ref.Kind != KindLayer) {
@@ -241,8 +239,7 @@ func SwitchType(d Doc, reg *Registry, ref Ref, typ string) (Doc, error) {
 
 var layerFieldRe = regexp.MustCompile(`^gen(\d+)_(.+)$`)
 
-// SetField is the sub-project-1 adapter from a flat ABI field name to a
-// document edit (spec §5). Deleted with the module-grouped Synth tab.
+// SetField maps a flat ABI field name onto a document edit.
 func SetField(d Doc, reg *Registry, field string, v float64) (Doc, error) {
 	if !finite(v) {
 		return d, fmt.Errorf("%s: %w (not finite)", field, ErrNotAllowed)
@@ -445,8 +442,7 @@ func setLayerField(d Doc, reg *Registry, slot int, name string, v float64) (Doc,
 	return d, fmt.Errorf("%q: %w", LayerField(slot, name), ErrUnknownField)
 }
 
-// CopyModules copies the modules at refs from src into dst at the same place
-// (sub-project 4's backend). Layer copies respect the slot limit.
+// Layer copies respect the slot limit.
 func CopyModules(dst, src Doc, reg *Registry, refs []Ref) (Doc, error) {
 	out := dst
 	for _, ref := range refs {

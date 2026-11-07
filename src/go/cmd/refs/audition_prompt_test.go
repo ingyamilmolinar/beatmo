@@ -141,11 +141,8 @@ func TestPromptVerdict_Multi_Quit(t *testing.T) {
 }
 
 func TestPromptVerdict_Single_OneIsAcceptedAsSynonymForYes(t *testing.T) {
-	// A single-option family still has exactly one "option 1"; a reflex
-	// numeric answer (as if this were a multi-option family) is accepted
-	// and canonicalized to "y" -- this is what lets a piped answer sequence
-	// like "1 <note>\nq\n" work uniformly regardless of which family the
-	// session happens to land on first.
+	// A reflex "1" on a single-option family is canonicalised to "y", so a piped "1 <note>\nq\n" works whichever family
+	// the session lands on first.
 	in := bufio.NewReader(strings.NewReader("1 spot on\n"))
 	var out bytes.Buffer
 	kind, verdict, chosen, note, err := promptVerdict(in, &out, singleFam())
@@ -231,17 +228,8 @@ func TestPromptVerdict_EOFDuringPromptSignalsQuit(t *testing.T) {
 	}
 }
 
-// TestPromptVerdict_DoesNotOverreadPastCurrentLine is the regression test
-// for a real bug: `ab-all` reads answers for EACH family via a SEPARATE
-// `refs audition` process invocation, all sharing the same OS pipe (piped
-// stdin). If promptVerdict (or its caller) buffers more than the current
-// line -- e.g. via bufio.NewReader's default read-ahead -- the first
-// process can silently consume bytes that belong to the NEXT family's
-// answer, stranding them in memory that dies when the process exits. The
-// next family's prompt then starves (sees EOF) even though its answer is
-// still sitting, unread, in the pipe. A shared io.Reader across two
-// sequential promptVerdict calls reproduces this exactly, without needing
-// a real subprocess/pipe.
+// ab-all answers each family in a SEPARATE process on one piped stdin: a read-ahead in the first would strand the next
+// family's answer and starve its prompt. A shared io.Reader across two calls reproduces that without a subprocess.
 func TestPromptVerdict_DoesNotOverreadPastCurrentLine(t *testing.T) {
 	shared := strings.NewReader("1 first note\nq\n")
 	var out bytes.Buffer

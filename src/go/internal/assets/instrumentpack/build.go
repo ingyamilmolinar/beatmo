@@ -1,8 +1,5 @@
-// Package instrumentpack is the embedded instrument pack and its builder: the
-// readable sources in internal/assets/instruments, packed (spec §3, §8).
-// Its own package so internal/audio can embed it without importing
-// internal/assets (whose tests import audio). Build is deterministic:
-// encoding/json sorts map keys and gzip writes a zero header.
+// Package instrumentpack is the embedded instrument pack and its builder. Its own package so internal/audio can embed it
+// without importing internal/assets; deterministic (json sorts map keys, gzip writes a zero header).
 package instrumentpack
 
 import (
@@ -83,10 +80,8 @@ func Build(dir string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// addPins packs every instrument_pins/<hex>.json: a document a template still
-// references by hash although it is no longer shipped (it goes in Docs, never
-// in Shipped/Order). The file name must be its content hash. A missing
-// directory is no pins.
+// A document a template still pins although it no longer ships: into Docs, never Shipped/Order. The file name must be
+// its content hash; no directory = no pins.
 func addPins(p *Pack, pinsDir string) error {
 	entries, err := os.ReadDir(pinsDir)
 	if errors.Is(err, fs.ErrNotExist) {

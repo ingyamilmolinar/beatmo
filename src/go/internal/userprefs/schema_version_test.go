@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// fullSnapshot exercises every section at once, so a round-trip test
-// actually proves the single-pass marshaller covers all of them (the old
-// V3..V7 chain hid a dropped section behind an early return).
+// Every section at once, so a round trip proves the single-pass marshaller covers them all.
 func fullSnapshot() prefsSnapshot {
 	return prefsSnapshot{
 		favorites:     map[instrument.ID]bool{roster.Kick: true, roster.Snare: true},
@@ -71,10 +69,7 @@ func TestPrefsRoundTripsEverySection(t *testing.T) {
 	}
 }
 
-// TestPrefsMarshalIsSinglePass guards the property the V-chain violated:
-// the document is serialized exactly once. A re-marshal of the parsed
-// result must be byte-identical, which only holds if no intermediate
-// re-encoding reorders or re-indents anything.
+// Serialised exactly once: a re-marshal of the parsed result must be byte-identical.
 func TestPrefsMarshalIsSinglePass(t *testing.T) {
 	a, err := marshalPrefs(fullSnapshot())
 	if err != nil {
@@ -93,9 +88,7 @@ func TestPrefsMarshalIsSinglePass(t *testing.T) {
 	}
 }
 
-// TestPrefsSchemaLessDocumentStartsEmpty: a prefs document with NO
-// schema_version is rejected like any other unreadable version — the store
-// starts from empty and logs it (never a startup failure).
+// No schema_version is rejected like any unreadable version: the store starts empty and logs it, never failing startup.
 func TestPrefsSchemaLessDocumentStartsEmpty(t *testing.T) {
 	schemaLess := []byte(`{
 	  "favorites": ["kick"],
@@ -145,9 +138,7 @@ func TestPrefsRejectsUnknownVersion(t *testing.T) {
 	}
 }
 
-// TestPrefsCorruptJSONIsNotAVersionError keeps the two failure modes
-// distinct: malformed bytes are tolerated silently (nil error), an
-// unreadable version is reported.
+// Malformed bytes are tolerated silently (nil error); an unreadable version is reported.
 func TestPrefsCorruptJSONIsNotAVersionError(t *testing.T) {
 	snap, err := parsePrefs([]byte(`{not json`), nil)
 	if err != nil {

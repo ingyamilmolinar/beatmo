@@ -72,9 +72,7 @@ func TestCatalogueIntegrity(t *testing.T) {
 	}
 }
 
-// TestNoOrphanScoreFiles fails when a .mxl is committed but not catalogued —
-// an uncatalogued file has no recorded licence, which is exactly the state the
-// admission rule exists to prevent.
+// An uncatalogued file has no recorded licence, exactly what the admission rule prevents.
 func TestNoOrphanScoreFiles(t *testing.T) {
 	c := cat(t)
 	want := map[string]bool{}
@@ -111,10 +109,7 @@ func TestGate1_WorkIsPublicDomain(t *testing.T) {
 	}
 }
 
-// TestGate1CutoffsFollowTheCalendar pins the two terms: US publication + 95
-// years (PD on 1 January of year 96) and EU life + 70 (PD on 1 January of
-// year 71). The 2026 values are the ones the gate hardcoded until it moved
-// with the calendar — 1929 was already a year stale by then.
+// US publication + 95 (PD on 1 January of year 96) and EU life + 70 (1 January of year 71), moving with the calendar.
 func TestGate1CutoffsFollowTheCalendar(t *testing.T) {
 	cases := []struct {
 		date       string
@@ -193,10 +188,7 @@ func TestGate2_LicenseAllowed(t *testing.T) {
 	}
 }
 
-// TestGate2_EmbeddedRightsCorroborateLicense reads the score's own <rights>
-// element and checks it does not contradict the catalogue. The catalogue is
-// hand-written; the file is not. This is what stops a wrong licence claim from
-// being merely asserted.
+// The catalogue is hand-written and the file is not: the score's own <rights> must not contradict the claimed licence.
 func TestGate2_EmbeddedRightsCorroborateLicense(t *testing.T) {
 	for _, s := range cat(t).Scores {
 		if s.FormatOrDefault() == FormatMIDI {
@@ -229,10 +221,8 @@ func TestGate2_EmbeddedRightsCorroborateLicense(t *testing.T) {
 			t.Errorf("score %q: <rights>%s</rights> does not corroborate licence %q",
 				s.ID, sc.Rights, s.Source.License)
 		}
-		// A NonCommercial or ShareAlike claim on the SCORE itself would be
-		// disqualifying however the catalogue describes it. Hauptstimme's
-		// rights string mentions CC-By-SA for its ANALYSIS ANNOTATIONS, which
-		// we do not use, so the check is scoped to the score clause.
+		// An NC or SA claim on the SCORE disqualifies it; Hauptstimme's CC-By-SA covers only its analysis annotations (unused),
+		// so the check is scoped to the score clause.
 		scoreClause := low
 		if i := strings.Index(low, "annotation"); i >= 0 {
 			scoreClause = low[:i]
@@ -385,9 +375,7 @@ func TestLilyPondHeaderAndLicense(t *testing.T) {
 	}
 }
 
-// TestGate3_CommittedBytesMatchCatalogue verifies every SHA256. The hash is
-// over the upstream file verbatim, so it is directly comparable to the
-// artifact `refs scores verify` re-fetches.
+// Over the upstream file verbatim, so it compares directly with what refs scores verify re-fetches.
 func TestGate3_CommittedBytesMatchCatalogue(t *testing.T) {
 	for _, s := range cat(t).Scores {
 		got, err := SumFor(s.ID)
@@ -418,9 +406,7 @@ func TestGate3_ProvenanceIsNamed(t *testing.T) {
 	}
 }
 
-// TestEveryScoreParses is the smoke test that the committed corpus is actually
-// readable by the parser the generator uses — a corrupt or unexpected container
-// fails here rather than inside gen-showcase.
+// A corrupt or unexpected container fails here rather than inside gen-showcase.
 func TestEveryScoreParses(t *testing.T) {
 	for _, s := range cat(t).Scores {
 		raw, err := Load(s.ID)
@@ -460,9 +446,7 @@ func TestEveryScoreParses(t *testing.T) {
 	}
 }
 
-// TestNoProductionImports keeps the ~5 MB embedded corpus out of the shipped
-// binaries. Only cmd/gen-showcase, this package, and _test.go files may import
-// scoreref; internal/assets embeds the GENERATED templates instead.
+// Keeps the ~5 MB corpus out of shipped binaries: only cmd/gen-showcase, this package and tests may import it.
 func TestNoProductionImports(t *testing.T) {
 	const self = "github.com/ingyamilmolinar/beatmo/internal/scoreref"
 	allowedDirs := map[string]bool{
@@ -510,12 +494,8 @@ func TestNoProductionImports(t *testing.T) {
 	}
 }
 
-// TestLyricistDeclaredWhereTheScoreNamesOne: a song is protected until its
-// LAST author's term ends, so Gate 1 checks the lyricist too — but only if the
-// catalogue declares one. This makes the declaration mandatory wherever the
-// file itself names a lyricist, and corroborates the name. A file that credits
-// "Composer" (Liliʻuokalani wrote her own words) is checked against the
-// composer's dates.
+// A song stays protected until its LAST author's term ends, so wherever the file names a lyricist the catalogue must
+// declare (and match) one; a file crediting "Composer" is checked against the composer's dates.
 func TestLyricistDeclaredWhereTheScoreNamesOne(t *testing.T) {
 	declared := 0
 	for _, s := range cat(t).Scores {

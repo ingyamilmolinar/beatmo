@@ -1,29 +1,7 @@
 #!/usr/bin/env bash
-# showcase_video.sh — record the landing page's showcase videos (spec
-# docs/superpowers/specs/2026-10-23-landing-page-design.md, "The recording").
-#
-# For each cut (desktop 16:9, phone portrait) it runs the real game's scripted
-# tour (-tour <cut> -record <dir>: real input, master bus through the Rec path,
-# frames piped at a constant 25 fps of the recording clock), then encodes:
-#   src/js/landing/<cut>.mp4   H.264 + AAC, faststart
-#   src/js/landing/<cut>.webp  poster (the first frame)
-#   src/js/landing/<cut>.vtt   cue file (captions, chapters, themes, beat clock)
-#
-# Manual by design: no UI change requires a re-record and CI never checks it.
-#
-# Display: the real display when $DISPLAY is set (GPU: ~2% repeated frames,
-# measured 2026-10-23), else xvfb (software GL: 24-52% repeated frames on the
-# heavy Synth/theme moments). SHOWCASE_XVFB=1 forces xvfb.
-#
-# A recording is published into src/js/landing only when it is clean: every
-# step reached its state, at most SHOWCASE_MAX_REPEAT_PCT (5) % of the frames
-# are repeats and no freeze is longer than SHOWCASE_MAX_FREEZE frames (12 =
-# 0.48 s). Otherwise the committed media stay as they were. A window the
-# compositor hides (screen off / locked, covered) is throttled to ~1 frame/s:
-# measured 2026-10-24, 81% repeated over a 134 s phone run.
-#
-# Env: CUTS="desktop phone"  SHOWCASE_CRF=23  SHOWCASE_WORK=<dir>  SHOWCASE_XVFB=1
-#      SHOWCASE_MAX_REPEAT_PCT=5  SHOWCASE_MAX_FREEZE=12
+# Records each cut through the real game's scripted tour (-tour <cut> -record) → src/js/landing/<cut>.{mp4,webp,vtt}; manual.
+# Published only when clean (every step reached, ≤ SHOWCASE_MAX_REPEAT_PCT repeated frames, no freeze > SHOWCASE_MAX_FREEZE):
+# xvfb's software GL and a hidden window both repeat frames. Env: CUTS SHOWCASE_CRF SHOWCASE_WORK SHOWCASE_XVFB=1
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

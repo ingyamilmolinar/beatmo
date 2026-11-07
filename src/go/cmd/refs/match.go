@@ -2,31 +2,9 @@
 
 package main
 
-// match.go -- `refs match`: which shipped instrument is closest to a recording
-// nobody has catalogued?
-//
-// `refs compare` / `refs audition` start from an INSTRUMENT and ask how close
-// its catalogued reference is. This runs the other way: hand it any WAV (a
-// download, a take of your own) and it ranks the whole roster against it. The
-// reference is converted exactly like a fetched one (mono / 44.1 kHz /
-// 16-bit) and its pitch measured with the three-gate UsableAsPitch rule.
-// Every instrument is then rendered AS PLAYED (synthmatch.RenderShippedBPM)
-// the way a player would play it to imitate the recording -- at the
-// recording's note (or, for an unpitched sound, at whichever pitch within an
-// octave sounds closest), held at least as long as the recording sounds -- and
-// ranked by its ESSENCE distance (fingerprint.AnalyzeEssence: colour, its
-// evolution from the attack into the body, noise texture, how the note dies
-// away; the attack time counts lightly). Pitch, note length, level and room
-// tone are nuisances removed by construction, not distances. Why the
-// previous metrics ranked a real piano closest to the synth double bass:
-// docs/superpowers/specs/
-// 2026-10-17-wav-match-essence-design.md. The top N are written level-matched
-// beside the reference for an ear check.
-//
-// Nothing here touches catalogue.json: a match is a QUESTION for the listener,
-// not a decision. `refs match -listen` asks it and records the answer (with
-// free-text notes on the synth) in wav_match_verdicts.jsonl; adopting a WAV as
-// an instrument's reference stays `refs adopt`'s job.
+// Which shipped instrument is closest to an uncatalogued recording? Every voice is played AS a player imitating it would
+// (at the recording's note, or the closest pitch within an octave if unpitched, held as long) and ranked by ESSENCE
+// distance; pitch, length, level and room are removed by construction. A match is a question, never a catalogue edit.
 
 import (
 	"crypto/sha256"
@@ -55,9 +33,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// Reference classes, reported (manifest, -validate) but no longer used to
-// pick a metric or a pool: the essence distance carries the envelope itself,
-// and the pitch plan (matchPitchPlan) decides how each voice is played.
+// Reported (manifest, -validate) but never used to pick a metric or pool: the pitch plan decides how a voice is played.
 const (
 	matchClassSustained  = "sustained"
 	matchClassPercussive = "percussive"
@@ -76,13 +52,8 @@ const (
 // changes shape.
 const matchManifestVersion = 9
 
-// matchSilenceDB is how far below the clip's peak the leading-silence trim
-// cuts: a download often opens with room tone, which would otherwise eat the
-// 2 s analysis window and misplace every onset metric. -20 dB, not a noise
-// floor like -40: the crowd "ahh" (763910) holds 1.7 s of ambience at -30 dB
-// before the voices swell in, and a -40 dB trim kept all of it. A struck
-// sound rises through -40..-20 dB in well under a millisecond, inside
-// matchPreRollSec, so percussion loses nothing.
+// -20 dB, not a noise floor: a download often opens with seconds of ambience at -30 dB that would eat the analysis
+// window, while a struck sound rises past -20 dB inside the pre-roll, so percussion loses nothing.
 const matchSilenceDB = -20.0
 
 // matchPreRollSec keeps a few ms before the detected onset so the attack
@@ -123,11 +94,8 @@ type matchEntry struct {
 	// Namesake is the roster instrument the FILENAME names, if any
 	// (namesakeInFilename).
 	Namesake instrument.ID `json:"namesake,omitempty"`
-	// Label is what the recording is meant to be (matchLabel: its catalogue
-	// reference's instruments, else Namesake), and LabelBest the closest
-	// voice of the label's families. LabelBest's clip is always written, even
-	// when it did not rank in the top N, so the listener hears the instrument
-	// meant to be this sound next to the ones that measure closest.
+	// What the recording is meant to be (its catalogue instruments, else Namesake); LabelBest's clip is always written, so
+	// the listener hears the intended instrument beside the closest ones.
 	Label     []instrument.ID `json:"label,omitempty"`
 	LabelBest instrument.ID   `json:"label_best,omitempty"`
 	// Traits is the recording's own EssenceTraits, beside which each
@@ -211,9 +179,7 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(s[:]), nil
 }
 
-// rosterHash identifies the exact set of sounds a ranking was computed
-// against, and the hubness calibration it was corrected with, so a retuned
-// instrument or a fresh calibration invalidates the cached rankings.
+// Covers the sounds and the hubness calibration, so a retune or a fresh calibration invalidates cached rankings.
 func rosterHash(ids []instrument.ID) string {
 	h := sha256.New()
 	for _, id := range ids {
@@ -276,10 +242,8 @@ func trimMatchClip(s []float64, rate int, maxSec float64) []float64 {
 	return out
 }
 
-// fadeInLead ramps a clip that the onset trim cut mid-rise up from exactly
-// 0 over the pre-roll it kept (the samples before the note crosses
-// matchSilenceDB), so it starts without a step (a click). A clip whose note
-// starts on its first sample -- a struck voice's attack -- is left alone.
+// A clip cut mid-rise ramps up from exactly 0 over its kept pre-roll, so it starts without a click; one whose note starts
+// on its first sample is left alone.
 func fadeInLead(s []float64, rate int) {
 	var peak float64
 	for _, v := range s {
@@ -321,29 +285,13 @@ func matchRefPitch(w wave.Wave) float64 {
 	return f0
 }
 
-// matchPitchExplainedMin is how much of the strong-partial energy a pitch
-// must account for to be THE note: below it the sound has no single note
-// (an inharmonic tine or bell cluster), and the reference is matched like an
-// unpitched one -- every voice played at whichever pitch within an octave
-// sounds closest, as a player imitating it by ear would. The synth kalimba's
-// partials at 757, 887, 997, 1122 and 1342 Hz are explained 30-45 % by any
-// pitch YIN reads (252, 378, 443, 944 Hz under different nuisances), a
-// harmonic tone ~100 %.
+// Below this share of the strong-partial energy the sound has no single note (an inharmonic tine or bell cluster) and is
+// matched as unpitched, as a player imitating it by ear would.
 const matchPitchExplainedMin = 0.7
 
-// pitchExplains is the share of the strong partials' energy
-// (strongPartials) that lies on f0's harmonics 1..matchPartialMaxK -- 0 when
-// no partial within matchDominantDB of the strongest is one of harmonics
-// 1..matchDominantMaxK. A partial above the 8th harmonic counts as
-// unexplained: at 3 % tolerance a low enough "pitch" fits anything up there
-// (the real mbira's cluster fits 124 Hz as harmonics 4..7). And a pitch
-// carried only by high harmonics is not the note a listener hears: residue
-// pitch comes from the low ones (the dominance region), so a LOUD partial
-// must be one of them. A loud one, not the loudest: a double reed's formant
-// lifts a higher partial over the low ones -- the acclivity oboe's A 440
-// peaks at its 6th harmonic (2.66 kHz) with the 2nd and 3rd 2-3 dB under it,
-// and requiring the loudest to be harmonic 1..5 read that oboe, and the
-// synth cello and bassoon at their own frames, as having no note at all.
+// The share of strong-partial energy on f0's harmonics 1..matchPartialMaxK (higher ones fit anything at 3 %). A LOUD
+// partial must be one of the low harmonics (residue pitch comes from them) but not the loudest: a double reed's formant
+// lifts a higher partial over the low ones.
 func pitchExplains(f0 float64, mag []float64, binHz float64) float64 {
 	if f0 <= 0 || binHz <= 0 {
 		return 0
@@ -376,37 +324,27 @@ func pitchExplains(f0 float64, mag []float64, binHz float64) float64 {
 	return on / all
 }
 
-// A pitched sound has a partial within matchDominantDB of its strongest
-// among its first matchDominantMaxK harmonics (cello-C2's strongest is the
-// 3rd, the IOWA oboe's the 3rd, the acclivity oboe's 2nd and 3rd sit 2-3 dB
-// under its 6th); the real mbira's cluster, read as 124 Hz, has none (its
-// loud partials are 862 Hz alone, the 7th).
+// A pitched sound has a partial within matchDominantDB of its strongest among its first harmonics; an inharmonic
+// cluster read as a low pitch has none.
 const (
 	matchDominantMaxK = 5
 	matchDominantDB   = -6.0
 )
 
-// The partials a pitch must explain are the spectral peaks within
-// matchPartialDB of the strongest (at most matchPartialPeaks of them,
-// matchPartialMinHz..matchPartialMaxHz), each within matchPartialTol of a
-// harmonic.
+// A pitch must explain the spectral peaks within matchPartialDB of the strongest (at most matchPartialPeaks,
+// matchPartialMinHz..MaxHz), each within matchPartialTol of a harmonic.
 const (
 	matchPartialDB    = -20.0
 	matchPartialPeaks = 8
 	matchPartialMinHz = 30.0
 	matchPartialMaxHz = 6000.0
 	matchPartialTol   = 0.03
-	// matchPartialMaxK caps the harmonic number a partial may be explained
-	// as: at 3 % tolerance, harmonics 9..12 of a low pitch cover a third of
-	// the spectrum between them, so a dense inharmonic cluster "fits" a
-	// spurious low fundamental.
+	// At 3 % tolerance, harmonics 9..12 of a low pitch cover a third of the spectrum, so a dense cluster would "fit" a
+	// spurious fundamental.
 	matchPartialMaxK = 8
 )
 
-// strongPartials is the local maxima of mag within matchPartialDB of the
-// strongest, matchPartialMinHz..matchPartialMaxHz, strongest first, at most
-// matchPartialPeaks, one per matchPartialTol neighbourhood, each refined to
-// its parabolic-interpolated frequency.
+// One per matchPartialTol neighbourhood, strongest first, each at its parabolic-interpolated frequency.
 func strongPartials(mag []float64, binHz float64) []float64 {
 	lo, hi := int(matchPartialMinHz/binHz), min(len(mag)-2, int(matchPartialMaxHz/binHz))
 	var peak float64
@@ -450,25 +388,9 @@ func strongPartials(mag []float64, binHz float64) []float64 {
 	return out
 }
 
-// subharmonicCorrection divides a detected f0 that is really a harmonic of
-// the note: YIN locks onto the 2nd or 3rd harmonic of a tone whose
-// fundamental is weaker than it. A divisor d is taken only when the partials
-// of f0/d that are NOT multiples of f0 all carry energy -- the in-between
-// harmonics only a lower fundamental explains. A clean tone at f0 has nothing
-// but leakage (< -40 dB) at any of them, so a correct pitch is never divided.
-//
-//   - d = 2 (the acclivity oboe "A 440" measures 886 Hz, yet holds 443 Hz at
-//     -9 dB and the odd harmonic 1330 Hz at -1 dB; only a 443 Hz fundamental
-//     explains 1330): f0/2 within 20 dB of the peak and 3·f0/2 within 25.
-//     AnalyzeF0Support at f0/2 misses the weaker fundamental, so the test is
-//     made directly.
-//   - d = 3 (cello-C2 measures 199 Hz, G3: its 66 Hz fundamental sits at
-//     -25 dB under partials at 133 (-5), 266 (-15) and 332 Hz (-12), and the
-//     f0/2 test sees nothing at 100 Hz): partials 1, 2, 4 and 5 of f0/3 all
-//     within 30 dB.
-//
-// Without this every instrument is rendered in the wrong register and the
-// ranking judges a different note.
+// YIN locks onto the 2nd or 3rd harmonic of a weak fundamental. Divide by d only when the partials of f0/d that are NOT
+// multiples of f0 all carry energy (only a lower fundamental explains them); a clean tone has only leakage there, so a
+// correct pitch is never divided. Otherwise every voice renders in the wrong register.
 func subharmonicCorrection(f0 float64, mag []float64, binHz float64) float64 {
 	if binHz <= 0 {
 		return f0
@@ -489,10 +411,7 @@ func subharmonicCorrection(f0 float64, mag []float64, binHz float64) float64 {
 	return f0
 }
 
-// Sub-harmonic evidence thresholds, relative to the strongest spectral peak.
-// The oboe's real fundamental sits at -9 dB and its odd harmonic at -1 dB;
-// cello-C2's in-between partials at -5..-25 dB; a tone detected correctly has
-// nothing but leakage (< -40 dB) at any of them.
+// A correctly detected tone has nothing but leakage (< -40 dB) at any of these.
 const (
 	matchSubOctaveDB    = -20.0
 	matchSubOctaveOddDB = -25.0
@@ -500,11 +419,8 @@ const (
 	matchSubOctaveMinHz = 25.0
 )
 
-// matchSpectrum is the magnitude spectrum of the steady part of the clip
-// (from 100 ms after the trimmed onset), skipping the attack whose broadband
-// transient would put energy everywhere. 32768 points (~0.74 s at 44.1 kHz)
-// so the segment fills the window: MagnitudeSpectrum windows the WHOLE
-// buffer, zero padding included.
+// From 100 ms past the onset, skipping the broadband attack. 32768 points so the segment fills the window
+// (MagnitudeSpectrum windows the whole buffer, padding included).
 func matchSpectrum(w wave.Wave) ([]float64, float64) {
 	seg := w.Slice(100, 1100)
 	if len(seg.Samples) < 2048 {
@@ -530,11 +446,7 @@ func bandLevelDB(mag []float64, binHz, hz float64) float64 {
 	return 20 * math.Log10(band/peak)
 }
 
-// matchClassOf classifies a reference (see matchClassSustained).
-//
-// The class is the ENVELOPE's: a sung crowd "ahh" has no single pitch and is
-// still a sustained sound, which the percussion traces judge badly (it
-// matched a supersaw lead).
+// The ENVELOPE's class: a sung crowd "ahh" has no single pitch and is still sustained.
 func matchClassOf(w wave.Wave) string {
 	if w.Duration() < matchShortClipSec {
 		return matchClassPercussive
@@ -559,9 +471,7 @@ func matchClassOf(w wave.Wave) string {
 	if peak == 0 {
 		return matchClassPercussive
 	}
-	// The ONSET of the loud part, not its arg-max: a steady tone's loudest
-	// window can sit anywhere, including the last 0.3 s, where there is no
-	// "later" left to look at.
+	// The ONSET of the loud part, not its arg-max: a steady tone's loudest window can sit in the last 0.3 s.
 	peakAt := 0
 	for i, l := range levels {
 		if l >= peak*matchPeakFrac {
@@ -569,8 +479,7 @@ func matchClassOf(w wave.Wave) string {
 			break
 		}
 	}
-	// A swell that only peaks near the end of the window shows no decay at
-	// all: judge it on the last window rather than calling it struck.
+	// A swell peaking near the end shows no decay: judged on the last window rather than called struck.
 	later := min(peakAt+int(matchDecaySec/win), len(levels)-1)
 	if 20*math.Log10(levels[later]/peak+1e-12) < matchDecayDB {
 		return matchClassPercussive
@@ -578,11 +487,7 @@ func matchClassOf(w wave.Wave) string {
 	return matchClassSustained
 }
 
-// matchSearchSemis is how far an unpitched sound (or an unpitched voice) is
-// pitch-searched either side of the voice's natural pitch, and the coarse
-// grid step before the search refines to 1 semitone around the best. A
-// voice resampled further than an octave is not that instrument any more;
-// no player would play it there to imitate a sound.
+// A voice resampled further than an octave is not that instrument any more: no player would imitate a sound there.
 const (
 	matchSearchSemis = 12.0
 	matchSearchStep  = 3.0
@@ -603,24 +508,9 @@ type matchPlan struct {
 	search bool
 }
 
-// matchPitchPlan decides how inst is played against a reference at f0
-// (0 = unpitched). The pitch is the player's choice, so it is never what the
-// ranking judges:
-//
-//   - pitched reference, pitched voice: rendered AT the reference's note --
-//     melodic voices render there; a non-melodic voice is resampled there,
-//     but only within an octave of its natural pitch (a snare slowed to D2
-//     once scored closer to a cello than any string). A non-melodic voice
-//     also tries the octave either side (still within that octave of its
-//     natural pitch): a drum membrane's modes sit near 1 : 1.5, so the
-//     pitch of a drum recording reads as the struck note or the residue an
-//     octave below it depending on how the modes decay -- the shipped tom
-//     re-played 5 semitones up read 86 Hz instead of 171 and was resampled
-//     an octave away from itself (#14, refs match -nuisance). Melodic
-//     voices keep the one note: trying octaves for them graded as noise.
-//   - anything unpitched: the voice is tried across +/-matchSearchSemis and
-//     the pitch that sounds closest is kept (drums are pitched by resampling
-//     in the engine, exactly as here).
+// The pitch is the player's choice, never what is judged. Pitched reference: AT its note (a non-melodic voice only within
+// an octave of its natural pitch, plus the octave either side: a membrane's pitch reads as its note or the residue below).
+// Unpitched: every pitch within ±matchSearchSemis, the closest kept.
 func matchPitchPlan(inst instrument.ID, f0 float64) matchPlan {
 	if f0 > 0 {
 		if _, pitched := audio.InstrumentPitchInfo(inst); pitched {
@@ -643,13 +533,8 @@ func matchPitchPlan(inst instrument.ID, f0 float64) matchPlan {
 	return matchPlan{search: true}
 }
 
-// matchRenderPitch is the node pitch at which inst sounds f0 AS THE MATCHER
-// HEARS IT: the voice's own pitch at node pitch 0, measured by the very
-// pipeline that measured the reference (matchVoiceFrame), so whatever that
-// pipeline reads into a timbre -- a virtual pitch, a strong sub-octave --
-// is read the same way on both sides. A voice the pipeline cannot pitch
-// falls back to its declared frame (InstrumentPitchInfo). An unpitched
-// reference, or an unpitched instrument, renders at its natural pitch.
+// The node pitch at which inst sounds f0 AS THE MATCHER HEARS IT: the voice's frame measured by the reference's own
+// pipeline, so a virtual pitch or a strong sub-octave reads the same on both sides; else the declared frame.
 func matchRenderPitch(inst instrument.ID, f0 float64) float64 {
 	if f0 <= 0 {
 		return 0
@@ -664,18 +549,8 @@ func matchRenderPitch(inst instrument.ID, f0 float64) float64 {
 	return 12*math.Log2(f0/a3Hz) - off
 }
 
-// matchVoiceFrame is the pitch matchRefPitch measures on inst played at
-// node pitch 0, the way a reference is measured (onset-trimmed, at most
-// adoptMaxSecDefault); ok=false when the voice has no usable pitch or it
-// sits more than an octave (and a half step) from the declared frame. An
-// octave is a reading, not a failure -- a drawbar organ's 16' IS its lowest
-// pitch -- but further off than that the detector has failed. Cached per
-// sound.
-//
-// The declared frame alone is not enough: the curated melodic voices are
-// built so pitch 0 is A3, yet the drawbar organ measures 110 Hz there (its
-// 16' stop) -- so a recording of that very voice, read at its 16' pitch, was
-// matched against the voice an octave away.
+// The voice's measured frame at node pitch 0 (cached per sound); ok=false past an octave and a half step from the
+// declared one, where the detector has failed. Declared alone is not enough: the drawbar organ sounds its 16' at A3.
 func matchVoiceFrame(inst instrument.ID) (float64, bool) {
 	key := string(inst) + "=" + audio.InstrumentSoundHash(inst, nil)
 	if v, ok := matchFrames.Load(key); ok {
@@ -701,12 +576,8 @@ var matchFrames sync.Map // instrument=soundhash -> measured Hz at node pitch 0 
 // not seen.
 var matchFramesMeasured atomic.Bool
 
-// matchFramesFile carries matchVoiceFrame across runs of the SAME refs
-// binary: measuring every voice's frame is 150 renders and pitch detections
-// (~1.8 s, close to half of matching one recording). It is keyed by the
-// binary's own hash, so a rebuilt matcher -- any change to the renderer or
-// the pitch pipeline -- measures afresh; each entry's sound hash covers a
-// retuned voice.
+// Per refs binary (keyed by its hash, so a rebuilt matcher measures afresh; each entry's sound hash covers a retune):
+// measuring every voice's frame is a large share of matching one recording.
 type matchFramesFile struct {
 	Build  string             `json:"build"`
 	Frames map[string]float64 `json:"frames"`
@@ -768,10 +639,7 @@ type matchRender struct {
 	silent     bool
 }
 
-// renderMatchVoice renders inst at node pitch p as a player would hold it
-// against a reference whose sounding region is needSec long: held that long,
-// trimmed of leading silence exactly like the reference (so both onsets sit
-// at 0), clipSec long.
+// Held as long as the reference's sounding region and trimmed like it, so both onsets sit at 0.
 func renderMatchVoice(inst instrument.ID, p float64, sr int, needSec, clipSec float64) (wave.Wave, float64, error) {
 	held := synthmatch.HeldSeconds(inst, p, needSec+matchVoiceMarginSec)
 	w, err := synthmatch.RenderHeld(inst, p, sr, 0, held, nil)
@@ -781,9 +649,7 @@ func renderMatchVoice(inst instrument.ID, p float64, sr int, needSec, clipSec fl
 	return fitMatchClip(w, string(inst), sr, clipSec), held, nil
 }
 
-// renderMatchDoc is renderMatchVoice for a document that need not be
-// registered (a `refs tune` candidate): the same hold, trim and length, so
-// a candidate is played against a recording exactly as the roster is.
+// For an unregistered document (a refs tune candidate), played exactly as the roster is.
 func renderMatchDoc(d instrument.Doc, label string, p float64, sr int, needSec, clipSec float64) (wave.Wave, float64, error) {
 	held := synthmatch.HeldSecondsDoc(d, p, needSec+matchVoiceMarginSec)
 	w, err := synthmatch.RenderHeldDoc(d, p, sr, 0, held)
@@ -887,13 +753,8 @@ func (s *matchSearch) consider(t matchTarget, p float64) error {
 	return nil
 }
 
-// scout is the first, cheap look at the instrument: every pitch of a fixed
-// plan, or, for a search, every matchScoutStep semitones (a subset of the
-// search grid, so settling later re-renders nothing). A fixed plan is never
-// cut short: its octave alternatives answer a reading an octave off, which
-// the primary pitch cannot see -- the tom re-played +5 st in a room reads its
-// 85 Hz residue, and scouted at that pitch alone it ranked itself #31
-// (TestEssenceSelfIdentifiesUnderNuisance).
+// The cheap first look: every pitch of a fixed plan, or every matchScoutStep semitones of a search (grid points, so
+// settling re-renders nothing). A fixed plan is never cut short: its octave alternatives answer a reading an octave off.
 func (s *matchSearch) scout(t matchTarget) error {
 	switch {
 	case s.plan.skip:
@@ -914,11 +775,8 @@ func (s *matchSearch) scout(t matchTarget) error {
 	return nil
 }
 
-// settle completes a search: the matchSearchStep grid, then 2 and 1
-// semitones either side of the closest (a fixed plan is complete once
-// scouted). A scouted instrument settles exactly where an unscouted one
-// would: the scouted pitches are grid points, and ties keep the earlier
-// pitch.
+// A scouted instrument settles exactly where an unscouted one would: scouted pitches are grid points, ties keep the
+// earlier pitch.
 func (s *matchSearch) settle(t matchTarget) error {
 	if s.plan.skip || !s.plan.search {
 		return nil
@@ -941,11 +799,8 @@ func (s *matchSearch) settle(t matchTarget) error {
 	return nil
 }
 
-// matchScoutStep is the scouting grid of a pitch search (see matchSearch.scout),
-// and matchContenders how many of the closest scouted instruments settle.
-// The rest keep their scouted distance: they are out of the running, and
-// settling all of them cost most of every ranking (refs match -validate grades
-// the same either way; spec 2026-10-17, "where the time goes").
+// The rest keep their scouted distance: they are out of the running, and settling them cost most of every ranking
+// while -validate grades the same.
 const (
 	matchScoutStep  = 6.0
 	matchContenders = 30
@@ -975,14 +830,8 @@ func forEachParallel(n, workers int, fn func(i int)) {
 	wg.Wait()
 }
 
-// rankRoster plays every id against the reference and ranks it by the
-// hubness-corrected essence distance, best first. Every instrument is
-// SCOUTED (matchSearch.scout); the matchContenders closest by the corrected
-// essence distance -- plus every id settle accepts (nil: none; the ones a
-// caller reports on by name, or matchSettleAll for a calibration) -- then
-// SETTLE their full pitch plan. Renders run in parallel: each is an independent offline C render
-// (lazy C tables initialise through beatmo_once, so cold concurrent renders
-// are safe -- TestColdConcurrentRendersMatchSerial).
+// Every id is SCOUTED; the matchContenders closest (corrected) plus every id settle accepts then SETTLE. Renders run
+// in parallel: each is an independent C render, and lazy C tables initialise through beatmo_once.
 func rankRoster(ref wave.Wave, f0 float64, ids []instrument.ID, workers int, settle func(id instrument.ID) bool) ([]matchRender, error) {
 	t := matchTarget{f0: f0, refE: fingerprint.AnalyzeEssence(ref, fingerprint.EssenceOpts{}), sr: wavref.Rate, clipSec: ref.Duration()}
 	searches := make([]*matchSearch, len(ids))
@@ -1084,14 +933,8 @@ func writeMatchClips(dir string, ref wave.Wave, top []matchRender) (string, erro
 	return absOrSelf(refPath), nil
 }
 
-// namesakeInFilename returns the roster id a recording's filename names,
-// "" when none: an id whose words all appear, in order and contiguous, among
-// the filename's words ("22686__acclivity__oboe_a_440" names oboe,
-// "360251__mtg__piano-grand-c3" piano-grand). The longest such id wins.
-//
-// It is a HINT for the listener, never the match: instrumentFromFilename is
-// the strict resolver adoption needs, where a wrong guess silently repoints
-// an instrument. Here a namesake only adds one more clip to hear.
+// An id whose words appear in order among the filename's words, longest winning. A HINT (one more clip to hear),
+// never the match: instrumentFromFilename is the strict resolver adoption needs.
 func namesakeInFilename(name string, ids []instrument.ID) instrument.ID {
 	words := strings.FieldsFunc(strings.ToLower(strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
@@ -1125,9 +968,7 @@ func noteNameForHz(hz float64) string {
 	return fmt.Sprintf("%s%d", names[((midi%12)+12)%12], midi/12-1)
 }
 
-// matchCatalogueGlob is the -wavs word for every catalogued INSTRUMENT
-// reference present on this machine (the reference-audio root also holds
-// whole songs and scratch files no instrument is).
+// The reference root also holds songs and scratch files no instrument is.
 const matchCatalogueGlob = "catalogue"
 
 // expandMatchGlob expands a comma-separated list of globs ("~/" = home;
@@ -1204,9 +1045,7 @@ func runMatch(w, diag io.Writer, o matchOpts) (matchManifest, error) {
 	ids := rosterIDs()
 	rh := rosterHash(ids)
 	warnStaleHubs(diag, ids)
-	// What a recording is labelled as (catalogue or filename) and its family
-	// always settle, so the map's rank and losing term for it are exact.
-	// (No catalogue or families only means nothing extra settles.)
+	// The labelled instrument and its family always settle, so the map's rank and losing term are exact.
 	cat, _ := loadCatalogue()
 	famOf, _ := matchFamilies(cat)
 
@@ -1264,8 +1103,7 @@ func runMatch(w, diag io.Writer, o matchOpts) (matchManifest, error) {
 		if best != "" && bestAt >= len(top) {
 			top = append(top, ranked[bestAt])
 		}
-		// Clips from a previous run with a different top-N would linger and
-		// confuse a listener browsing the directory.
+		// Clips from a run with another top-N would linger and confuse a listener browsing the directory.
 		old, _ := filepath.Glob(filepath.Join(dir, "*__*.wav"))
 		for _, f := range old {
 			_ = os.Remove(f)
@@ -1403,8 +1241,7 @@ func cmdMatch(args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("refs match: unexpected argument %q (quote -wavs globs)", fs.Arg(0))
 	}
-	// Beside the references every mode reads (Root, not matchDir: -validate
-	// and -nuisance run without $BEATMO_WAV_REFS set).
+	// Root, not matchDir: -validate and -nuisance run without $BEATMO_WAV_REFS set.
 	defer persistMatchFrames(filepath.Join(wavref.Root(), "matches", "frames.json"))()
 	if *calibrate {
 		return runMatchCalibrate(os.Stdout, os.Stderr, *workers)

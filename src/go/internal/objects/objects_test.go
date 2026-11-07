@@ -153,9 +153,7 @@ func TestStoreRoundTripsThroughJSON(t *testing.T) {
 	}
 }
 
-// TestDigestIsTheSameOnEveryPlatform pins one digest over the values JSON
-// float formatting could disagree on. The same test runs under GOOS=js
-// (go_js_wasm_exec): a version id must not depend on the platform.
+// Runs under GOOS=js too: a version id must not depend on platform float formatting.
 func TestDigestIsTheSameOnEveryPlatform(t *testing.T) {
 	v := struct {
 		Values []float64          `json:"values"`

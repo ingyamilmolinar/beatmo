@@ -19,28 +19,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// startRecordBench creates the bench output directory, opens a CPU profile
-// file scoped to the run, and registers a hooks subscriber that logs
-// recording lifecycle transitions. Returns (outputDir, stopFn, err) where
-// stopFn writes the final heap profile + flushes CPU profile.
-//
-// Honors BEATMO_BLOCK_PROFILE / BEATMO_MUTEX_PROFILE env vars: when set
-// to a positive integer, enables runtime block / mutex profiling at that
-// rate (1 = every event). Profiles are written next to cpu.pprof so we
-// can ask "where is audio actually blocked?" instead of guessing.
-//
-// Additional optional env vars for memory-footprint investigations:
-//
-//	BEATMO_RECORD_BENCH_HEAP_SNAPSHOTS=1
-//	    Captures heap profiles at fixed wall-clock offsets from the
-//	    record-bench process-start moment: 5s ("warmup"), 30s ("mid"), 60s
-//	    ("end"), plus an allocs profile at 60s. Lands as
-//	    heap_{warmup,mid,end}.pprof and allocs.pprof in outDir.
-//	BEATMO_RECORD_BENCH_SYNTH_CHURN_HZ=<int>
-//	    When > 0, spawns a goroutine that cycles audio.SetInstrumentParam
-//	    on every available instrument at this rate (Hz). Mirrors the soak
-//	    test's toggleSoakSynthParamChurn pattern. Use together with -scene
-//	    crop_synth_tab_drum so the Synth tab Draw stack is exercised.
+// startRecordBench opens the bench dir, a CPU profile and a recording-lifecycle logger; stopFn writes the final heap
+// profile. Env: BEATMO_BLOCK_PROFILE / BEATMO_MUTEX_PROFILE (rate), BEATMO_RECORD_BENCH_HEAP_SNAPSHOTS=1 (heap at 5/30/60 s),
+// BEATMO_RECORD_BENCH_SYNTH_CHURN_HZ (param churn; pair with -scene crop_synth_tab_drum).
 func startRecordBench(logger *game_log.Logger) (string, func(), error) {
 	timestamp := time.Now().Format("2006-01-02_150405")
 	outDir := filepath.Join("bench-results", "record-"+timestamp)
@@ -82,9 +63,7 @@ func startRecordBench(logger *game_log.Logger) (string, func(), error) {
 		}),
 	}
 
-	// Optional: timed heap snapshots + synth-param churn for memory-footprint
-	// investigations. Both gated behind env vars so the default behavior of
-	// -record-bench is unchanged.
+	// Both env-gated so -record-bench's default behaviour is unchanged.
 	profilerStop := make(chan struct{})
 	var profilerWG sync.WaitGroup
 	if os.Getenv("BEATMO_RECORD_BENCH_HEAP_SNAPSHOTS") == "1" {
@@ -99,9 +78,7 @@ func startRecordBench(logger *game_log.Logger) (string, func(), error) {
 	stop := func() {
 		pprof.StopCPUProfile()
 		cpuFile.Close()
-		// Stop the auxiliary profilers BEFORE the final heap profile so the
-		// churn goroutine isn't still mutating the params manager during the
-		// final WriteHeapProfile.
+		// Before the final heap profile, so the churn goroutine is not still editing params during it.
 		close(profilerStop)
 		profilerWG.Wait()
 		writeHeapProfile(outDir, logger)
@@ -122,15 +99,8 @@ func startRecordBench(logger *game_log.Logger) (string, func(), error) {
 	return outDir, stop, nil
 }
 
-// runHeapSnapshotSchedule writes runtime/pprof heap profiles at three fixed
-// wall-clock offsets relative to the goroutine's start moment: 5s, 30s, 60s.
-// Each capture is preceded by a forced GC so the profile reflects the live
-// retained set, not allocator slack. Allocs profile is captured at the 60s
-// mark (final). The schedule exits cleanly when stop is closed; partial
-// snapshots are skipped.
-//
-// Filenames are stable so scripts/analyze_synth_profile.sh can find them
-// without parsing timestamps.
+// runHeapSnapshotSchedule writes heap profiles at 5, 30 and 60 s (allocs at 60 s), each after a forced GC so it shows
+// the live retained set. Stable filenames, so analyze_synth_profile.sh finds them.
 func runHeapSnapshotSchedule(outDir string, logger *game_log.Logger, stop <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	type tick struct {
@@ -159,10 +129,7 @@ func runHeapSnapshotSchedule(outDir string, logger *game_log.Logger, stop <-chan
 	}
 }
 
-// writeNamedHeapProfile forces a GC and writes a runtime/pprof heap profile
-// to <outDir>/<name>.pprof. Mirrors writeHeapProfile but lets the caller
-// pick the basename so the snapshot-schedule files don't clobber the final
-// heap.pprof.
+// writeNamedHeapProfile is writeHeapProfile with a caller-chosen basename, so the schedule never clobbers heap.pprof.
 func writeNamedHeapProfile(outDir, name string, logger *game_log.Logger) {
 	runtime.GC()
 	path := filepath.Join(outDir, name+".pprof")
@@ -179,18 +146,8 @@ func writeNamedHeapProfile(outDir, name string, logger *game_log.Logger) {
 	logger.Infof("[record-bench] %s profile → %s", name, path)
 }
 
-// runSynthParamChurn drives audio.SetInstrumentParam at hz on every
-// available instrument, cycling through the wired synth recipe params
-// ("pitch" and "decay") with a sin-based sweep. Mirrors the soak test's
-// toggleSoakSynthParamChurn so the production OOM stack
-// (EQPanelZone.Draw → drawSynthTab → drawSynthSectionCard → Knob.Draw →
-// drawArc + hashRecipeParams keying) is exercised at the same rate a user
-// dragging a knob would produce.
-//
-// The churn is platform-agnostic — it does not require the Synth tab to
-// be open in the UI for SetInstrumentParam to take effect, but it is
-// intended to be used alongside -scene crop_synth_tab_drum so the Draw
-// stack is also exercised.
+// runSynthParamChurn sweeps pitch and amp_decay on every instrument at hz, the rate a dragged knob produces; it needs no
+// open Synth tab, but pair it with -scene crop_synth_tab_drum to exercise the draw stack too.
 func runSynthParamChurn(hz int, logger *game_log.Logger, stop <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	if hz <= 0 {
@@ -261,10 +218,7 @@ func writeHeapProfile(outDir string, logger *game_log.Logger) {
 	logger.Infof("[record-bench] heap profile → %s", heapPath)
 }
 
-// audioCountersAdapter bridges the internal/audio package-level helpers
-// to the AudioCounters interface that internal/bench expects. The
-// adapter exists so internal/bench stays free of an internal/audio
-// import.
+// audioCountersAdapter keeps internal/bench free of an internal/audio import.
 type audioCountersAdapter struct{}
 
 func (audioCountersAdapter) RecordingDrops() int64 { return audio.RecordingDrops() }
@@ -283,18 +237,11 @@ func writeRuntimeStats(outDir string, logger *game_log.Logger) {
 	}
 }
 
-// hookActionCount tracks how many times each action has fired (handy for
-// CI assertions and debugging). Storage lives in internal/bench so the
-// counter can be tested in isolation.
+// The storage lives in internal/bench so the counter is testable alone.
 var hookActionCount = &bench.ActionCounter{}
 
-// loadHooksConfig parses path and registers subscribers that invoke
-// built-in actions. Currently supported actions: log, exit, dump_pprof.
-// Recording actions are intentionally tied to -record-bench so the CLI
-// stays opinionated; hook-driven recording can be layered on later.
-//
-// Returns a cleanup function alongside the error so callers can
-// unsubscribe at shutdown if desired.
+// loadHooksConfig registers subscribers for the built-in actions (log, exit, dump_pprof); the cleanup unsubscribes.
+// Recording stays tied to -record-bench on purpose.
 func loadHooksConfig(path string, logger *game_log.Logger) (func(), error) {
 	cfg, err := bench.LoadHooksConfig(path)
 	if err != nil {
@@ -337,4 +284,3 @@ func runHookAction(action string, _ hooks.Event, logger *game_log.Logger) {
 		}()
 	}
 }
-

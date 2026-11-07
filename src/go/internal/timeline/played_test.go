@@ -79,9 +79,7 @@ func TestClearRowDropsPlayed(t *testing.T) {
 	}
 }
 
-// Rows are addressed by index, so deleting a row must move every later row's
-// history down with it — otherwise the row that slides into the deleted slot
-// reads its neighbour's past.
+// Otherwise the row sliding into the deleted slot reads its neighbour's past.
 func TestRemoveRowShiftsEveryTier(t *testing.T) {
 	s := NewService()
 	s.SetArchiveMaxEntries(0)
@@ -131,8 +129,7 @@ func TestRemoveRowShiftsArchivedHistory(t *testing.T) {
 	}
 }
 
-// A document restore (undo/redo) rebuilds rows, but what played is history,
-// not document: a row's played history must be movable out and back in.
+// What played is history, not document: it must move out of a row and back in across undo/redo.
 func TestTakeAndPutPlayedMovesARowsHistory(t *testing.T) {
 	s := NewService()
 	for abs := 0; abs < 10; abs++ {

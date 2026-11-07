@@ -364,9 +364,7 @@ func TestReplaceCommitDemotesPlaybackEvenIfRingMissing(t *testing.T) {
 	capacity := 8
 
 	s.RecordCommitKind(0, 1, true, model.NodeTypeRegular, CommitKindPlayback, windowLen, capacity)
-	// Simulate the commit ring no longer retaining the entry while the immutable
-	// sidecar still has it (ring resize/trim, or a commit seeded far ahead of the
-	// ring base that gapped out of the ring on append).
+	// The ring no longer holds the entry while the sidecar does (a trim, or a commit seeded far past the ring base).
 	s.rows[0].commits.clear()
 
 	if ok := s.ReplaceCommit(0, 1, true, model.NodeTypeRegular, CommitKindReleased); !ok {
@@ -376,10 +374,7 @@ func TestReplaceCommitDemotesPlaybackEvenIfRingMissing(t *testing.T) {
 	if got := s.LastImmutableAbs(0); got != -1 {
 		t.Fatalf("expected live sidecar cleared after demotion got %d", got)
 	}
-	// ...but the played fact is immutable, so it must survive in the cold archive.
-	// Dropping it outright (the prior behavior) violated the immutability contract
-	// and lost genuine playback history during long sessions — see the long-session
-	// canary and TestReplaceCommitDemoteArchivesNoRingImmutable.
+	// The played fact is immutable, so it must survive in the cold archive.
 	val, typ, kind, ok := s.CommittedKind(0, 1)
 	if !ok {
 		t.Fatalf("expected demoted playback to remain resolvable via archive")
@@ -537,8 +532,7 @@ func TestEnsureRowBufferMismatch(t *testing.T) {
 	// First, create a row with windowLen=4.
 	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindSeeded, 4, 4)
 
-	// Directly manipulate the internal state to simulate a buffer mismatch:
-	// windowLen stays the same, but past slice has wrong length.
+	// A past slice of the wrong length must take ensureRow's reallocation path.
 	s.mu.Lock()
 	s.rows[0].past = make([]bool, 2) // wrong size vs windowLen=4
 	s.mu.Unlock()
@@ -628,10 +622,7 @@ func TestRecordCommitKindAppendPlaybackCreatesSidecar(t *testing.T) {
 	}
 }
 
-// TestRecordCommitKindMutableReplacementPromotesToImmutable covers the
-// branch where an existing mutable commit is overwritten by a Playback
-// kind in RecordCommitKind, including the sidecar creation inside the
-// replace path.
+// An existing mutable commit overwritten by Playback, including the sidecar creation inside the replace path.
 func TestRecordCommitKindMutableReplacementPromotesToImmutable(t *testing.T) {
 	s := NewService()
 	s.RecordCommitKind(0, 3, false, model.NodeTypeInvisible, CommitKindSeeded, 8, 8)

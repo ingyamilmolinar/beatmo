@@ -10,11 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// localStorageStore is the WASM backend. Browser localStorage is
-// synchronous, single-threaded, and small (typically 5MB cap), so the
-// implementation is intentionally minimal — no async pool, no
-// double-buffering, no atomic-rename. Reads and writes go straight to
-// localStorage.getItem / setItem.
+// localStorage is synchronous, single-threaded and small, so no async pool, double-buffering or atomic rename: reads
+// and writes go straight to getItem / setItem.
 type localStorageStore struct {
 	key  string
 	logf func(format string, args ...any)
@@ -37,9 +34,7 @@ func newBackingStore(opts Options) Store {
 	}
 }
 
-// localStorageOrNil returns localStorage if reachable. In some embedded
-// browsers (or under privacy modes) localStorage can be missing — we
-// degrade to in-memory rather than crash.
+// Missing in some embedded browsers and privacy modes: degrade to in-memory rather than crash.
 func localStorageOrNil() js.Value {
 	defer func() { _ = recover() }()
 	g := js.Global()
@@ -65,9 +60,8 @@ func (s *localStorageStore) ensureLoadedLocked() {
 		return
 	}
 	if val := ls.Call("getItem", s.key); !val.IsNull() && !val.IsUndefined() {
-		// A rejected schema_version yields empty-but-usable state; the
-		// error is swallowed deliberately (parsePrefs already logged it)
-		// because prefs load at boot and must not fail startup.
+		// A rejected version yields empty state; the error is dropped on purpose (parsePrefs logged it) because prefs load at
+		// boot and must not fail startup.
 		snap, _ := parsePrefs([]byte(val.String()), s.logf)
 		s.applySnapshotLocked(snap)
 		return
@@ -75,9 +69,7 @@ func (s *localStorageStore) ensureLoadedLocked() {
 	s.applySnapshotLocked(emptyPrefsSnapshot())
 }
 
-// snapshotLocked captures the live cache as a snapshot for marshalling.
-// Caller must hold s.mu. The maps are handed over by reference — safe
-// because marshalPrefs deep-copies every section through its sanitizers.
+// Maps by reference: safe because marshalPrefs deep-copies every section through its sanitizers. Caller holds s.mu.
 func (s *localStorageStore) snapshotLocked() prefsSnapshot {
 	return prefsSnapshot{
 		favorites:     s.favorites,
@@ -278,9 +270,7 @@ func (s *localStorageStore) SaveTheme(d theme.UserDoc) error {
 	return s.persistLocked()
 }
 
-// persistLocked marshals the current cache to localStorage. Caller must
-// hold s.mu; the lock is released before the JS call so any recover'd
-// panic from setItem doesn't strand the mutex.
+// The lock is released before the JS call, so a recovered setItem panic never strands the mutex. Caller holds s.mu.
 func (s *localStorageStore) persistLocked() error {
 	data, err := marshalPrefs(s.snapshotLocked())
 	s.mu.Unlock()

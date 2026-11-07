@@ -22,10 +22,7 @@ func T(k Key) string {
 // Tf resolves k then applies fmt.Sprintf with args.
 func Tf(k Key, args ...any) string { return fmt.Sprintf(T(k), args...) }
 
-// EN returns the English message for k regardless of the active locale, falling
-// back to the raw key string. Used to reverse-map legacy rendered strings (e.g.
-// a notification persisted as English text with no key) back to their key so the
-// UI can retranslate historical entries in the current locale.
+// Reverse-maps a notification persisted as English text with no key, so history retranslates in the current locale.
 func EN(k Key) string {
 	if v, ok := en[k]; ok {
 		return v
@@ -70,9 +67,8 @@ func OnChange(fn func()) (cancel func()) {
 
 // --- CJK-ready font seam ---
 
-// fontProvider is guarded by fontMu: SetFontProvider (UI goroutine, typically
-// one-shot at init) writes it while FontIdentity may be read from the renderer
-// on other goroutines. A bare func-typed var would be a multi-word data race.
+// Written by SetFontProvider on the UI goroutine while the renderer may read it elsewhere: a bare func var would be a
+// multi-word race.
 var (
 	fontMu       sync.RWMutex
 	fontProvider func(Locale) string

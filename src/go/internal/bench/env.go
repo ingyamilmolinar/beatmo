@@ -1,9 +1,5 @@
-// Package bench houses small, testable helpers extracted from the
-// cmd/beatmo bench/record-bench harness. The cmd/beatmo entry point
-// remains untestable as a whole (it boots Ebiten + audio), but these
-// pure helpers — env parsing, hooks-config decoding, action dispatch —
-// have real failure modes (bad JSON, unknown action, negative env
-// values) that deserve unit coverage.
+// Package bench holds the record-bench harness's pure helpers (env parsing, hooks-config decoding, action dispatch), which
+// have real failure modes while cmd/beatmo itself boots Ebiten + audio and cannot be unit tested.
 package bench
 
 import (
@@ -11,12 +7,7 @@ import (
 	"strconv"
 )
 
-// EnvInt parses the named environment variable as a positive integer.
-// Returns def if the variable is unset, empty, non-numeric, or
-// non-positive. "0" is therefore treated as unset.
-//
-// Used by cmd/beatmo to gate optional runtime profiling
-// (BEATMO_BLOCK_PROFILE, BEATMO_MUTEX_PROFILE).
+// def for unset, empty, non-numeric or non-positive: "0" counts as unset.
 func EnvInt(key string, def int) int {
 	v := os.Getenv(key)
 	if v == "" {

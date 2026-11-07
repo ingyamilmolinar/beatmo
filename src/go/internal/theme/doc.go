@@ -1,20 +1,11 @@
-// Package theme holds the runtime UI color-scheme document. It is a plain
-// data package (no Ebiten, no ui import) so userprefs, the project file, and
-// the ui package can all carry a Doc without an import cycle.
+// Package theme is the runtime color-scheme document, plain data, so userprefs, the project file and ui can all carry
+// it without an import cycle.
 package theme
 
-// Doc is a config-only UI color scheme.
-//
-//   - Categories: category id (see ui/theme_categories.go) → swatch NAME from
-//     the Vice City grid (e.g. "sunset-gold-300"). Names, never hex.
-//   - Tokens: DESIGN.md color token name → "#RRGGBB". Escape hatch for
-//     hand-authored config; applied after category derivation.
-//
-// Both maps are partial and omitempty. An empty Doc is the shipped design.
+// Categories map a category id to a swatch NAME (never hex); Tokens map a DESIGN.md token to "#RRGGBB" (an escape hatch,
+// applied after the categories). Both partial; an empty Doc is the shipped design.
 type Doc struct {
-	// Preset is the id of a first-party theme (ui/theme_presets.go); its
-	// category picks are applied BEFORE Categories/Tokens, which may then
-	// customize it. Empty = the shipped design.
+	// Applied BEFORE Categories/Tokens, which may then customise it. Empty = the shipped design.
 	Preset     string            `json:"preset,omitempty"`
 	Categories map[string]string `json:"categories,omitempty"`
 	Tokens     map[string]string `json:"tokens,omitempty"`

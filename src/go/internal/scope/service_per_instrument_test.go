@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Regression guard for the Chn-tab two-trace scenario the user reported:
-// with the service scoped to a per-instrument id, pushing per-instrument
-// samples for two different stages must yield both TapA and TapB active
-// in the same published state. Existing tests cover either (single tap
-// + instrument filter) or (two taps + no instrument); none combines both.
+// Scoped to one instrument, per-instrument pushes on two stages must yield BOTH taps in one published state (the Chain
+// tab's two traces): no other test combines an instrument filter with two taps.
 
 func TestServicePerInstrumentBothTapsActive(t *testing.T) {
 	svc := NewService(Config{MaxWindowMs: 100, SampleRate: 44100})
@@ -44,9 +41,7 @@ func TestServicePerInstrumentBothTapsActive(t *testing.T) {
 			if st.TapA.InstID != channel.Of(roster.Kick) || st.TapB.InstID != channel.Of(roster.Kick) {
 				t.Fatalf("instIDs: A=%q B=%q; want both \"kick\"", st.TapA.InstID, st.TapB.InstID)
 			}
-			// Sanity-check the trace contents differ between A and B so we
-			// know the per-stage signals are being kept distinct rather than
-			// blurred together.
+			// The A and B traces must stay distinct, not blur together.
 			if len(st.TapA.Samples) == 0 || len(st.TapB.Samples) == 0 {
 				t.Fatalf("empty samples: |A|=%d |B|=%d", len(st.TapA.Samples), len(st.TapB.Samples))
 			}
@@ -60,10 +55,7 @@ func TestServicePerInstrumentBothTapsActive(t *testing.T) {
 	t.Fatal("timed out waiting for both per-instrument taps to go active")
 }
 
-// TestServicePerInstrumentDropsMismatchedAndKeepsMaster pins the
-// isMasterStage carve-out: when scoped to "kick", per-instrument
-// samples for "snare" must be dropped, while master-tagged Master
-// samples still pass.
+// Scoped to "kick", snare samples drop while master samples still pass (isMasterStage).
 func TestServicePerInstrumentDropsMismatchedAndKeepsMaster(t *testing.T) {
 	svc := NewService(Config{MaxWindowMs: 100, SampleRate: 44100})
 

@@ -14,15 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scoreref"
 )
 
-// These tests treat the committed score as an ORACLE, not as documentation.
-//
-// The old guard for this was musicTruths — a hand-written table of each piece's
-// researched key and tempo. That table could only ever restate what someone
-// believed about the music; it could not catch a wrong note, and it drifted
-// from the score it described. Because every template is now a pure function of
-// a committed score, the tests below can re-read that score independently and
-// check conservation: no pitch may appear in a circuit that is not in its
-// score's trimmed range, and no note may vanish beyond a declared budget.
+// The committed score is the ORACLE: re-read independently, no pitch may appear in a circuit that is not in its trimmed
+// range and no note may vanish beyond a declared budget.
 
 // templateJSON is the shape of a generated template read back from disk.
 type templateJSON struct {
@@ -57,9 +50,7 @@ func readTemplate(t *testing.T, stem string) templateJSON {
 	return d
 }
 
-// scoreCache memoises parsed scores: the corpus totals ~5 MB of compressed
-// MusicXML and several tests walk every template, so re-parsing per lookup
-// dominated the package's runtime.
+// Several tests walk every template over ~5 MB of compressed MusicXML.
 var (
 	scoreCacheMu sync.Mutex
 	scoreCache   = map[string]musicxml.Score{}
@@ -124,24 +115,9 @@ func grooveLoops(t *testing.T, spec TemplateSpec) int {
 // semitones except where SoundingPitch cancels a drum's fractional tuning.
 func pitchKey(p float64) float64 { return math.Round(p*1000) / 1000 }
 
-// scoreNotesInRange re-derives, independently of the generator, the NODE
-// pitches a spec may emit, across both layers: for a pitched part the score's
-// sounding pitch, plus the PartMap's deliberate octave shift, minus the
-// transposition the instrument itself applies at render time; for a
-// percussion note, the tuning of the kit piece its GM key routes to.
-//
-// The instrument term is what makes the node number differ from the score
-// number. A node at semitone p on an instrument that renders an octave down
-// sounds an octave below p, so to sound the score's note the node must carry
-// p+12. The generator cancels the instrument shift in instrumentPitchShift;
-// this oracle applies the same cancellation, so what is still checked end to
-// end is the thing that matters — every note ORIGINATES IN A SCORE. (Whether
-// the shift itself is correct is a different question, answered against
-// rendered audio by TestEveryPitchedInstrumentSoundsInTune.)
-//
-// count is the number of score notes the template must account for: a groove
-// counts once per loop. kitPitches[inst] is the set of pitches each kit
-// instrument may play; a node on a kit row must use one of those.
+// scoreNotesInRange re-derives the node pitches a spec may emit: the score's sounding pitch + the PartMap's octave
+// shift − the instrument's own render transposition (as instrumentPitchShift cancels it), or a kit piece's tuning.
+// count is the score notes to account for (a groove once per loop); kitPitches[inst] are a kit row's allowed pitches.
 func scoreNotesInRange(t *testing.T, spec TemplateSpec) (pitches map[float64]bool, count int, kitPitches map[instrument.ID]map[float64]bool) {
 	pitches = map[float64]bool{}
 	kitPitches = map[instrument.ID]map[float64]bool{}
@@ -157,9 +133,7 @@ func scoreNotesInRange(t *testing.T, spec TemplateSpec) (pitches map[float64]boo
 				shift = soundingPitchShift(pm.Inst)
 			}
 			for _, n := range sc.Parts[pm.Index].Notes {
-				// Movement, then measures. Re-derived here rather than calling
-				// inLayer so this stays an independent oracle — a
-				// multi-movement score prints measure "1" once per movement.
+				// Re-derived rather than via inLayer, to stay an independent oracle.
 				if n.Rest || n.Movement != layerMovement(l) || n.Measure < l.From || n.Measure > l.To {
 					continue
 				}
@@ -238,14 +212,8 @@ func rowIndexer(d templateJSON) func(int) int {
 	}
 }
 
-// dropBudget declares how many score notes a template is allowed to lose, and
-// why. Both numbers are consequences of the grid model, not of taste:
-// ChordTones are notes below a part's MaxVoices cap, and StepCollisions are
-// distinct onsets that round onto one step at the chosen Subdiv.
-//
-// The budgets are exact, not upper bounds — a spec change that loses MORE or
-// FEWER notes fails, so the musical cost of every table edit is visible in the
-// diff rather than absorbed silently.
+// dropBudget: notes a template may lose, both from the grid model (ChordTones past MaxVoices, StepCollisions onto one
+// step). Exact, not upper bounds, so every spec edit's musical cost shows in the diff.
 type dropBudget struct{ chordTones, stepCollisions int }
 
 func TestTemplateDropBudgets(t *testing.T) {
@@ -257,9 +225,7 @@ func TestTemplateDropBudgets(t *testing.T) {
 		}
 		budgets[spec.Stem] = dropBudget{stats.ChordTonesDropped, stats.StepCollisions}
 
-		// Whatever the budget, the conservation identity must hold: every
-		// selected score note is either emitted, dropped as a chord tone, or
-		// dropped as a step collision. Nothing may disappear unaccounted for.
+		// Every selected score note is emitted, dropped as a chord tone, or dropped as a step collision.
 		_, inRangeCount, _ := scoreNotesInRange(t, spec)
 		got := stats.NotesEmitted + stats.ChordTonesDropped + stats.StepCollisions + stats.RegisterDropped
 		if got != inRangeCount {
@@ -285,15 +251,8 @@ func TestTemplateDropBudgets(t *testing.T) {
 	}
 }
 
-// TestStepCollisionsStayRare gates the ONE drop cause that signals a bad spec
-// rather than an inherent limit of the grid.
-//
-// A dropped chord tone is deliberate: MaxVoices says how many lanes a part gets
-// and the rest are knowingly discarded. A step collision is not — it means two
-// distinct onsets rounded onto the same step because the chosen Subdiv is too
-// coarse for the passage, and the fix is a finer Subdiv, not a smaller budget.
-// Schubert's Ave Maria shipped at Subdiv 16 losing 135 of 434 notes (31%): its
-// piano writes sextuplets, six notes per beat into four slots.
+// A step collision, unlike a chord tone, signals a bad spec: the Subdiv is too coarse for the passage (sextuplets into
+// four slots), and the fix is a finer Subdiv, not a bigger budget.
 func TestStepCollisionsStayRare(t *testing.T) {
 	// 5% leaves room for the odd grace note or 32nd flourish while failing a
 	// passage whose subdivision genuinely does not fit.
@@ -317,12 +276,8 @@ func TestStepCollisionsStayRare(t *testing.T) {
 	}
 }
 
-// TestPartMapNamesMatchScore checks the Index/Name pair in every PartMap.
-// Index is what selects the part; Name is the assertion that the index still
-// points where the table says. Several scores carry duplicate part names
-// (Boulanger's orchestration has three parts named "Violoncello"), so selection
-// cannot be by name — but an unchecked index would silently point at a
-// different instrument if the upstream score were re-ordered.
+// Index selects the part; Name asserts it still points there. Scores repeat part names, so selection cannot be by name,
+// and an unchecked index would follow a re-ordered upstream score to a different instrument.
 func TestPartMapNamesMatchScore(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		for _, l := range specLayers(spec) {
@@ -343,13 +298,8 @@ func TestPartMapNamesMatchScore(t *testing.T) {
 	}
 }
 
-// coveringTempo re-derives, INDEPENDENTLY of the generator, the tempo that
-// covers most of [from,to] by walking the score's markings directly. Calling
-// musicxml's DominantTempo here instead would recreate the very defect this
-// test exists to catch: the old version compared the template against the same
-// field the generator read, so subject and oracle agreed no matter what. (The
-// helper itself is verified separately, against hand-written fixtures with
-// known answers, in internal/musicxml's TestTempoAtMeasureTracksTheTimeline.)
+// coveringTempo walks the score's markings itself: calling musicxml's DominantTempo would compare the template against
+// the field the generator read, an oracle that agrees by construction.
 func coveringTempo(sc musicxml.Score, from, to int) float64 {
 	if to < from {
 		to = from
@@ -386,20 +336,8 @@ func coveringTempo(sc musicxml.Score, from, to int) float64 {
 	return best
 }
 
-// TestTemplateTempoComesFromScore replaces the hand-written BPM column of the
-// old musicTruths table: the tempo is whatever the score marks FOR THE MEASURES
-// THE TEMPLATE WAS CUT FROM.
-//
-// That last clause is the whole test. It compared against sc.TempoBPM until
-// 2026-09-12 — the same single collapsed field the generator itself read — so
-// the two agreed by construction and the check could not fail however wrong the
-// tempo was. Meanwhile that field was being overwritten by every marking in the
-// document, leaving each excerpt with whichever tempo appeared LAST anywhere in
-// the score: seven of twenty-four templates ran at the wrong speed, six of them
-// too fast, worst the Ode to Joy excerpt at 264 against the 160 its own
-// measures are marked (the Prestissimo coda, 800 measures past the excerpt).
-// An oracle the subject already agrees with is not an oracle; this now asks the
-// score's tempo TIMELINE about the selected range.
+// The tempo marked FOR THE MEASURES THE TEMPLATE WAS CUT FROM, asked of the score's tempo timeline: a single
+// collapsed tempo field took whichever marking appeared last in the document.
 func TestTemplateTempoComesFromScore(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		if spec.BPM != 0 {
@@ -421,13 +359,8 @@ func TestTemplateTempoComesFromScore(t *testing.T) {
 	}
 }
 
-// TestDynamicsReachVolume ties the notated dynamic to per-hit volume in both
-// directions, layer by layer: a range that marks dynamics must produce
-// volumes, and a range that marks none must leave every volume at 0 so the
-// instrument default applies. The second half matters — Bach marks no
-// dynamics in any of the openings used here, and LilyPond's MIDI editions
-// carry one constant velocity; inventing a level from either would be
-// exactly the kind of unsourced embellishment this pipeline removes.
+// Both directions: marked dynamics must produce volumes, and none must leave every volume at 0 (the instrument
+// default). Inventing a level where Bach marks none, or from MIDI's constant velocity, would be unsourced.
 func TestDynamicsReachVolume(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		spec := spec
@@ -472,9 +405,7 @@ func TestDynamicsReachVolume(t *testing.T) {
 	}
 }
 
-// layerTimingNotation reports whether a layer's selected range carries ANY
-// notation that may move a note off its written step — re-derived from the
-// raw score so the groove a template carries can be checked against it.
+// layerTimingNotation: the notation in a layer's range that may move a note off its step, from the raw score.
 func layerTimingNotation(sc musicxml.Score, l layerSpec, spq int) []string {
 	var why []string
 	add := func(s string) {
@@ -523,10 +454,8 @@ func layerTimingNotation(sc musicxml.Score, l layerSpec, spq int) []string {
 	return why
 }
 
-// TestGrooveIsDerivedFromNotation checks the drift/rush layer the same way:
-// a groove may only appear where the notation asks for one — in the layer's
-// own range, or as the groove layer's swing, which is the whole band's feel —
-// and its magnitude must stay inside the engine's one-step window.
+// A groove may appear only where the notation asks for one (in the layer's range, or the groove layer's swing for
+// the whole band), and inside the engine's one-step window.
 func TestGrooveIsDerivedFromNotation(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		spec := spec
@@ -647,15 +576,8 @@ func TestEveryTemplateHasSpecAndScore(t *testing.T) {
 	}
 }
 
-// TestTemplatesAreReasonablySized keeps a spec edit from quietly producing a
-// circuit nobody can use: too few rows to be musical, or so many nodes the grid
-// pane chokes.
-//
-// maxRows is 12, not the earlier 8: a famous beat is the point of a groove
-// template, and a drum-machine break notates up to seven voices (kick, rim,
-// snare, clap, two hats, congas — E=MC²) that each need their own row. Chord
-// parts are capped at two voices and same-family drums share a row (toms,
-// congas) before a template is allowed past 8.
+// 12 rows: a famous break notates up to seven voices that each need a row, after chord parts are capped at two voices
+// and same-family drums share one.
 func TestTemplatesAreReasonablySized(t *testing.T) {
 	const (
 		minRows  = 2
@@ -691,12 +613,8 @@ func TestTemplateDurationsArePositive(t *testing.T) {
 	}
 }
 
-// TestTemplateOrderMatchesAssets keeps the two halves of the template
-// definition in step: cmd/gen-showcase decides what a template CONTAINS,
-// internal/assets decides where it appears in the menu. Nothing links them at
-// compile time, so a stem added here and forgotten there would generate a JSON
-// file that never ships (and trip the assets orphan guard only by luck of
-// ordering).
+// gen-showcase decides what a template contains, internal/assets where it appears in the menu; nothing links them at
+// compile time, so a forgotten stem would generate a JSON file that never ships.
 func TestTemplateOrderMatchesAssets(t *testing.T) {
 	specs := templateSpecs()
 	menu := assets.Templates()

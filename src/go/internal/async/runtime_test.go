@@ -27,8 +27,6 @@ func TestEnvInt(t *testing.T) {
 			if tc.set {
 				t.Setenv(k, tc.val)
 			} else {
-				// t.Setenv unsets on cleanup, but we want absent to start.
-				// Setting to "" then deleting is awkward; rely on default unset.
 			}
 			got := envInt(k, tc.def)
 			if got != tc.want {
@@ -54,20 +52,8 @@ func TestSnapshotReportsRuntimeState(t *testing.T) {
 	}
 }
 
-// TestConfigureRuntimeIsIdempotent calls ConfigureRuntime twice with
-// all-zero opts (so no process-wide mutations happen) and confirms both
-// calls return a sensible snapshot. The sync.Once gate means only the
-// first invocation runs the apply body; the second must be a cheap no-op
-// that still returns Snapshot().
-//
-// We intentionally avoid asserting against settable knobs (GCPercent,
-// GOMAXPROCS) because mutating them would affect every other test in the
-// package. (Snapshot()'s GCPercent read is now non-destructive — it round-
-// trips through the setter and restores the previous value; see
-// TestSnapshotDoesNotDisableGC for the regression guard.)
-//
-// IMPORTANT: this test must remain the only caller of ConfigureRuntime
-// in the package — sync.Once is process-wide.
+// Zero opts, so nothing process-wide changes; the second call must be the sync.Once no-op. Must stay the package's only
+// ConfigureRuntime caller (the Once is process-wide).
 func TestConfigureRuntimeIsIdempotent(t *testing.T) {
 	first := ConfigureRuntime(RuntimeOptions{})
 	if first.NumCPU < 1 || first.GOMAXPROCS < 1 {
@@ -89,12 +75,7 @@ func TestConfigureRuntimeIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestSnapshotDoesNotDisableGC is a regression guard for the bug where
-// Snapshot() read GCPercent via debug.SetGCPercent(-2). The runtime clamps any
-// negative argument to -1, which DISABLES garbage collection — so every
-// Snapshot() (e.g. the startup config log) silently turned automatic GC off
-// process-wide, letting the heap climb unbounded (measured 25 MB → 382 MB with
-// zero GC cycles over 30 s of playback). Snapshot() must leave GC untouched.
+// A negative SetGCPercent argument disables GC, so a Snapshot read that way turned GC off for the whole process.
 func TestSnapshotDoesNotDisableGC(t *testing.T) {
 	prev := debug.SetGCPercent(100) // put GC into a known-enabled state
 	t.Cleanup(func() { debug.SetGCPercent(prev) })

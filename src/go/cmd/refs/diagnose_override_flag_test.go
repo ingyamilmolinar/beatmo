@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// parseOverrideList is the CLI door onto diagnoseInstrumentOpts's overrides
-// argument (and runOrganic's). It has to reject the shapes that would
-// otherwise silently render the SHIPPED sound while the operator believes
-// they measured a candidate — a malformed pair, a non-numeric value, or the
-// same key given twice with different values.
+// Shapes that would otherwise render the SHIPPED sound while the operator believes it is a candidate: a malformed pair,
+// a non-numeric value, a key given twice with different values.
 func TestParseOverrideList(t *testing.T) {
 	t.Run("empty yields nil", func(t *testing.T) {
 		for _, in := range []string{"", "   ", ",", " , "} {
@@ -58,10 +55,7 @@ func TestParseOverrideList(t *testing.T) {
 	})
 }
 
-// validateOverrideKeys is the CLI's version of TestShippedCandidates_AreLive's
-// "override must be a real parameter" check. It matters because the render
-// path DROPS an unknown key silently: without this guard a typo measures the
-// shipped sound and reports it as the candidate's.
+// The render path DROPS an unknown key silently, so without this a typo measures the shipped sound as the candidate.
 func TestValidateOverrideKeys(t *testing.T) {
 	t.Run("nil and empty are accepted", func(t *testing.T) {
 		if err := validateOverrideKeys(roster.Oboe, nil); err != nil {

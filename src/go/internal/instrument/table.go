@@ -5,10 +5,8 @@ import (
 	"slices"
 )
 
-// Table is a stage's rows of MODEL PARAMETERS (one modal resonator or one
-// noise band per row). Cols names the columns in the declared order; every
-// row has one value per column. A table is never audio: the registry bounds
-// every column physically and caps the total cells (spec §3a's data rule).
+// Rows of MODEL PARAMETERS (one modal resonator or noise band each), never audio: the registry bounds every column
+// physically and caps the total cells.
 type Table struct {
 	Cols []string    `json:"cols"`
 	Rows [][]float64 `json:"rows"`
@@ -51,9 +49,7 @@ type TableColumn struct {
 	Min, Max float64
 }
 
-// TableDecl declares a stage's table. Flatten writes row i, column c into
-// TableCell(c.Field, i) and the row count into CountField; cells of rows ≥
-// the count stay 0.
+// Row i, column c goes to TableCell(c.Field, i), the count to CountField; cells past the count stay 0.
 type TableDecl struct {
 	Columns    []TableColumn
 	Capacity   int
@@ -138,9 +134,7 @@ func columnNames(td *TableDecl) []string {
 	return out
 }
 
-// SetTable replaces the table of the stage `stage` (which must be present)
-// and returns the modified copy; the table is validated against the stage's
-// declaration first. The only writer of tables.
+// The only writer of tables; validated against the stage's declaration first. The stage must be present.
 func SetTable(d Doc, reg *Registry, stage string, t Table) (Doc, error) {
 	st, ok := d.Stages[stage]
 	if !ok {

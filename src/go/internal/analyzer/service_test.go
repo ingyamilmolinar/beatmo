@@ -117,15 +117,8 @@ func TestServiceInstrumentMetrics(t *testing.T) {
 	}
 }
 
-// TestPushInstBufOutOfRangeSlot verifies that pushing into a slot index at or
-// beyond MaxInstruments is silently dropped rather than panicking. The mixer
-// hands out an ever-increasing slot index per unique instrument ID it has ever
-// seen (engine_mixer.go instrumentSlot), with no cap. Once a session cycles a
-// row through more than MaxInstruments (32) distinct instruments — easy to do
-// by repeatedly changing a row's instrument, especially with clones — the mixer
-// pushes slot >= 32 into the analyzer. RegisterInstrument already bounds-checks
-// and silently drops such slots, but PushInstBuf did not, so s.slots[32] panicked
-// with "index out of range [32] with length 32" on the audio thread.
+// The mixer mints a slot per unique instrument with no cap, so cycling a row through more than MaxInstruments
+// instruments pushes slot >= 32; it must be dropped, not panic the audio thread.
 func TestPushInstBufOutOfRangeSlot(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.MaxInstruments = 32

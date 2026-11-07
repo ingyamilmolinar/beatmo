@@ -125,9 +125,7 @@ func TestCommitRingReplaceInRange(t *testing.T) {
 	}
 }
 
-// TestCloneBoolSlice and TestCloneNodeTypeSlice cover the trivial
-// defensive copies used by Snapshot. The contract is "nil -> nil, others
-// -> independent copy".
+// nil → nil, anything else → an independent copy.
 func TestCloneBoolSlice(t *testing.T) {
 	if got := cloneBoolSlice(nil); got != nil {
 		t.Errorf("cloneBoolSlice(nil) = %v, want nil", got)
@@ -181,9 +179,7 @@ func TestArchiveAppendLookupTrim(t *testing.T) {
 	if !ok {
 		t.Fatal("lookup(3) ok=false")
 	}
-	// Replace ONLY succeeds when the existing entry isn't already an
-	// immutable kind. abs=3 was Playback, so the Import insert should be
-	// rejected.
+	// Replace succeeds only over a non-immutable entry; abs=3 is Playback, so the Import is rejected.
 	if kind == CommitKindImport {
 		t.Errorf("immutable Playback at abs=3 was overwritten with Import: val=%v typ=%v", val, typ)
 	}

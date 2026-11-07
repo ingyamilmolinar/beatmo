@@ -1,18 +1,6 @@
 package env
 
-// This file declares every environment variable the Beatmo game reads. It is
-// transcribed from the "Complete inventory" section of
-// docs/superpowers/specs/2026-07-27-env-var-centralization-design.md — that
-// document is the source of truth for Action (keep/rename/remove) and
-// Purpose; this file must stay in sync with it. Sections mirror the spec's
-// headings so the two can be diffed side by side.
-//
-// Six variables from the old inventory were removed outright (no reader, or
-// a pure duplicate of another variable): DRAW_FRAMEBUFFER, PREVIEW_DEBUG,
-// BEATMO_CONFIG, SEQ_TICK_MS, PERF_FAST_PATH, and the BEATMO_HEAP_PROBE /
-// BEATMO_HEAP_WATCH pair (replaced by BEATMO_HEAP_DIAG below). Twelve bare
-// names were renamed to gain a BEATMO_ prefix; each renamed declaration below
-// notes its old spelling in the purpose string.
+// Every environment variable the game reads, declared once.
 
 // ---- Runtime configuration -------------------------------------------------
 
@@ -92,8 +80,7 @@ var (
 
 // ---- Heap diagnostics -------------------------------------------------------
 
-// HeapDiag replaces the retired BEATMO_HEAP_PROBE + BEATMO_HEAP_WATCH pair.
-// The two booleans encoded one three-state level: PROBE implied WATCH.
+// One three-state level: probe implies watch.
 var HeapDiag = Str("BEATMO_HEAP_DIAG", "", ScopeDebug,
 	"Heap diagnostics level: 'watch' enables the 30 s heap-growth rollup WARN; "+
 		"'probe' additionally enables the per-second allocation-rate probe with "+
@@ -108,27 +95,14 @@ func HeapWatchEnabled() bool {
 	return false
 }
 
-// HeapProbeEnabled reports whether the per-second allocation probe is on.
-// Probe implies watch, matching the retired BEATMO_HEAP_PROBE semantics.
+// Probe implies watch.
 func HeapProbeEnabled() bool { return HeapDiag.Get() == "probe" }
 
-// ---- RuntimeProfile overrides ----------------------------------------------
-//
-// All fourteen read in ui/runtime_profile_env.go: bench-sweep overrides of
-// the corresponding RuntimeProfile field, applied only when set (IsSet-gated
-// at the call site) so they never clobber the field's normal default. Shared
-// by both browser and desktop since Task 4 unified the override path. All
-// keep their existing names except MinDispatchLeadSec, which is new (see
-// below).
+// Bench-sweep overrides of RuntimeProfile fields (ui/runtime_profile_env.go), applied only when IsSet, so they never
+// clobber the platform default.
 
-// notSetSentinel is appended to every RuntimeProfile-override purpose string
-// below. The declared default is a not-set sentinel, not the effective
-// value: each field's real default comes from the active platform's profile
-// builder (browserRuntimeProfile / desktopRuntimeProfile in
-// internal/ui/runtime_profile.go) and the override is only applied when
-// IsSet() is true. Spelled out per-var (rather than hardcoding the builders'
-// numbers here) because those numbers are bench-tuned and change
-// independently of this file — duplicating them would silently rot.
+// The declared default is a not-set sentinel: the real default comes from the platform's profile builder. Not
+// duplicated here, since those bench-tuned numbers change independently and a copy would rot.
 const notSetSentinel = " Unset leaves the platform RuntimeProfile's built-in value; " +
 	"the default shown here is a not-set sentinel, not the effective default " +
 	"(see internal/ui/runtime_profile.go)."
@@ -155,25 +129,14 @@ var (
 	AudioLookaheadSec = Float("BEATMO_AUDIO_LOOKAHEAD_SEC", 0, ScopeDebug,
 		"Override RuntimeProfile.AudioLookaheadSec for bench sweeps without recompiling."+notSetSentinel)
 
-	// AudioLane / AudioHorizonSec A/B the audio lane (commit audio up to the
-	// horizon ahead, reconcile on edits) against the legacy grid-time
-	// dispatch — scripts/audio_lane_ab.mjs sets them per arm.
+	// A/B of the audio lane against the legacy grid-time dispatch (scripts/audio_lane_ab.mjs sets them per arm).
 	AudioLane = Bool("BEATMO_AUDIO_LANE", false, ScopeDebug,
 		"Override RuntimeProfile.AudioLaneEnabled (audio lane vs legacy grid-time dispatch)."+notSetSentinel)
 	AudioHorizonSec = Float("BEATMO_AUDIO_HORIZON_SEC", 0, ScopeDebug,
 		"Override RuntimeProfile.AudioHorizonSec (audio lane commit window)."+notSetSentinel)
 
-	// MinDispatchLeadSec is a 2026-07-27 addition (not in the original spec
-	// inventory): no env var ever reached this field before — it was settable
-	// ONLY via window.__beatmoProfileOverride's "minDispatchLeadSec" key on
-	// WASM. Task 4 retires that reader in favor of this shared env path, so
-	// this variable exists to avoid silently losing the ability to sweep the
-	// field. Declared default 0 is a not-set sentinel like every other var in
-	// this section; it is inert on both platforms unless set, since every
-	// read is IsSet()-gated. Unlike the other 13, the EFFECTIVE built-in
-	// value is platform-asymmetric (browser vs. desktop differ) rather than
-	// shared, so the purpose string calls that out explicitly instead of
-	// leaving it implicit in "the platform RuntimeProfile's built-in value."
+	// Like the rest, inert unless set; unlike them its effective built-in value differs between browser and desktop, which
+	// the purpose string says.
 	MinDispatchLeadSec = Float("BEATMO_MIN_DISPATCH_LEAD_SEC", 0, ScopeDebug,
 		"Minimum lead time in seconds before a scheduled audio event is dispatched. "+
 			"Bench-sweep knob; was reachable only through window.__beatmoProfileOverride "+
@@ -184,9 +147,7 @@ var (
 	AudioBatchMax = Int("BEATMO_AUDIO_BATCH_MAX", 0, ScopeDebug,
 		"Override RuntimeProfile.AudioBatchMax for bench sweeps without recompiling."+notSetSentinel)
 
-	// SequencerTickMS also absorbs the retired SEQ_TICK_MS: the sequencer loop
-	// now reads RuntimeProf().SequencerTickMS exclusively instead of a second,
-	// duplicate bare-named variable.
+	// The sequencer loop reads only RuntimeProf().SequencerTickMS; there is no second, bare-named variable.
 	SequencerTickMS = Int("BEATMO_SEQUENCER_TICK_MS", 0, ScopeDebug,
 		"Override RuntimeProfile.SequencerTickMS for bench sweeps without recompiling. Also replaces the removed SEQ_TICK_MS."+notSetSentinel)
 

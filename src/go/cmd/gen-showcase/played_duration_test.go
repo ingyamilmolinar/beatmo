@@ -13,29 +13,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// The engine used to apply a melodic voice's node duration as its playback
-// RATE, so a note of duration 0.5 played an octave high and 0.25 two octaves
-// high. Every template writes note lengths into duration, so every eighth and
-// sixteenth of every melodic line was transposed — Ave Maria's vocal line leapt
-// by octaves. TestTemplateNodesSoundAtTheirNotatedPitch could not see it: it
-// rendered the recipe at the node's pitch and never applied the duration.
-// These tests go through the PLAYBACK path (audio.RenderAsPlayed, the voice
-// the mixer receives).
+// Through the PLAYBACK path (audio.RenderAsPlayed): rendering at the node's pitch without its duration cannot see a
+// duration that transposes.
 
 // gateFadeSamples bounds the release a shortened note ends with (the engine's
 // gateFadeMs at the highest sample rate the engine runs).
 const gateFadeSamples = 48000 * 10 / 1000
 
-// TestNodeDurationNeverChangesPitch: a node's duration says how long a note
-// lasts, never what note it is. For a pitch-aware voice the note played at
-// duration d must be the SAME waveform as at duration 1, sample for sample, up
-// to where it is cut — which no transposition, however small, survives. The
-// property is checked exactly rather than through an f0 detector: on a short
-// buffer the detector's 2.7 Hz bins and octave slips (57 cents at 80 Hz)
-// swamp the thing being asserted.
-//
-// A resampled voice (drums, FM, non-melodic pads) is pitched and sized by its
-// playback rate BY DESIGN, so a template must never give one a duration.
+// A note at duration d must be the SAME waveform as at duration 1 up to where it is cut, which no transposition
+// survives; an f0 detector's bins and octave slips on a short buffer would swamp it. A resampled voice is sized by rate
+// by design, so a template never gives one a duration.
 func TestNodeDurationNeverChangesPitch(t *testing.T) {
 	for _, spec := range templateSpecs() {
 		spec := spec
@@ -117,11 +104,7 @@ func playedAtRate(s []float64, from, rate int) []float64 {
 // folding: an octave is exactly the error this test exists to catch.
 const avePitchTolCents = 30.0
 
-// TestAveMariaVoiceSoundsAtTheNotatedPitch measures what the listener
-// reported: every note of Ave Maria's vocal line, rendered as the engine plays
-// it (its real node pitch AND duration), against the frequency the score
-// writes. Before the fix only the quarter notes were in tune; eighths read
-// +1200 cents, sixteenths +2400, dotted eighths +498 and dotted quarters -702.
+// Every note of the vocal line, rendered as the engine plays it (pitch AND duration), against the score's frequency.
 func TestAveMariaVoiceSoundsAtTheNotatedPitch(t *testing.T) {
 	const inst = roster.VoiceSoprano
 	d := readTemplate(t, "schubert-ave-maria")
@@ -135,11 +118,8 @@ func TestAveMariaVoiceSoundsAtTheNotatedPitch(t *testing.T) {
 			continue
 		}
 		seen[key{n.Pitch, n.Duration}] = true
-		// The played voice, converted (windowed sinc) to the rate the f0
-		// detector is calibrated at: its frames are a fixed 4096 SAMPLES, so
-		// at the engine's 48 kHz a half note's 0.2 s sustain window catches
-		// more of the vibrato and read +32 cents where 44.1 kHz read +25, for a
-		// note a fine autocorrelation puts at -5 cents at both rates.
+		// Converted to the rate the f0 detector is calibrated at: its frames are a fixed 4096 SAMPLES, so at 48 kHz a half
+		// note's sustain window catches more vibrato and reads sharp.
 		s, sr := audio.RenderAsPlayed(inst, n.Pitch, n.Duration, 1.5)
 		w := wave.Wave{Samples: playedAtRate(s, sr, wavref.Rate), SampleRate: wavref.Rate}
 		est := fingerprint.DetectF0Detailed(w)

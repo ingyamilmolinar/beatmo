@@ -1,12 +1,6 @@
-// Package objects is the versioned store for game objects (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// Part 2): content-addressed objects plus, per identity, the history of its
-// saved versions and a current pointer.
-//
-// A version is the SHA-256 of the object's canonical JSON (Go's
-// encoding/json: struct fields in declaration order, map keys sorted), so it is
-// immutable, the same on every machine, and the digest a shared address (CIDv1,
-// raw codec, sha2-256) wraps. Callers strip identity fields before hashing.
+// Package objects is the versioned store: content-addressed objects plus, per identity, the history of saved versions
+// and a current pointer. A version is the SHA-256 of canonical JSON (fields in order, keys sorted), immutable and the
+// same on every machine (CIDv1 raw sha2-256 wraps it). Callers strip identity fields first.
 package objects
 
 import (

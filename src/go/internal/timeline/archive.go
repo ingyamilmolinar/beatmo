@@ -6,18 +6,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// archiveDefaultMaxEntries is the per-row hard ceiling on cold-archive size.
-// Tuned to ~24 days of constant 1 ev/s/row activity — far beyond any human
-// session length while guarding against pathological runaway. When exceeded
-// the oldest entries are dropped in 65 536-entry chunks to amortize cost.
+// Weeks of constant activity: far past any session, a guard against runaway. Overflow drops the oldest in chunks to
+// amortise the cost.
 const archiveDefaultMaxEntries = 2_000_000
 
 // archiveEvictChunk amortizes the cost of dropping over-cap entries.
 const archiveEvictChunk = 65_536
 
-// archiveEntry is a packed historical commit. Stored sorted by abs ascending
-// so binary search resolves lookups in O(log n). int32 abs covers up to
-// ~2.1B subdivisions (≈ 8 200 days at 8 subdiv/s).
+// Sorted by abs, so lookups binary-search; int32 abs covers ~2.1B subdivisions.
 type archiveEntry struct {
 	abs  int32
 	val  bool
@@ -25,23 +21,14 @@ type archiveEntry struct {
 	kind CommitKind
 }
 
-// rowArchive is the per-row append-mostly cold-store of historical
-// CommitKindPlayback / CommitKindImport entries that have been pruned from
-// the live immutables sidecar. Sparse: only abs values that actually
-// committed appear (gap-pad entries are NOT migrated).
-//
-// Append is amortized O(1) when calls are monotonic — the dominant case
-// since playback advances forward. Out-of-order migrations (paused scrub,
-// edit/import flows) fall through to a sort-position insert which is
-// O(log n) for the search and O(n) for the slice shift; this path is rare.
+// Playback/Import commits pruned from the live immutables sidecar, sparse (gap pads are not migrated). Monotonic appends
+// (playback moving forward) are amortised O(1); out-of-order migrations (paused scrub, edits, import) take a rare sorted
+// insert.
 type rowArchive struct {
 	entries []archiveEntry
 }
 
-// append inserts e into the archive in abs-sorted order. Existing immutable
-// entries (Playback/Import) at the same abs are never overwritten. When the
-// archive exceeds maxEntries (when > 0), oldest entries are dropped in
-// archiveEvictChunk-sized batches to keep amortized cost O(1).
+// Never overwrites an existing Playback/Import entry at the same abs; past maxEntries (> 0) the oldest drop in chunks.
 func (a *rowArchive) append(abs int, val bool, typ model.NodeType, kind CommitKind, maxEntries int) {
 	if a == nil {
 		return
@@ -93,8 +80,7 @@ func (a *rowArchive) lookup(abs int) (val bool, typ model.NodeType, kind CommitK
 	return e.val, e.typ, e.kind, true
 }
 
-// trimBefore drops entries with abs < minAbs. Mirrors TrimBefore semantics
-// so explicit user-driven trims propagate to the cold archive.
+// So user-driven trims reach the archive too.
 func (a *rowArchive) trimBefore(minAbs int) {
 	if a == nil || len(a.entries) == 0 {
 		return

@@ -1,9 +1,5 @@
-// Package wave provides a minimal audio waveform type and composable
-// interfaces for test signal generation, transformation, and observation.
-//
-// The Wave struct is the universal currency type: every generator produces
-// one, every transform consumes and returns one, every observer inspects one.
-// This package has zero dependencies on the audio engine, UI, or platform.
+// Package wave is a minimal waveform type every generator produces, transform maps and observer inspects, with no
+// dependency on the engine, the UI or the platform.
 package wave
 
 import "math"

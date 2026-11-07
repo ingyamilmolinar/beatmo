@@ -69,10 +69,7 @@ func TestFormatAuditionSh_DoneSentinelWhenNoFamilyPending(t *testing.T) {
 	}
 }
 
-// --- runAuditionPlan: full render pipeline, mirrors
-// TestRunCompare_FullRun_WritesLevelMatchedFilesUnderEnvDir's use of the
-// -tags test synth stub -- content is never asserted, only that the
-// pipeline completes and writes real files for every family member.
+// The -tags test synth stub: only that the pipeline completes and writes a file per member, never content.
 
 func TestRunAuditionPlan_RendersEveryMemberAgainstSharedReference(t *testing.T) {
 	tmp := t.TempDir()
@@ -90,11 +87,8 @@ func TestRunAuditionPlan_RendersEveryMemberAgainstSharedReference(t *testing.T) 
 	if !strings.Contains(shOut, "BEATMO_AB_REF='cello-A3'") {
 		t.Errorf("missing ref assignment (want the shared family reference):\n%s", shOut)
 	}
-	// ONE reference clip for the whole family, in the first member's dir.
-	// There is deliberately no per-member REAL__ copy: each copy would carry
-	// its own level-match gain while only the first is ever played, so options
-	// 2..N would be matched against a clip the listener never hears. See
-	// renderFamilyCompare.
+	// ONE reference clip for the family: per-member copies would each carry their own level-match gain while only the first
+	// is played.
 	sharedReal := filepath.Join(tmp, "compare", "cello", "REAL__cello-A3.wav")
 	synthCello := filepath.Join(tmp, "compare", "cello", "SYNTH__cello.wav")
 	synthWarm := filepath.Join(tmp, "compare", "cello-warm", "SYNTH__cello-warm.wav")
@@ -114,15 +108,8 @@ func TestRunAuditionPlan_RendersEveryMemberAgainstSharedReference(t *testing.T) 
 	}
 }
 
-// TestRunAuditionPlan_EveryOptionSharesOneLevel is the regression gate for the
-// A/B level skew: after level-matching, the reference and every option must sit
-// at the same RMS, so the listener grades timbre rather than loudness.
-//
-// Before the family-wide match, each member re-derived the reference's gain
-// from its own synth RMS; with realRMS=0.10, opt1=0.10 and opt2=0.40 the second
-// option played 5.93 dB louder than the first relative to the one reference on
-// the speakers. 11 of the 44 families in ear_verdicts.jsonl are multi-option
-// and 7 recorded an explicit "option N is closest" pick.
+// After level-matching the reference and every option sit at one RMS, so the listener grades timbre, not loudness
+// (per-member gains played options several dB apart against the one reference heard).
 func TestRunAuditionPlan_EveryOptionSharesOneLevel(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(wavref.EnvVar, tmp)
@@ -177,11 +164,7 @@ func TestRunAuditionPlan_UnknownFamilyErrors(t *testing.T) {
 	}
 }
 
-// The "no pending families" -> BEATMO_AB_DONE sentinel path composes
-// formatAuditionDone (unit-tested above) with pickFamily's found=false
-// branch (unit-tested at TestPickFamily_AutoPickNoneLeftReportsNotFound);
-// runAuditionPlan just wires them together, so it isn't re-exercised here
-// against the full 44-family real catalogue.
+// The BEATMO_AB_DONE path only wires formatAuditionDone to pickFamily's found=false, both tested on their own.
 
 // --- runAuditionPrompt: prompt-only, no rendering, appends verdicts.
 
@@ -257,9 +240,7 @@ func TestRunAuditionPrompt_ResumeSkipsAlreadyAnsweredAutoPick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Auto-pick (-instrument "") with resume=true must skip bassoon (the
-	// alphabetically-first family) and land on the next unanswered one --
-	// "cello" (multi-option), hence a numeric choice here.
+	// Resume skips bassoon (alphabetically first) and lands on cello, multi-option: hence a numeric choice.
 	kind, err := runAuditionPrompt(&bytes.Buffer{}, strings.NewReader("1\n"), "", true, outPath, "", "")
 	if err != nil {
 		t.Fatalf("runAuditionPrompt: %v", err)
@@ -279,8 +260,7 @@ func TestRunAuditionPrompt_ResumeSkipsAlreadyAnsweredAutoPick(t *testing.T) {
 	}
 }
 
-// --- cmdAudition: exit-signalling via sentinel errors, not os.Exit, so the
-// CLI dispatch is unit-testable without killing the test process.
+// Exit signalling via sentinel errors, so the CLI dispatch is testable without killing the test process.
 
 func TestCmdAudition_QuitReturnsSentinelError(t *testing.T) {
 	tmp := t.TempDir()
@@ -315,12 +295,8 @@ func TestCmdAudition_RecordedReturnsNilError(t *testing.T) {
 	}
 }
 
-// swapStdin temporarily replaces os.Stdin with a pipe fed by content, for
-// exercising cmdAudition's real (non-injected) stdin path.
-// swapStdin feeds content to the CLI's os.Stdin and, for the same span,
-// sends its os.Stdout to /dev/null: these tests drive cmdAudition, whose
-// interactive session writes prompts and confirmations to os.Stdout, and
-// that session used to land in the middle of the `make test` log.
+// swapStdin feeds content to os.Stdin and sends os.Stdout to /dev/null for the same span, so the interactive session
+// stays out of the make test log.
 func swapStdin(t *testing.T, content string) func() {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -343,9 +319,7 @@ func swapStdin(t *testing.T, content string) func() {
 	}
 }
 
-// --- Fix 1: plain-English confirmation of what was recorded, so a "1"
-// synonym answer on a single-option family can never silently record a
-// stronger claim than the user intended.
+// The plain-English confirmation keeps a single-option "1" from recording a stronger claim than intended.
 
 func TestFormatVerdictConfirmation_Multi_NumericChoice(t *testing.T) {
 	fam := multiFam()
@@ -437,9 +411,8 @@ func TestRunAuditionPrompt_EchoesWhatWasRecorded_SingleViaOneSynonym(t *testing.
 	}
 }
 
-// --- Fix 2: the single-option prompt text advertises "1" as accepted,
-// since it is silently accepted -- undocumented input mapping to a strong
-// verdict was the actual bug, not the synonym itself.
+// The single-option prompt advertises "1": an undocumented input mapping to a strong verdict was the problem, not the
+// synonym.
 
 func TestPromptLine_SingleOption_Advertises1Synonym(t *testing.T) {
 	line := promptLine(singleFam())
@@ -448,8 +421,7 @@ func TestPromptLine_SingleOption_Advertises1Synonym(t *testing.T) {
 	}
 }
 
-// --- Fix 3: the header prints exactly once per family (at the prompt),
-// not once during plan/render and again at prompt.
+// The header prints once per family, at the prompt.
 
 func TestRunAuditionPlan_DoesNotPrintFamilyHeader(t *testing.T) {
 	tmp := t.TempDir()

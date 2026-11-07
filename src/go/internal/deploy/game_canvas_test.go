@@ -9,13 +9,8 @@ import (
 // firstCanvas matches a lookup of "the first <canvas> on the page".
 var firstCanvas = regexp.MustCompile(`querySelector\(\s*['"]canvas['"]\s*\)|getElementsByTagName\(\s*['"]canvas['"]\s*\)`)
 
-// TestPageScriptsNeverTakeTheFirstCanvas: the landing's crystal canvas is in
-// index.html's markup, so it precedes the canvas Ebiten appends at boot. Every
-// page script that wanted "the canvas" found the crystal instead: the phone
-// soft-keyboard focus rects and the native <input> touch listeners bound to it
-// (removed on hand-over, display:none otherwise) and never reached the game.
-// The game canvas has one accessor, window.__beatmoGameCanvas (index.html's
-// first head script).
+// The landing's crystal canvas is static markup and precedes the canvas Ebiten appends, so any script taking "the canvas"
+// bound to the crystal and never reached the game. The game canvas has one accessor, window.__beatmoGameCanvas.
 func TestPageScriptsNeverTakeTheFirstCanvas(t *testing.T) {
 	root := repoRoot(t)
 	for _, name := range []string{"index.html", "landing.js", "audio.js"} {

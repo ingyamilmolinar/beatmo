@@ -7,21 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestNotifyTrigger_AllocBudget pins the per-call allocation count for
-// NotifyTrigger to a tight budget. Before the OOM-prevention fix this
-// function allocated a fresh []float64 of len(rawBuf) on every call,
-// converting float32→float64 on the audio thread; the synth-tab profile
-// attributed 252 MB of cumulative allocations to that path over 60 s.
-//
-// After the fix the audio thread captures rawBuf by reference (shared,
-// immutable cached recipe buffer) and conversion is deferred to
-// processTick, so NotifyTrigger should allocate at most one small
-// pendingCap struct per call. A regression that re-adds the per-trigger
-// []float64 conversion would push allocs/call from ~1 to 2 and fail this
-// test.
-//
-// This is the canonical regression guard for the per-trigger allocation
-// budget — a fix that "looks right" must keep this number pinned.
+// NotifyTrigger runs on the audio thread and must allocate at most the small pendingCap: rawBuf is held by reference
+// (the shared, immutable cached voice) and converted only in processTick. A per-trigger float64 copy doubles allocs/call.
 func TestNotifyTrigger_AllocBudget(t *testing.T) {
 	svc := NewService(Config{
 		FFTSize:        1024,
@@ -30,13 +17,10 @@ func TestNotifyTrigger_AllocBudget(t *testing.T) {
 		SampleRate:     44100,
 	})
 
-	// Mirror the audio thread's contract: rawBuf is the cached recipe
-	// buffer from globalVoiceCache. A realistic snare at 140 BPM is
-	// roughly 20 K samples; pick a similarly-sized buffer.
+	// The cached voice buffer the audio thread holds, sized like a real snare.
 	rawBuf := make([]float32, 22050)
 
-	// Warm up — first call may pay one-time init costs (atomic.Pointer
-	// type assertion table, etc.).
+	// The first calls may pay one-time init costs.
 	for i := 0; i < 5; i++ {
 		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)
 	}
@@ -59,10 +43,8 @@ func TestNotifyTrigger_AllocBudget(t *testing.T) {
 		allocs, budget, len(rawBuf))
 }
 
-// TestNotifyTrigger_DroppedTriggerNoExtraAlloc verifies that overwriting
-// a pending capture (the "dropped trigger" case — common when trigger
-// rate exceeds processTick rate) does not allocate a buffer that then
-// gets thrown away. Before the fix every dropped trigger wasted ~80 KB.
+// Overwriting a pending capture (triggers outpacing processTick, which is common) must not allocate a buffer that is
+// then thrown away.
 func TestNotifyTrigger_DroppedTriggerNoExtraAlloc(t *testing.T) {
 	svc := NewService(Config{
 		FFTSize:        1024,
@@ -77,9 +59,7 @@ func TestNotifyTrigger_DroppedTriggerNoExtraAlloc(t *testing.T) {
 		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)
 	}
 
-	// Drive 4 consecutive triggers without ever consuming via processTick.
-	// Every call after the first overwrites a pending. None should
-	// allocate a buffer beyond the pendingCap struct.
+	// Every call after the first overwrites a pending; none may allocate beyond the pendingCap.
 	const budget = 1.0
 	allocs := testing.AllocsPerRun(1000, func() {
 		svc.NotifyTrigger(channel.Of(roster.Snare), rawBuf)

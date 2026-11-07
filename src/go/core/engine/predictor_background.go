@@ -2,13 +2,8 @@ package engine
 
 import "time"
 
-// StartBackground spawns a low-priority goroutine that keeps predictions
-// ahead of the UI's needs. target returns the desired horizon; the
-// predictor converges towards it on an 8ms cadence.
-//
-// Idempotent: concurrent or repeat calls update the target function but
-// do not spawn a second worker. After StopBackground returns, the
-// predictor is ready for a fresh StartBackground call.
+// Converges toward target() on an 8 ms cadence. Repeat or concurrent calls only replace the target; after
+// StopBackground a fresh start works.
 func (p *Predictor) StartBackground(target func() int) {
 	p.mu.Lock()
 	p.targetFn = target
@@ -86,9 +81,7 @@ func (p *Predictor) StopBackground() {
 	p.bgRunning.Store(false)
 }
 
-// SetBackgroundTarget assigns the background target function without starting
-// the goroutine. This is used by tests that want to evaluate the target logic
-// without spinning a worker.
+// For tests that evaluate the target logic without a worker.
 func (p *Predictor) SetBackgroundTarget(target func() int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

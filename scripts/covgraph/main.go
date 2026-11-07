@@ -1,13 +1,5 @@
-// Command covgraph generates a DOT graph visualizing per-function test coverage.
-// It parses a Go coverage profile and matches coverage blocks to AST function
-// bodies, then produces a Graphviz DOT file with HTML-label tables where each
-// function cell is color-coded by its coverage percentage.
-//
-// Two modes:
-//   - Summary (default): One compact node per package with an aggregate coverage
-//     bar, suitable for a full-codebase overview PNG.
-//   - Detail (-detail or -pkg): Per-function tables with individual coverage
-//     colors, for drilling into specific packages.
+// Command covgraph draws per-function test coverage as a Graphviz graph: one node per package (default) or per-function
+// tables (-detail / -pkg), colour-coded by coverage.
 package main
 
 import (
@@ -24,10 +16,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-// ---------------------------------------------------------------------------
-// Data types
-// ---------------------------------------------------------------------------
 
 type funcInfo struct {
 	name       string
@@ -69,10 +57,6 @@ type fileGroup struct {
 	types  []typeInfo
 	funcs  []funcInfo
 }
-
-// ---------------------------------------------------------------------------
-// Coverage profile parsing
-// ---------------------------------------------------------------------------
 
 func parseCoverProfile(path string) (map[string][]covBlock, error) {
 	f, err := os.Open(path)
@@ -130,10 +114,6 @@ func lineFromPos(s string) int {
 	n, _ := strconv.Atoi(s[:dot])
 	return n
 }
-
-// ---------------------------------------------------------------------------
-// AST discovery
-// ---------------------------------------------------------------------------
 
 func discover(root, mod string, exportedOnly bool) map[string]*pkgInfo {
 	pkgs := map[string]*pkgInfo{}
@@ -229,10 +209,6 @@ func discover(root, mod string, exportedOnly bool) map[string]*pkgInfo {
 	return pkgs
 }
 
-// ---------------------------------------------------------------------------
-// Merge coverage data with AST functions
-// ---------------------------------------------------------------------------
-
 func mergeCoverage(pkgs map[string]*pkgInfo, covBlocks map[string][]covBlock, mod string) {
 	for filePath, blocks := range covBlocks {
 		if !strings.HasPrefix(filePath, mod+"/") {
@@ -275,10 +251,6 @@ func mergeCoverage(pkgs map[string]*pkgInfo, covBlocks map[string][]covBlock, mo
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Grouping (adapted from depgraph)
-// ---------------------------------------------------------------------------
 
 func filePrefix(name string) string {
 	idx := strings.Index(name, "_")
@@ -366,10 +338,6 @@ func buildGroups(pkg *pkgInfo, threshold int) []fileGroup {
 	return groups
 }
 
-// ---------------------------------------------------------------------------
-// Coverage color scheme
-// ---------------------------------------------------------------------------
-
 type covStyle struct {
 	fill   string
 	border string
@@ -408,10 +376,6 @@ func coverageFill(pct float64) string {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Summary stats
-// ---------------------------------------------------------------------------
-
 type coverageStats struct {
 	total    int
 	covered  int
@@ -443,10 +407,6 @@ func (s coverageStats) avgPct() float64 {
 	}
 	return s.pctSum / float64(s.pctCount)
 }
-
-// ---------------------------------------------------------------------------
-// Sorting
-// ---------------------------------------------------------------------------
 
 func sortFuncs(funcs []funcInfo, order string) {
 	switch order {
@@ -485,10 +445,6 @@ func sortFuncs(funcs []funcInfo, order string) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Package filtering
-// ---------------------------------------------------------------------------
-
 func filterPkgs(pkgs map[string]*pkgInfo, filter string, _ string) map[string]*pkgInfo {
 	if filter == "" {
 		return pkgs
@@ -510,10 +466,6 @@ func filterPkgs(pkgs map[string]*pkgInfo, filter string, _ string) map[string]*p
 	}
 	return result
 }
-
-// ---------------------------------------------------------------------------
-// DOT generation — Package-level color palette (same as depgraph)
-// ---------------------------------------------------------------------------
 
 var groupColor = map[string]string{
 	"cmd":                     "#E8F5E9",
@@ -574,10 +526,6 @@ type dotConfig struct {
 	sortOrder      string
 	summary        bool
 }
-
-// ---------------------------------------------------------------------------
-// Summary mode — one compact node per package
-// ---------------------------------------------------------------------------
 
 func generateSummaryDOT(w io.Writer, pkgs map[string]*pkgInfo, cfg dotConfig) {
 	paths := make([]string, 0, len(pkgs))
@@ -682,10 +630,6 @@ func emitSummaryNode(w io.Writer, pkg *pkgInfo, cfg dotConfig, indent string) {
 	fmt.Fprintf(w, "%s  </TABLE>\n", indent)
 	fmt.Fprintf(w, "%s>];\n", indent)
 }
-
-// ---------------------------------------------------------------------------
-// Detail mode — per-function tables (original behavior)
-// ---------------------------------------------------------------------------
 
 func generateDetailDOT(w io.Writer, pkgs map[string]*pkgInfo, cfg dotConfig) {
 	paths := make([]string, 0, len(pkgs))
@@ -907,10 +851,6 @@ func emitFuncsNode(w io.Writer, nodeID string, funcs []funcInfo, extraFuncs int,
 	fmt.Fprintf(w, "%s>];\n", indent)
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 func receiverTypeName(fl *ast.FieldList) string {
 	if fl == nil || len(fl.List) == 0 {
 		return ""
@@ -933,10 +873,6 @@ func hasType(types []typeInfo, name string) bool {
 	}
 	return false
 }
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
 
 func main() {
 	root := flag.String("root", "src/go", "Go source root")

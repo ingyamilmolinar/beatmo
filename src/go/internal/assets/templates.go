@@ -10,23 +10,9 @@ import (
 //go:embed templates/*.json
 var templateFS embed.FS
 
-// Template is a built-in circuit: display metadata + the importable JSON.
-//
-// Every template is generated from a committed, public-domain reference score
-// (internal/scoreref) by cmd/gen-showcase — the notes ARE the score. There is
-// no hand-authored musical content anywhere in the pipeline, which is what lets
-// cmd/gen-showcase's fidelity tests check each circuit against its source.
-// Never hand-edit templates/*.json.
-//
-// docs/score-sources.md records which score corpora are admissible and why.
-//
-//	Regenerate via: cd src/go && ../../.tools/go/bin/go run ./cmd/gen-showcase
-//	A drift test (cmd/gen-showcase/drift_test.go) ensures committed JSON matches specs.
-//	Adding a template: catalogue the score, add a row to cmd/gen-showcase's
-//	templateSpecs(), add the stem to templateGroups below, regenerate.
-//
-// Display name and BPM are derived from each file, so the only metadata kept in
-// Go is the menu order.
+// Generated from a committed public-domain score by cmd/gen-showcase (the notes ARE the score), so never hand-edit
+// templates/*.json: regenerate with go run ./cmd/gen-showcase. Display and BPM come from each file; only the menu order
+// is kept in Go.
 type Template struct {
 	Genre   string
 	Display string
@@ -35,11 +21,8 @@ type Template struct {
 	Bytes   []byte
 }
 
-// templateGroups is the canonical menu grouping AND order, by file stem
-// (templates/<stem>.json). It is the ONLY hand-maintained template metadata;
-// Display and BPM are derived from the embedded JSON so they cannot drift
-// from what actually ships. The group labels render as section headers in
-// the template menu (empty search query only).
+// The ONLY hand-maintained template metadata (menu grouping and order, by stem); Display and BPM come from the embedded
+// JSON so they cannot drift. Labels render as section headers when the search is empty.
 var templateGroups = []struct {
 	Label string
 	Stems []string
@@ -94,8 +77,7 @@ var templateGroups = []struct {
 	}},
 }
 
-// templateOrder is the flattened templateGroups sequence — retained because
-// menu order, tests, and the search index all key off the flat series.
+// Menu order, tests and the search index key off the flat series.
 var templateOrder = flattenTemplateGroups()
 
 func flattenTemplateGroups() []string {
@@ -106,14 +88,8 @@ func flattenTemplateGroups() []string {
 	return out
 }
 
-// Templates returns the built-in genre circuits in menu order. The embedded
-// files are immutable, so the result is parsed once and cached: the template
-// menu calls this every frame (from both its draw and input paths) while open,
-// and re-reading + re-json.Unmarshaling ~1 MB of embedded JSON per call froze
-// WASM mobile the moment the menu was opened. Callers treat the result as
-// read-only (Display/BPM/Bytes are never mutated). Panics at init only if an
-// embedded file is missing or malformed — a build-time guarantee, never runtime
-// (the embed + the JSON shape are both compile/test enforced).
+// Parsed once and cached: the template menu calls this every frame while open, and re-parsing the embedded JSON per
+// call froze WASM mobile. Read-only to callers; panics at init only on a missing or malformed embed.
 func Templates() []Template {
 	templatesOnce.Do(func() { templatesCache = buildTemplates() })
 	return templatesCache
@@ -150,11 +126,7 @@ func buildTemplates() []Template {
 	return out
 }
 
-// displayTitles maps each template stem to its real "Artist — Song" menu title.
-// The whole point of the slate is A/B-ing each template against the named
-// original, so the menu must show the song — not a title-cased stem (which would
-// render "Dre-G-Thang", "Bbking-Thrill-Is-Gone", …). Every stem in templateOrder
-// must have an entry here; TestTemplates_DisplayNamed enforces it.
+// The real "Artist — Song" title, since a template is A/B'd against the named original; every stem needs one.
 var displayTitles = map[string]string{
 	"funky-drummer":                 "James Brown — Funky Drummer",
 	"impeach-the-president":         "The Honey Drippers — Impeach the President",

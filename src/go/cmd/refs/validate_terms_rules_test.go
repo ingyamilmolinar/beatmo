@@ -18,11 +18,8 @@ func TestTermRulesBindToRegisteredAxes(t *testing.T) {
 	}
 }
 
-// TestAggregateTermScores buckets synthetic termScores. The point of the test
-// is the PARTITION: agreeing + backwards + silent must equal the number of
-// rules that saw at least one family, because the spec §9.2 criterion is
-// stated as a fraction of those rules and was once mis-counted by treating
-// MISS rows (silent) as agreement.
+// The buckets must PARTITION the rules that saw a family: the criterion is a fraction of those rules, and silent rows
+// once counted as agreement.
 func TestAggregateTermScores(t *testing.T) {
 	hit := termHit{Family: "x"}
 	scores := []termScore{

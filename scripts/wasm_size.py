@@ -35,10 +35,8 @@ SECTION_NAMES = {
     10: "code", 11: "data", 12: "datacount", 13: "tag",
 }
 
-# Hosts whose package paths contain a '.' before the first path separator.
-# Go's wasm name mangling rewrites '/' to '_' but leaves '.' alone, so
-# "github.com/x/y.Func" arrives as "github.com_x_y.Func" and a naive
-# split('.') would bucket everything under "github".
+# Go's wasm name mangling rewrites '/' to '_' but leaves '.', so "github.com/x/y.Func" arrives as
+# "github.com_x_y.Func" and a naive split('.') would bucket everything under "github".
 DOT_HOSTS = ("github", "golang", "gopkg", "google", "cloud", "honnef", "go")
 
 # The Kage shader compiler Ebiten runs at startup to build its own builtin

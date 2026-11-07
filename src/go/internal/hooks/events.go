@@ -1,7 +1,5 @@
-// Package hooks provides a small, non-blocking event bus for user-action
-// triggers. Producers publish typed events; subscribers run off-thread on
-// a shared async worker pool so neither the audio thread nor the UI's
-// Update loop ever stalls on a slow handler.
+// Package hooks is a non-blocking event bus for user actions: subscribers run off-thread on a shared async pool, so
+// neither the audio thread nor Update ever stalls on a slow handler.
 package hooks
 
 import (
@@ -51,9 +49,7 @@ const (
 	EventEdgeAdded         Kind = "edge.added"
 	EventEdgeDeleted       Kind = "edge.deleted"
 
-	// Armed grid interaction modes (quick-action popup: move/copy/connect).
-	// Interaction-scoped: arming/canceling mutates nothing; the committed
-	// operation emits its own domain event (node.moved / node.pasted / edge.added).
+	// Arming or cancelling mutates nothing; the committed operation emits its own domain event.
 	EventGridModeArmed    Kind = "mode.armed"
 	EventGridModeCanceled Kind = "mode.canceled"
 
@@ -77,27 +73,18 @@ const (
 	EventInsertEffectRemoved Kind = "audio.insert_removed"
 	EventInsertEffectParam   Kind = "audio.insert_param"
 
-	// Audio settings — release-committed (added for full event coverage +
-	// undo). These fire once per gesture at drag-release, never per-frame.
+	// Once per gesture at release, never per frame.
 	EventRowVolume           Kind = "row.volume"
 	EventInsertEffectMoved   Kind = "audio.insert_moved"
 	EventInsertEffectToggled Kind = "audio.insert_toggled"
-	// Synth params committed once at knob-release (the per-frame edit stays
-	// the verbose EventInstrumentParamChanged below). Reset clears overrides.
+	// Once at knob release; the per-frame edit stays the verbose EventInstrumentParamChanged.
 	EventInstrumentParamsCommitted Kind = "audio.synth_committed"
 	EventInstrumentParamsReset     Kind = "audio.synth_reset"
 	// Userpref coverage only (NOT undoable): audio-panel state persisted.
 	EventAudioPanelStateChanged Kind = "uistate.audio_panel"
 
-	// Synth recipe / instrument synthesis parameters. Fires when a user
-	// edits an instrument's synth params via the instrument editor (or
-	// any other path that mutates an instrument document in internal/audio).
-	//
-	// Slider drag publishes this on every frame the slider value moves
-	// (60Hz typical), matching the pattern of EventCameraPan / Zoom /
-	// DragProgress below. The narrative INFO consumer filters it out
-	// via IsVerbose so console-log throughput stays bounded; the JSONL
-	// eventstream still records every event when verbose mode is on.
+	// Published on every frame a synth control moves, like the camera and drag kinds: the INFO narrative filters it
+	// (IsVerbose) to keep log throughput bounded, while the verbose JSONL stream records it.
 	EventInstrumentParamChanged Kind = "verbose.instrument_param"
 
 	// Round 2 additions: user-narrative events with no prior home.
@@ -108,29 +95,20 @@ const (
 	EventUIStateApplied    Kind = "uistate.applied"
 	EventFavoriteToggled   Kind = "favorite.toggled"
 
-	// EventEQFilterToggled names the master/channel EQ HPF or LPF enable toggle.
-	// Reserved name only: the UI toggle (eq_panel_zone.go OnToggleHPF/OnToggleLPF)
-	// does not emit it yet. Classified ScopeDocument with an ExcludedReason in
-	// the action registry until a commit site + undo tap are wired.
+	// A reserved name: the HPF/LPF toggles do not emit it yet, so the registry classifies it with an ExcludedReason.
 	EventEQFilterToggled Kind = "audio.eq_filter_toggled"
 
-	// EventLanguageChanged fires when the user switches UI language in the
-	// settings overlay. ScopeSession (locale persists to userprefs, not the
-	// project document).
+	// Session scope: the locale persists to userprefs, not the project.
 	EventLanguageChanged Kind = "lang.changed"
 
-	// EventThemeChanged fires on a profile-scope theme edit (pick, per-category
-	// reset, reset-all, override toggle). ScopeSession: it persists to
-	// userprefs, not the project document.
+	// A profile-scope theme edit; session scope, persisted to userprefs.
 	EventThemeChanged Kind = "theme.changed"
 	// EventCircuitThemeChanged fires on a circuit-scope theme edit. It mutates
 	// the exported document and is undoable through the snapshot journal.
 	EventCircuitThemeChanged Kind = "theme.circuit.changed"
 
-	// EventWarmupStarted / EventWarmupComplete bracket the playback readiness
-	// gate: the engine is rendering the loaded circuit's working set before the
-	// user may press Play. Complete carries whether the gate opened on its
-	// deadline rather than on completion.
+	// Bracket the readiness gate (rendering the circuit's working set before Play is allowed); Complete says whether the
+	// gate opened on its deadline rather than on completion.
 	EventWarmupStarted  Kind = "warmup.started"
 	EventWarmupComplete Kind = "warmup.complete"
 
@@ -143,80 +121,51 @@ const (
 	// interaction telemetry). The domain effect, if any, is a separate event.
 	EventUITap Kind = "ui.tap"
 
-	// EventPopupOpened / EventPopupClosed fire from the shared overlay portal
-	// for every menu/dialog/picker/slider-popup. Reason on close is
-	// "explicit", "top", or "dismiss" (Esc/click-outside self-close).
+	// From the shared overlay portal for every menu, dialog, picker and slider popup; a close's Reason is "explicit",
+	// "top" or "dismiss" (Esc / click outside).
 	EventPopupOpened Kind = "popup.opened"
 	EventPopupClosed Kind = "popup.closed"
 
-	// EventScroll fires at scroll-gesture end (touch lift / scrollbar drag
-	// release / stepped-grid drag end). Coalesced so a flick + momentum is one
-	// line. Surface names the scrolled region.
+	// At gesture end, coalesced so a flick plus its momentum is one line.
 	EventScroll Kind = "ui.scroll"
 
-	// EventSearchChanged fires when a search field's query changes. Emitted
-	// per-keystroke at the source but coalesced so rapid typing → one trailing
-	// line with the settled query. Surface names the search context (e.g.
-	// "inst-menu"); Query is the current input value ("" means cleared).
+	// Per keystroke at the source, coalesced to one line with the settled query; Query "" means cleared.
 	EventSearchChanged Kind = "ui.search"
 
-	// EventTextCommitted fires when a generic text field commits (Enter/blur).
-	// Domain-specific text commits (instrument rename, BPM entry) use their own
-	// events and do NOT emit this.
+	// Domain text commits (rename, BPM) use their own events instead.
 	EventTextCommitted Kind = "ui.text"
 
 	// EventViewModeChanged fires when the mobile bottom-nav switches the
 	// visible view (pads/eq/wave/spectrum/levels/chain/synth/sampler).
 	EventViewModeChanged Kind = "ui.view"
 
-	// Phase 4 (synth-recipe refactor): user-narrative events for recipe
-	// save / clone / delete and kit apply. RecipePayload carries the
-	// recipe id + base recipe id (for clones) + the instrument id the
-	// action originated from. EventKitApplied uses KitPayload; the kit
-	// data model lands in Phase 6 (audio.Kit) but the event kind is
-	// reserved now so eventlogger coverage and NumNonVerbose stay stable
-	// across the rollout.
+	// Instrument save / clone / delete and kit apply. RecipePayload carries the id, its base for a clone and the
+	// originating instrument; EventKitApplied carries KitPayload.
 	EventRecipeSaved   Kind = "audio.recipe_saved"
 	EventRecipeCreated Kind = "audio.recipe_created"
 	EventRecipeDeleted Kind = "audio.recipe_deleted"
 	EventKitApplied    Kind = "audio.kit_applied"
 
-	// Sampler-tab lifecycle: SampleSaved fires when a baked sample overrides
-	// its source instrument in place; SampleCreated fires on Save As (a new
-	// embedded instrument). Both carry SamplePayload.
+	// SampleSaved: a baked sample replaces its source instrument in place; SampleCreated: Save As, a new instrument.
 	EventSampleSaved   Kind = "audio.sample_saved"
 	EventSampleCreated Kind = "audio.sample_created"
-	// EventSampleReset fires when an instrument is reverted to its factory
-	// state via the Sampler/Synth Reset. SamplePayload carries SampleID (the
-	// instrument) and SourceID (the recipe it reverted to, or "" for a user
-	// WAV restored to its original buffer) — enough to invert in a future
-	// undo/redo journal.
+	// An instrument reverted to its shipped state; SourceID is the document it reverted to ("" for a user WAV restored to
+	// its original buffer), enough to invert.
 	EventSampleReset Kind = "audio.sample_reset"
-	// EventSampleEditChanged fires when an instrument's non-destructive
-	// sample-edit descriptor is set or cleared (Sampler-tab Save on a synth
-	// source, Reset, import, or startup rehydration). SamplePayload carries
-	// SampleID (the instrument). The instrument stays a synth — the edit is
-	// applied to the freshly-rendered recipe buffer at trigger time.
+	// The non-destructive edit descriptor set or cleared. The instrument stays a synth: the edit applies to the fresh
+	// render at trigger time.
 	EventSampleEditChanged Kind = "audio.sample_edit"
 
-	// Camera events — promoted out of verbose. EventCameraPan fires once per
-	// pan gesture (at release, carrying the cumulative delta) via the
-	// cameraGesture tracker in internal/ui. EventCameraZoom fires per zoom
-	// tick; the eventlogger coalescer debounce-trails a wheel/pinch burst into
-	// one trailing line. Both now appear in the default INFO narrative.
+	// Pan fires once per gesture at release with the cumulative delta; zoom per tick, coalesced into one trailing line.
+	// Both appear in the default narrative.
 	EventCameraPan  Kind = "verbose.pan"
 	EventCameraZoom Kind = "verbose.zoom"
 
-	// Verbose / opt-in (only delivered when verbose mode is enabled on the
-	// bus or the eventstream sink). These fire many times per frame; the
-	// default sink filters them out.
+	// Many times per frame: delivered only in verbose mode.
 	EventDragProgress Kind = "verbose.drag"
 )
 
-// KindAll lists every Kind so eventstream sinks (and tests) can iterate
-// over the universe of events without enumerating them individually.
-// Keep in sync with the constants above. Verbose kinds live at the tail
-// so subscribers can split-subscribe by slicing.
+// Verbose kinds stay at the tail, so a subscriber can split by slicing.
 var KindAll = []Kind{
 	EventPlayStart, EventPlayStop, EventPaused, EventResumed, EventSeek,
 	EventRecordStart, EventRecordStop, EventRecordDropped,
@@ -253,32 +202,8 @@ var KindAll = []Kind{
 	EventCameraPan, EventCameraZoom, EventDragProgress, EventInstrumentParamChanged,
 }
 
-// numNonVerbose is the count of non-verbose kinds in KindAll.
-// KindAll[:NumNonVerbose] excludes the high-frequency verbose events.
-// Pre-Phase-4 the constant was 36 but the actual non-verbose tail was
-// already 37 (off-by-one drift across earlier bumps). Phase 4 added 4
-// (recipe save/create/delete + kit apply) and corrected the count to
-// match KindAll: 37 + 4 = 41. The Sampler tab added 2 more
-// (sample saved/created): 41 + 2 = 43. The factory Reset added 1
-// (sample reset): 43 + 1 = 44. The non-destructive sample-edit descriptor
-// added 1 (sample edit changed): 44 + 1 = 45. The event-coverage + undo
-// pass added 8 (row volume/pan, insert moved/toggled, send, synth
-// committed/reset, audio-panel state): 45 + 8 = 53. The HPF/LPF filter-toggle
-// naming gap added 1 (eq filter toggled): 53 + 1 = 54. + lang.changed = 55.
-// + undo/redo = 57. pan+zoom promoted out of verbose (+2) = 59.
-// + ui.tap (Layer-B interaction telemetry) = 60.
-// + popup.opened + popup.closed (portal chokepoint) = 62.
-// + ui.scroll (scroll gesture end, coalesced) = 63.
-// + ui.search (search field query changed, coalesced) = 64.
-// + ui.text (generic text-field commit, Enter/blur) = 65.
-// + ui.view (mobile view-mode switch) = 66.
-// + group.created + group.changed + group.deleted (marquee multi-select
-// node groups) = 69.
-// + node.copied + node.cut + node.pasted (clipboard copy/cut/paste) = 72.
-// + mode.armed + mode.canceled (grid quick-action modes) = 74.
-// + theme.changed + theme.circuit.changed (theme editor) = 76.
-// + warmup.started + warmup.complete (playback readiness gate) = 78.
-// - row.pan + audio.send (pan and the delay/reverb sends deleted) = 76.
+// KindAll[:NumNonVerbose] excludes the high-frequency verbose kinds. TestHooks_NumNonVerboseUpdated re-derives it from
+// the registry, so a new Kind fails until this moves.
 const NumNonVerbose = 76
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
@@ -291,13 +216,8 @@ func IsVerbose(k Kind) bool {
 	return false
 }
 
-// Source identifies the user-action call site that emitted an Event. It is
-// captured at publish time inside the emit helpers (see internal/hooks/source.go
-// and internal/ui/event_helpers.go) via runtime.Caller; the goal is for INFO
-// log lines and the JSONL eventstream to point at the original user-code
-// site, never the middleware (helper / bus / formatter). Zero value means
-// "no source captured" — callers using PublishKind directly get this; the
-// renderer omits the src= column in that case.
+// Captured by the emit helpers through runtime.Caller, so log lines point at the user-code site, never the middleware.
+// Zero (PublishKind) = none; the renderer drops the src= column.
 type Source struct {
 	Pkg  string `json:"pkg,omitempty"`  // e.g. "internal/ui"
 	File string `json:"file,omitempty"` // base file name, e.g. "game_graph_nodes.go"
@@ -319,8 +239,7 @@ func (s Source) String() string {
 	return s.Pkg + "/" + s.File + ":" + itoa(s.Line)
 }
 
-// itoa is a small allocation-free replacement for strconv.Itoa; keeps the
-// hooks package free of strconv (one less stdlib import for a hot path).
+// Keeps strconv out of this hot path.
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -410,10 +329,7 @@ type StartNodePayload struct {
 	ID  int `json:"id"`
 }
 
-// RowChangePayload covers row added/deleted/instrument/mute/solo events.
-// Only the relevant fields are populated per Kind. OldInstrument is
-// populated only for EventRowInstrumentChange (and stays empty for the
-// other row events).
+// Only the fields relevant to each Kind are set; OldInstrument only for EventRowInstrumentChange.
 type RowChangePayload struct {
 	Row           int           `json:"row"`
 	Instrument    instrument.ID `json:"instrument,omitempty"`
@@ -447,11 +363,7 @@ type BPMPayload struct {
 	BPM int `json:"bpm"`
 }
 
-// ImportPayload describes a project-import completion. Bytes is the raw
-// payload size; Nodes/Rows are the node and drum-row counts in the imported
-// graph (post-validation). The formatter renders all three so the INFO
-// line ("import completed (12 nodes, 3 rows, 4521 bytes)") gives the user
-// enough context to recognize the imported project.
+// All three render ("12 nodes, 3 rows, 4521 bytes"), enough for the user to recognise the project.
 type ImportPayload struct {
 	Bytes int `json:"bytes,omitempty"`
 	Nodes int `json:"nodes,omitempty"`
@@ -557,10 +469,7 @@ type DragProgressPayload struct {
 	J      int `json:"j"`
 }
 
-// RecipePayload describes a user-recipe lifecycle event (saved /
-// created / deleted). BaseRecipe is empty for a save-in-place; populated
-// when the action was a clone of an existing recipe. InstrumentID is
-// the row instrument the action originated from, when applicable.
+// BaseRecipe empty = saved in place, set = a clone; InstrumentID is the originating row instrument.
 type RecipePayload struct {
 	RecipeID     instrument.ID `json:"recipe_id"`
 	BaseRecipe   instrument.ID `json:"base_recipe,omitempty"`
@@ -568,11 +477,7 @@ type RecipePayload struct {
 	DisplayName  string        `json:"display_name,omitempty"`
 }
 
-// SamplePayload describes a Sampler-tab lifecycle event (saved / created).
-// SampleID is the instrument id of the baked sample. SourceID is the
-// instrument the sample was captured/saved from (empty for a WAV load).
-// DisplayName is the user-entered name on Save As; Frames is the baked
-// length so sinks can report sample size without the PCM bytes.
+// SourceID is the instrument it was captured from (empty for a WAV); Frames reports size without the PCM.
 type SamplePayload struct {
 	SampleID    instrument.ID `json:"sample_id"`
 	SourceID    instrument.ID `json:"source_id,omitempty"`
@@ -586,10 +491,7 @@ type UndoPayload struct {
 	Label string `json:"label"`
 }
 
-// KitPayload describes a kit-apply event. Members carries the
-// role→instrumentID map snapshot the kit just rebound. UI for kits lands
-// in a later phase; the payload is reserved now so the eventlogger
-// coverage test stays satisfied across the rollout.
+// The role → instrument map the kit just rebound.
 type KitPayload struct {
 	KitID       string                            `json:"kit_id"`
 	DisplayName string                            `json:"display_name,omitempty"`

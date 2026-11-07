@@ -64,10 +64,8 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 		next := neighbors[0]
 		nodeNext := g.Nodes[next]
 
-		// Append intermediate steps between cur and next (exclusive).
-		// Even if there is an explicit node at an intermediate coordinate,
-		// treat it as an invisible pass-through to avoid duplicate triggers
-		// when edges skip across existing nodes.
+		// An explicit node at an intermediate coordinate is an invisible pass-through, so an edge skipping across it never
+		// double-triggers.
 		if nodeCur.I == nodeNext.I && nodeCur.J == nodeNext.J {
 			// Self-loop: no intermediate steps to synthesize.
 		} else if nodeCur.I == nodeNext.I {
@@ -136,10 +134,7 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 	return beatRow, isLoop, loopStartBeatIdx
 }
 
-// CalculateBeatRowUnbounded returns the raw traversal path starting at
-// StartNodeID, including synthesized intermediate invisible BeatInfos between
-// orthogonal endpoints. The result is not trimmed or padded to BeatLength and
-// does not expand loops; callers can apply their own sizing rules.
+// Not trimmed, padded or loop-expanded: callers apply their own sizing.
 func (g *Graph) CalculateBeatRowUnbounded() ([]BeatInfo, bool, int) {
 	if g.StartNodeID == InvalidNodeID {
 		return nil, false, -1

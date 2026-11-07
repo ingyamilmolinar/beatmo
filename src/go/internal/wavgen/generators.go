@@ -13,9 +13,7 @@ func Sine(freqHz, amp, durSec float64, sampleRate int) []float32 {
 	return out
 }
 
-// Noise returns durSec of deterministic mono white noise at amplitude amp,
-// seeded so tests are reproducible (no Math.random / time dependence — a fixed
-// seed always yields identical samples).
+// Seeded, so a fixed seed always gives identical samples.
 func Noise(amp, durSec float64, sampleRate, seed int) []float32 {
 	n := int(durSec * float64(sampleRate))
 	out := make([]float32, n)

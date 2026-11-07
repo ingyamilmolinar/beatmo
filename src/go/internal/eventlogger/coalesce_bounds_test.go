@@ -1,16 +1,7 @@
 //go:build test
 
-// Bounds regression tests for the coalescer's pending map.
-//
-// The coalescer holds at most one pendingEntry per Kind in
-// coalesceKinds. The bound is therefore len(coalesceKinds) — currently
-// 9 kinds. The tests assert that the map size never exceeds this bound
-// regardless of how many Submit calls happen.
-//
-// This is a regression guard: if someone widens coalesceKinds (or, more
-// dangerously, switches to per-event retention rather than
-// trailing-edge debouncing), the test catches the change in the
-// upper-bound.
+// At most one pending entry per coalesced Kind: the pending map stays within len(coalesceKinds) however many Submits,
+// which catches a switch to per-event retention.
 
 package eventlogger
 
@@ -67,11 +58,7 @@ func TestCoalescerPendingMapBoundedByKindCount(t *testing.T) {
 	}
 }
 
-// TestCoalescerHeapStableUnderSustainedSubmits drives the coalescer
-// with high-rate submits over many cycles and asserts the heap
-// footprint does not grow proportional to submit count. Each Submit
-// reuses the existing pendingEntry's slot (line 74-75), so the only
-// allocation is the timer.Reset() — bounded.
+// Each Submit reuses its Kind's pending slot, so the only allocation is the timer reset: heap must not grow with submits.
 func TestCoalescerHeapStableUnderSustainedSubmits(t *testing.T) {
 	c := newCoalescer(time.Hour, func(hooks.Event) {})
 

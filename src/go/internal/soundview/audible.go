@@ -6,34 +6,25 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// The AUDIBILITY ORACLE: does a change to an instrument sound different?
-// It is the single judge behind the Synth tab's dial relevance (a dial whose
-// full sweep is inaudible on an instrument is hidden there), the relevance
-// generator and the dial contract tests. Phase-insensitive on purpose: a
-// sample diff calls a −90 dB change "different".
+// The AUDIBILITY ORACLE, the single judge behind dial relevance, its generator and the dial contract tests.
+// Phase-insensitive on purpose: a sample diff would call a −90 dB change "different".
 
 // Thresholds of the oracle (just-noticeable differences).
 const (
-	// AudibleMinDB: whole-note mean |dB| of the third-octave band-energy
-	// envelope (23 ms frames) over every cell within 60 dB of the louder
-	// render's peak. ~1 dB is the JND for a level / spectral-balance change.
+	// Mean |dB| of the third-octave band envelope (23 ms frames) over cells within 60 dB of the louder render's peak; ~1 dB
+	// is the JND for a level or balance change.
 	AudibleMinDB = 1.0
-	// AudibleLocalDB over AudibleLocalFrames (~70 ms): a change confined to
-	// part of the note (a slower fade-in, a longer tail, a sharper onset) is
-	// plainly audible yet barely moves the whole-note mean.
+	// A change confined to part of the note (a slower fade-in, a sharper onset) is plainly audible yet barely moves the
+	// whole-note mean.
 	AudibleLocalDB     = 2.0
 	AudibleLocalFrames = 3
-	// AudibleBandDB: ONE third-octave band within AudibleBandFloorDB of the
-	// loudest moving this much over the note — a resonance, a formant, a
-	// singer's ring averages out of the whole-spectrum mean.
+	// One band moving this much: a resonance or a formant averages out of the whole-spectrum mean.
 	AudibleBandDB      = 3.0
 	AudibleBandFloorDB = 30.0
 	// AudibleMinCents: the strongest partial shifting this much on average
 	// (a pitch bend moves partials across a band without changing its energy).
 	AudibleMinCents = 5.0
-	// SilentPeak is the sample peak under which a render counts as silence
-	// (−80 dBFS): every voice is peak-normalised, so anything a listener could
-	// hear comes back near full scale; only an all-but-zero render stays here.
+	// −80 dBFS: every voice is peak-normalised, so anything audible comes back near full scale.
 	SilentPeak = 1e-4
 )
 
@@ -55,10 +46,8 @@ func (c Change) Audible() bool {
 // and as float64 from the playback path).
 type Sample interface{ ~float32 | ~float64 }
 
-// CompareNotes measures how differently a and b (mono, sample rate sr) sound.
-// The shorter render is padded with silence, so a longer or shorter note
-// counts as the change it is. The partial shift is only measured when the
-// band envelope alone does not already find the change audible.
+// The shorter render is padded with silence, so a length change counts. The partial shift is measured only when the
+// band envelope has not already found the change.
 func CompareNotes[S Sample](a, b []S, sr int) Change { return CompareNotesYield(a, b, sr, nil) }
 
 // CompareNotesYield is CompareNotes handing the thread back (yield) every few
@@ -191,10 +180,8 @@ func bandChangeDB(A, B [][]float64) (global, local float64) {
 	return sum / float64(cnt), local
 }
 
-// partialShiftCents is the mean |cents| between a and c's strongest partial,
-// frame by frame (186 ms frames, 46 ms hop): in each frame of c take its
-// strongest partial (parabolic-interpolated), find a's strongest bin within
-// ±6% of it, and average the shift over frames within 40 dB of c's loudest.
+// Per frame (186 ms, 46 ms hop): c's strongest partial (interpolated) against a's strongest bin within ±6 %, averaged
+// over frames within 40 dB of c's loudest.
 func partialShiftCents(a, c []float64, sr int, yield func()) float64 {
 	const n, hop = 8192, 2048
 	peak := func(mag []float64, lo, hi int) (bin, db float64) {

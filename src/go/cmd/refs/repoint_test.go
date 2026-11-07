@@ -107,9 +107,7 @@ func TestRepointInstrument_LeavesUnrelatedRefsUntouched(t *testing.T) {
 	}
 }
 
-// Status refs carry no audio and are the catalogue's record of "this has no
-// acoustic counterpart"; they are not candidates and must not be stripped,
-// emptied or dropped.
+// Status refs record "no acoustic counterpart"; they are not candidates.
 func TestRepointInstrument_IgnoresStatusRefs(t *testing.T) {
 	status := wavref.Ref{ID: "synthetic-violin", Tier: wavref.TierInstrument,
 		Instruments: []instrument.ID{roster.Violin}, Status: wavref.StatusSynthetic, Note: "n/a"}

@@ -1,18 +1,5 @@
-// probe_drawdrum_starvation.mjs
-//
-// Minimal hypothesis test for the "choppy without updates" baseline: is the
-// per-beat row-rack recomposite (drawDrum) the cause of sequencer starvation
-// (Stage A seqFireLate)?
-//
-// A/B the SAME plain playback twice:
-//   A. follow=ON  (default) — playhead scrolls the window every beat →
-//      offsetChanged → markRowsShiftDirty() → rows-layer recomposite/frame.
-//   B. follow=OFF (setSimpleDraw(true)) — window does not scroll → no per-beat
-//      recomposite. Audio scheduling path is byte-identical.
-//
-// If Stage A + drawDrum collapse in B, the row-rack recomposite is the
-// dominant main-thread cost starving the sequencer goroutine.
-//
+// Does the per-beat row-rack recomposite starve the sequencer? A/B the same playback with follow ON (the window
+// scrolls every beat) and OFF (setSimpleDraw(true)); the audio path is identical.
 // Run: WASM_PREBUILT=1 GO=$(pwd)/.tools/go/bin/go node scripts/probe_drawdrum_starvation.mjs
 
 import { chromium } from "../src/js/node_modules/playwright/index.mjs";

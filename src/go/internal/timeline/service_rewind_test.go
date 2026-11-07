@@ -21,9 +21,7 @@ func TestRewindToRetainsPostAbsImmutablesAsSuperseded(t *testing.T) {
 			t.Fatalf("abs %d below seek point should stay committed", abs)
 		}
 	}
-	// 5..9 are no longer in immutables/ring and no longer answer the live
-	// lookup (that pass was abandoned), but are retained in the superseded
-	// store (history is retained, not dropped).
+	// 5..9 left the live tiers (that pass was abandoned) but are kept in the superseded store.
 	if s.LastImmutableAbs(0) >= 5 {
 		t.Fatalf("immutables >= 5 should have been moved out, last=%d", s.LastImmutableAbs(0))
 	}
@@ -60,14 +58,9 @@ func archivedCountForTest(s *Service, row int) int {
 	return arch.lenForTest()
 }
 
-// A backward seek ABANDONS the pass after the seek point: the cells from abs on
-// are about to be replayed, possibly under an edited circuit. RewindTo retains
-// that pass (full-history rule) but it must stop answering the LIVE lookup —
-// the row window, the played-snapshot freeze (preview.CrossingCell prefers a
-// Playback commit over the predictor) and parity all read CommittedKind, and a
-// superseded commit there reads as immutable history for a cell that has not
-// been played in this pass. That holds for the hot tiers AND for entries that
-// had already aged into the scroll-back archive.
+// A backward seek ABANDONS the pass after the seek point: kept (full history), but out of the LIVE lookup the row window,
+// the played freeze and parity read, or an abandoned commit reads as history for a cell not played in this pass. Hot
+// tiers AND the archive.
 func TestRewindToSupersededPassIsNotLiveHistory(t *testing.T) {
 	s := NewService()
 	s.SetArchiveMaxEntries(0)
@@ -91,8 +84,7 @@ func TestRewindToSupersededPassIsNotLiveHistory(t *testing.T) {
 	if supersededCountForTest(s, 0) != n-target {
 		t.Fatalf("superseded pass must be retained, not dropped: have %d want %d", supersededCountForTest(s, 0), n-target)
 	}
-	// The replay writes the NEW pass; once it ages out of the hot tiers the
-	// scroll-back archive must hold the replay, not the abandoned pass.
+	// Once the replay ages out of the hot tiers, the archive must hold it, not the abandoned pass.
 	for abs := target; abs < n+immutablesPerRowMax*2; abs++ {
 		s.RecordCommitKind(0, abs, false, model.NodeTypeRegular, CommitKindPlayback, 64, 64)
 	}

@@ -15,27 +15,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 )
 
-// checkThresholdsGolden ratchets the committed
-// internal/audio/fingerprint/testdata/thresholds.json against a fresh
-// `refs calibrate-thresholds` run over the corpus.
-//
-// The thresholds file is generated data EMBEDDED at build time, which makes it
-// uniquely easy to desync: an analysis change in internal/audio/fingerprint
-// silently moves every descriptor's magnitudes, the committed JSON keeps the
-// old numbers, and nothing else notices -- the unit tests test the mechanism,
-// the discipline test checks the entries are well-formed, and the acceptance
-// gate reads a frozen file.
-//
-// Run it from the untagged build (`go run ./cmd/refs`, never -tags test): the
-// calibration renders the synth through CGo, which the stub path does not do
-// faithfully. It carries NO sample-rate override on purpose -- the calibration
-// and this check must sit on the same rate, wavref.Rate (the corpus's, never
-// the engine's: the engine moved to 48 kHz and this tool stayed put).
-//
-// Regenerate (intentional descriptor/corpus changes only) with
-// `refs calibrate-thresholds`, REBUILD (the JSON is embedded), re-run this
-// check to confirm it is stable, and re-run the calibrated replay gate
-// (TestCalibratedThresholdsStillReproduceTheListener).
+// The thresholds file is embedded generated data: an analysis change moves every magnitude while the JSON keeps the
+// old numbers. Untagged build only (CGo synth), at wavref.Rate, the corpus rate. Regenerate: refs calibrate-thresholds,
+// REBUILD, re-run this, then TestCalibratedThresholdsStillReproduceTheListener.
 func checkThresholdsGolden(r *checkReport) error {
 	committedPath, err := defaultThresholdPath()
 	if err != nil {
@@ -50,9 +32,7 @@ func checkThresholdsGolden(r *checkReport) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
-	// Seed the temp target with the committed file so the run exercises the
-	// real pinned-entry carry-over (probe/hand entries are read from the OUTPUT
-	// path, not from the embedded copy).
+	// Seeded with the committed file so the pinned-entry carry-over (read from the OUTPUT path) is exercised.
 	outPath := filepath.Join(tmp, "thresholds.json")
 	committed, err := os.ReadFile(committedPath)
 	if err != nil {
@@ -117,10 +97,7 @@ func diffThresholdFiles(got, want fingerprint.ThresholdFile) []string {
 	return mismatched
 }
 
-// checkOrganicRangeGolden ratchets the committed testdata/organic_range.json
-// against a fresh `refs calibrate-organic` run over the corpus. Same build and
-// sample-rate rules as checkThresholdsGolden; regenerate with
-// `refs calibrate-organic`.
+// Same build and rate rules as checkThresholdsGolden; regenerate with refs calibrate-organic.
 func checkOrganicRangeGolden(r *checkReport) error {
 	committedPath, err := defaultOrganicRangePath()
 	if err != nil {
@@ -165,10 +142,7 @@ func readOrganicRangeAt(path string) (fingerprint.OrganicRange, error) {
 	return out, nil
 }
 
-// diffOrganicRanges lists every descriptor id whose fresh range differs from
-// the committed one, plus any id present in either file that OrganicIDs() no
-// longer covers (a stale entry the id list dropped, or vice versa) -- both mean
-// "regenerate". Sorted.
+// Also ids in either file that OrganicIDs() no longer covers: both mean regenerate.
 func diffOrganicRanges(got, want fingerprint.OrganicRange) []string {
 	var mismatched []string
 	seen := map[string]bool{}

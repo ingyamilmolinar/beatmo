@@ -12,16 +12,10 @@ import (
 // configuration so a single ConfigureRuntime call at process startup
 // owns all of them. Each field is "0 means leave default."
 type RuntimeOptions struct {
-	// MemoryLimitMB sets a soft heap cap via debug.SetMemoryLimit.
-	// 0 = leave default (math.MaxInt64). For audio-friendly behavior
-	// on a 4 GB machine, a value around 256 MB triggers GC earlier
-	// and avoids long mark phases during recording.
+	// Soft heap cap (debug.SetMemoryLimit). Lower triggers GC earlier, avoiding long mark phases during recording.
 	MemoryLimitMB int
 
-	// GCPercent overrides the GC trigger via debug.SetGCPercent.
-	// 0 = leave default (100). Lower (e.g., 50) = more frequent,
-	// shorter pauses; higher = fewer, longer pauses. Real-time apps
-	// usually want lower.
+	// debug.SetGCPercent: lower = more frequent, shorter pauses, which real-time work usually wants.
 	GCPercent int
 
 	// GOMAXPROCS overrides runtime.GOMAXPROCS. 0 = leave default
@@ -51,18 +45,8 @@ type RuntimeSnapshot struct {
 
 var configuredOnce sync.Once
 
-// ConfigureRuntime applies opts to the live process. Idempotent — second
-// call returns the current snapshot without re-applying. Returns the
-// snapshot AFTER applying.
-//
-// Reads matching env vars when an opts field is zero so callers can
-// configure via either surface:
-//
-//	BEATMO_MEMORY_LIMIT_MB     → MemoryLimitMB
-//	BEATMO_GC_PERCENT          → GCPercent
-//	BEATMO_GOMAXPROCS          → GOMAXPROCS
-//	BEATMO_BLOCK_PROFILE       → BlockProfileRate
-//	BEATMO_MUTEX_PROFILE       → MutexProfileFraction
+// Idempotent: a second call returns the current snapshot. A zero field falls back to its env var
+// (BEATMO_MEMORY_LIMIT_MB, _GC_PERCENT, _GOMAXPROCS, _BLOCK_PROFILE, _MUTEX_PROFILE).
 func ConfigureRuntime(opts RuntimeOptions) RuntimeSnapshot {
 	configuredOnce.Do(func() {
 		if opts.MemoryLimitMB == 0 {
@@ -114,17 +98,8 @@ func Snapshot() RuntimeSnapshot {
 	}
 }
 
-// readGCPercent returns the current GOGC without leaving it changed.
-//
-// IMPORTANT: unlike SetMemoryLimit / SetMutexProfileFraction, a NEGATIVE
-// argument to debug.SetGCPercent does NOT read-without-setting — the runtime
-// clamps any negative value to -1, which DISABLES garbage collection. The old
-// `debug.SetGCPercent(-2)` "read" therefore turned automatic GC OFF for the
-// whole process the first time Snapshot() ran (at the startup config log), so
-// the pacer never triggered again and HeapAlloc climbed unbounded (measured:
-// heap 25 MB → 382 MB with zero GC cycles over 30 s of playback; the WASM
-// ForceGCInterval crutch was masking this by forcing collections explicitly).
-// Round-trip through the setter to read the value and immediately restore it.
+// A NEGATIVE argument to debug.SetGCPercent does not read: the runtime clamps it to -1 and DISABLES GC, so a "read"
+// through it turned GC off process-wide and the heap climbed unbounded. Round-trip through the setter and restore.
 func readGCPercent() int {
 	prev := debug.SetGCPercent(-1) // disables GC, returns the previous value
 	debug.SetGCPercent(prev)       // restore it — net no-op (re-enables if it was on)

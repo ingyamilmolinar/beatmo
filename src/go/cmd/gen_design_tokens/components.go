@@ -1,20 +1,8 @@
 package main
 
-// components.go — Phase 2 of the design-system codegen.
-//
-// Parses the extended `components:` block of DESIGN.md (Stitch's narrow
-// shape plus our extension fields: category, border, iconColor,
-// topEdgeHighlight, interaction). Resolves "{colors.X}" / "{spacing.X}"
-// /  "{rounded.X}" / "{alpha.X}" references against the already-parsed
-// primitives, then emits Go code under a typed ComponentSpec value per
-// entry into design_components.gen.go.
-//
-// Phase 2 PR1 scope: only the schema fields the runtime currently uses
-// are honored. Stitch's `typography:`, `textColor:` are parsed but not
-// emitted as struct fields yet (they'll be wired in Phase 4 when the
-// stateless renderer needs them). `variants:`, `dynamic:`, `animation:`
-// are reserved keys; the parser accepts them so the YAML doesn't lint-fail
-// once authors start using them, but they don't emit anything yet.
+// Parses DESIGN.md's components: block (Stitch's shape plus category, border, iconColor, topEdgeHighlight,
+// interaction), resolves {colors.X} / {spacing.X} / {rounded.X} / {alpha.X} and emits a ComponentSpec per entry. typography,
+// textColor, variants, dynamic and animation are accepted so the YAML lints, but emit nothing.
 
 import (
 	"bytes"
@@ -27,13 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// componentRaw captures every field the schema may carry. Fields are
-// pointers / strings; absence is "not specified" and emits a Go zero
-// value. KnownFields(true) on the per-component decoder rejects
-// unknown keys at file:line as a backup; the primary safety net is
-// the JSON Schema validator at scripts/gen_design_tokens/schema.json,
-// which runs first in main.go and produces JSON-pointer-located
-// errors before this struct is touched.
+// Absence is "not specified" (a Go zero value). The JSON Schema runs first and locates errors by JSON pointer;
+// KnownFields(true) here is the backup.
 type componentRaw struct {
 	Category         string          `yaml:"category"`
 	BackgroundColor  string          `yaml:"backgroundColor"`
@@ -74,9 +57,7 @@ type anchorRaw struct {
 	Target string `yaml:"target"`
 }
 
-// component is the resolved (post-token-substitution) shape that the
-// emitter writes out. Differs from componentRaw in that all string
-// references are now concrete values.
+// component is componentRaw with every reference resolved to a concrete value.
 type component struct {
 	ID                        string // sanitised identifier ("button-secondary" → "ButtonSecondary")
 	YAMLName                  string // original YAML key, for diagnostics + comments
@@ -100,12 +81,8 @@ type component struct {
 	Interaction               interactionResolved
 	HasInteraction            bool
 
-	// Anchor escape hatches. The DynamicAnchor names a runtime closure
-	// (typically a per-instance color function — `ColorSwatchColorFn`,
-	// `InstrumentPaletteCycle`); AnimationAnchor names a global animator
-	// (`RecordPulseAnimator`). Both resolve via SpecRegistry.Bind() in
-	// internal/ui/spec_registry.go. An anchor declared in YAML but never
-	// registered at runtime is a panic at first lookup — caught by tests.
+	// DynamicAnchor names a per-instance runtime closure, AnimationAnchor a global animator; both bind through
+	// SpecRegistry.Bind, and an anchor never registered panics at its first lookup.
 	DynamicAnchor   string
 	AnimationAnchor string
 }
@@ -119,9 +96,6 @@ type interactionDeltaResolved struct {
 	NonZero                                bool
 }
 
-// tokenResolver knows how to turn "{colors.primary}" into a concrete
-// color, and similar for spacing / rounded / alpha. Built once per run
-// from the parsed primitives.
 type tokenResolver struct {
 	colors  map[string][3]uint8 // key → (R, G, B); alpha is always 255 in DESIGN.md
 	spacing map[string]int
@@ -205,10 +179,7 @@ func parseRef(s string) (key, kind string, ok bool) {
 	return inner[dot+1:], inner[:dot], true
 }
 
-// parseComponents walks the components: mapping in source order, decodes
-// each child into componentRaw with strict (KnownFields) checking, and
-// resolves token references. Order is preserved so the emitted file
-// diffs cleanly when DESIGN.md gains a new component.
+// Source order is kept so the emitted file diffs cleanly when DESIGN.md gains a component.
 func parseComponents(node *yaml.Node, resolver *tokenResolver) ([]component, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -221,10 +192,7 @@ func parseComponents(node *yaml.Node, resolver *tokenResolver) ([]component, err
 		k := node.Content[i]
 		v := node.Content[i+1]
 		name := k.Value
-		// Re-decode the value with strict field checking. yaml.v3 doesn't
-		// expose KnownFields per-node, so we marshal and re-decode through
-		// a Decoder. This is small per-component work and keeps the same
-		// validation we get on the top-level designSpec.
+		// yaml.v3 has no per-node KnownFields, so the value is re-encoded and decoded strictly through a Decoder.
 		raw, err := decodeComponentStrict(v)
 		if err != nil {
 			return nil, fmt.Errorf("components.%s (line %d): %w", name, k.Line, err)
@@ -287,11 +255,8 @@ func resolveComponent(name string, raw *componentRaw, r *tokenResolver, line int
 		c.BorderR, c.BorderG, c.BorderB = rgb[0], rgb[1], rgb[2]
 		key, _, _ := parseRef(raw.Border.Color)
 		c.BorderIdent = identForColor(key)
-		// Alpha is optional; omitted = opaque (255). When present, it must
-		// resolve to one of the named buckets in DESIGN.md `alpha:`. This
-		// distinguishes "translucent border at named bucket" (overlay
-		// scrim, hairline outline) from "opaque colored border" (active
-		// variants like Mute/Solo where the border is its own RGB).
+		// Omitted = opaque. A named bucket marks a translucent border (scrim, hairline) apart from an opaque coloured one
+		// (Mute/Solo active).
 		if raw.Border.Alpha == "" {
 			c.BorderAlpha = "255"
 		} else {
@@ -376,8 +341,7 @@ func emitComponents(comps []component) ([]byte, error) {
 		},
 	}).Parse(componentsTemplate))
 
-	// IDs in source order = stable enum order. Phase 2 PR3 may add a
-	// sort-by-name pass; for now the YAML defines the ordering.
+	// Source order = stable enum order.
 	ids := make([]string, len(comps))
 	for i, c := range comps {
 		ids[i] = c.ID

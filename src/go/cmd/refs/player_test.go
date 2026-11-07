@@ -37,10 +37,8 @@ func TestDetectPlayer_PrefersEnvThenPaplay(t *testing.T) {
 	}
 }
 
-// TestBlockingPlayersAskForASmallBuffer: at its default buffer paplay (and
-// aplay, pw-play) drove PipeWire to a 2048-frame quantum and the listener's
-// USB DAC underran 36-40 times per R/C/T round -- every clip, reference
-// included, sounded chopped. Each blocking player must request a small one.
+// At its default buffer a blocking player drove PipeWire to a 2048-frame quantum and a USB DAC underran through every
+// clip; each must request a small one.
 func TestBlockingPlayersAskForASmallBuffer(t *testing.T) {
 	want := map[string]string{
 		"paplay": "--latency-msec=" + playerLatencyMsec,

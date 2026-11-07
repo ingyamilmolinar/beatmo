@@ -351,12 +351,8 @@ func TestIncrementTriggerCount(t *testing.T) {
 	}
 }
 
-// Covers shouldTriggerNode branches not exercised elsewhere:
-//   - non-Regular, non-Mute returns false
-//   - "every_n_triggers" with LogicN <= 0 falls through (returns true)
-//   - "skip_every_n" with LogicN <= 0 falls through (returns true)
-//   - "probability" with LogicP <= 0 returns false
-//   - trigger_if_prev_skipped/triggered with no prior Regular returns false
+// shouldTriggerNode branches covered nowhere else: non-Regular non-Mute, every_n_triggers / skip_every_n with LogicN <= 0,
+// probability with LogicP <= 0, trigger_if_prev_* with no prior Regular.
 func TestPredictorShouldTriggerNodeEdgeCases(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -417,11 +413,8 @@ func TestPredictorShouldTriggerNodeEdgeCases(t *testing.T) {
 	}
 }
 
-// Covers evalAudible branches not exercised elsewhere:
-//   - mute node referencing a missing predictor entry (audible=false, trigger=false)
-//   - regular node referencing a missing predictor entry
-//   - non-Regular non-Mute beat type
-//   - gate suppresses a regular node when idx < gate
+// evalAudible branches covered nowhere else: mute / regular nodes missing from the predictor, a non-Regular non-Mute
+// beat, a gate suppressing a regular node.
 func TestPredictorEvalAudibleEdgeCases(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)

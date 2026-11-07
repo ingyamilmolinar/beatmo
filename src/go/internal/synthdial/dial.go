@@ -1,20 +1,6 @@
-// Package synthdial is the data model behind the Synth tab's macro dials.
-//
-// A dial is METADATA: a set of terms over existing synth params. Each term
-// maps its param onto the dial through an ABSOLUTE span — the param's value
-// at dial 0 (From) and at dial 100 (To) — so a dial's position is a pure
-// function of the instrument's values (Reading): the same document always
-// shows the same knob, and nothing about a dial is ever stored. Turning a
-// dial (Turn) moves every term proportionally toward the end being turned
-// to, so each term keeps its offset and the instrument keeps its character.
-//
-// The package is pure and knows nothing about the UI or the audio engine: the
-// caller supplies each param's range and liveness, and writes the turned
-// values itself. New kinds of dials are created by editing the data file
-// (internal/assets/synth_dials.json), not code — only a new Space needs Go.
-//
-// Specs: docs/superpowers/specs/2026-10-09-synth-macro-dials-design.md and
-// docs/superpowers/specs/2026-10-13-absolute-synth-dials-design.md.
+// Package synthdial models the Synth tab's macro dials: METADATA, terms over existing params, each an ABSOLUTE span
+// (value at dial 0 and 100), so a dial's Reading is a pure function of the document and nothing is ever stored. Turn
+// moves every term proportionally, keeping each one's offset. New dials are data (synth_dials.json); a new Space needs Go.
 package synthdial
 
 import (
@@ -35,9 +21,7 @@ const (
 	// SpaceLog lays the value out in ln space — for Hz- and time-like params
 	// whose musical travel is logarithmic. Both span ends must be > 0.
 	SpaceLog Space = "log"
-	// SpaceMagnitude lays out |v| and keeps the value's own sign on write —
-	// for signed amounts (a pitch drop of −5 st gets MORE negative as the dial
-	// rises). A zero value takes the positive sign. Span ends are ≥ 0.
+	// |v| with the value's own sign kept on write (a −5 st drop gets MORE negative as the dial rises); zero takes +.
 	SpaceMagnitude Space = "magnitude"
 )
 
@@ -57,17 +41,14 @@ type Term struct {
 	Space Space `json:"space,omitempty"`
 	// Weight is the term's influence on the dial's reading (> 0; omitted = 1).
 	Weight float64 `json:"weight,omitempty"`
-	// Requires names a param that must be NON-ZERO for this term to be
-	// audible — a model selector whose 0 means Off (body_mix does nothing
-	// while body_model is Off), or a level that gates its own shaping.
+	// A param that must be NON-ZERO for this term to be audible: a selector whose 0 is Off, or a level gating its own
+	// shaping.
 	Requires string `json:"requires,omitempty"`
 	// When names an engine condition (registered by the caller) the term is
 	// audible under — for liveness that no single param expresses, such as
 	// "the unison path runs". The caller's liveness check reads both.
 	When string `json:"when,omitempty"`
-	// RequiresMin / RequiresBelow turn Requires into a threshold: the Requires
-	// param must be ≥ RequiresMin (an LFO's speed is inaudible until its depth
-	// is) and/or < RequiresBelow. With neither, Requires means non-zero.
+	// Make Requires a threshold (an LFO's speed is inaudible until its depth is); with neither it means non-zero.
 	RequiresMin   float64 `json:"requires_min,omitempty"`
 	RequiresBelow float64 `json:"requires_below,omitempty"`
 }
@@ -118,13 +99,9 @@ type Dial struct {
 	// MetricFalls declares that Metric DROPS as the dial rises (Snap shortens
 	// the attack time); otherwise it rises.
 	MetricFalls bool `json:"metric_falls,omitempty"`
-	// Rest is "start" when the dial's 0 is a natural OFF (no drive, no extra
-	// low end): such a dial may read 0 on most instruments, and its span must
-	// start at the param's neutral value.
+	// "start": the dial's 0 is a natural OFF, so it may read 0 on most instruments, and its span starts at the neutral value.
 	Rest string `json:"rest,omitempty"`
-	// View names the Synth-tab graph view that explains the dial (spec
-	// 2026-10-24 §4.5): one of Views. "lfo-target" resolves against the live
-	// document (Amp → loudness, Pitch → pitch, Cutoff → colour-time).
+	// One of Views; "lfo-target" resolves against the live document (Amp → loudness, Pitch → pitch, Cutoff → colour-time).
 	View string `json:"view"`
 	// Lo / Hi are i18n keys for the words the graph labels the dial's two
 	// ends with ("dull" / "bright").
@@ -147,9 +124,7 @@ type File struct {
 	Dials []Dial `json:"dials"`
 }
 
-// Load decodes and structurally validates a dial document (the rules that need
-// no instrument schema: version, ids, cards, weights, spaces). Unknown fields
-// are rejected — a typo in hand-edited metadata must not silently drop a term.
+// Unknown fields are rejected: a typo in hand-edited metadata must not silently drop a term.
 func Load(b []byte) (File, error) {
 	var f File
 	dec := json.NewDecoder(bytes.NewReader(b))

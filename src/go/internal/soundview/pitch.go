@@ -74,14 +74,9 @@ const (
 	pitchMinPeriods = 2.5
 )
 
-// Pitch returns pitch over time: YIN (de Cheveigné & Kawahara) on a ~12 kHz
-// decimated copy, the difference function from an FFT autocorrelation.
-//
-// MULTI-RESOLUTION: each frame tries a 21 ms window first, then 43 ms, then
-// 85 ms, and keeps the first estimate whose window holds at least 2.5 of
-// its periods. A kick's pitch drop (150 -> 44 Hz in ~60 ms) lives inside one
-// 85 ms window — a single long frame would show only its average — while a
-// 44 Hz tail needs the long window to be judged at all.
+// YIN on a ~12 kHz decimated copy (FFT autocorrelation), MULTI-RESOLUTION: 21, 43 then 85 ms windows, keeping the
+// first holding 2.5 periods. A kick's 150 → 44 Hz drop lives inside one long window, while a 44 Hz tail needs the long
+// window to be judged at all.
 func (a *Analysis) Pitch() PitchTrack {
 	a.pitchOnce.Do(a.computePitch)
 	return a.pitch
@@ -106,9 +101,7 @@ func (a *Analysis) computePitch() {
 	for i, w := range pitchWindows {
 		yins[i] = newYinFrame(w, fs)
 	}
-	// Each frame starts at the window the previous frame settled on — one
-	// size shorter when the previous pitch would already fit three periods
-	// in it — instead of always the shortest: a steady 44 Hz tail then costs
+	// Each frame starts at the window the previous one settled on (one shorter if three periods fit), so a steady tail costs
 	// one transform per frame, not three.
 	level := 0
 	for f := 0; ; f++ {

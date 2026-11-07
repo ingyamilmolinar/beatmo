@@ -16,9 +16,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// uniquePoolName returns a per-test pool name so concurrent tests do
-// not share the long-lived production pool. Cleanup releases the pool
-// so the global async budget is reset.
+// A per-test pool, released in Cleanup, so tests never share the production pool or leak budget.
 func uniquePoolName(t *testing.T) string {
 	t.Helper()
 	name := PoolName + ".test." + t.Name()
@@ -172,9 +170,7 @@ func TestStoreLoadCorruptedJSONReturnsEmpty(t *testing.T) {
 }
 
 func TestStoreAtomicWriteUsesTempFile(t *testing.T) {
-	// We can't easily fault-inject a crash mid-write in pure Go, but we
-	// can verify the write goes through a `.tmp` companion file that is
-	// renamed into place — the standard atomic-rename idiom.
+	// A crash cannot be injected in pure Go, so the write is checked to go through a renamed .tmp companion.
 	s, path := newTestStore(t)
 	if err := s.SaveFavorites(map[instrument.ID]bool{"a": true}); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -247,10 +243,7 @@ func TestStoreParsePrefsEmptyData(t *testing.T) {
 }
 
 func TestStoreRespectsSubmitContext(t *testing.T) {
-	// Smoke check: SaveFavorites must complete even when the caller
-	// passes a cancelled context-equivalent (we don't accept ctx today,
-	// but the test guards against future regressions where someone wires
-	// SubmitBlocking with a stale ctx).
+	// Guards against wiring SubmitBlocking to a stale context.
 	s, _ := newTestStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

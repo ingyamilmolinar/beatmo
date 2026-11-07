@@ -1,20 +1,6 @@
-// Package soundview turns a rendered note (mono PCM) into the data the Synth
-// tab's graphs draw: loudness over time, the attack, pitch over time, tone
-// colour, harmonics, tone colour over time, tone vs noise, and a wave
-// close-up (spec docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md §4.4).
-//
-// It only MEASURES audio it is handed — the exact buffer the instrument plays
-// (audio.RenderDocForGraph). It never models a voice: that is what made the
-// old graphs lie (a pure-Go approximation that ignored every drum knob).
-//
-// Pure Go, no cgo, no Ebiten, wasm-safe; imports only internal/wave (the
-// shared FFT). Deliberately NOT internal/audio/fingerprint (analysis tooling,
-// large, kept out of shipped binaries): agreement with its descriptors is
-// pinned by a real-build test instead.
-//
-// Every view is computed lazily, once (sync.Once), so an Analysis may be built
-// on a worker goroutine, have the views it needs warmed there, and then be
-// read from the UI goroutine.
+// Package soundview MEASURES the rendered note the Synth tab's graphs draw (the exact buffer the instrument plays),
+// never models a voice: a model ignored every drum knob. Pure Go, wasm-safe, internal/wave only (fingerprint is kept out
+// of shipped binaries). Each view is lazy, once, so a worker can warm it and the UI goroutine read it.
 package soundview
 
 import (
@@ -76,9 +62,7 @@ type Analysis struct {
 	harmOK   bool
 }
 
-// New wraps a rendered note: pcm at sample rate sr, which the platform sizes
-// to voiceSec (the note's played length; 0 = unknown, the buffer's length).
-// The slice is read, never written or retained beyond the Analysis.
+// The platform sizes pcm to voiceSec (0 = unknown: the buffer's length). Read, never written or retained.
 func New(pcm []float32, sr int, voiceSec float64) *Analysis {
 	if sr <= 0 {
 		sr = 48000
@@ -101,11 +85,8 @@ func (a *Analysis) DurationSec() float64 { return float64(len(a.pcm)) / float64(
 // PCM is the analysed buffer (read-only).
 func (a *Analysis) PCM() []float32 { return a.pcm }
 
-// Warm computes the analyses need names now (on the caller's goroutine), so
-// later reads are lock-free cache hits. yield, when non-nil, runs between
-// analyses AND every few frames inside the long loops (the STFT, the pitch
-// track): the browser runs this on the page's one thread and hands it back to
-// the frame loop there.
+// yield runs between analyses AND every few frames inside the long loops: the browser runs this on the page's one
+// thread and hands it back to the frame loop.
 func (a *Analysis) Warm(need Need, yield func()) {
 	if yield != nil {
 		a.yield.Store(&yield)
@@ -144,9 +125,7 @@ func (a *Analysis) markDone(n Need) {
 	}
 }
 
-// yieldEvery hands the thread back every `every` iterations of a long loop
-// while Warm runs with a yield (no-op otherwise). The steps are sized so a
-// stretch stays near 3 ms on WASM (TestWarmYieldsOftenAndComputesOnlyWhatIsNeeded).
+// Sized so a stretch stays near 3 ms on WASM.
 func (a *Analysis) yieldEvery(i, every int) {
 	if i%every != every-1 {
 		return
@@ -170,9 +149,7 @@ func powDB(p float64) float64 {
 	return math.Max(FloorDB, 10*math.Log10(p))
 }
 
-// analysedTailSec is how far past the audible end the spectral and pitch
-// analyses still look (a decaying tail's last frames; the views' time axes
-// stop at 1.15 × the audible length).
+// A decaying tail's last frames; the views' time axes stop at 1.15 × the audible length.
 const analysedTailSec = 0.1
 
 // analysedLen is how much of the buffer the spectral and pitch analyses read:

@@ -64,9 +64,7 @@ func semisFromA3(f0 float64) int {
 	return int(math.Round(12 * math.Log2(f0/a3Hz)))
 }
 
-// measureFile derives every `measured` field FROM THE AUDIO. Upstream
-// filename and metadata pitch labels have been wrong repeatedly, so they
-// are never consulted.
+// FROM THE AUDIO: upstream filename and metadata pitch labels have been wrong repeatedly, so they are never consulted.
 func measureFile(path string) (wavref.Measured, error) {
 	samples, rate, err := audio.DecodeWAVAtRate(path, wavref.Rate)
 	if err != nil {
@@ -79,10 +77,7 @@ func measureFile(path string) (wavref.Measured, error) {
 	return measureWave(w), nil
 }
 
-// measureWave is measureFile's shared core, operating on samples already in
-// memory rather than a path on disk. `refs compare` (compare.go) needs this
-// directly: a synth render never touches disk before it is measured, so
-// there is no path to hand measureFile.
+// measureWave is measureFile on samples in memory: a synth render is measured before it ever touches disk.
 func measureWave(w wave.Wave) wavref.Measured {
 	var peak, sumsq float64
 	for _, v := range w.Samples {
@@ -178,9 +173,7 @@ func (o fetchOpts) selects(r wavref.Ref) bool {
 	return true
 }
 
-// localProvider is the Source.Provider value that means "the audio is
-// already a local file, not something to HTTP-GET". Documented on
-// wavref.Source but never wired up until now -- see fetchOneLocal.
+// The audio is already a local file, not something to HTTP-GET (fetchOneLocal).
 const localProvider = "local"
 
 // fetchOne downloads, converts, measures and hashes a single ref, updating
@@ -229,24 +222,9 @@ func fetchOne(w io.Writer, r *wavref.Ref, force bool) (bool, error) {
 	return fetchOneFinish(w, r, out)
 }
 
-// fetchOneLocal handles Source.Provider == "local": the audio already lives
-// on disk, so there is nothing to HTTP-GET. This is the recovery route for
-// a lossy freesound-preview entry: drop the lossless original on disk,
-// point Source.URL at it, flip Provider to "local", and re-fetch -- no
-// further code change needed.
-//
-//   - Source.URL non-empty: treated as a filesystem path to the RAW
-//     source. It goes through the SAME ffmpeg convert step as every other
-//     provider, so a local ref gets identical treatment (deterministic
-//     trim/resample/bitdepth) and a real, tool-computed pcm_sha256 --
-//     never hand-written.
-//   - Source.URL empty: the destination file is assumed to be ALREADY the
-//     final, correctly-converted audio (no raw source to convert from), so
-//     it is measured and hashed in place without invoking ffmpeg.
-//
-// Either way it is an error, not a silent skip, when the expected file
-// does not exist -- a missing local source is a configuration mistake the
-// caller needs to see.
+// The recovery route for a lossy preview: drop the lossless original on disk, point Source.URL at it, Provider
+// "local". A URL is the RAW source, converted like every provider (a tool-computed pcm_sha256); none means the destination
+// is already final and is measured in place. A missing file is an error, never a skip.
 func fetchOneLocal(w io.Writer, r *wavref.Ref, out string) (bool, error) {
 	fmt.Fprintf(w, "get      %s (local)\n", r.ID)
 
@@ -290,26 +268,9 @@ func fetchOneFinish(w io.Writer, r *wavref.Ref, out string) (bool, error) {
 	return true, nil
 }
 
-// catalogueLoader is how runFetch obtains the catalogue. It defaults to
-// loadCatalogue (the same schema+structural-Validate gate list/verify/doctor
-// use) rather than wavref.Catalogue() directly: fetch is the ONE command
-// that rewrites catalogue.json, so it is precisely the one that must refuse
-// to operate on (and launder) a structurally invalid file. A package-level
-// var rather than a hardcoded call so the refusal path is exercisable in
-// tests without corrupting the embedded catalogue.json.
-//
-// catalogueWriter is how BOTH catalogue-mutating commands -- runFetch here
-// and runChoose in candidates.go -- persist a mutated catalogue. It defaults
-// to writeCatalogue (which rewrites the real, tracked catalogue.json in the
-// source tree) but is a package-level var, kept next to catalogueLoader as
-// the pair of seams that guard the one file every other command
-// (list/verify/doctor/candidates) only ever reads, precisely so tests can
-// redirect it to a throwaway path instead of mutating the committed file as
-// a side effect of running `go test ./cmd/refs/`. fetch used to call
-// writeCatalogue directly, which was safe only by omission -- no test drove
-// it into its changed>0 write branch. The moment one did (see
-// TestRunFetch_WritesThroughCatalogueWriterSeam), an unguarded direct call
-// would have silently rewritten catalogue.json on every test run.
+// Seams, so tests never corrupt or rewrite the tracked catalogue.json. catalogueLoader runs the full Validate gate:
+// fetch is the one command that rewrites the file, so it must refuse (never launder) an invalid one. catalogueWriter is
+// how runFetch and runChoose persist.
 var (
 	catalogueLoader = loadCatalogue
 	catalogueWriter = writeCatalogue
@@ -365,13 +326,7 @@ func writeCatalogue(c wavref.Cat) error {
 	return writeCatalogueAtomic(path, c)
 }
 
-// writeCatalogueAtomic writes c as indented JSON to path via a same-directory
-// temp file + rename, mirroring the atomic-rename convention already used by
-// internal/userprefs' stores: a crash, kill, or full disk mid-write can
-// never truncate the single source of truth, because the rename either
-// hasn't happened yet (old file intact) or already has (new file intact).
-// Split out from writeCatalogue so it's testable against a throwaway path
-// instead of the real catalogue.json.
+// Same-directory temp file + rename, so a crash or full disk mid-write never truncates the single source of truth.
 func writeCatalogueAtomic(path string, c wavref.Cat) error {
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {

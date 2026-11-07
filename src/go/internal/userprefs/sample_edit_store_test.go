@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Sample-edit store tests: the SampleEditStore surface persists the
-// non-destructive Sampler-edit descriptors (tiny flat float maps) inside
-// prefs.json — NOT the PCM SampleStore.
+// Sample-edit descriptors (tiny flat maps) live inside prefs.json, not the PCM SampleStore.
 
 func newTestSampleEditStore(t *testing.T) (Store, SampleEditStore, string) {
 	t.Helper()

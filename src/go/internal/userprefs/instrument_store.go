@@ -8,16 +8,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Instrument data (the user's instrument library, sample-edit descriptors, and
-// the WAV version registry) lives in its OWN store, physically separate from
-// the prefs blob — so sharing/importing instruments never touches favorites,
-// language, or UI state, and vice-versa. See
-// docs/superpowers/specs/2026-07-19-portable-instrument-format-design.md.
-//
-// Instruments mutate infrequently (Save As / import), so this store writes
-// synchronously with an atomic replace rather than the coalescing async pool the
-// high-churn prefs store uses. All doc logic is platform-agnostic; only raw
-// byte read/write is behind build tags (instrumentBackend).
+// Instrument data (the library, sample-edit descriptors, the WAV registry) has its OWN store apart from prefs, so
+// sharing instruments never touches favorites, language or UI state. Writes are rare (Save As, import), so they are
+// synchronous and atomic, not the prefs store's coalescing pool; only raw byte IO is build-tagged.
 const (
 	// InstrumentsFileName is the desktop instrument-store file (sibling of prefs.json).
 	InstrumentsFileName = "instruments.json"
@@ -30,19 +23,13 @@ type instrumentsDoc struct {
 	schema.Envelope
 	SampleEdits map[instrument.ID]map[string]float64 `json:"sample_edits,omitempty"`
 	WavRegistry json.RawMessage                      `json:"wav_registry,omitempty"`
-	// Instruments holds the user's library: one instrument document per id
-	// (spec 2026-10-04 §6). Opaque bytes here; audio parses and validates.
+	// One document per id; opaque here, audio parses and validates.
 	Instruments map[instrument.ID]json.RawMessage `json:"instruments,omitempty"`
-	// Library is the versioned instrument library (audio's objects store).
-	// Since it exists, Instruments is only ever read (once, into it) and is
-	// kept as it was.
+	// Instruments is read once into it and kept as it was.
 	Library json.RawMessage `json:"library,omitempty"`
 }
 
-// InstrumentStore is the decoupled persistence surface for instrument data. It
-// satisfies audio.InstrumentLibrarySource + InstrumentLibrarySink (the user's
-// instrument documents), so bootstraps point audio.LoadUserInstrumentLibrary +
-// audio.SetInstrumentLibrarySink at it instead of prefs.
+// Satisfies audio's library source and sink, so both bootstraps point the library at it, never at prefs.
 type InstrumentStore interface {
 	LoadSampleEdits() (map[instrument.ID]map[string]float64, error)
 	SaveSampleEdit(instID instrument.ID, fields map[string]float64) error
@@ -74,9 +61,7 @@ type instrumentStore struct {
 	logf    func(format string, args ...any)
 }
 
-// NewInstrumentStore constructs the platform-appropriate decoupled instrument
-// store. Reuses userprefs.Options (Path selects the desktop location; ignored on
-// wasm, which always uses InstrumentsLocalStorageKey).
+// Path picks the desktop location; wasm always uses InstrumentsLocalStorageKey.
 func NewInstrumentStore(opts Options) InstrumentStore {
 	return &instrumentStore{
 		backend: newInstrumentBackend(opts),
@@ -107,18 +92,16 @@ func (s *instrumentStore) ensureLoadedLocked() {
 		}
 		return
 	}
-	// Same strict rule as prefs, and the same recovery: this store is loaded
-	// automatically at boot, so an unreadable version — an absent one
-	// included — starts from empty (WARN) rather than failing startup.
+	// Loaded automatically at boot, so an unreadable version (absent included) starts empty with a WARN, never a startup
+	// failure.
 	if err := doc.Validate("instrument store"); err != nil {
 		if s.logf != nil {
 			s.logf("instrument store: %v; starting from empty", err)
 		}
 		return
 	}
-	// The recipe-era sections (user_recipes / recipe_overrides) predate
-	// instrument documents and are not read; say so once, and the next write
-	// drops them (spec 2026-10-04 §6: no migration before the first release).
+	// Recipe-era sections (user_recipes / recipe_overrides) are not read: one warning, and the next write drops them (no
+	// migration before the first release).
 	var legacy struct {
 		UserRecipes     json.RawMessage `json:"user_recipes"`
 		RecipeOverrides json.RawMessage `json:"recipe_overrides"`
@@ -129,8 +112,7 @@ func (s *instrumentStore) ensureLoadedLocked() {
 	s.doc = doc
 }
 
-// persistLocked marshals the current doc and writes it through the backend.
-// persistLocked writes the whole file; a failure is logged and returned.
+// Writes the whole file; a failure is logged and returned.
 func (s *instrumentStore) persistLocked() error {
 	s.doc.Envelope = schema.Current()
 	raw, err := json.MarshalIndent(&s.doc, "", "  ")
@@ -197,8 +179,7 @@ func (s *instrumentStore) SaveWavRegistry(raw []byte) error {
 	return nil
 }
 
-// WaitFlushed / Close: writes are synchronous, so these are no-ops (kept to
-// satisfy the interface parity with the prefs Store).
+// Writes are synchronous, so these are no-ops for parity with the prefs Store.
 func (s *instrumentStore) WaitFlushed() {}
 func (s *instrumentStore) Close()       {}
 

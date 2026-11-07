@@ -14,10 +14,7 @@ type fileInstrumentBackend struct {
 }
 
 func newInstrumentBackend(opts Options) instrumentBackend {
-	// Path semantics mirror the prefs store:
-	//   - empty        → <UserConfigDir>/beatmo/instruments.json
-	//   - ends in .json → exact target
-	//   - bare dir     → <dir>/instruments.json
+	// Like prefs: empty → <UserConfigDir>/beatmo/instruments.json, *.json → exact, a bare dir → <dir>/instruments.json.
 	var path string
 	switch {
 	case opts.Path == "":

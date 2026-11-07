@@ -41,9 +41,7 @@ func TestMatchCatalogueRefRecognisesEveryFormOfARecording(t *testing.T) {
 	}
 }
 
-// The direction words point the right way and stay silent under their
-// thresholds -- a map full of "brighter (1001 vs 1000 Hz)" would bury the
-// real differences.
+// Silent under their thresholds: a map full of "brighter (1001 vs 1000 Hz)" would bury the real differences.
 func TestMapDirection(t *testing.T) {
 	ref := fingerprint.EssenceTraits{BrightnessHz: 1000, Noise: 0.1, DecayDB: -3}
 	if d := mapDirection(ref, &fingerprint.EssenceTraits{BrightnessHz: 1100, Noise: 0.12, DecayDB: -5}); d != "" {

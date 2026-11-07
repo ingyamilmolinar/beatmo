@@ -9,15 +9,8 @@ import (
 	"testing"
 )
 
-// forbiddenInfoPatterns lists tag prefixes that have been *demoted* from INFO
-// to DEBUG/WARN as part of the logging signal/noise overhaul. If anyone
-// re-introduces an Infof("[ZOOM]"...) (etc.), this test catches it before
-// it lands.
-//
-// To intentionally re-introduce one of these tags at INFO, remove it from
-// this list AND justify the change in the PR description (the level contract
-// in package log says INFO is for user actions and major component lifecycle,
-// not mechanism detail).
+// Tag prefixes demoted from INFO: INFO is for user actions and major lifecycle events, not mechanism. Re-introducing one
+// means removing it here and justifying it in the PR.
 var forbiddenInfoPatterns = []string{
 	"[ZOOM]",
 	"[zoom]",
@@ -36,9 +29,7 @@ var forbiddenInfoPatterns = []string{
 	"[bench_json]",
 }
 
-// TestForbiddenInfoPatterns scans internal/ui/ and internal/audio/ for
-// Infof calls whose format string starts with a forbidden tag. Fails if any
-// reappear so the demotion done in this overhaul does not silently regress.
+// Scans internal/ui and internal/audio for an Infof whose format starts with a forbidden tag.
 func TestForbiddenInfoPatterns(t *testing.T) {
 	root, err := repoRoot()
 	if err != nil {
@@ -71,8 +62,7 @@ func TestForbiddenInfoPatterns(t *testing.T) {
 			if !strings.HasSuffix(path, ".go") {
 				return nil
 			}
-			// Skip test files — tests can legitimately log fixture data
-			// at INFO with arbitrary tags.
+			// Tests may log fixture data at INFO with any tag.
 			if strings.HasSuffix(path, "_test.go") {
 				return nil
 			}
@@ -115,9 +105,7 @@ func isForbidden(tag string) bool {
 	return false
 }
 
-// repoRoot returns the absolute path to the src/go directory by walking up
-// from this test file's location. Avoids depending on the test runner's cwd
-// (which is the package dir).
+// Independent of the runner's cwd (the package dir).
 func repoRoot() (string, error) {
 	_, here, _, ok := runtime.Caller(0)
 	if !ok {

@@ -1,18 +1,7 @@
 package deploy
 
-// ci_make_target_drift_test.go — every `make <target>` a CI workflow invokes
-// must exist in the Makefile.
-//
-// The corpus rewrite deleted `fetch-synth-refs` and added `fetch-refs`, but
-// .github/workflows/ci.yml kept calling the old name. The call was written as
-//
-//	run: make fetch-synth-refs || echo "::warning::..."
-//
-// so the `||` swallowed make's "No rule to make target" and CI stayed green
-// while fetching nothing -- every reference-dependent test silently degraded
-// from "passing" to "skipped" for as long as nobody read the warnings. A
-// deliberately non-fatal step is exactly where a renamed target hides longest,
-// which is why this is checked structurally instead of relied on to fail.
+// Every make <target> CI invokes must exist: a renamed target behind a non-fatal || in ci.yml failed with "No rule to
+// make target" while CI stayed green, so a deliberately non-fatal step is where this hides longest.
 
 import (
 	"os"
@@ -41,8 +30,7 @@ func makefileTargets(t *testing.T, root string) map[string]bool {
 	for _, m := range makeTargetRe.FindAllStringSubmatch(src, -1) {
 		out[m[1]] = true
 	}
-	// .PHONY lines name targets too; a target defined by a `define`d canned
-	// recipe still needs its .PHONY entry, so this also covers those.
+	// .PHONY names targets too, including those defined by a define'd canned recipe.
 	for _, line := range strings.Split(src, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, ".PHONY:") {
@@ -76,14 +64,8 @@ func workflowFiles(t *testing.T, root string) []string {
 	return out
 }
 
-// stripYAMLComments drops whole-line `#` comments.
-//
-// Only whole-line comments, deliberately: a trailing `#` inside a `run:` shell
-// command is a shell comment, not a YAML one, and guessing which is which
-// would either miss real invocations or mangle commands. Whole-line comments
-// are where prose about a target lives -- including the comment in ci.yml
-// explaining this very failure mode, which the scanner would otherwise read as
-// a live invocation of the deleted target.
+// Whole-line comments only: a trailing # in a run: block is a shell comment, and guessing would miss invocations or
+// mangle commands. Prose about a deleted target lives in whole-line comments and must not read as a live invocation.
 func stripYAMLComments(src string) string {
 	lines := strings.Split(src, "\n")
 	out := make([]string, 0, len(lines))

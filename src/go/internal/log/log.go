@@ -1,22 +1,6 @@
-// Package log is the project's leveled logger.
-//
-// Level contract (enforced by tests; see internal/log/forbidden_at_info_test.go
-// and internal/eventlogger/golden_session_test.go):
-//
-//	INFO   One line per user action or major component lifecycle event. Never
-//	       per-frame, never "ignored X because Y", never internal-mechanism
-//	       breakdowns. Most user-action narrative flows through internal/eventlogger
-//	       which subscribes to hooks.Bus and emits through Infof.
-//	WARN   Degraded-but-functional. Slow paths, parity mismatches when non-
-//	       fatal, dropped frames, fallbacks taken.
-//	ERROR  Failure: an operation could not complete.
-//	DEBUG  Mechanism detail useful for diagnosing a specific subsystem. May
-//	       fire per event or per pool job, but never per frame.
-//	TRACE  Firehose. Per-frame, per-cell, per-tick.
-//
-// Output format: "15:04:05.000 LEVEL [tag] message" where [tag] is the first
-// bracketed token of the format string (extracted automatically). When no tag
-// is present the bracketed section is omitted.
+// Package log is the leveled logger. INFO: one line per user action or major lifecycle event, never per frame or
+// mechanism. WARN degraded, ERROR failed, DEBUG mechanism (never per frame), TRACE firehose. Lines read
+// "15:04:05.000 LEVEL [tag] message", the tag lifted from the format's leading [tag].
 package log
 
 import (
@@ -115,10 +99,8 @@ func New(out io.Writer, level Level) *Logger {
 	if out == nil {
 		out = io.Discard
 	}
-	// In tests, default to silent to keep suites quiet: lines go to the
-	// failure tail (test_tail.go) at the logger's own level, printed only by a
-	// failing test that asked for them (TailOnFailure). Opt-in to live output
-	// via BEATMO_TEST_LOG=1 or -test.v. Level can be overridden via env.
+	// Silent by default: lines go to the failure tail at the logger's level, printed only by a failing test that asked
+	// (TailOnFailure). BEATMO_TEST_LOG=1 or -test.v shows them live.
 	if inTests {
 		if testLogVerbose() {
 			if lvl := strings.TrimSpace(os.Getenv("BEATMO_TEST_LOG_LEVEL")); lvl != "" {
@@ -140,9 +122,7 @@ func New(out io.Writer, level Level) *Logger {
 // timestampFunc is overridable for deterministic test output.
 var timestampFunc = func() string { return time.Now().Format("15:04:05.000") }
 
-// extractTag pulls the leading "[tag]" out of format if present and returns
-// (tag, rest) so callers can render the tag in its own column. Verbs inside
-// the tag are not interpreted (callers don't put printf verbs in tags).
+// Verbs inside the tag are not interpreted.
 func extractTag(format string) (tag, rest string) {
 	if len(format) > 0 && format[0] == '[' {
 		if i := strings.IndexByte(format, ']'); i > 0 {
@@ -208,10 +188,7 @@ func (l *Logger) Level() Level {
 	return l.level
 }
 
-// NewForTest returns a Logger that ignores the in-tests silencing, writing
-// every level >= level to out. Use this in tests that need to capture log
-// output deterministically (the regular New routes test output to stdout
-// or io.Discard depending on BEATMO_TEST_LOG, which makes capture awkward).
+// Bypasses the in-tests silencing, so a test can capture output deterministically.
 func NewForTest(out io.Writer, level Level) *Logger {
 	if out == nil {
 		out = io.Discard
@@ -222,9 +199,7 @@ func NewForTest(out io.Writer, level Level) *Logger {
 	}
 }
 
-// SetTimestampFunc overrides the package-level timestamp formatter. Returns
-// a restore closure callers MUST defer. Tests use this to pin output to a
-// known string so golden-file comparisons are deterministic.
+// Callers MUST defer the restore; pins output for golden comparisons.
 func SetTimestampFunc(f func() string) (restore func()) {
 	old := timestampFunc
 	timestampFunc = f

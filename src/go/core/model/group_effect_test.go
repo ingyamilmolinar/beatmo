@@ -129,11 +129,7 @@ func TestGroupEffectIdentityAtRoundZeroWithCustomClamp(t *testing.T) {
 	}
 }
 
-// TestGroupEffectAnchoredMidTimeline is the anchored-rounds fix (task-rule-
-// anchor brief, Part A): a rule anchored at absIdx=10 (loopStart=0, loopLen=1
-// so GroupRound(idx,0,1)==idx for idx>0, matching the "round" shorthand the
-// other tests in this file use) must count steps from ITS OWN anchor round,
-// not from the timeline origin.
+// loopLen=1 so GroupRound(idx) == idx: an anchor at 10 counts steps from ITS round, not the origin.
 func TestGroupEffectAnchoredMidTimeline(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 1, AnchorIdx: 10})
 	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
@@ -153,9 +149,7 @@ func TestGroupEffectAnchoredMidTimeline(t *testing.T) {
 	}
 }
 
-// TestGroupEffectAnchorBeyondAbsIdxIsIdentity: seeking to a point BEFORE the
-// rule's anchor must be identity (0/1/1) — min(AnchorIdx, absIdx) collapses
-// the round difference to 0 rather than going negative.
+// Before the anchor is identity: min(AnchorIdx, absIdx) collapses the difference to 0.
 func TestGroupEffectAnchorBeyondAbsIdxIsIdentity(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 1, AnchorIdx: 10})
 	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
@@ -212,10 +206,7 @@ func TestGroupEffectStackingDifferentAnchors(t *testing.T) {
 	}
 }
 
-// TestGroupEffectAnchorZeroIsBackwardCompatible pins that AnchorIdx's
-// zero-value (rules built without ever setting the field, e.g. everything
-// created before this feature) reproduces the exact pre-anchor formula:
-// steps = GroupRound(absIdx,...) / EveryN.
+// AnchorIdx 0 reproduces steps = GroupRound(absIdx) / EveryN exactly.
 func TestGroupEffectAnchorZeroIsBackwardCompatible(t *testing.T) {
 	r := GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 4, Min: -24, Max: 24} // AnchorIdx left at zero value
 	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
@@ -256,11 +247,7 @@ func TestBuildGroupIndexDeterministic(t *testing.T) {
 	}
 }
 
-// TestBuildGroupIndexSkipsDisabledGroupRules is the task-enabled-status brief
-// Part C model-level pin: a group with configured Rules but RulesEnabled
-// false must contribute NO rule effect (HasRules false, GroupEffect
-// identity) even though it still counts for Member() (ring rendering is
-// unaffected by the flag — only rule application is gated).
+// Configured Rules on a disabled group contribute nothing, while the group still counts for Member().
 func TestBuildGroupIndexSkipsDisabledGroupRules(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 1})
 	disabled := &NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: false}

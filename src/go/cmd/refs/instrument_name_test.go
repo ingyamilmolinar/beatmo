@@ -40,10 +40,7 @@ func TestInstrumentFromFilename_Resolves(t *testing.T) {
 	}
 }
 
-// The id must sit at a SEGMENT boundary. Accepting a bare substring would
-// make "mycrash.wav" a crash reference and "snare-kick-loop.wav" ambiguous
-// between two instruments -- silently adopting a file for the wrong
-// instrument is the worst outcome this command has.
+// At a SEGMENT boundary: a bare substring would make "mycrash.wav" a crash reference.
 func TestInstrumentFromFilename_RejectsANameThatMerelyContainsAnID(t *testing.T) {
 	for _, name := range []string{"mycrash.wav", "backing-track.wav", "take3.wav"} {
 		if got, err := instrumentFromFilename(name); err == nil {
@@ -86,9 +83,7 @@ func TestInstrumentFromFilename_ErrorNamesTheFileNotItsFullPath(t *testing.T) {
 	}
 }
 
-// A suggestion list built from a two-character prefix is noise, not help:
-// "backing-track" is not a near miss for "banjo" or "bass-808". Better to
-// state the rule than to offer five irrelevant ids.
+// A two-character prefix offers irrelevant ids; better to state the rule.
 func TestInstrumentFromFilename_DoesNotSuggestOnATwoLetterCoincidence(t *testing.T) {
 	_, err := instrumentFromFilename("backing-track.wav")
 	if err == nil {

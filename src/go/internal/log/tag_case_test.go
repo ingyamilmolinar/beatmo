@@ -8,9 +8,7 @@ import (
 	"testing"
 )
 
-// TestNoUppercaseInfoTags scans production Go sources for Infof/Warnf/Errorf
-// calls whose leading "[tag]" contains an uppercase letter. All bracket tags
-// must be lowercase (the project-wide convention). Test files are skipped.
+// Every bracket tag is lowercase; test files are skipped.
 func TestNoUppercaseInfoTags(t *testing.T) {
 	root := filepath.Join("..", "..") // src/go
 	tagRE := regexp.MustCompile(`\.(?:Infof|Warnf|Errorf|Tracef|Debugf)\("\[([^\]]+)\]`)

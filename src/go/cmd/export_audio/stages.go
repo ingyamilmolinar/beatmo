@@ -17,14 +17,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// --stages: the cross-platform stage cases xplat_audio_stages.browser.test.js
-// compares. Every case is rendered here through desktop's real offline mixer
-// (audio.RenderStagesOffline) and emitted with everything the browser needs to
-// build the SAME case through its real graph: the instruments' documents (as
-// setInstrumentBlock takes them), each channel's insert chain and EQ program
-// exactly as Go pushes them (audio.InsertChainForPlatform, BuildEQProgram),
-// the master volume and EQ, the notes and lane stops — and desktop's signal
-// at every stage tap. Rendered fresh from the tree on every test run.
+// --stages: each case rendered through desktop's real offline mixer and emitted with everything the browser needs to
+// build the SAME case through its graph (documents, insert chains and EQ programs as Go pushes them, master, notes, lane
+// stops) plus desktop's signal at every stage tap.
 
 type stageInstrument struct {
 	Block    []float64        `json:"block"`
@@ -64,11 +59,8 @@ type stageScene struct {
 	Notes        []stageNoteJSON                `json:"notes"`
 	Stops        []stageStopJSON                `json:"stops"`
 	Taps         map[string]string              `json:"taps"` // "<id>/voices|inserts|eq", "out" → float32 LE base64
-	// Quantum is, per tap, the output step of a quantizing effect upstream
-	// (the bitcrusher's mix / 2^bits): an input one float32 ulp apart — two
-	// overlapping voices summed in float32 by WebAudio, in float64 by desktop
-	// — can round to the neighbouring step. The browser test allows exactly
-	// that step, on a vanishing fraction of samples, and nothing else.
+	// Per tap, the output step of an upstream quantizing effect (bitcrusher mix / 2^bits): inputs a float32 ulp apart
+	// (WebAudio sums in float32, desktop in float64) can round to the neighbouring step. The test allows exactly that step.
 	Quantum map[string]float64 `json:"quantum,omitempty"`
 	// SampleEdits are Sampler edits active during the case, as Go pushes
 	// them (audio.SampleEditWire → updateSampleEdit).
@@ -274,10 +266,8 @@ func stageCases() []sceneSpec {
 		return m
 	}
 
-	// The played voice: drums pitched and sized by resampling (fractional,
-	// up, down, longer, shorter), melodic notes at their exact pitch (also
-	// fractional) and gated by Duration, volumes from loud to below 1/32,
-	// starts off every block boundary, overlaps on one channel.
+	// Drums pitched and sized by resampling, melodic notes at exact (fractional) pitch gated by Duration, volumes down
+	// below 1/32, starts off every block boundary, overlaps on one channel.
 	cases = append(cases, sceneSpec{
 		name: "played/drums", stage: "voices", seconds: 2.4, masterVolume: 1,
 		channels: plain(kick, snare, hihat),

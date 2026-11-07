@@ -19,11 +19,6 @@ func regexpMatch(pattern, s string) (bool, error) {
 	return re.MatchString(s), nil
 }
 
-// coverage_test.go covers pure parsing/rendering helpers in the
-// gen_design_tokens generator. main() itself is not tested (it's the
-// argv/os.Exit shell); every other helper is exercised with happy +
-// failure paths so the cover tool sees both branches.
-
 // ─── pascal / identifier conversion ───────────────────────────────────────
 
 func TestPascal(t *testing.T) {
@@ -32,9 +27,9 @@ func TestPascal(t *testing.T) {
 		{"primary-bright", "PrimaryBright"},
 		{"a-b-c", "ABC"},
 		{"", ""},
-		{"-leading", "Leading"},                    // empty first segment skipped
-		{"trailing-", "Trailing"},                  // empty last segment skipped
-		{"middle--double", "MiddleDouble"},         // adjacent dashes
+		{"-leading", "Leading"},                     // empty first segment skipped
+		{"trailing-", "Trailing"},                   // empty last segment skipped
+		{"middle--double", "MiddleDouble"},          // adjacent dashes
 		{"already-pascalCase", "AlreadyPascalCase"}, // lowercase second char preserved
 	}
 	for _, c := range cases {
@@ -84,11 +79,11 @@ func TestParseHexRGBValid(t *testing.T) {
 
 func TestParseHexRGBInvalid(t *testing.T) {
 	for _, s := range []string{
-		"FF80",       // too short
-		"#FF80",      // too short with prefix
-		"#FF8040AA",  // too long
-		"#GGHHII",    // non-hex
-		"FF8040AA",   // too long without prefix
+		"FF80",      // too short
+		"#FF80",     // too short with prefix
+		"#FF8040AA", // too long
+		"#GGHHII",   // non-hex
+		"FF8040AA",  // too long without prefix
 	} {
 		if _, _, _, err := parseHexRGB(s); err == nil {
 			t.Errorf("parseHexRGB(%q): want error", s)
@@ -189,10 +184,10 @@ func TestParseRef(t *testing.T) {
 		{"{spacing.md}", "md", "spacing", true},
 		{"{rounded.lg}", "lg", "rounded", true},
 		{" {colors.x} ", "x", "colors", true}, // whitespace
-		{"colors.primary", "", "", false},      // missing braces
-		{"{colors}", "", "", false},            // no dot
-		{"{.primary}", "", "", false},          // empty kind
-		{"{colors.}", "", "", false},           // empty key
+		{"colors.primary", "", "", false},     // missing braces
+		{"{colors}", "", "", false},           // no dot
+		{"{.primary}", "", "", false},         // empty kind
+		{"{colors.}", "", "", false},          // empty key
 	}
 	for _, c := range cases {
 		key, kind, ok := parseRef(c.in)
@@ -431,9 +426,7 @@ func TestEmitProfilesProducesValidGo(t *testing.T) {
 			t.Errorf("emitProfiles output missing %q", want)
 		}
 	}
-	// gofmt aligns field colons, so the exact whitespace between "FontSize:"
-	// and "14" depends on the longest field name. Match each field with a
-	// regex that tolerates one or more spaces after the colon.
+	// gofmt aligns field colons, so the spacing after "FontSize:" depends on the longest field name.
 	for _, want := range []string{
 		`FontSize:\s+14`,
 		`FontSize:\s+16`,

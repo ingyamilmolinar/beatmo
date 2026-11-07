@@ -4,9 +4,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// UpdateRowSegments refreshes the cached present/future slices for a row using
-// the provided window and steps. The callback executes while holding the
-// service lock; callers must avoid re-entering the service from within fn.
+// fn runs under the service lock: it must not re-enter the service.
 func (s *Service) UpdateRowSegments(row, offset, windowLen, capacityHint int, steps []bool, fn func(SegmentsView)) {
 	if row < 0 || fn == nil {
 		return

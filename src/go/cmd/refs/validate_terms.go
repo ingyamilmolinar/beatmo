@@ -13,35 +13,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// validate_terms.go — `refs validate -terms`: when the listener uses a word,
-// does the axis that claims to measure that word agree?
-//
-// WHY THIS IS A BETTER TEST THAN GOOD-VS-BAD
-// ------------------------------------------
-// The AUC in validate.go splits 44 families into 7 good and 6 bad, which leaves
-// every confidence interval about 0.3 wide -- enough to identify the extremes
-// and nothing else. But the notes carry far more information than the verdict
-// letter does: a listener who writes "too airy" has told us something specific
-// and falsifiable about ONE property, and seventeen notes carry words like that.
-//
-// So this asks a narrower, better-powered question per axis: of the families
-// whose note contains a word, how many does the corresponding axis flag in the
-// direction the word implies? An axis that claims to measure airiness and does
-// not fire on the notes that say "airy" has not earned the claim, whatever its
-// overall AUC.
-//
-// This is also the only check that can catch an axis measuring the RIGHT
-// property in the WRONG direction, which the corpus has already produced once
-// (bright.centroid, AUC 0.36).
+// When the listener writes a word, does the axis claiming to measure it fire in the direction the word implies? Notes
+// carry far more than the verdict letter, so this is better powered than good-vs-bad, and the only check that catches an
+// axis measuring the RIGHT property in the WRONG direction.
 
-// termRule maps a word a listener actually wrote to the axis that should have
-// seen it, and the direction it should have moved.
-//
-// wantDir is what the SYNTH should read relative to the reference: "high" means
-// the axis should flag the synth as too high on that property. A word
-// describing what the synth NEEDS ("warmer", "fuller") therefore maps to the
-// property being too high in the opposite sense -- "needs warmer" means the
-// synth is currently too BRIGHT.
+// wantDir is what the SYNTH reads relative to the reference: a word for what the synth NEEDS maps to the opposite
+// ("needs warmer" = the synth is too BRIGHT).
 type termRule struct {
 	// Words are matched as substrings of the lowercased note, so "breathy"
 	// also catches "breathiness".
@@ -51,8 +28,7 @@ type termRule struct {
 	Why     string
 }
 
-// termRules is deliberately small and literal. Every entry cites the word as
-// the listener wrote it; nothing is inferred from words nobody used.
+// Small and literal: every entry cites the word as written; nothing is inferred from words nobody used.
 var termRules = []termRule{
 	{
 		Words: []string{"airy", "breathy", "wind instrument", "like a flute"},
@@ -186,17 +162,9 @@ func scoreTerms(samples []validationSample, verdicts []earVerdict) []termScore {
 	return out
 }
 
-// termAggregate is the one-line summary of the whole TERM table: the spec's
-// §9.2 success criterion is stated over RULES, not over families, so the
-// arithmetic that judges it has to live in code rather than be re-counted by
-// eye off the table (which is how the "8/9 agree" claim was reached -- it
-// counted MISS rows as agreement).
-//
-// The three buckets PARTITION the rules that have at least one family:
-//   - agreeing:  fired on every family it saw, always in the implied direction
-//   - backwards: fired somewhere, but at least one of those firings ran the
-//     other way (or the rule fired on some families and not others)
-//   - silent:    never fired at all, so the axis says nothing about the word
+// The success criterion is stated over RULES, so the arithmetic lives in code, not counted by eye. The buckets partition
+// the rules that saw a family: agreeing (always fired the right way), backwards (any wrong-way or partial firing),
+// silent (never fired).
 type termAggregate struct {
 	WithFamily int
 	Agreeing   int
@@ -204,8 +172,7 @@ type termAggregate struct {
 	Silent     int
 }
 
-// aggregateTermScores buckets the scored rules. A rule with no family at all
-// is not counted anywhere: the corpus simply never used that word.
+// A rule with no family is counted nowhere: the corpus never used that word.
 func aggregateTermScores(scores []termScore) termAggregate {
 	var agg termAggregate
 	for _, sc := range scores {
@@ -300,7 +267,7 @@ func runValidateTerms(w, diag io.Writer, outPath string) error {
 }
 
 // registryHasAxis reports whether a named axis exists, so a termRule cannot
-// quietly reference an axis that was renamed or removed.
+// So a termRule can never quietly name an axis the registry no longer has.
 func registryHasAxis(name string) bool {
 	for _, d := range fingerprint.DefaultRegistry().All() {
 		if d.Name == name {
@@ -310,20 +277,8 @@ func registryHasAxis(name string) bool {
 	return false
 }
 
-// --- Discovery -------------------------------------------------------------
-//
-// The rules above are HYPOTHESES: a human decided which axis ought to
-// correspond to which word. That is exactly the kind of guess the corpus can
-// check, and the first pass already falsified one of them -- "wooden" was
-// mapped to inharmonicity and agreed on none of the families where the
-// listener wrote it, because the kalimba's inharmonicity had already been
-// tuned to match while its partial SEQUENCE had not.
-//
-// So this searches instead of assuming: for each term, it ranks EVERY axis by
-// how consistently it fires on the families whose notes use that word, versus
-// how often it fires on the families that do not. An axis that fires on the
-// named families and stays quiet elsewhere is measuring something specific to
-// that word; one that fires on everything is not, however plausible its name.
+// The rules are hypotheses, and the corpus can falsify them, so discovery ranks EVERY axis per term by how
+// consistently it fires on the families using the word versus those that do not.
 
 // termCandidate is one axis's discovery score for one term.
 type termCandidate struct {
@@ -335,19 +290,8 @@ type termCandidate struct {
 	Specificity float64 // inRate - outRate; >0 means it discriminates this word
 }
 
-// discoverForTerm ranks every axis by how specifically it tracks one term.
-//
-// The negative class is families that HAVE a note but chose different words --
-// never families with no note at all. A listener who wrote nothing about an
-// instrument has not told us it is un-airy; they have told us nothing. Scoring
-// against silence inflates every axis that fires broadly, which on the first
-// pass put ring T60 (which fires on 55% of everything) among the top matches
-// for "airy" purely by firing a lot.
-//
-// Direction counts too: an axis that fires on the right families in the WRONG
-// direction is not measuring the word, it is measuring something anticorrelated
-// with it, and counting it as agreement is how bright.centroid looked
-// reasonable for as long as it did.
+// The negative class is families with a note in OTHER words, never no note: silence says nothing, and scoring against
+// it inflates broadly-firing axes. Only firing in the implied direction counts.
 func discoverForTerm(samples []validationSample, noteFor map[string]earVerdict, rule termRule) []termCandidate {
 	type acc struct{ inF, inT, outF, outT int }
 	byAxis := map[string]*acc{}

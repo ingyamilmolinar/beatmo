@@ -10,10 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// The checks themselves need the reference corpus, so no test runs them for
-// real (tests never read reference audio). What is tested is everything around
-// them: an absent corpus SKIPS loudly instead of passing, and the comparisons
-// catch every kind of drift.
+// The checks need the corpus, so no test runs them; what is tested is that an absent corpus SKIPS loudly and that the
+// comparisons catch every kind of drift.
 
 func TestRefsCheckSkipsEveryCheckWithoutACorpus(t *testing.T) {
 	t.Setenv(wavref.EnvVar, t.TempDir())
@@ -103,11 +101,8 @@ func TestDiffOrganicRangesReportsDriftAndStaleIDs(t *testing.T) {
 	}
 }
 
-// TestF0CheckTablesNameCataloguedRefs: the f0 checks skip a clip that is not
-// on this machine, so an id the catalogue no longer has is skipped forever
-// with no message -- ride-vcsl stayed in unpitchedRefs after ride-local
-// replaced it on 2026-09-22, and the separation check quietly lost its only
-// real ride. Reads the committed catalogue only, never audio.
+// A clip not on this machine is skipped with no message, so an id the catalogue lost would be skipped forever. Reads
+// only the committed catalogue, never audio.
 func TestF0CheckTablesNameCataloguedRefs(t *testing.T) {
 	c, err := wavref.Catalogue()
 	if err != nil {

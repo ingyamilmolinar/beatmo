@@ -5,9 +5,7 @@ package inpututil
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// KeysJustPressed is the test-controllable backing map for IsKeyJustPressed.
-// Tests in internal/ui inject their own isKeyJustPressed via stubKeys, so this
-// map is only consulted when the real (non-injected) function path is used.
+// Consulted only on the non-injected path: internal/ui tests inject isKeyJustPressed via stubKeys.
 var KeysJustPressed = map[ebiten.Key]bool{}
 
 // IsKeyJustPressed reports whether the key was pressed this frame.

@@ -8,22 +8,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Predictor is the AUTHORITATIVE SOURCE OF TRUTH for what notes fire. The UI
-// reads predictions via VisibleAt/TriggeredAt/AudibleAt; it never mutates
-// predictor state directly.
-//
-// Key behaviors:
-//   - Ensure(horizon): compute predictions up to an absolute index
-//   - Mute gate: only gates the mute subdivision (idx+hold+1); audio resumes
-//     immediately on the following beat. UI/audio mute tests depend on this.
-//   - Probability uses a deterministic hash on (row, idx, nodeID) for
-//     reproducible results. Skip/every-N uses per-node trigger counts.
-//     Previous-trigger logic checks lastFiredByRow.
-//   - predDirty flag: set by UI/game when node parameters change, triggers a
-//     full context rebuild (RebaseAt) before extending predictions.
-//
-// Concurrency: all public methods are protected by mu (RWMutex). Background
-// precompute runs in a separate goroutine controlled by bgQuit/bgDone.
+// The AUTHORITATIVE source of what fires; the UI only reads it. The mute gate covers only the mute subdivision
+// (idx+hold+1), audio resumes on the next beat; probability is a deterministic hash on (row, idx, nodeID). mu (RWMutex)
+// guards every public method; the background precompute runs in its own goroutine.
 type Predictor struct {
 	mu sync.RWMutex
 
@@ -39,27 +26,17 @@ type Predictor struct {
 	loopStartByRow []int
 	loopLenByRow   []int
 
-	// Prediction buffers — sliding window per session. The three slices share a
-	// single windowStart (abs of slot 0) and windowEnd (exclusive abs upper
-	// bound). Once windowEnd-windowStart reaches windowCap, further Ensure
-	// calls slide the window forward in place rather than growing — bounding
-	// retained memory at O(rows × 3 × windowCap) regardless of session length.
-	// Reads at idx < windowStart return false (evicted; the timeline cold
-	// archive at internal/timeline/archive.go owns historical playback).
+	// A sliding window per session sharing windowStart / windowEnd: past windowCap, Ensure slides forward instead of
+	// growing, bounding memory at O(rows × 3 × windowCap). Reads below windowStart return false; the timeline archive owns
+	// history.
 	audibleByRow   [][]bool
 	visibleByRow   [][]bool
 	triggeredByRow [][]bool
 	windowStart    int // abs of slot 0 in every per-row buffer
 	windowEnd      int // exclusive abs upper bound (== windowStart + buffer length when extended)
 	windowCap      int // max retained subdivisions; 0 → defaultPredictorWindowCap on first Ensure
-	// visibleMinAbs anchors the lower edge of the retained window to the UI's
-	// currently-displayed region: Ensure never slides windowStart past this
-	// value, and re-extends backward when visibleMinAbs falls below windowStart
-	// (the scroll-back case). The sentinel -1 means "no anchor declared";
-	// in that state the predictor falls back to its standalone cap-only
-	// eviction policy so engine-only tests and headless callers behave as
-	// before. Reset to -1 by resetBuffersLocked because a path change
-	// invalidates whatever the UI declared previously.
+	// The UI's displayed lower edge: Ensure never slides past it and re-extends backward when it falls below windowStart
+	// (scroll-back). -1 = no anchor (cap-only eviction for headless callers); reset on a path change.
 	visibleMinAbs int
 
 	// Incremental contexts at current horizon
@@ -70,9 +47,7 @@ type Predictor struct {
 	gateUntilByRow     []int
 	visGateUntilByRow  []int
 
-	// Background precompute. bgRunning gates StartBackground so concurrent
-	// or repeat calls don't leak goroutines. Cleared by StopBackground after
-	// the worker exits, allowing a clean restart.
+	// bgRunning gates StartBackground so repeat or concurrent calls spawn one worker; StopBackground clears it.
 	bgQuit    chan struct{}
 	bgDone    chan struct{}
 	bgStopped bool
@@ -84,10 +59,7 @@ type Predictor struct {
 	// extending predictions. UI/game mark this flag when node parameters change.
 	predDirty bool
 
-	// forceFullRebuild disables the bounded dirty-rebuild optimization (always
-	// re-walk [0, windowStart) instead of the last few loops). Test-only seam
-	// used by the equivalence test to prove the bounded path is byte-identical
-	// to the full walk.
+	// Test-only: always re-walk [0, windowStart), to prove the bounded dirty rebuild byte-identical to the full walk.
 	forceFullRebuild bool
 
 	logger *game_log.Logger
@@ -97,10 +69,8 @@ type Predictor struct {
 	// not bump it. The audio lane fingerprints the predictor with it.
 	epoch atomic.Uint64
 
-	// decisions holds the custom Params.Logic decision (volume/pitch/
-	// duration multipliers) for audible cells of custom-logic nodes only, so
-	// the audio lane's pure note function can apply it without re-running
-	// stateful logic. Keyed {row, idx}; guarded by mu.
+	// Custom-logic decisions for audible cells, so the audio lane's pure note function applies them without re-running
+	// stateful logic. Guarded by mu.
 	decisions map[[2]int]model.NodeDecision
 }
 
@@ -139,10 +109,8 @@ func (p *Predictor) SetForceFullRebuildForTest(v bool) {
 	p.mu.Unlock()
 }
 
-// defaultPredictorWindowCap is the per-row sliding-window ceiling when
-// SetWindowCap has not been called. ~8 visible windows of 512 subdivisions
-// gives reconcileFrozen + parity scan + visible-window draw all the lookback
-// they need; older abs queries are answered by the timeline cold archive.
+// Enough lookback for reconcileFrozen, the parity scan and the visible window; older queries go to the timeline
+// archive.
 const defaultPredictorWindowCap = 4096
 
 func NewPredictor(graph *model.Graph, logger *game_log.Logger) *Predictor {
@@ -159,10 +127,7 @@ func NewPredictor(graph *model.Graph, logger *game_log.Logger) *Predictor {
 	}
 }
 
-// SetWindowCap overrides the per-row sliding-window ceiling. Values <= 0 are
-// ignored. Idempotent. Internal/UI calls this after engine.New to thread the
-// RuntimeProfile.PredictorWindowCap value; tests call it directly to exercise
-// small caps without driving abs into the millions.
+// <= 0 is ignored. The UI threads RuntimeProfile.PredictorWindowCap through it; tests set small caps.
 func (p *Predictor) SetWindowCap(n int) {
 	if n <= 0 {
 		return
@@ -172,10 +137,7 @@ func (p *Predictor) SetWindowCap(n int) {
 	p.mu.Unlock()
 }
 
-// SetVisibleMinAbs anchors the retained window's lower edge: Ensure will not
-// slide windowStart past this abs. UI calls this each refreshDrumRow with the
-// current scroll origin so the displayed range is never evicted. Negative
-// values are clamped to 0.
+// Called each refreshDrumRow with the scroll origin, so the displayed range is never evicted. Negative clamps to 0.
 func (p *Predictor) SetVisibleMinAbs(abs int) {
 	if abs < 0 {
 		abs = 0

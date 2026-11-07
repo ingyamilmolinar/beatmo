@@ -48,9 +48,7 @@ func TestResolve_UnknownIDNotOK(t *testing.T) {
 	}
 }
 
-// PCMHash operates on already-decoded samples (this package must not import
-// internal/audio — see resolve.go's PCMHash doc comment for the import-cycle
-// reason), so it is tested directly against synthetic sample slices.
+// PCMHash takes decoded samples (no internal/audio import), so it is tested on synthetic slices.
 func TestPCMHash_DeterministicAndContentSensitive(t *testing.T) {
 	s1 := []float32{0.1, -0.2, 0.3, 0.0, -1.0}
 	h1 := PCMHash(s1, 44100)
@@ -94,11 +92,7 @@ func TestVerifyHash_UnknownIDErrors(t *testing.T) {
 	}
 }
 
-// The catalogue is mutable across the plan (Task 5 populated pcm_sha256 for
-// every current ref; Task 7 will add status refs that carry none by
-// construction). Hardcoding an id here would rot every time the data
-// changes, so this searches for a live example of the "no recorded hash"
-// state and skips when the catalogue currently has none.
+// Searches for a live "no recorded hash" entry instead of hardcoding an id that would rot, and skips when there is none.
 func TestVerifyHash_NoRecordedHashVerifiesVacuously(t *testing.T) {
 	c, err := Catalogue()
 	if err != nil {
@@ -119,11 +113,7 @@ func TestVerifyHash_NoRecordedHashVerifiesVacuously(t *testing.T) {
 	}
 }
 
-// This is the branch that actually matters today: a ref WITH a recorded
-// hash must accept the matching hash and reject a wrong one. Unlike the
-// vacuous-pass test above, this doesn't depend on any particular catalogue
-// state beyond "at least one ref has a pcm_sha256" — true today and for the
-// rest of the plan, so it can't rot the way the hardcoded-id version did.
+// Needs only that some ref has a pcm_sha256, so it cannot rot with the data.
 func TestVerifyHash_RealRecordedHash_MatchAndMismatch(t *testing.T) {
 	c, err := Catalogue()
 	if err != nil {
@@ -148,10 +138,7 @@ func TestVerifyHash_RealRecordedHash_MatchAndMismatch(t *testing.T) {
 	}
 }
 
-// The public VerifyHash always vacuously passes today, because none of the
-// 5 catalogue.json refs carry a pcm_sha256 yet (Task 5 populates it). The
-// mismatch branch is exercised directly against verifyRefHash with a
-// synthetic Ref instead of depending on that future data.
+// The mismatch branch on a synthetic Ref, independent of the catalogue's data.
 func TestVerifyHash_MismatchErrors(t *testing.T) {
 	r := Ref{ID: "fake-ref", PCMSHA256: "aaaa"}
 	if err := verifyRefHash(r, "bbbb"); err == nil {

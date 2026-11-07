@@ -66,12 +66,8 @@ func runVerify(w io.Writer, id string) error {
 			bad++
 			continue
 		}
-		// wavref.VerifyHash returns nil both when the hash matched AND when
-		// the ref carries no recorded pcm_sha256 (it short-circuits — see
-		// internal/wavref/resolve.go verifyRefHash). Those are NOT the same
-		// outcome: one actually checked the audio, the other checked
-		// nothing. Distinguish them so "N ok" can't silently mean "N never
-		// hashed".
+		// VerifyHash returns nil both on a match and when the ref has no pcm_sha256, which checked nothing; told apart so
+		// "N ok" never means "N never hashed".
 		if r.PCMSHA256 == "" {
 			fmt.Fprintf(w, "ok       %s (no hash yet)\n", r.ID)
 			noHash++

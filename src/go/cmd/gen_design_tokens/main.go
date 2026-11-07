@@ -1,27 +1,6 @@
-// Command gen_design_tokens generates Go source for the UI design system
-// from DESIGN.md's YAML front matter. DESIGN.md is the source of truth;
-// this generator is the bridge to runtime Go code.
-//
-// Phase 0 scope: primitives only — colors, spacing, rounded, alpha. The
-// generator emits internal/ui/design_tokens.gen.go containing one
-// genXxx variable/constant per token. Phase 2 will add components, Phase 5
-// will add profile overrides.
-//
-// Validation strategy: a JSON Schema (scripts/gen_design_tokens/schema.json)
-// runs first on the parsed YAML — it catches missing required fields,
-// value-range violations, format/pattern errors, and unknown keys at the
-// schema level (with file path, JSON-pointer location, and rule name in
-// the error message). Then yaml.v3 strict decode (KnownFields(true))
-// re-validates that the typed Go shape can absorb the data without
-// surprises. The two layers complement each other: schema catches
-// authoring mistakes; KnownFields catches typed-decoder gaps.
-//
-// Usage:
-//
-//	go run ./cmd/gen_design_tokens -design DESIGN.md -out internal/ui/design_tokens.gen.go
-//
-// Wired by internal/ui/generate_design.go via //go:generate. Run via
-// `make gen-design-tokens` from the repo root.
+// Command gen_design_tokens generates the UI design system's Go source from DESIGN.md's front matter, the source of
+// truth. The JSON Schema runs first (authoring mistakes, located by JSON pointer), then a KnownFields(true) decode (typed
+// shape gaps). make gen-design-tokens, or go run ./cmd/gen_design_tokens -design DESIGN.md -out ...
 package main
 
 import (
@@ -45,19 +24,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// supportedSchemaVersion is the integer-string the YAML front matter must
-// carry. Bumping it (e.g. "1" → "2") is how a breaking schema change is
-// announced; old generators reject the new file with a clear error and
-// new generators reject old files. The original "alpha" string was a
-// pre-versioning placeholder and predates this contract.
+// A breaking schema change bumps it, and generator and file then reject each other with a clear error.
 const supportedSchemaVersion = "1"
 
 var frontMatterRE = regexp.MustCompile(`(?s)^---\n(.*?)\n---`)
 
-// designSpec mirrors the YAML front matter of DESIGN.md. Phase 0 cares only
-// about colors, spacing, rounded, alpha. The other top-level keys are
-// declared so KnownFields(true) doesn't reject them; their contents are
-// ignored until later phases.
+// Every top-level key is declared so KnownFields(true) does not reject the ones this decode ignores.
 type designSpec struct {
 	Version                   string    `yaml:"version"`
 	Name                      string    `yaml:"name"`
@@ -88,12 +60,8 @@ type keyVal struct {
 func main() {
 	designPath := flag.String("design", "DESIGN.md", "path to DESIGN.md (relative to working dir)")
 	schemaPath := flag.String("schema", "", "path to schema.json (defaults to scripts/gen_design_tokens/schema.json near DESIGN.md)")
-	// Defaults are relative to src/go (the documented working dir for every
-	// invocation: Makefile, //go:generate, and the doc-comment example all run
-	// from src/go). A "src/go/" prefix here would make a bare run from src/go
-	// resolve to src/go/src/go/internal/ui/... — a nested duplicate package
-	// that has the *.gen.go files but not design_types.go, so it fails to
-	// compile (undefined ComponentID/ComponentSpec) and breaks `go test ./...`.
+	// Relative to src/go, where every invocation runs: a "src/go/" prefix would resolve to a nested src/go/src/go/...
+	// package holding the .gen.go files without design_types.go, which breaks go test ./...
 	outPath := flag.String("out", "internal/ui/design_tokens.gen.go", "output for primitive tokens (relative to src/go)")
 	outComponentsPath := flag.String("out-components", "internal/ui/design_components.gen.go", "output for component specs (relative to src/go)")
 	outProfilePath := flag.String("out-profile", "internal/ui/design_profile.gen.go", "output for profile overrides (relative to src/go)")
@@ -110,11 +78,8 @@ func main() {
 		fail("read %s: %v", resolved, err)
 	}
 
-	// Schema validation runs FIRST: malformed YAML never reaches the
-	// typed unmarshal path. Errors here carry JSON-pointer locations
-	// like "(root).components.button-secondary.iconColor" so the
-	// authoring mistake is found at the offending field, not buried
-	// inside a downstream Go decode failure.
+	// FIRST, so malformed YAML is reported at its field ("(root).components.button-secondary.iconColor"), not as a Go
+	// decode failure downstream.
 	resolvedSchema, err := resolveSchemaPath(*schemaPath, resolved)
 	if err != nil {
 		fail("locate schema.json: %v", err)
@@ -153,8 +118,7 @@ func main() {
 		fail("%v", err)
 	}
 
-	// Validate alpha bucket count is small and known. Phase 2 will require
-	// every alpha reference in components to be one of these buckets.
+	// Components may reference only these buckets.
 	for _, kv := range alpha {
 		if _, err := strconv.Atoi(kv.Val); err != nil {
 			fail("alpha.%s = %q: not an integer", kv.Key, kv.Val)
@@ -199,10 +163,7 @@ func main() {
 		fail("write %s: %v", *outPath, err)
 	}
 
-	// Instrument color sequence → internal/templates (a package that cannot
-	// import internal/ui). Both the ui-side genInstrumentSequence (emitted by
-	// emitTokens above) and this templates-side slice are resolved from the
-	// SAME DESIGN.md instrumentSequence: block, so the two never drift.
+	// internal/templates cannot import internal/ui, so the sequence is emitted into both from the SAME DESIGN.md block.
 	if len(sequence) > 0 {
 		seqOut, err := emitTemplatesSequence(sequence)
 		if err != nil {
@@ -213,9 +174,6 @@ func main() {
 		}
 	}
 
-	// Phase 2: parse and emit components. Build a token resolver from
-	// already-parsed primitives so component fields like "{colors.X}" can
-	// be substituted with concrete RGBs / pixel values / alpha buckets.
 	resolver := newTokenResolver(colors, spacing, rounded, alpha)
 	components, err := parseComponents(&spec.Components, resolver)
 	if err != nil {
@@ -229,7 +187,6 @@ func main() {
 		fail("write %s: %v", *outComponentsPath, err)
 	}
 
-	// Phase 5a: profile overrides → design_profile.gen.go.
 	profiles, err := parseProfileOverrides(&spec.ProfileOverrides)
 	if err != nil {
 		fail("profileOverrides: %v", err)
@@ -242,8 +199,7 @@ func main() {
 		fail("write %s: %v", *outProfilePath, err)
 	}
 
-	// Audio-panel density tier → design_density.gen.go. Orthogonal to
-	// profile overrides — see densities.go for the design rationale.
+	// Density is orthogonal to profile overrides (see densities.go).
 	densities, err := parseDensities(&spec.Densities)
 	if err != nil {
 		fail("densities: %v", err)
@@ -284,15 +240,8 @@ func resolveDesignPath(p string) (string, error) {
 	return "", fmt.Errorf("not found walking up from %s", cwd)
 }
 
-// resolveSchemaPath locates schema.json and returns an absolute path.
-// If the caller passes a non-empty hint we use that directly (resolving
-// to absolute if needed). Otherwise we walk up from the resolved
-// DESIGN.md path looking for scripts/gen_design_tokens/schema.json —
-// this lets the generator be invoked from any working directory
-// (Makefile target, //go:generate, ad-hoc) without -schema flag
-// plumbing. Returning absolute is important: the gojsonschema
-// reference loader treats `file://` URIs literally and gets confused
-// by relative-looking paths.
+// resolveSchemaPath uses the hint, else walks up from DESIGN.md to scripts/gen_design_tokens/schema.json, so no
+// -schema flag is needed anywhere. Absolute because gojsonschema treats file:// URIs literally.
 func resolveSchemaPath(hint, designPath string) (string, error) {
 	resolveAbs := func(p string) (string, error) {
 		if filepath.IsAbs(p) {
@@ -329,16 +278,7 @@ func resolveSchemaPath(hint, designPath string) (string, error) {
 	return "", fmt.Errorf("schema.json not found near %s (looked for scripts/gen_design_tokens/schema.json)", startAbs)
 }
 
-// validateAgainstSchema parses the YAML front matter of body, converts
-// it to JSON, and validates against the JSON Schema at schemaPath.
-// Errors are reported with JSON-pointer field locations and the failing
-// schema rule, not just a generic "decode failed."
-//
-// We use yaml.v3 → map[string]interface{} → encoding/json round-trip
-// rather than gojsonschema's YAML loader (which doesn't exist) or a
-// dedicated YAML-to-JSON Schema validator (which would add another
-// dep). Round-trip cost is single-digit milliseconds for DESIGN.md;
-// negligible vs the rest of the generator's work.
+// A yaml.v3 → map → encoding/json round trip: gojsonschema has no YAML loader and another validator would be a dep.
 func validateAgainstSchema(body []byte, schemaPath string) error {
 	frontMatch := frontMatterRE.FindSubmatch(body)
 	if frontMatch == nil {
@@ -375,11 +315,7 @@ func validateAgainstSchema(body []byte, schemaPath string) error {
 	return fmt.Errorf("DESIGN.md violates schema (%s):\n%s", schemaPath, sb.String())
 }
 
-// normalizeForJSON converts yaml.v3's map[interface{}]interface{}
-// values into JSON-compatible map[string]interface{}. yaml.v3 actually
-// emits map[string]interface{} at the top level when keys are strings,
-// but nested mappings can still produce non-string keys depending on
-// document shape. This walks the tree once and rewrites them.
+// Nested yaml.v3 mappings can still carry non-string keys depending on document shape.
 func normalizeForJSON(in any) any {
 	switch v := in.(type) {
 	case map[any]any:
@@ -434,16 +370,12 @@ func parseScalarNode(n *yaml.Node, label string) ([]keyVal, error) {
 		if k.Kind != yaml.ScalarNode {
 			return nil, fmt.Errorf("DESIGN.md %s: non-scalar key at line %d", label, k.Line)
 		}
-		// For Phase 0 we only consume scalar leaves. Mapping leaves
-		// (typography roles, component recipes) are ignored here and
-		// surfaced in later phases.
+		// Only scalar leaves; mapping leaves are parsed elsewhere.
 		if v.Kind != yaml.ScalarNode {
 			continue
 		}
 		out = append(out, keyVal{Key: k.Value, Val: v.Value})
 	}
-	// Stable ordering: preserve YAML source order (already true above).
-	// Provide a deterministic fallback in case yaml.v3 ever reorders.
 	if !sort.SliceIsSorted(out, func(i, j int) bool {
 		return out[i].Key < out[j].Key
 	}) {
@@ -466,10 +398,8 @@ type intOut struct {
 	SrcKey string
 }
 
-// floatOut emits a float32 constant. Used for icon.stroke which is a
-// fractional logical-unit weight (e.g. 1.75) — pixel sizes round to int,
-// but stroke must preserve the fractional value or the per-render
-// proportional calc loses precision at small icon sizes.
+// float32 for icon.stroke: pixel sizes round to int, but a fractional stroke (1.75) must survive or small icons lose
+// precision.
 type floatOut struct {
 	Ident  string
 	Value  float64
@@ -486,12 +416,7 @@ type swatchOut struct {
 	SrcHex  string
 }
 
-// parseInstrumentSwatches parses the optional `instrumentSwatches:` block.
-// Returns nil if the block is absent (the YAML decoder leaves the Node in
-// its zero state). Each entry is a {name, hex} pair; both fields are
-// required. Schema-level validation already enforces the kebab-case
-// name pattern and #RRGGBB[AA] hex pattern, but we re-validate the hex
-// here to populate the parsed RGB values for the generator.
+// The hex is re-validated (the schema already checks it) to get the RGB values. Nil when the block is absent.
 func parseInstrumentSwatches(node *yaml.Node) ([]swatchOut, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -535,10 +460,7 @@ func parseInstrumentSwatches(node *yaml.Node) ([]swatchOut, error) {
 	return out, nil
 }
 
-// sequenceOut backs each entry in `instrumentSequence:`. Each entry resolves a
-// swatch name to its RGB, and carries both the bare `#RRGGBB` swatch hex (for
-// the ui-side color.RGBA emission) and the `#RRGGBBFF` form that the templates
-// package bakes verbatim into circuit JSON.
+// The bare #RRGGBB for the ui-side color.RGBA, and #RRGGBBFF, which the templates package bakes into circuit JSON.
 type sequenceOut struct {
 	Name    string
 	R, G, B uint8
@@ -546,10 +468,7 @@ type sequenceOut struct {
 	HexFF   string // "#RRGGBBFF" (opaque, for templates JSON)
 }
 
-// parseInstrumentSequence parses the optional `instrumentSequence:` block: an
-// ordered list of swatch names defining the canonical instrument color series.
-// Every name MUST resolve to a swatch declared in `instrumentSwatches:` so the
-// series stays single-sourced and provably on-palette. Returns nil if absent.
+// Every name must resolve to a declared swatch, so the series stays single-sourced and on-palette.
 func parseInstrumentSequence(node *yaml.Node, swatches []swatchOut) ([]sequenceOut, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -591,20 +510,14 @@ func identForSwatch(name string) string {
 	return "genInstrumentSwatch" + pascal(name)
 }
 
-// geometryOut backs each entry in `geometry:`. Generic float64 — the
-// generator emits one float64 constant per entry. If a future entry
-// needs a different type (int pixel size, uint8, etc.), introduce
-// per-key suffix conventions or a kind discriminator.
+// One float64 constant per entry.
 type geometryOut struct {
 	Ident  string
 	SrcKey string
 	Value  float64
 }
 
-// parseGeometry parses the optional `geometry:` block. Each entry is a
-// scalar number; schema enforces non-negative and the kebab-case key
-// pattern. Source order is preserved so generated output diffs mirror
-// DESIGN.md.
+// Source order is kept so the output diffs mirror DESIGN.md.
 func parseGeometry(node *yaml.Node) ([]geometryOut, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -644,10 +557,7 @@ func filterAnims(in []animationOut, kind string) []animationOut {
 	return out
 }
 
-// instrumentDefaultOut backs each entry in `instrumentDefaults:`. Same
-// shape as swatchOut but the Name carries the *instrument id* (matched
-// against import.go's instrument-name lookup) — distinct from the
-// curated swatch names which are just human aliases.
+// Name is the INSTRUMENT ID, unlike a swatch's human alias.
 type instrumentDefaultOut struct {
 	Ident   string
 	ID      string
@@ -656,10 +566,7 @@ type instrumentDefaultOut struct {
 	SrcHex  string
 }
 
-// parseInstrumentDefaults parses the optional `instrumentDefaults:` block.
-// Returns nil when absent. Each entry is `{id, color}` — the runtime
-// resolves a row's instrument id against this map, falling back to the
-// fallback palette if missing.
+// A row's instrument id missing here falls back to the fallback palette.
 func parseInstrumentDefaults(node *yaml.Node) ([]instrumentDefaultOut, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -731,14 +638,8 @@ type animationOut struct {
 	Factor     float64
 }
 
-// parseAnimations parses the optional `animations:` block. Each entry
-// has a `kind` discriminator and per-kind required fields:
-//   - exp-decay  → rate, threshold
-//   - sin-pulse  → frame-step, amplitude, base, [alpha-scale]
-//   - fade       → factor
-//
-// Schema-level validation already covers field ranges; this parser
-// enforces per-kind required fields and rejects unknown kinds.
+// Per-kind required fields (exp-decay: rate, threshold; sin-pulse: frame-step, amplitude, base, [alpha-scale];
+// fade: factor); unknown kinds are rejected. The schema already covers ranges.
 func parseAnimations(node *yaml.Node) ([]animationOut, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -835,9 +736,7 @@ func parseAnimations(node *yaml.Node) ([]animationOut, error) {
 	return out, nil
 }
 
-// parseInstrumentFallbackPalette parses the optional
-// `instrumentFallbackPalette:` block. Each entry is `{color}` (no
-// human label — the index IS the identity).
+// Each entry is {color}: the index is the identity.
 func parseInstrumentFallbackPalette(node *yaml.Node) ([]instrumentFallbackOut, error) {
 	if node == nil || node.Kind == 0 {
 		return nil, nil
@@ -877,9 +776,6 @@ func parseInstrumentFallbackPalette(node *yaml.Node) ([]instrumentFallbackOut, e
 	return out, nil
 }
 
-// emitTokens renders the primitives .gen.go output (colors, spacing,
-// rounded, icon, alpha, instrumentSwatches). Component emission lives in
-// emitComponents (components.go).
 func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatchOut, sequence []sequenceOut, defaults []instrumentDefaultOut, fallbacks []instrumentFallbackOut, animations []animationOut, geometry []geometryOut) ([]byte, error) {
 	colorOuts := make([]colorOut, 0, len(colors))
 	for _, kv := range colors {
@@ -962,11 +858,7 @@ func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatc
 	return formatted, nil
 }
 
-// emitTemplatesSequence renders the internal/templates-package source carrying
-// the canonical instrument color sequence as opaque `#RRGGBBAA` hex strings.
-// internal/templates cannot import internal/ui, so the series is emitted into
-// both packages from the SAME DESIGN.md instrumentSequence: block (see
-// emitTokens for the ui-side genInstrumentSequence).
+// internal/templates cannot import internal/ui, so the series is emitted into both from the SAME block.
 func emitTemplatesSequence(sequence []sequenceOut) ([]byte, error) {
 	const seqTemplate = `// Code generated by cmd/gen_design_tokens from DESIGN.md instrumentSequence:. DO NOT EDIT.
 
@@ -1008,11 +900,7 @@ func pxOuts(items []keyVal, ident func(string) string) ([]intOut, error) {
 	return out, nil
 }
 
-// iconOuts splits the icon: block into integer keys (grid/padding/radius)
-// and the fractional `stroke` key. The schema enforces presence of all
-// four, so the generator simply routes each known key to the right
-// output bucket. Unknown keys become an error so a typo (e.g.
-// `radius_default: 2`) is caught at generation time.
+// Unknown keys are an error, so a typo (radius_default: 2) is caught at generation.
 func iconOuts(items []keyVal) ([]intOut, []floatOut, error) {
 	ints := make([]intOut, 0, 3)
 	floats := make([]floatOut, 0, 1)
@@ -1054,9 +942,7 @@ func parsePx(raw string) (int, error) {
 	return strconv.Atoi(s)
 }
 
-// Identifier conversion: kebab-case → PascalCase with a "gen" prefix.
-// e.g. "primary-bright" → "genColorPrimaryBright". The prefix flags the
-// symbol as generated so future readers immediately know not to hand-edit it.
+// The "gen" prefix ("primary-bright" → genColorPrimaryBright) marks a symbol as generated: never hand-edit it.
 
 func identForColor(key string) string   { return "genColor" + pascal(key) }
 func identForSpacing(key string) string { return "genSpacing" + pascal(key) }
@@ -1075,9 +961,7 @@ func pascal(s string) string {
 	return strings.Join(parts, "")
 }
 
-// writeIfChanged writes content to path only if it differs from the
-// existing file. Keeps mtime stable when the generator is a no-op (which
-// matters for build cache invalidation).
+// A no-op keeps mtime stable, which build-cache invalidation depends on.
 func writeIfChanged(path string, content []byte) error {
 	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, content) {
 		return nil

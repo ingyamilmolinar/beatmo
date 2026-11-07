@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestShippedWasmIsAReleaseBuild pins that the WASM beatmo.io serves is built
-// with the `release` tag, so the developer-only surfaces (the Chain tab, the
-// low-level synth controls) are hidden there (internal/ui/devtools.go). The
-// code stays in the binary; only the release/dev build file differs.
+// The shipped WASM is a release build, so the developer-only surfaces are hidden on beatmo.io (still compiled in).
 func TestShippedWasmIsAReleaseBuild(t *testing.T) {
 	root := repoRoot(t)
 	tags := shippedWasmTags(t, root)
