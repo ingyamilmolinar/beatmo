@@ -79,7 +79,8 @@ def rel(path):
 def main():
     data = {}
     if len(sys.argv) == 3 and sys.argv[1] == "--from":
-        for name, _, _, _ in CONFIGS:
+        names = sorted(f[:-len(".files.json")] for f in os.listdir(sys.argv[2]) if f.endswith(".files.json"))
+        for name in names:
             with open(os.path.join(sys.argv[2], name + ".files.json")) as f:
                 files = json.load(f)
             with open(os.path.join(sys.argv[2], name + ".issues.json")) as f:
