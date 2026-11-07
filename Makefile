@@ -662,6 +662,8 @@ test: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio
 	$(MAKE) gograph-test
 	$(MAKE) js-audit
+	$(MAKE) test-comment-census
+	$(MAKE) comment-census ARGS=--check
 
 # Native only (-race cannot instrument js/wasm). Excluded: single-threaded numeric suites and the huge ui/timeline
 # suites, which take 15-20 min under -race and add no goroutine coverage. RACE_EXCLUDE= widens it.

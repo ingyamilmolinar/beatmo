@@ -36,6 +36,9 @@ jobs:
       # A typed id or enum handed to syscall/js panics in the browser only; nothing native can see it.
       - name: JS bridge audit
         run: cd scripts/jsaudit && go test ./... && go run . "$GITHUB_WORKSPACE/src/go" ./...
+      # CLAUDE.md's comment policy: blocks of at most 3 lines and no history markers.
+      - name: Comment policy
+        run: make test-comment-census && make comment-census ARGS=--check
 
   lint:
     name: Lint
