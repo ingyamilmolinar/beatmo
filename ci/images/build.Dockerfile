@@ -49,6 +49,7 @@ ENV GOTOOLCHAIN=local \
     PATH=/usr/local/go/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN mkdir -p /cache && chmod 1777 /cache
 
-# Tools the tests shell out to; last so adding one keeps every layer above cached.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# Tools the tests (ffmpeg) and actions/cache (zstd) shell out to; last, so
+# adding one keeps every layer above cached.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg zstd \
  && rm -rf /var/lib/apt/lists/*

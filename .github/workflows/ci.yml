@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GOLANGCI_LINT_CACHE: /cache/golangci-lint
+
 # Every job but `images`, `browser-matrix` and `verdict` runs inside the pinned
 # image (ci/versions.env), and every step is a make target that runs the same
 # way natively and under `make dev`.
@@ -42,6 +45,15 @@ jobs:
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make ci-build
 
   lint:
@@ -52,6 +64,15 @@ jobs:
     container: ${{ needs.images.outputs.browser }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make lint
 
   test-go:
@@ -62,6 +83,15 @@ jobs:
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-go-tagged COVER=1
       - if: always()
         run: make coverage-summary
@@ -80,6 +110,15 @@ jobs:
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-audio-real
 
   test-real-go:
@@ -90,6 +129,15 @@ jobs:
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-real-go
 
   test-race:
@@ -100,6 +148,15 @@ jobs:
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-race
 
   # gcov line coverage of our own C DSP sources (miniaudio excluded) via the
@@ -112,6 +169,15 @@ jobs:
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make coverage-c-check COVERAGE_C_XVFB=1
       - if: always()
         run: make coverage-summary
@@ -137,6 +203,15 @@ jobs:
       BEATMO_WAV_REFS: ${{ github.workspace }}/../wav-refs
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make refs-ci
 
   browser-matrix:
@@ -163,6 +238,15 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-browser-batch TESTS="${{ matrix.tests }}"
 
   # The one required check: shard and batch counts can change without touching
