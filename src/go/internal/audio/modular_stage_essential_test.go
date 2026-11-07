@@ -8,14 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// modular_stage_essential_test.go pins the contract behind the Synth-tab
-// "grey out the disable pill for a stage the sound can't exist without" fix:
-// StageDisableSilences reports whether disabling a pipeline stage would leave
-// the instrument with NO sound source (it is the sole generator). Only a
-// generator gate (osc/kick) can silence, and only when nothing else is audible;
-// every processor/shaper stage (filter, env, lfo, drive, …) is always safely
-// bypassable.
-
 func TestStageDisableSilences_Matrix(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -34,8 +26,7 @@ func TestStageDisableSilences_Matrix(t *testing.T) {
 		{"osc off, gen-bank voice (organ) is disableable", roster.OrganChurch, "osc_enabled", false},
 		{"osc off, bespoke voice (snare) is disableable", roster.Snare, "osc_enabled", false},
 
-		// Every PROCESSOR stage on the sole-osc FM bass is always bypassable:
-		// its off-state is identity, never silence.
+		// Its off state is identity, never silence.
 		{"fm on FM bass is disableable", roster.BassFm, "fm_enabled", false},
 		{"env on FM bass is disableable", roster.BassFm, "env_enabled", false},
 		{"filter on FM bass is disableable", roster.BassFm, "filter_enabled", false},
@@ -59,10 +50,7 @@ func TestStageDisableSilences_Matrix(t *testing.T) {
 	}
 }
 
-// TestStageDisableSilences_OscOffIsInteractive — once the sole OSC generator is
-// already disabled, its pill must become interactive again so the user can turn
-// the sound back on. "Essential" describes an ENABLED sole source, never an
-// already-off one.
+// "Essential" describes an ENABLED sole source: an already-off one must stay interactive.
 func TestStageDisableSilences_OscOffIsInteractive(t *testing.T) {
 	const inst = "ess-osc-off"
 	_ = InstallInstrumentDocForTest(inst, roster.BassFm)
@@ -77,8 +65,7 @@ func TestStageDisableSilences_OscOffIsInteractive(t *testing.T) {
 	}
 }
 
-// TestStageDisableSilences_Robustness — empty / unknown args never report
-// essential (no pill should ever be locked by accident).
+// No pill may ever be locked by accident.
 func TestStageDisableSilences_Robustness(t *testing.T) {
 	if StageDisableSilences("", "osc_enabled") {
 		t.Error("empty instrument id must not be essential")

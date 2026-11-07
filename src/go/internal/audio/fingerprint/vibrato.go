@@ -17,21 +17,9 @@ type VibratoFingerprint struct {
 	Detected    bool    // band power > 3× noise floor AND ExtentCents > 2
 }
 
-// computeVibrato estimates vibrato parameters from a sustained window w,
-// given the nominal fundamental f0 and analysis config cfg.
-//
-// Algorithm:
-//  1. STFT (2048 / 512 hop) → per-frame F0 by parabolic interpolation in a
-//     ±10% window around f0.
-//  2. Convert F0 trajectory to cents about the median F0.
-//  3. Detrend the cents track (remove linear drift via OLS).
-//  4. Estimate RateHz by DFT of the detrended track restricted to 3–9 Hz.
-//  5. ExtentCents = (p95 − p5) / 2 of the cents track.
-//  6. Jitter = std(cycle periods) / mean(cycle periods) from zero-crossings.
-//  7. AMDepth = std(frameRMS) / mean(frameRMS) over the track.
-//  8. OnsetSec = first frame where a short rolling amplitude exceeds half the
-//     sustained amplitude of the cents oscillation.
-//  9. Detected = 3–9 Hz band power > 3× out-of-band noise floor AND ExtentCents > 2.
+// Per-frame F0 within ±10 % of f0 in cents about the median, detrended; rate from a 3–9 Hz DFT, extent (p95 − p5)/2,
+// jitter from zero-crossing periods, AM depth from frame RMS. Detected when the band power beats 3× the
+// out-of-band floor and extent exceeds 2 cents.
 func computeVibrato(w wave.Wave, f0 float64, cfg AnalysisConfig) VibratoFingerprint {
 	const windowSize = 2048
 	const hopSize = 512
@@ -187,9 +175,7 @@ func computeVibrato(w wave.Wave, f0 float64, cfg AnalysisConfig) VibratoFingerpr
 		}
 	}
 
-	// ---- ExtentCents = (p95 − p5) / 2 of the DETRENDED cents track ---------
-	// Using the detrended track removes slow frequency drift and FFT-bin
-	// quantization bias, preventing steady-tone extent inflation.
+	// On the DETRENDED track, so drift and bin quantisation cannot inflate a steady tone's extent.
 	detrendedSorted := make([]float64, len(detrended))
 	copy(detrendedSorted, detrended)
 	sort.Float64s(detrendedSorted)
@@ -315,8 +301,7 @@ func meanStd(vals []float64) (mean, std float64) {
 	return mean, std
 }
 
-// zeroCrossingPeriods finds positive-going zero-crossings in signal and
-// returns the time intervals (in seconds, using frameRate) between them.
+// Positive-going crossings, in seconds.
 func zeroCrossingPeriods(signal []float64, frameRate float64) []float64 {
 	var crossings []int
 	for i := 1; i < len(signal); i++ {

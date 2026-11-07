@@ -5,46 +5,18 @@ import (
 	"math"
 )
 
-// compare.go — turning two Measurements into a Delta.
-//
-// Measurement and comparison are deliberately separate concerns. A descriptor
-// declares WHAT it measures; Kind declares the scale it lives on; the
-// comparator here decides what "different" means on that scale. That
-// separation is what keeps the common case to a single declarative registry
-// row with no code, while still letting an exotic descriptor supply its own
-// Compare (the ring-T60 escalation being the first real case).
+// A descriptor declares WHAT it measures, Kind the scale, and the comparator what "different" means on it, which
+// keeps the common case one declarative row while an exotic descriptor supplies its own Compare.
 
-// Delta is the comparison of one descriptor between reference and synth.
-//
-// Norm is the cross-descriptor currency: it is scaled so that Norm >= 1 means
-// "at or past this descriptor's mismatch threshold" for EVERY descriptor,
-// whatever its Kind or Form. That is what makes a worst-offending-axes
-// ranking meaningful across a battery whose members are measured in seconds,
-// hertz, decibels and unitless fractions. It is a ranking aid ONLY — it is
-// never summed across axes into a composite, which is the failure mode
-// documented in 2026-08-22-verdict-to-metric-mapping.md.
+// Norm >= 1 means "at or past mismatch" for EVERY descriptor whatever its Kind or Form, which makes a cross-axis
+// worst-offender ranking meaningful. A ranking aid ONLY, never summed into a composite.
 type Delta struct {
 	Norm   float64 // scale-normalized magnitude; >=1 means at/past mismatch
 	Signed float64 // raw difference in the descriptor's own units (unsigned for vector/track reductions)
 
-	// Mag is the UNSIGNED magnitude this comparator weighed against drift and
-	// mismatch, expressed in the units those thresholds are DECLARED in, and
-	// MagOK says whether it means anything.
-	//
-	// It exists because that quantity is not recoverable from the other
-	// fields. Signed is the raw difference, which is only what gets compared
-	// for the absolute-delta kinds -- a KindSeconds axis is compared as a
-	// folded RATIO and a KindHz axis as a PERCENTAGE. Norm/mismatch looks
-	// like it recovers it, and does for every default path, but silently
-	// fails for a comparator that TRANSFORMS its thresholds: band.t60
-	// declares ratios and compares mean|log2|, so Norm x mismatch there is
-	// neither a ratio nor a log2. Threshold calibration
-	// (cmd/refs/calibrate_thresholds.go) needs the declared-unit magnitude
-	// exactly, so the comparator that knows the transform reports it rather
-	// than a downstream reader guessing.
-	//
-	// MagOK is false for the degenerate branches ("one side had no event at
-	// all") where Norm is a sentinel rather than a measurement.
+	// The UNSIGNED magnitude weighed against the thresholds, in the units they are DECLARED in. Signed is the raw
+	// difference, and Norm × mismatch fails for a comparator that transforms its thresholds (band.t60 compares
+	// mean|log2|), so calibration needs this exactly. MagOK is false where Norm is a sentinel.
 	Mag   float64
 	MagOK bool
 
@@ -55,33 +27,23 @@ type Delta struct {
 	NA        string // why, when !OK
 }
 
-// CompareByKind is the default comparator for k.
-//
-// Scalars dispatch to the classifier matching the kind. Vectors reduce to
-// mean absolute difference and tracks to RMS difference after length
-// alignment; both are already normalized magnitudes, so they are then
-// classified on the KindFraction scale regardless of the declared kind.
+// Vectors reduce to mean |Δ| and tracks to RMS after length alignment, then classify on the KindFraction scale.
 func CompareByKind(k Kind, ref, synth Measurement) Delta {
 	drift, mismatch := k.Thresholds()
 	return CompareWithThresholds(k, ref, synth, drift, mismatch)
 }
 
-// CompareWithThresholds is CompareByKind with explicit thresholds, for
-// descriptors whose Kind has no single natural scale (see Descriptor.Drift).
+// For descriptors whose Kind has no single natural scale.
 func CompareWithThresholds(k Kind, ref, synth Measurement, drift, mismatch float64) Delta {
-	// An unavailable measurement on either side propagates its reason. No
-	// verdict is asserted: "we could not measure this" is categorically
-	// different from "this matches".
+	// "We could not measure this" is categorically different from "this matches", so no verdict is asserted.
 	if !ref.OK {
 		return Delta{NA: ref.NA}
 	}
 	if !synth.OK {
 		return Delta{NA: synth.NA}
 	}
-	// The two sides must be the same SHAPE before any of them can be
-	// compared. Dispatching on ref.Form alone read synth.Scalar -- which is
-	// structurally zero for a vector -- and returned a confident verdict from
-	// a number that was never measured.
+	// Same SHAPE first: synth.Scalar is structurally zero for a vector, and would give a confident verdict on a number
+	// never measured.
 	if ref.Form != synth.Form {
 		return Delta{NA: fmt.Sprintf(
 			"form mismatch: reference measured as %s, synth as %s -- the same descriptor "+
@@ -98,9 +60,7 @@ func CompareWithThresholds(k Kind, ref, synth Measurement, drift, mismatch float
 	}
 }
 
-// compareScalar classifies a scalar pair on k's scale and renders it the way
-// cmd/refs/diagnose.go's formatDelta did: a ratio for durations, a signed
-// percentage for frequencies, a signed absolute delta otherwise.
+// A ratio for durations, a signed percentage for frequencies, a signed delta otherwise.
 func compareScalar(k Kind, ref, synth, drift, mismatch float64) Delta {
 	d := Delta{Signed: synth - ref, OK: true}
 
@@ -120,8 +80,7 @@ func compareScalar(k Kind, ref, synth, drift, mismatch float64) Delta {
 		d.Verdict, d.Direction = classifyHz(ref, synth, drift, mismatch)
 		if ref <= 0 {
 			d.Display = "n/a"
-			// A zero reference makes the percentage undefined; the verdict
-			// above already encodes "synth has energy where ref has none".
+			// A zero reference makes the percentage undefined; the verdict already says "synth has energy where ref has none".
 			if synth > 0 {
 				d.Norm = 1
 			}
@@ -133,9 +92,7 @@ func compareScalar(k Kind, ref, synth, drift, mismatch float64) Delta {
 		}
 
 	case KindRate:
-		// A signed rate: absolute delta, never a percentage. Rendered with
-		// enough precision to read a sign reversal (+57 -> -516) rather than
-		// a ratio that would be meaningless across zero.
+		// A signed rate is an absolute delta, never a percentage, which is meaningless across zero.
 		d.Verdict, d.Direction = classifyFraction(ref, synth, drift, mismatch)
 		d.Display = fmt.Sprintf("%+.4g", d.Signed)
 		d.Norm = math.Abs(d.Signed) / mismatch
@@ -150,9 +107,7 @@ func compareScalar(k Kind, ref, synth, drift, mismatch float64) Delta {
 	return d
 }
 
-// ratioNormAndDisplay renders a duration/ratio comparison. Mirrors
-// formatDelta's seconds branch exactly, including its "n/a" for a
-// non-positive value on either side.
+// "n/a" for a non-positive value on either side.
 func ratioNormAndDisplay(k Kind, ref, synth, mismatchRatio float64) (norm float64, display string) {
 	if ref <= 0 || synth <= 0 {
 		if ref <= 0 && synth <= 0 {
@@ -178,37 +133,15 @@ func ratioNormAndDisplay(k Kind, ref, synth, mismatchRatio float64) (norm float6
 	return norm, display
 }
 
-// compareReduced classifies an already-reduced, unsigned magnitude (a vector
-// or track difference). Direction is meaningless for a multi-component
-// reduction — "the profile differs" has no single sign — so it is deliberately
-// left empty rather than invented.
-//
-// The thresholds are the DESCRIPTOR'S, in the vector's own units, because a
-// reduction is a magnitude in those units: mean|Δ| over a centroid trajectory
-// is hertz, over a piano stretch curve is cents, over a band-energy profile is
-// a unit fraction. Hardcoding KindFraction's 0.05/0.15 here made every
-// non-fraction vector permanently red -- two centroid trajectories 45 Hz apart
-// scored MISMATCH with Norm=300 -- and silently discarded the Drift/Mismatch
-// overrides Descriptor advertises for exactly this case.
-//
-// A descriptor that declares no overrides still lands on its Kind's defaults,
-// so unit-fraction profiles behave exactly as before.
+// Direction is meaningless for a multi-component reduction, so it is left empty. The thresholds are the
+// DESCRIPTOR'S, in the vector's own units (Hz, cents, fractions): KindFraction's defaults made every non-fraction
+// vector permanently red. No overrides means the Kind's defaults.
 func compareReduced(mag float64, label string, drift, mismatch float64) Delta {
 	return reducedDeltaDisplay(mag, fmt.Sprintf("%s %.3f", label, mag), drift, mismatch)
 }
 
-// reducedDeltaDisplay is compareReduced for a comparator that has ALREADY
-// formatted its own display string, value included.
-//
-// compareReduced appends "%.3f" of the magnitude to whatever label it is
-// given, which is right for the generic "mean|Δ|" / "rms|Δ|" reductions whose
-// label is a bare operator name. It is wrong for a comparator that formats
-// the quantity itself, in its own units and its own precision: band.t60's
-// "mean 2.43x (worst 4k 6.52x)" came out as
-// "mean 2.43x (worst 4k 6.52x) 1.280", printing two different renderings of
-// the same number side by side and inviting the reader to treat the trailing
-// one as a separate quantity. Such a comparator passes its finished string
-// here and it is used verbatim.
+// For a comparator that formats its own value: appending the magnitude would print the same quantity twice in two
+// renderings.
 func reducedDeltaDisplay(mag float64, display string, drift, mismatch float64) Delta {
 	if mismatch <= 0 {
 		drift, mismatch = KindFraction.Thresholds()
@@ -231,10 +164,7 @@ func reducedDeltaDisplay(mag float64, display string, drift, mismatch float64) D
 	}
 }
 
-// reduceVector returns the mean absolute difference over the overlapping
-// prefix of a and b. Comparing only the overlap (rather than zero-padding)
-// avoids manufacturing divergence from a length difference that is an
-// analysis-configuration artifact rather than a property of the signals.
+// Only the overlapping prefix: zero-padding would manufacture divergence from an analysis-config length difference.
 func reduceVector(a, b []float64) float64 {
 	n := min(len(a), len(b))
 	if n == 0 {
@@ -247,10 +177,7 @@ func reduceVector(a, b []float64) float64 {
 	return sum / float64(n)
 }
 
-// reduceTrack returns the RMS difference between two time series after
-// resampling the shorter onto the longer's length by nearest neighbour. Two
-// recordings of the same gesture at different hop rates must compare as
-// similar, not as a length mismatch.
+// Nearest-neighbour resampled to the longer length: the same gesture at two hop rates must compare as similar.
 func reduceTrack(a, b []float64) float64 {
 	if len(a) == 0 || len(b) == 0 {
 		return 0
@@ -264,8 +191,7 @@ func reduceTrack(a, b []float64) float64 {
 	return math.Sqrt(sum / float64(n))
 }
 
-// sampleAt reads src as if it had been resampled to length n, by nearest
-// neighbour. src must be non-empty.
+// src must be non-empty.
 func sampleAt(src []float64, i, n int) float64 {
 	if len(src) == n {
 		return src[i]

@@ -21,38 +21,27 @@ type Instrument interface{ NewVoice(int) Voice }
 
 var insts = []instrument.ID{roster.Snare, roster.Kick, roster.Hihat, roster.Tom, roster.Clap}
 
-// testSampleRate backs the stub SampleRate(). Defaults to 44100 to match the
-// pre-existing hardcoded stub value; mutate only via SetSampleRateForTest so
-// every test gets a restore closure instead of leaking the override.
+// Mutated only through SetSampleRateForTest, so every override comes with a restore.
 var testSampleRate int32 = 44100
 
-// SampleRate returns the audio output sample rate (stub returns 44100 by
-// default for tests; overridable via SetSampleRateForTest).
 func SampleRate() int {
 	return int(atomic.LoadInt32(&testSampleRate))
 }
 
-// SetSampleRateForTest overrides the stub sample rate for the duration of a
-// test and returns a restore closure. Test-only (guarded by the `test` build
-// tag) — never mutate this without a restore, or the override leaks into
-// unrelated tests run later in the same process.
+// Without the restore the override leaks into later tests in the process.
 func SetSampleRateForTest(sr int) func() {
 	prev := atomic.LoadInt32(&testSampleRate)
 	atomic.StoreInt32(&testSampleRate, int32(sr))
 	return func() { atomic.StoreInt32(&testSampleRate, prev) }
 }
 
-// EmitReport identifies a voice's first-emitted block. Exported so the UI
-// package can drain into a []audio.EmitReport. Test-build stub — mirrors the
-// desktop type in engine_clock_probe.go; the ring is not implemented under
-// -tags test (no real mixer loop to produce reports).
+// The ring is not implemented under -tags test: no mixer loop produces reports.
 type EmitReport struct {
 	Row, Abs int
 	DevPos   int64
 }
 
-// DeviceClockSnapshot is a no-op stub under -tags test: no real mixer clock
-// exists, so it always reports unavailable.
+// No mixer clock exists under -tags test.
 func DeviceClockSnapshot() (int64, float64, bool) { return 0, 0, false }
 
 // DrainEmitReports is a no-op stub under -tags test: always empty.
@@ -72,8 +61,7 @@ func Register(id instrument.ID, inst Instrument) {
 	registerStub(id)
 }
 
-// Unregister removes a runtime-registered instrument id from the stub set (the
-// inverse of Register). No-op if absent.
+// No-op if absent.
 func Unregister(id instrument.ID) {
 	found := false
 	out := insts[:0]
@@ -102,10 +90,7 @@ func RegisterWAV(id instrument.ID, path string) error {
 
 func SelectWAV() (string, error) { return "dummy.wav", nil }
 
-// Play is a stub used during tests to avoid initializing audio devices.
-// Records the trigger timestamp so tests can verify the UI's trigger-
-// pulse pipeline (Phase 4 audio-panel redesign) without instantiating
-// a real oto context.
+// Records the trigger so tests can drive the UI's trigger-pulse pipeline without an audio device.
 func Play(id instrument.ID, when ...float64) { RecordVoiceTrigger(id) }
 
 // PlayVol is a stub used during tests for volume-controlled playback.
@@ -145,8 +130,6 @@ func Now() float64 {
 	return 0
 }
 
-// SetNowForTest overrides audio.Now() to return values from fn.
-// Returns a restore function.
 func SetNowForTest(fn func() float64) func() {
 	old := nowOverride
 	nowOverride = fn
@@ -162,9 +145,7 @@ func Close() {}
 // Reset is a stub used during tests.
 func Reset() { resetChannels() }
 
-// bpmFunc holds the test BPM hook. It is stored atomically because SetBPM is
-// invoked from Game.Update goroutines while tests swap the hook (and restore
-// it in a defer) from the test goroutine — a plain package var raced there.
+// Atomic: SetBPM runs from Game.Update goroutines while tests swap and restore the hook.
 var bpmFunc atomic.Pointer[func(int)]
 
 func init() {
@@ -178,8 +159,7 @@ func SetBPM(bpm int) {
 	}
 }
 
-// BPMFuncForTest returns the currently installed BPM hook. Tests use it to
-// capture the previous hook before overriding via SetBPMFuncForTest.
+// To capture the previous hook before overriding it.
 func BPMFuncForTest() func(int) {
 	if fp := bpmFunc.Load(); fp != nil {
 		return *fp
@@ -217,8 +197,7 @@ type AnalyzerSnapshot struct {
 	Waveform  []float64
 }
 
-// NewAnalyzer creates an analyzer with the requested window size. The size is
-// rounded to the nearest power-of-two between 64 and 8192.
+// Rounded to the nearest power of two in [64, 8192].
 func NewAnalyzer(window int) *Analyzer {
 	if window < 64 {
 		window = 64
@@ -275,8 +254,7 @@ func (a *Analyzer) ProcessBlockBuf(in, out []float32, samples int) {
 
 func (a *Analyzer) Snapshot() AnalyzerSnapshot { return a.snapshot() }
 
-// Reset zeros the retained waveform/RMS/peak so the next snapshot reads flat
-// (stub mirror of the native Analyzer.Reset). See the native docstring.
+// So the next snapshot reads flat.
 func (a *Analyzer) Reset() {
 	if a == nil {
 		return
@@ -375,9 +353,7 @@ func (s *silenceProcessor) ProcessBlockBuf(in, out []float32, samples int) {
 
 // biquad and makeBiquad are defined in biquad.go (shared across all build tags).
 
-// bandProcessor handles one frequency band in the parallel multiband processor.
-// Uses 4th-order Linkwitz-Riley crossovers (two cascaded Butterworth stages)
-// for -24dB/octave rolloff and better band isolation.
+// 4th-order Linkwitz-Riley crossovers (two cascaded Butterworths): -24 dB/oct and better band isolation.
 type bandProcessor struct {
 	lowCut1  *biquad // First highpass stage at loHz (nil for band 0)
 	lowCut2  *biquad // Second highpass stage for LR4 cascade
@@ -387,8 +363,6 @@ type bandProcessor struct {
 	muted    bool    // If true, output 0
 }
 
-// multibandProcessor splits input into separate frequency bands using crossover filters,
-// processes each band independently, then recombines them.
 type multibandProcessor struct {
 	bands []bandProcessor
 }
@@ -510,15 +484,8 @@ func newMultibandProcessor(sampleRate int, bands []EQBand) *multibandProcessor {
 	return &multibandProcessor{bands: procs}
 }
 
-// NewEQProcessor creates an EQ processor for the given bands.
-//
-// WARNING (test stub behavior): Under the `test` build tag, this returns a
-// gainProcessor (simple amplitude scaling) or silenceProcessor, NOT real biquad
-// filters. Tests that need actual frequency filtering must use makeBiquad()
-// directly and pass it to SetChannelProcessors() — the *biquad type satisfies
-// the Processor interface. The multibandProcessor and silenceProcessor DO work
-// in stub mode (for band muting tests). Desktop-only mixer tests (!test build
-// tag) get the real eqProcessor with biquad chains.
+// Under -tags test this is a gainProcessor or silenceProcessor, NOT a biquad: tests needing real filtering pass
+// makeBiquad() to SetChannelProcessors. The multiband and silence processors work (band-mute tests).
 func NewEQProcessor(sampleRate int, bands ...EQBand) Processor {
 	// Check if all bands are muted - if so, output complete silence
 	allMuted := len(bands) > 0
@@ -586,17 +553,12 @@ func ExportService() *scopeexport.Service { return nil }
 // EnableScopeExport is a no-op in test builds.
 func EnableScopeExport() {}
 
-// AnalyzerBridgeStats returns zero counters in test builds; the real
-// counters live behind the WASM bridge in analyzer_wasm.go.
 func AnalyzerBridgeStats() (calls, elementReads uint64) { return 0, 0 }
 
 // ResetAnalyzerBridgeStats is a no-op in test builds.
 func ResetAnalyzerBridgeStats() {}
 
-// ChannelAnalyzerMetrics returns the scalar fields of the latest
-// snapshot. In test builds we route through ChannelAnalyzerSnapshot so
-// existing fixtures keep working; the WASM build uses a dedicated path
-// that skips the per-element JS array readback.
+// Through ChannelAnalyzerSnapshot so fixtures keep working.
 func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active bool) {
 	s := ChannelAnalyzerSnapshot(id)
 	clips = s.ClipCount
@@ -606,14 +568,7 @@ func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active
 
 var analyzerRegistryStub = map[channel.ID]*Analyzer{}
 
-// eqRecord, lastSetEQ, LastSetEQ — moved to eq_state.go so the test build
-// and the native build share one implementation. Phase 5 of the synthesis
-// remediation plan also added recordChannelEQ + lookupChannelEQ for the
-// per-channel EQ storage that effect_chain.go now reads.
-
-// Per-id call counters for the three analyser-enable entry points. Used by
-// tests to assert the Chn-tab analyser-enable contract (every per-instrument
-// channel needs synth + preEQ + channel analysers, mirroring "main").
+// Every per-instrument channel needs the synth, pre-EQ and channel analysers, as "main" does.
 var (
 	analyserEnableMu         sync.Mutex
 	channelAnalyzerEnableCnt = map[channel.ID]int{}
@@ -621,8 +576,7 @@ var (
 	synthAnalyzerEnableCnt   = map[channel.ID]int{}
 )
 
-// ResetAnalyserEnableCounts zeroes every analyser-enable counter. Tests call
-// this at the start of a case so the assertions describe a known window.
+// So assertions describe a known window.
 func ResetAnalyserEnableCounts() {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
@@ -637,35 +591,26 @@ func ResetAnalyserEnableCounts() {
 	}
 }
 
-// ChannelAnalyzerEnableCount returns how many times EnableChannelAnalyzer
-// has been called for id since the last reset.
 func ChannelAnalyzerEnableCount(id channel.ID) int {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
 	return channelAnalyzerEnableCnt[id]
 }
 
-// PreEQAnalyzerEnableCount returns how many times EnablePreEQAnalyzer has
-// been called for id since the last reset.
 func PreEQAnalyzerEnableCount(id channel.ID) int {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
 	return preEQAnalyzerEnableCnt[id]
 }
 
-// SynthAnalyzerEnableCount returns how many times EnableSynthAnalyzer has
-// been called for id since the last reset.
 func SynthAnalyzerEnableCount(id channel.ID) int {
 	analyserEnableMu.Lock()
 	defer analyserEnableMu.Unlock()
 	return synthAnalyzerEnableCnt[id]
 }
 
-// EnableChannelAnalyzer mirrors the real build's idempotent wiring (see
-// analyzer_wiring.go): re-issuing it for an already-wired channel reuses the
-// existing analyzer instead of stacking another onto the chain. The enable
-// COUNTER still increments on every call — tests assert on how many times the
-// UI asked, which is independent of how many analyzers end up wired.
+// Re-issuing reuses the wired analyzer; the counter still counts every call, since tests assert on how often the UI
+// asked.
 func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
 	analyserEnableMu.Lock()
 	channelAnalyzerEnableCnt[id]++
@@ -706,10 +651,7 @@ func PreEQAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	return AnalyzerSnapshot{}
 }
 
-// EnableSynthAnalyzer is a no-op under -tags test (no WebAudio JS bridge,
-// no real per-stage analyser nodes). Returns nil to mirror the WASM signature.
-// The call is still counted so the Chn-tab contract test
-// (chain_tab_per_instrument_test.go) can assert it was invoked for the right id.
+// No JS bridge under -tags test; the call is still counted.
 func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer {
 	analyserEnableMu.Lock()
 	synthAnalyzerEnableCnt[id]++
@@ -735,8 +677,7 @@ func resetAnalyzers() {
 	preEQAnalyzerRegistryStub = map[channel.ID]*Analyzer{}
 }
 
-// ResetAllChannelAnalyzers zeros the retained frame of every wired channel and
-// pre-EQ analyzer without unregistering them (stub mirror of the native fn).
+// Without unregistering them.
 func ResetAllChannelAnalyzers() {
 	for _, an := range analyzerRegistryStub {
 		an.Reset()

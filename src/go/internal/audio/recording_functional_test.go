@@ -10,9 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestPlatformCapturePerInstrumentChannels verifies that per-instrument
-// channels returned by platformRecordingStop are injected into the
-// recording result alongside the master channel.
 func TestPlatformCapturePerInstrumentChannels(t *testing.T) {
 	// Save original callbacks and restore after test
 	origStart := platformRecordingStart
@@ -55,8 +52,7 @@ func TestPlatformCapturePerInstrumentChannels(t *testing.T) {
 		t.Error("platformRecordingStart was not called")
 	}
 
-	// Don't inject any Go-side capture data — simulate WASM mode
-	// where the Go mixer doesn't run.
+	// No Go-side capture: WASM mode, where the Go mixer does not run.
 
 	result, err := StopRecording()
 	if err != nil {
@@ -107,8 +103,6 @@ func TestPlatformCapturePerInstrumentChannels(t *testing.T) {
 	}
 }
 
-// TestPlatformCaptureDoesNotOverrideGoCapture verifies that when the Go
-// mixer captured data (desktop mode), platform capture data is ignored.
 func TestPlatformCaptureDoesNotOverrideGoCapture(t *testing.T) {
 	origStart := platformRecordingStart
 	origStop := platformRecordingStop
@@ -135,8 +129,7 @@ func TestPlatformCaptureDoesNotOverrideGoCapture(t *testing.T) {
 		t.Fatalf("StartRecording: %v", err)
 	}
 
-	// Inject Go-side capture data via the active pipeline (simulates the
-	// desktop mixer's Tap call on the audio thread).
+	// The desktop mixer's Tap on the audio thread.
 	pipe := pipelinePtr.Load()
 	if pipe == nil {
 		t.Fatal("pipelinePtr should not be nil during recording")
@@ -161,12 +154,8 @@ func TestPlatformCaptureDoesNotOverrideGoCapture(t *testing.T) {
 	}
 }
 
-// TestDesktopRecordingPathConfigurable verifies that BEATMO_RECORDINGS_DIR
-// env var controls the output directory, and the default path uses the
-// executable's working directory.
 func TestDesktopRecordingPathConfigurable(t *testing.T) {
-	// This test verifies the stub's contract matches expected behavior.
-	// Desktop functional tests for actual file I/O require the !test build.
+	// The stub's contract; real file I/O is tested in the !test build.
 	result := &RecordingResult{
 		Channels: []EncodedChannel{
 			{ID: "master", Name: "Master", Filename: "master.wav", Data: []byte{1, 2, 3}},

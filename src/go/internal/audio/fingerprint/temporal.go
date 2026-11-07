@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// TemporalFingerprint holds STFT-based temporal metrics that capture how
-// the spectrum evolves over time — key for distinguishing organic instruments
-// from static synthesized tones.
+// How the spectrum evolves over time: what separates organic instruments from static synthesized tones.
 type TemporalFingerprint struct {
 	NumFrames          int
 	CentroidMean       float64
@@ -22,11 +20,7 @@ type TemporalFingerprint struct {
 	VibratoDepthCents  float64
 }
 
-// computeTemporal builds the temporal fingerprint from w (sustain region) using
-// the given fundamental for harmonic tracking.
-//
-// Port of computeTemporalFingerprint from cmd/synth-analyze/main.go, adapted to
-// use wave.MagnitudeSpectrum for each STFT frame instead of a private FFT.
+// f0 drives the harmonic tracking.
 func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 	const windowSize = 2048
 	const hopSize = 512
@@ -43,10 +37,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 	}
 	analysis := w.Samples[skipSamples:]
 
-	// Compute STFT frames via wave.MagnitudeSpectrum.
-	// MagnitudeSpectrum returns n/2+1 bins; we use indices [0, half] where half=n/2.
-	// The reference uses half=windowSize/2=1024 bins; MagnitudeSpectrum gives 1025.
-	// We index up to half (exclusive upper bound) to match the reference exactly.
+	// MagnitudeSpectrum gives half+1 bins; only [0, half) are used.
 	half := windowSize / 2 // 1024 — matches reference's mag[:half]
 
 	var frames [][]float64
@@ -105,9 +96,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 	tf.CentroidRange = cMax - cMin
 	tf.CentroidSlope = olsSlope(xs, centroidTraj)
 
-	// ---- HarmonicFluxMean --------------------------------------------------
-	// Mean L1 norm of frame-to-frame magnitude difference, normalized by energy
-	// of the earlier frame.
+	// Normalised by the earlier frame's energy.
 	if numFrames >= 2 {
 		fluxSum := 0.0
 		fluxCount := 0
@@ -130,8 +119,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 		}
 	}
 
-	// ---- SpectralVariance --------------------------------------------------
-	// Mean spectrum across frames, then mean variance per bin across frames.
+	// The mean per-bin variance across frames.
 	meanSpec := make([]float64, half)
 	for _, mag := range frames {
 		for b, m := range mag {
@@ -150,9 +138,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 	}
 	tf.SpectralVariance = varSum / float64(numFrames*half)
 
-	// ---- PartialDecaySlopes -----------------------------------------------
-	// For each of the first 6 harmonics, find the bin nearest k*f0Hz,
-	// collect amplitude per frame, fit linear regression in dB/sec.
+	// The first 6 harmonics, each regressed in dB/s.
 	if f0 > 1 {
 		for k := 0; k < 6; k++ {
 			targetHz := f0 * float64(k+1)
@@ -175,10 +161,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 		}
 	}
 
-	// ---- Vibrato detection -------------------------------------------------
-	// Track the fundamental bin's instantaneous frequency per frame via
-	// parabolic interpolation of peak near f0Hz, yielding an f0 trajectory.
-	// Then DFT of that trajectory; look for a significant peak in 3–9 Hz.
+	// The fundamental's per-frame frequency, then a DFT of that trajectory for a significant 3–9 Hz peak.
 	if f0 > 1 && numFrames >= 8 {
 		searchBins := int(0.1*f0/binHz + 1) // ±10% of f0
 		if searchBins < 3 {
@@ -204,10 +187,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 					peakBin = b
 				}
 			}
-			// Parabolic interpolation (concave-down guard).
-			// denom = alpha - 2*beta + gamma < 0 for a true local maximum.
-			// If denom >= 0 the parabola is concave-up (not a proper peak);
-			// fall back to the integer bin in that case.
+			// Concave-up (denom >= 0) is not a true peak: the integer bin instead.
 			if peakBin > 0 && peakBin < half-1 {
 				alpha, beta, gamma := mag[peakBin-1], mag[peakBin], mag[peakBin+1]
 				denom := alpha - 2*beta + gamma
@@ -229,8 +209,6 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 			}
 		}
 
-		// DFT of f0 trajectory to find vibrato rate.
-		// Frame rate = sr / hopSize.
 		frameRate := float64(sr) / float64(hopSize)
 
 		// Remove mean (DC).
@@ -261,8 +239,7 @@ func computeTemporal(w wave.Wave, f0 float64) *TemporalFingerprint {
 			}
 		}
 
-		// Compute max power at a non-vibrato frequency for significance test.
-		// Check 1-2 Hz (below vibrato range) for comparison.
+		// 1–2 Hz, below the vibrato range, is the significance reference.
 		noisePow := 0.0
 		for hz := 1.0; hz <= 2.0; hz += 0.1 {
 			re, im := 0.0, 0.0

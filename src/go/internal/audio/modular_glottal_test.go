@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// osc_type 12 (glottal) must render non-silent, finite, and differ from both
-// saw (osc_type 1) and sine (osc_type 0) — the latter comparison is what
-// makes this genuinely RED before the wavetable is wired: osc_type 12
-// currently falls through modular_table_for's default case to the sine
-// table, so a naive glottal-vs-saw-only diff check would pass by accident.
+// Also differs from sine, the table an unwired osc_type falls through to, so a saw-only check cannot pass by accident.
 func TestGlottalOsc_RendersDistinctFinite(t *testing.T) {
 	glottal := RecipeParams{"osc_type": 12, "osc_enabled": 1}
 	saw := RecipeParams{"osc_type": 1, "osc_enabled": 1}

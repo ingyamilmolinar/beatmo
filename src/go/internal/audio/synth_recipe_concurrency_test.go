@@ -9,16 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Phase-1 race-detector hammer on the param manager. Establishes that
-// concurrent SetInstrumentParam, GetInstrumentParams, ResetInstrumentParams,
-// SetInstrumentParams (bulk), and InstrumentDoc reads across many
-// goroutines do not produce a data race under `go test -race`.
-//
-// We do not exercise Play() here because that requires real engine wiring
-// that the -tags test build does not provide. The manager mutex is the only
-// shared state on the SetInstrumentParam path; the cache invalidation hook
-// is a no-op under -tags test. If a future regression introduces a lock
-// gap, -race will catch it here.
+// For `go test -race`: concurrent setters, getters, resets and document reads across goroutines. The manager mutex is
+// the only shared state on this path under -tags test.
 func TestSetInstrumentParamConcurrentHammer(t *testing.T) {
 	const goroutines = 8
 	const opsPerGoroutine = 4000
@@ -27,8 +19,7 @@ func TestSetInstrumentParamConcurrentHammer(t *testing.T) {
 	ids := []instrument.ID{roster.Snare, roster.Kick, roster.Hihat, roster.Clap, roster.Tom, roster.Cowbell}
 	params := []string{"pitch", "decay", "tone", "drive", "body", "brightness"}
 
-	// Pre-clear so leftover state from earlier tests doesn't bias allocation
-	// patterns under -race.
+	// So earlier tests' state does not bias allocation under -race.
 	for _, id := range ids {
 		ResetInstrumentParams(id)
 	}
@@ -66,9 +57,7 @@ func TestSetInstrumentParamConcurrentHammer(t *testing.T) {
 	}
 	wg.Wait()
 
-	// After the hammer, every instrument should be in a coherent state: the
-	// manager retained at most numInstruments entries (one per id), and each
-	// stored map must be safely readable (no torn writes).
+	// At most one entry per id, each safely readable (no torn writes).
 	for _, id := range ids {
 		got := GetInstrumentParams(id)
 		for _, v := range got {

@@ -1,21 +1,8 @@
 //go:build ignore
 
-// gen_instrument_ids.go reads the shipped instrument order from the instrument
-// documents' index (internal/assets/instruments/index.json — every shipped
-// instrument is a document) and generates instrument_ids_gen.go with
-// roster.All (= roster.All) that every platform file can reference.
-//
-// It also writes ../instrument/roster/roster_gen.go: one typed constant per
-// built-in (kick-808 -> roster.Kick808) and roster.All in index order, so a
-// renamed or removed instrument breaks the build of every place that names
-// it. Generation fails when two ids map to the same Go identifier.
-//
-// It also reads startup_demo.json and fails if the demo references any
-// instrument ID that is not shipped.
-//
-// Usage:
-//
-//	go run gen_instrument_ids.go
+// Generates roster.All and one typed constant per built-in (kick-808 -> roster.Kick808) from the documents' index, so a
+// renamed or removed instrument breaks every place that names it; fails on two ids mapping to one identifier, and
+// on a startup demo naming an unshipped id.
 package main
 
 import (
@@ -31,9 +18,6 @@ import (
 var idRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 func main() {
-	// The shipped instrument order is the instrument documents' index
-	// (internal/assets/instruments/index.json, spec 2026-10-04): every shipped
-	// instrument is a document, so there is no Go literal or table to scrape.
 	ids, err := readIndexIDs("../assets/instruments/index.json")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading the instrument index: %v\n", err)
@@ -112,8 +96,7 @@ func extractDemoInstrumentIDs(filename string) ([]string, error) {
 	return ids, nil
 }
 
-// rosterConstNames maps each id to its constant name: every "-"-separated
-// part capitalised and joined (kick-808 -> Kick808, fm-epiano -> FmEpiano).
+// kick-808 -> Kick808, fm-epiano -> FmEpiano.
 func rosterConstNames(ids []string) ([]string, error) {
 	reserved := map[string]bool{"All": true}
 	owner := make(map[string]string, len(ids))

@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// TestWholeSignalCoupling_PositiveOnBrightLoudSwell verifies WholeSignalCentroidRMSCorr:
-// a swell tone (louder=brighter over the whole note) must yield a positive macro corr;
-// a flat-spectrum tone must yield ~0.
 func TestWholeSignalCoupling_PositiveOnBrightLoudSwell(t *testing.T) {
 	w := synthBrightLoudTone(48000, 2.0, 440)
 	got := WholeSignalCentroidRMSCorr(w, DefaultAnalysisConfig())
@@ -20,9 +17,6 @@ func TestWholeSignalCoupling_PositiveOnBrightLoudSwell(t *testing.T) {
 	}
 }
 
-// TestCoupling_PositiveWhenBrightnessTracksLoudness verifies that
-// synthBrightLoudTone (where upper partials grow proportionally to loudness)
-// yields a high CentroidRMSCorr, while a static-spectrum tone yields ~0.
 func TestCoupling_PositiveWhenBrightnessTracksLoudness(t *testing.T) {
 	sr := 48000
 	coupled := synthBrightLoudTone(sr, 2.0, 440)
@@ -37,9 +31,6 @@ func TestCoupling_PositiveWhenBrightnessTracksLoudness(t *testing.T) {
 	}
 }
 
-// TestCoupling_BrightnessModDepth verifies that the coupled tone has higher
-// modulation depth than the flat tone (its centroid varies more relative to
-// its mean).
 func TestCoupling_BrightnessModDepth(t *testing.T) {
 	sr := 48000
 	coupled := synthBrightLoudTone(sr, 2.0, 440)
@@ -52,8 +43,6 @@ func TestCoupling_BrightnessModDepth(t *testing.T) {
 	}
 }
 
-// TestCoupling_SilentInput verifies that a zero (silent) wave returns the zero
-// DynamicCoupling struct without panicking.
 func TestCoupling_SilentInput(t *testing.T) {
 	sr := 48000
 	flat := synthTone(sr, 0.5, 440, []float64{0})
@@ -63,8 +52,6 @@ func TestCoupling_SilentInput(t *testing.T) {
 	}
 }
 
-// TestCoupling_ModRateHz verifies that BrightnessModRateHz is within [0, 15] Hz
-// for typical signals and is near-zero for a flat (non-modulated) tone.
 func TestCoupling_ModRateHz(t *testing.T) {
 	sr := 48000
 	flat := synthTone(sr, 2.0, 440, []float64{1, .5, .25})
@@ -72,8 +59,7 @@ func TestCoupling_ModRateHz(t *testing.T) {
 	if dc.BrightnessModRateHz < 0 || dc.BrightnessModRateHz > 15 {
 		t.Fatalf("mod rate %.2f Hz out of [0,15] range", dc.BrightnessModRateHz)
 	}
-	// A steady-spectrum flat tone must report ~0 modulation rate (not merely in
-	// range) — the significance guard in dominantFreq should suppress noise.
+	// ~0, not merely in range: the significance guard suppresses noise.
 	if dc.BrightnessModRateHz >= 1.0 {
 		t.Fatalf("flat tone BrightnessModRateHz=%.2f, want < 1.0 (significance guard should yield ~0)", dc.BrightnessModRateHz)
 	}

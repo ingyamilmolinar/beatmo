@@ -37,10 +37,7 @@ func TestSpectralConvergence_IdentityZero(t *testing.T) {
 	}
 }
 
-// TestLogSpectralDistance_IdentityZeroWithZeros pins the keystone identity
-// invariant Distance(fp,fp).Total==0 relies on: LSD(x,x) must be exactly 0 even
-// when x contains zero-valued bins (common at the low/high spectrum ends). The
-// eps floor is applied symmetrically to both arguments, so the ratio is 1.
+// Zero bins are common at the spectrum ends; the eps floor applies to both sides, so the ratio is 1.
 func TestLogSpectralDistance_IdentityZeroWithZeros(t *testing.T) {
 	x := []float64{0, 0, 1.5, 0, 42, 0, 0.001}
 	if d := LogSpectralDistance(x, x); d != 0 {

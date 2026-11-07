@@ -14,22 +14,16 @@ func init() {
 	}
 }
 
-// amplitudeForInstrument returns the amplitude scalar for the given instrument.
-// It is the document's render.amplitude (ConfigForInstrument).
 func amplitudeForInstrument(id instrument.ID) float32 {
 	return ConfigForInstrument(id).Amplitude
 }
 
-// normalizeAndScale applies peak normalization followed by amplitude scaling
-// to match the WASM audio processing pipeline in audio.js.
-// This ensures cross-platform audio parity.
+// Peak normalisation then amplitude, as audio.js does.
 func normalizeAndScale(buf []float32, instrumentID instrument.ID) {
 	normalizeAndScaleAmp(buf, amplitudeForInstrument(instrumentID))
 }
 
-// normalizeAndScaleAmp is normalizeAndScale with the amplitude given
-// directly — a document render must use ITS amplitude, never whatever is
-// registered under its id (a candidate document is never registered).
+// A document render uses ITS amplitude, never what is registered under its id: a candidate is never registered.
 func normalizeAndScaleAmp(buf []float32, amp float32) {
 	if env.BypassNormalize.Get() {
 		// Just apply amplitude scaling, no normalization
@@ -69,15 +63,13 @@ func normalizeAndScaleAmp(buf []float32, amp float32) {
 	applyFadeOut(buf)
 }
 
-// applyFadeOut applies a short exponential fade to the last portion of the buffer
-// to prevent clicks when the voice ends. Fades the last ~5ms to zero.
+// A short fade at the end so the voice never ends in a click.
 func applyFadeOut(buf []float32) {
 	if len(buf) == 0 {
 		return
 	}
 
-	// Fade duration: ~5ms at 44100Hz = ~220 samples
-	// Use a shorter fade for shorter buffers
+	// 5 % of the buffer within [64, 512] samples.
 	fadeSamples := len(buf) / 20 // 5% of buffer length
 	if fadeSamples < 64 {
 		fadeSamples = 64
@@ -98,8 +90,7 @@ func applyFadeOut(buf []float32) {
 	}
 }
 
-// ExportVoice returns a Voice for the given instrument ID, or nil if not found.
-// This is used for cross-platform audio comparison tests.
+// nil when not found.
 func ExportVoice(id instrument.ID, sampleRate int) Voice {
 	instMu.RLock()
 	inst, ok := instruments[id]
@@ -110,8 +101,6 @@ func ExportVoice(id instrument.ID, sampleRate int) Voice {
 	return inst.NewVoice(sampleRate)
 }
 
-// AmplitudeForInstrumentExport returns the amplitude for the given instrument ID.
-// This is exported for cross-platform comparison tests.
 func AmplitudeForInstrumentExport(id instrument.ID) float64 {
 	return float64(amplitudeForInstrument(id))
 }

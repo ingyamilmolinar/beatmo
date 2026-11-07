@@ -149,8 +149,7 @@ func defaultAssetsRootStub() string {
 	return "assets"
 }
 
-// defaultAssetsRoot mirrors the desktop helper for test/js builds so callers
-// like catalog_test can use a single name across build tags.
+// One name across build tags.
 func defaultAssetsRoot() string {
 	return defaultAssetsRootStub()
 }
@@ -211,11 +210,8 @@ func EnsureInstrumentLoaded(id instrument.ID) error {
 	return nil
 }
 
-// ResetCatalogForTest allows tests to inject a synthetic catalog. When
-// entries are provided, catalogOnce is left consumed so a subsequent
-// InitDefaultCatalog call is a no-op and does not clobber the injection.
-// When entries == nil, catalogOnce resets so the next InitDefaultCatalog
-// performs a fresh disk scan.
+// Injected entries leave catalogOnce consumed, so a later InitDefaultCatalog cannot clobber them; nil resets it for
+// a fresh scan.
 func ResetCatalogForTest(entries []SoundMeta) {
 	catalogMu.Lock()
 	catalog = entries
@@ -244,9 +240,7 @@ func registerCatalogStub(id instrument.ID) {
 	Register(id, nil)
 }
 
-// wavCategoryStub maps recognised top-level folder names to user-facing
-// category labels. Returns "" for unknown folders so callers can skip them
-// rather than surfacing a catch-all "Samples" bucket.
+// "" for unknown folders, so callers skip them rather than surfacing a catch-all bucket.
 func wavCategoryStub(cat string) string {
 	switch strings.ToLower(cat) {
 	case "snare":

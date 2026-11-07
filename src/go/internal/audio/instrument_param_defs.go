@@ -9,13 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// instrument_param_defs.go — the Synth tab's sub-project-1 adapter (spec §6):
-// the UI keeps reading []ParamDef, now derived per instrument from its
-// document. Replaced by module-grouped metadata in sub-project 3.
-
-// instrumentParamDef is the generic ParamDef for name, its range widened to
-// contain the instrument document's own value (a shipped value is never
-// clamped away by its knob).
+// Widened to contain the document's own value, so a shipped value is never clamped away by its knob.
 func instrumentParamDef(instrumentID instrument.ID, name string) ParamDef {
 	d, ok := modularSchemaDefIndex[name]
 	if !ok {
@@ -28,14 +22,7 @@ func instrumentParamDef(instrumentID instrument.ID, name string) ParamDef {
 	return d
 }
 
-// InstrumentParamDefs is the instrument's knob set: every modular ParamDef in
-// ABI order, Default = the document's value (FieldValues), ranges widened to
-// contain it, plus the seeded-fundamental log range and the family ranges the
-// recipe registry used to apply.
-//
-// READ-ONLY CONTRACT: the returned slice is cached per document revision and
-// shared across callers and frames (the Synth tab asks every Layout) — never
-// mutate it, exactly like the recipe registry's Params it replaces.
+// READ-ONLY: cached per document revision and shared across callers and frames (the Synth tab asks every Layout).
 func InstrumentParamDefs(instrumentID instrument.ID) []ParamDef {
 	if !HasInstrumentDoc(instrumentID) {
 		if _, ok := EnsureInstrumentDoc(instrumentID); !ok {
@@ -54,10 +41,8 @@ func InstrumentParamDefs(instrumentID instrument.ID) []ParamDef {
 	defs := make([]ParamDef, len(base))
 	copy(defs, base)
 	for i := range defs {
-		// A table-gated stage (MODAL / STRIKE / NOISE) with an empty table has
-		// no knobs: they would act on silence, and rows never come from the
-		// Synth tab. Hidden, not dropped — the schema stays one ParamDef per
-		// ABI field.
+		// Knobs over an empty table would act on silence, and rows never come from the Synth tab. Hidden, not dropped: one
+		// ParamDef per ABI field stays the schema.
 		if count, gated := tableGatedFields()[defs[i].Name]; gated && vals[count] <= 0 {
 			defs[i].Group = SynthHiddenGroup
 		}
@@ -70,8 +55,7 @@ func InstrumentParamDefs(instrumentID instrument.ID) []ParamDef {
 		defs[i].Default = v
 		defs[i].Min = math.Min(defs[i].Min, v)
 		defs[i].Max = math.Max(defs[i].Max, v)
-		// A seeded base pitch is the voice's own fundamental: a musical log
-		// range instead of the engine's 0..20 kHz (the knob-range rule for a seeded base pitch).
+		// A seeded base pitch gets a musical log range instead of the engine's 0..20 kHz.
 		if defs[i].Name == "voice_freq_hz" && v > 0 {
 			defs[i].Min = math.Min(VoiceFreqKnobMin, v)
 			defs[i].Max = math.Max(VoiceFreqKnobMax, v)
@@ -98,15 +82,12 @@ var (
 	baseDefs     []ParamDef
 )
 
-// baseModularParamDefs is ModularSynthParamDefs built once (it is a pure
-// function of the code, and building it allocates heavily).
+// A pure function of the code that allocates heavily, so built once.
 func baseModularParamDefs() []ParamDef {
 	baseDefsOnce.Do(func() { baseDefs = ModularSynthParamDefs() })
 	return baseDefs
 }
 
-// InstrumentDeclaresField reports whether a flat field belongs to a module the
-// instrument has (or could add) — FlatFieldDeclared over its flat view.
 func InstrumentDeclaresField(instrumentID instrument.ID, name string) bool {
 	if _, ok := InstrumentDoc(instrumentID); !ok {
 		return false
@@ -119,8 +100,6 @@ var (
 	tableGatedMap  map[string]string
 )
 
-// tableGatedFields maps every value / switch of a table-gated stage to the row
-// count that gates it.
 func tableGatedFields() map[string]string {
 	tableGatedOnce.Do(func() {
 		tableGatedMap = map[string]string{}
@@ -140,21 +119,12 @@ func tableGatedFields() map[string]string {
 	return tableGatedMap
 }
 
-// tableGatedStages are the stages that only mean something with table rows
-// (the WAV-clone MODAL / NOISEBAND tables, and STRIKE, which reweights the
-// MODAL rows): they are declared only when that table has rows — an empty one
-// would offer knobs over silence, and rows are never added from the Synth tab.
+// STRIKE reweights the MODAL rows. Declared only with rows: an empty table would offer knobs over silence.
 var tableGatedStages = map[string]string{"modal": "modal_count", "strike": "modal_count", "noiseband": "noiseband_count"}
 
-// FlatFieldDeclared is the Synth tab's ONE visibility rule (spec §6), read off
-// an instrument's flat view (FieldValues): stage values and switches are always
-// declared (an absent stage shows dimmed) — except a table-gated stage
-// (tableGatedStages), declared only with rows; the oscillator switch and selector
-// always; a source value only when the source type osc_type selects declares
-// it; a gen1_ field only when the layer type gen1_source (+ its variant
-// constants) selects declares it. Layer type constants (kick_enabled …) never;
-// slots 2..12 never. It replaces the family / oscillator-model / cymbal-modal /
-// kick-physical hide predicates, which encoded the same facts by hand.
+// The Synth tab's ONE visibility rule, read off the flat view: stage values always (an absent stage shows dimmed) except
+// table-gated stages without rows; a source or gen1_ field only when the selected type declares it; type constants
+// and slots 2..12 never.
 func FlatFieldDeclared(vals map[string]float64, name string) bool {
 	reg := BuiltinModuleRegistry()
 	declares := func(t *instrument.ModuleTypeDecl, field string) bool {
@@ -200,9 +170,7 @@ func FlatFieldDeclared(vals map[string]float64, name string) bool {
 					if c, known := vals[count]; known {
 						return c > 0
 					}
-					// A view without the derived row count (a schema's
-					// Defaults): InstrumentParamDefs already hid the stage's
-					// knobs when its table is empty.
+					// A view without the derived row count: InstrumentParamDefs already hid an empty table's knobs.
 				}
 				return true
 			}

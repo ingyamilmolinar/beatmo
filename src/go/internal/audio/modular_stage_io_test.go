@@ -7,17 +7,8 @@ import (
 	"testing"
 )
 
-// Per-stage input/output contract for the modular voice pipeline
-// (osc → [FM] → env → filter → drive/gain, src/c/modular.c).
-//
-// The per-stage enable bits double as TAPS: rendering with stage k disabled is
-// the stage's INPUT, with it enabled its OUTPUT — same upstream samples, same
-// C code path. Each test below measures the signal before/after exactly one
-// stage (spectral content via Goertzel, envelope via windowed RMS, exact
-// identity via SHA256) for deterministic simple waves of every generator type.
-//
-// Spectral tests disable the envelope so the wave is steady-state (no leakage
-// from amplitude shaping); biquad tests skip the filter's transient head.
+// The enable bits double as TAPS: stage k disabled is its INPUT, enabled its OUTPUT, same upstream samples. Spectral
+// tests bypass the envelope for a steady state; biquad tests skip the filter's transient head.
 
 // renderMP is the common render harness: 0.25s at 48 kHz.
 func renderMP(t *testing.T, p modularBlock) []float32 {
@@ -32,9 +23,7 @@ func renderMP(t *testing.T, p modularBlock) []float32 {
 
 const stageIOSampleRate = 48000
 
-// steadyWave returns params for a steady-state oscillator of the given type:
-// env/filter/drive all disabled so the generator output reaches the buffer
-// untouched. Base pitch is the engine's 220 Hz.
+// The generator reaches the buffer untouched.
 func steadyWave(oscType float64) modularBlock {
 	p := identityModularParams()
 	p.set("osc_type", oscType)
@@ -52,8 +41,7 @@ func f32to64(buf []float32) []float64 {
 	return out
 }
 
-// mag measures the Goertzel magnitude at freq over the steady tail of buf
-// (the first 4000 samples are dropped: filter/oscillator transients).
+// Skips the first 4000 samples: transients.
 func mag(buf []float32, freq float64) float64 {
 	tail := buf
 	if len(buf) > 4000 {
@@ -82,10 +70,7 @@ func windowRMS(buf []float32, lo, hi int) float64 {
 
 // ── Oscillator/generator stage: spectral signature per wave type ──────────
 
-// TestModularStageIO_WaveSignatures locks each generator's spectral identity
-// at the oscillator tap (everything downstream bypassed). Fundamental 220 Hz;
-// harmonic structure distinguishes the four band-limited shapes; the two
-// noise colors are distinguished by their low/high spectral tilt.
+// At the oscillator tap: harmonics tell the four shapes apart, spectral tilt the two noise colours.
 func TestModularStageIO_WaveSignatures(t *testing.T) {
 	const fund = 220.0
 
@@ -121,8 +106,7 @@ func TestModularStageIO_WaveSignatures(t *testing.T) {
 	})
 	t.Run("triangle", func(t *testing.T) {
 		f, h2, h3 := harmonicProfile(renderMP(t, steadyWave(3)))
-		// Ideal triangle: odd harmonics, h3 = fund/9 — present but much weaker
-		// than a square's f/3.
+		// Odd harmonics, h3 = fund/9: present but far weaker than a square's.
 		if h3 < 0.05*f || h3 > 0.2*f {
 			t.Errorf("triangle 3rd harmonic out of range: fund=%v h3=%v (want ≈f/9)", f, h3)
 		}
@@ -131,8 +115,7 @@ func TestModularStageIO_WaveSignatures(t *testing.T) {
 		}
 	})
 	t.Run("noise-tilt", func(t *testing.T) {
-		// Spectral tilt: average band magnitude low (80–140 Hz) vs high
-		// (7–8.5 kHz). White is flat (ratio ≈ 1); pink rises toward DC.
+		// 80–140 Hz vs 7–8.5 kHz: white is flat, pink rises toward DC.
 		band := func(buf []float32, freqs []float64) float64 {
 			var s float64
 			for _, fr := range freqs {
@@ -157,10 +140,6 @@ func TestModularStageIO_WaveSignatures(t *testing.T) {
 
 // ── Envelope stage: amplitude shaping before/after ────────────────────────
 
-// TestModularStageIO_EnvelopeStage compares the saw generator's raw output
-// (env bypassed = stage input) with the enveloped output (= stage output):
-// attack ramps the head up from silence, sustain holds ≈ sustain×input level,
-// and the bypassed signal stays flat across the note.
 func TestModularStageIO_EnvelopeStage(t *testing.T) {
 	in := steadyWave(1) // saw input
 	out := in.clone()
@@ -182,8 +161,7 @@ func TestModularStageIO_EnvelopeStage(t *testing.T) {
 		t.Errorf("bypassed envelope input is not flat: head=%v tail=%v", inHead, inTail)
 	}
 
-	// Output: the first 5ms sit inside the attack ramp → much quieter than the
-	// same window of the input.
+	// The first 5 ms sit inside the attack ramp.
 	atkWin := stageIOSampleRate / 200 // 5 ms
 	outAtk := windowRMS(outBuf, 0, atkWin)
 	inAtk := windowRMS(inBuf, 0, atkWin)
@@ -204,9 +182,6 @@ func TestModularStageIO_EnvelopeStage(t *testing.T) {
 
 // ── Filter stage: spectral shaping before/after ───────────────────────────
 
-// TestModularStageIO_FilterStage measures the saw's harmonics before (filter
-// bypassed) and after each filter type, asserting the pass/stop behavior of
-// LP, HP, and BP at the band edges.
 func TestModularStageIO_FilterStage(t *testing.T) {
 	const fund = 220.0
 	input := renderMP(t, steadyWave(1)) // saw, filter bypassed
@@ -255,9 +230,7 @@ func TestModularStageIO_FilterStage(t *testing.T) {
 
 // ── Drive stage: harmonic generation before/after ─────────────────────────
 
-// TestModularStageIO_DriveStage feeds a pure sine into the drive stage: the
-// bypassed input has no 3rd harmonic; tanh saturation must create one. The
-// output must stay bounded.
+// A pure sine has no 3rd harmonic; tanh must create one.
 func TestModularStageIO_DriveStage(t *testing.T) {
 	const fund = 220.0
 	in := steadyWave(0) // pure sine input
@@ -301,11 +274,7 @@ func TestModularStageIO_GainStage(t *testing.T) {
 
 // ── Bypass contract: a disabled stage's params have NO authority ──────────
 
-// TestModularStageIO_BypassRemovesParamAuthority renders each stage disabled
-// with two contrasting settings of that stage's params — the outputs must be
-// BIT-IDENTICAL. This is the property that makes the enable pills trustworthy
-// taps (and is exactly what a stale ABI would break: a half-written enable
-// flag silently re-couples the params).
+// What makes the pills trustworthy taps, and what a stale ABI breaks: a half-written enable flag re-couples the params.
 func TestModularStageIO_BypassRemovesParamAuthority(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -389,8 +358,7 @@ func TestModularStageIO_BypassRemovesParamAuthority(t *testing.T) {
 		})
 	}
 
-	// drive_enabled=0 with drive set must equal drive=0 with the stage enabled —
-	// the two ways of "no drive" are the same code path.
+	// The two ways of "no drive" are one code path.
 	t.Run("drive-off-equals-zero-drive", func(t *testing.T) {
 		off := identityModularParams()
 		off.set("drive_enabled", 0)
@@ -405,12 +373,7 @@ func TestModularStageIO_BypassRemovesParamAuthority(t *testing.T) {
 
 // ── Combination matrix: every enable combo is finite + deterministic ──────
 
-// TestModularStageIO_StageComboMatrix renders every 2³ combination of
-// env/filter/drive enables (osc always on — disabled osc is the documented
-// silence case) for a harmonically rich wave and a deterministic noise wave.
-// Each combo must be finite, non-silent, and render-stable (two renders are
-// bit-identical), so the pills can be toggled in any combination without
-// nondeterminism or NaN poisoning.
+// Osc stays on (off is silence by design). Pills must toggle in any combination without nondeterminism or NaN.
 func TestModularStageIO_StageComboMatrix(t *testing.T) {
 	for _, osc := range []float64{1, 5} { // saw, white noise
 		for combo := range 8 {

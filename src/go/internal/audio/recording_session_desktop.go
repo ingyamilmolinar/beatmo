@@ -23,9 +23,7 @@ type recordingSession struct {
 	dir       string
 }
 
-// StartRecording begins a streaming, multi-channel recording session.
-// The desktop pipeline writes per-channel WAV files to disk on background
-// workers; the audio thread only does a non-blocking handoff.
+// The audio thread only hands off; workers write per-channel WAVs.
 func StartRecording(opts RecordingOptions) error {
 	recordingMu.Lock()
 	defer recordingMu.Unlock()
@@ -36,8 +34,7 @@ func StartRecording(opts RecordingOptions) error {
 	if opts.Format == "" {
 		opts.Format = FormatWAV24
 	}
-	// Validate the encoder exists even though streaming uses streamWavWriter
-	// directly — keeps Start failing fast on a typo.
+	// Fails fast on a format typo, though streaming bypasses the encoder.
 	if _, err := NewEncoder(opts.Format); err != nil {
 		return fmt.Errorf("cannot start recording: %w", err)
 	}
@@ -84,20 +81,8 @@ func StartRecording(opts RecordingOptions) error {
 	return nil
 }
 
-// StopRecording detaches the pipeline from the audio thread (fast,
-// in-place) and queues the slow drain + close + save work onto the
-// recording.lifecycle pool. Returns immediately with a RecordingResult
-// whose Channels carry per-channel file paths. The Sample counts in
-// Metadata.Channels remain placeholder zero until the async finalize
-// completes; subscribers that need finalized stats should listen on
-// hooks.EventRecordStop.
-//
-// UI thread cost: detach (microseconds, WaitGroup-based barrier) +
-// snapshot of channel paths. No file I/O on the calling goroutine.
-//
-// Tests that need to read the WAV files synchronously should call
-// audio.WaitRecordingFinalized(ctx) to block until the lifecycle worker
-// flushes and closes everything.
+// Returns at once with each channel's path; the slow drain + close + save runs on the lifecycle pool, and finalized
+// stats arrive on EventRecordStop. Tests reading the files call WaitRecordingFinalized.
 func StopRecording() (*RecordingResult, error) {
 	recordingMu.Lock()
 	defer recordingMu.Unlock()
@@ -109,23 +94,17 @@ func StopRecording() (*RecordingResult, error) {
 	session := activeSession
 	activeSession = nil
 
-	// Detach hot path FIRST so no new Taps land on the pipeline. The
-	// WaitGroup barrier in Detach guarantees no Tap goroutine is mid-
-	// execution when this returns.
+	// FIRST, so no new Tap lands on the pipeline.
 	pipelinePtr.Store(nil)
 	if err := session.pipe.Detach(); err != nil {
 		log.Errorf("[record] detach pipeline: %v", err)
 	}
-	// DrainWorkers is fast (close channels + wait for workers to flush
-	// the in-flight queue into bufio buffers). Doing this synchronously
-	// here means callers see accurate sample counts in the returned
-	// Result, while the slow file Close runs async via queueFinalize.
+	// Synchronous so the result carries accurate counts; the slow Close runs async.
 	if err := session.pipe.DrainWorkers(); err != nil {
 		log.Errorf("[record] DrainWorkers: %v", err)
 	}
 
-	// Allow platform (e.g., test stub) to publish anything it has
-	// captured. Desktop production no-ops here.
+	// A no-op in desktop production; test stubs publish here.
 	platChannels, platMaster, platSR := platformRecordingStop()
 	sr := SampleRate()
 
@@ -140,9 +119,7 @@ func StopRecording() (*RecordingResult, error) {
 			SampleRate: sr,
 			Format:     session.opts.Format,
 			Timestamp:  session.startTime.Format("2006-01-02_150405"),
-			// MetaSnapshot reads atomic counts populated by workers
-			// during DrainWorkers — accurate by the time we get here.
-			Channels: session.pipe.MetaSnapshot(),
+			Channels:   session.pipe.MetaSnapshot(),
 		},
 	}
 
@@ -152,8 +129,7 @@ func StopRecording() (*RecordingResult, error) {
 			result.Metadata.SampleRate = platSR
 		}
 		result.Channels = encodeInMemoryFallback(session.opts, platChannels, platMaster, result.Metadata.SampleRate, &result.Metadata)
-		// In-memory path has no async tail; close synchronously to keep
-		// the pipeline goroutines from leaking, then return.
+		// No async tail: close now so the pipeline goroutines do not leak.
 		_, _ = session.pipe.CloseWriters()
 		log.Warnf("[record] stopped (in-memory fallback): duration=%.2fs channels=%d",
 			duration, len(result.Channels))
@@ -169,8 +145,6 @@ func StopRecording() (*RecordingResult, error) {
 	log.Debugf("[record] detached: duration=%.2fs channels=%d drops=%d dir=%s — finalizing async",
 		duration, len(result.Channels), session.pipe.Drops(), session.dir)
 
-	// Queue the slow drain+close+save tail onto the lifecycle pool. The
-	// final EventRecordStop with finalized stats fires from there.
 	queueFinalize(session, result)
 	return result, nil
 }
@@ -199,10 +173,7 @@ func RecordingAutoStopped() bool {
 	return p.IsAutoStopped()
 }
 
-// encodeInMemoryFallback handles platform-provided samples (e.g., the
-// recording_functional_test.go stubs that simulate the WASM platform path)
-// by encoding them into in-memory EncodedChannel.Data. Only invoked when
-// the streaming pipeline produced no output.
+// Only when the streaming pipeline produced nothing (the stubs that simulate the WASM path).
 func encodeInMemoryFallback(
 	opts RecordingOptions,
 	platChannels map[channel.ID][]float64,

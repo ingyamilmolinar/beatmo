@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// synthStiffString builds a decaying struck-string tone whose partials follow
-// f_n = n·f0·√(1+B·n²) (B=0 → exact harmonics). Used to validate AnalyzePiano's
-// inharmonicity fit.
+// B=0 gives exact harmonics.
 func synthStiffString(sr int, f0, B float64, nPartials int) wave.Wave {
 	n := sr // 1 s
 	x := make([]float64, n)
@@ -33,8 +31,7 @@ func TestPianoInharmonicity(t *testing.T) {
 	if pmExact.InharmonicityB > 0.0002 {
 		t.Fatalf("exact-harmonic tone should have B≈0, got %.5f", pmExact.InharmonicityB)
 	}
-	// A stiff string (B=0.001) → clearly positive B, and the upper partials read
-	// progressively SHARP (the piano signature).
+	// Upper partials read progressively SHARP: the piano signature.
 	pmStiff := AnalyzePiano(synthStiffString(sr, 262, 0.001, 8), 262)
 	if pmStiff.InharmonicityB < 0.0005 {
 		t.Fatalf("stiff string (B=0.001) should measure B>0.0005, got %.5f", pmStiff.InharmonicityB)
@@ -54,9 +51,7 @@ func TestPianoInharmonicity(t *testing.T) {
 func TestPianoDecayAndAttack(t *testing.T) {
 	const sr = 44100
 	pm := AnalyzePiano(synthStiffString(sr, 262, 0.0005, 8), 262)
-	// A single exponential decay → fast≈slow → TwoStageRatio near 1 (this synthetic
-	// has no two-stage structure; a real piano's would exceed it — this pins the
-	// baseline so the metric isn't fabricating a double decay).
+	// A single exponential has no two-stage structure, so the ratio stays near 1: the metric must not fabricate one.
 	if pm.TwoStageRatio < 0.3 || pm.TwoStageRatio > 3.0 {
 		t.Fatalf("single-exp decay should give TwoStageRatio ~1, got %.2f", pm.TwoStageRatio)
 	}

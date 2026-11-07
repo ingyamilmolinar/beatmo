@@ -22,8 +22,7 @@ func lockedAdditive(sr int, dur float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// independentAdditive: each harmonic has its OWN random slow envelope and a
-// small random frequency wobble — a poor man's living tone.
+// Each harmonic with its OWN slow envelope and frequency wobble.
 func independentAdditive(sr int, dur float64) wave.Wave {
 	rng := rand.New(rand.NewSource(11))
 	n := int(dur * float64(sr))
@@ -58,10 +57,7 @@ func TestPartialIndependence_LockedVsIndependent(t *testing.T) {
 	}
 }
 
-// twoToneSteady is a stacked two-sine tone, no envelope, no wobble — two
-// individually locked partials. Used in place of a single wave.Sine (which
-// yields only ONE mode, so PartialBandwidthCents — which needs >= 2 — never
-// actually ran a real measurement on it).
+// Two locked partials: one sine yields one mode, and the bandwidth measure needs two.
 func twoToneSteady(f1, f2, amp, dur float64, sr int) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -83,12 +79,7 @@ func TestPartialBandwidth_LockedTonesAreNarrow(t *testing.T) {
 	}
 }
 
-// TestPartialBandwidth_HillClimbStaysOnOwnPeak feeds PartialBandwidthCents
-// hand-built modes directly (bypassing the Mode tracker's own 8192-pt
-// resolution) so the two peaks are guaranteed to exist as declared: 12 Hz
-// apart, both resolvable at the 32768-point analysis (bin width ~1.35 Hz at
-// 44.1kHz). Each width must be measured on its OWN peak — the bounded
-// hill-climb and half-max walk must not cross into the neighbour's peak.
+// Hand-built modes 12 Hz apart, both resolvable at the 32768-point analysis: each width must come from its OWN peak.
 func TestPartialBandwidth_HillClimbStaysOnOwnPeak(t *testing.T) {
 	f1, f2 := 600.0, 612.0
 	w := twoToneSteady(f1, f2, 0.3, 3.0, 44100)
@@ -102,12 +93,8 @@ func TestPartialBandwidth_HillClimbStaysOnOwnPeak(t *testing.T) {
 	}
 }
 
-// chirpShelf sweeps linearly from f0 to f1 Hz over dur seconds. A wide chirp
-// spreads its energy broadly and near-continuously across the swept band
-// (unlike random noise, which has troughs that stop a half-max descent
-// almost immediately) — the closest realistic stand-in for "a wide noisy
-// shelf with no clean valley" that a deterministic, non-flaky test can rely
-// on. A second, well-separated clean tone keeps len(modes) >= 2.
+// A wide chirp spreads energy near-continuously (noise has troughs that stop a descent early): a deterministic stand-in
+// for a noisy shelf. A separate clean tone keeps two modes.
 func chirpShelf(f0, f1, amp, dur float64, sr int) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -120,13 +107,8 @@ func chirpShelf(f0, f1, amp, dur float64, sr int) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// TestPartialBandwidth_ChirpShelfNeverNaN: a low mode (5 Hz) declared over a
-// 1-200 Hz chirp has no clean -3 dB point within the walk — empirically
-// confirmed to run the UNBOUNDED pre-fix descent to widthHz=13.46 Hz (>=
-// 2*5=10 Hz), which makes (m.Hz - widthHz/2) <= 0 and poisons the mean with
-// a silent NaN from math.Log2 (verified against a copy of the pre-fix
-// algorithm before writing this test). The bounded walk must instead skip
-// the mode as unresolvable (ok may end up false) — never return NaN or Inf.
+// A 5 Hz mode over a 1–200 Hz chirp has no -3 dB point within the walk; it must be skipped as unresolvable, never
+// return NaN or Inf.
 func TestPartialBandwidth_ChirpShelfNeverNaN(t *testing.T) {
 	w := chirpShelf(1, 200, 0.3, 3.0, 44100)
 	modes := []Mode{{Hz: 5}, {Hz: 2000}}
@@ -148,13 +130,8 @@ func TestPartialBandwidth_WobblyIsWider(t *testing.T) {
 	}
 }
 
-// TestPartialIndependence_ClampsToUnitInterval guards against a
-// negative mean pairwise correlation (finite-sample noise) reading as
-// "more independent than independent" — the result must never leave
-// [0, 1].
 func TestPartialIndependence_ClampsToUnitInterval(t *testing.T) {
-	// Two tracks that are perfectly ANTI-correlated after detrending would
-	// otherwise drive the raw formula (1 - r) above 1.
+	// Perfectly anti-correlated tracks would drive 1 - r above 1.
 	track := make([]float64, 40)
 	anti := make([]float64, 40)
 	for i := range track {
@@ -171,11 +148,7 @@ func TestPartialIndependence_ClampsToUnitInterval(t *testing.T) {
 	}
 }
 
-// TestPearsonShared_OnlyBothFlatCountsAsLocked pins the fix for the
-// either-flat case. r = 1 asserts that two partials move together; with one
-// flat track there is nothing to move together WITH, and asserting perfect
-// lock on a zero denominator injected a fabricated maximum into
-// PartialIndependence's mean.
+// With one flat track nothing moves together WITH it, so a zero denominator must not count as perfect lock.
 func TestPearsonShared_OnlyBothFlatCountsAsLocked(t *testing.T) {
 	n := decorrMinSharedFrames + 4
 	flat := make([]float64, n)
@@ -190,9 +163,7 @@ func TestPearsonShared_OnlyBothFlatCountsAsLocked(t *testing.T) {
 	if r, ok := pearsonShared(flat, flat); !ok || r != 1 {
 		t.Errorf("both flat: got (%v, %v), want (1, true) — neither deviates from its own trend", r, ok)
 	}
-	// A pure ramp detrends to flat too -- "flat" here means flat AFTER its own
-	// trend is removed, which is the quantity the correlation is taken over.
-	// So ramp-vs-flat is still the BOTH-flat case and still reads as locked.
+	// "Flat" means flat after its own trend is removed, so ramp vs flat is still the both-flat case.
 	if r, ok := pearsonShared(ramp, flat); !ok || r != 1 {
 		t.Errorf("ramp vs flat detrends to both-flat: got (%v, %v), want (1, true)", r, ok)
 	}
@@ -208,9 +179,7 @@ func TestPearsonShared_OnlyBothFlatCountsAsLocked(t *testing.T) {
 	}
 }
 
-// The consequence at the descriptor level: one perfectly-steady partial must
-// not drag PartialIndependence toward "locked". With every pair skipped the
-// measurement is unavailable, which is the honest answer.
+// With every pair skipped the measurement is unavailable, the honest answer.
 func TestPartialIndependence_FlatPartialDoesNotFakeLock(t *testing.T) {
 	n := decorrMinSharedFrames + 6
 	mk := func(fn func(i int) float64) Mode {

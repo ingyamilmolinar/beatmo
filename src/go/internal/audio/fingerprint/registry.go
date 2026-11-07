@@ -6,44 +6,27 @@ import (
 	"sync"
 )
 
-// registry.go — the descriptor table.
-//
-// One package-level DefaultRegistry, populated by init() in the registry_*.go
-// files, is the single source of truth for the analysis battery. Consumers
-// (cmd/refs/diagnose, the validation harnesses, future report surfaces)
-// iterate it rather than hand-listing measurements, so a descriptor cannot
-// exist in one surface and be missing from another.
+// DefaultRegistry, filled by init() in the registry_*.go files, is the single source of the battery: consumers iterate it,
+// so a descriptor cannot exist on one surface and be missing on another.
 
 // Registry holds descriptors keyed by their stable ID.
 type Registry struct {
 	byID  map[string]Descriptor
 	order []string // insertion order, retained for stable All() tie-breaking
 
-	// thresholdFile overrides Drift/Mismatch per descriptor ID. Nil disables
-	// calibration entirely, which is what NewRegistry gives tests; only
-	// DefaultRegistry loads the embedded file. See thresholds.go.
+	// nil disables calibration, which is what NewRegistry gives tests; only DefaultRegistry loads the embedded file.
 	thresholdFile ThresholdFile
-	// calibrateOnce runs the calibration pass exactly once. It is a
-	// sync.Once and not a plain bool because ensureCalibrated WRITES to byID
-	// from what is otherwise a read path: without the Once's happens-before,
-	// two goroutines calling All() concurrently would race on the map. Every
-	// read path funnels through it, so all readers synchronize on it.
+	// A sync.Once, not a bool: ensureCalibrated WRITES byID from a read path, so concurrent All() calls would race on the map
+	// without its happens-before.
 	calibrateOnce sync.Once
-	// calibrated records that the pass has run, so Register can keep late
-	// arrivals in step.
+	// So Register keeps late arrivals in step.
 	calibrated bool
-	// sources maps descriptor ID to the applied entry's Source, for the
-	// report's CAL column.
+	// For the report's CAL column.
 	sources map[string]string
 }
 
-// NewRegistry returns an empty registry. Tests use this; production code uses
-// DefaultRegistry.
-//
-// It deliberately does NOT load the embedded threshold file: a test that
-// registers a synthetic descriptor and asserts on its thresholds must not
-// have them silently rewritten by a calibration artifact. Tests that want
-// calibration set thresholdFile themselves.
+// It does NOT load the embedded threshold file: a test asserting a synthetic descriptor's thresholds must not have
+// them rewritten by calibration.
 func NewRegistry() *Registry {
 	return &Registry{byID: make(map[string]Descriptor)}
 }
@@ -53,16 +36,10 @@ var defaultRegistry = &Registry{
 	thresholdFile: LoadThresholdFile(),
 }
 
-// DefaultRegistry returns the package-level registry that the registry_*.go
-// init() functions populate.
 func DefaultRegistry() *Registry { return defaultRegistry }
 
-// Register adds d.
-//
-// Panics on a duplicate ID, an empty ID, or a nil Extract. These are
-// programming errors in a table that is populated at init time — failing
-// loudly at startup is strictly better than a report that silently drops or
-// silently shadows a measurement.
+// Panics on a duplicate or empty ID or a nil Extract: failing at startup beats a report that silently drops or shadows
+// a measurement.
 func (r *Registry) Register(d Descriptor) {
 	if d.ID == "" {
 		panic("fingerprint: Register called with an empty descriptor ID")
@@ -73,17 +50,9 @@ func (r *Registry) Register(d Descriptor) {
 	if _, dup := r.byID[d.ID]; dup {
 		panic(fmt.Sprintf("fingerprint: duplicate descriptor ID %q", d.ID))
 	}
-	// A row registered after calibration has already happened (init order is
-	// not something a caller controls) must still be calibrated, otherwise
-	// whether a descriptor honours the file would depend on which file's
-	// init() ran first.
-	//
-	// Reading r.calibrated outside calibrateOnce is safe because Register is
-	// an INIT-TIME call — the registry_*.go init() functions, plus tests
-	// building their own Registry — and package init runs on one goroutine
-	// before any reader exists. Taking the Once here instead would be worse
-	// than useless: it would run the full calibration pass over a
-	// half-populated table and latch it as done.
+	// A row registered after calibration must still be calibrated, or honouring the file would depend on init order.
+	// Reading r.calibrated here is safe because Register runs only at init, on one goroutine; taking the Once would
+	// calibrate a half-populated table and latch it done.
 	if r.calibrated {
 		r.applyThreshold(&d)
 	}
@@ -91,13 +60,8 @@ func (r *Registry) Register(d Descriptor) {
 	r.order = append(r.order, d.ID)
 }
 
-// applyThreshold rewrites d's thresholds from the calibration file, if it has
-// an entry.
-//
-// An entry with a non-positive Mismatch is IGNORED rather than applied: a zero
-// mismatch would mean "this axis never fires", which is not a threshold but a
-// malformed row, and silently muting a descriptor is the worst possible
-// failure mode for a diagnostic.
+// A non-positive Mismatch is ignored: it would mean "never fires", a malformed row, and silently muting a descriptor is
+// the worst failure for a diagnostic.
 func (r *Registry) applyThreshold(d *Descriptor) {
 	if r.thresholdFile == nil {
 		return
@@ -113,13 +77,8 @@ func (r *Registry) applyThreshold(d *Descriptor) {
 	r.sources[d.ID] = e.Source
 }
 
-// ensureCalibrated applies the threshold file to every row, once.
-//
-// It is called from every read path rather than from NewRegistry because the
-// registry is populated by init() functions across several files: at
-// construction time there is nothing to calibrate, and there is no later
-// moment the package controls. Doing it lazily on first read is the only
-// point at which the table is guaranteed complete.
+// On every read path: the table is filled by init() across files, so first read is the only moment it is guaranteed
+// complete.
 func (r *Registry) ensureCalibrated() {
 	r.calibrateOnce.Do(func() {
 		r.calibrated = true
@@ -131,10 +90,7 @@ func (r *Registry) ensureCalibrated() {
 	})
 }
 
-// CalibratedFrom reports where the descriptor's thresholds came from:
-// "corpus", "probe", "hand" (an explicit exclusion recorded in the file), or
-// "" when no file entry applied and the descriptor's own hand-written
-// thresholds stand.
+// "corpus", "probe", "hand" (an explicit exclusion), or "" when the descriptor's own thresholds stand.
 func (r *Registry) CalibratedFrom(id string) string {
 	r.ensureCalibrated()
 	return r.sources[id]
@@ -150,23 +106,8 @@ func (r *Registry) ByID(id string) (Descriptor, bool) {
 // Len returns the number of registered descriptors.
 func (r *Registry) Len() int { return len(r.order) }
 
-// All returns every descriptor in REGISTRATION order.
-//
-// Registration order is deterministic — Go runs each file's init() in
-// filename order, and within a file top to bottom — so goldens and report
-// output are stable. It is preferred over sorting by (Group, ID) because it
-// preserves the deliberate narrative order the report groups read in (noise,
-// then envelope, then partial structure, then brightness, then modulation —
-// the order of docs/superpowers/specs/2026-08-22-verdict-to-metric-mapping.md's
-// own argument). Alphabetical sorting would scramble that into
-// brightness-first and put "spectral flatness" ahead of "noise fraction".
-//
-// Registry files are therefore named so filename order matches intended
-// report order: registry_core.go, then registry_family.go, then
-// registry_tracks.go.
-//
-// The returned slice is freshly allocated; callers cannot mutate the registry
-// through it.
+// REGISTRATION order, deterministic (files by name, then top to bottom), keeping the report's narrative order;
+// registry files are named to match. The slice is freshly allocated.
 func (r *Registry) All() []Descriptor {
 	r.ensureCalibrated()
 	out := make([]Descriptor, 0, len(r.order))
@@ -176,9 +117,7 @@ func (r *Registry) All() []Descriptor {
 	return out
 }
 
-// SortedByGroup returns every descriptor sorted by (Group, ID), for consumers
-// that want a canonical ordering independent of registration — golden files
-// that must not churn when a descriptor is inserted mid-file, for instance.
+// A canonical order independent of registration, for goldens that must not churn on a mid-file insert.
 func (r *Registry) SortedByGroup() []Descriptor {
 	out := r.All()
 	sort.SliceStable(out, func(i, j int) bool {
@@ -215,13 +154,8 @@ func (r *Registry) Filter(f Filter) []Descriptor {
 	return out
 }
 
-// Applicable returns the descriptors whose Applies predicate accepts b, in
-// All() order.
-//
-// Applicability is evaluated against ONE bundle — in a reference-vs-synth
-// comparison that must be the REFERENCE, since the reference defines what
-// kind of instrument this is. Letting a synth that failed to sustain suppress
-// the sustain descriptors would hide exactly the defect being looked for.
+// Evaluated on the REFERENCE in a comparison: a synth that failed to sustain must not suppress the sustain rows, which
+// would hide exactly the defect looked for.
 func (r *Registry) Applicable(b *Bundle) []Descriptor {
 	var out []Descriptor
 	for _, d := range r.All() {

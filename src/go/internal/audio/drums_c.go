@@ -15,54 +15,13 @@ import (
 	"unsafe"
 )
 
-// renderSnare deleted — the snare family migrated to the modular engine
-// (Phase-5). The no-edit native fast path is renderSnareVoice
-// (snare_modular_native.go), which renders the baked recipe-default
-// param block through render_modular_p.
-
-// renderKick deleted — the base kick migrated to the modular engine (Phase-3).
-// The no-edit native fast path is renderKickVoice (kick_modular_native.go),
-// which renders the baked recipe-default param block through render_modular_p.
-
-// renderHiHat / renderOpenHiHat / renderCowbell / renderShaker / renderRide /
-// renderCrash deleted — the cymbal family migrated to the modular engine
-// (Phase-6). The no-edit native fast paths are renderHiHatVoice /
-// renderOpenHiHatVoice / renderCowbellVoice / renderShakerVoice / renderRideVoice
-// / renderCrashVoice (cymbal_modular_native.go), which render the baked
-// recipe-default param block through render_modular_p; the recipe/edit path
-// renders through the modular binding (cymbalRecipeToModular).
-
-// renderTom / renderTomHigh / renderTomLow deleted — the tom family migrated to
-// the modular engine (Phase-4). The no-edit fast path is renderTomVoice /
-// renderTomHighVoice / renderTomLowVoice (tom_modular_native.go); the recipe/edit
-// path renders through the modular binding (tomRecipeToModular).
-
-// renderClap deleted — the clap migrated to the modular engine (Phase-5). The
-// no-edit native fast path is renderClapVoice (snare_modular_native.go).
-
-// renderBassGuitar / renderSubBass deleted — the bass family migrated to the
-// modular engine (Phase-2). The no-edit native fast path is renderSubBassVoice
-// / renderSubBassVoice (bass_modular_native.go), which renders the baked
-// recipe-default param block through render_modular_p.
-
-// renderSnareRimshot / renderSnareSidestick deleted — the snare family migrated
-// to the modular engine (Phase-5). The no-edit native fast paths are
-// renderSnareRimshotVoice / renderSnareSidestickVoice (snare_modular_native.go).
-
-// renderKickDeep / renderKickPunchy / renderKickLofi / renderKickTight deleted —
-// the kick family migrated to the modular engine (Phase-3). The no-edit native
-// fast paths are renderKickDeepVoice / renderKickPunchyVoice /
-// renderKickLofiVoice / renderKickTightVoice (kick_modular_native.go).
-
 func loadAudio(path string) ([]float32, int, error) {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	var ptr *C.float
 	var sr C.int
-	// Target rate 0: decode at the file's OWN rate. The conversion to the
-	// engine rate is pcmAtEngineRate (ResampleToRate), the same Go the browser
-	// runs on the same decoded PCM — never miniaudio's resampler on one side
-	// and decodeAudioData's on the other.
+	// Rate 0 decodes at the file's OWN rate: conversion is pcmAtEngineRate, the same Go the browser runs on the same PCM,
+	// never two different resamplers.
 	frames := C.load_audio(cpath, 0, &ptr, &sr) //nolint:gocritic // dupSubExpr false positive in CGo
 	if frames < 0 {
 		msg := C.GoString(C.result_description(C.int(frames)))
@@ -95,8 +54,7 @@ func (v *cVoice) Sample() (float64, bool) {
 	return f, false
 }
 
-// SampleBlock performs bulk float32→float64 conversion, avoiding per-sample
-// function call overhead. Implements the BlockVoice interface.
+// Bulk conversion, no per-sample call overhead.
 func (v *cVoice) SampleBlock(dst []float64) (int, bool) {
 	remaining := len(v.buf) - v.i
 	if remaining <= 0 {

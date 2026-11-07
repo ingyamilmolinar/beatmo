@@ -8,32 +8,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// registry_scale_test.go — every descriptor's thresholds must be on the same
-// scale as the quantity it measures.
-//
-// THE GAP THIS CLOSES
-// -------------------
-// cmd/refs/diagnose_acceptance_test.go replays a FROZEN JSON baseline covering
-// the ten original hand-written axes. It is a regression record, not a gate on
-// new descriptors: the twenty-nine added by registry_family.go and
-// registry_tracks.go were never exercised end to end at all, and two of them
-// shipped permanently red as a result. `wind.attack_centroid_traj` reduced a
-// vector of HERTZ and classified the result against KindFraction's 0.05/0.15,
-// so two trajectories 45 Hz apart -- a match by any musical standard -- scored
-// MISMATCH with Norm=300, and its declared Drift/Mismatch were discarded
-// entirely.
-//
-// This test needs no reference audio and no frozen data. It asks each
-// descriptor two questions in its OWN units:
-//
-//   - a perturbation well INSIDE its mismatch threshold must read ok
-//   - a perturbation well PAST it must not read ok
-//
-// A descriptor whose thresholds are in the wrong units fails both.
+// Each descriptor's thresholds must be in the units it measures: a vector of HERTZ classified against KindFraction's
+// defaults scored a 45 Hz match as MISMATCH. With no reference audio, a perturbation well INSIDE the mismatch
+// threshold must read ok and one well PAST it must not, in the descriptor's own units.
 
-// scaleProbes are signals chosen so that between them every applicability
-// predicate in the registry fires: a sustained pitched tone, a percussive hit
-// with no sustain plateau, and a noisy pitched tone.
+// Together every applicability predicate fires.
 func scaleProbes() []struct {
 	name string
 	w    wave.Wave
@@ -81,32 +60,20 @@ func scaleNoisyTone(sr int, f0, sec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// perturb shifts m by frac times d's own mismatch threshold, in d's own units.
-//
-// KindSeconds and KindRatio compare as a RATIO of larger to smaller, so their
-// threshold is a multiplier and the perturbation has to be multiplicative too;
-// every other kind compares as an absolute delta. Getting this split right is
-// the whole reason the helper exists rather than a bare "+= 0.1".
+// Ratio kinds compare larger/smaller, so their perturbation is multiplicative; every other kind is an absolute delta.
 func perturb(d Descriptor, m Measurement, frac float64) Measurement {
 	_, mismatch := d.Thresholds()
 	out := m
 	switch d.Kind {
 	case KindSeconds, KindRatio:
-		// ratio 1 + frac*(mismatch-1): frac=0 leaves it alone, frac=1 lands
-		// exactly on the mismatch ratio.
+		// frac=0 leaves it alone, frac=1 lands exactly on the mismatch ratio.
 		scale := 1 + frac*(mismatch-1)
 		out.Scalar = m.Scalar * scale
 		if len(m.Values) > 0 {
 			out.Values = append([]float64(nil), m.Values...)
 			if d.Scope == ScopeBand {
-				// A ScopeBand vector (e.g. band.t60) has no "headline"
-				// component -- every band is an independent peer, and its
-				// Compare reduces by MEAN across them. Moving only index 0
-				// would get diluted by every other untouched band and could
-				// never reach a mean-based comparator; a uniform per-band
-				// ratio shift is what "every band moved by the same amount"
-				// actually looks like, and is what the descriptor needs to
-				// probe its own drift/mismatch boundary.
+				// A band vector's comparator reduces by mean over peer bands, so moving index 0 alone is diluted away; every band moves
+				// by the same ratio.
 				for i := range out.Values {
 					out.Values[i] *= scale
 				}
@@ -131,16 +98,8 @@ func perturb(d Descriptor, m Measurement, frac float64) Measurement {
 	return out
 }
 
-// shiftAll offsets a vector/track payload. A COMPOUND measurement's later
-// components are flags and fallbacks (ring T60's extrapolation bit), so only
-// the headline value -- the one Primary() reports -- may be moved.
-//
-// This used to key on "has a custom comparator", which was a proxy for
-// "compound" and stopped being true once genuine all-peer vectors
-// (mode.ratios, decay.per_mode) grew custom comparators: their perturbation
-// silently shrank to a one-component nudge that a mean-based reduction
-// dilutes away, so the gate stopped testing them. Descriptor.Compound says
-// what is actually meant.
+// A COMPOUND measurement's later components are flags and fallbacks, so only its headline moves; "has a custom
+// comparator" was the wrong proxy.
 func shiftAll(vs []float64, by float64, headlineOnly bool) []float64 {
 	out := append([]float64(nil), vs...)
 	if len(out) == 0 {
@@ -156,32 +115,21 @@ func shiftAll(vs []float64, by float64, headlineOnly bool) []float64 {
 	return out
 }
 
-// reaches reports whether a perturbation actually changed what the
-// comparator consumes.
-//
-// It legitimately does not in two cases, and neither is a product defect:
-// a probe signal that measures exactly 0 on some axis cannot be perturbed
-// MULTIPLICATIVELY (which is how ratio-scaled kinds must move), and a compound
-// measurement whose custom comparator escalated to a component the helper is
-// not allowed to touch (ring T60 falling back to decay RATE when both sides
-// clamp) is unmoved by shifting its headline value. Skipping those keeps the
-// assertion honest; minCheckedDescriptors below stops the skip from quietly
-// swallowing the whole battery.
+// Two legitimate no-ops: a probe measuring exactly 0 cannot move multiplicatively, and a compound comparator that
+// escalated to an untouchable component ignores the headline. minCheckedDescriptors stops the skips from swallowing
+// the battery.
 func reaches(d Descriptor, m, perturbed Measurement) bool {
 	base := d.CompareWith(m, m)
 	moved := d.CompareWith(m, perturbed)
 	return base.Display != moved.Display || base.Norm != moved.Norm || base.Verdict != moved.Verdict
 }
 
-// minCheckedDescriptors is the floor on how many (descriptor, probe) pairs the
-// scale gate must actually exercise. Without it, a change that made every
-// perturbation a no-op would turn this test green while checking nothing.
+// Otherwise a change making every perturbation a no-op would pass while checking nothing.
 const minCheckedDescriptors = 40
 
 // TestDescriptorThresholdsAreOnTheRightScale is the gate.
 func TestDescriptorThresholdsAreOnTheRightScale(t *testing.T) {
-	// insideFrac must read ok; pastFrac must not. The gap between them leaves
-	// room for a comparator that folds or clamps near the boundary.
+	// The gap leaves room for a comparator that folds or clamps near the boundary.
 	const insideFrac = 0.1
 	const pastFrac = 3.0
 	checked := 0
@@ -242,12 +190,7 @@ func unitSuffix(d Descriptor) string {
 	return " " + d.Unit
 }
 
-// TestDescriptorNormIsComparableAcrossDescriptors pins Delta.Norm's documented
-// contract: Norm >= 1 means "at or past mismatch" for EVERY descriptor
-// whatever its kind or form. That is the only thing making a worst-offending
-// ranking meaningful across seconds, hertz, decibels and unit fractions -- and
-// it was silently false for the vector descriptors, whose Norm ran to 300 on a
-// matching pair.
+// Norm ≥ 1 means mismatch for EVERY descriptor, which is what makes a cross-unit ranking meaningful.
 func TestDescriptorNormIsComparableAcrossDescriptors(t *testing.T) {
 	for _, probe := range scaleProbes() {
 		b := NewBundle(probe.w, probe.name)

@@ -9,21 +9,12 @@ import (
 	"testing"
 )
 
-// finish_stage_response_test.go — each FINISH op measured as what it IS, a
-// filter / shaper / resampler, against KNOWN signals (sines, a constant, noise)
-// through the C stage alone (applyModularFinish). A voice is the wrong probe:
-// its spectrum and the peak normaliser after it hide what an op does to each
-// frequency. That is how Crisp shipped as a broadband −6 dB cut that boosted
-// nothing (its "high-pass blend" moved UP to 12 kHz with the knob while the dry
-// signal dropped by half) and Low Boost as a −6 dB cut of everything above
-// 300 Hz with a +3 dB nudge at 50 Hz.
+// Each op is measured as what it IS (filter, shaper, resampler) against known signals through the stage alone: a voice
+// and the normaliser after it hide what an op does per frequency, which is how Crisp shipped as a broadband cut.
 
-// finishSampleRates are the rates the engine renders at: the device rates and
-// the 22.05 kHz fingerprint / metric renders.
+// The device rates and the 22.05 kHz analysis renders.
 var finishSampleRates = []int{22050, 44100, 48000}
 
-// finishBlock is the identity FINISH block (every field at its Init) with over
-// applied.
 func finishBlock(over map[string]float64) modularBlock {
 	b := zeroModularBlock()
 	for k, v := range modularFieldInits() {
@@ -51,8 +42,7 @@ func finishApply(sr int, in []float32, over map[string]float64) []float32 {
 	return out
 }
 
-// finishSineGainDB is the steady-state gain of the stage at hz: output RMS over
-// input RMS on the second half of one second (the filters have settled).
+// Over the second half of one second, once the filters have settled.
 func finishSineGainDB(sr int, hz float64, over map[string]float64) float64 {
 	in := finishSine(sr, sr, hz, 0.25)
 	out := finishApply(sr, in, over)
@@ -64,9 +54,7 @@ func finishSineGainDB(sr int, hz float64, over map[string]float64) float64 {
 	return 10 * math.Log10(b/a)
 }
 
-// toneAmplitude is the amplitude of the hz component of buf[from:to]: a
-// single-bin DFT under a Hann window (whose sidelobes keep a neighbouring
-// partial a few hertz away from leaking into the reading).
+// Hann-windowed so a neighbouring partial a few hertz away cannot leak in.
 func toneAmplitude(buf []float32, sr int, hz float64, from, to int) float64 {
 	var re, im, wsum float64
 	n := to - from
@@ -88,9 +76,7 @@ func rmsOf(buf []float32) float64 {
 	return math.Sqrt(s / float64(len(buf)))
 }
 
-// TestFinishIdentityIsBitExact: a block left at every Init passes any signal
-// through untouched, sample for sample — a voice that leaves FINISH alone must
-// render exactly as without the stage.
+// A voice that leaves FINISH alone renders exactly as without it.
 func TestFinishIdentityIsBitExact(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 	in := make([]float32, 48000)
@@ -107,9 +93,7 @@ func TestFinishIdentityIsBitExact(t *testing.T) {
 	}
 }
 
-// TestFinishCrispLiftsTheHighsAndLeavesTheLowsAlone: Crisp is a HIGH SHELF.
-// The body of the sound keeps its level; the top end rises with the knob, in
-// proportion, by the same amount at every sample rate.
+// A HIGH SHELF: the body keeps its level, the top rises in proportion, the same at every rate.
 func TestFinishCrispLiftsTheHighsAndLeavesTheLowsAlone(t *testing.T) {
 	for _, sr := range finishSampleRates {
 		prevHigh := 0.0
@@ -138,9 +122,7 @@ func TestFinishCrispLiftsTheHighsAndLeavesTheLowsAlone(t *testing.T) {
 	}
 }
 
-// TestFinishLowBoostLiftsTheLowsAndLeavesTheRestAlone: Low Boost is a LOW
-// SHELF. The bottom octaves rise with the knob; the mids and highs keep their
-// level.
+// A LOW SHELF: the bottom rises, mids and highs keep their level.
 func TestFinishLowBoostLiftsTheLowsAndLeavesTheRestAlone(t *testing.T) {
 	for _, sr := range finishSampleRates {
 		prevLow := 0.0
@@ -166,9 +148,7 @@ func TestFinishLowBoostLiftsTheLowsAndLeavesTheRestAlone(t *testing.T) {
 	}
 }
 
-// TestFinishDarkenCutsTheHighsAndLeavesTheLowsAlone: Darken is a low-pass
-// crossfaded in by its amount: the lows keep their level, the highs fall
-// further the more it is turned.
+// A low-pass crossfaded by its amount.
 func TestFinishDarkenCutsTheHighsAndLeavesTheLowsAlone(t *testing.T) {
 	for _, sr := range finishSampleRates {
 		prevHigh := 0.0
@@ -191,9 +171,7 @@ func TestFinishDarkenCutsTheHighsAndLeavesTheLowsAlone(t *testing.T) {
 	}
 }
 
-// TestFinishCrunchAddsHarmonicsInProportion: Crunch saturates — a pure tone
-// gains odd harmonics, more the further it is turned, and never even ones
-// (tanh is odd-symmetric) or anything that is not a harmonic.
+// Odd harmonics only (tanh is odd), growing with the knob.
 func TestFinishCrunchAddsHarmonicsInProportion(t *testing.T) {
 	const sr, hz = 48000, 200.0
 	in := finishSine(sr, sr, hz, 0.5)
@@ -219,9 +197,7 @@ func TestFinishCrunchAddsHarmonicsInProportion(t *testing.T) {
 	}
 }
 
-// TestFinishResampleShiftsPitchExactly: Resample plays the voice at
-// 2^(st/12) speed — a tone comes out at exactly that ratio, at the level it went
-// in, and a shift UP leaves silence after the shortened voice.
+// At 2^(st/12) exactly, at the input level; a shift up leaves silence after the shortened voice.
 func TestFinishResampleShiftsPitchExactly(t *testing.T) {
 	for _, sr := range finishSampleRates {
 		for _, st := range []float64{-12, -7, -1, 3, 12, 19} {
@@ -255,10 +231,7 @@ func TestFinishResampleShiftsPitchExactly(t *testing.T) {
 	}
 }
 
-// TestFinishResampleDoesNotAlias: shifting UP pushes content past Nyquist, and
-// a resampler must remove it rather than fold it back as inharmonic tones
-// below. Linear interpolation folded a 15 kHz partial shifted +12 st at
-// 44.1 kHz back to 14.1 kHz at nearly full level.
+// Content pushed past Nyquist is removed, not folded back as inharmonic tones.
 func TestFinishResampleDoesNotAlias(t *testing.T) {
 	for _, sr := range finishSampleRates {
 		nyq := float64(sr) / 2
@@ -283,9 +256,7 @@ func TestFinishResampleDoesNotAlias(t *testing.T) {
 	}
 }
 
-// TestFinishResampleKeepsThePassbandFlat: content that stays below Nyquist
-// after the shift keeps its level — linear interpolation dulled the top octave
-// of every pitched-DOWN voice (a 6 kHz partial at −1 st lost several dB).
+// Content still below Nyquist keeps its level.
 func TestFinishResampleKeepsThePassbandFlat(t *testing.T) {
 	for _, sr := range finishSampleRates {
 		nyq := float64(sr) / 2
@@ -308,9 +279,7 @@ func TestFinishResampleKeepsThePassbandFlat(t *testing.T) {
 	}
 }
 
-// TestFinishFadeIsAnExponentialAtItsRate: Length below 1 multiplies the voice by
-// exp(−t·rate·(1/L − 1)) — exactly that curve, starting at full level (no step
-// at the onset), shorter the lower Length goes, and finite at Length 0.
+// exp(−t·rate·(1/L − 1)) from full level, no step at the onset, finite at L = 0.
 func TestFinishFadeIsAnExponentialAtItsRate(t *testing.T) {
 	const sr = 48000
 	in := make([]float32, sr)
@@ -339,8 +308,7 @@ func TestFinishFadeIsAnExponentialAtItsRate(t *testing.T) {
 	}
 }
 
-// TestFinishLimitClampsPeaksAtTheCeiling: Limit is a hard ceiling — no sample
-// beyond ±out_clamp, everything inside untouched; 0 means no ceiling.
+// 0 means no ceiling.
 func TestFinishLimitClampsPeaksAtTheCeiling(t *testing.T) {
 	const sr = 48000
 	in := finishSine(sr, sr, 440, 1.2)
@@ -361,9 +329,7 @@ func TestFinishLimitClampsPeaksAtTheCeiling(t *testing.T) {
 	}
 }
 
-// TestFinishStageNeverEmitsNonFinite: a NaN/Inf reaching the stage (a voice bug
-// upstream) leaves as silence, and every op at every extreme keeps finite
-// audio finite — including a buffer full of full-scale noise.
+// A NaN/Inf reaching the stage leaves as silence; every op at every extreme keeps finite audio finite.
 func TestFinishStageNeverEmitsNonFinite(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	in := make([]float32, 24000)
@@ -388,9 +354,7 @@ func TestFinishStageNeverEmitsNonFinite(t *testing.T) {
 			if _, nf := finitePeak(poisoned); nf > 0 {
 				t.Errorf("sr %d %s: a NaN/Inf input leaves as %d non-finite samples", sr, name, nf)
 			}
-			// One bad sample must cost that sample, not the rest of the voice:
-			// a recursive filter fed a NaN holds it in its state forever, and
-			// the output guard then turns everything after it into silence.
+			// One bad sample costs that sample: a recursive filter fed a NaN holds it forever, and the guard silences the rest.
 			ref := rmsOf(out[3000:5500])
 			if got := rmsOf(poisoned[3000:5500]); got < 0.5*ref {
 				t.Errorf("sr %d %s: after a NaN at sample 100 the voice drops to %.3g RMS (clean %.3g) — the bad sample poisoned the filter state",

@@ -6,11 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestResetSampleToFactory_BuiltinRevertsToSynth — a built-in instrument that
-// was converted to a sample (Sampler Save; or a persisted sample reloaded at
-// startup) reverts all the way to its synth: the project copy returns to its
-// library entry, the user sample is discarded and its persisted copy deleted
-// (the "reverse kick-snap won't reset after restart" bug).
+// Back to the synth: the project copy to its library entry, the user sample and its persisted copy discarded, so it
+// stays reset after a restart.
 func TestResetSampleToFactory_BuiltinRevertsToSynth(t *testing.T) {
 	resetLibraryForTest(t)
 	resetUserSamplesForTest()
@@ -43,8 +40,7 @@ func TestResetSampleToFactory_BuiltinRevertsToSynth(t *testing.T) {
 	}
 }
 
-// TestResetSampleToFactory_UserWAVRestoresOriginal — a user sample with no
-// origin recipe (loaded WAV / Save-As) reverts to its first-loaded buffer.
+// A user sample with no origin recipe reverts to its first-loaded buffer.
 func TestResetSampleToFactory_UserWAVRestoresOriginal(t *testing.T) {
 	resetUserSamplesForTest()
 	sink := &fakeSampleSink{}

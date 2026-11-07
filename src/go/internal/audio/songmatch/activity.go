@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// NNLS solves min‖Σ cols[i]·x[i] − b‖ with x ≥ 0 via multiplicative updates
-// (Lee–Seung style): x ← x · (Aᵀb⁺)/(AᵀAx + ε), negative b entries floored at 0.
-// Deterministic (fixed init), iters bounded.
+// Multiplicative updates x ← x·(Aᵀb⁺)/(AᵀAx + ε), negatives floored at 0. Fixed init, so deterministic.
 func NNLS(cols [][]float64, b []float64, iters int) []float64 {
 	n := len(cols)
 	x := make([]float64, n)
@@ -44,9 +42,7 @@ func NNLS(cols [][]float64, b []float64, iters int) []float64 {
 	return x
 }
 
-// InstrumentActivity estimates each stem-instrument's per-frame presence in the
-// real timeline via NNLS over per-instrument band templates. APPROXIMATE: reliable
-// on solo/sparse passages, indicative on dense mixes.
+// APPROXIMATE: reliable on sparse passages, indicative on dense mixes.
 func InstrumentActivity(realTL fingerprint.SongTimeline, stems map[instrument.ID][]float64, sr int, cfg fingerprint.AnalysisConfig) ([]instrument.ID, [][]float64) {
 	ids := make([]instrument.ID, 0, len(stems))
 	for id := range stems {

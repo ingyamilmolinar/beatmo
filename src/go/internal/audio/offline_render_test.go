@@ -14,15 +14,12 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// trigger is one scheduled audible hit: the predictor said row fires at absIdx,
-// which maps deterministically to a sample offset via bpm/div.
+// absIdx maps to a sample offset through bpm/div.
 type trigger struct {
 	row, absIdx, sampleOffset int
 }
 
-// buildLoopCircuit builds a single-row loop of `n` adjacent regular nodes (all
-// always-audible) and returns a ready predictor plus its loop length. Adjacent
-// J positions mean one path cell per node — "fires every subdivision".
+// Adjacent J positions: one path cell per node, firing every subdivision.
 func buildLoopCircuit(t *testing.T, n int) (*engine.Predictor, int) {
 	t.Helper()
 	logger := game_log.New(io.Discard, game_log.LevelError)
@@ -38,8 +35,7 @@ func buildLoopCircuit(t *testing.T, n int) (*engine.Predictor, int) {
 	return finishPredictor(graph), len(idsToPath(graph))
 }
 
-// finishPredictor wires a graph into a predictor via the canonical path it uses
-// in production (CalculateBeatRow → SetPaths → UpdateNode for every node).
+// The production path: CalculateBeatRow → SetPaths → UpdateNode.
 func finishPredictor(graph *model.Graph) *engine.Predictor {
 	pred := engine.NewPredictor(graph, nil)
 	path, isLoop, loopStart := graph.CalculateBeatRow()
@@ -59,11 +55,7 @@ func idsToPath(graph *model.Graph) []model.BeatInfo {
 	return path
 }
 
-// buildComplexNodeRuleCircuit builds a single-row loop of many adjacent nodes
-// carrying a mix of every logic kind (every_n_triggers, skip_every_n, fixed
-// deterministic probability, trigger_if_prev_*). It drives ONE instrument, so
-// the audio is trivial while the SCHEDULE is complex — the exact shape the user
-// asked for. The predictor (deterministic, no RNG) owns which idx fire.
+// Every logic kind on one instrument: trivial audio, complex SCHEDULE. The predictor owns which steps fire.
 func buildComplexNodeRuleCircuit(t *testing.T) (*engine.Predictor, int, int) {
 	t.Helper()
 	logger := game_log.New(io.Discard, game_log.LevelError)
@@ -98,8 +90,7 @@ func buildComplexNodeRuleCircuit(t *testing.T) (*engine.Predictor, int, int) {
 	return finishPredictor(graph), 1, 4 // rows=1, div=4
 }
 
-// assertInterOnsetSilence checks the back half of every inter-onset gap is below
-// `floor` — i.e. no spurious noise / denormals / leaked tails between hits.
+// The back half of every gap: no noise, denormals or leaked tails.
 func assertInterOnsetSilence(t *testing.T, x []float64, onsets []int, floor float64) {
 	t.Helper()
 	for i := 0; i+1 < len(onsets); i++ {
@@ -113,9 +104,7 @@ func assertInterOnsetSilence(t *testing.T, x []float64, onsets []int, floor floa
 	}
 }
 
-// enumerateTriggers walks the predictor over [0, durSec) and returns every
-// audible hit with its deterministic sample offset. time(idx) = (idx/div) *
-// 60/bpm, matching game_sequencer_schedule.go's beatDtSec.
+// time(idx) = (idx/div) × 60/bpm, as the sequencer's beatDtSec.
 func enumerateTriggers(p *engine.Predictor, rows, div, bpm, sr int, durSec float64) []trigger {
 	stepSec := 60.0 / float64(bpm) / float64(div)
 	target := int(durSec/stepSec) + 1
@@ -132,9 +121,7 @@ func enumerateTriggers(p *engine.Predictor, rows, div, bpm, sr int, durSec float
 	return out
 }
 
-// renderCircuitOffline schedules `voiceFactory()` at each trigger's sample
-// offset through the real desktop mixer and returns the captured master PCM.
-// The buffer extends 50ms past the last trigger so the final burst completes.
+// 50 ms past the last trigger so the final burst completes.
 func renderCircuitOffline(trigs []trigger, voiceFactory func() Voice, sr int) []float64 {
 	ResetInstruments()
 	m := newTestMixer()
@@ -148,9 +135,7 @@ func renderCircuitOffline(trigs []trigger, voiceFactory func() Voice, sr int) []
 	return renderMixer(m, last+sr/20) // +50ms tail
 }
 
-// pinSampleRate fixes the package audio sample rate for a test so trigger
-// offsets, the burst voice, the mixer and the capture all agree (and the golden
-// hash is portable). Restores afterward.
+// So offsets, voice, mixer and capture agree and the golden hash is portable.
 func pinSampleRate(t *testing.T, sr int) {
 	t.Helper()
 	old := sampleRate
@@ -158,13 +143,8 @@ func pinSampleRate(t *testing.T, sr int) {
 	t.Cleanup(func() { sampleRate = old })
 }
 
-// pinMasterVolume fixes the main-channel (master) gain for a test so the
-// offline golden hash / peak thresholds stay portable across changes to the
-// product's fresh-session master default (channelManager.reset now seeds the
-// master at 0.5 per the loudness-normalization plan). Phase 3 of processBlock
-// applies the GLOBAL main channel's volume, so these signal-correctness tests
-// must pin it — just as they pin sampleRate — to assert the DSP math rather
-// than the UI default. Restores afterward.
+// The master volume is applied in processBlock, so these signal tests pin it like the sample rate: they assert the DSP,
+// not the session default.
 func pinMasterVolume(t *testing.T, v float64) {
 	t.Helper()
 	mainCh := channelForInstrument(channel.ID{})
@@ -186,9 +166,7 @@ func assertNoNaNOrClip(t *testing.T, x []float64) {
 	}
 }
 
-// TestBurstVoiceLandsAtOffset: a deterministic burst scheduled at a known
-// sample offset produces audible energy starting at (≈) that offset and is
-// silent before it — the foundational guarantee the harness relies on.
+// The guarantee the harness relies on.
 func TestBurstVoiceLandsAtOffset(t *testing.T) {
 	ResetInstruments()
 	t.Cleanup(func() { ResetInstruments() })
@@ -218,12 +196,7 @@ func TestBurstVoiceLandsAtOffset(t *testing.T) {
 	}
 }
 
-// TestEnumerateTriggersMapsAndIsDeterministic: the predictor is the ground
-// truth for WHICH subdivisions fire (CLAUDE.md: "Predictor as source of
-// truth"). The harness must (a) map each audible idx to the exact sample offset
-// idx*stepSamples, (b) return a non-empty, strictly-increasing schedule, and
-// (c) be byte-for-byte reproducible. We do NOT assert a hand-guessed count —
-// the grid layout owns that; the predictor owns the schedule.
+// The predictor owns the schedule, so no hand-guessed count: exact offsets, non-empty, strictly increasing, reproducible.
 func TestEnumerateTriggersMapsAndIsDeterministic(t *testing.T) {
 	pred, _ := buildLoopCircuit(t, 4)
 	const div, bpm, sr = 4, 120, 48000
@@ -254,9 +227,7 @@ func TestEnumerateTriggersMapsAndIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestRenderCircuitOnsetsMatchSchedule: the rendered master has EXACTLY one
-// transient per predicted trigger, each aligned to the trigger's sample offset,
-// with no NaN/clip. Dropped/doubled/mistimed voices fail this.
+// Exactly one transient per trigger at its offset: dropped, doubled or mistimed voices fail.
 func TestRenderCircuitOnsetsMatchSchedule(t *testing.T) {
 	pinSampleRate(t, 48000)
 	pred, _ := buildLoopCircuit(t, 4)
@@ -276,11 +247,7 @@ func TestRenderCircuitOnsetsMatchSchedule(t *testing.T) {
 	}
 }
 
-// TestComplexCircuitSimpleAudioByteExact is the headline deterministic harness:
-// a complex node-rule schedule drives one simple instrument; the rendered
-// master must match the predictor schedule exactly (no dropped/doubled/mistimed
-// hits), be silent between hits (no noise/denormals), never clip or go NaN, and
-// hash-pin so any future signal regression is caught byte-for-byte.
+// Matches the schedule exactly, silent between hits, never clips or goes NaN, and is hash-pinned.
 func TestComplexCircuitSimpleAudioByteExact(t *testing.T) {
 	pinSampleRate(t, 48000)
 	pinMasterVolume(t, 1.0) // golden pins the DSP, not the 0.5 session-default master
@@ -297,9 +264,7 @@ func TestComplexCircuitSimpleAudioByteExact(t *testing.T) {
 	if len(onsets) != len(trigs) {
 		t.Fatalf("onsets=%d triggers=%d (audio diverges from schedule)", len(onsets), len(trigs))
 	}
-	// A voice starts on its own sample (it used to wait for the next 64-frame
-	// block), so every hit crosses the onset floor the same few samples into
-	// its 5 ms fade-in.
+	// A voice starts on its own sample, so every hit crosses the floor the same few samples into its fade-in.
 	first := onsets[0] - trigs[0].sampleOffset
 	for i := range trigs {
 		d := onsets[i] - trigs[i].sampleOffset
@@ -313,9 +278,6 @@ func TestComplexCircuitSimpleAudioByteExact(t *testing.T) {
 	// (c) Byte-exact golden — any signal regression flips the hash.
 	got := hashFloat64PCM(master)
 	t.Logf("master sha256=%s samples=%d triggers=%d onsets=%d", got, len(master), len(trigs), len(onsets))
-	// Re-pinned 2026-10-27: voices start on their own sample instead of the
-	// next 64-frame block (every onset moved by its trigger's offset within
-	// the block; the check above now requires one common delta).
 	const golden = "d329403a821c9f2747097882c6d2e8e8076432e0a25e6f38cde23e60f97cb929"
 	if golden != "" && got != golden {
 		t.Fatalf("master hash drift: got %s want %s", got, golden)

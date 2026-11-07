@@ -38,8 +38,6 @@ func processThrough(ch *Channel, input []float64) []float64 {
 	return out
 }
 
-// TestChainMultiEffectModifiesAudio verifies that stacking distortion→delay→reverb
-// through a channel produces output that differs from the dry signal.
 func TestChainMultiEffectModifiesAudio(t *testing.T) {
 	resetChains(t)
 	id := "integ-multi"
@@ -76,9 +74,7 @@ func TestChainMultiEffectModifiesAudio(t *testing.T) {
 	}
 }
 
-// TestChainParameterChangesAffectOutput verifies that increasing distortion drive
-// changes the output energy. Tanh saturation with higher drive pushes small inputs
-// closer to ±1, raising RMS for sub-1.0 inputs.
+// tanh with more drive pushes small inputs toward ±1, raising RMS.
 func TestChainParameterChangesAffectOutput(t *testing.T) {
 	resetChains(t)
 	id := "integ-param"
@@ -110,9 +106,7 @@ func TestChainParameterChangesAffectOutput(t *testing.T) {
 	}
 }
 
-// TestChainOrderAffectsOutput verifies that distortion→filter and filter→distortion
-// produce different results. Distortion-first generates harmonics then filter removes
-// them; filter-first removes highs before distortion, producing fewer harmonics.
+// Distortion first makes harmonics the filter then removes; filter first leaves fewer to make.
 func TestChainOrderAffectsOutput(t *testing.T) {
 	resetChains(t)
 	id := "integ-order"
@@ -146,8 +140,6 @@ func TestChainOrderAffectsOutput(t *testing.T) {
 	}
 }
 
-// TestChainToggleBypassesEffect verifies that disabling a LP filter lets high
-// frequencies pass through, while enabling it attenuates them.
 func TestChainToggleBypassesEffect(t *testing.T) {
 	resetChains(t)
 	id := "integ-toggle"
@@ -174,8 +166,6 @@ func TestChainToggleBypassesEffect(t *testing.T) {
 	}
 }
 
-// TestChannelProcessorChainIncludesInserts verifies that a delay effect wired into
-// the channel produces an echo at the expected position.
 func TestChannelProcessorChainIncludesInserts(t *testing.T) {
 	resetChains(t)
 	id := "integ-echo"
@@ -220,8 +210,6 @@ func TestChannelProcessorChainIncludesInserts(t *testing.T) {
 	}
 }
 
-// TestChainAllSixEffectsProcess adds all 6 original effect types and processes a sine
-// through the channel. Verifies no NaN/Inf and the output is non-silent.
 func TestChainAllSixEffectsProcess(t *testing.T) {
 	resetChains(t)
 	id := "integ-all6"
@@ -269,8 +257,7 @@ func TestChainAllSixEffectsProcess(t *testing.T) {
 	}
 }
 
-// TestChainAllEffectsProcess adds all 14 effect types and processes a sine through
-// the channel. Verifies no NaN/Inf and the output is non-silent.
+// No NaN/Inf and a non-silent output with every effect type in one chain.
 func TestChainAllEffectsProcess(t *testing.T) {
 	resetChains(t)
 	id := "integ-all14"
@@ -353,8 +340,6 @@ func TestRegistryDisplayNames(t *testing.T) {
 	}
 }
 
-// TestChainDelayTimingViaParam verifies that changing the delay time parameter
-// moves the echo to the expected position.
 func TestChainDelayTimingViaParam(t *testing.T) {
 	resetChains(t)
 	id := "integ-delay-timing"
@@ -406,8 +391,6 @@ func TestChainDelayTimingViaParam(t *testing.T) {
 	}
 }
 
-// TestChainFilterCutoffViaParam verifies that lowering the LP filter cutoff
-// attenuates a 1kHz signal.
 func TestChainFilterCutoffViaParam(t *testing.T) {
 	resetChains(t)
 	id := "integ-filter-cutoff"

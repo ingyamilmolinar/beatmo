@@ -40,8 +40,7 @@ func TestComputeVibrato_FlatToneNotDetected(t *testing.T) {
 	if vf.Detected {
 		t.Fatalf("flat tone falsely detected vibrato: %+v", vf)
 	}
-	// I3: extent must be small for a steady tone (detrended track removes
-	// FFT-bin quantization drift that would otherwise inflate this).
+	// Detrending removes the bin-quantisation drift that would inflate it.
 	if vf.ExtentCents >= 4.0 {
 		t.Fatalf("flat tone ExtentCents=%.2f, want < 4.0 (detrended; no quantization inflation)", vf.ExtentCents)
 	}

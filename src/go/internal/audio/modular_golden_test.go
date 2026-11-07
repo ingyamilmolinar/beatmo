@@ -4,30 +4,10 @@ package audio
 
 import "testing"
 
-// modularIdentityGolden is the SHA256 of the default modular voice render
-// (render_modular / NULL params). It is the bit-identical anchor for the
-// per-stage bypass + noise-generator feature: adding the six appended ABI
-// fields (osc/fm/env/filter/drive _enabled + noise_seed) MUST NOT change the
-// default sound, because every enable flag defaults to 1.0 (via the mp_get
-// fallback) and osc_type/noise_seed default to 0.
-//
-// If a future intentional change to the modular default voice flips this,
-// regenerate by logging hashFloat32(buf) from TestModularIdentityGolden and
-// updating the constant in the same commit (same protocol as the FM goldens).
-// Re-captured 2026-10-02 (config-only refactor Phase A): the modular voice now
-// computes envelope/filter/pitch/FM from double params (no float32 narrowing at
-// any read); the NULL fast path and the identity params still agree byte for byte.
+// The default modular voice: regenerate from TestModularIdentityGolden's log in the same commit as an intentional change.
 const modularIdentityGolden = "38f767da249ec2079945f226db8de47349b8144189942fb8b0c2f13446eb605e"
 
-// TestModularIdentityGolden proves the default modular voice is byte-identical
-// across the two render entry points AND against the captured baseline:
-//
-//  1. renderModular(NULL) — the cheap unparameterized fast path (unchanged code).
-//  2. renderModularBlock(identity) — the parameterized recipe path with every param
-//     at its schema identity (all stages enabled, sine, seed 0).
-//
-// (1) == (2) proves the recipe path reproduces the fast path; (1) == baseline
-// proves the new ABI fields didn't perturb the default sound.
+// The NULL fast path, the identity block and the captured baseline must all agree.
 func TestModularIdentityGolden(t *testing.T) {
 	const sr = 48000
 	const n = 48000 // 1.0s
@@ -51,16 +31,11 @@ func TestModularIdentityGolden(t *testing.T) {
 	}
 }
 
-// identityModularParams returns modularBlock filled from the schema identity
-// map — i.e. every stage enabled, sine oscillator, seed 0. This is the exact
-// block the recipe fast path renders for an unedited modular instrument.
+// Every stage enabled, sine, seed 0: the block an unedited modular instrument renders.
 func identityModularParams() modularBlock {
 	return initBlockForTest(nil)
 }
 
-// TestModularEnableFlagsDefaultEnabled locks the bit-identical contract at the
-// schema layer: every per-stage bypass flag defaults to 1.0 (enabled) and
-// noise_seed to 0, in both the identity map and the editable ParamDefs.
 func TestModularEnableFlagsDefaultEnabled(t *testing.T) {
 	ident := modularFieldInits()
 	for _, name := range []string{"osc_enabled", "fm_enabled", "env_enabled", "filter_enabled", "drive_enabled"} {
@@ -82,11 +57,7 @@ func TestModularEnableFlagsDefaultEnabled(t *testing.T) {
 	}
 }
 
-// TestModularBypassSilencesAndPassesThrough verifies the bypass semantics each
-// stage promises, beyond the generic "mutation changes output" guard:
-//   - osc disabled  → silence (the generator is the source)
-//   - env disabled  → no amplitude shaping (sample 0 is full-scale, not ~0)
-//   - filter disabled → output equals the raw enveloped generator pre-filter
+// osc off → silence; env off → no amplitude shaping; filter off → the raw enveloped generator.
 func TestModularBypassSilencesAndPassesThrough(t *testing.T) {
 	const sr = 48000
 	const n = sr / 4
@@ -100,9 +71,7 @@ func TestModularBypassSilencesAndPassesThrough(t *testing.T) {
 		t.Errorf("osc disabled: peak = %v, want 0 (silence)", pk)
 	}
 
-	// Envelope off → the first sample is the raw oscillator (not attenuated by
-	// a near-zero attack envelope). A default sine starts at ~0, so use a saw
-	// (starts at -1) to make the "no envelope" effect unambiguous.
+	// A sine starts at ~0, so a saw (starting at -1) makes "no envelope" unambiguous.
 	pEnvOn := identityModularParams()
 	pEnvOn.set("osc_type", 1) // saw
 	pEnvOff := pEnvOn.clone()
@@ -111,9 +80,7 @@ func TestModularBypassSilencesAndPassesThrough(t *testing.T) {
 	off := make([]float32, n)
 	renderModularBlock(on, sr, n, pEnvOn)
 	renderModularBlock(off, sr, n, pEnvOff)
-	// With the envelope ON, the very first samples are scaled by the rising
-	// attack (≈0). With it OFF, they are the full saw. So the bypassed buffer
-	// must have strictly greater early energy.
+	// With the envelope on the first samples ride the attack (≈0); off, they are the full saw.
 	earlyEnergy := func(b []float32) float64 {
 		var e float64
 		for i := 0; i < 64 && i < len(b); i++ {
@@ -126,9 +93,7 @@ func TestModularBypassSilencesAndPassesThrough(t *testing.T) {
 	}
 }
 
-// TestModularNoiseDeterministicPerSeed proves the noise generator is (a)
-// reproducible for a fixed seed — so a single render is golden-stable — and
-// (b) decorrelated across seeds — so the round-robin variants actually vary.
+// Reproducible per seed, decorrelated across seeds, so round-robin variants actually vary.
 func TestModularNoiseDeterministicPerSeed(t *testing.T) {
 	const sr = 48000
 	const n = sr / 4

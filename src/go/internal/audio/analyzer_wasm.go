@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// Analyzer is a handle on one of a channel's JS analysers: which channel, and
-// which tap on it.
 type Analyzer struct {
 	ch      channel.ID
 	tap     analyzerTap
@@ -34,25 +32,17 @@ type AnalyzerSnapshot struct {
 	Waveform  []float64
 }
 
-// Diagnostic counters for the per-frame snapshot bridge. Bumped inside
-// ChannelAnalyzerSnapshot / PreEQAnalyzerSnapshot to expose how often we
-// cross the JS↔Go boundary and how many JS array elements we read per
-// snapshot. AnalyzerBridgeStats() is the read accessor; the JS
-// analyzerBridgeStats() export reads through it.
+// How often the JS↔Go boundary is crossed and how many elements each snapshot reads.
 var (
 	bridgeSnapshotCalls        atomic.Uint64
 	bridgeSnapshotElementReads atomic.Uint64
 )
 
-// AnalyzerBridgeStats returns running totals for analyzer-bridge calls
-// and element reads. Used by tests + the diag JS export to detect
-// per-frame allocation pressure.
+// Exposes per-frame allocation pressure to tests and the diagnostic JS export.
 func AnalyzerBridgeStats() (calls, elementReads uint64) {
 	return bridgeSnapshotCalls.Load(), bridgeSnapshotElementReads.Load()
 }
 
-// ResetAnalyzerBridgeStats zeroes the counters. Tests call this between
-// phases to bound the measurement window.
 func ResetAnalyzerBridgeStats() {
 	bridgeSnapshotCalls.Store(0)
 	bridgeSnapshotElementReads.Store(0)
@@ -64,15 +54,9 @@ func (a *Analyzer) SetEnabled(on bool) { a.enabled = on }
 // Enabled returns whether the analyzer is active (WASM).
 func (a *Analyzer) Enabled() bool { return a.enabled }
 
-// EnableChannelAnalyzer creates (or reuses) the channel's AnalyserNode.
-//
-// `window` is the caller's TIME-domain ask. The browser gives a channel one
-// AnalyserNode serving both domains, and between the two it is the SPECTRUM
-// whose requirement binds — a display band holding no FFT bin renders as
-// silence (analyzer.SpectrumFFTSize) — so the node is created at
-// BridgeAnalyserFFTSize and the caller's window is passed on separately as
-// the time-domain export cap. Callers therefore get the frequency
-// resolution the tab needs without the longer waveform none of them wants.
+// window is the caller's TIME-domain ask. One AnalyserNode serves both domains and the spectrum's requirement binds
+// (a band with no bin renders as silence), so the node is created at BridgeAnalyserFFTSize and window caps the
+// time-domain export separately.
 func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
 	if id.IsZero() {
 		return &Analyzer{} // names no channel: never "" to JS, which reads it as the master bus
@@ -91,8 +75,7 @@ func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
 func (a *Analyzer) ProcessSample(x float64) float64       { return x }
 func (a *Analyzer) ProcessBlock(samples []float32, n int) {}
 
-// ProcessBlockBuf implements BlockProcessor for Analyzer (WASM).
-// Analysis is done in JS; this just copies input to output.
+// Analysis happens in JS; this only copies input to output.
 func (a *Analyzer) ProcessBlockBuf(in, out []float32, samples int) {
 	copy(out[:samples], in[:samples])
 }
@@ -121,10 +104,7 @@ func ChannelAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 			return AnalyzerSnapshot{}
 		}
 		var out AnalyzerSnapshot
-		// Ask for the analyser's full bin count. JS groups bins LINEARLY
-		// when asked for fewer, which spends the loss where the display
-		// bands are narrowest; its implicit default of 64 put 375 Hz
-		// between bins and left every band under that empty.
+		// The full bin count: JS groups bins LINEARLY when asked for fewer, emptying the narrowest (bass) bands.
 		val := fn.Invoke(id.String(), BridgeSpectrumBins)
 		if !val.Truthy() {
 			return out
@@ -141,12 +121,7 @@ func ChannelAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	})
 }
 
-// ChannelAnalyzerMetrics returns ONLY the scalar metrics for a channel —
-// peak, RMS, clip count, and an `active` flag derived from peak/RMS. It
-// skips the per-element spectrum + waveform readback that
-// ChannelAnalyzerSnapshot performs, eliminating ~1024 js.Value
-// allocations per call. Used by the Meters tab where the renderer
-// consumes only scalars (see render_meters.go:38).
+// Scalars only, skipping the spectrum and waveform readback, for callers like Meters that read nothing else.
 func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active bool) {
 	if id.IsZero() {
 		return 0, 0, 0, false // names no channel: never "" to JS, which reads it as the master bus
@@ -156,10 +131,7 @@ func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active
 	if !fn.Truthy() {
 		return 0, 0, 0, false
 	}
-	// bins=0 is the scalar-only contract: JS skips the frequency read, the
-	// downsample and the wave copy. Without it this "fast path" still made
-	// the browser compute a full spectrum + waveform on every call and then
-	// read two numbers off it.
+	// bins=0 is the scalar-only contract: JS skips the frequency read, downsample and wave copy.
 	val := fn.Invoke(id.String(), 0)
 	if !val.Truthy() {
 		return 0, 0, 0, false
@@ -217,11 +189,8 @@ func PreEQAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	})
 }
 
-// EnableSynthAnalyzer creates a pre-FX (channel ingress) analyser on the
-// channel. The scope panel uses this for both StageSynth (pre-everything) and
-// StageAntiPop — in WASM the per-source anti-pop GainNode envelope is already
-// applied before the signal reaches the channel ingress, so tapping ingress
-// is the correct representation for both stages.
+// The browser applies each source's anti-pop envelope before channel ingress, so the ingress tap represents both
+// StageSynth and StageAntiPop.
 func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer {
 	if id.IsZero() {
 		return &Analyzer{} // names no channel: never "" to JS, which reads it as the master bus
@@ -233,9 +202,7 @@ func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer {
 	return &Analyzer{ch: id, tap: tapSynth}
 }
 
-// SynthAnalyzerSnapshot returns the latest pre-FX channel-ingress snapshot.
-// Companion to EnableSynthAnalyzer. Returns a zero snapshot if the JS export
-// is missing (e.g., older audio.js without the bridge).
+// A zero snapshot when the JS export is missing.
 func SynthAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	if id.IsZero() {
 		return AnalyzerSnapshot{} // names no channel: never "" to JS, which reads it as the master bus
@@ -268,14 +235,10 @@ func SetAnalyzerEnabled(id channel.ID, on bool) {}
 
 func resetAnalyzers() {}
 
-// Reset is a no-op on WASM — the analyzer buffers live in JS AnalyserNodes, not
-// in the Go struct. See ResetAllChannelAnalyzers for the WASM clear path.
+// The buffers live in JS AnalyserNodes; ResetAllChannelAnalyzers clears them.
 func (a *Analyzer) Reset() {}
 
-// ResetAllChannelAnalyzers drops the cached snapshot frames so the next fetch
-// re-pulls fresh data from JS, and asks the JS bridge to zero its AnalyserNode
-// taps if it exposes a resetAllAnalyzers hook (guarded — older audio.js without
-// the hook is a no-op). Called on circuit load so stopped tabs read flat.
+// Drops the cached frames and asks JS to zero its taps when it exposes resetAllAnalyzers.
 func ResetAllChannelAnalyzers() {
 	channelSnapCache.clear()
 	preEQSnapCache.clear()

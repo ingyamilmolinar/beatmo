@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Category is an instrument-menu category: a closed enum (the menu's tabs, in
-// display order). CatNone is "no category" — the zero value, never a tab.
+// A closed enum in display order; the zero value CatNone is never a tab.
 type Category int
 
 // The categories, in display order.
@@ -57,10 +56,8 @@ func (c Category) Label() string {
 // Categories returns every category in display order (CatNone excluded).
 func Categories() []Category { return enum.All(categoryNames)[1:] }
 
-// CategoryOf returns an instrument's category: a shipped instrument's own
-// (builtinProperties; an instance "x--N" has x's), else -- for an instrument
-// the user named, a WAV sample or a Save-As instrument -- the category its
-// display name suggests, else CatOther.
+// A shipped instrument's own category (an instance has its base's), else for a user-named one what its display
+// name suggests, else CatOther.
 func CategoryOf(id instrument.ID) Category {
 	if id == "" {
 		return CatOther
@@ -71,10 +68,7 @@ func CategoryOf(id instrument.ID) Category {
 	return categoryFromName(InstrumentDisplayName(id))
 }
 
-// categoryFromName classifies an instrument the user named. A voice/choir
-// word wins over the role rules: roleFromName has a generic "bass" rule
-// with no voice awareness, so a voice-flavored name that also says "bass"
-// would otherwise land in CatBass.
+// Voice words win over roleFromName's generic "bass" rule, which has no voice awareness.
 func categoryFromName(name string) Category {
 	if c, ok := categoryByText(name); ok && c == CatVoice {
 		return c
@@ -88,8 +82,7 @@ func categoryFromName(name string) Category {
 	return CatOther
 }
 
-// InstrumentsByCategory returns every known instrument ID in a category, in
-// registration/catalog order.
+// In registration / catalogue order.
 func InstrumentsByCategory(cat Category) []instrument.ID {
 	seen := map[instrument.ID]bool{}
 	var out []instrument.ID
@@ -111,13 +104,11 @@ func InstrumentsByCategory(cat Category) []instrument.ID {
 	return out
 }
 
-// categoryByText classifies an instrument name by substring. Ordered most-
-// specific first so "open-hihat" hits HiHat before any generic rule.
+// Most specific first, so "open-hihat" hits HiHat before any generic rule.
 func categoryByText(s string) (Category, bool) {
 	lc := strings.ToLower(s)
 	switch {
-	// "hat" only as a suffix ("open-hat", "closed-hat") — a bare Contains would
-	// misclassify unrelated ids like "ratchet" or "whatchamacallit" as HiHat.
+	// "hat" only as a suffix: a bare Contains would make "ratchet" a HiHat.
 	case strings.Contains(lc, "hihat"), strings.Contains(lc, "hi-hat"), strings.HasSuffix(lc, "hat"):
 		return CatHiHat, true
 	case strings.Contains(lc, "ride"), strings.Contains(lc, "crash"), strings.Contains(lc, "cymbal"):
@@ -130,10 +121,7 @@ func categoryByText(s string) (Category, bool) {
 		return CatTom, true
 	case strings.Contains(lc, "clap"), strings.Contains(lc, "cowbell"), strings.Contains(lc, "shaker"), strings.Contains(lc, "conga"), strings.Contains(lc, "perc"):
 		return CatPercussion, true
-	// Voice/choir before "bass"/"string"/"lead": a voice-flavored id must hit
-	// Voice, not the bass substring rule below (ghost-bass/viola-pad/
-	// ensemble-lead(-dark) are NOT voice-flavored ids, so they correctly fall
-	// through to the bass/strings/lead rules per the 2026-07-08 re-category).
+	// Before the bass/strings/lead rules, so a voice-flavoured name lands in Voice.
 	case strings.Contains(lc, "choir"), strings.Contains(lc, "vocal"), strings.Contains(lc, "voice"),
 		strings.Contains(lc, "soprano"), strings.Contains(lc, "whisper"):
 		return CatVoice, true
@@ -176,8 +164,7 @@ func categoryByRole(role instrument.Role) (Category, bool) {
 	return CatNone, false
 }
 
-// synthCatalogCategory is the catalog group of a built-in synth: its menu
-// category, marked as synthesized (WAV assets group under "... (WAV)").
+// Its menu category marked as synthesized; WAV assets group under "... (WAV)".
 func synthCatalogCategory(id instrument.ID) string {
 	return CategoryOf(id).Label() + " (Synth)"
 }

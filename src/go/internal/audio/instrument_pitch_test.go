@@ -8,10 +8,7 @@ import (
 )
 
 func TestInstrumentPitchInfo_KnobsFoldIn(t *testing.T) {
-	// A document copied from the bare modular voice: every pitch knob at 0, and
-	// an id the fundamentals table does not know, so the offset is the declared
-	// computation alone. (gen1_fm_base is covered by TestFMBaseKnobMovesTheNote:
-	// the bare voice has no FM layer to carry it.)
+	// Every pitch knob at 0 and an id the table does not know, so the offset is the declared computation alone.
 	const inst = "test-pitch-inst-b"
 	if err := InstallInstrumentDocForTest(inst, roster.Modular); err != nil {
 		t.Fatal(err)
@@ -44,8 +41,7 @@ func TestInstrumentPitchInfo_KnobsFoldIn(t *testing.T) {
 
 func TestInstrumentPitchInfo_MelodicRecipeIsPitched(t *testing.T) {
 	const inst = "test-pitch-inst-melodic"
-	// synth-modular-violin is in melodicRecipeIDs and carries no pitch-shifting
-	// default, so an untouched instrument bound to it sits on the A3 baseline.
+	// Violin carries no pitch-shifting value, so it sits on the A3 baseline.
 	_ = InstallInstrumentDocForTest(inst, roster.Violin)
 	t.Cleanup(func() { RemoveInstrumentDocForTest(inst) })
 
@@ -58,11 +54,7 @@ func TestInstrumentPitchInfo_MelodicRecipeIsPitched(t *testing.T) {
 	}
 }
 
-// A melodic recipe whose SEED shifts pitch must report that shift. This case
-// previously asserted 0 for synth-modular-cello — which carries osc_octave:-1
-// — encoding the very defect that let the score importer mis-compensate the
-// bass parts. The baseline case above now uses an offset-free recipe so both
-// halves of the contract are covered.
+// The score importer compensates bass parts from this answer.
 func TestInstrumentPitchInfo_MelodicRecipeSeedOffsetIsReported(t *testing.T) {
 	const inst = "test-pitch-inst-melodic-shifted"
 	_ = InstallInstrumentDocForTest(inst, roster.Cello)
@@ -77,10 +69,7 @@ func TestInstrumentPitchInfo_MelodicRecipeSeedOffsetIsReported(t *testing.T) {
 	}
 }
 
-// A drum recipe that declares a FUNDAMENTAL is pitched: drum-kick's head is
-// tuned to 55 Hz, so a node on it sounds A1 and saying so is a measurement, not
-// a guess. This asserted the opposite until note display went universal
-// (2026-09-13), back when "pitched" meant "is in melodicRecipeIDs".
+// A head tuned to 55 Hz sounds A1: naming it is a measurement, not a guess.
 func TestInstrumentPitchInfo_TunedDrumRecipeIsPitched(t *testing.T) {
 	const inst = "test-pitch-inst-drum"
 	_ = InstallInstrumentDocForTest(inst, roster.Kick) // declares fundamental=55 Hz
@@ -95,9 +84,7 @@ func TestInstrumentPitchInfo_TunedDrumRecipeIsPitched(t *testing.T) {
 	}
 }
 
-// A recipe with NO fundamental stays unpitched however it is bound: drum-hihat
-// is noise, and there is nothing for a note name to refer to. This is the limit
-// that keeps "universal" from meaning "invented".
+// The limit that keeps "universal" from meaning "invented".
 func TestInstrumentPitchInfo_NoiseRecipeNotPitched(t *testing.T) {
 	const inst = "test-pitch-inst-noise"
 	_ = InstallInstrumentDocForTest(inst, roster.Hihat) // declares no base frequency

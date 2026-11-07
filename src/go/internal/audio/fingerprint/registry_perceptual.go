@@ -2,11 +2,8 @@ package fingerprint
 
 import "math"
 
-// registry_perceptual.go — the axes that speak the listener's vocabulary.
-//
-// Every threshold here is anchored on a measured (reference, synth) pair from
-// the corpus where the listener wrote the corresponding word, so the number
-// crossing a threshold means the same thing the word meant.
+// Each threshold is anchored on a corpus pair where the listener wrote the word, so crossing it means what the word
+// meant.
 
 // Perceptual descriptor IDs.
 const (
@@ -26,9 +23,7 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDBrightnessRatio, Group: GroupPerceptual, Name: "brightness ratio",
 		Scope: ScopeWhole, Repr: ReprSpectrum, Kind: KindRatio,
-		// Ratio thresholds (larger/smaller). 1.4x is a clearly different
-		// warmth; 2.0x is the gap the listener called "needs to be much fuller
-		// and warmer" (synth cello 21.6 vs reference 11.1).
+		// 2.0× is the gap the listener called "needs to be much fuller and warmer".
 		Drift: 1.4, Mismatch: 2.0,
 		Doc: "SpectralCentroid / F0Hz -- where the energy sits, in multiples of the note's " +
 			"OWN pitch. The warm/cool axis. bright.centroid compares absolute hertz and so " +
@@ -53,10 +48,7 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDHarmonicSlope, Group: GroupPerceptual, Name: "harmonic slope",
 		Scope: ScopeWhole, Repr: ReprSpectrum, Kind: KindRate,
-		// dB per octave of harmonic number, compared as a signed absolute
-		// delta. Corpus references span -6 to -15 dB/oct, so a 2 dB/oct gap is
-		// a noticeably different roll-off and 6 dB/oct is a different
-		// instrument class.
+		// References span -6 to -15 dB/oct: 2 is a noticeably different roll-off, 6 another instrument class.
 		Drift: 2.0, Mismatch: 6.0, Unit: "dB/oct",
 		Doc: "OLS slope of partial level in dB against log2 of harmonic number: how fast the " +
 			"harmonic series rolls off. The complement to brightness ratio -- the centroid " +
@@ -79,9 +71,7 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDTristimulus, Group: GroupPerceptual, Name: "tristimulus",
 		Scope: ScopeWhole, Repr: ReprSpectrum, Kind: KindFraction,
-		// Three shares summing to 1. A 0.08 mean shift moves a noticeable
-		// amount of energy between bands; 0.25 is a different balance entirely
-		// (synth viola T1=0.05 against a reference at 0.91).
+		// Three shares summing to 1: 0.25 is a different balance entirely.
 		Drift: 0.08, Mismatch: 0.25,
 		Doc: "Fingerprint.Tristimulus: the share of partial energy in the FUNDAMENTAL (T1), " +
 			"in partials 2-4 (T2), and in partials 5+ (T3) -- the classic three-band timbre " +
@@ -102,10 +92,7 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDNoisePersistence, Group: GroupPerceptual, Name: "noise persistence",
 		Scope: ScopeTrack, Repr: ReprSpectrum, Kind: KindRatio,
-		// Ratio of late-half to early-half noise. Corpus references cluster at
-		// 0.04-0.25 for strings and 0.34-0.43 for winds, while every shipped
-		// bowed string reads ~0.99. A 2x ratio gap already changes the
-		// excitation the ear infers; 4x is string-vs-wind.
+		// References: strings 0.04–0.25, winds 0.34–0.43; shipped bowed strings ~0.99. 4× is string versus wind.
 		Drift: 2.0, Mismatch: 4.0,
 		Doc: "Late-half mean noise fraction / early-half mean: does the noise STAY, or does it " +
 			"belong to the onset? This is the wind-vs-string axis and the airy-vs-dry axis at " +
@@ -147,8 +134,7 @@ func init() {
 			if len(st.Frames) == 0 {
 				return Unavailable(naNoFrames)
 			}
-			// Average the magnitude spectrum over frames so the reading
-			// describes the note rather than one arbitrary window.
+			// Averaged over frames, so it describes the note, not one window.
 			avg := make([]float64, len(st.Frames[0]))
 			for _, f := range st.Frames {
 				for i := range avg {

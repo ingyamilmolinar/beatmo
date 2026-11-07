@@ -6,18 +6,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// merged_params_cache.go — revision-gated cache of an instrument's flat field
-// view (instrument.FieldValues of its project document). The Synth tab reads
-// it a dozen-plus times per frame (buildSynthTab, the mirror's params hash,
-// every preview/concept wave, per-stage enable checks); re-deriving it each
-// time was ~1.8 MB of garbage per frame and drove the WASM GC into 100 ms+
-// stalls. Guarded by TestSynthTab_LiveControlEditFrameByteBudget in
-// internal/ui. Invalidated by the document revision, never by comparison.
+// The Synth tab reads an instrument's flat view many times per frame; re-deriving it each time drove the WASM GC into
+// 100 ms+ stalls. Invalidated by the document revision, never by comparison.
 
-// InstrumentParamsRev returns the instrument's document revision (it changes
-// whenever the project document for id changes). Unknown instruments return 0.
-// The Synth tab's per-frame re-render gates key on it instead of hashing the
-// whole flat view.
+// 0 for an unknown instrument. Per-frame re-render gates key on it instead of hashing the flat view.
 func InstrumentParamsRev(instrumentID instrument.ID) uint64 { return InstrumentDocRev(instrumentID) }
 
 type mergedCacheEntry struct {
@@ -30,10 +22,7 @@ var (
 	mergedCache   = map[instrument.ID]mergedCacheEntry{}
 )
 
-// MergedInstrumentParamsRO returns the instrument's flat field view
-// (instrument.FieldValues of its project document), cached until the document
-// changes. READ-ONLY CONTRACT: callers must never mutate the returned map — it
-// is shared across callers and frames.
+// READ-ONLY: shared across callers and frames.
 func MergedInstrumentParamsRO(instrumentID instrument.ID) RecipeParams {
 	rev := InstrumentDocRev(instrumentID)
 	mergedCacheMu.RLock()
@@ -46,8 +35,7 @@ func MergedInstrumentParamsRO(instrumentID instrument.ID) RecipeParams {
 	if !ok {
 		return RecipeParams{}
 	}
-	// The revision is captured BEFORE the read: a mutation landing in between
-	// stores under the old rev and re-reads next time — never a stale serve.
+	// Captured BEFORE the read: a mutation in between stores under the old rev and re-reads next time, never a stale serve.
 	rev = InstrumentDocRev(instrumentID)
 	merged := RecipeParams(instrument.FieldValues(d, BuiltinModuleRegistry()))
 	mergedCacheMu.Lock()

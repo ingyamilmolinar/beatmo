@@ -19,20 +19,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// template_audio_quality_test.go — renders every genre template (and each
-// instrument in isolation) through the REAL voice→mixer→master-chain path and
-// measures objective audio-quality metrics. This is the "way to ensure synth
-// instruments don't sound horrible/distorted/noisy" the brief asked for:
-//
-//   - TestTemplateAudioReport  — diagnostic tool: logs a metrics table for every
-//     genre+instrument. Always passes. Set BEATMO_DIAG_WAV=/tmp/diag to also dump
-//     WAVs for listening.
-//   - TestTemplateAudioQuality — the guard: fails if any mix clips, is squashed,
-//     or if a melodic bass is noisy (metallic HF) or muddy (inharmonic cluster),
-//     or if the bass overpowers the kick.
-//
-// Both build under the native (!test) tag because they exercise the CGo synth
-// engine and the real master chain (compressor + soft-clip + limiter).
+// Every template and each instrument through the REAL voice → mixer → master path: the report logs metrics
+// (BEATMO_DIAG_WAV dumps WAVs); the guard fails on clipping, a squashed mix, a noisy or muddy bass, or a bass over the
+// kick.
 
 // ---- metrics ---------------------------------------------------------------
 
@@ -126,10 +115,7 @@ func spectralStats(buf []float64, sr int) (flatness, hfFrac float64) {
 	return flatAcc / float64(frames), hf
 }
 
-// harmonicFraction detects the fundamental of the loudest window via
-// autocorrelation and returns (f0, fraction of spectral energy that sits at
-// integer multiples of f0). A clean tonal note scores high; a dissonant cluster
-// of overlapping notes (or noise) scores low.
+// A clean tonal note scores high; a cluster of notes, or noise, low.
 func harmonicFraction(buf []float64, sr int) (float64, float64) {
 	const N = 8192
 	if len(buf) < N {
@@ -150,10 +136,7 @@ func harmonicFraction(buf []float64, sr int) (float64, float64) {
 		return 0, 0
 	}
 	seg := buf[bestOff : bestOff+N]
-	// Autocorrelation f0 over 30..400 Hz. A low near-sine is highly correlated at
-	// small lags too, so a naive global-max picks a spurious short lag; the robust
-	// fix is to skip past the first dip (where autocorr first goes non-positive)
-	// and take the peak after it — that lag is the true period.
+	// A low near-sine correlates at small lags too, so the peak is taken after the first dip.
 	loLag, hiLag := sr/400, sr/30
 	if hiLag >= N {
 		hiLag = N - 1
@@ -251,15 +234,8 @@ func fftPow(x []complex128) []float64 {
 
 // ---- offline render --------------------------------------------------------
 
-// renderTemplateMix renders `seconds` of a template through the real mixer +
-// master chain. When soloID != "" only that instrument's row is scheduled.
-// --- JSON-driven rendering (templates are authoritative JSON, no Spec) -------
-//
-// Templates are hand-authored/exported project files. These helpers render them
-// the same way the startup circuit is exercised: parse the embedded JSON, apply
-// each instrument exactly as import does, and schedule voices. No procedural
-// pattern reconstruction — quality is measured per-instrument-solo, and the
-// master-mix headroom guard uses the worst-case all-hits-on-the-downbeat sum.
+// Applies each instrument exactly as import does. Quality is measured per instrument; master headroom uses the
+// worst case of every hit on one downbeat.
 
 // templateInst mirrors the importable instrument fields the renderer needs.
 type templateInst struct {
@@ -289,16 +265,8 @@ func parseTemplateDoc(t *testing.T, genre string, b []byte) templateDoc {
 	return d
 }
 
-// applyTemplateInstrument configures the engine for one instrument exactly as
-// the importer does: synth-param overlay and insert effects. The JSON
-// `effects` array deserializes straight into []EffectSlot (the same contract
-// TestTemplateInsertEffectsAreImportable locks).
-//
-// Renders share global engine state, so it FIRST resets this instrument's param
-// overlay and insert chain — otherwise a heavier prior render (e.g. a bright
-// house hihat with brightness=0.6) leaks into a param-less render of the same id
-// (techno's hihat), inflating its measured flatness. ResetInstruments() clears
-// channels/voices but not the per-instrument param overlay.
+// Renders share global engine state, so this instrument's params and chain are reset FIRST, or a heavier prior render
+// leaks into this one.
 func applyTemplateInstrument(in templateInst) {
 	ResetInstrumentParams(instrument.ID(in.ID))
 	if len(in.SynthParams) > 0 {
@@ -324,9 +292,7 @@ func instVol(in templateInst) float64 {
 	return in.Volume
 }
 
-// renderTemplateAllHitsPeak schedules ONE hit of every instrument at t=0 — the
-// worst-case aligned downbeat — through the real chain and returns the
-// pre-limiter master peak. Mirrors the startup-circuit allHitsPeak strategy.
+// One hit of every instrument at t=0, the worst-case downbeat; the peak before the soft clip.
 func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 	t.Helper()
 	game_log.TailOnFailure(t) // the capture lines, only if this test fails
@@ -346,9 +312,7 @@ func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 	return analyzeAudio(StopOutputCapture(), sr).peak
 }
 
-// renderTemplateInstrumentSolo renders one instrument played once per beat over
-// the duration (so the voice stays active for crackle/flatness analysis),
-// configured exactly as import would.
+// Once per beat so the voice stays active for crackle and flatness analysis.
 func renderTemplateInstrumentSolo(t *testing.T, d templateDoc, in templateInst, seconds float64) []float64 {
 	t.Helper()
 	game_log.TailOnFailure(t) // the capture lines, only if this test fails
@@ -412,11 +376,7 @@ func TestTemplateAudioQuality(t *testing.T) {
 		t.Run(tp.Genre, func(t *testing.T) {
 			d := parseTemplateDoc(t, tp.Genre, tp.Bytes)
 
-			// EVERY instrument in the template, rendered solo through the real
-			// chain (synth params + insert effects, exactly as import),
-			// must be clean: no clipping, not white-noise hissy, no sustained
-			// crackle. (Worst-case master headroom is guarded separately in
-			// TestTemplateMasterMix.)
+			// No clipping, no white-noise hiss, no sustained crackle.
 			var kickPeak float64
 			solos := map[string]audioMetrics{}
 			for _, in := range d.Instruments {
@@ -428,23 +388,8 @@ func TestTemplateAudioQuality(t *testing.T) {
 				if s.peak >= 0.999 {
 					t.Errorf("%s: peak=%.3f — clipping at the voice/channel", in.ID, s.peak)
 				}
-				// Templates are authoritative, user-authored circuits, so a bright
-				// noise-based percussion voice (a hi-hat at brightness 0.6 measures
-				// ~0.38) is an intentional sound, not a bug. This guard only catches a
-				// near-pure-white-noise render — a genuinely broken/garbage voice.
-				//
-				// Spectral flatness alone is too blunt: a CLAP is, by design, a short
-				// burst of band-limited noise, so its spectrum is legitimately near-
-				// white (pop-ballad/house-piano claps measure ~0.48–0.50). What tells
-				// a real noise-burst HIT apart from a genuinely broken "stuck hiss" is
-				// TIME structure, not spectrum. A percussion hit is transient — energy
-				// packed into short decaying bursts with near-silence between, so its
-				// crest factor (peak/rms over the whole 3 s solo) is high (claps ≈7.6–
-				// 10.6, hats ≈10–18). A broken white-noise render fills the buffer
-				// evenly and sits at a low crest (≈3–5). So: sustained sounds keep the
-				// strict 0.50 bound; a transient noise-burst (clap/hat/snare) is held
-				// to a looser ceiling that still rejects an actually-pure-white render
-				// (flatness → ~0.9–1.0) but passes a real clap (~0.5).
+				// A clap is legitimately near-white, so TIME structure tells a hit from a stuck hiss: a transient burst has a high
+				// crest factor and gets a looser flatness ceiling that still rejects a pure-white render.
 				const noiseBurstCrestMin = 6.0     // transient ⇒ percussive noise burst, not a stuck hiss
 				const noiseBurstFlatnessMax = 0.65 // even a clap is nowhere near pure white noise
 				flatnessMax := 0.50
@@ -480,30 +425,10 @@ func TestTemplateAudioQuality(t *testing.T) {
 	}
 }
 
-// TestTemplateInsertEffectsAreImportable locks the audio-side half of the
-// insert-effect import contract: the per-instrument `effects` JSON that
-// cmd/gen-showcase emits must deserialize into exactly the []audio.EffectSlot
-// the importer hands to SetInsertEffects, so the filters actually reach the
-// engine on import. (The UI round-trip test TestTemplates_ImportRoundTrip
-// exercises the full path; this locks the audio-side shape independently.)
-//
-// Two halves, because the shipped catalogue no longer exercises the emitter:
-// the per-instrument lowpass tuning lived only on the hand-authored genre
-// specs (dre-g-thang's 9 kHz open-hat/shaker roll-off and friends), and the
-// public-domain curation replaced all of those with score-derived chamber
-// pieces whose spec table (cmd/gen-showcase/template_specs.go PartMap) carries
-// no effects field at all. So:
-//
-//   - the fixture half pins the wire shape against a literal copy of what
-//     cmd/gen-showcase's effectJSON marshals, which keeps the contract honest
-//     while zero templates ship effects;
-//   - the catalogue half validates any effects a template DOES carry, so the
-//     day a spec row starts emitting them again they are checked for real.
+// The fixture half pins the wire shape gen-showcase emits, which no shipped template exercises now; the catalogue half
+// validates any effects a template does carry.
 func TestTemplateInsertEffectsAreImportable(t *testing.T) {
-	// Byte-for-byte the shape cmd/gen-showcase/main.go's effectJSON emits for
-	// an EffectSpec (see the `fx` loop in build()). If EffectSlot's JSON tags
-	// ever drift from it, a template carrying effects would import silently
-	// filterless — that is exactly what this half catches.
+	// If EffectSlot's tags drift from it, a template with effects imports silently filterless.
 	const emittedByGenShowcase = `{
 	  "type": "filter",
 	  "enabled": true,
@@ -527,8 +452,7 @@ func TestTemplateInsertEffectsAreImportable(t *testing.T) {
 
 	found := 0
 	for _, tp := range assets.Templates() {
-		// Fresh doc per iteration: a reused struct lets json slice-reuse retain
-		// stale `effects` from a prior template (inflates the count).
+		// A reused struct lets json keep stale effects from a prior template.
 		var doc struct {
 			Instruments []struct {
 				ID      string       `json:"id"`

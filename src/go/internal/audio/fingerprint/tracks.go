@@ -2,47 +2,21 @@ package fingerprint
 
 import "math"
 
-// tracks.go — frame-wise measurement of the WHOLE signal.
-//
-// THE PROBLEM THIS FIXES
-// ----------------------
-// Fingerprint measures spectral shape, MFCC, partials, formants, vibrato,
-// coupling and noise over a SINGLE window: skip SustainSkipSec (0.3 s), take
-// up to SustainLenSec (1.3 s). One second, from the middle of the note. Only
-// computeTemporal and MacroCentroidRMSCorr see the whole signal at all.
-//
-// AGENTS.synth.md records the cost of that in its own words: "Analyse the
-// WHOLE signal over TIME, not a single steady window (the trumpet
-// breakthrough). A note's IDENTITY often lives in its time-evolution, which a
-// mid-sustain FFT throws away." The real trumpet is defined by a 500 ms
-// crescendo, harmonics that bloom progressively brighter as it swells, and a
-// noisy attack that cleans up -- none of which a mid-sustain snapshot can
-// see. Four separate tuning attempts failed before that was measured.
-//
-// Tracks computes each of those quantities PER FRAME across the entire
-// signal. TrackStats (trackstats.go) then reduces any track with one uniform
-// statistic set, so "the whole-signal statistics" is a mechanical
-// cross-product rather than a pile of bespoke scalars.
+// Fingerprint looks at one mid-note second, and a note's IDENTITY often lives in its time evolution (a trumpet's
+// crescendo, its harmonics blooming, a noisy attack that cleans up). Tracks measures each quantity PER FRAME across the
+// whole signal, and TrackStats reduces any of them uniformly.
 
-// trackFFTSize and trackHop define the analysis framing. 2048 at 44.1 kHz is
-// ~46 ms per frame with ~11.6 ms between frames: fine enough to resolve an
-// attack transient and a 30 Hz amplitude warble (the Nyquist of the frame
-// rate is ~43 Hz), coarse enough that the per-frame spectrum is meaningful
-// down to a ~50 Hz fundamental. It matches computeTemporal's existing framing
-// so the two agree.
+// ~46 ms frames every ~11.6 ms: resolves an attack and a 30 Hz warble (frame-rate Nyquist ~43 Hz), meaningful down to a
+// ~50 Hz fundamental. Matches computeTemporal's framing.
 const (
 	trackFFTSize = 2048
 	trackHop     = 512
 )
 
-// trackHarmonicCount is how many harmonics get their own amplitude track.
-// Matches Fingerprint.Partials' 16 so the per-frame view and the
-// single-window view describe the same ladder.
+// 16, like Fingerprint.Partials, so both views describe the same ladder.
 const trackHarmonicCount = 16
 
-// Tracks holds one value per STFT frame for every frame-wise quantity the
-// battery measures. Every slice has the same length (NumFrames) and shares
-// HopSec, so any two can be correlated directly.
+// Equal lengths and one HopSec, so any two can be correlated directly.
 type Tracks struct {
 	HopSec    float64
 	NumFrames int
@@ -53,20 +27,13 @@ type Tracks struct {
 	Rolloff  []float64 // 85% spectral rolloff (Hz)
 	Flatness []float64 // spectral flatness (0 = tonal, 1 = noise)
 
-	// NoiseFraction is the per-frame analogue of Fingerprint.NoiseRatio: the
-	// share of energy NOT within +/-1 bin of an assumed harmonic of F0. Zero
-	// throughout when no F0 was detected, in which case the descriptors that
-	// read it are gated off rather than reporting a fabricated 0.
+	// Zero throughout without an F0; the descriptors reading it are then gated off, never a fabricated 0.
 	NoiseFraction []float64
 
-	// Harmonics[k] is the amplitude track of the (k+1)-th harmonic in dB
-	// relative to full scale. This is the "do the upper harmonics BLOOM in
-	// over the note" measurement -- the trumpet's decisive cue.
+	// dBFS: do the upper harmonics BLOOM over the note, the trumpet's decisive cue.
 	Harmonics [trackHarmonicCount][]float64
 
-	// F0Hz is the fundamental used for the harmonic tracks, taken from the
-	// bundle's Fingerprint so the whole battery quotes one pitch. 0 when
-	// unpitched.
+	// From the bundle's Fingerprint, so the battery quotes one pitch; 0 when unpitched.
 	F0Hz float64
 }
 
@@ -138,10 +105,7 @@ func computeTracks(b *Bundle) *Tracks {
 	return t
 }
 
-// rolloffHz returns the frequency below which `frac` of the spectral ENERGY
-// lies. Mirrors computeSpectral's 85% rolloff exactly (energy, i.e. squared
-// magnitude, skipping DC) so the per-frame track and the single-window scalar
-// measure the same thing.
+// Energy, DC skipped, exactly as computeSpectral's 85 % rolloff, so track and scalar measure the same thing.
 func rolloffHz(mag []float64, binHz, frac float64) float64 {
 	total := 0.0
 	for i := 1; i < len(mag); i++ {
@@ -160,15 +124,8 @@ func rolloffHz(mag []float64, binHz, frac float64) float64 {
 	return float64(len(mag)-1) * binHz
 }
 
-// frameNoiseFraction is the per-frame analogue of Fingerprint.NoiseRatio:
-// 1 - (energy within +/-1 bin of each k*f0) / (total energy).
-//
-// CAVEAT, inherited deliberately rather than papered over: this assumes the
-// signal's real partials sit on a harmonic series. For a bell or a tuned bar
-// they do not, and genuinely tonal energy is then counted as noise. The
-// descriptors that read this track are gated on a pitched signal, and the
-// report carries an explicit caveat when the reference's own partial-series
-// deviation is high.
+// Assumes partials on a harmonic series, so a bell's tonal energy counts as noise; readers are gated on a pitched
+// signal, and the report warns when the reference's series deviation is high.
 func frameNoiseFraction(mag []float64, binHz, f0 float64) float64 {
 	total := 0.0
 	for i := 1; i < len(mag); i++ {
@@ -193,10 +150,7 @@ func frameNoiseFraction(mag []float64, binHz, f0 float64) float64 {
 	return nf
 }
 
-// harmonicPeak returns the largest magnitude within a small window around
-// targetHz. The window widens with frequency (a fixed +/-1 bin misses a
-// vibrato-smeared upper partial) using the same 1.3%-per-harmonic tolerance
-// computeSpectral applies.
+// The window widens with frequency (1.3 % per harmonic): a fixed ±1 bin misses a vibrato-smeared upper partial.
 func harmonicPeak(mag []float64, binHz, targetHz float64) float64 {
 	if targetHz <= 0 || binHz <= 0 {
 		return 0
@@ -219,9 +173,7 @@ func harmonicPeak(mag []float64, binHz, targetHz float64) float64 {
 	return best
 }
 
-// dbFloor is the level reported for a partial that is effectively absent.
-// A hard floor (rather than -Inf) keeps every downstream statistic finite;
-// -120 dB is far below anything audible in a peak-normalized signal.
+// A hard floor, not -Inf, keeps every statistic finite.
 const dbFloor = -120.0
 
 func ampToDBFloor(a float64) float64 {

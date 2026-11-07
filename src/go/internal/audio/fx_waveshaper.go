@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// waveshaper implements a nonlinear waveshaping effect with four curve types:
-// soft (tanh), hard (clip), fold (wave folding), and sine. Drive controls
-// the amount of gain applied before the shaping function.
+// Curves: soft (tanh), hard (clip), fold, sine; drive is the gain before the curve.
 type waveshaper struct {
 	curve float64 // 0=soft/tanh, 1=hard/clip, 2=fold, 3=sine
 	drive float64 // pre-shape gain 1-20

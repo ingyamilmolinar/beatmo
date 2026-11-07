@@ -8,25 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Phase-1 safety net for the upcoming unified SetParam boundary (Phase 4).
-//
-// State today: every external param setter accepts any float64. NaN, +Inf,
-// -Inf, and out-of-range values all flow through to the manager and the
-// platform callback. The decay=0 → NaN bug fixed via an ad-hoc C-side clamp
-// (drums.c:1736-1745) is the canonical symptom; the actual fix belongs at
-// the API boundary so every setter inherits the same guarantee.
-//
-// Target after Phase 4: each row of the table below must pass — non-finite
-// values are dropped, in-range values are stored verbatim, out-of-range
-// values are clamped to [Min, Max]. The test is named ...Wanted_AfterPhase4
-// so a failure here on the current branch is expected and the failing rows
-// describe the post-fix contract.
-
-// paramValidationCase describes one mutation we feed through SetInstrumentParam
-// and the value we expect GetInstrumentParams to read back. "absent" means the
-// key should NOT appear in the stored map (because the input was rejected as
-// non-finite); a present key whose value differs from In means the input was
-// clamped.
+// "absent" = rejected as non-finite; a read-back that differs from In = clamped.
 type paramValidationCase struct {
 	name      string
 	param     string
@@ -36,9 +18,6 @@ type paramValidationCase struct {
 }
 
 func TestSetInstrumentParamRejectsNonFiniteAndClampsRange(t *testing.T) {
-	// Reset state so prior tests can't contaminate this one. ResetInstrumentParams
-	// is the public clear; we call it both at start and via t.Cleanup so a
-	// failure mid-table doesn't leak.
 	instID := instrumentWithGenericMacros(t, "pitch", "decay", "drive")
 	ResetInstrumentParams(instrument.ID(instID))
 	t.Cleanup(func() { ResetInstrumentParams(instrument.ID(instID)) })
@@ -85,9 +64,7 @@ func TestSetInstrumentParamRejectsNonFiniteAndClampsRange(t *testing.T) {
 	}
 }
 
-// instrumentWithGenericMacros returns a shipped instrument whose document still
-// offers the given params with real ranges, and skips the test when none
-// remains. Asking the documents costs nothing and cannot rot.
+// Asks the documents, so it cannot rot; skips when none offers them.
 func instrumentWithGenericMacros(t *testing.T, need ...string) string {
 	t.Helper()
 	for _, id := range roster.All {

@@ -27,15 +27,12 @@ func RegisterAudio(id instrument.ID, path string) error {
 	}
 	buf, sr, err := loadAudio(path)
 	if err != nil {
-		// In headless/test-real environments a real file path might not be
-		// available. Fall back to a short silent sample so the instrument ID
-		// becomes available for UI flows.
+		// Headless environments may lack the file; a silent placeholder keeps the id available for UI flows.
 		log.Warnf("[audio] RegisterAudio decode failed for %q: %v (installing silent placeholder)", path, err)
 		Register(id, Sample{data: make([]float32, sampleRate/20)})
 		return nil
 	}
-	// A recording at another rate is converted, never replaced by silence
-	// (the browser registers the same converted PCM).
+	// Converted, never replaced by silence; the browser registers the same converted PCM.
 	Register(id, Sample{data: pcmAtEngineRate(buf, sr, sampleRate)})
 	return nil
 }

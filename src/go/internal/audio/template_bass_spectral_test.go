@@ -11,16 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// template_bass_spectral_test.go pins that the clean bass instruments the
-// shipped templates rely on stay spectrally deep.
-//
-// The circuit templates drive bass lines through per-node pitch, which the
-// engine realises via naive linear-interpolation resampling (PlayParams). An
-// instrument whose render is already harmonically bright reads as a metallic
-// pluck — not a bass — and resampling only makes it worse. This test renders
-// each candidate bass instrument and measures the fraction of spectral energy
-// above 2 kHz: a real bass note (≤110 Hz fundamental) should sit almost entirely
-// below ~1 kHz. fm-bass / sub-bass must stay clean.
+// An already-bright bass render reads as a metallic pluck once pitched, so a real bass note (≤ 110 Hz) must keep almost
+// nothing above 2 kHz.
 
 func bassHFEnergyFraction(render func(buf []float32, sampleRate, samples int)) float64 {
 	const sr = 48000

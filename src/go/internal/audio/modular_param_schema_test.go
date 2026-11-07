@@ -2,14 +2,8 @@ package audio
 
 import "testing"
 
-// modularSchemaWant is the canonical FROZEN PREFIX of the modular voice param
-// block: every pre-Phase-1 field, in ABI order. It MUST mirror the leading
-// field declaration order of the C modular_params struct (src/c/modular.h) and
-// the modularBlock Go struct (modular_c.go), because the WASM bridge fills
-// heap[MODULAR_PARAM_INDEX[name]] and passes the block as a const
-// modular_params*. The Phase-1 gen bank is APPENDED after this prefix (its
-// contiguous field-major layout is asserted by TestModularGenBankSchemaShape),
-// so this test now verifies the prefix is unmoved rather than the full length.
+// The FROZEN PREFIX of the block: the bridge fills it by index and C reads it as a struct, so it must mirror the C
+// field order. The gen bank follows it (TestModularGenBankSchemaShape).
 var modularSchemaWant = []string{
 	"osc_type", "osc_detune", "osc_octave",
 	"fm_algorithm",

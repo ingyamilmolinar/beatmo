@@ -8,15 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// residency.go — which channels keep running (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// §1.2). The UI declares the instruments its rows play (the held set). A
-// channel outside it stops running — its stages are reset and no longer
-// processed every block — only once nothing in it can still sound: no voice,
-// and input and output below ReleaseQuietDB for ReleaseHoldSec plus the
-// chain's memory (the longest a stage can hold a sound before it reappears at
-// the output, a delay's echo). A voice or a re-hold wakes it, as fresh as a
-// channel that never ran. Its settings are never touched.
+// A channel no row plays stops running only once nothing in it can sound: no voice, and input and output quiet for
+// ReleaseHoldSec plus its chain's memory (a delay's echo). A voice or a re-hold wakes it fresh; settings are never touched.
 
 const (
 	ReleaseQuietDB = -90.0
@@ -26,9 +19,7 @@ const (
 // releaseQuietAmp is ReleaseQuietDB as an amplitude.
 var releaseQuietAmp = math.Pow(10, ReleaseQuietDB/20)
 
-// effectMemorySec is the longest a stage holds a sound inside it (fx_host.c's
-// buffers): its output can be silent that long and still bring the sound back.
-// An effect not listed has no buffer: whatever it holds shows at its output.
+// Its output can be silent that long and still bring the sound back. An unlisted effect has no buffer.
 var effectMemorySec = map[EffectType]float64{
 	EffectDelay:      1.0,  // time ≤ 1000 ms
 	EffectPitchShift: 0.15, // window buffer
@@ -38,8 +29,7 @@ var effectMemorySec = map[EffectType]float64{
 	EffectTape:       0.01,
 }
 
-// ChainMemorySec is how long the enabled effects of a chain, in series, can
-// hold a sound with a silent output.
+// The enabled effects in series.
 func ChainMemorySec(slots []EffectSlot) float64 {
 	sec := 0.0
 	for _, s := range slots {
@@ -50,8 +40,7 @@ func ChainMemorySec(slots []EffectSlot) float64 {
 	return sec
 }
 
-// heldChannels is the held set; nil until a circuit declares one (offline
-// tools, tests): then every channel is held.
+// nil until a circuit declares one (offline tools, tests): then every channel is held.
 var heldChannels atomic.Pointer[map[channel.ID]bool]
 
 // SetHeldInstruments declares the instruments the rows play.
@@ -64,8 +53,7 @@ func SetHeldInstruments(ids []instrument.ID) {
 	platformHeldChanged(ids)
 }
 
-// ResetHeldInstruments returns to "no circuit declared a held set": every
-// channel is held.
+// Every channel is held again.
 func ResetHeldInstruments() { heldChannels.Store(nil) }
 
 // ChannelHeld reports whether a row plays the channel's instrument.
@@ -74,8 +62,7 @@ func ChannelHeld(id channel.ID) bool {
 	return p == nil || (*p)[id]
 }
 
-// platformHeldChanged hands the held set to a platform that releases its own
-// resources (the browser's WebAudio chains).
+// For a platform that releases its own resources (the browser's WebAudio chains).
 var platformHeldChanged = func([]instrument.ID) {}
 
 // residencyState is what one mixer knows about one channel's residency.
@@ -84,8 +71,6 @@ type residencyState struct {
 	released    bool // its stages stopped running
 }
 
-// trackQuiet counts the frames a channel's input and output have stayed below
-// the release threshold.
 func (r *residencyState) trackQuiet(in, out []float64) {
 	for i := range in {
 		if math.Abs(in[i]) > releaseQuietAmp || math.Abs(out[i]) > releaseQuietAmp {

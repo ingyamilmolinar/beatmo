@@ -7,11 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// mkADSRWave synthesizes a mono tone at freq Hz whose amplitude envelope is a
-// classic ADSR: linear attack 0->1 over attackSec, linear decay 1->sustainLevel
-// over decaySec, a flat sustain at sustainLevel for sustainSec (optionally
-// tremolo-modulated by amDepth at amHz), then a linear release sustainLevel->0
-// over releaseSec.
+// Linear segments, with optional tremolo on the sustain.
 func mkADSRWave(sr int, freq, attackSec, decaySec, sustainLevel, sustainSec, releaseSec, amDepth, amHz float64) wave.Wave {
 	total := attackSec + decaySec + sustainSec + releaseSec
 	n := int(total * float64(sr))
@@ -42,9 +38,7 @@ func mkADSRWave(sr int, freq, attackSec, decaySec, sustainLevel, sustainSec, rel
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// mkExpDecayWave synthesizes a tone whose envelope is a pure exponential decay
-// from peak (no attack, no plateau): env(t) = exp(-t/tau). durSec is the total
-// clip length.
+// No attack, no plateau.
 func mkExpDecayWave(sr int, freq, tau, durSec float64) wave.Wave {
 	n := int(durSec * float64(sr))
 	s := make([]float64, n)
@@ -56,12 +50,8 @@ func mkExpDecayWave(sr int, freq, tau, durSec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// mkTwoStageDecayWave synthesizes a tone with a FAST initial decay (peak ->
-// midLevel over fastSec, linear in dB) followed by a much SLOWER exponential
-// decay (tau=slowTau) for the remainder of durSec. Models a struck bar/
-// bell's strike-transient-then-hum shape, where AnalyzeEnvelopeSegments's
-// plateau detector (envSustainFlatDBPerSec) can trigger as soon as the slow
-// phase begins even though the "plateau" it found is itself still decaying.
+// A struck bar's fast transient then slow hum, where the plateau detector can trigger as the slow phase begins
+// although it still decays.
 func mkTwoStageDecayWave(sr int, freq, fastSec, midLevel, slowTau, durSec float64) wave.Wave {
 	n := int(durSec * float64(sr))
 	s := make([]float64, n)
@@ -96,9 +86,6 @@ func TestAnalyzeEnvelopeSegments_EmptyWave(t *testing.T) {
 	}
 }
 
-// A classic ADSR envelope must be recovered with roughly the parameters used
-// to build it: attack/decay/sustain/release durations and sustain level, and
-// NoSustainPlateau must be false since a real flat plateau exists.
 func TestAnalyzeEnvelopeSegments_ADSRShape(t *testing.T) {
 	sr := 44100
 	const attackSec, decaySec, sustainSec, releaseSec = 0.05, 0.10, 0.50, 0.20
@@ -126,8 +113,7 @@ func TestAnalyzeEnvelopeSegments_ADSRShape(t *testing.T) {
 	if math.Abs(seg.SustainLevel-sustainLevel) > 0.1 {
 		t.Errorf("SustainLevel = %.3f, want ~%.3f", seg.SustainLevel, sustainLevel)
 	}
-	// Sustain region is bounded above by the true sustain duration; some of it
-	// is consumed detecting the plateau + the release-detection lag.
+	// Some of the sustain goes to detecting the plateau and the release lag.
 	if seg.SustainSec <= 0 || seg.SustainSec > sustainSec+tol {
 		t.Errorf("SustainSec = %.4f, want in (0, %.4f]", seg.SustainSec, sustainSec+tol)
 	}
@@ -139,8 +125,6 @@ func TestAnalyzeEnvelopeSegments_ADSRShape(t *testing.T) {
 	}
 }
 
-// A percussive hit that decays straight to the noise floor with no flat
-// plateau must be flagged NoSustainPlateau=true and report SustainSec==0.
 func TestAnalyzeEnvelopeSegments_PercussiveNoSustain(t *testing.T) {
 	sr := 44100
 	w := mkExpDecayWave(sr, 200, 0.02, 0.3) // tau=20ms decays well below floor by 300ms
@@ -164,9 +148,7 @@ func TestAnalyzeEnvelopeSegments_PercussiveNoSustain(t *testing.T) {
 	}
 }
 
-// A slowly-decaying ring that does not fall 60dB before the clip ends must be
-// flagged as extrapolated rather than silently reporting a misleadingly short
-// number.
+// Flagged, not a misleadingly short number.
 func TestAnalyzeEnvelopeSegments_RingT60Extrapolated(t *testing.T) {
 	sr := 44100
 	w := mkExpDecayWave(sr, 200, 5.0, 0.3) // tau=5s: negligible decay within 300ms
@@ -183,10 +165,7 @@ func TestAnalyzeEnvelopeSegments_RingT60Extrapolated(t *testing.T) {
 	}
 }
 
-// OverallDecayRateDBPerSec must recover the true dB/s slope of a pure
-// exponential decay even when RingT60 itself is extrapolated (clip ends
-// before -60dB) -- this is the field diagnose.go's ring-T60 escalation
-// (both-sides-extrapolated case) relies on for a real, unclamped signal.
+// The ring-T60 escalation relies on it when both sides are extrapolated.
 func TestAnalyzeEnvelopeSegments_OverallDecayRateMatchesExpDecay(t *testing.T) {
 	sr := 44100
 	const tau = 5.0
@@ -202,14 +181,8 @@ func TestAnalyzeEnvelopeSegments_OverallDecayRateMatchesExpDecay(t *testing.T) {
 	}
 }
 
-// A fast strike-transient decay followed by a much slower "hum" tail can
-// trip the plateau detector right when the slow phase begins (its LOCAL
-// slope, over a short window, already reads as "flat" relative to the fast
-// phase's threshold) -- so DecayRateDBPerSec (peak -> plateau onset) only
-// describes the brief fast phase. OverallDecayRateDBPerSec must instead
-// reflect the much gentler slow-tail trend that dominates the clip -- this
-// is exactly the case a bell/tube's ring exhibits (see the mapping doc's
-// tubular-bells findings).
+// The plateau detector can trip as the slow tail begins, so the overall rate must reflect the gentle trend that
+// dominates the clip, as a bell's ring does.
 func TestAnalyzeEnvelopeSegments_OverallDecayRateCapturesSlowTail(t *testing.T) {
 	sr := 44100
 	const slowTau = 2.0
@@ -234,10 +207,7 @@ func TestAnalyzeEnvelopeSegments_OverallDecayRateCapturesSlowTail(t *testing.T) 
 	}
 }
 
-// A sustain with tremolo (amplitude modulation) must report a materially
-// higher SustainVariation than a flat sustain -- this is the "wavy... prolongs
-// and waves in time" tell (tubular-bells) and the "dead-flat sustain" organ
-// tell in the opposite direction.
+// A wavering sustain versus the dead-flat organ tell.
 func TestAnalyzeEnvelopeSegments_SustainVariationDetectsModulation(t *testing.T) {
 	sr := 44100
 	flat := mkADSRWave(sr, 440, 0.02, 0.05, 0.5, 0.6, 0.1, 0, 0)

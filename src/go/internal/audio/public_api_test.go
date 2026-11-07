@@ -9,24 +9,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// public_api_test.go covers the public audio APIs that have no current
-// test coverage but represent real contract surfaces:
-//
-//   - MIDINoteForInstrument: GM percussion mapping consumed by export_audio
-//   - passThrough: silent fallback when an effect type is missing from the
-//     registry — a real bug if it ever swaps to "silenceProcessor"
-//   - InsertEffectCatalog / DefaultParams / NewEffectProcessor: the only
-//     way external packages introspect the effect registry
-//   - RecordingDrops / IsRecording: status APIs used by perf overlays;
-//     tested for safe-when-no-pipeline behavior
-//   - clampf: utility used by every effect
-//   - applyDefaultFX: instrument-side default FX processing path
-
 // ─── MIDINoteForInstrument ────────────────────────────────────────────────
 
 func TestMIDINoteForInstrumentMappedAndFallback(t *testing.T) {
-	// Spot-check the well-known mappings; the contract is that any change
-	// to MIDIMapping is a wire-format change that affects MIDI export.
+	// Any change to the mapping is a wire-format change for MIDI export.
 	cases := []struct {
 		id   instrument.ID
 		want int
@@ -48,8 +34,7 @@ func TestMIDINoteForInstrumentMappedAndFallback(t *testing.T) {
 		}
 	}
 
-	// Unmapped IDs default to 38 (Acoustic Snare). Spec'd in the function
-	// comment; documented as a fallback contract, not a coincidence.
+	// Unmapped ids fall back to 38 (Acoustic Snare) by contract.
 	for _, unknown := range []string{"", "no-such-instrument", "fm-extra"} {
 		if got := MIDINoteForInstrument(instrument.ID(unknown)); got != 38 {
 			t.Errorf("MIDINoteForInstrument(%q)=%d want fallback 38", unknown, got)
@@ -86,9 +71,7 @@ func TestPassThroughIdentity(t *testing.T) {
 }
 
 func TestNewEffectProcessorUnknownTypeReturnsPassThrough(t *testing.T) {
-	// Unknown EffectType → constructor must hand back a passThrough so
-	// the audio chain stays *transparent* (not silent). A regression to
-	// silenceProcessor would mute the offending channel.
+	// Transparent, not silent: a silencing fallback would mute the channel.
 	p := NewEffectProcessor(EffectSlot{Type: EffectType("__never_registered__")}, 44100)
 	if _, ok := p.(*passThrough); !ok {
 		t.Fatalf("got %T, want *passThrough", p)
@@ -106,9 +89,6 @@ func TestInsertEffectCatalogIncludesRegisteredEffects(t *testing.T) {
 	if len(cat) == 0 {
 		t.Fatalf("InsertEffectCatalog is empty")
 	}
-	// Every entry must be in the order list and round-trip through
-	// EffectTypeOrder. This locks the contract that the catalog and the
-	// order list stay in sync.
 	order := EffectTypeOrder()
 	if len(order) != len(cat) {
 		t.Errorf("EffectTypeOrder len=%d but catalog len=%d", len(order), len(cat))
@@ -147,14 +127,11 @@ func TestDefaultParamsUnknownTypeReturnsNil(t *testing.T) {
 }
 
 func TestRegisterEffectUpdatesExistingNew(t *testing.T) {
-	// RegisterEffect with the same Type twice must update the New
-	// constructor without duplicating the catalog entry. This is how
-	// platform-specific overrides (CGo vs WASM) replace the constructor
-	// at init time.
+	// How the CGo and WASM constructors replace each other at init: the second registration updates New without duplicating
+	// the entry.
 	const sentinel = EffectType("__test_register__")
 	t.Cleanup(func() {
-		// Tests share package state; remove the sentinel so a re-run
-		// starts from a clean registry.
+		// Package state is shared; a re-run starts from a clean registry.
 		registryMu.Lock()
 		delete(registryMap, sentinel)
 		// Trim from the order slice if present.
@@ -188,15 +165,12 @@ func TestRegisterEffectUpdatesExistingNew(t *testing.T) {
 		},
 	})
 
-	// The "second" New must be the live constructor; "first" no longer
-	// exists.
 	_ = NewEffectProcessor(EffectSlot{Type: sentinel}, 44100)
 	if len(calls) != 1 || calls[0] != "second" {
 		t.Errorf("calls=%v want [\"second\"]", calls)
 	}
 
-	// DisplayName/Params on the registry entry came from the *first*
-	// registration (the override only swaps New).
+	// The override only swaps New.
 	regs := EffectRegistrations()
 	if reg, ok := regs[sentinel]; !ok || reg.DisplayName != "First" {
 		t.Errorf("registry entry: %+v", reg)
@@ -206,8 +180,6 @@ func TestRegisterEffectUpdatesExistingNew(t *testing.T) {
 // ─── mergeDefaults ────────────────────────────────────────────────────────
 
 func TestMergeDefaultsUserOverridesDefault(t *testing.T) {
-	// Use any registered effect — we don't actually run it, just inspect
-	// the param merge.
 	order := EffectTypeOrder()
 	if len(order) == 0 {
 		t.Skip("no effects registered")
@@ -298,9 +270,7 @@ func TestClampf(t *testing.T) {
 // ─── RecordingDrops / IsRecording when no pipeline is active ──────────────
 
 func TestRecordingStatusWhenIdle(t *testing.T) {
-	// With no active pipeline, both APIs must return safe defaults
-	// rather than panicking on a nil deref. This is what UI code calls
-	// every frame.
+	// UI code calls these every frame, pipeline or not.
 	if IsRecording() {
 		t.Errorf("IsRecording should be false when idle")
 	}
@@ -315,8 +285,6 @@ func TestRecordingStatusWhenIdle(t *testing.T) {
 
 // ─── Channel public API ──────────────────────────────────────────────────
 
-// withSavedMainVolume restores MainVolume and the platform notify callback
-// after the test, so other tests in the package don't see leakage.
 func withSavedMainVolume(t *testing.T) {
 	t.Helper()
 	prevVol := MainVolume()

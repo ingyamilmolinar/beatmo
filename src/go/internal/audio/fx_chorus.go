@@ -4,10 +4,7 @@ package audio
 
 import "math"
 
-// chorus implements an LFO-modulated interpolated delay line with wet/dry mix.
-// The LFO modulates the read position of a short delay to create pitch variation.
-// Parameters are smoothed to prevent clicks. Buffer is pre-allocated to max depth
-// to avoid reallocation pops.
+// The buffer is pre-allocated to the maximum depth so a depth change never reallocates and pops.
 type chorus struct {
 	rate  smoothParam // LFO frequency Hz
 	depth smoothParam // modulation depth in ms

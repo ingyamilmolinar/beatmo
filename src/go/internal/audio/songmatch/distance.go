@@ -1,7 +1,4 @@
-// Package songmatch compares a real recording's fingerprint against a rendered
-// template's fingerprint into a per-axis correctness report + tuning hints. It
-// composes internal/audio/fingerprint, songrender, and synthmatch; all logic is
-// pure Go and fast-path testable.
+// Compares a recording's fingerprint against a rendered template's into a per-axis report and tuning hints. Pure Go.
 package songmatch
 
 import (
@@ -40,8 +37,7 @@ func TempoMagnitude(refBPM, candBPM float64) float64 {
 
 // KeyMagnitude returns (1-corr) blended with a mode-mismatch penalty + the shift.
 func KeyMagnitude(ref, cand fingerprint.SongFingerprint) (float64, int) {
-	// Identical chroma (including both all-zero / silent, where pearson() returns
-	// 0 not 1 for two zero-variance vectors) is a perfect key match at shift 0.
+	// pearson() returns 0, not 1, for two zero-variance vectors.
 	if ref.Chroma == cand.Chroma {
 		return 0, 0
 	}

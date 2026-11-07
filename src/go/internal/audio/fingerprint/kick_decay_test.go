@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// twoBandDecay renders two exponentially-decaying sines with INDEPENDENT decay
-// constants: fLow (in a low KickBand) with tauLow, fHigh (in a high KickBand)
-// with tauHigh. Lets a test control per-band decay separately.
+// Independent decay constants per band.
 func twoBandDecay(sr int, dur, fLow, tauLow, fHigh, tauHigh float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -32,8 +30,7 @@ func bandIndexFor(hz float64) int {
 
 func TestBandT60_LowRingsLongerThanHigh(t *testing.T) {
 	const sr = 44100
-	// 80 Hz sub decays slow (tau 0.06 → T60 ≈ 0.41 s); 3 kHz click decays fast
-	// (tau 0.01 → T60 ≈ 0.069 s). Signal long enough that both reach −60 dB.
+	// Long enough that both reach −60 dB.
 	w := twoBandDecay(sr, 0.6, 80, 0.06, 3000, 0.01)
 	fp := KickAnalyze(w)
 
@@ -52,8 +49,7 @@ func TestBandT60_LowRingsLongerThanHigh(t *testing.T) {
 
 func TestBandT60_Ballpark(t *testing.T) {
 	const sr = 44100
-	// Control a single band precisely: 100 Hz (band 1: 60-120), tau = 0.04.
-	// True T60 for an amplitude envelope e^{-t/tau} is ln(1000)·tau ≈ 6.908·tau.
+	// T60 of e^{-t/τ} is ln(1000)·τ ≈ 6.908·τ.
 	const tau = 0.04
 	want := math.Log(1000) * tau // ≈ 0.276 s
 	w := expDecaySine(sr, 0.6, 100, tau)
@@ -74,8 +70,7 @@ func TestBandT60_Ballpark(t *testing.T) {
 
 func TestBandT60_SlowDecayFloored(t *testing.T) {
 	const sr = 44100
-	// A very slow decay (tau 0.5 → T60 ≈ 3.5 s) in a 0.3 s signal cannot reach
-	// −60 dB → the band is clamped to the remaining length and flagged.
+	// A 3.5 s T60 in 0.3 s cannot reach −60 dB: clamped and flagged.
 	w := expDecaySine(sr, 0.3, 100, 0.5)
 	fp := KickAnalyze(w)
 	b := bandIndexFor(100)

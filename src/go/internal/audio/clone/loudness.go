@@ -5,10 +5,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// LoudnessNorm is the crest rule `make measure-loudness` sets render.amplitude
-// from: RMS / peak over the loudest 300 ms window (scale-invariant). ok is
-// false for an empty or silent signal. cmd/measure-loudness calls this, so a
-// clone's amplitude and the roster's are the same measurement.
+// The crest rule measure-loudness sets render.amplitude from, so a clone's amplitude and the roster's are the same
+// measurement. false for an empty or silent signal.
 func LoudnessNorm(samples []float64, rate int) (float64, bool) {
 	if len(samples) == 0 {
 		return 0, false

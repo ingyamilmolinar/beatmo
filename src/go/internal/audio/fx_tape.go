@@ -4,10 +4,7 @@ package audio
 
 import "math"
 
-// tape implements a tape saturation effect with asymmetric soft-clipping,
-// a one-pole warmth filter, and wow/flutter modulated delay for analog
-// tape character. Drive controls saturation intensity, warmth rolls off
-// highs, and wow/flutter add slow/fast pitch modulation respectively.
+// Asymmetric soft clip, a one-pole warmth roll-off, and wow (slow) / flutter (fast) modulated delay.
 type tape struct {
 	drive   smoothParam // 1-10: saturation amount
 	warmth  smoothParam // 0-1: LP filter amount (higher = darker)
@@ -31,8 +28,7 @@ func newTape(sr int, params map[string]float64) *tape {
 	t.flutter = newSmoothParam(clampf(params["flutter"], 0, 1), sr, defaultSmoothTimeMs)
 	t.mix = newSmoothParam(clampf(params["mix"], 0, 1), sr, defaultSmoothTimeMs)
 
-	// Buffer: max wow (2ms) + max flutter (0.5ms) = 2.5ms max excursion.
-	// Double for safety margin plus extra headroom.
+	// 2.5 ms maximum excursion, doubled with headroom.
 	srf := float64(sr)
 	if srf <= 0 {
 		srf = 44100
@@ -57,8 +53,7 @@ func (t *tape) ProcessSample(x float64) float64 {
 		srf = 44100
 	}
 
-	// 1. Saturation: asymmetric soft-clip, level-preserving.
-	//    y = tanh(drive * x) / tanh(drive)
+	// Level-preserving: tanh(drive·x) / tanh(drive).
 	tanhDrv := math.Tanh(drv)
 	var wet float64
 	if tanhDrv > 1e-12 {
@@ -67,8 +62,7 @@ func (t *tape) ProcessSample(x float64) float64 {
 		wet = x
 	}
 
-	// 2. Warmth filter: one-pole lowpass on saturated signal.
-	//    Cutoff = 2000 + (1-warmth)*18000 Hz
+	// Cutoff 2000 + (1 − warmth)·18000 Hz.
 	cutoff := 2000.0 + (1.0-wrm)*18000.0
 	a := math.Exp(-2.0 * math.Pi * cutoff / srf)
 	t.lpY1 = wet*(1.0-a) + t.lpY1*a

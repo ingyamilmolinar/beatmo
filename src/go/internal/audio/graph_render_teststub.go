@@ -8,13 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// RenderDocForGraph under -tags test has no C engine: it renders a
-// deterministic TOY voice from a handful of the document's values (amp
-// envelope, pitch, a noise mix, a filter cutoff as a one-pole), so the UI's
-// graph plumbing can be tested — that a turned dial re-renders, that a slot
-// lands, that the picture moves. It is NOT the instrument's sound and is never
-// linked into a real binary; the real contract is TestGraphRenderIsThePlayedVoice
-// (real build).
+// No C engine under -tags test: a deterministic TOY voice from a few document values, so the graph plumbing (a turned
+// dial re-renders, a slot lands, the picture moves) can be tested. It is not the instrument's sound.
 func RenderDocForGraph(id instrument.ID, d instrument.Doc, pitch float64) ([]float32, int, error) {
 	sr := SampleRate()
 	if sr <= 0 {

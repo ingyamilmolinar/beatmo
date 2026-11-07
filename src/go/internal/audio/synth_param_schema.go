@@ -6,13 +6,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// modularGenSlots is the slot count of the generic gen-bank fields (source,
-// wave, freq, …): gen1_<f>..gen12_<f>.
+// gen1_<f>..gen12_<f>.
 const modularGenSlots = 12
 
-// modularParamSchema is the flat param-name list of the modular block in ABI
-// order (== the C struct field order, == the JS MODULAR_PARAM_INDEX), derived
-// from modularFields.
+// ABI order: the C struct field order and the JS MODULAR_PARAM_INDEX.
 var modularParamSchema = func() []string {
 	var s []string
 	for _, f := range modularFields {
@@ -33,16 +30,12 @@ var modularParamSchema = func() []string {
 	return s
 }()
 
-// IsKickPhysicalField reports whether a gen-slot field name (without its
-// gen<N>_ prefix) is one of the physical-kick columns — knobs only the
-// variant-8 (Physical) kick voice reads.
+// Read only by the variant-8 kick voice.
 func IsKickPhysicalField(field string) bool {
 	return fieldInBlock("kickphys", field)
 }
 
-// IsCymbalModalField reports whether a gen-slot field name (without its
-// gen<N>_ prefix) is one of the cymbal modal-plate columns — knobs the cymbal
-// voice reads only when its plate is running.
+// Read only while the plate is running.
 func IsCymbalModalField(field string) bool {
 	return fieldInBlock("cymmodal", field)
 }
@@ -56,9 +49,7 @@ func fieldInBlock(block, field string) bool {
 	return false
 }
 
-// IsTableField reports whether a schema field is written by Flatten from a
-// stage table — a cell of a table column, or a table's row count. Such fields
-// carry no ParamDef: rows are never knobs.
+// Rows are never knobs, so these carry no ParamDef.
 func IsTableField(name string) bool { return tableFields[name] }
 
 var tableFields = func() map[string]bool {
@@ -83,8 +74,7 @@ func ModularParamSchema() []string {
 	return out
 }
 
-// ModularParamSchemaIndexMap returns paramName → struct index for the modular
-// block (audio.js write-loop driver).
+// Drives audio.js's write loop.
 func ModularParamSchemaIndexMap() map[string]int {
 	out := make(map[string]int, len(modularParamSchema))
 	for i, name := range modularParamSchema {
@@ -93,9 +83,7 @@ func ModularParamSchemaIndexMap() map[string]int {
 	return out
 }
 
-// modularFieldInits is each modular field's creation value (the modularFields
-// Init column) — ModularSynthParamDefs' defaults, and through them the module
-// registry's ValueDecl.Init.
+// The Init column: ModularSynthParamDefs' defaults and the registry's ValueDecl.Init.
 func modularFieldInits() map[string]float64 {
 	out := make(map[string]float64, len(modularParamSchema))
 	for _, f := range modularFields {

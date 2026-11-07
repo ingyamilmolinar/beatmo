@@ -13,19 +13,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// refine.go — seeded parallel CMA-ES over SMOOTH corrections of the inverted
-// document (spec §4c): per octave of modes an amplitude gain and a decay
-// scale; the strike's contact time and hardness; per octave of noise rows a
-// level and a decay scale. Frequencies are LOCKED where the analysis put them
-// — frequency is the non-convex dimension (Hayes 2023). The spec's ±10-cent
-// group tune was tried and dropped: ±3 cents of search noise on a sharp
-// partial swamps the 4096-point term, and a struck-bar fixture refined 4×
-// slower with it (ESPRIT already places partials within 0.5 cent).
-// Corrections are BAKED into the rows and the strike values; the result
-// carries identity macros only.
+// Seeded parallel CMA-ES over SMOOTH corrections: per mode octave a gain and decay scale, the strike's contact and
+// hardness, per noise octave a level and decay scale. Frequencies stay LOCKED (the non-convex dimension); a group
+// tune's search noise swamped the loss and slowed refinement. Corrections are BAKED into rows and strike values.
 
-// RenderFunc renders a document at the fit pitch and the reference's rate —
-// audio.RenderAsShipped in production, a pure-Go model in -tags test.
+// audio.RenderAsShipped in production, a pure-Go model under -tags test.
 type RenderFunc func(d instrument.Doc) []float64
 
 // RefineOptions configures Refine. Zero values pick the defaults.
@@ -61,17 +53,11 @@ type RefineResult struct {
 	TotalMs  float64        `json:"total_ms"`
 }
 
-// priorScaleDB is what one unit of the prior costs: a 6 dB mean departure
-// from the measured amplitudes / decays weighs as much as the whole spectral
-// loss of the analysis-only candidate.
+// A 6 dB mean departure from the measured amplitudes / decays weighs as much as the whole spectral loss of the
+// analysis-only candidate.
 const priorScaleDB = 6
 
-// refineSigma0 is the initial step in the sin-transformed space (≈ ±0.6 dB on
-// a ±12 dB dimension). Refinement POLISHES an analysis that is already close:
-// at 0.3 (±3.6 dB) the average marimba candidate scored 6× the analysis-only
-// document and 30 generations found nothing better; CMA-ES widens the step
-// itself when the start is far off (a synthetic 6 dB / ×1.5 error still
-// converges).
+// Refinement POLISHES an analysis that is already close; CMA-ES widens the step itself when the start is far off.
 const refineSigma0 = 0.05
 
 type dim struct {
@@ -80,19 +66,14 @@ type dim struct {
 	apply  func(d *instrument.Doc, v float64)
 }
 
-// Refine searches corrections of doc0 against ref. The descriptor term is
-// too slow for the search (≈ 0.4 s per score), so the search uses the other
-// three; Before / After report all four.
+// The descriptor term is too slow to search with, so it is reported only in Before / After.
 func Refine(doc0 instrument.Doc, ref *LossRef, a Analysis, opt RefineOptions) (RefineResult, error) {
 	t0 := time.Now()
 	if opt.Render == nil {
 		return RefineResult{}, fmt.Errorf("clone: Refine needs a RenderFunc")
 	}
 	if opt.Gens == 0 {
-		// 150 × 16 renders: the clone objective (L1 envelope, equal-peak
-		// coupling) converges ~4× slower than a sphere — this CMA-ES matches
-		// Hansen's sphere counts (10-D: 1,660 evals to 1e-10), and a struck-bar
-		// fixture needed ~120 generations to reach 15 % of its Doc₀ loss.
+		// The clone objective converges several times slower than a sphere.
 		opt.Gens = 150
 	}
 	if opt.Workers <= 0 {
@@ -120,10 +101,8 @@ func Refine(doc0 instrument.Doc, ref *LossRef, a Analysis, opt RefineOptions) (R
 		return ref.Score(r, PriorTerm(d, a, opt.Pitch, ref.Rate), w, scale)
 	}
 	raw0 := full(doc0, r0, opt.Weights, LossReport{})
-	// Spectral and envelope terms are relative to the analysis-only document;
-	// the descriptor term is already in threshold units (a registry Norm of 1
-	// = at mismatch) — normalised by its own Doc₀ value, a kalimba's 0.115
-	// made a move to 0.38 read as a 3.3× regression.
+	// Spectral and envelope terms are relative to the analysis-only document; descriptors are already in threshold units
+	// (Norm 1 = mismatch), and normalising them by their own start value misreads small moves.
 	scale := LossReport{MRSTFT: raw0.MRSTFT, Envelope: raw0.Envelope, Descriptors: 1, Prior: priorScaleDB}
 	res.Before = full(doc0, r0, opt.Weights, scale)
 	best0 := ref.Score(r0, raw0.Prior, search, scale).Total
@@ -136,9 +115,7 @@ func Refine(doc0 instrument.Doc, ref *LossRef, a Analysis, opt RefineOptions) (R
 
 	lambda := opt.Lambda
 	if lambda <= 0 {
-		// Hansen's default 4 + ⌊3 ln D⌋ (14 for 36 dimensions — two full
-		// rounds on 7 workers; 16 left a third round mostly idle). Never a
-		// function of the worker count: the result must not be either.
+		// Hansen's default, never a function of the worker count: the result must not be either.
 		lambda = max(8, 4+int(3*math.Log(float64(len(dims)))))
 	}
 	es := NewCMAES(len(dims), refineSigma0, lambda, opt.Seed)
@@ -202,8 +179,7 @@ func Refine(doc0 instrument.Doc, ref *LossRef, a Analysis, opt RefineOptions) (R
 
 func msSince(t time.Time) float64 { return float64(time.Since(t).Microseconds()) / 1000 }
 
-// searchSpace derives the correction dimensions from the document: only
-// populated octaves get dimensions, so the space follows the instrument.
+// Only populated octaves get dimensions, so the space follows the instrument.
 func searchSpace(d instrument.Doc, pitch float64, rate int) []dim {
 	var dims []dim
 	octave := func(f float64) int { return int(math.Floor(math.Log2(math.Max(f, 1) / 31.25))) }
@@ -263,8 +239,7 @@ func searchSpace(d instrument.Doc, pitch float64, rate int) []dim {
 	return dims
 }
 
-// rowsApply edits the given rows of a stage's table in place (the caller
-// works on a Clone).
+// In place: the caller works on a Clone.
 func rowsApply(stage string, rows []int, f func(r []float64, v float64)) func(*instrument.Doc, float64) {
 	return func(d *instrument.Doc, v float64) {
 		t := d.Stages[stage].Table
@@ -285,8 +260,7 @@ func sortedKeys(m map[int][]int) []int {
 	return ks
 }
 
-// sortRowsByEnergy restores the "rows in priority order" convention (Keep N
-// keeps the first N) after corrections moved the amplitudes and decays.
+// Restores "rows in priority order" (Keep N keeps the first N) after corrections moved them.
 func sortRowsByEnergy(d instrument.Doc, pitch float64, rate int) instrument.Doc {
 	st, ok := d.Stages["modal"]
 	if !ok || st.Table == nil {

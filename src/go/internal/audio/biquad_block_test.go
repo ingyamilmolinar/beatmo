@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestBiquadProcessBlockBufParity verifies that ProcessBlockBuf produces
-// bit-identical output to a loop of ProcessSample calls for the same input.
 func TestBiquadProcessBlockBufParity(t *testing.T) {
 	const (
 		sr = 44100
@@ -39,9 +37,7 @@ func TestBiquadProcessBlockBufParity(t *testing.T) {
 	}
 	bq2.ProcessBlockBuf(in32, out32, n)
 
-	// Compare: the block path converts float64 input to float32 before processing,
-	// introducing rounding. The per-sample path processes in float64 throughout.
-	// We allow a small float32-level tolerance.
+	// The block path rounds its input to float32; the per-sample path stays float64.
 	maxDiff := float32(0)
 	for i := 0; i < n; i++ {
 		want := float32(outSample[i])
@@ -55,15 +51,11 @@ func TestBiquadProcessBlockBufParity(t *testing.T) {
 		}
 	}
 	t.Logf("biquad block vs sample max diff: %.8e", maxDiff)
-	// Input quantization to float32 causes the biquad's internal float64
-	// accumulation to diverge from the pure float64 path. Allow small tolerance.
 	if maxDiff > 1e-4 {
 		t.Fatalf("biquad block/sample mismatch too large: %.8e", maxDiff)
 	}
 }
 
-// TestEQProcessorBlockPath verifies that a channel with eqProcessor uses the
-// block path and produces output matching per-sample processing.
 func TestEQProcessorBlockPath(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -108,9 +100,6 @@ func TestEQProcessorBlockPath(t *testing.T) {
 	}
 }
 
-// TestFullChainBlockPath verifies that when ALL processors in a channel
-// implement BlockProcessor, the optimized block path is used (no per-sample
-// fallback). We verify by checking output is non-zero and matches per-sample.
 func TestFullChainBlockPath(t *testing.T) {
 	withDefaultAudio(t)
 	const (

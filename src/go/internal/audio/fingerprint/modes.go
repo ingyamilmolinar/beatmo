@@ -5,15 +5,9 @@ import (
 	"sort"
 )
 
-// modes.go — the f0-free partial tracker.
-//
-// Every partial-structure descriptor before this file anchored on DetectF0.
-// That is the wrong model for bars, bells, drums and cymbals: 19 of 59
-// corpus references have no reliable fundamental, and on the ones that do
-// (kalimba, tubular-bells) the two sides of a comparison landed on different
-// pitch grids. A mode is simply a spectral peak that persists across frames;
-// ratios are taken against the LOWEST prominent mode. Both sides of any
-// comparison use the same rule, so a bell's hum partial anchors both.
+// An f0-free partial tracker: bars, bells, drums and cymbals often have no reliable fundamental, and anchoring on
+// DetectF0 put the two sides of a comparison on different pitch grids. A mode is a peak that persists across frames;
+// ratios are taken against the LOWEST prominent mode, the same rule on both sides.
 
 const (
 	modeFFTSize      = 8192
@@ -27,29 +21,9 @@ const (
 	modeMaxPerFrame  = 40
 	modeMinHz        = 30.0
 
-	// modeMaxMissFrames tolerates this many CONSECUTIVE frames with no
-	// matching peak before a track is declared done, but only once the track
-	// already has 2+ matched frames of its own (see the length check where
-	// it is used) — a brand-new single-hit track gets no tolerance at all.
-	// Two real partials closer together than modeLinkTolFrac's own bin cap
-	// beat against each other; at the beat's amplitude null the composite
-	// peak drops below framePeaks' prominence/floor gate for a frame or two
-	// even though the partial itself never stopped sounding. Without
-	// tolerance, a killed-and-restarted track needs modeMinFrames
-	// consecutive hits to count again, so a beating partial fragments into
-	// pieces mostly too short to ever become a Mode — verified against a
-	// 880/884 Hz pair (4 Hz beat, ~5.4 frames per cycle at modeHop): frames
-	// drop out roughly once per cycle (occasionally two in a row), and
-	// without gap tolerance only 1 of ~7 cycles happened to land 4 frames
-	// long by chance, discarding the rest of the track's history.
-	//
-	// 1 frame (~46ms at modeHop/44.1kHz) was chosen over 2: with the
-	// established-track guard alone, 2 pushed white noise's stable mode
-	// count from 6 to 7 against TestAnalyzeModes_NoiseHasNoStableModes's
-	// budget, while 1 keeps that test's margin AND is enough to bridge the
-	// 880/884 Hz beat test (most drop-outs there are a single frame; the
-	// rare two-in-a-row gaps just end that particular cycle's track a beat
-	// early, which the caller's beat-rate estimate already tolerates).
+	// A beating pair's composite peak drops under the gate for a frame at each null while the partial still sounds; with
+	// no tolerance the track fragments into pieces too short to be Modes. Only an established track (2+ frames) gets
+	// it. 1 frame bridges most drops while keeping white noise's spurious mode count within budget; 2 did not.
 	modeMaxMissFrames = 1
 )
 
@@ -117,9 +91,7 @@ func framePeaks(mag []float64, binHz float64) []spectralPartial {
 	return out
 }
 
-// AnalyzeModes tracks spectral peaks across frames of st into persistent
-// modes: a peak that survives modeMinFrames consecutive frames (linked by
-// frequency continuity within modeLinkTolFrac) becomes a Mode.
+// A peak surviving modeMinFrames consecutive frames, linked within modeLinkTolFrac, becomes a Mode.
 func AnalyzeModes(st *STFTFrames) ModeSet {
 	ms := ModeSet{Anchor: -1}
 	if st == nil || len(st.Frames) == 0 {
@@ -135,27 +107,9 @@ func AnalyzeModes(st *STFTFrames) ModeSet {
 		var next []*modeTrack
 		for _, tr := range active {
 			best, bestGap := -1, math.Inf(1)
-			// tol is proportional to frequency (so a stable tone's small
-			// relative jitter is tolerated) but capped in BIN terms — an
-			// uncapped frequency-proportional tolerance grows to many bins
-			// wide at high frequencies (8192-pt FFT / 44.1kHz means every
-			// frequency shares one fixed ~5.4Hz bin width, so scaling the
-			// tolerance by lastHz alone makes it 40+ bins wide near Nyquist),
-			// which let unrelated noise peaks link across frames purely by
-			// chance in the high band (measured: 11 spurious "modes" above
-			// 9kHz with no cap).
-			//
-			// The cap must still admit real pitch drift/vibrato on a high
-			// partial: a slowly detuning bell/bar mode swinging +/-0.3% at a
-			// 1Hz rate needs at most ~df/dt = 2*pi*(0.003*4000Hz)*1Hz =~
-			// 75Hz/s, i.e. ~3.5Hz of step per modeHop (2048/44100s); a 4-bin
-			// cap (~21.5Hz) leaves that a >6x margin. Empirically, 2-5 bins
-			// all track that drifting partial as one unbroken mode and keep
-			// noise's spurious count low; 6 bins is where noise breaks
-			// through (7 spurious modes). 4 bins is chosen as the midpoint —
-			// comfortable margin below the 6-bin noise-failure point while
-			// giving more headroom than the bare 3.5Hz requirement for
-			// parabolic-interpolation jitter on real (non-idealized) audio.
+			// Proportional to frequency but capped in BINS: at 8192/44.1 kHz an uncapped tolerance is 40+ bins wide near Nyquist
+			// and noise links into spurious modes. 4 bins still follows a high partial's slow drift with margin, below where
+			// noise breaks through (6).
 			tol := math.Min(math.Max(tr.lastHz*modeLinkTolFrac, st.BinHz), 4*st.BinHz)
 			for i, p := range peaks {
 				if used[i] {
@@ -167,22 +121,13 @@ func AnalyzeModes(st *STFTFrames) ModeSet {
 			}
 			if best < 0 {
 				tr.miss++
-				// A brand-new, single-hit track gets no gap tolerance: that is
-				// exactly the shape of an isolated noise spike, and letting it
-				// bridge a gap to whatever shows up next would let unrelated
-				// noise peaks link into a false "mode" purely by chance
-				// (measured: bridging every track pushed white noise's stable
-				// mode count from 6 to 7, over TestAnalyzeModes_NoiseHasNoStableModes's
-				// budget). Requiring at least 2 already-matched frames means
-				// only a track with some established continuity can survive
-				// the gap.
+				// A single-hit track is exactly an isolated noise spike; letting it bridge a gap links unrelated noise into false
+				// modes.
 				if tr.miss > modeMaxMissFrames || len(tr.frames) < 2 {
 					done = append(done, tr)
 					continue
 				}
-				// Still within tolerance: keep the track alive against its
-				// last known frequency without recording a frame for this
-				// gap (buildMode leaves ungapped indices as NaN already).
+				// Kept alive against its last frequency with no frame recorded (buildMode leaves it NaN).
 				next = append(next, tr)
 				continue
 			}
@@ -245,24 +190,9 @@ func buildMode(tr *modeTrack, numFrames int, hopSec float64) Mode {
 	m.Hz = fsum / wsum
 	m.PeakDB, m.PeakFrame = peakDB, peakFrame
 
-	// The decay fit SKIPS gap frames rather than stopping at them.
-	//
-	// modeMaxMissFrames exists because a beating partial's composite peak
-	// dips below the peak-picker's gate for a frame or two at each amplitude
-	// null even though the partial never stopped sounding — that is why the
-	// TRACKER bridges the gap and keeps the track alive. The gap frame is
-	// left as NaN in Track (nothing is interpolated: the tracker records no
-	// amplitude for a frame it never measured, and inventing one would put a
-	// fabricated sample into an OLS fit). Breaking the fit at the first NaN
-	// threw away every frame AFTER the gap, which is precisely the tolerance
-	// the tracker had just bought — on a beating mode the fit collapsed to
-	// the ~5 frames before the first null and measured the beat's own dip
-	// instead of the decay envelope.
-	//
-	// So a NaN is skipped and the fit continues. It still stops for the two
-	// reasons that are real endings: the level falling modeDecayFloorDB
-	// below the peak (below that the reading is noise floor, not decay), and
-	// running out of frames.
+	// The fit SKIPS gap frames: stopping at the first NaN threw away exactly the frames the tracker kept, and on a beating
+	// mode measured the beat's dip instead of the decay. Nothing is interpolated. It still stops at the real endings:
+	// modeDecayFloorDB below the peak (noise floor) and the last frame.
 	var xs, ys []float64
 	for f := peakFrame; f < numFrames; f++ {
 		db := m.Track[f]
@@ -282,8 +212,7 @@ func buildMode(tr *modeTrack, numFrames int, hopSec float64) Mode {
 	return m
 }
 
-// mergeCloseModes folds tracks closer than one bin into the louder one — a
-// track that briefly split across a bin boundary must not count twice.
+// A track that split across a bin boundary must not count twice.
 func mergeCloseModes(modes []Mode, binHz float64) []Mode {
 	var out []Mode
 	for _, m := range modes {
@@ -298,8 +227,7 @@ func mergeCloseModes(modes []Mode, binHz float64) []Mode {
 	return out
 }
 
-// Strong returns the modes whose PeakDB is within withinDB of the loudest
-// mode's PeakDB, ascending Hz.
+// Ascending Hz.
 func (m ModeSet) Strong(withinDB float64) []Mode {
 	maxDB := math.Inf(-1)
 	for _, x := range m.Modes {
@@ -322,8 +250,7 @@ func (m ModeSet) AnchorHz() float64 {
 	return m.Modes[m.Anchor].Hz
 }
 
-// Ratios returns the first n Strong(20) mode frequencies divided by the
-// anchor frequency (anchor itself included as 1.0 when it qualifies).
+// The anchor itself is 1.0 when it qualifies.
 func (m ModeSet) Ratios(n int) []float64 {
 	a := m.AnchorHz()
 	if a <= 0 {
@@ -351,8 +278,6 @@ func (b *Bundle) Modes() *ModeSet {
 	return b.modes
 }
 
-// RequiresModes gates on the signal being audible and having at least two
-// stable spectral modes worth comparing.
 func RequiresModes(b *Bundle) bool {
 	return RequiresAudible(b) && len(b.Modes().Strong(modeStrongWithin)) >= 2
 }

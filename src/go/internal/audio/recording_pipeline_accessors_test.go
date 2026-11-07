@@ -11,11 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// recording_pipeline_accessors_test.go covers the public-ish accessors on
-// *pipeline that the rest of the audio + recording subsystem depends on.
-// Each test uses newTestPipeline (defined in recording_pipeline_test.go)
-// so the construction stays in lockstep with production wiring.
-
 func TestPipelineMIDIEventsCopyOnRead(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
@@ -28,9 +23,7 @@ func TestPipelineMIDIEventsCopyOnRead(t *testing.T) {
 		t.Fatalf("MIDIEvents len=%d, want 2", len(first))
 	}
 
-	// Mutating the returned slice must NOT change pipeline state. This is
-	// the single invariant that makes MIDIEvents safe to call from the UI
-	// thread without further locking.
+	// What makes MIDIEvents safe from the UI thread without more locking.
 	first[0].Note = 99
 	first[1].Velocity = 1
 
@@ -93,10 +86,7 @@ func TestPipelineIsAutoStoppedFalseInitially(t *testing.T) {
 }
 
 func TestPipelineShutdownEarlyDrainsWithoutPanic(t *testing.T) {
-	// shutdownEarly is what newPipeline calls on partial-init failure.
-	// A fresh pipeline with no instruments still starts a master worker;
-	// shutdownEarly must close every channel and let the workers exit
-	// cleanly. The contract: it returns and does not panic.
+	// A pipeline with no instruments still starts a master worker; shutdownEarly must close everything without panicking.
 	pipe := newTestPipeline(t, nil)
 
 	defer func() {

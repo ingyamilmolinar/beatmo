@@ -10,16 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// SaveRecording finalizes a recording.
-//
-// In streaming mode (the production desktop path), the per-channel WAV
-// files are already on disk in result.SessionDir — SaveRecording just
-// writes session.json next to them.
-//
-// In legacy/in-memory mode (Data is populated, SessionDir is empty —
-// e.g., test fixtures), SaveRecording writes each channel's Data into a
-// timestamped subdirectory. Either way, the returned path is the
-// directory containing the recording.
+// Streaming mode (production) already has the WAVs on disk, so this only writes session.json; in-memory mode (test
+// fixtures) writes each channel's Data. Returns the recording's directory either way.
 func SaveRecording(result *RecordingResult) (string, error) {
 	if result == nil || len(result.Channels) == 0 {
 		return "", fmt.Errorf("no channels to save")

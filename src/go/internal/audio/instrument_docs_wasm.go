@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// instrument_docs_wasm.go — the browser half of the engine boundary (spec §8):
-// Go flattens each instrument document and pushes the block; audio.js renders
-// it as-is (patching only the pitch index for melodic per-pitch renders).
+// audio.js renders the pushed block as-is, patching only the pitch index for melodic per-pitch renders.
 
 func init() {
 	platformInstrumentDocChanged = pushInstrumentDoc
@@ -38,8 +36,7 @@ func pushInstrumentDoc(id instrument.ID, d instrument.Doc) {
 	fn.Invoke(string(id), f64, d.Render.Seconds, d.Render.Amplitude, d.Render.Melodic, d.Render.GateTail, voiceFXForJS(d))
 }
 
-// voiceFXForJS is d's voice FX as the render worker applies them
-// (voice_post.js): [{type, params}], each through the C host's ifx_create.
+// Each applied by the render worker through the C host's ifx_create.
 func voiceFXForJS(d instrument.Doc) js.Value {
 	calls := VoiceFXCalls(d)
 	out := make([]any, len(calls))
@@ -53,8 +50,7 @@ func voiceFXForJS(d instrument.Doc) js.Value {
 	return js.ValueOf(out)
 }
 
-// PushAllInstrumentDocsToPlatform pushes every stored document (boot, and after
-// a sample override is dropped so the synth voice is restored).
+// At boot, and after a sample override is dropped so the synth voice comes back.
 func PushAllInstrumentDocsToPlatform() {
 	docStore.RLock()
 	snap := make(map[instrument.ID]instrument.Doc, len(docStore.docs))

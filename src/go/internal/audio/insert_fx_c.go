@@ -19,9 +19,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// cEffect is one insert effect running in the C engine through fx_host — the
-// same host the browser's beatmo-dsp worklet drives, with the same complete
-// parameter set, so an effect is one computation on both platforms.
+// The same fx_host the browser's beatmo-dsp worklet drives, with the same complete params: one computation on both
+// platforms.
 type cEffect struct {
 	t EffectType
 	h unsafe.Pointer // nil when the C engine refused the effect: passes through
@@ -32,8 +31,7 @@ var cEffectParamNames = struct {
 	names map[EffectType][]string
 }{}
 
-// effectParamNames is t's parameters in the order the C init reads them, as
-// the C engine itself reports (ifx_param_names) — the order lives only there.
+// The order the C init reads them lives only in C (ifx_param_names).
 func effectParamNames(t EffectType) []string {
 	cEffectParamNames.once.Do(func() {
 		m := make(map[EffectType][]string, len(EffectTypes))
@@ -105,8 +103,7 @@ func (e *cEffect) SetParam(name string, v float64) {
 	C.free(unsafe.Pointer(cn))
 }
 
-// The registry's constructors (effect_registry_entries.go): every type is the
-// generic C effect on desktop.
+// Every type is the generic C effect on desktop.
 func newDistortion(sr int, p map[string]float64) *cEffect { return newCEffect(EffectDistortion, sr, p) }
 func newDelay(sr int, p map[string]float64) *cEffect      { return newCEffect(EffectDelay, sr, p) }
 func newReverb(sr int, p map[string]float64) *cEffect     { return newCEffect(EffectReverb, sr, p) }

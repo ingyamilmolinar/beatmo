@@ -124,9 +124,7 @@ func TestSingleBandMutedReducesFrequency(t *testing.T) {
 	}
 }
 
-// TestMutedBandDoesNotAffectOtherBands verifies that muting one EQ band does not
-// affect frequencies in other bands. This tests the parallel multiband processor
-// that splits signals using crossover filters.
+// The band split isolates bands with crossovers.
 func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -186,9 +184,7 @@ func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 	unmutedRMS := rms(unmutedOut)
 	mutedRMS := rms(mutedOut)
 
-	// The 30Hz signal should pass through similarly with band 5 muted vs unmuted,
-	// since 30Hz is far from the muted band (630-1250Hz). With proper band isolation
-	// and no incorrect normalization, the ratio should be close to 1.0.
+	// 30 Hz is far from the muted band, so with proper isolation the ratio stays close to 1.
 	ratio := mutedRMS / unmutedRMS
 	if ratio < 0.5 || ratio > 2.0 {
 		t.Fatalf("30Hz signal should pass through near-unity with distant band muted: "+
@@ -196,8 +192,6 @@ func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 	}
 	t.Logf("30Hz signal: muted RMS=%.4f, unmuted RMS=%.4f, ratio=%.4f", mutedRMS, unmutedRMS, ratio)
 
-	// Now verify that a signal in the muted band IS significantly reduced
-	// compared to the same signal in unmuted EQ.
 	mutedFreq := 1000.0 // 1kHz is in band 5 (630-1250Hz)
 	mutedOut2 := make([]float64, samps)
 	unmutedOut2 := make([]float64, samps)
@@ -219,14 +213,9 @@ func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 	unmutedRMS2 := rms(unmutedOut2)
 	mutedRMS2 := rms(mutedOut2)
 
-	// The 1kHz signal should be significantly reduced in the muted version.
-	// Compare the relative attenuation: 1kHz_muted/1kHz_unmuted should be much
-	// smaller than 30Hz_muted/30Hz_unmuted (since 1kHz is in the muted band).
 	ratio1k := mutedRMS2 / unmutedRMS2
 	ratio30 := mutedRMS / unmutedRMS
 
-	// 1kHz ratio should be much smaller than 30Hz ratio
-	// (1kHz is in muted band, 30Hz is not)
 	if ratio1k >= ratio30*0.8 {
 		t.Fatalf("1kHz signal in muted band not sufficiently attenuated relative to 30Hz: "+
 			"30Hz ratio=%.4f, 1kHz ratio=%.4f", ratio30, ratio1k)
@@ -235,10 +224,8 @@ func TestMutedBandDoesNotAffectOtherBands(t *testing.T) {
 	t.Logf("Band isolation test passed: 30Hz ratio=%.4f, 1kHz ratio=%.4f", ratio30, ratio1k)
 }
 
-// TestHighFrequencyRejectionWithLowBandOnly verifies that 4th-order Linkwitz-Riley
-// crossovers (-24dB/octave) provide sufficient high-frequency attenuation when
-// only the lowest band (20-40Hz) is active. This tests the fix for crackling/
-// metallic sounds leaking through when muting high bands.
+// 4th-order Linkwitz–Riley crossovers keep high frequencies out when only the lowest band is active, so nothing
+// crackles through.
 func TestHighFrequencyRejectionWithLowBandOnly(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -265,10 +252,7 @@ func TestHighFrequencyRejectionWithLowBandOnly(t *testing.T) {
 
 	eqCh := InstrumentChannel(channel.Of(instrument.ID(eqID)))
 
-	// Test 1: 5kHz signal should be heavily attenuated compared to 30Hz signal
-	// through the same processor.
-	// 5kHz is ~7 octaves above 40Hz cutoff
-	// With LR4 (-24dB/octave): 7 * 24 = -168dB theoretical
+	// 5 kHz is about 7 octaves above the 40 Hz cutoff.
 	highFreq := 5000.0
 	lowFreq := 30.0
 
@@ -292,15 +276,10 @@ func TestHighFrequencyRejectionWithLowBandOnly(t *testing.T) {
 	}
 	eqRMSLow := rms(eqOutLow)
 
-	// The key test: 5kHz should be much more attenuated than 30Hz
-	// when only the 20-40Hz band is active.
-	// 30Hz is in the active band, 5kHz is far outside it.
 	if eqRMSLow < 0.001 {
 		t.Fatalf("30Hz signal not passing through multiband EQ at all: RMS %.6f", eqRMSLow)
 	}
 
-	// 5kHz should be very heavily attenuated relative to 30Hz
-	// With LR4 (-24dB/octave) over ~7 octaves, we expect massive attenuation.
 	relativeRatio := eqRMSHigh / eqRMSLow
 	if relativeRatio > 0.01 {
 		t.Fatalf("5kHz signal not sufficiently attenuated relative to 30Hz with only band 0 active: "+
@@ -314,9 +293,7 @@ func TestHighFrequencyRejectionWithLowBandOnly(t *testing.T) {
 		attenuationDB, relativeRatio)
 }
 
-// TestMultibandOutputMatchesPassthrough verifies that a 10-band multiband processor
-// (with only the highest band muted) passes a low-frequency signal at near-unity
-// compared to a dry channel. This fails if the multiband divides by numBands.
+// Fails if the band split divides by the band count.
 func TestMultibandOutputMatchesPassthrough(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -351,9 +328,7 @@ func TestMultibandOutputMatchesPassthrough(t *testing.T) {
 	dryRMS := rms(dryOut)
 	ratio := eqRMS / dryRMS
 
-	// With the normalization bug, ratio would be ~0.03 (1/10 of passthrough).
-	// Without it, crossover filters still attenuate somewhat due to overlapping
-	// rolloff regions, but signal should be well above the buggy level.
+	// Crossover overlap attenuates somewhat, but far above a 1/numBands level.
 	if ratio < 0.2 {
 		t.Fatalf("multiband output too quiet vs passthrough: eq RMS=%.4f, dry RMS=%.4f, ratio=%.4f (expected >= 0.2)",
 			eqRMS, dryRMS, ratio)
@@ -361,9 +336,7 @@ func TestMultibandOutputMatchesPassthrough(t *testing.T) {
 	t.Logf("multiband vs passthrough: eq RMS=%.4f, dry RMS=%.4f, ratio=%.4f", eqRMS, dryRMS, ratio)
 }
 
-// TestMutingHighBandPreservesKickEnergy simulates a kick drum signal (60Hz + 120Hz
-// with decay) and verifies that muting only the 10k-20kHz band preserves nearly all
-// energy. This directly reproduces the user-reported bug.
+// Muting only 10–20 kHz must keep nearly all of a kick's energy.
 func TestMutingHighBandPreservesKickEnergy(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -400,9 +373,6 @@ func TestMutingHighBandPreservesKickEnergy(t *testing.T) {
 	dryRMS := rms(dryOut)
 	ratio := eqRMS / dryRMS
 
-	// Kick has negligible energy above 10kHz. Muting that band should preserve
-	// most energy. Crossover filters cause some attenuation, but with the
-	// normalization bug fixed the ratio should be well above 0.1.
 	if ratio < 0.2 {
 		t.Fatalf("kick energy not preserved with high band muted: eq RMS=%.4f, dry RMS=%.4f, ratio=%.4f (expected >= 0.2)",
 			eqRMS, dryRMS, ratio)
@@ -410,8 +380,6 @@ func TestMutingHighBandPreservesKickEnergy(t *testing.T) {
 	t.Logf("kick energy test: eq RMS=%.4f, dry RMS=%.4f, ratio=%.4f", eqRMS, dryRMS, ratio)
 }
 
-// TestMultibandNormalizationRemoved is a minimal test that verifies the 1/numBands
-// normalization has been removed from the multiband processor.
 func TestMultibandNormalizationRemoved(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -440,8 +408,6 @@ func TestMultibandNormalizationRemoved(t *testing.T) {
 
 	ratio := outRMS / inRMS
 
-	// With the bug (dividing by 10), ratio would be ~0.02.
-	// Without it, crossover rolloff still attenuates but should be above 0.15.
 	if ratio < 0.15 {
 		t.Fatalf("multiband output/input ratio too low: %.4f (expected >= 0.15, bug would give ~0.02)",
 			ratio)

@@ -21,8 +21,7 @@ func melToHz(mel float64) float64 {
 	return 700.0 * (math.Pow(10.0, mel/2595.0) - 1.0)
 }
 
-// buildMelFilterbank returns a [mfccNumFilters][numBins] triangular filter bank
-// evenly spaced in mel between 0 Hz and sr/2 Hz.
+// Evenly spaced in mel over 0..sr/2.
 func buildMelFilterbank(numBins int, binHz float64, sr int) [mfccNumFilters][]float64 {
 	nyquist := float64(sr) / 2.0
 	melLow := hzToMel(0.0)
@@ -69,8 +68,7 @@ func buildMelFilterbank(numBins int, binHz float64, sr int) [mfccNumFilters][]fl
 	return filters
 }
 
-// dctII computes the DCT-II of in and writes to out (same length assumed).
-// out[k] = sum_{n=0}^{N-1} in[n] * cos(pi/N * (n+0.5) * k)
+// out[k] = Σ in[n]·cos(π/N·(n+0.5)·k); same length.
 func dctII(in []float64, out []float64) {
 	N := len(in)
 	piOverN := math.Pi / float64(N)
@@ -83,10 +81,7 @@ func dctII(in []float64, out []float64) {
 	}
 }
 
-// computeMFCC returns the first n MFCCs (n<=13) of w's sustain window: power
-// spectrum (from wave.MagnitudeSpectrum) → mel filterbank (26 triangular
-// filters, 0..sr/2) → log energy per filter → DCT-II, keep first n. Always
-// returns a [13]float64 (coeffs >= n are zero).
+// 26 triangular mel filters over the sustain window's power spectrum, log energy, DCT-II; coefficients ≥ n are zero.
 func computeMFCC(w wave.Wave, n int) [13]float64 {
 	if n > 13 {
 		n = 13

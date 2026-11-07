@@ -13,17 +13,11 @@ import (
 
 var debugChannelCount int64
 
-// Processor represents a placeholder audio processor in the channel chain.
-// Future implementations can provide EQ, effects, etc.
 type Processor interface {
 	ProcessSample(float64) float64
 }
 
-// BlockProcessor is an optional interface for processors that support
-// efficient block-based processing (e.g., C effects via CGo).
-// When ALL processors in a channel implement BlockProcessor, the channel
-// can use an optimized path with one CGo call per effect per block instead
-// of per-sample calls.
+// When EVERY processor in a channel implements it, one cgo call per effect per block replaces per-sample calls.
 type BlockProcessor interface {
 	Processor
 	ProcessBlockBuf(in []float32, out []float32, samples int)
@@ -34,26 +28,18 @@ type Channel struct {
 	parent *Channel
 	vol    uint64 // atomic float64 bits
 
-	// memory is the insert chain's ChainMemorySec (atomic float64 bits, set
-	// where the chain is built): how long the channel holds a sound with a
-	// silent output (residency.go).
+	// The insert chain's ChainMemorySec as atomic float64 bits: how long the channel holds a sound with silent output.
 	memory atomic.Uint64
 
 	mu sync.RWMutex
-	// Processor chain is split into two halves so the mixer can tap the
-	// post-inserts/pre-EQ signal (scope.StageInsertFX). Order at runtime:
-	//   input → volume → preEQAnalyzer tap → inserts… → tap (mixer) → eqProcs… → output
-	// `processors` is kept as the canonical concatenated list so the existing
-	// ProcessSample / ProcessBlock / ProcessSampleLocal paths (and the
-	// SetChannelProcessors backward-compat API) keep working unchanged.
+	// Split so the mixer can tap post-inserts / pre-EQ (scope.StageInsertFX): input → volume → preEQ tap → inserts →
+	// tap → eqProcs → output. `processors` stays the concatenation for the ProcessSample / ProcessBlock paths.
 	inserts       []Processor
 	eqProcs       []Processor
 	processors    []Processor // = append(inserts, eqProcs...); used by legacy paths
 	preEQAnalyzer *Analyzer   // tapped after volume, before inserts
 
-	// Cached block-processing capability for each segment. The combined
-	// allBlock/blockProcs caches drive the legacy ProcessBlockLocal path;
-	// the split caches drive ProcessInsertsBlockLocal / ProcessEQBlockLocal.
+	// The combined caches drive ProcessBlockLocal, the split ones ProcessInsertsBlockLocal / ProcessEQBlockLocal.
 	allBlock          bool
 	blockProcs        []BlockProcessor
 	insertsAllBlock   bool
@@ -61,9 +47,7 @@ type Channel struct {
 	eqAllBlock        bool
 	eqBlockProcs      []BlockProcessor
 
-	// Crossfade state: when processors are replaced, the old chain is kept
-	// briefly and blended with the new chain to avoid clicks from abrupt
-	// chain swaps (e.g., effect toggle on/off).
+	// The old chain is kept briefly and blended with the new one, so a chain swap (an effect toggle) doesn't click.
 	oldProcessors  []Processor
 	xfadePos       int
 	xfadeLen       int
@@ -119,8 +103,7 @@ func (c *Channel) ProcessSample(input float64) float64 {
 	return out
 }
 
-// ProcessBlock processes input samples and adds results to output.
-// Chains through parent channels. Hoists lock outside the sample loop.
+// Chains through parent channels; the lock is taken once per block.
 func (c *Channel) ProcessBlock(input, output []float64) {
 	gain := c.Volume()
 
@@ -150,10 +133,8 @@ func (c *Channel) ProcessBlock(input, output []float64) {
 	}
 }
 
-// ProcessSampleLocal applies this channel's volume and EQ processors but does
-// NOT recurse to the parent channel. Used by the 3-phase mixer so that
-// instrument channels and the master channel are processed separately with
-// coherent signal streams (avoiding shared biquad state corruption).
+// No recursion to the parent: instrument and master channels must each see one coherent stream, or the shared
+// biquad state is corrupted.
 func (c *Channel) ProcessSampleLocal(input float64) float64 {
 	gain := c.Volume()
 	out := input * gain
@@ -198,14 +179,8 @@ func (c *Channel) ProcessSampleLocal(input float64) float64 {
 	return out
 }
 
-// ProcessBlockLocal applies this channel's processing to each input sample and
-// accumulates results into output. Does NOT recurse to the parent channel.
-// Hoists the RWMutex read-lock outside the sample loop so processors are
-// snapshotted once per block instead of once per sample.
-//
-// When ALL processors implement BlockProcessor, uses an optimized path that
-// calls each effect's block method with ping-pong float32 buffers, reducing
-// CGo overhead from (samples * effects) to just (effects) calls per block.
+// No recursion to the parent; processors are snapshotted once per block. When all implement BlockProcessor, each
+// effect runs once per block over ping-pong float32 buffers instead of once per sample.
 func (c *Channel) ProcessBlockLocal(input, output []float64) {
 	gain := c.Volume() // atomic read, no lock needed
 
@@ -266,14 +241,8 @@ func (c *Channel) ProcessBlockLocal(input, output []float64) {
 	}
 }
 
-// ProcessInsertsBlockLocal applies volume + the pre-EQ analyzer tap +
-// the insert-FX chain to `input` and accumulates the result into `output`.
-// Pairs with ProcessEQBlockLocal: the mixer calls these back-to-back so it
-// can tap the intermediate buffer as scope.StageInsertFX. Does NOT recurse
-// to the parent channel — that's the caller's responsibility.
-//
-// `output` accumulates (read-modify-write); zero it before calling if the
-// caller wants a clean buffer.
+// Volume, the pre-EQ tap and the inserts, accumulated into output, so the mixer can tap the intermediate buffer as
+// StageInsertFX before ProcessEQBlockLocal. No parent recursion; output is read-modify-write.
 func (c *Channel) ProcessInsertsBlockLocal(input, output []float64) {
 	gain := c.Volume()
 
@@ -330,15 +299,8 @@ func (c *Channel) ProcessInsertsBlockLocal(input, output []float64) {
 	}
 }
 
-// ProcessEQBlockLocal applies the EQ-side processor chain to `input` and
-// accumulates the result into `output`. Does NOT re-apply volume (that
-// already happened in ProcessInsertsBlockLocal upstream) and does NOT
-// recurse to the parent channel. Pairs with ProcessInsertsBlockLocal.
-//
-// When `eqProcs` is empty, behaves as identity copy-accumulate.
-//
-// `output` accumulates (read-modify-write); zero it before calling if the
-// caller wants a clean buffer.
+// Volume was already applied upstream; no parent recursion. An empty eqProcs copy-accumulates; output is
+// read-modify-write.
 func (c *Channel) ProcessEQBlockLocal(input, output []float64) {
 	var procs []Processor
 	c.mu.RLock()
@@ -416,7 +378,6 @@ func (p *blockPool) put(b []float32) {
 	p.pool = append(p.pool, b)
 }
 
-// cacheBlockCapability recomputes the combined and per-segment block caches.
 // Caller must hold c.mu.
 func (c *Channel) cacheBlockCapability() {
 	c.allBlock, c.blockProcs = computeBlockCache(c.processors)
@@ -424,10 +385,7 @@ func (c *Channel) cacheBlockCapability() {
 	c.eqAllBlock, c.eqBlockProcs = computeBlockCache(c.eqProcs)
 }
 
-// computeBlockCache returns (true, casted-procs) if every processor in the
-// slice implements BlockProcessor; otherwise (false, nil). An empty slice
-// returns (false, nil) — the caller's fast-path checks `len(...) == 0` before
-// reading the cache, so this sentinel just says "no optimized path available".
+// An empty slice also returns (false, nil): callers check len first, so it only means "no fast path".
 func computeBlockCache(procs []Processor) (bool, []BlockProcessor) {
 	if len(procs) == 0 {
 		return false, nil
@@ -443,23 +401,15 @@ func computeBlockCache(procs []Processor) (bool, []BlockProcessor) {
 	return true, bp
 }
 
-// channelXfadeSamples is the crossfade duration when the processor chain is
-// replaced, preventing clicks from abrupt chain swaps (e.g., effect toggle).
-// ~5ms at 44100 Hz.
+// About 5 ms.
 const channelXfadeSamples = 220
 
-// replaceProcessors swaps the channel's processor chains. `inserts` runs first
-// (typically Insert FX such as distortion, delay, reverb wet, chorus, etc.);
-// `eqProcs` runs after the inserts. Either slice may be nil/empty.
-//
-// Passing the split lets the mixer tap the boundary between inserts and EQ
-// for the scope-panel StageInsertFX comparison; the legacy ProcessBlockLocal
-// and ProcessSample paths still see the concatenated chain via c.processors.
+// inserts run first, eqProcs after; the split lets the mixer tap between them, while c.processors keeps the
+// concatenation for the legacy paths.
 func (c *Channel) replaceProcessors(inserts, eqProcs []Processor) {
 	c.mu.Lock()
-	// Only crossfade if audio was actually processed with the current chain.
-	// This avoids crossfading when effects are configured before playback starts,
-	// or when multiple chain changes happen in rapid succession without audio.
+	// Only when audio actually ran through the current chain: no crossfade for setup before playback or for rapid
+	// changes with no audio in between.
 	if atomic.LoadUint32(&c.samplesThruOld) > 0 {
 		c.oldProcessors = c.processors
 		c.xfadePos = 0
@@ -474,9 +424,7 @@ func (c *Channel) replaceProcessors(inserts, eqProcs []Processor) {
 	chanMgr.refreshProcChannels()
 }
 
-// addEQProcessor appends to the EQ-side chain. Inserts come first in the
-// runtime order; EQ-side processors follow. Used by the AddChannelProcessor
-// public API which has no concept of inserts vs EQ.
+// For AddChannelProcessor, which knows no insert/EQ split.
 func (c *Channel) addEQProcessor(p Processor) {
 	c.mu.Lock()
 	c.eqProcs = append(c.eqProcs, p)
@@ -492,15 +440,11 @@ type channelManager struct {
 	instruments map[channel.ID]*Channel
 	main        *Channel
 
-	// procChannels are the instrument channels whose chain holds a processor
-	// (an insert effect, an EQ, an analyzer): the mixer runs each of them
-	// every block, voice or not (mixer.processBlock). Rebuilt by
-	// refreshProcChannels whenever a chain or the channel set changes.
+	// Channels whose chain holds a processor: the mixer runs each every block, voice or not.
 	procChannels atomic.Pointer[[]*Channel]
 }
 
-// refreshProcChannels recomputes procChannels. Never call it holding a
-// Channel's mu or cm.mu.
+// Never call it holding a Channel's mu or cm.mu.
 func (cm *channelManager) refreshProcChannels() {
 	cm.mu.RLock()
 	var out []*Channel
@@ -536,9 +480,8 @@ func (cm *channelManager) reset() {
 	cm.procChannels.Store(&[]*Channel{}) // fresh channels hold no processor
 }
 
-// ensureChannel returns the channel id names, creating it on first use. The
-// zero ID names no channel: it gets a detached channel nothing reads, so an
-// edit addressed to it is dropped instead of landing on the master bus.
+// The zero ID names no channel: it gets a detached channel nothing reads, so an edit addressed to it is dropped
+// instead of landing on the master bus.
 func (cm *channelManager) ensureChannel(id channel.ID) *Channel {
 	if id.IsZero() {
 		return newChannel(id, nil)
@@ -595,8 +538,7 @@ func (cm *channelManager) ensureInstrumentChannel(id channel.ID) *Channel {
 	return ch
 }
 
-// channelForInstrument is the channel a voice mixes through: its
-// instrument's, or the master bus directly for a voice no instrument owns.
+// The master bus for a voice no instrument owns.
 func (cm *channelManager) channelForInstrument(id channel.ID) *Channel {
 	if id.IsZero() {
 		return cm.main
@@ -616,8 +558,7 @@ func (cm *channelManager) setVolume(id channel.ID, vol float64) *Channel {
 	return ch
 }
 
-// volume reads a channel's volume without building it: a channel that does
-// not exist yet is at unity.
+// Without building it: a channel that does not exist yet is at unity.
 func (cm *channelManager) volume(id channel.ID) float64 {
 	cm.mu.RLock()
 	ch, ok := cm.channels[id]
@@ -628,8 +569,7 @@ func (cm *channelManager) volume(id channel.ID) float64 {
 	return ch.Volume()
 }
 
-// resetInstruments forgets every instrument channel. None is rebuilt: a
-// channel exists from its first use (a voice, a mixer setting) on.
+// None is rebuilt: a channel exists from its first use on.
 func (cm *channelManager) resetInstruments() {
 	cm.mu.Lock()
 	main := cm.main
@@ -654,13 +594,10 @@ func SetChannelVolume(id channel.ID, vol float64) {
 	platformChannelVolumeChanged(ch.id, ch.Volume())
 }
 
-// FreshSessionMasterVolume is the master volume a fresh session starts at (and
-// a project without a master_volume gets): headroom for the loudness-normalised
-// instruments.
+// Headroom for the loudness-normalised instruments; also what a project without master_volume gets.
 const FreshSessionMasterVolume = 0.5
 
-// SetMainVolume sets the master volume, clamped to [0, MaxMasterVolume] here
-// — the one clamp both platforms' master gain receives.
+// The one clamp both platforms' master gain receives.
 func SetMainVolume(vol float64) {
 	if vol > MaxMasterVolume {
 		vol = MaxMasterVolume
@@ -695,10 +632,7 @@ func channelForInstrument(id channel.ID) *Channel {
 	return chanMgr.channelForInstrument(id)
 }
 
-// SetChannelProcessors replaces the EQ-side processor chain for the given
-// channel ID with a flat list (inserts are left untouched). Code paths that
-// need the inserts/EQ split (rebuildChannelProcessors) call
-// ch.replaceProcessors directly.
+// Replaces only the EQ-side chain; the inserts are untouched.
 func SetChannelProcessors(id channel.ID, procs ...Processor) {
 	ch := chanMgr.ensureChannel(id)
 	ch.replaceProcessors(nil, procs)
@@ -710,15 +644,10 @@ func AddChannelProcessor(id channel.ID, p Processor) {
 	ch.addEQProcessor(p)
 }
 
-// platformChannelVolumeChanged is implemented per-platform to propagate volume
-// changes down to the audio backend (e.g., JS GainNodes). On platforms where
-// mixing is performed in Go, it may be a no-op.
+// A no-op where Go mixes.
 var platformChannelVolumeChanged = func(channel.ID, float64) {}
 
-// InstrumentChannelIDs returns the id of every instrument channel the manager
-// currently holds (master excluded). Used by project import to clear
-// per-instrument EQ before applying the file's own, so an instrument that is
-// flat in the new project does not inherit the previous project's curve.
+// Import clears per-instrument EQ first, so an instrument flat in the new project does not inherit the old curve.
 func InstrumentChannelIDs() []channel.ID {
 	chanMgr.mu.RLock()
 	defer chanMgr.mu.RUnlock()

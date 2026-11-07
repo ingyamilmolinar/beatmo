@@ -12,20 +12,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestP5_RenderRealTimeFactor is the performance gate for the one-declarative-
-// pipeline refactor (spec P5): rendering EVERY builtin instrument one-shot must
-// be dramatically faster than real time, or live param edits and instrument
-// switches stall the trigger path. The floor is deliberately conservative
-// (20× aggregate — dev machines measure far higher) so CI variance never
-// flakes it; override with BEATMO_RTF_MIN for local tightening. Aggregate
-// (total audio seconds / total render seconds) rather than per-instrument so
-// one cold-cache outlier cannot flake the gate; the worst single instrument
-// is Logf'd for visibility.
-//
-// The render seconds are the rendering THREAD's CPU time (renderCPUSeconds),
-// not wall time: `make test-real` runs every package at once, and under that
-// load the same renders measured 19.6× wall against ~90× alone — the gate
-// was measuring the other packages.
+// Every built-in must render far faster than real time, or live edits and instrument switches stall the trigger path.
+// Aggregate, and the thread's CPU time rather than wall time, so neither one cold outlier nor other packages' load
+// flakes it; BEATMO_RTF_MIN tightens it locally.
 func TestP5_RenderRealTimeFactor(t *testing.T) {
 	minRTF := 20.0
 	if s := os.Getenv("BEATMO_RTF_MIN"); s != "" {

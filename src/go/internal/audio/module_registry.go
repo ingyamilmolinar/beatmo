@@ -12,10 +12,7 @@ var (
 	builtinReg     *instrument.Registry
 )
 
-// BuiltinModuleRegistry is the registry of built-in module types bound to the
-// modular ABI. Init (creation values) come from ModularSynthParamDefs until
-// sub-project 3 moves UI metadata into the declarations. Panics on an invalid
-// table — a build invariant pinned by module_registry_test.go.
+// Panics on an invalid table: a build invariant.
 func BuiltinModuleRegistry() *instrument.Registry {
 	builtinRegOnce.Do(func() {
 		defaults := map[string]float64{}

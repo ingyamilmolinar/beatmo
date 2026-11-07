@@ -6,29 +6,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// kick_inharmonicity.go — INHARMONICITY (metallic/wooden vs pure axis).
-//
-// Motivation: band energies, centroid, flatness and roughness all describe WHERE
-// the energy is and how rough the partial spacing sounds, but none of them
-// directly formalizes how far the body's partials sit from an exact harmonic
-// series of the fundamental. That mistuning is precisely what a synth's
-// mode-detune control (mode_detune) drives, and it is the perceptual "metallic /
-// bell-like" ↔ "pure / harmonic" axis: a struck metal shell has strongly
-// inharmonic modes; a clean sub-kick is near-harmonic.
-//
-// Method: on the sustained BODY region (same 35–150 ms window as the roughness
-// metric, so "body" means the same thing everywhere), peak-pick the strongest
-// partials (frequency + amplitude, with parabolic sub-bin refinement — the SAME
-// peakPickPartials helper the roughness model uses). With f0 = the fingerprint's
-// settled pitch (or the strongest partial when the pitch is unavailable), each
-// partial is assigned its nearest harmonic number n = round(f/f0), n ≥ 1, and its
-// fractional mistuning |f − n·f0| / (n·f0) is accumulated AMPLITUDE-WEIGHTED and
-// normalized by the total amplitude. A perfectly harmonic stack reads ~0; a
-// stretched/inharmonic stack reads clearly positive; a single pure tone reads 0.
+// How far the body's partials sit from an exact harmonic series: the metallic ↔ pure axis mode_detune drives.
+// Amplitude-weighted fractional mistuning |f − n·f0| / (n·f0) of the body-region partials against the settled f0 (or
+// the strongest partial); harmonic reads ~0.
 
 const (
-	// Body region — reuse the roughness/segment boundaries so "body" is identical
-	// across metrics. Short kicks fall back to the whole signal.
+	// The same body as roughness and segments; short kicks use the whole signal.
 	kickInharmBodyStartSec = segAttackEndMs / 1000 // 35 ms
 	kickInharmBodyEndSec   = segBodyEndMs / 1000   // 150 ms
 
@@ -38,15 +21,11 @@ const (
 	// Peak-pick at most this many partials (by amplitude).
 	kickInharmMaxPartials = 10
 
-	// Inharmonicity distance is |Δ Inharmonicity| × this, to bring the small raw
-	// range (~0–0.1) up to the same order as the other KickDistance sub-terms.
+	// Brings the small raw range to the order of the other KickDistance terms.
 	kickInharmDistScale = 10.0
 )
 
-// computeInharmonicity fills fp.Inharmonicity from the amplitude-weighted mean
-// mistuning of the body-region partials relative to the settled fundamental.
-// Mirrors the computeX pattern in kick_metrics.go. Must run AFTER computePitch so
-// fp.PitchSettleHz is available as the fundamental.
+// Must run AFTER computePitch, which provides the fundamental.
 func (fp *KickFingerprint) computeInharmonicity(samples []float64, sr int) {
 	a := secToSamples(kickInharmBodyStartSec, sr)
 	b := secToSamples(kickInharmBodyEndSec, sr)
@@ -69,13 +48,8 @@ func (fp *KickFingerprint) computeInharmonicity(samples []float64, sr int) {
 	fp.Inharmonicity = inharmonicity(partials, f0)
 }
 
-// inharmonicity returns the amplitude-weighted mean fractional mistuning of a set
-// of partials relative to fundamental f0:
-//
-//	inharm = ( Σ_i a_i · |f_i − n_i·f0| / (n_i·f0) ) / ( Σ_i a_i ),   n_i = round(f_i/f0), n_i ≥ 1
-//
-// 0 = every partial lands on an exact harmonic; larger = more inharmonic/metallic.
-// A single partial that IS the fundamental yields 0. f0 ≤ 0 or no partials → 0.
+// n_i = round(f_i/f0) ≥ 1. 0 when every partial is on a harmonic, for a lone fundamental, or for f0 ≤ 0 / no
+// partials.
 func inharmonicity(partials []spectralPartial, f0 float64) float64 {
 	if f0 <= 0 || len(partials) == 0 {
 		return 0

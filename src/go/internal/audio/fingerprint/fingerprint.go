@@ -1,29 +1,20 @@
-// Package fingerprint provides pure-DSP instrument fingerprinting built
-// exclusively on internal/wave. It computes timbral descriptors (spectral,
-// temporal, envelope, MFCC) from a Wave and exposes a Distance function for
-// comparing synthesized tones against reference recordings. This package
-// intentionally imports only internal/wave and Go stdlib to avoid import
-// cycles with internal/audio.
+// Package fingerprint is pure-DSP instrument fingerprinting over internal/wave: timbral descriptors and a Distance
+// between a synthesized tone and a reference. It imports only internal/wave and the stdlib, so it never cycles
+// with internal/audio.
 package fingerprint
 
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// Fingerprint holds the computed timbral descriptors for a single audio
-// segment. The fields here are the skeleton; later tasks add AttackTimeSec,
-// DecaySlope, RMSEnvelope, and MFCC coefficients.
 type Fingerprint struct {
 	Label      string
 	SampleRate int
 
 	// Spectral fields (filled by computeSpectral).
 	F0Hz float64
-	// F0Confidence is how much of the signal DetectF0 found periodic, scaled
-	// by how tightly those frames agreed (0..1; see F0ReliableConfidence).
-	// F0Hz is ALWAYS populated -- the octave guard returns a number even for
-	// a hi-hat -- so every descriptor that assumes a harmonic series must
-	// consult this before trusting it.
+	// 0..1, how much of the signal was periodic times how tightly those frames agreed. F0Hz is ALWAYS populated (the
+	// octave guard returns a number even for a hi-hat), so anything assuming a harmonic series must consult this first.
 	F0Confidence     float64
 	Partials         [16]float64
 	SpectralCentroid float64
@@ -31,44 +22,30 @@ type Fingerprint struct {
 	EvenOddRatio     float64
 	Inharmonicity    float64
 	NoiseRatio       float64
-	// PartialRatioProfile is the strongest-partials-to-f0 ratio structure
-	// (partial_ratios.go) -- the string-vs-bar/tube discriminator that
-	// Inharmonicity's narrow per-harmonic-order search cannot provide (a
-	// tuned bar's overtone at ~4·f0 reads as "in tune" to a nearest-integer
-	// mistuning check; SeriesDeviation instead catches that it isn't the
-	// 2nd harmonic a consecutive series would place there). Zero value
-	// (nil Ratios) when F0Hz<=0.
+	// The string-vs-bar discriminator Inharmonicity cannot give: a tuned bar's overtone at ~4·f0 reads "in tune" to a
+	// nearest-integer check, while SeriesDeviation sees it is not the series' 2nd harmonic. Zero when F0Hz <= 0.
 	PartialRatioProfile PartialRatios
-	// SustainMag is the linear magnitude spectrum of the sustain window at
-	// fftSize=16384. Stored so Distance can compare equal-length spectra
-	// between ref and cand without recomputing the FFT.
+	// Stored so Distance compares equal-length spectra without recomputing the FFT.
 	SustainMag []float64
 
 	// Temporal fields (filled by computeTemporal).
 	Temporal *TemporalFingerprint
 
-	// Vibrato holds vibrato analysis (rate, extent, jitter, AM depth, onset).
-	// Nil when the input is silent (early-out) or F0 is undetected.
+	// nil for silent input or an undetected F0.
 	Vibrato *VibratoFingerprint `json:"vibrato,omitempty"`
 
-	// Harmonics holds per-harmonic amplitude trajectories over the sustain window.
-	// Nil when the input is silent (early-out).
+	// nil for silent input.
 	Harmonics *HarmonicTrajectory `json:"harmonics,omitempty"`
 
-	// SpectralEnv holds the smoothed spectral envelope and its formant peaks.
-	// Nil when the input is silent (early-out).
+	// nil for silent input.
 	SpectralEnv *SpectralEnvelope `json:"spectral_env,omitempty"`
 
-	// Coupling holds the dynamic coupling metrics (brightness vs loudness correlation).
-	// Nil when the input is silent (early-out).
+	// nil for silent input.
 	Coupling *DynamicCoupling `json:"coupling,omitempty"`
 
-	// NoiseProf holds harmonic/residual energy decomposition metrics.
-	// Nil when the input is silent (early-out).
+	// nil for silent input.
 	NoiseProf *NoiseProfile `json:"noise_profile,omitempty"`
 
-	// MFCC holds the first 13 Mel-Frequency Cepstral Coefficients (filled by
-	// computeMFCC): perceptual timbre descriptor from the sustain window.
 	MFCC [13]float64
 
 	// Spectral-shape fields (filled by computeShape).
@@ -87,25 +64,15 @@ type Fingerprint struct {
 	HNR            float64 // harmonic-to-noise ratio (dB-ish); higher = more tonal
 }
 
-// SustainSkipSec is the shared segmentation policy constant: skip the attack
-// transient (first 0.3 seconds) before spectral analysis.
+// Skips the attack transient before spectral analysis.
 const SustainSkipSec = 0.3
 
-// SustainLenSec is the shared segmentation policy constant: analyze up to
-// 1.0 seconds of sustained material after the SustainSkipSec attack skip.
-// All five analyzers (spectral, shape, MFCC, pitch/DetectF0, envelope/HNR) use
-// the identical window: skip 0.3 s, analyze up to 1.3 s (a 1.0 s window).
+// Every analyser uses the same window: skip 0.3 s, analyse to 1.3 s.
 const SustainLenSec = 1.3
 
-// FromWave builds a Fingerprint from a raw waveform. Peak-normalizes, detects
-// F0, then fills spectral metrics. Tasks 5–8 append temporal/MFCC/shape/envelope.
-// If the input is silent (peak < 1e-6 after attempted normalization), a zero
-// Fingerprint is returned immediately to prevent downstream NaN from divisions
-// by zero energy.
+// Silent input (peak < 1e-6) returns a zero Fingerprint at once, so no division downstream sees zero energy.
 func FromWave(w wave.Wave, label string) Fingerprint {
 	sr := w.SampleRate
-	// Early-out for silence: if peak magnitude is negligible, skip all analysis
-	// so that no downstream division ever sees zero energy.
 	if w.PeakSample() < 1e-6 {
 		return Fingerprint{Label: label, SampleRate: sr}
 	}
@@ -119,8 +86,7 @@ func FromWave(w wave.Wave, label string) Fingerprint {
 	computeShape(w, &fp)
 	computeEnvelope(w, &fp)
 
-	// Compute the five new metric sub-structs on the same sustain window used by
-	// the spectral/temporal passes above.
+	// The same sustain window as the spectral and temporal passes.
 	sw := sustainWindow(w)
 	cfg := DefaultAnalysisConfig()
 	vib := computeVibrato(sw, fp.F0Hz, cfg)

@@ -4,8 +4,6 @@ import (
 	"testing"
 )
 
-// TestPassThroughFallback exercises every method on the unregistered-
-// effect fallback returned by NewEffectProcessor.
 func TestPassThroughFallback(t *testing.T) {
 	eff := NewEffectProcessor(EffectSlot{Type: EffectType("__unregistered__")}, 48000)
 

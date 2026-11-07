@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// tremoloSine renders a decaying sine multiplied by (1 + depth·sin(2π·modHz·t)) —
-// a controlled amplitude warble on top of the natural decay.
+// A controlled warble on top of the natural decay.
 func tremoloSine(sr int, dur, f0, tau, modHz, depth float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -20,8 +19,7 @@ func tremoloSine(sr int, dur, f0, tau, modHz, depth float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// sweepSine renders a linear frequency sweep from f0 to f1 over the signal — a
-// spectrum that moves frame-to-frame (high spectral flux) at constant amplitude.
+// Constant amplitude, moving spectrum.
 func sweepSine(sr int, dur, f0, f1 float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)

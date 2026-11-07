@@ -9,15 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestVoiceIsTheSameAtEveryTempo: a note is render.seconds long and nothing
-// else about it reads the tempo, so every instrument's PLAYED voice — at any
-// pitch and node Duration — is the same sample for sample at 60, 120 and 300
-// BPM (user decision 2026-10-27: "the same circuit sounds exactly the same at
-// any tempo"). The voice used to be render.beats × 60/BPM long, so a faster
-// song cut every note shorter and changed how its envelope ended. Each tempo
-// renders fresh (the instrument's cached voices are dropped first), so the
-// comparison is never a cached buffer against itself. The browser half is
-// voice_tempo_independence.browser.test.js.
+// Every PLAYED voice, at any pitch and Duration, is sample-identical at 60, 120 and 300 BPM. Each tempo renders fresh,
+// so a cached buffer is never compared with itself.
 func TestVoiceIsTheSameAtEveryTempo(t *testing.T) {
 	t.Cleanup(func() { SetBPM(120) })
 	cases := []struct{ pitch, dur float64 }{{0, 1}, {7, 1}, {-5, 0.5}}
@@ -57,9 +50,7 @@ func TestVoiceIsTheSameAtEveryTempo(t *testing.T) {
 	}
 }
 
-// TestTempoChangeReRendersNothing: the voice cache has no tempo in its key,
-// so a BPM change keeps every rendered voice (it used to re-render the whole
-// circuit, behind the warm-up gate).
+// No tempo in the cache key, so a BPM change keeps every rendered voice.
 func TestTempoChangeReRendersNothing(t *testing.T) {
 	t.Cleanup(func() { SetBPM(120) })
 	sr := SampleRate()

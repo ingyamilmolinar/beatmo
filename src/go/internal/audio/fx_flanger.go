@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// flanger implements a short modulated delay line with signed feedback.
-// Similar to chorus but with shorter delay times and feedback, producing
-// the characteristic jet-sweep sound through comb filtering.
+// Shorter delay with signed feedback than chorus: the comb-filter jet sweep.
 type flanger struct {
 	rate     float64 // LFO frequency Hz
 	depth    float64 // modulation depth in ms (0.5-10)

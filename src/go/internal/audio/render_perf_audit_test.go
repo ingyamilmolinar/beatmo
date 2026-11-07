@@ -10,11 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestP5_RenderPerfAudit is the P5 perf audit: it renders every built-in
-// instrument through the unified pipeline (RenderInstrumentOneShotRaw →
-// bakedModularRender → render_modular_p) and reports the slowest, so a
-// pathologically expensive voice (e.g. a heavy physical model or a deep
-// gen-bank) is visible. Run: go test -run TestP5_RenderPerfAudit -v ./internal/audio/
+// Reports the slowest voices, so a pathologically expensive one (a heavy physical model, a deep gen bank) is visible.
 func TestP5_RenderPerfAudit(t *testing.T) {
 	Reset()
 	ResetInstruments()
@@ -44,8 +40,7 @@ func TestP5_RenderPerfAudit(t *testing.T) {
 	t.Log("P5 PERF AUDIT — 15 slowest:")
 	for i := 0; i < 15 && i < len(rows); i++ {
 		r := rows[i]
-		// Normalize to per-second-of-audio so long voices don't look slow just for
-		// being long (44100 samples/s).
+		// Per second of audio, so a long voice does not look slow for being long.
 		msPerSecAudio := float64(r.nsPer) / 1e6 / (float64(r.samples) / 44100.0)
 		t.Logf("  %-22s %6.2f ms/render  (%5d samp, %6.2f ms per audio-sec)", r.id, float64(r.nsPer)/1e6, r.samples, msPerSecAudio)
 	}

@@ -6,36 +6,18 @@ import (
 	"strings"
 )
 
-// modular_family_stages.go — THE registry of gen-slot voice families.
-//
-// A "family" is one C gen_source voice (kick, tom, snare, cymbal, FM …). Before
-// this table, teaching the app about a family meant editing about a dozen
-// separate places: the ABI, the schema globals, the identity map, the ParamDef
-// generator, a per-family stage-meta map, the UI's section router, its
-// hidden-param gate, its concept-table classifier, its macro-category claims,
-// its focus-renderer map, the plain-English glosses, and two test registries.
-// Three of those silently disagreed the last time a family was added.
-//
-// Everything that is DATA now lives here, and every consumer derives from it.
-// Adding a family is a row in modularFamilyStages plus its knob rows in
-// modularStageKnobs.
+// THE registry of gen-slot voice families (one C gen_source voice each): every consumer derives from it, so adding a
+// family is a row here plus its knob rows in modularStageKnobs.
 
 // ModularFamilyStage names one gen-slot voice family.
 type ModularFamilyStage struct {
-	// Group is the Synth-tab stage group its slot-1 knobs live in, and the
-	// value carried on each ParamDef.Group.
+	// Also the value carried on each ParamDef.Group.
 	Group string
-	// Source is the gen_source value that activates the voice. A recipe whose
-	// SEEDED gen1_source equals this is "a <Group> instrument", which is what
-	// decides whether the knobs are shown — a config-first drum is identified
-	// by its source, never by a family-knob name.
+	// A recipe whose seeded gen1_source equals this plays the family: identified by its source, never by a knob name.
 	Source float64
-	// Enable is the *_enabled global gating the voice, empty when it has none.
-	// It is never shown as a knob: the voice IS the instrument, so the pill
-	// would only offer to silence it.
+	// Never shown as a knob: the voice IS the instrument, so the pill would only offer to silence it.
 	Enable string
-	// Percussive marks the families that get the percussion concept table in
-	// the Synth tab rather than the melodic one.
+	// These get the percussion card table rather than the melodic one.
 	Percussive bool
 }
 
@@ -58,16 +40,8 @@ func FamilyStageForSource(source float64) (ModularFamilyStage, bool) {
 	return ModularFamilyStage{}, false
 }
 
-// FamilyStageGroupOfParam reports the family-stage group a SCHEMA PARAM belongs
-// to, matching the gen-bank naming (gen<N>_<field>) against modularStageKnobs.
-//
-// This is the ONLY way to ask the question: a ParamDef.Group is not a unique
-// key, so there is deliberately no IsFamilyStageGroup(group) to reach for
-// instead. "fm" names BOTH the modular FM stage (fm_algorithm, fm_op1_ratio, appended to
-// every migrated recipe) and the gen-bank FM family (gen1_fm_r1). Testing the
-// group alone therefore sweeps the FM stage's own knobs into the voice section
-// — which empties the Synth tab's FM stage and makes it disappear. The gen-bank
-// name is unambiguous, so it is the key.
+// Matches the gen-bank name: ParamDef.Group is not unique ("fm" names both the modular FM stage and the gen-bank FM
+// family), so testing the group would sweep the FM stage's knobs into the voice and empty that stage.
 func FamilyStageGroupOfParam(name string) (string, bool) {
 	field, ok := strings.CutPrefix(name, "gen")
 	if !ok {
@@ -99,22 +73,16 @@ func IsFamilyEnableParam(name string) bool {
 	return false
 }
 
-// modularStageKnob is the UI face of ONE gen-slot schema field: which stage
-// group owns it, its label, and its enum when it is a selector. A field absent
-// from modularStageKnobs stays hidden (ABI completeness only).
+// A field absent from modularStageKnobs stays hidden.
 type modularStageKnob struct {
 	Group string
 	Label string
 	Enum  []string
-	// Macro is the Synth-tab concept card that claims this knob. Every visible
-	// knob must be claimed by exactly one, which the UI's macro-discipline test
-	// enforces.
+	// Every visible knob must be claimed by exactly one card.
 	Macro string
 }
 
-// modularStageKnobUnits is the display unit of a surfaced knob, for the few
-// family knobs whose raw number would otherwise read as a bare float ("3062.7"
-// instead of "3.1 kHz"). Keyed like modularStageKnobs.
+// For the knobs whose bare number would read as "3062.7" instead of "3.1 kHz".
 var modularStageKnobUnits = map[string]string{
 	"cym_mode_lo": "Hz", "cym_mode_hi": "Hz", "cym_hf_corner": "Hz",
 	"cym_tone_f": "Hz", "cym_body_f": "Hz", "cym_spark_f": "Hz",
@@ -122,10 +90,8 @@ var modularStageKnobUnits = map[string]string{
 	"kick_hold": "s",
 }
 
-// stageKnobRange is a family knob's MUSICAL range (and curve) on the recipes
-// that play that family. The ParamDef keeps the engine's wide bounds
-// everywhere else; a recipe whose seeded gen1_source is the family gets these
-// instead (applyFamilyKnobRanges), so the knob's travel covers useful values.
+// The ParamDef keeps the engine's wide bounds elsewhere; a recipe that plays the family gets these, so the travel
+// covers useful values.
 type stageKnobRange struct {
 	Min, Max float64
 	Curve    string
@@ -133,8 +99,7 @@ type stageKnobRange struct {
 
 // modularStageKnobRanges is keyed like modularStageKnobs (prefix-stripped).
 var modularStageKnobRanges = map[string]stageKnobRange{
-	// BASS (source 4) — ranges of the former drum-sub-bass knobs, extended to
-	// the seed values.
+	// Extended to the seed values.
 	"harm_mix":       {0, 1, ""},
 	"pitch_env_amt":  {0, 1, ""},
 	"pitch_env_rate": {1, 200, "log"},
@@ -145,9 +110,7 @@ var modularStageKnobRanges = map[string]stageKnobRange{
 	"out_scale":      {0, 2, ""},
 }
 
-// applyFamilyKnobRanges narrows the slot-1 family knobs of a recipe that plays
-// that family (seed gen1_source) to their musical range. The seed value is
-// always kept inside the range.
+// The seed value is always kept inside the range.
 func applyFamilyKnobRanges(params []ParamDef, seed RecipeParams) {
 	fam, ok := FamilyStageForSource(seed["gen1_source"])
 	if !ok {
@@ -170,27 +133,16 @@ func applyFamilyKnobRanges(params []ParamDef, seed RecipeParams) {
 	}
 }
 
-// AnyFamilyGroup is the Group of a gen-slot knob every family reads (the
-// generator waveform): FamilyStageGroupOfParam reports it, and the Synth tab
-// shows such a knob on whichever family is active instead of on exactly one.
+// The generator waveform: the Synth tab shows such a knob on whichever family is active.
 const AnyFamilyGroup = "family"
 
-// modularStageKnobs is keyed by the schema field name WITHOUT its gen<N>_
-// prefix. Only slot 1 is surfaced; slots 2..12 stay hidden.
-//
-// The labels deliberately reuse the wired recipes' existing wording so the
-// vocabulary (and its plain-English glosses) is unchanged for the user.
+// Keyed without the gen<N>_ prefix; only slot 1 is surfaced. Labels reuse the recipes' wording, so the vocabulary
+// and its glosses are what users know.
 var modularStageKnobs = map[string]modularStageKnob{
-	// ── SHARED by every family ──
-	// gen_wave is the voice's generator waveform and EVERY family's C voice reads
-	// it (bass/kick/tom/snare/cymbal/FM) — the knob the legacy recipes offered as
-	// "Generator" (snare_wave, fm_wave, …). It lives in AnyFamilyGroup so it shows
-	// on whichever family the recipe plays; the config-first conversion had left
-	// it hidden, so a config-first snare or FM bass lost the control.
+	// Every family's C voice reads gen_wave, so it lives in AnyFamilyGroup and shows on whichever family plays.
 	"wave": {AnyFamilyGroup, "Generator", []string{"Sine", "Saw", "Square", "Triangle"}, "source"},
 
-	// ── BASS (source 4): the analytic dual-oscillator voice (sub-bass). These
-	// are the generic analytic gen-slot fields; only source 4 reads them. ──
+	// Only source 4 reads the analytic dual-oscillator fields.
 	"harm_mix":       {"bass", "Harmonics", nil, "tone"},
 	"pitch_env_amt":  {"bass", "Pitch Drop", nil, "pitchdrop"},
 	"pitch_env_rate": {"bass", "Drop Speed", nil, "pitchdrop"},
@@ -252,8 +204,7 @@ var modularStageKnobs = map[string]modularStageKnob{
 	"cym_tone_m":   {"cymbal", "Metal Level", nil, "tone"},
 	"cym_noise_m":  {"cymbal", "Sizzle Level", nil, "tone"},
 	"cym_noise_d":  {"cymbal", "Sizzle Decay", nil, "length"},
-	// ── Phase-18 modal plate (always on the hi-hat / ride; on the open hi-hat
-	// and crash once Plate Modes >= 1) ──
+	// The modal plate: always on the hi-hat / ride; on the open hi-hat and crash once Plate Modes ≥ 1.
 	"cym_modes":      {"cymbal", "Plate Modes", nil, "source"},
 	"cym_mode_lo":    {"cymbal", "Lowest Mode", nil, "boom"},
 	"cym_mode_hi":    {"cymbal", "Highest Mode", nil, "tone"},
@@ -279,11 +230,8 @@ var modularStageKnobs = map[string]modularStageKnob{
 
 	// ── FM (source 10) ──
 	"fm_variant": {"fm", "Variant", []string{"Bass", "Bell", "E-Piano", "Lead", "Pluck"}, "source"},
-	// "source", not "boom": the FM family is the only non-percussive one, so its
-	// knobs land in the MELODIC table, where "boom" aliases to Body — a card
-	// gated on the resonator body model, which FM never turns on. Base Pitch is
-	// part of the engine's character, so Sound is both its natural home and a
-	// card that actually shows.
+	// "source", not "boom": FM lands in the MELODIC table, where "boom" aliases to Body, a card gated on a resonator FM
+	// never turns on.
 	"fm_base":     {"fm", "Base Pitch", nil, "source"},
 	"fm_pe_amt":   {"fm", "Pitch Sweep", nil, "pitchdrop"},
 	"fm_pe_decay": {"fm", "Sweep Time", nil, "pitchdrop"},
@@ -301,17 +249,8 @@ var modularStageKnobs = map[string]modularStageKnob{
 	"fm_dec4":     {"fm", "Op 4 Decay", nil, "length"},
 }
 
-// GenSlotParamsForMacro returns the SLOT-1 param names whose knob is claimed by
-// the given Synth-tab macro card, in the registry's declaration order.
-//
-// The Macro field on each modularStageKnob is what makes a new family's knobs
-// reachable from the root of the Synth tab without touching the category
-// tables: every visible non-gain param must be claimed by exactly one card
-// (TestMacroGroups_EveryInstrumentHasCategories), and listing them by hand is how
-// the kick and snare knobs came to be enumerated in two places at once.
-//
-// The macro names are written in the PERCUSSION table's vocabulary; the melodic
-// table names some of the same ideas differently, and the UI aliases them.
+// The Macro field makes a new family's knobs reachable from the Synth tab root without touching the category tables.
+// Names are the PERCUSSION table's vocabulary; the melodic table aliases them.
 func GenSlotParamsForMacro(macro string) []string {
 	if macro == "" {
 		return nil
@@ -325,10 +264,7 @@ func GenSlotParamsForMacro(macro string) []string {
 	return out
 }
 
-// modularStageKnobFields returns the knob fields in a STABLE order (grouped by
-// family in registry order, then alphabetically within a family), so the cards
-// list their params identically on every run — a map range would reshuffle the
-// Synth tab between frames.
+// Stable (registry order, then alphabetical): a map range would reshuffle the Synth tab between frames.
 func modularStageKnobFields() []string {
 	var out []string
 	var shared []string
@@ -352,14 +288,7 @@ func modularStageKnobFields() []string {
 	return out
 }
 
-// StageKnobLabelForParam returns the human label the registry declares for a
-// SCHEMA PARAM (gen<N>_<field>), matching by name the way
-// FamilyStageGroupOfParam does.
-//
-// The labels deliberately reuse the wired recipes' existing wording ("Op 2
-// Decay", "Metal Tune", "Sweep Speed"), so a family that moves to a config
-// seed keeps the vocabulary its users already know. Without this the Synth tab
-// falls back to prettifying the raw id and shows "Fm Dec2" and "Cym Env Fast".
+// Without it the Synth tab prettifies the raw id and shows "Fm Dec2".
 func StageKnobLabelForParam(name string) (string, bool) {
 	field, ok := strings.CutPrefix(name, "gen")
 	if !ok {
@@ -381,8 +310,6 @@ func StageKnobLabelForParam(name string) (string, bool) {
 	return kn.Label, true
 }
 
-// StageKnobFor returns the UI face of a gen-slot field (prefix-stripped name),
-// for consumers that need the label/group/macro without the ParamDef.
 func StageKnobFor(field string) (group, label, macro string, enum []string, ok bool) {
 	k, found := modularStageKnobs[field]
 	if !found {

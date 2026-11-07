@@ -24,9 +24,7 @@ type TunableSpec struct {
 	Params []Param
 }
 
-// ValidateKeys returns an error if any Param.Key is not a value of the
-// instrument's document (so a typo — or a knob on a module the instrument does
-// not have — can't silently no-op).
+// So a typo, or a knob on a module the instrument lacks, cannot silently no-op.
 func (s TunableSpec) ValidateKeys(instID instrument.ID) error {
 	if _, ok := audio.EnsureInstrumentDoc(instID); !ok {
 		return fmt.Errorf("synthmatch: instrument %q has no document", instID)
@@ -44,9 +42,7 @@ func (s TunableSpec) ValidateKeys(instID instrument.ID) error {
 	return nil
 }
 
-// SpecForInstrument returns the tunable search space for instID (by family),
-// ok=false if the instrument has no spec. The returned TunableSpec.Params is a
-// defensive copy — callers cannot mutate the shared backing slice.
+// Params is a defensive copy.
 func SpecForInstrument(instID instrument.ID) (TunableSpec, bool) {
 	spec, ok := specMap[instID]
 	if !ok {
@@ -58,17 +54,12 @@ func SpecForInstrument(instID instrument.ID) (TunableSpec, bool) {
 
 // --- Family definitions ---
 
-// subtractive-reed family: sax, oboe, trumpet, french-horn, violin, cello, flute.
-// Keys are drawn only from params present in all these instruments' merged recipe defaults.
+// Keys present in every member's document.
 var subtractiveReedParams = []Param{
 	{Key: "filter_cutoff", Min: 200, Max: 8000, Step: 100},
 	{Key: "filter_resonance", Min: 0.5, Max: 3.0, Step: 0.1},
-	// The search box must contain every family member's own recipe defaults,
-	// otherwise the start point (and any candidate) is clamped to a different
-	// envelope than a self-rendered reference and can never match it — a
-	// residual the optimizer then "pays down" by mis-tuning other params
-	// (e.g. filter_cutoff drifts to compensate). sax's defaults are attack
-	// 0.5 s / decay 2.5 s (the slowest reed envelope), so cap above those.
+	// The box must contain every member's own values, or a self-rendered reference can never be matched and the optimizer
+	// pays the residual down by mis-tuning other params.
 	{Key: "amp_attack", Min: 0.001, Max: 0.6, Step: 0.005},
 	{Key: "amp_decay", Min: 0.02, Max: 3.0, Step: 0.02},
 	{Key: "amp_sustain", Min: 0, Max: 1, Step: 0.05},
@@ -107,9 +98,7 @@ var ksPluckParams = []Param{
 	{Key: "amp_release", Min: 0.02, Max: 0.5, Step: 0.02},
 }
 
-// struck-keys family: piano-grand (struck-string keyboard — tune brightness,
-// the amp decay/release envelope, the upper-partial level, and the sub-octave body).
-// Keys are limited to those present in the piano recipe's merged defaults.
+// Brightness, the amp decay/release, the upper-partial level and the sub-octave body.
 var struckKeysParams = []Param{
 	{Key: "filter_cutoff", Min: 2000, Max: 9000, Step: 250},
 	{Key: "amp_attack", Min: 0.001, Max: 0.02, Step: 0.001},

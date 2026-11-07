@@ -48,8 +48,7 @@ func TestDetectF0Detailed_ConfidenceSeparatesPitchedFromNoise(t *testing.T) {
 	}
 }
 
-// DetectF0 must keep returning exactly what DetectF0Detailed reports, so every
-// existing caller is unaffected by the split.
+// Every existing caller is unaffected.
 func TestDetectF0MatchesDetailed(t *testing.T) {
 	for _, w := range []wave.Wave{confTone(44100, 220, 2), confTone(44100, 440, 1), confNoise(44100, 1)} {
 		if got, want := DetectF0(w), DetectF0Detailed(w).Hz; got != want {

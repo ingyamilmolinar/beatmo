@@ -16,13 +16,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// recordingDownloadHandle is what we hand to SaveRecording so it can
-// trigger the browser download. The Blob lives entirely in JS; on the Go
-// side we hold only the object URL (string) and the filename so the
-// triggerZipDownload helper can build an <a download> element. Stored in
-// an atomic pointer because StopRecording (writer) and SaveRecording
-// (reader) are decoupled — multiple goroutines may call SaveRecording
-// after a stop.
+// The Blob lives in JS; Go holds only its object URL and filename. Atomic because SaveRecording may run on several
+// goroutines after a stop.
 type recordingDownloadHandle struct {
 	BlobURL  string
 	Filename string
@@ -41,9 +36,7 @@ type recordingChannelResult struct {
 	Bytes          int
 }
 
-// recordingFinalizeResult is what the JS encoder Worker hands back when
-// finalize completes. The Blob ref is encoded as a Object URL (string)
-// to keep cross-thread ownership simple from Go.
+// The Blob crosses as an object URL to keep ownership simple.
 type recordingFinalizeResult struct {
 	BlobURL     string
 	Filename    string
@@ -55,8 +48,6 @@ type recordingFinalizeResult struct {
 	Stats       recordingWorkerStats
 }
 
-// recordingWorkerStats is the snapshot the worker publishes for perf
-// observability. Read by CurrentPipelineStats() on demand.
 type recordingWorkerStats struct {
 	Active         bool
 	DroppedSamples int64
@@ -69,32 +60,13 @@ type recordingWorkerStats struct {
 	AutoStopReason string
 }
 
-// awaitJSPromise blocks the calling goroutine until the JS Promise
-// resolves or rejects. The Go-WASM scheduler yields to the JS event loop
-// while we wait on the channel, so the UI does not freeze.
-//
-// Note: this MUST NOT be called from inside a JS callback (e.g., from
-// js.FuncOf), because the JS event loop is synchronously executing that
-// callback and cannot dispatch the resolve. Always call from an ordinary
-// goroutine.
+// MUST NOT be called from a JS callback: the event loop is busy running it and cannot dispatch the resolve.
 func awaitJSPromise(p js.Value) (js.Value, error) {
 	return awaitJSPromiseCtx(context.Background(), p)
 }
 
-// awaitJSPromiseCtx is the context-aware variant of awaitJSPromise. If
-// ctx is cancelled (e.g., a timeout fires) before the Promise settles,
-// returns ctx.Err(). The js.Funcs are intentionally NOT released on
-// ctx-cancel because the JS Promise may still call them later — releasing
-// would cause a use-after-release. We accept a small one-time memory
-// cost per cancelled await (≈two js.Funcs + a buffered channel slot;
-// well under 1 KB) in exchange for memory safety. Cancellation is rare
-// (only on a wedged JS peer) and bounded by the number of recording
-// sessions per process lifetime.
-//
-// Use this for any await that could legitimately hang on a wedged JS
-// peer (e.g., the encoder Worker on finalize). The pure awaitJSPromise
-// is fine for awaits that are guaranteed to settle quickly (e.g.,
-// startMultiChannelCapture readiness handshake).
+// For awaits that could hang on a wedged JS peer. The js.Funcs are NOT released on cancel because the Promise may still
+// call them: a small leak per cancelled await beats a use-after-release.
 func awaitJSPromiseCtx(ctx context.Context, p js.Value) (js.Value, error) {
 	if !p.Truthy() {
 		return js.Undefined(), errors.New("nil promise")
@@ -138,10 +110,7 @@ func awaitJSPromiseCtx(ctx context.Context, p js.Value) (js.Value, error) {
 	}
 }
 
-// platformStartCapture invokes window.startMultiChannelCapture and waits
-// for the JS pipeline (capture worklet + encoder worker) to be wired
-// before returning. Blocks the calling goroutine but yields to the JS
-// event loop while the Promise is pending.
+// Yields to the JS event loop while the Promise is pending.
 func platformStartCapture(opts RecordingOptions) error {
 	fn := js.Global().Get("startMultiChannelCapture")
 	if !fn.Truthy() {
@@ -175,22 +144,11 @@ func platformStartCapture(opts RecordingOptions) error {
 	return nil
 }
 
-// finalizeCaptureTimeout caps how long the Go side will wait for the
-// encoder Worker to hand back the final Blob. The JS side has its own
-// shorter timeout (audio.js stopMultiChannelCapture); this is a
-// belt-and-suspenders upper bound that prevents the lifecycle pool
-// worker from being held hostage indefinitely if the JS-side timeout
-// itself fails to fire (page suspended, worker wedged, etc). 60s is
-// well above the worst-case encode time at the 30-min hard cap (~10s)
-// while still being short enough that a hung worker frees the pool
-// worker for the next session.
+// Belt and braces over the JS timeout (a suspended page, a wedged worker): far above the worst encode at the 30-min
+// cap, short enough to free the pool worker for the next session.
 const finalizeCaptureTimeout = 60 * time.Second
 
-// platformFinalizeCapture invokes window.stopMultiChannelCapture and
-// waits for the encoder worker to emit the final Blob. The result holds
-// a Blob object URL the caller can hand to triggerZipDownload. Bounded
-// by finalizeCaptureTimeout so a wedged worker cannot leak the
-// lifecycle-pool worker.
+// Bounded by finalizeCaptureTimeout so a wedged worker cannot hold the lifecycle pool.
 func platformFinalizeCapture(meta map[string]any) (*recordingFinalizeResult, error) {
 	fn := js.Global().Get("stopMultiChannelCapture")
 	if !fn.Truthy() {
@@ -258,10 +216,7 @@ func readWorkerStats(s js.Value) recordingWorkerStats {
 	return out
 }
 
-// platformRecordingStatsSnapshot polls the worker's most recent stats.
-// Non-blocking — uses the cache the JS layer maintains via periodic
-// stats requests. Called from CurrentPipelineStats() in the perf snapshot
-// path; cheap enough to call every frame.
+// Non-blocking: reads the cache JS maintains, cheap enough every frame.
 func platformRecordingStatsSnapshot() recordingWorkerStats {
 	fn := js.Global().Get("recordingStatsSnapshot")
 	if !fn.Truthy() {
@@ -302,10 +257,7 @@ func platformRecordingStatsSnapshot() recordingWorkerStats {
 	return out
 }
 
-// platformRecordingRequestStats nudges the worker to publish a fresh
-// stats snapshot. The Go side calls this every second or so via the
-// background scheduler so the cached snapshot stays current. The reply
-// arrives asynchronously and updates the JS-side cache.
+// The reply arrives asynchronously and updates the JS-side cache.
 func platformRecordingRequestStats() {
 	fn := js.Global().Get("recordingRequestStats")
 	if fn.Truthy() {
@@ -313,19 +265,9 @@ func platformRecordingRequestStats() {
 	}
 }
 
-// statsPollInterval is the cadence at which the Go side nudges the
-// worker for a fresh stats snapshot. Reads are cheap (one js.Invoke);
-// the worker reply runs on the worker thread and updates the JS-side
-// cache asynchronously.
 const statsPollInterval = 500 * time.Millisecond
 
-// statsPoller drives the periodic platformRecordingRequestStats nudge
-// via async.Scheduler so we don't hold a long-lived ticker goroutine.
-// One Scheduler instance owns one timer goroutine regardless of how
-// many entries are pending; each fire re-arms the next deadline. This
-// matches the canonical async API documented in CLAUDE.md ("Use instead
-// of go func() { time.Sleep(d); fn() } whenever pending count could
-// grow with workload").
+// An async.Scheduler entry rather than a ticker goroutine.
 type statsPoller struct {
 	sched  *async.Scheduler
 	mu     sync.Mutex // guards cancel; closed is atomic for fast-path checks
@@ -333,11 +275,7 @@ type statsPoller struct {
 	closed atomic.Bool
 }
 
-// startStatsPoller boots a Scheduler-backed poller that nudges the
-// encoder Worker every statsPollInterval. Backed by lifecyclePool();
-// per-session there is at most one in-flight nudge plus one finalize,
-// so the single worker handles both with no contention. The poller is
-// torn down by stop().
+// At most one nudge and one finalize per session, so the single lifecycle worker handles both.
 func startStatsPoller() *statsPoller {
 	p := &statsPoller{sched: async.NewScheduler(lifecyclePool())}
 	p.arm()
@@ -360,9 +298,7 @@ func (p *statsPoller) arm() {
 	}
 	p.mu.Lock()
 	if p.closed.Load() {
-		// Raced with stop(): cancel the entry we just scheduled so it
-		// doesn't fire. The job is also closed-guarded, but cancelling
-		// avoids one wasted pool dispatch.
+		// Raced with stop(): the job is closed-guarded anyway, but cancelling saves a dispatch.
 		p.mu.Unlock()
 		cancel()
 		return
@@ -371,9 +307,7 @@ func (p *statsPoller) arm() {
 	p.mu.Unlock()
 }
 
-// stop halts the poller. Idempotent: safe to call multiple times.
-// After stop returns, no new nudges will fire (the in-flight job, if
-// any, is closed-guarded inside its callback).
+// Idempotent; an in-flight job is closed-guarded.
 func (p *statsPoller) stop() {
 	if !p.closed.CompareAndSwap(false, true) {
 		return
@@ -388,20 +322,12 @@ func (p *statsPoller) stop() {
 	_ = p.sched.Close()
 }
 
-// init wires the legacy platformRecordingStop variable so any existing
-// callers (none in production WASM, but defensive against test stubs)
-// receive empty results. The new path uses platformStartCapture and
-// platformFinalizeCapture directly.
+// The browser path calls platformStartCapture / platformFinalizeCapture directly; these keep the variables' contract
+// for other callers.
 func init() {
 	platformRecordingStart = func(_ []InstrumentMeta) {
-		// Intentional no-op: the new platformStartCapture is invoked
-		// directly from StartRecording with full options. Kept here only
-		// so the package-level variable's signature stays stable for
-		// non-WASM callers that may set their own stub.
 	}
 	platformRecordingStop = func() (map[channel.ID][]float64, []float64, int) {
-		// Intentional no-op: the new platformFinalizeCapture path replaces
-		// this. Returning empty preserves the old contract.
 		return nil, nil, 0
 	}
 }

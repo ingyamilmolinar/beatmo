@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// toneWithBite: a steady 330 Hz tone preceded by 25 ms of broadband noise
-// at the same level.
+// 25 ms of broadband noise at the same level first.
 func toneWithBite(sr int, dur float64, bite bool) wave.Wave {
 	rng := rand.New(rand.NewSource(5))
 	n := int(dur * float64(sr))
@@ -56,8 +55,6 @@ func TestOnsetPitchGlide_DownwardGlide(t *testing.T) {
 }
 
 func TestResidualCentroid_HissAboveWire(t *testing.T) {
-	// The centroid of a harmonic-notched spectrum must rise when the noise is
-	// high-passed.
 	rng := rand.New(rand.NewSource(9))
 	mk := func(hp bool) wave.Wave {
 		sr, n := 44100, 44100
@@ -82,13 +79,8 @@ func TestResidualCentroid_HissAboveWire(t *testing.T) {
 	}
 }
 
-// TestResidualCentroidAtModes_UnpitchedBarPlusHighpassNoise exercises the
-// f0-free sibling of ResidualCentroidHz: an unpitched two-mode bar tone
-// (anchor 220 Hz, second mode at 1:2.76 -- a plausible free-free bar ratio,
-// nowhere near a harmonic k*f0 series) plus high-passed noise. Notching the
-// two REAL modes out must raise the centroid both above the un-notched
-// centroid of the same signal and well above the anchor frequency -- proof
-// the notch is removing the modes' energy rather than being a no-op.
+// A bar ratio of 1:2.76, nowhere near k·f0: notching the two real modes must raise the centroid well above the anchor,
+// proof the notch removes their energy.
 func TestResidualCentroidAtModes_UnpitchedBarPlusHighpassNoise(t *testing.T) {
 	rng := rand.New(rand.NewSource(11))
 	sr, n := 44100, 44100

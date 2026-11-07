@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// CancelVoices silently removes not-yet-started lane voices (audio.js
-// cancelLaneVoices: started ones are left alone; queued / deferred ones are
-// tombstoned).
-// CancelVoices removes not-yet-started lane voices in audio.js and returns
-// the ones it refused because they had already started.
+// Queued and deferred voices are tombstoned in audio.js; started ones are refused and returned.
 func CancelVoices(ids []uint64) (started []uint64) {
 	if len(ids) == 0 {
 		return nil
@@ -35,8 +31,7 @@ func CancelVoices(ids []uint64) (started []uint64) {
 	return started
 }
 
-// StopLaneAt fades, at ctx time t, the lane voices of inst that started
-// before t (a mute node), sparing voices that start at/after t.
+// For a mute node: voices starting at/after t are spared.
 func StopLaneAt(inst instrument.ID, t float64) {
 	if fn := js.Global().Get("stopLaneAt"); fn.Truthy() {
 		fn.Invoke(string(inst), t)

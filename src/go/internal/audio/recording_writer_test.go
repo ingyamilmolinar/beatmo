@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// memSink is an in-memory streamSink for tests. Tracks all writes and
-// supports Seek for header patching.
+// Supports Seek for the header patch.
 type memSink struct {
 	buf    []byte
 	pos    int64

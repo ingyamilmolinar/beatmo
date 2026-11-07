@@ -19,10 +19,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// pipelineUnderLoad spawns the pipeline and a Tap-driver goroutine that
-// pumps blocks at audio-thread cadence (~93 blocks/sec for a 480-sample
-// block at 44.1 kHz). Returns a stop func that waits for the driver to
-// exit and stops the pipeline.
+// At audio-thread cadence: a 480-sample block at 44.1 kHz ≈ every 10.9 ms.
 func pipelineUnderLoad(t *testing.T, ctx context.Context, instruments []InstrumentMeta, blockLen, durationMs int) (*pipeline, int64) {
 	t.Helper()
 	dir := t.TempDir()
@@ -58,8 +55,6 @@ func pipelineUnderLoad(t *testing.T, ctx context.Context, instruments []Instrume
 		workBuf[i] = math.Sin(float64(i) * 0.1)
 	}
 
-	// Real audio: 44.1 kHz / 480 samples = 91.875 blocks/sec ≈ 10.9 ms.
-	// time.Duration is nanoseconds, so convert seconds→ns via time.Second.
 	tickDur := time.Duration(float64(blockLen) * float64(time.Second) / 44100.0)
 	if tickDur < time.Millisecond {
 		tickDur = time.Millisecond
@@ -93,12 +88,7 @@ func pipelineUnderLoad(t *testing.T, ctx context.Context, instruments []Instrume
 	return pipe, atomic.LoadInt64(&blocksTapped)
 }
 
-// TestPipelineSurvivesCPUNoise: spawn many CPU-burning goroutines and
-// verify the pipeline still keeps up — drop rate must stay under 5 %.
-//
-// This emulates the "noisy neighbor" scenario where a background task
-// hogs cores. With our bounded pools and per-channel encoder workers,
-// the audio path should remain unaffected.
+// A noisy neighbour hogging cores: the bounded pools must keep drops under 5 %.
 func TestPipelineSurvivesCPUNoise(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping CPU-noise test in -short")
@@ -154,14 +144,7 @@ func TestPipelineSurvivesCPUNoise(t *testing.T) {
 		blocksTapped, pipe.Drops(), dropRate*100, len(metas))
 }
 
-// TestPipelineSurvivesAllocNoise: spawn an allocator goroutine that
-// churns memory (forces frequent GC) and assert the pipeline still
-// keeps up — drop rate below 5 %.
-//
-// Note we don't use testing.AllocsPerRun here because that measures all
-// goroutine allocations, not just the function under test. Tap's
-// zero-alloc property is verified by TestPipelineHotPathNoAlloc; this
-// test verifies *scheduler* survival under GC pressure.
+// Scheduler survival under GC pressure; Tap's zero-alloc property is TestPipelineHotPathNoAlloc's.
 func TestPipelineSurvivesAllocNoise(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping alloc-noise test in -short")
@@ -210,9 +193,7 @@ func TestPipelineSurvivesAllocNoise(t *testing.T) {
 		blocksTapped, pipe.Drops(), dropRate*100)
 }
 
-// TestPipelineSurvivesDiskNoise: spawn writer goroutines hammering the
-// same temp directory. The pipeline still has its own writer threads;
-// they should keep up even when other I/O contends for disk.
+// Other I/O contending for the same disk.
 func TestPipelineSurvivesDiskNoise(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping disk-noise test in -short")
@@ -262,9 +243,7 @@ func TestPipelineSurvivesDiskNoise(t *testing.T) {
 		blocksTapped, pipe.Drops(), dropRate*100)
 }
 
-// TestStopRecordingFastReturn: assert that StopRecording returns within
-// 5 ms even when the writers have buffered work — the slow file Close
-// must run on the lifecycle pool, not the calling goroutine.
+// Even with buffered work, the slow Close runs on the lifecycle pool.
 func TestStopRecordingFastReturn(t *testing.T) {
 	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
@@ -300,8 +279,7 @@ func TestStopRecordingFastReturn(t *testing.T) {
 	if result == nil {
 		t.Fatal("nil result")
 	}
-	// Block until the async finalize completes so the next test can
-	// recycle the lifecycle pool slot cleanly.
+	// So the next test gets the lifecycle slot cleanly.
 	wctx, wcancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer wcancel()
 	if err := WaitRecordingFinalized(wctx); err != nil {
@@ -313,9 +291,7 @@ func TestStopRecordingFastReturn(t *testing.T) {
 	t.Logf("StopRecording elapsed: %v", elapsed)
 }
 
-// TestRecordingByteIntegrity: feed a known PRNG-seeded float32 sequence
-// to a single channel and verify the resulting WAV file matches when
-// decoded back (within int24 quantization tolerance).
+// Within int24 quantization.
 func TestRecordingByteIntegrity(t *testing.T) {
 	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{
@@ -382,9 +358,7 @@ func TestRecordingByteIntegrity(t *testing.T) {
 	}
 }
 
-// decodeWAV24Mono reads a 24-bit mono PCM WAV and returns float64
-// samples in [-1, 1]. Minimal parser sufficient for our streaming WAV
-// output. Validates the header structure; fatals on malformed files.
+// Minimal: enough for our own streaming output.
 func decodeWAV24Mono(t *testing.T, path string) []float64 {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -421,7 +395,5 @@ func decodeWAV24Mono(t *testing.T, path string) []float64 {
 	return samples
 }
 
-// Ensure newTestPipeline (defined in recording_pipeline_test.go) is
-// linked under both build tag combinations so this stress file compiles
-// independently when only stress tag is used.
+// Keeps the import used when only the stress tag compiles this file.
 var _ = filepath.Join

@@ -26,8 +26,6 @@ type SongTimeline struct {
 	FrameHz  float64
 }
 
-// SongTimelineOf builds per-hop frames and segments them into sections via a
-// self-similarity novelty curve over per-frame feature vectors.
 func SongTimelineOf(w wave.Wave, cfg AnalysisConfig) SongTimeline {
 	frames, fhz, binHz := stftHops(w, cfg)
 	if len(frames) == 0 {
@@ -83,8 +81,6 @@ func SongTimelineOf(w wave.Wave, cfg AnalysisConfig) SongTimeline {
 	return out
 }
 
-// segmentSections computes a novelty curve from frame-to-frame feature distance
-// (smoothed over NoveltyKernel) and emits a section at each above-threshold peak.
 func segmentSections(feats [][12]float64, frameHz float64, cfg AnalysisConfig) []Section {
 	n := len(feats)
 	if n == 0 || frameHz <= 0 {

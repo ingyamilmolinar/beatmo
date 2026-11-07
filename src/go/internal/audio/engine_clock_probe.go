@@ -7,9 +7,8 @@ import (
 	"time"
 )
 
-// --- Device-clock anchor (seqlock pair) -----------------------------------
-// A single writer (the Oto Read goroutine) publishes (pos, wallNano); readers
-// (UI parity thread) get a torn-free pair via an even/odd version counter.
+// One writer (the Oto Read goroutine) publishes (pos, wallNano); readers get a torn-free pair through an even/odd
+// version counter.
 var (
 	dcVersion atomic.Uint64
 	dcPos     atomic.Int64
@@ -23,8 +22,7 @@ func updateDeviceClock(pos int64) {
 	dcVersion.Add(1) // even → stable
 }
 
-// DeviceClockSnapshot returns (pos, wallSeconds, ok). wallSeconds is relative
-// to program start (same base as Now()).
+// wallSeconds shares Now()'s base.
 func DeviceClockSnapshot() (int64, float64, bool) {
 	for {
 		v1 := dcVersion.Load()

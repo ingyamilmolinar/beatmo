@@ -5,20 +5,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// builtinProperty is what the instrument menu and kits know about a shipped
-// instrument: the menu category it is listed under and the kit role it plays
-// ("" = none).
+// "" = no role.
 type builtinProperty struct {
 	Category Category
 	Role     instrument.Role
 }
 
-// builtinProperties holds the category and kit role of every shipped
-// instrument (rows listed in roster order). It is the data CategoryOf and
-// RoleForInstrument read for a built-in (and for an instance "x--N" of one);
-// only an instrument the user named (a WAV sample, a Save-As instrument) is
-// still classified by its name. TestBuiltinPropertiesCoverTheRoster keeps it
-// complete: adding an instrument to index.json without a row here fails.
+// What CategoryOf and RoleForInstrument read for a built-in or an instance of one; only an instrument the user
+// named is classified by its name. A new id in index.json needs a row here.
 var builtinProperties = map[instrument.ID]builtinProperty{
 	roster.Modular:            {CatOther, instrument.RoleNone},
 	roster.Kick:               {CatKick, instrument.RoleKick},
@@ -172,8 +166,7 @@ var builtinProperties = map[instrument.ID]builtinProperty{
 	roster.GlassArmonica:      {CatOther, instrument.RoleNone},
 }
 
-// builtinPropertyOf returns a shipped instrument's properties, resolving an
-// instance id "x--N" to x's.
+// An instance id "x--N" resolves to x.
 func builtinPropertyOf(id instrument.ID) (builtinProperty, bool) {
 	p, ok := builtinProperties[id.Base()]
 	return p, ok

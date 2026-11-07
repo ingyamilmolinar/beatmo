@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Span is a labeled time region of a recording plus the instruments expected
-// active in it (manifest ground truth; overrides auto-detection for that span).
+// Manifest ground truth: overrides auto-detection for that span.
 type Span struct {
 	StartSec    float64  `json:"start_sec"`
 	EndSec      float64  `json:"end_sec"`
@@ -28,8 +27,7 @@ type CompareWindow struct {
 	EndSec   float64 `json:"end_sec"`
 }
 
-// TimeManifest describes one interpretation's time structure. Every field is
-// optional: present → authoritative for that span; absent → auto-detected.
+// Every field optional: present is authoritative, absent is auto-detected.
 type TimeManifest struct {
 	Ref            string          `json:"ref,omitempty"`
 	Template       string          `json:"template,omitempty"`
@@ -40,8 +38,7 @@ type TimeManifest struct {
 	TuningPassages []TuningPassage `json:"tuning_passages,omitempty"`
 }
 
-// LoadTimeManifest parses a manifest; an empty object yields an all-optional
-// (fully auto-detect) manifest.
+// An empty object auto-detects everything.
 func LoadTimeManifest(b []byte) (TimeManifest, error) {
 	var m TimeManifest
 	if len(b) == 0 {

@@ -53,8 +53,7 @@ func TestDistortionReset(t *testing.T) {
 		d.ProcessSample(0.5)
 	}
 	d.Reset()
-	// After reset, internal filter state should be cleared.
-	// Process a zero signal — tone filter should not produce residual.
+	// The tone filter must hold no residual.
 	out := d.ProcessSample(0)
 	if math.Abs(out) > 0.001 {
 		t.Errorf("after reset: expected ~0, got %.4f", out)
@@ -81,8 +80,7 @@ func TestDistortionSetParam(t *testing.T) {
 func TestDistortionSetParamTone(t *testing.T) {
 	d := newDistortion(44100, map[string]float64{"drive": 5, "tone": 8000, "mix": 1})
 
-	// Feed a varying signal (alternating +/- to create frequency content)
-	// and measure output energy with the initial tone.
+	// Alternating ± gives frequency content.
 	var energyBefore float64
 	for i := 0; i < 500; i++ {
 		// Alternating signal has high-frequency content that the tone LP filter affects

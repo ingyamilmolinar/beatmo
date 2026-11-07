@@ -17,12 +17,7 @@ func tremoloTone(sr int, dur, hz, rate, depth float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// modBandsSum is the shared "Bands is an energy-share partition" assertion:
-// gesture + vibrato + warble must sum to (approximately) 1, since every bin
-// in 0.5-30 Hz is bucketed into exactly one of the three bands. A regression
-// here (e.g. a bin below 0.5 Hz leaking into total/peak while being excluded
-// from bucketing) shows up as a sum well under 1 rather than as a wrong band
-// weighting, which is why it needs its own check.
+// Every bin in 0.5–30 Hz lands in exactly one band, so a leak shows as a sum under 1 rather than a wrong weighting.
 func modBandsSum(t *testing.T, ms ModSpectrum) float64 {
 	t.Helper()
 	sum := ms.Bands[0] + ms.Bands[1] + ms.Bands[2]
@@ -48,14 +43,7 @@ func TestModulationSpectrum_FiveHzTremoloPeaksAtFive(t *testing.T) {
 	modBandsSum(t, ms)
 }
 
-// TestModulationSpectrum_DecayOnlyStaysAboveHalfHz is the reviewer's
-// regression case for the lower-bin-truncation bug: a tone whose amplitude
-// ONLY decays exponentially (no periodic modulation at all) must never let a
-// sub-0.5Hz artifact bin (residual curvature the OLS detrend cannot fully
-// remove from an exponential, not a linear, decay) leak into RateHz or into
-// total/peak while being excluded from Bands' bucketing. Before the fix,
-// `lo := int(modLoHz/binHz)` admitted exactly that bin: Bands summed to far
-// under 1 and RateHz read below the analysis floor of 0.5 Hz.
+// Decay-only, no modulation: no sub-0.5 Hz bin may leak into RateHz or total/peak.
 func TestModulationSpectrum_DecayOnlyStaysAboveHalfHz(t *testing.T) {
 	const sr = 44100
 	const dur = 3.0
@@ -78,14 +66,8 @@ func TestModulationSpectrum_DecayOnlyStaysAboveHalfHz(t *testing.T) {
 		t.Fatalf("RateHz must never read below the analysis floor of %.1f Hz, got %.4f", modLoHz, ms.RateHz)
 	}
 	modBandsSum(t, ms)
-	// Depth is OBSERVED, not asserted against a hard bound: the detrend is a
-	// LINEAR (OLS) fit, so a genuinely exponential decay's curvature is only
-	// partly removed, and what remains concentrates in the lowest surviving
-	// bin near the 0.5 Hz floor -- Depth measures "how much of the modulation
-	// power sits at ONE rate", which a leftover curvature lump can also
-	// satisfy despite carrying no periodic modulation at all. Recorded here
-	// as ground truth for future tuning rather than turned into a pass/fail
-	// threshold this test does not have grounds to assert.
+	// Observed, not asserted: a linear detrend leaves an exponential's curvature in the lowest bin, which Depth also
+	// counts. Logged as ground truth for tuning.
 	t.Logf("decay-only (no periodic modulation): RateHz=%.4f Depth=%.4f Bands=%v Flatness=%.4f",
 		ms.RateHz, ms.Depth, ms.Bands, ms.Flatness)
 }
@@ -114,15 +96,7 @@ func TestModulationSpectrum_TooShort(t *testing.T) {
 	}
 }
 
-// TestModAMRate_DecayOnlyIsNotAMeasurableRate is I4's regression: the axis
-// must report an honest N/A, not the analysis floor dressed up as a rate.
-//
-// The previous test above records what the SPECTRUM does on a decay-only
-// tone -- its peak lands on the lowest usable bin, because the OLS detrend
-// removes only a straight line and an exponential decay is not one. This one
-// asserts what the DESCRIPTOR does with that: a peak at the floor bin is an
-// artifact of the analysis window, so mod.am.rate_hz is unavailable, while
-// the sibling rows that describe the spectrum's SHAPE stay measurable.
+// A peak at the floor bin is the analysis window, not a modulation, so the RATE row is N/A while the shape rows stay.
 func TestModAMRate_DecayOnlyIsNotAMeasurableRate(t *testing.T) {
 	const sr = 44100
 	const dur = 3.0
@@ -167,8 +141,7 @@ func TestModAMRate_DecayOnlyIsNotAMeasurableRate(t *testing.T) {
 	}
 }
 
-// A REAL modulation must still be measured: the floor-bin rule may not
-// swallow a genuine tremolo whose rate happens to be low.
+// The floor-bin rule must not swallow a genuine low tremolo.
 func TestModAMRate_GenuineTremoloStillMeasured(t *testing.T) {
 	const sr = 44100
 	const dur = 4.0

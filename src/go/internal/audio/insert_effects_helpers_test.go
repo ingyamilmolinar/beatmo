@@ -11,9 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestPassThroughResetAndSetParamAreNoOps pins the documented "no-op
-// processor" semantics. Reset and SetParam must be safe to call with any
-// inputs and must not alter ProcessSample's pass-through behavior.
 func TestPassThroughResetAndSetParamAreNoOps(t *testing.T) {
 	var p passThrough
 	p.Reset()
@@ -32,14 +29,8 @@ func TestPassThroughResetAndSetParamAreNoOps(t *testing.T) {
 	}
 }
 
-// TestEffectSlotJSONRoundTrip — this is the path the export/import flow
-// uses to persist per-row insert chains. A nil Params map should be
-// elided (omitempty), and a populated map should round-trip key-for-key.
+// The export/import path for per-row insert chains: a nil map is elided, a populated one round-trips.
 func TestEffectSlotJSONRoundTrip(t *testing.T) {
-	// We don't import "encoding/json" at the top because the only
-	// audio package consumers are downstream of internal/ui. Use the
-	// helper indirectly via DefaultParams to keep this test self-
-	// contained.
 	for _, et := range []EffectType{"delay", "reverb", "chorus", "bitcrusher", "filter", "distortion"} {
 		defaults := DefaultParams(et)
 		if defaults == nil {
@@ -53,9 +44,7 @@ func TestEffectSlotJSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestNewEffectProcessorUnknownTypeFallsBackToPassThrough — an unknown
-// EffectType resolves to the passThrough so the audio chain never
-// dispatches against a nil InsertEffect.
+// The chain never dispatches against a nil InsertEffect.
 func TestNewEffectProcessorUnknownTypeFallsBackToPassThrough(t *testing.T) {
 	slot := EffectSlot{Type: "this-effect-does-not-exist", Enabled: true, Params: nil}
 	proc := NewEffectProcessor(slot, 48000)
@@ -67,9 +56,6 @@ func TestNewEffectProcessorUnknownTypeFallsBackToPassThrough(t *testing.T) {
 	}
 }
 
-// TestWaveshaperResetIsSafe documents the stateless contract: Reset()
-// on the waveshaper must not error or change subsequent ProcessSample
-// outputs.
 func TestWaveshaperResetIsSafe(t *testing.T) {
 	slot := EffectSlot{Type: "distortion", Enabled: true, Params: DefaultParams("distortion")}
 	proc := NewEffectProcessor(slot, 48000)
@@ -84,8 +70,6 @@ func TestWaveshaperResetIsSafe(t *testing.T) {
 	}
 }
 
-// TestChannelEQSnapshotReflectsSetChannelEQ — ChannelEQSnapshot("main") must
-// surface whatever SetChannelEQ just wrote for the named channel.
 func TestChannelEQSnapshotReflectsSetChannelEQ(t *testing.T) {
 	ResetInstruments()
 	SetChannelEQ(channel.Master, 48000, EQBand{Kind: EQPeaking, Freq: 150, Q: 1.0, GainDB: 3})
@@ -101,9 +85,6 @@ func TestChannelEQSnapshotReflectsSetChannelEQ(t *testing.T) {
 	}
 }
 
-// TestGetPutF64BufReusesCapacity — fundamental sync.Pool round-trip.
-// putF64Buf returns a slice to the pool; the next getF64Buf with a
-// matching capacity should reuse the same backing array.
 func TestGetPutF64BufReusesCapacity(t *testing.T) {
 	b := getF64Buf(8)
 	if len(b) != 8 {
@@ -112,8 +93,6 @@ func TestGetPutF64BufReusesCapacity(t *testing.T) {
 	// Mutate so we can prove the underlying array was reused.
 	b[0] = 1.25
 	putF64Buf(b)
-	// A subsequent Get of the same size should be served from the pool
-	// (the slice is reset to len=8, capacity preserved).
 	c := getF64Buf(8)
 	if len(c) != 8 {
 		t.Fatalf("second getF64Buf(8) length=%d, want 8", len(c))
@@ -133,9 +112,7 @@ func TestGetPutF64BufReusesCapacity(t *testing.T) {
 	putF64Buf([]float64{})
 }
 
-// TestSwapPlatformInstrumentDocChangedForTest exercises the test seam
-// internal/ui tests use to count document pushes. It returns the previous hook
-// so callers can chain or restore.
+// The seam internal/ui tests count document pushes with; it returns the previous hook to restore.
 func TestSwapPlatformInstrumentDocChangedForTest(t *testing.T) {
 	resetLibraryForTest(t)
 	var capturedID instrument.ID
@@ -156,9 +133,7 @@ func TestSwapPlatformInstrumentDocChangedForTest(t *testing.T) {
 	}
 }
 
-// TestModifiedInstrumentDocCountForTest covers the soak-test seam: a fresh
-// manager reports 0; each SetInstrumentParam grows the map by one
-// distinct id; ResetInstrumentParam drops one entry.
+// The soak-test seam: one entry per distinct modified id.
 func TestModifiedInstrumentDocCountForTest(t *testing.T) {
 	ResetInstrumentParams("any-id-clears-on-reset")
 	startLen := ModifiedInstrumentDocCountForTest()
@@ -166,9 +141,7 @@ func TestModifiedInstrumentDocCountForTest(t *testing.T) {
 	SetInstrumentParam(roster.Kick, "amp_attack", 0.1)
 	SetInstrumentParam(roster.Snare, "amp_decay", 0.2)
 	got := ModifiedInstrumentDocCountForTest()
-	// Either start+2 OR start+0 if SetInstrumentParam is a no-op under
-	// the test build (some platforms route writes through a stub). The
-	// invariant we want to lock is "len is non-negative and stable".
+	// Some test builds route writes through a stub, so only "never shrinks" is locked.
 	if got < startLen {
 		t.Errorf("ModifiedInstrumentDocCountForTest shrank from %d to %d after writes", startLen, got)
 	}

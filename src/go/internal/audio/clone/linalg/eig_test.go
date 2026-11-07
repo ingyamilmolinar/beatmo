@@ -44,8 +44,7 @@ func TestEigenvaluesKnownPoles(t *testing.T) {
 	for i := range s.Data {
 		s.Data[i] = complex(r.NormFloat64(), r.NormFloat64())
 	}
-	// A = S·D·S⁻¹, built as solving S·X = D·S⁻¹… simpler: A = S·D·S⁻¹ via
-	// the QR solve of S against D columns.
+	// A = S·D·S⁻¹ through the QR solve of S against D's columns.
 	d := New(n, n)
 	for i, v := range want {
 		d.Set(i, i, v)

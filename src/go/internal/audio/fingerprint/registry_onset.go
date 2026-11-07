@@ -2,13 +2,7 @@ package fingerprint
 
 import "github.com/ingyamilmolinar/beatmo/internal/wave"
 
-// registry_onset.go — the onset-character and noise-character descriptors.
-//
-// IDOnsetBite/IDOnsetFlatness/IDOnsetPitchGlide open a new group, GroupOnset.
-// IDNoiseResidualCentroid/IDNoiseDecayVsTone join the EXISTING GroupNoise
-// group (registry_core.go's IDNoiseFraction is the first row in that group);
-// registering them from this later file is a pure addition with no
-// reordering of the nine byte-frozen core axes.
+// Opens GroupOnset and extends GroupNoise from a later file, a pure addition to the frozen core order.
 
 const (
 	IDOnsetBite             = "onset.bite_ratio"
@@ -70,18 +64,9 @@ func init() {
 			return Scalar(v)
 		},
 	})
-	// residual centroid does NOT gate on RequiresPitched alone: placing
-	// notches at k*f0 multiples of an UNRELIABLE f0 is exactly the hi-hat bug
-	// RequiresPitched exists to prevent elsewhere (a spurious 56.5 Hz
-	// "fundamental" measured against as if it were real). A clap/snare
-	// reference has a low-confidence f0 for a real reason -- it isn't
-	// harmonic -- so instead of hiding the row (which the brief's own doc
-	// text for this axis names those exact instruments as the point of), it
-	// falls back to notching the signal's own tracked MODES (ModeSet.Strong)
-	// when there is no reliable fundamental but there are still >=2 real,
-	// amplitude-tracked resonances to notch out. Only when NEITHER a
-	// reliable f0 NOR >=2 strong modes exist is there nothing legitimate to
-	// notch, and the row goes Unavailable.
+	// Not gated on RequiresPitched alone: claps and snares are exactly what this axis is for, and notching k·f0 of an
+	// unreliable f0 is the hi-hat bug. Without a reliable f0 it notches the tracked modes; with neither f0 nor ≥ 2 strong
+	// modes there is nothing to notch.
 	r.Register(Descriptor{
 		ID: IDNoiseResidualCentroid, Group: GroupNoise, Name: "residual centroid",
 		Scope: ScopeWhole, Repr: ReprSpectrum, Kind: KindHz,

@@ -49,10 +49,7 @@ func TestStatsOfSingleSampleIsFinite(t *testing.T) {
 	}
 }
 
-// TestCurvatureSeparatesRampFromBloom is the shape half of the magnitude/shape
-// split: two tracks with the SAME endpoints and a similar overall slope, one
-// linear and one accelerating, must be distinguishable. A std- or range-based
-// statistic cannot tell them apart.
+// Same endpoints, similar slope, linear vs accelerating: std or range cannot tell them apart.
 func TestCurvatureSeparatesRampFromBloom(t *testing.T) {
 	n := 21
 	ramp := make([]float64, n)
@@ -76,9 +73,7 @@ func TestCurvatureSeparatesRampFromBloom(t *testing.T) {
 	}
 }
 
-// TestMonotonicFracSeparatesGestureFromChaos is the discriminator for failure
-// mode 2 at its cheapest: a slow shaped sweep and fast chaos can share a mean
-// and a standard deviation while being completely different gestures.
+// A slow shaped sweep and fast chaos can share a mean and a std.
 func TestMonotonicFracSeparatesGestureFromChaos(t *testing.T) {
 	n := 64
 	gesture := make([]float64, n)

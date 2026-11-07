@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// processChannelForTest is a thin test-only wrapper around the channel's
-// unexported EQ-side processing entry point (Channel.ProcessEQBlockLocal),
-// which does not apply volume gain — only the eqProcs chain, gated on
-// env.BypassEQ. This lets the test observe env.BypassEQ's effect directly
-// without going through the full mixer (which also applies volume/headroom).
+// The EQ-side entry point applies no volume, so env.BypassEQ's effect is observable directly.
 func processChannelForTest(id string, buf []float32) {
 	ch := chanMgr.ensureChannel(channel.Of(instrument.ID(id)))
 	in := make([]float64, len(buf))
@@ -26,17 +22,14 @@ func processChannelForTest(id string, buf []float32) {
 	}
 }
 
-// TestBypassEQHonorsEnvVar proves the bypass reads through internal/env
-// rather than an init-time os.Getenv cache — the cache made the flag
-// untestable without a subprocess.
+// Read through internal/env, not an init-time os.Getenv cache, which made the flag untestable without a subprocess.
 func TestBypassEQHonorsEnvVar(t *testing.T) {
 	restore := env.BypassEQ.SetForTest(true)
 	defer restore()
 	if !env.BypassEQ.Get() {
 		t.Fatalf("precondition: BypassEQ.Get()=false after SetForTest(true)")
 	}
-	// processChannel must short-circuit. Assert via the observable effect:
-	// with EQ bypassed a non-flat EQ curve leaves the signal unchanged.
+	// With EQ bypassed a non-flat curve leaves the signal unchanged.
 	SetChannelEQ(channel.Master, 44100, EQBand{Kind: EQPeaking, Freq: 1000, Q: 1, GainDB: 12})
 	in := []float32{0.5, -0.5, 0.25, -0.25}
 	got := append([]float32(nil), in...)

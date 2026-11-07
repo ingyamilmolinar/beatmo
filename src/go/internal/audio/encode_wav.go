@@ -145,11 +145,8 @@ func (e *wavEncoder) writeSamples32Float(w io.Writer, samples []float64) error {
 	return nil
 }
 
-// pcmStep is s as a signed PCM integer of the given width: ROUNDED to the
-// nearest step on the 2^(bits-1) scale every WAV reader divides by, clamped
-// to the format's range. Truncating s*(2^(bits-1)-1) toward zero put every
-// positive sample a step low -- an error correlated with the signal -- and a
-// 16-bit sample written at 24 bits did not read back as itself.
+// ROUNDED on the 2^(bits-1) scale every reader divides by, then clamped: truncation put every positive sample a step
+// low (signal-correlated distortion) and a 16-bit value written at 24 bits did not read back as itself.
 func pcmStep(s float64, bits int) int64 {
 	full := float64(int64(1) << (bits - 1))
 	v := int64(math.Round(clampSample(s) * full))

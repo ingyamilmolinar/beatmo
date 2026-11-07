@@ -10,11 +10,7 @@ import (
 	"testing"
 )
 
-// TestDecodeWAVToPCM_24bit decodes a GENERATED 24-bit 48 kHz WAV. It used to
-// read the freesound violin original by filename from the reference root, but
-// the catalogue stores that id's `refs fetch` conversion (16-bit 44.1 kHz)
-// under the same name, so the test was asserting a format the catalogued file
-// does not have. Reference audio is never committed; test audio is generated.
+// A GENERATED file: tests never read reference audio.
 func TestDecodeWAVToPCM_24bit(t *testing.T) {
 	const sr, n = 48000, 125000 // ~2.6 s
 	data := make([]byte, 0, 44+3*n)

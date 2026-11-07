@@ -87,9 +87,7 @@ func TestInvertReproducesTheMeasuredModes(t *testing.T) {
 	}
 }
 
-// TestInvertPercussionPreScalesForTheSessionPitch: an unpitched clone is
-// stored in the pitch-0 domain — at pitch 0 every frequency and rate is the
-// measurement ÷ 2^(s/12), so the playback resample at pitch s restores it.
+// At pitch 0 every frequency and rate is the measurement ÷ 2^(s/12), so the resample at pitch s restores it.
 func TestInvertPercussionPreScalesForTheSessionPitch(t *testing.T) {
 	a := analysisOf(eightModes(), PitchInfo{SemisFromA3: -5, HasSemis: true})
 	d, _, err := Invert(a, InvertOptions{ID: "tom-clone"})
@@ -134,8 +132,7 @@ func TestInvertBudget(t *testing.T) {
 }
 
 func TestInvertClampsRowsFarAboveTheContactCorner(t *testing.T) {
-	// A 9 ms contact puts ms[2] (1.41 kHz) 75 dB down the strike's roll-off:
-	// its stored amplitude would exceed the ±1000 bound. Only it is clamped.
+	// A 9 ms contact puts ms[2] 75 dB down the strike roll-off, past the ±1000 bound; only it is clamped.
 	ms := eightModes()[:3]
 	a := analysisOf(ms, PitchInfo{Pitched: true, F0Hz: 261.63})
 	a.Strike.TcSec = 0.009
@@ -177,16 +174,13 @@ func TestRenderSecondsReachTheFloor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Strongest-lasting part: mode 0 at 0.5, α = 1.5·0.2616^0.8 ≈ 0.51 Np/s,
-	// to −80 dB → ≈ 16.7 s, clamped to 10.
+	// Mode 0 needs ≈ 16.7 s to fall 80 dB, so the length clamps.
 	if d.Render.Seconds != maxRenderSec {
 		t.Fatalf("render %+v", d.Render)
 	}
 }
 
-// TestInvertDropsRowsTheResampleWouldPushOutOfRange: a +22 st percussion
-// reference stores its model at pitch 0 — a 31.5 Hz noise band would land at
-// 8.8 Hz, below the column's bound, and is dropped instead of failing.
+// At pitch 0 a 31.5 Hz band would land below the column's bound: dropped, not an error.
 func TestInvertDropsRowsTheResampleWouldPushOutOfRange(t *testing.T) {
 	a := analysisOf(eightModes(), PitchInfo{SemisFromA3: 22, HasSemis: true})
 	a.Residual.Bands = append(a.Residual.Bands, NoiseBand{CenterHz: 31.5, Q: thirdOctaveQ, LevelDB: -50, TailRate: 5, Active: true})

@@ -4,10 +4,7 @@ package audio
 
 import "math"
 
-// bitcrusher reduces bit depth and sample rate for lo-fi effects.
-// "bits" controls quantization (2-16 bit), "rate" controls decimation
-// (1.0 = no reduction, 0.01 = extreme reduction), and "mix" blends wet/dry.
-// All parameters are smoothed to prevent clicks on change.
+// bits 2–16, rate 1.0 (none) to 0.01 (extreme); every param smoothed against clicks.
 type bitcrusher struct {
 	bits smoothParam // 2-16
 	rate smoothParam // 0.01-1.0 (fraction of original sample rate)

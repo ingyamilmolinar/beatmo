@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// FM-algorithm routing coverage for the modular voice. The golden/render
-// tests exercise the default algorithm only, leaving the parallel (1) and
-// 3-op-chain (2) cases of modular.c's fm_algorithm switch uncovered.
+// The goldens exercise the default algorithm only.
 
 func renderModularFMAlg(t *testing.T, alg float64) []float32 {
 	t.Helper()
@@ -54,8 +52,7 @@ func TestModularFMAlgorithmsRouteDistinctly(t *testing.T) {
 		outs[alg] = out
 	}
 
-	// Each algorithm is a different operator topology — outputs must differ
-	// pairwise for the same operator settings.
+	// Each algorithm is a different operator topology.
 	for a := 0; a <= 3; a++ {
 		for b := a + 1; b <= 3; b++ {
 			if buffersEqualF32(outs[a], outs[b]) {

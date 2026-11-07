@@ -18,8 +18,7 @@ func renderModularWith(t *testing.T, mutate func(modularBlock)) []float32 {
 	return buf
 }
 
-// All-identity gen bank == pre-gen-bank engine. THE Phase-1 invariant:
-// appending the bank must not move a single byte of any existing preset.
+// An all-identity bank must not move a single byte of any preset.
 func TestGenBankIdentityIsByteNeutral(t *testing.T) {
 	base := renderModularWith(t, nil)
 	legacy := make([]float32, genTestSamples)
@@ -74,8 +73,7 @@ func TestGenBankNoiseTapDeterministicAndSeeded(t *testing.T) {
 	}
 }
 
-// Slot env + 1-pole filter shape the tap (golden-style: just prove effect +
-// determinism; family phases prove byte-exactness against legacy oracles).
+// Effect and determinism only.
 func TestGenBankSlotEnvAndFilterHaveEffect(t *testing.T) {
 	flat := renderModularWith(t, func(mp modularBlock) {
 		mp.set("osc_enabled", 0)
@@ -95,9 +93,7 @@ func TestGenBankSlotEnvAndFilterHaveEffect(t *testing.T) {
 	}
 }
 
-// The gen-slot oscillator must reuse the EXACT legacy osc code path: a
-// slot-1 sine at ratio 1 equals the legacy osc stage byte-for-byte. This is
-// the "stage machinery is exact" invariant that family migrations build on.
+// A slot-1 sine at ratio 1 is the osc stage byte for byte: the invariant family voices build on.
 func TestGenSlotSineMatchesLegacyOscExactly(t *testing.T) {
 	legacyOsc := renderModularWith(t, func(mp modularBlock) {
 		mp.set("env_enabled", 0)

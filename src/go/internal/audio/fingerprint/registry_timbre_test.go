@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// vibratoTone synthesises a tone with a real 5.5 Hz / ~40 cent vibrato, plus
-// the synchronous amplitude modulation a bowed string produces.
+// With the synchronous amplitude modulation a bowed string produces.
 func vibratoTone(sr int, f0, rateHz, extentCents, sec float64) wave.Wave {
 	n := int(float64(sr) * sec)
 	s := make([]float64, n)
@@ -25,11 +24,7 @@ func vibratoTone(sr int, f0, rateHz, extentCents, sec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// TestVibratoDescriptorsFireOnRealVibrato proves the four vibrato rows are
-// reachable. Registering a descriptor that can never produce a measurement
-// would be worse than not registering it: the report would carry four rows
-// permanently reading "not applicable" and nobody would know whether that was
-// the signal or the plumbing.
+// A descriptor that can never produce a measurement is worse than none: nobody can tell signal from plumbing.
 func TestVibratoDescriptorsFireOnRealVibrato(t *testing.T) {
 	b := NewBundle(vibratoTone(44100, 440, 5.5, 40, 2.5), "vibrato")
 	if !RequiresPitched(b) {
@@ -59,8 +54,7 @@ func TestVibratoDescriptorsFireOnRealVibrato(t *testing.T) {
 	}
 }
 
-// TestVibratoDescriptorsStaySilentOnASteadyTone is the other half: a tone with
-// no vibrato must report not-applicable, never a fabricated zero.
+// Never a fabricated zero.
 func TestVibratoDescriptorsStaySilentOnASteadyTone(t *testing.T) {
 	b := NewBundle(bundleTone(44100, 440, 2), "steady")
 	for _, id := range []string{IDVibratoRate, IDVibratoExtent} {
@@ -73,8 +67,6 @@ func TestVibratoDescriptorsStaySilentOnASteadyTone(t *testing.T) {
 	}
 }
 
-// TestFormantAndMFCCDescriptorsAreReachable pins the other two reconnected
-// analyzers.
 func TestFormantAndMFCCDescriptorsAreReachable(t *testing.T) {
 	b := NewBundle(scaleNoisyTone(44100, 300, 2), "noisy")
 	d, ok := DefaultRegistry().ByID(IDMFCCProfile)
@@ -88,8 +80,7 @@ func TestFormantAndMFCCDescriptorsAreReachable(t *testing.T) {
 	if m.Form != FormVector || len(m.Values) != 13 {
 		t.Errorf("cepstral.mfcc must be a 13-component vector, got form=%s len=%d", m.Form, len(m.Values))
 	}
-	// The cepstral domain must actually be represented in the registry now --
-	// Repr declared it long before any descriptor used it.
+	// The cepstral domain must actually be represented.
 	var cepstral, modulation int
 	for _, dd := range DefaultRegistry().All() {
 		switch dd.Repr {

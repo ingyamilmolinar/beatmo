@@ -11,8 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/env"
 )
 
-// TestDesktopSaveRecordingCreatesFiles verifies that SaveRecording creates
-// the correct directory structure with all channel files + session.json.
 func TestDesktopSaveRecordingCreatesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Cleanup(env.RecordingsDir.SetForTest(tmpDir))
@@ -85,9 +83,7 @@ func TestDesktopSaveRecordingCreatesFiles(t *testing.T) {
 	}
 }
 
-// TestDesktopSaveRecordingDefaultPath verifies that without
-// BEATMO_RECORDINGS_DIR, recordings go to a "recordings" subdirectory
-// in the current working directory, using an absolute path.
+// Without BEATMO_RECORDINGS_DIR: an absolute "recordings" under the working directory.
 func TestDesktopSaveRecordingDefaultPath(t *testing.T) {
 	// Ensure env var is not set
 	t.Cleanup(env.RecordingsDir.SetForTest(""))
@@ -103,8 +99,6 @@ func TestDesktopSaveRecordingDefaultPath(t *testing.T) {
 	}
 }
 
-// TestDesktopSaveRecordingEnvVarPath verifies that BEATMO_RECORDINGS_DIR
-// is used when set.
 func TestDesktopSaveRecordingEnvVarPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Cleanup(env.RecordingsDir.SetForTest(tmpDir))

@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// mockBlockProcessor implements both Processor and BlockProcessor.
-// Multiplies every sample by gain.
 type mockBlockProcessor struct {
 	gain float64
 }

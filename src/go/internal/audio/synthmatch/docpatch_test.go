@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// The tuners (synth-match, song-match) write their result into the shipped
-// instrument DOCUMENT (internal/assets/instruments/<id>.json) — the only place
-// an instrument's values live. These tests patch a real shipped document.
+// The shipped document is the only place an instrument's values live.
 
 const organDocPath = "../../assets/instruments/organ-church.json"
 
@@ -88,8 +86,7 @@ func TestPatchInstrumentDocFileWritesInPlace(t *testing.T) {
 	}
 }
 
-// A tuned set that ADDS a layer lands every field of it, including the ones
-// that sort before the layer's source key.
+// Including the fields that sort before the layer's source.
 func TestPatchInstrumentDocAddsALayer(t *testing.T) {
 	src, err := os.ReadFile("../../assets/instruments/tubular-bells.json")
 	if err != nil {

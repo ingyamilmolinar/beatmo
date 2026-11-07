@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Render (test build): deterministic. Each note is rendered by the synthmatch
-// stub synth, scaled by note.Volume, summed into its instrument's stem at the
-// note's sample offset. Master is the exact element-wise sum of all stems.
+// Master is the exact element-wise sum of the stems.
 func Render(stem string, bars, sampleRate int) (Rendered, error) {
 	pt, err := LoadTemplate(stem)
 	if err != nil {

@@ -38,9 +38,7 @@ func TestLoadTemplate_UnknownStem(t *testing.T) {
 	}
 }
 
-// Built-in templates pin their instruments by pack reference; ParseTemplate
-// resolves each ref to the pack document (as the app's import does), never to
-// an empty document.
+// As the app's import does: never to an empty document.
 func TestParseTemplateResolvesPackRefs(t *testing.T) {
 	pt, err := LoadTemplate(assets.Templates()[0].Genre)
 	if err != nil {

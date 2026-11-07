@@ -6,27 +6,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// NoiseProfile holds metrics that separate harmonic (tonal) content from
-// residual (bow-noise / broadband) content in a sustained signal.
+// Harmonic versus residual (bow noise, broadband) content.
 type NoiseProfile struct {
 	ResidualRatio      float64   // residual energy / total energy, clamped to [0,1]
 	ResidualCentroidHz float64   // spectral centroid of the residual (non-harmonic) spectrum
 	ResidualBandLevels []float64 // residual energy per cfg.Bands band
 }
 
-// computeNoiseProfile estimates how much of w's energy is non-harmonic (residual).
-//
-// Algorithm:
-//  1. Compute the magnitude spectrum of w via a 16384-point Hann-windowed FFT.
-//  2. Sum magnitude² in narrow windows (±searchBins) around each harmonic k*f0
-//     (k = 1..up to Nyquist) to obtain the harmonic energy.
-//  3. ResidualRatio = (totalEnergy - harmonicEnergy) / totalEnergy, clamped [0,1].
-//  4. Build a residual magnitude array by zeroing harmonic bins in a copy of mag.
-//  5. ResidualCentroidHz = spectral centroid of the residual magnitude array.
-//  6. ResidualBandLevels = per-cfg.Bands energy of the residual magnitude² array.
-//
-// f0 == 0 or a silent/empty input returns a zero NoiseProfile with
-// ResidualBandLevels of length len(cfg.Bands).
+// A 16384-point spectrum: energy within ±searchBins of each k·f0 is harmonic, the rest residual (ratio, centroid,
+// per-band levels). f0 == 0 or silent input returns zeros with one level per band.
 func computeNoiseProfile(w wave.Wave, f0 float64, cfg AnalysisConfig) NoiseProfile {
 	zero := NoiseProfile{ResidualBandLevels: make([]float64, len(cfg.Bands))}
 
@@ -50,8 +38,7 @@ func computeNoiseProfile(w wave.Wave, f0 float64, cfg AnalysisConfig) NoiseProfi
 		return zero
 	}
 
-	// ---- Harmonic energy + build residual magnitude array ----------------------
-	// Use the same tolerance as spectral.go (partialTolFrac = 0.013 * k * f0).
+	// The same tolerance as spectral.go.
 	const partialTolFrac = 0.013
 
 	residualMag := make([]float64, half)

@@ -2,10 +2,8 @@
 
 package audio
 
-// In the browser every insert effect runs in the C engine inside the
-// beatmo-dsp AudioWorklet (dsp_host.js, fed by platformInsertEffectsChanged);
-// the Go-side processor list is bookkeeping only, so each constructor is a
-// pass-through and no Go DSP ships in main.wasm.
+// In the browser every effect runs in the C engine in the beatmo-dsp worklet; the Go processor list is bookkeeping
+// only, so no Go DSP ships in main.wasm.
 func newDistortion(int, map[string]float64) *passThrough   { return &passThrough{} }
 func newDelay(int, map[string]float64) *passThrough        { return &passThrough{} }
 func newReverb(int, map[string]float64) *passThrough       { return &passThrough{} }

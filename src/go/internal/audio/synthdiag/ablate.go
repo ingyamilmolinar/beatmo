@@ -13,10 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// ablate.go — the real (CGo synth) ablation runner. The `test`/`js` build gets
-// ablate_stub.go instead: a pure-Go stand-in synth would make every stage's
-// leverage a property of the stub rather than of the shipped engine, which is
-// worse than refusing to answer.
+// The test/js build refuses instead: a stand-in synth's stage leverage would describe the stub, not the engine.
 
 func rms(w wave.Wave) float64 {
 	var s float64
@@ -29,11 +26,8 @@ func rms(w wave.Wave) float64 {
 	return math.Sqrt(s / float64(len(w.Samples)))
 }
 
-// matchRMS scales w to target's RMS. Without it a stage that only changes
-// LEVEL (a gen slot carrying most of the energy, the post gain trim) would
-// move every level-sensitive descriptor and be reported as the top driver of
-// axes it has no timbral bearing on -- the same reason `refs compare`
-// level-matches before a listener judges.
+// Without it a stage that only changes LEVEL would top every level-sensitive axis, the same reason `refs compare`
+// level-matches.
 func matchRMS(target, w wave.Wave) wave.Wave {
 	tr, wr := rms(target), rms(w)
 	if wr <= 1e-9 {
@@ -47,20 +41,9 @@ func matchRMS(target, w wave.Wave) wave.Wave {
 	return out
 }
 
-// Ablate renders instID in full, then once per active stage with that stage
-// at identity, RMS-matches each ablation to the full render and reports how
-// far each applicable descriptor moved ABOVE its no-effect floor (see
-// stageSensitivity -- the raw Norm of a seconds axis compared with itself is
-// 1/mismatch, not 0). Sensitivity, not contribution: stages interact, so the
-// numbers do not sum.
-//
-// base is the same override map the diagnosis was rendered with (nil for a
-// shipped instrument), so the full render here is byte-identical to the one
-// the report describes; each stage's overrides are layered ON TOP of it.
-//
-// Applicability is evaluated against the FULL render (there is no reference
-// here -- this compares a synth against itself), so the axis set is exactly
-// the one the full sound supports.
+// Each active stage at identity, RMS-matched, measured above its no-effect floor. Sensitivity, not contribution:
+// stages interact, so rows do not sum. base is the diagnosis's own override map, so the full render is the one the
+// report describes.
 func Ablate(instID instrument.ID, pitch float64, sr int, durSec float64, base map[string]float64) (Report, error) {
 	d, err := audio.InstrumentDocWithFields(instID, base)
 	if err != nil {

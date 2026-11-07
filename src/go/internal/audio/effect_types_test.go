@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// TestEveryEffectTypeIsRegistered: EffectTypes (what data may name) and the
-// effect registry (what can actually be built) are the same set.
+// What data may name and what can actually be built are the same set.
 func TestEveryEffectTypeIsRegistered(t *testing.T) {
 	reg := EffectRegistrations()
 	for _, et := range EffectTypes {

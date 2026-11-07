@@ -11,31 +11,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// solo_analyzer_cost_bench_test.go — quantifies the AUDIO-THREAD cost that the
-// "solo the organ" flow adds per solo toggle.
-//
-// Scenario (from the field report): play the startup demo, solo the organ, and
-// audio degrades and thrashes — even though soloing strictly REMOVES scheduled
-// voices. The cost is not in the scheduler; it lands here. Soloing a row makes
-// it the sole audible row, which auto-focuses its audio channel
-// (reconcileChannelWithAudibleSet → selectAudioChannel → setEQActiveChannel),
-// and setEQActiveChannel unconditionally re-issues EnableChannelAnalyzer. When
-// that call APPENDS instead of replacing, every toggle leaves another live
-// 512-point-FFT Analyzer in the channel's eqProcs, running on the audio
-// rendering thread forever.
-//
-// The organ is the worst case for two compounding reasons: once soloed it is the
-// only channel with signal, and its voices sustain ~1s, so its whole accumulated
-// analyzer stack runs at ~100% duty cycle instead of drum-transient bursts.
-//
-// Run:
-//   xvfb-run -a go test ./internal/audio/ -run TestSoloAnalyzerStackCostTable -v
-//   xvfb-run -a go test ./internal/audio/ -run=^$ -bench=BenchmarkChannelEQBlock -benchmem
+// Soloing a row re-focuses its channel, which re-enables its analyzer; if that appends, every toggle leaves another
+// FFT analyzer running on the audio thread forever. The organ is the worst case: sole signal, sustaining voices.
 
 const soloBenchSampleRate = 44100
 
-// eqBlockCost times ProcessEQBlockLocal over enough blocks to cover wallSeconds
-// of audio, returning the average per-block cost.
 func eqBlockCost(ch *Channel, blockSize, blocks int) time.Duration {
 	in := make([]float64, blockSize)
 	out := make([]float64, blockSize)
@@ -61,17 +41,12 @@ func stackAnalyzers(id string, n int) {
 	}
 }
 
-// TestSoloAnalyzerStackCostTable is the evidence table: audio-thread cost per
-// block as a function of how many times the channel was "re-focused" (i.e. how
-// many solo toggles the user performed). With an idempotent
-// EnableChannelAnalyzer the cost must stay flat; if analyzers stack, cost grows
-// linearly and eventually exceeds the realtime budget → dropouts.
+// Flat with an idempotent enable; stacked analyzers grow linearly past the real-time budget.
 func TestSoloAnalyzerStackCostTable(t *testing.T) {
 	const blockSize = 512
 	const blocks = 400
 
-	// Realtime budget: a blockSize block must be processed in less than its own
-	// duration or the audio thread cannot keep up.
+	// A block must process in less than its own duration.
 	budgetSec := float64(blockSize) / float64(soloBenchSampleRate)
 	budget := time.Duration(budgetSec * float64(time.Second))
 
@@ -93,11 +68,7 @@ func TestSoloAnalyzerStackCostTable(t *testing.T) {
 
 		fmt.Printf("%-14d %-12d %-12.4f %-10.1f\n", toggles, n, ms(cost), pct)
 
-		// Assert on the analyzer COUNT, not the measured time. Count is the
-		// deterministic invariant and the actual defect; wall-clock here is
-		// reported as evidence but would flake under parallel test load.
-		// Pre-fix this read 1+toggles (17 at the bottom row) and the per-block
-		// cost grew ~23x with it.
+		// The COUNT is the deterministic defect; wall-clock is evidence only and would flake under parallel load.
 		if n != 1 {
 			t.Errorf("after %d solo re-focuses the channel carries %d analyzers (want exactly 1); "+
 				"each runs a 512-pt FFT on the audio thread every 512 samples and "+
@@ -111,8 +82,6 @@ func BenchmarkChannelEQBlockSingleAnalyzer(b *testing.B) {
 	benchEQBlock(b, 1)
 }
 
-// BenchmarkChannelEQBlockAfterEightSolos is the same channel after eight solo
-// toggles. With an idempotent EnableChannelAnalyzer it must match the baseline.
 func BenchmarkChannelEQBlockAfterEightSolos(b *testing.B) {
 	benchEQBlock(b, 9)
 }

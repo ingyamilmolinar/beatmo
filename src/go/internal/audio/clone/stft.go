@@ -5,11 +5,8 @@ import (
 	"sync"
 )
 
-// stft.go — a lean Hann-windowed magnitude STFT for the loss. Refine scores
-// ~1,000 renders per instrument; wave.MagnitudeSpectrum allocates three
-// buffers per FRAME (≈14 MB per 4096-point spectrogram of a 3 s clip), so the
-// loss carries its own radix-2 plan with precomputed twiddles and reuses one
-// scratch per call.
+// Refine scores many renders per instrument and wave.MagnitudeSpectrum allocates per FRAME, so the loss keeps its own
+// radix-2 plan with precomputed twiddles and one scratch per call.
 
 type fftPlan struct {
 	n        int
@@ -49,8 +46,7 @@ func planFor(n int) *fftPlan {
 	return got.(*fftPlan)
 }
 
-// fft2 transforms two windowed real frames at once (a + i·b in one complex
-// FFT — the textbook two-for-one) and writes both magnitude spectra.
+// Two real frames in one complex FFT (a + i·b).
 func (p *fftPlan) fft2(fa, fb, re, im, ma, mb []float64) {
 	n := p.n
 	for i := 0; i < n; i++ {
@@ -82,10 +78,7 @@ func (p *fftPlan) fft2(fa, fb, re, im, ma, mb []float64) {
 	}
 }
 
-// eachFrame calls fn with the magnitude spectrum of every frame of x at size
-// n, hop n/4 (frames start at 0, hop, …, the last that fits; a signal shorter
-// than n is one zero-padded frame), two frames per FFT. m is reused between
-// calls.
+// Hop n/4, frames from 0 to the last that fits; a signal shorter than n is one zero-padded frame. m is reused.
 func eachFrame(x []float64, n int, fn func(i int, m []float64)) {
 	p := planFor(n)
 	hop := n / 4

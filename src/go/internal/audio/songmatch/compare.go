@@ -30,8 +30,6 @@ func stateFor(mag float64, cfg fingerprint.AnalysisConfig) string {
 	}
 }
 
-// Compare builds the per-axis correctness report (tempo, rhythm, key, mix) plus
-// the weighted SongDistance and the implied key transposition.
 func Compare(ref, cand fingerprint.SongFingerprint, cfg fingerprint.AnalysisConfig) CorrectnessReport {
 	s := SongDistance(ref, cand, cfg)
 	keyMag, shift := KeyMagnitude(ref, cand)

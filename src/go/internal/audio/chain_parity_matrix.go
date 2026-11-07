@@ -5,42 +5,22 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// chain_parity_matrix.go is the SINGLE SOURCE OF TRUTH for the synth-parameter
-// test matrix used by BOTH:
-//   - the Go export/import byte-parity suite (internal/ui/synth_roundtrip_audio_test.go), and
-//   - the desktop reference generator (cmd/export_audio --matrix / renderParamCases),
-//     whose output the browser cross-platform tests compare against.
-//
-// Keeping the matrix here (rather than duplicating the tweak list in each test)
-// means desktop and browser exercise the IDENTICAL per-stage edits — the
-// "reuse logic to compare on both platforms" requirement. Every modular synth
-// stage gets at least one parameter flip so a stage that the export/import path
-// or the cross-platform param plumbing drops shows up as a failing case.
-//
-// No build tag: imported by the cmd generator (!test && !js) and the ui test
-// (which links real audio under !test && !js) and must also compile under the
-// stub for any package that references it.
+// One matrix for the Go export/import parity suite and the desktop reference generator the browser compares
+// against, so both exercise IDENTICAL edits; every modular stage gets a flip, so a dropped stage fails a case.
+// Untagged: the cmd generator, the ui test and the stub all compile it.
 
-// ParityCase is one synth-parameter edit applied to an instrument: a named
-// (instrument, tweak) pair. Tweak maps engine field names → values, set through
-// the instrument's document; every value is inside its ParamDef Min/Max so
-// SetInstrumentParams neither drops nor clamps it.
+// Every value is inside its ParamDef range, so SetInstrumentParams neither drops nor clamps it.
 type ParityCase struct {
 	Name         string
 	InstrumentID instrument.ID
 	Tweak        RecipeParams
 }
 
-// modularParityInstrument is the synth voice that exposes EVERY stage as a
-// user-editable parameter, so one instrument can cover all stages.
+// Exposes EVERY stage as an editable param, so one instrument covers them all.
 const modularParityInstrument instrument.ID = roster.Modular
 
-// ParityMatrix returns the per-stage modular tweaks (one flip per stage) plus a
-// combined all-stages case. Order is fixed and part of the cross-platform
-// contract (the browser replays cases in this order on one module instance).
-//
-// The FM case sets osc_type=4 so the FM operators are on the audible path. All
-// values are inside their modular ParamDef ranges (see modular_recipe.go).
+// The order is part of the cross-platform contract: the browser replays cases in it on one module instance. The FM
+// case sets osc_type=4 so the operators are audible.
 func ParityMatrix() []ParityCase {
 	i := modularParityInstrument
 	cases := []ParityCase{

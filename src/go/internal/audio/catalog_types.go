@@ -19,8 +19,7 @@ func (s SoundSource) String() string                { return enum.String(soundSo
 func (s SoundSource) MarshalText() ([]byte, error)  { return enum.Marshal(soundSourceNames, s) }
 func (s *SoundSource) UnmarshalText(b []byte) error { return enum.Unmarshal(soundSourceNames, b, s) }
 
-// SoundMeta describes an available sound without forcing the audio data to be
-// decoded. It supports lazy loading by storing only lightweight facts.
+// Lightweight facts only, so listing never decodes audio.
 type SoundMeta struct {
 	ID         instrument.ID // stable instrument ID
 	Name       string        // display name

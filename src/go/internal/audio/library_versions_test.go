@@ -8,11 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §2.3–2.4, §2.8: the user library is instrument histories in
-// the versioned object store. Save As appends a version (nothing overwritten),
-// the current pointer decides what the library plays, and the store persists
-// as one blob.
-
 type memVersionedLibrary struct {
 	blob    []byte
 	oldDocs map[instrument.ID][]byte

@@ -8,13 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// User-sample registry: the canonical Go-side store of PCM for samples created
-// by the Sampler tab (synth-capture or WAV-load, baked). It is the single
-// source of truth that the project exporter embeds and the persistence sink
-// writes — both read PCM from here, so neither needs a platform-specific
-// "get the bytes back out of the audio engine" path (the sampler always hands
-// us the baked []float32 at save time). RegisterSamplePCM still handles
-// platform playback registration (native Sample, browser AudioBuffer).
+// The canonical Go-side PCM of Sampler-made samples: the exporter and the persistence sink both read it here, so neither
+// needs to get bytes back out of an audio engine. RegisterSamplePCM handles playback registration.
 
 // SampleRecord is a baked, self-contained mono PCM buffer plus its rate.
 type SampleRecord struct {
@@ -25,17 +20,14 @@ type SampleRecord struct {
 var (
 	userSamplesMu sync.RWMutex
 	userSamples   = map[instrument.ID]SampleRecord{}
-	// originalUserSamples keeps the pristine first-loaded PCM per id. Captured
-	// once (first-put-wins) so a later edit re-save never moves it; Reset reads
-	// it to restore a user WAV/Save-As sample to its original buffer.
+	// First-put-wins, so a later re-save never moves the baseline a reset restores.
 	originalUserSamples = map[instrument.ID]SampleRecord{}
 
 	sampleSink     SampleSink
 	useSampleStore bool
 )
 
-// SampleSink persists/forgets user samples across sessions. Implemented by the
-// UI layer over userprefs (desktop files / browser IndexedDB).
+// Implemented by the UI over userprefs (desktop files / browser IndexedDB).
 type SampleSink interface {
 	SaveSample(id instrument.ID, pcm []float32, sr int)
 	DeleteSample(id instrument.ID)
@@ -59,8 +51,7 @@ func SetSampleSink(s SampleSink) func() {
 	}
 }
 
-// SetUseSampleStore toggles the cross-session persistence parity gate and
-// returns a restore func. When off, ApplySavedSamples is a no-op.
+// When off, ApplySavedSamples is a no-op.
 func SetUseSampleStore(on bool) func() {
 	userSamplesMu.Lock()
 	prev := useSampleStore
@@ -80,15 +71,12 @@ func UseSampleStore() bool {
 	return useSampleStore
 }
 
-// PutUserSample stores the baked PCM as the canonical buffer for id and
-// registers it for playback. It does NOT persist — use SaveUserSample for that.
-// Used by project import and startup re-registration (already-persisted data).
+// Does NOT persist (SaveUserSample does): for import and startup re-registration of already-persisted data.
 func PutUserSample(id instrument.ID, pcm []float32, sr int) {
 	cp := append([]float32(nil), pcm...)
 	userSamplesMu.Lock()
 	userSamples[id] = SampleRecord{PCM: cp, SampleRate: sr}
-	// First-put-wins: capture the pristine original exactly once so later edit
-	// re-saves don't overwrite the baseline a factory Reset restores to.
+	// Captured once, so later re-saves never overwrite the baseline.
 	if _, exists := originalUserSamples[id]; !exists {
 		originalUserSamples[id] = SampleRecord{PCM: append([]float32(nil), cp...), SampleRate: sr}
 	}
@@ -104,8 +92,7 @@ func OriginalUserSamplePCM(id instrument.ID) (SampleRecord, bool) {
 	return rec, ok
 }
 
-// forgetUserSample drops all trace of a user sample: the live buffer, the
-// pristine original, and the persisted copy.
+// The live buffer, the pristine original and the persisted copy.
 func forgetUserSample(id instrument.ID) {
 	userSamplesMu.Lock()
 	delete(userSamples, id)
@@ -117,15 +104,9 @@ func forgetUserSample(id instrument.ID) {
 	}
 }
 
-// DropBuiltinSampleOverride removes, for this SESSION, a sample registered over
-// a built-in synth instrument, so the instrument plays its synth again. Import
-// calls it for every built-in row whose file entry carries no PCM: import is
-// replace-not-merge, and a sample the PREVIOUS project put on "snare" must not
-// survive into a project whose snare is the synth. Unlike ResetSampleToFactory
-// it touches neither persistence nor the recipe (a Synth-tab Save on the
-// recipe is not the file's to undo). Non-built-in ids (user WAV / Save-As
-// samples) are left alone — a file refers to those by id. Reports whether an
-// override was dropped.
+// For this SESSION only: import is replace-not-merge, so a sample the PREVIOUS project put on a built-in must not
+// survive into a project whose row is the synth. Touches neither persistence nor the document; user samples are left
+// alone (a file refers to them by id).
 func DropBuiltinSampleOverride(instID instrument.ID) bool {
 	if instID == "" || !isShippedInstrument(instID) {
 		return false
@@ -144,13 +125,8 @@ func DropBuiltinSampleOverride(instID instrument.ID) bool {
 	return true
 }
 
-// ResetSampleToFactory reverts an instrument that was turned into a sample back
-// to its factory state. An instrument with a library document (a shipped one,
-// or a user library instrument) returns to its synth: the project copy goes
-// back to its library entry and the user sample is discarded. A user WAV
-// sample is restored to its pristine first-loaded buffer. Returns (the library
-// id the synth came back from, factoryReverted); factoryReverted is true only
-// for the synth case. Unknown ids are a no-op.
+// A library-document instrument returns to its synth (copy to its library entry, user sample discarded); a user WAV to
+// its pristine buffer. factoryReverted is true only for the synth case.
 func ResetSampleToFactory(instID instrument.ID) (instrument.ID, bool) {
 	if instID == "" {
 		return "", false
@@ -158,9 +134,7 @@ func ResetSampleToFactory(instID instrument.ID) (instrument.ID, bool) {
 	// CASE A: a synth instrument that was converted to a sample → full revert.
 	if lib, ok := libraryCopyOf(instID); ok {
 		ResetInstrumentParams(instID)
-		// Restore the playback registration the sample save overwrote (desktop
-		// instrument table / WASM render cache) so the synth is actually heard
-		// — then drop the user sample (memory + persistence).
+		// Restore the playback registration the sample overwrote so the synth is actually heard.
 		UnregisterSamplePCM(instID)
 		forgetUserSample(instID)
 		return lib.Origin, true
@@ -179,13 +153,9 @@ func ResetSampleToFactory(instID instrument.ID) (instrument.ID, bool) {
 	return "", false
 }
 
-// isShippedInstrument reports whether id (or its instance base) is a shipped
-// synth instrument.
 func isShippedInstrument(id instrument.ID) bool { return roster.Has(id.Base()) }
 
-// SaveUserSample stores + registers (PutUserSample) and additionally persists
-// the sample via the sink so it survives across sessions. Used by the Sampler
-// tab's Save / Save As.
+// Persisted via the sink so it survives sessions.
 func SaveUserSample(id instrument.ID, pcm []float32, sr int) {
 	PutUserSample(id, pcm, sr)
 	userSamplesMu.RLock()
@@ -196,14 +166,8 @@ func SaveUserSample(id instrument.ID, pcm []float32, sr int) {
 	}
 }
 
-// PersistUserSample writes the instrument's canonical (pristine) PCM to the
-// persistence sink WITHOUT re-registering it for playback. The Sampler Save on a
-// WAV / user-sample source uses it: that source's edit already drives playback
-// in real time through the sample-edit descriptor (reapplyUserSampleEdit
-// re-registers the BAKED buffer), so re-registering the pristine buffer here —
-// as SaveUserSample/PutUserSample would — must NOT happen or it would clobber
-// the edited playback. No-op when id is not a stored user sample or no sink is
-// installed.
+// Without re-registering for playback: the source's edit already drives playback through the descriptor, and
+// re-registering the pristine buffer would clobber it.
 func PersistUserSample(id instrument.ID) {
 	userSamplesMu.RLock()
 	rec, ok := userSamples[id]
@@ -223,8 +187,7 @@ func UserSamplePCM(id instrument.ID) (SampleRecord, bool) {
 	return rec, ok
 }
 
-// IsUserSample reports whether id was created by the Sampler tab (and therefore
-// carries embedded PCM the project exporter should serialize).
+// Its PCM is embedded by the project exporter.
 func IsUserSample(id instrument.ID) bool {
 	userSamplesMu.RLock()
 	defer userSamplesMu.RUnlock()
@@ -243,18 +206,8 @@ func UserSampleIDs() []instrument.ID {
 	return out
 }
 
-// ApplySavedSamples re-registers every persisted user sample for playback at
-// startup. Gated on UseSampleStore(); mirrors ApplyUserRecipeOverrides.
-//
-// Factory-recipe-bound ids (e.g. "snare") are SKIPPED: synths remain synths.
-// A persisted sample under a builtin id is a legacy artifact of the old
-// destructive Sampler-Save (pre sample-edit descriptors). Re-registering it
-// would override the synth's playback registration — on WASM that deletes
-// RENDER[id] and freezes the instrument, making every Synth-tab edit audibly
-// a no-op while desktop (whose recipe dispatch wins once params exist) keeps
-// responding: the user-visible "knob/stage/Save changes do nothing in the
-// browser" divergence. Regression: TestApplySavedSamplesSkipsFactorySynths +
-// synth_edits_override_stale_sample.browser.test.js.
+// Ids on a shipped instrument are SKIPPED: synths remain synths. Re-registering such a stale sample would override the
+// synth's playback and, in the browser, freeze it so every Synth-tab edit is a no-op.
 func ApplySavedSamples(src SampleSource) {
 	if src == nil || !UseSampleStore() {
 		return

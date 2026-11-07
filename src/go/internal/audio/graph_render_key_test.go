@@ -6,9 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The graph-render cache key moves with every input the render reads — the
-// document's values, the tempo, the pitch, the Sampler edit — and is stable
-// otherwise (spec 2026-10-24 §4.3).
 func TestGraphRenderKeyFollowsEveryInput(t *testing.T) {
 	id := roster.Kick808
 	d, ok := EnsureInstrumentDoc(id)

@@ -2,8 +2,6 @@
 
 package audio
 
-// PlayBatch dispatches multiple sound requests. On desktop, this simply
-// iterates and calls PlayParamsAt for each item.
 func PlayBatch(reqs []BatchParam) {
 	for i := range reqs {
 		r := reqs[i]

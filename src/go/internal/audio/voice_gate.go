@@ -2,10 +2,7 @@
 
 package audio
 
-// gateVoice plays the first `limit` samples of its inner voice and fades the
-// last `fade` of them to silence: a SHORTENED note. It is how a pitch-aware
-// voice honours a node duration below 1 — by sounding for less time — instead
-// of being played faster, which transposed it.
+// A melodic voice honours a duration below 1 by sounding for less time, not by playing faster, which transposed it.
 type gateVoice struct {
 	inner Voice
 	limit int
@@ -13,9 +10,7 @@ type gateVoice struct {
 	pos   int
 }
 
-// gateFadeMs is the release applied at a gate's end. Long enough not to
-// click, short against the shortest note a template writes (a sixteenth at
-// 200 BPM is 75 ms).
+// Long enough not to click, short against the shortest templated note (a sixteenth at 200 BPM is 75 ms).
 const gateFadeMs = GateFadeMs // chain_spec.go
 
 func newGateVoice(inner Voice, limit, sampleRate int) *gateVoice {

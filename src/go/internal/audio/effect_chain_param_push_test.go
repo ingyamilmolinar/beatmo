@@ -7,14 +7,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestInsertEffectParamEditNeverRebuildsTheChain pins the contract a live FX
-// slider relies on: a param edit updates ONE live effect in place. On WASM a
-// whole-chain push (platformInsertEffectsChanged) builds fresh WebAudio nodes
-// for every effect on the channel — a new AudioWorkletNode with an empty
-// delay line for a pitch shifter — and rewires the channel. Pushed once per
-// drag frame, that cut the kick on every frame and created ~1,000
-// AudioWorkletNodes per second of dragging (2026-10-25, startup demo + a
-// second Pitch Shifter on the kick, real Chrome).
+// A param edit updates ONE live effect in place: a whole-chain push builds fresh WebAudio nodes for every effect (a
+// pitch shifter with an empty delay line) and rewires the channel, which pushed per drag frame cut the kick
+// constantly.
 func TestInsertEffectParamEditNeverRebuildsTheChain(t *testing.T) {
 	resetChains(t)
 	inst := instrument.ID("param-push")
@@ -73,9 +68,7 @@ func TestInsertEffectParamEditNeverRebuildsTheChain(t *testing.T) {
 	if s3, _ := InsertFXPushCounts(); s3-s2 != 3 || rebuilt != 3 {
 		t.Errorf("toggle+move+remove: structural pushes %d (platform %d), want 3", s3-s2, rebuilt)
 	}
-	// The tape (toggled off, moved behind the shifter) survived the removal
-	// of the shifter as the SAME instance: the browser keeps its C state by
-	// this uid, as desktop keeps the Go processor.
+	// The tape survived the shifter's removal as the SAME instance: the browser keeps its C state by this uid.
 	if last := chains[len(chains)-1]; len(last) != 1 || last[0].UID != tape || last[0].Type != EffectTape || last[0].Enabled {
 		t.Errorf("after toggle+move+remove the chain is %+v, want the same disabled tape instance (uid %d)", last, tape)
 	}

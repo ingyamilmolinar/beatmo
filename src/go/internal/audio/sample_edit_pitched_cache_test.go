@@ -8,14 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A non-destructive Sampler edit is applied to the fresh recipe render and
-// cached under a key with the edit folded in; ApplySampleEditLive deliberately
-// does NOT invalidate the voice cache, relying on that fold to route the next
-// trigger to a new slot. The PITCHED (melodic) dispatch path looked up the
-// UNFOLDED key first, so once a melodic voice had been rendered unedited, every
-// later trigger kept hitting that entry: the Sampler edit on organ / piano /
-// strings was inaudible on desktop, and an export → import round-trip "passed"
-// only because both sides ignored the edit equally.
+// A melodic voice looked up the UNFOLDED key first, so once rendered unedited it kept serving that entry and the
+// Sampler edit was inaudible, while an export/import identity test passed because both sides ignored it.
 func TestPitchedVoiceHonoursASampleEditAfterItWasCachedUnedited(t *testing.T) {
 	const id = roster.OrganChurch
 	if !IsMelodicInstrument(id) {

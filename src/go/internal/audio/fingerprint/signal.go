@@ -6,12 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// sustainWindow extracts the shared analysis window from w: skip the first
-// SustainSkipSec (0.3 s) of attack transient and take up to SustainLenSec
-// (1.3 s), yielding a 1.0 s sustained window. Falls back to the whole wave
-// when fewer than 4 samples remain after slicing (e.g. short test signals).
-// Used by all five analyzers (computeSpectral, computeShape, computeMFCC,
-// DetectF0, computeHNR) so they all operate on the identical window.
+// Skip 0.3 s, take to 1.3 s; the whole wave when under 4 samples remain. Every analyser shares it so all see the
+// identical window.
 func sustainWindow(w wave.Wave) wave.Wave {
 	seg := w.Slice(SustainSkipSec*1000, SustainLenSec*1000)
 	if len(seg.Samples) < 4 {
@@ -20,10 +16,7 @@ func sustainWindow(w wave.Wave) wave.Wave {
 	return seg
 }
 
-// olsSlope returns the ordinary-least-squares slope for paired xs and ys.
-// Returns 0 when fewer than 2 points are provided or the x-variance is ~0.
-// This is the single canonical OLS helper shared by envelope.go (decay slope)
-// and temporal.go (centroid/partial-decay slopes).
+// 0 for fewer than 2 points or ~0 x-variance.
 func olsSlope(xs, ys []float64) float64 {
 	n := len(xs)
 	if n < 2 || n != len(ys) {
@@ -44,8 +37,7 @@ func olsSlope(xs, ys []float64) float64 {
 	return (fn*sumXY - sumX*sumY) / denom
 }
 
-// PeakNormalize normalizes the wave's peak amplitude to 0 dBFS (peak = 1.0).
-// If the wave is silent (peak == 0), it is returned unchanged.
+// A silent wave is returned unchanged.
 func PeakNormalize(w wave.Wave) wave.Wave {
 	if w.PeakSample() == 0 {
 		return w
@@ -53,10 +45,7 @@ func PeakNormalize(w wave.Wave) wave.Wave {
 	return wave.Chain(&wave.WaveSource{W: w}, wave.NormalizeTransform(0))
 }
 
-// RMSEnvelope computes a hop-based RMS envelope from w, then downsamples to
-// at most nPoints values. Each hop window is [i, i+hop) of samples; the RMS
-// is sqrt(mean(x^2)) over the window. If the number of raw envelope frames is
-// already <= nPoints (or nPoints <= 0), the raw envelope is returned as-is.
+// Raw when it already has <= nPoints frames or nPoints <= 0.
 func RMSEnvelope(w wave.Wave, hop, nPoints int) []float64 {
 	if hop < 1 {
 		hop = 256
@@ -89,10 +78,7 @@ func RMSEnvelope(w wave.Wave, hop, nPoints int) []float64 {
 	return out
 }
 
-// AutoSegment finds the loudest sustained window of durSec seconds in w.
-// It slides a window of that length across the wave with a hop of 128 samples
-// and returns the sub-wave with the highest RMS. If w is shorter than the
-// requested window, the entire wave is returned.
+// The whole wave when it is shorter than the window.
 func AutoSegment(w wave.Wave, durSec float64) wave.Wave {
 	sr := w.SampleRate
 	if sr == 0 {

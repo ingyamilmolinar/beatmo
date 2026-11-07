@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// The browser runs every insert effect in the C engine inside the beatmo-dsp
-// worklet (dsp_host.js). A structural edit pushes the whole chain — instance
-// uids, types, enabled flags and complete parameter sets — and the worklet
-// keeps the C instance of every uid it already holds (desktop keeps the same
-// Go processors); a param edit retunes one live instance.
+// A structural edit pushes the whole chain (uids, types, enabled flags, complete params) and the worklet keeps the C
+// instance of every uid it already holds, as desktop keeps its processors; a param edit retunes one live instance.
 func init() {
 	platformResetDSPState = func() {
 		if fn := js.Global().Get("resetDSPState"); fn.Truthy() {

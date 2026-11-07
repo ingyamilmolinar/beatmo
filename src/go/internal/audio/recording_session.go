@@ -17,14 +17,7 @@ type RecordingOptions struct {
 	Instruments []InstrumentMeta // snapshot of active instruments
 }
 
-// EncodedChannel holds the encoded audio data for one channel.
-//
-// In streaming mode (desktop production), Data is empty and Path holds
-// the absolute path of the WAV file already written to disk during
-// recording. In legacy/WASM in-memory mode, Data holds the encoded bytes
-// and Path is empty.
-// RecordingMasterID names the master-bus stem of a recording (its file is
-// "master.<ext>"; the instrument stems are named by their channel).
+// The master-bus stem ("master.<ext>"); instrument stems are named by their channel.
 const RecordingMasterID = "master"
 
 type EncodedChannel struct {
@@ -33,9 +26,7 @@ type EncodedChannel struct {
 	Filename string // e.g., "kick-deep.wav"
 	Data     []byte // encoded audio bytes (nil in streaming mode and in WASM worker mode)
 	Path     string // absolute path on disk (empty in in-memory mode)
-	// Bytes reports the encoded payload size when Data is intentionally
-	// nil (streaming or worker modes). Always populated; use this in
-	// preference to len(Data) when reporting size.
+	// Data is nil in streaming and worker modes: report size from this.
 	Bytes int
 }
 
@@ -61,22 +52,17 @@ type ChannelMeta struct {
 type RecordingResult struct {
 	Channels []EncodedChannel
 	Metadata SessionMetadata
-	// SessionDir is the on-disk directory holding streamed WAV files
-	// (desktop streaming mode). Empty in in-memory mode.
+	// Empty in in-memory mode.
 	SessionDir string
 }
 
 // recordingMu serializes Start/Stop transitions and protects activeSession.
 var recordingMu sync.Mutex
 
-// platformRecordingStart is called when recording begins. On WASM, this
-// activates the JS per-channel output capture nodes. On desktop, it is
-// a no-op (the streaming pipeline handles capture).
+// On WASM it activates the JS capture nodes; desktop's streaming pipeline needs nothing.
 var platformRecordingStart = func(instruments []InstrumentMeta) {}
 
-// platformRecordingStop is called when recording stops. On WASM, this
-// retrieves captured samples from the JS per-channel capture nodes.
-// Returns nil, nil, 0 when no platform capture is available.
+// nil, nil, 0 when the platform captured nothing.
 var platformRecordingStop = func() (map[channel.ID][]float64, []float64, int) { return nil, nil, 0 }
 
 // MetadataJSON returns the session metadata as formatted JSON bytes.
@@ -98,12 +84,7 @@ type RecordStartPayload struct {
 	Instruments int
 }
 
-// RecordStopPayload is the typed payload for hooks.EventRecordStop. It
-// is delivered after the asynchronous finalize (file flush + close)
-// completes — at that point the on-disk WAV files are valid and
-// readable. Subscribers wanting to act on a recording (toast, upload,
-// post-processing) should listen on this event, not on the return value
-// of StopRecording (which fires before file flush completes).
+// Delivered after the async finalize, when the files are valid: act on a recording here, not on StopRecording's return.
 type RecordStopPayload struct {
 	Dir      string
 	Drops    int64

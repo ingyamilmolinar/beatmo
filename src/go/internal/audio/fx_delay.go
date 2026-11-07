@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// delay implements a mono delay line with LP-filtered feedback and wet/dry mix.
-// The feedback and mix parameters are smoothed to prevent clicks. Delay time
-// changes use a crossfade between old and new read positions to avoid pops.
+// A delay-time change crossfades between read positions so it does not pop.
 type delay struct {
 	timeMs   float64 // delay time in ms (not smoothed — crossfaded instead)
 	feedback smoothParam

@@ -17,14 +17,8 @@ var physicalKickIDs = []instrument.ID{
 	roster.KickOrganicTight, roster.KickMuted, roster.KickMutedRoom,
 }
 
-// TestPhysicalKicksDoNotWarble pins the "fuzz" fix. The first physical kicks
-// were heard as "very noisy/fuzzy"; the cause was WARBLE — 2-30 Hz amplitude
-// modulation of the body (fingerprint WarbleDepth 1.8-3.4) from a detuned
-// resonant head drifting through the pitch glide, and a shell mode at 0.86·f0
-// beating against the settled fundamental. Real recorded kicks measure
-// 0.41-0.62; the shipped physical kicks 0.32-0.60. Anything that puts a
-// partial near the fundamental without riding its pitch path lands far above
-// the ceiling.
+// A kick heard as "fuzzy" is WARBLE: 2-30 Hz amplitude modulation from a partial near the fundamental that does not
+// ride its pitch glide. Real kicks measure 0.41-0.62.
 func TestPhysicalKicksDoNotWarble(t *testing.T) {
 	const ceiling = 0.70
 	for _, id := range physicalKickIDs {
@@ -39,11 +33,8 @@ func TestPhysicalKicksDoNotWarble(t *testing.T) {
 	}
 }
 
-// TestPhysicalKicksAreKickPhysicalDocuments guards the 0-not-NaN trap: an
-// unset kick knob reaches C as 0 (there is no per-variant literal), so a
-// variant-8 kick missing env0 rings undamped. Each physical kick's document
-// plays a kick.physical layer; document validation requires every value that
-// module type declares, so no knob can be missing.
+// An unset kick knob reaches C as 0, and a variant-8 kick missing env0 rings undamped; validation requires every
+// value a kick.physical layer declares.
 func TestPhysicalKicksAreKickPhysicalDocuments(t *testing.T) {
 	for _, id := range physicalKickIDs {
 		d, ok := ShippedDoc(id)

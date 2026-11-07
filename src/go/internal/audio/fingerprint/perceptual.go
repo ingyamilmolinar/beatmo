@@ -2,33 +2,12 @@ package fingerprint
 
 import "math"
 
-// perceptual.go — the measurements behind the words listeners actually use.
-//
-// Verdict notes are written in perceptual vocabulary: "warm", "airy", "dry",
-// "sounds like a wind instrument instead of a string". None of the existing
-// axes measured any of those directly, so a complaint could not be traced to a
-// number and a number could not be traced back to a complaint. Worse, the
-// closest existing axis was actively misleading: `bright.centroid` compares
-// absolute hertz, so a note played an octave higher measures "brighter" for
-// reasons that have nothing to do with timbre -- validated against the ear it
-// scored AUC 0.36, ANTI-correlated.
-//
-// Each function here is one perceptual property, defined so the number moves
-// the way the word does.
+// Listeners write "warm", "airy", "sounds like a wind instead of a string"; nothing measured those, and the nearest axis
+// (bright.centroid in absolute Hz) was anti-correlated with the ear. Each function is one perceptual property, defined
+// so the number moves the way the word does.
 
-// BrightnessRatio is the spectral centroid expressed in MULTIPLES OF THE
-// FUNDAMENTAL rather than in hertz: "how far above its own pitch does this
-// note's energy sit".
-//
-// This is the warm/cool axis. Dividing by f0 is what makes it a timbre
-// measurement instead of a pitch measurement -- a cello at 220 Hz and the same
-// cello at 440 Hz should read the same warmth, and in absolute hertz they
-// cannot. Measured on the corpus, the synth cello reads 21.6 against the
-// reference's 11.1 (twice as bright relative to its own pitch) for an
-// instrument the listener asked to be "much fuller and warmer"; the synth oboe
-// reads 14.4 against 6.9, and its note says "needs warmness".
-//
-// Returns 0 when there is no reliable fundamental to normalise by.
+// The centroid in MULTIPLES OF THE FUNDAMENTAL: dividing by f0 makes it timbre, not pitch, so a cello an octave up
+// reads the same warmth. 0 with no reliable fundamental.
 func BrightnessRatio(fp Fingerprint) float64 {
 	if fp.F0Hz <= 0 {
 		return 0
@@ -36,21 +15,9 @@ func BrightnessRatio(fp Fingerprint) float64 {
 	return fp.SpectralCentroid / fp.F0Hz
 }
 
-// HarmonicSlope is the OLS slope of partial level (dB) against harmonic number
-// (log2), i.e. dB per OCTAVE OF HARMONIC NUMBER.
-//
-// The complement to BrightnessRatio: the centroid says where the energy sits,
-// this says how fast it falls off. A steep negative slope is a dark, warm,
-// fundamental-dominant tone; a shallow one is bright and rich. They disagree
-// usefully -- a spectrum can be dark on average while carrying a few loud high
-// partials, and only the slope sees that.
-//
-// log2 of harmonic number rather than linear, because harmonic amplitude rolls
-// off geometrically for every physical excitation, so this is the axis on
-// which real instruments are roughly straight lines.
-//
-// Returns NaN when fewer than three partials carry energy -- a slope through
-// two points is not a measurement.
+// dB per octave of harmonic number: where BrightnessRatio says where the energy sits, this says how fast it falls, and
+// only it sees a few loud high partials on a dark spectrum. log2 because real excitations roll off geometrically. NaN
+// with fewer than three partials.
 func HarmonicSlope(partials [16]float64) float64 {
 	var xs, ys []float64
 	for k := 0; k < len(partials); k++ {
@@ -78,31 +45,12 @@ func HarmonicSlope(partials [16]float64) float64 {
 	return (n*sxy - sx*sy) / den
 }
 
-// noisePersistenceFloor is the early-half noise level below which the ratio is
-// not computed: dividing a late value by a near-zero onset produces an
-// arbitrarily large number that means nothing.
+// Dividing a late value by a near-zero onset would mean nothing.
 const noisePersistenceFloor = 1e-4
 
-// NoisePersistence is the late-half mean noise fraction divided by the
-// early-half mean: does the note's noise STAY, or does it belong to the onset?
-//
-// This is the wind-vs-string axis, and the airy-vs-dry axis, in one number --
-// because acoustically they are the same question. A blown instrument is
-// excited by turbulent air for as long as it sounds, so its noise persists
-// (ratio near or above 1). A bowed or plucked string has a scratchy,
-// noisy attack that settles into a clean harmonic tone, so its noise decays
-// (ratio well below 1). A whole-signal noise average cannot tell these apart:
-// both can carry the same TOTAL noise while distributing it completely
-// differently.
-//
-// The corpus is unambiguous. Every shipped bowed string measured ~0.99 --
-// constant noise from first sample to last -- against references at 0.04
-// (cello), 0.19 (violin) and 0.25 (viola). The listener's verdict on two of
-// them was "sounds like a wind instrument, like a flute instead of a string",
-// and on the third "too airy".
-//
-// ok=false when there is too little onset noise to divide by, or too few
-// frames to split.
+// Late-half over early-half noise fraction: wind-vs-string and airy-vs-dry are one question. A blown instrument's
+// noise persists (~1 or more), a bowed or plucked string's belongs to the onset (well below 1); a whole-signal
+// average cannot tell them apart. ok=false with too little onset noise or too few frames.
 func NoisePersistence(noiseTrack []float64) (ratio float64, ok bool) {
 	if len(noiseTrack) < 4 {
 		return 0, false
@@ -124,22 +72,12 @@ func NoisePersistence(noiseTrack []float64) (ratio float64, ok bool) {
 	return late / early, true
 }
 
-// airBandHz is where "air" starts. Breath, bow hiss and cymbal wash live above
-// it; the fundamental and the first few partials of every instrument in the
-// corpus live below, so restricting to this band keeps the measurement about
-// noise CHARACTER rather than about pitch.
+// Breath, bow hiss and cymbal wash live above it, fundamentals and low partials below, so the measurement is about
+// noise CHARACTER, not pitch.
 const airBandHz = 2000.0
 
-// AirBandFlatness is the spectral flatness of the magnitude spectrum ABOVE
-// airBandHz: geometric mean over arithmetic mean, 0 = tonal, 1 = white.
-//
-// Whole-spectrum flatness (noise.flatness) is dominated by the strong low
-// partials every pitched instrument has, so a breathy note and a clean one can
-// score alike. Restricting to the air band asks the narrower question the word
-// "airy" actually means: is there broadband hiss sitting on top of the tone?
-//
-// ok=false when the spectrum carries no bins above the band edge or no energy
-// in them.
+// Whole-spectrum flatness is dominated by the strong low partials, so breathy and clean notes score alike; above
+// airBandHz it asks what "airy" means. ok=false with no bins or energy there.
 func AirBandFlatness(mag []float64, binHz float64) (flatness float64, ok bool) {
 	if len(mag) == 0 || binHz <= 0 {
 		return 0, false

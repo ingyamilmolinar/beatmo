@@ -9,11 +9,8 @@ import (
 	"testing"
 )
 
-// TestCloneIsDevOnly: the clone analysis is developer tooling. Only the clone
-// packages themselves and the dev commands (cmd/clone; cmd/refs for the
-// session / validate -loss flow; cmd/measure-loudness for the shared crest
-// rule) may import it, so it never reaches the desktop binary or the WASM
-// bundle.
+// Developer tooling: only the clone packages and the dev commands may import it, so it never reaches a shipped
+// binary.
 func TestCloneIsDevOnly(t *testing.T) {
 	const pkg = "github.com/ingyamilmolinar/beatmo/internal/audio/clone"
 	allowed := map[string]bool{

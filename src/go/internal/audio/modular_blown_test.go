@@ -8,9 +8,7 @@ import (
 	"testing"
 )
 
-// blownKSParams builds a minimal blown-flute voice: source==3 (Karplus-Strong)
-// driven in BLOWN mode (gen_ks_blow>0) at an ABSOLUTE frequency, everything else
-// silenced. Used to test the STK jet self-limiting in isolation.
+// Karplus-Strong in BLOWN mode at an absolute frequency, everything else silenced.
 func blownKSParams(freq, blow, sustain, pluck float64) modularBlock {
 	p := defaultModularParams()
 	p.set("osc_enabled", 0)
@@ -47,8 +45,7 @@ func rmsRange(buf []float32, lo, hi int) float64 {
 	return math.Sqrt(s / float64(hi-lo))
 }
 
-// autocorrNorm returns the normalized autocorrelation of seg at the given lag
-// (1.0 = perfectly periodic at that lag, ~0 = uncorrelated/noise).
+// 1.0 = periodic at that lag, ~0 = noise.
 func autocorrNorm(seg []float32, lag int) float64 {
 	if lag <= 0 || lag >= len(seg) {
 		return 0
@@ -64,16 +61,11 @@ func autocorrNorm(seg []float32, lag int) float64 {
 	return s / e0
 }
 
-// TestBlownKS_BoundedAcrossFeedbackAndPitch is the stability guard for the STK
-// jet self-limiting (the cubic x^3-x must bound the oscillation at EVERY feedback
-// gain and pitch). The earlier linear comb built up without bound — peak/ripple
-// ran to clipping (30-120 dB). The jet must keep the output finite and below the
-// hard-clamp ceiling at all settings.
+// The jet's cubic must bound the oscillation at every feedback gain and pitch, below the hard-clamp ceiling.
 func TestBlownKS_BoundedAcrossFeedbackAndPitch(t *testing.T) {
 	const sr = 48000
 	n := sr // 1s — long enough for any runaway buildup to show
-	// Include feedback ≥1 (and >1) — the tanh saturator must bound the limit cycle
-	// even when the linear loop gain exceeds unity (where the old comb ran away).
+	// Feedback ≥ 1: the saturator must bound the limit cycle where the linear loop gain exceeds unity.
 	for _, freq := range []float64{220, 440, 660, 1047} {
 		for _, fb := range []float64{0.90, 0.99, 0.999, 1.0, 1.05} {
 			buf := make([]float32, n)
@@ -86,8 +78,7 @@ func TestBlownKS_BoundedAcrossFeedbackAndPitch(t *testing.T) {
 	}
 }
 
-// TestBlownKS_SustainsVsPluckDecays confirms the CONTINUOUS excitation: a blown
-// voice still oscillates in the note tail, where a plucked KS (bBlow=0) has decayed.
+// A blown voice still oscillates in the tail where a pluck has decayed.
 func TestBlownKS_SustainsVsPluckDecays(t *testing.T) {
 	const sr = 48000
 	n := sr
@@ -109,8 +100,7 @@ func TestBlownKS_SustainsVsPluckDecays(t *testing.T) {
 	}
 }
 
-// TestBlownKS_Pitched confirms the blown tube RESONATES at the note frequency
-// (autocorrelation peaks at the period lag) rather than producing broadband noise.
+// Resonates at the note (autocorrelation peaks at the period), not broadband noise.
 func TestBlownKS_Pitched(t *testing.T) {
 	const sr = 48000
 	n := sr

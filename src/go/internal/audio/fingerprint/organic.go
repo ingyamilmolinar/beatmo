@@ -6,24 +6,13 @@ import (
 	"sort"
 )
 
-// organic.go — the aliveness axes and their real-world range.
-//
-// Identity axes (mode ratios, formants, envelope) say WHICH instrument this
-// is. Organic axes say whether it sounds like a physical thing at all. An
-// invented instrument has no reference for the first kind and can still be
-// held to the second: its organic values should sit where real recordings
-// sit. The range is computed over every real reference in the corpus and
-// committed, so `refs organic` needs no reference clip.
+// Identity axes say WHICH instrument; organic axes say whether it sounds like a physical thing at all, so an invented
+// instrument can be held to where real recordings sit. The range is computed over the corpus and committed.
 
 //go:embed testdata/organic_range.json
 var organicRangeJSON []byte
 
-// OrganicIDs lists every organic-battery descriptor, in fixed report order.
-//
-// IDModAMBands is a vector measurement (gesture/vibrato/warble band-energy
-// shares) — its placed value, like every vector descriptor's, is
-// Measurement.Primary(), which returns Values[0]: the gesture-band (0.5-2Hz)
-// share of the loudness modulation spectrum.
+// In fixed report order; a vector descriptor is placed by Primary(), its first component.
 func OrganicIDs() []string {
 	return []string{
 		IDModAMRate, IDModAMDepth, IDModAMBands, IDModAMFlatness, IDModCentroidDepth,
@@ -34,11 +23,7 @@ func OrganicIDs() []string {
 	}
 }
 
-// OrganicMinN is the smallest per-id reference count the range is trusted
-// at. Below it, Place refuses to classify: a p10/p90 band computed from a
-// handful of references is not a reliable "real recordings live here" claim,
-// even though the entry stays in the JSON so it can fill in as the corpus
-// grows.
+// Below it Place refuses to classify: a p10/p90 from a handful of references is not a reliable claim.
 const OrganicMinN = 10
 
 type RangeEntry struct {

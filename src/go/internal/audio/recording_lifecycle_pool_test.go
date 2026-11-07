@@ -7,18 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
 
-// TestLifecyclePoolFallsBackWhenBudgetExhausted locks the crash-safety
-// contract for the recording lifecycle pool.
-//
-// lifecyclePool() is reached lazily from StartRecording — i.e. from a USER
-// ACTION (tapping Record), not at process startup. It must therefore degrade
-// to a private pool when the registry budget is full, exactly like every other
-// subsystem (hooks.fanout, audio.timers, synth.preview, eventlogger.format).
-//
-// Regression: it used MustGet, so a full budget panicked the Go runtime the
-// moment the user tapped Record. On js/wasm that killed the whole app ("Go
-// program has already exited"); the standing footprint had outgrown the
-// registry's budget floor, which made the panic reachable in production.
+// Reached from a USER ACTION (tapping Record), so a full budget must degrade to a private pool, never panic the
+// runtime.
 func TestLifecyclePoolFallsBackWhenBudgetExhausted(t *testing.T) {
 	r := async.NewRegistry(context.Background(), 1)
 	// Claim the entire budget so the lifecycle pool cannot be created.
@@ -38,8 +28,7 @@ func TestLifecyclePoolFallsBackWhenBudgetExhausted(t *testing.T) {
 		t.Fatal("newLifecyclePool returned nil on exhausted budget; want a private fallback pool")
 	}
 
-	// The fallback pool must actually run work — a degraded pool that drops
-	// every job would silently lose the recording's finalize tail.
+	// A degraded pool that dropped jobs would silently lose the finalize tail.
 	done := make(chan struct{})
 	if err := pool.Submit(func(context.Context) { close(done) }); err != nil {
 		t.Fatalf("Submit to fallback pool: %v", err)
@@ -48,9 +37,7 @@ func TestLifecyclePoolFallsBackWhenBudgetExhausted(t *testing.T) {
 	pool.Close()
 }
 
-// TestLifecyclePoolUsesRegistryWhenBudgetAllows keeps the happy path honest:
-// with budget available, the pool is registry-backed (counts against the
-// shared budget) rather than silently private.
+// Registry-backed when budget allows, not silently private.
 func TestLifecyclePoolUsesRegistryWhenBudgetAllows(t *testing.T) {
 	r := async.NewRegistry(context.Background(), 4)
 	t.Cleanup(func() { r.Release("recording.lifecycle") })

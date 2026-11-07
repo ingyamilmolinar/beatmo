@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Joint insert-FX × synth-recipe coverage: synth_recipe_* tests prove the
-// recipe render path and effect_chain_* tests prove the chain in isolation,
-// but nothing verified the production composition — a recipe-rendered voice
-// flowing through its instrument's insert chain at the channel layer.
+// The production composition: a rendered voice through its instrument's insert chain at the channel layer.
 func TestRecipeVoiceThroughInsertChain(t *testing.T) {
 	const inst = roster.Snare
 	const bpm, sr = 120, 44100

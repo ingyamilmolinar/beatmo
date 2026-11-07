@@ -49,17 +49,14 @@ func Now() float64 {
 	return time.Since(start).Seconds()
 }
 
-// SetNowForTest overrides audio.Now() to return values from fn.
-// Returns a restore function.
 func SetNowForTest(fn func() float64) func() {
 	old := nowOverride
 	nowOverride = fn
 	return func() { nowOverride = old }
 }
 
-// Reset closes the current audio context so queued sounds are dropped. The
-// live mixer's player stops with it: left playing, the orphaned mixer would
-// keep running every channel from the device callback.
+// The live mixer's player stops too: left playing, the orphaned mixer would keep running every channel from the
+// device callback.
 func Reset() {
 	Close()
 	ctx = nil

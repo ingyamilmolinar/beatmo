@@ -2,9 +2,7 @@ package clone
 
 import "math/rand"
 
-// modalSignal is the known-answer generator: preroll seconds of noise, then
-// the modes (onset at exactly preroll), plus white noise of noiseRMS
-// throughout, seeded.
+// The onset is at exactly preroll; seeded.
 func modalSignal(modes []Mode, rate int, preroll, dur, noiseRMS float64, seed int64) []float64 {
 	pre := int(preroll * float64(rate))
 	n := int(dur * float64(rate))

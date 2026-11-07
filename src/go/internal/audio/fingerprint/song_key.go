@@ -2,8 +2,7 @@ package fingerprint
 
 import "math"
 
-// Chroma folds the magnitude spectrum into 12 pitch classes (C..B), L1-normalized.
-// Pitch class of bin freq f: round(12*log2(f/440)) mod 12, offset so index 0 = C.
+// Index 0 = C.
 func Chroma(mag []float64, binHz float64) [12]float64 {
 	var ch [12]float64
 	if binHz <= 0 {
@@ -74,8 +73,7 @@ func DetectKey(chroma [12]float64, cfg AnalysisConfig) (int, int, float64) {
 	return bestKey, bestMode, conf
 }
 
-// BestChromaShift returns the circular shift s (in semitones, -6..+5) of b that
-// best correlates with a, and that correlation. Transposition-invariant compare.
+// Transposition-invariant comparison.
 func BestChromaShift(a, b [12]float64) (int, float64) {
 	bestShift, bestCorr := 0, -2.0
 	for s := 0; s < 12; s++ {

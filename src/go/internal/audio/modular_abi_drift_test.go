@@ -14,25 +14,10 @@ import (
 	"testing"
 )
 
-// ABI drift guards for the three positional param blocks. The WASM bridge
-// fills heap[*_PARAM_INDEX[name]] by position and passes the block to C as a
-// struct pointer, so the Go schema slices MUST mirror the C struct field
-// declaration order exactly. modular_param_schema_test.go pins the Go side
-// to a hand-maintained want-list, but until now NOTHING verified that list
-// against the C headers — inserting a field mid-struct in modular.h while
-// appending it to the Go schema would scramble every following param
-// (the "synth generator silenced by a foreign param write" class of bug).
-//
-// These tests parse the real C structs:
-//   - modular_params (src/c/modular.h)      ↔ ModularParamSchema()
-//   - fm_params      (src/c/fmsynth.h)      ↔ FMParamSchema()
+// The WASM bridge fills the block by position and C reads it as a struct, so the Go schema must mirror the C field
+// order exactly; a field inserted mid-struct would scramble every later param. These parse the real C struct.
 
-// cStructFields extracts float field names in declaration order from the
-// typedef struct { ... } <name>; block. Handles comma declarator lists
-// (`float a, b, c;`) and the FM op arrays (`float fm_op_x[FM_MAX_OPS];` →
-// fm_op1_x..fm_op4_x, matching the schema's flattened names).
-// cStructBlock returns the comment-stripped body of the `typedef struct { ... }
-// <structName>;` block in header.
+// The comment-stripped body of `typedef struct { ... } <structName>;` in header.
 func cStructBlock(t *testing.T, header, structName string) string {
 	t.Helper()
 	raw, err := os.ReadFile(header)
@@ -73,8 +58,7 @@ func cStructFields(t *testing.T, header, structName string) []string {
 			if am := arrayRE.FindStringSubmatch(d); am != nil {
 				switch am[2] {
 				case "FM_MAX_OPS":
-					// fm_op_ratio[FM_MAX_OPS] flattens to fm_op1_ratio.. in the
-					// schema: the index lands after the "fm_op" prefix.
+					// fm_op_ratio[FM_MAX_OPS] flattens to fm_op1_ratio…
 					base := am[1] // e.g. fm_op_ratio
 					suffix := strings.TrimPrefix(base, "fm_op_")
 					if suffix == base {
@@ -84,8 +68,7 @@ func cStructFields(t *testing.T, header, structName string) []string {
 						fields = append(fields, fmt.Sprintf("fm_op%d_%s", i, suffix))
 					}
 				default:
-					// Gen-bank by-field array: gen_<f>[N] flattens to
-					// gen1_<f>..genN_<f> (field-major, matching the schema).
+					// gen_<f>[N] flattens field-major to gen1_<f>..genN_<f>.
 					n, err := strconv.Atoi(am[2])
 					if err != nil {
 						t.Fatalf("%s.%s: unsupported array bound %q", structName, am[1], am[2])
@@ -93,8 +76,7 @@ func cStructFields(t *testing.T, header, structName string) []string {
 					base := am[1] // e.g. gen_source
 					suffix := strings.TrimPrefix(base, "gen_")
 					if suffix == base {
-						// A stage TABLE column array: <f>[N] flattens to
-						// <f>[0]..<f>[N-1] (instrument.TableCell).
+						// A table column <f>[N] flattens to <f>[0]..<f>[N-1].
 						for i := 0; i < n; i++ {
 							fields = append(fields, fmt.Sprintf("%s[%d]", base, i))
 						}
@@ -135,15 +117,7 @@ func TestModularParamsSchemaMatchesCStruct(t *testing.T) {
 	assertSchemaMatchesCStruct(t, ModularParamSchema(), cFields, "modular_params")
 }
 
-// TestFMParamsSchemaMatchesCStruct deleted with the FM-family migration (Phase-7,
-// the LAST family): the fm_params C struct was removed (fmsynth.h) — FM knobs now
-// travel in the wide modular_params block (gen_fm_* columns), drift-tested by
-// TestModularParamsSchemaMatchesCStruct above. No FM family block remains.
-
-// TestModularParamsAreDouble pins Phase A of the config-only engine refactor
-// (docs/superpowers/plans/2026-10-02-config-only-synth-engine.md): the modular
-// block is double so a literal lifted out of C into config is the SAME 64-bit
-// value (bit-exact), not its float32 rounding.
+// Double, so a literal lifted out of C into config is the SAME 64-bit value, not its float32 rounding.
 func TestModularParamsAreDouble(t *testing.T) {
 	root := repoRootForC(t)
 	block := cStructBlock(t, filepath.Join(root, "src/c/modular_params.gen.h"), "modular_params")
@@ -152,12 +126,8 @@ func TestModularParamsAreDouble(t *testing.T) {
 	}
 }
 
-// TestModularParamsAreNeverNarrowed: Phase A's promise is that a config value
-// reaches the DSP at full double precision. Declaring the struct double is not
-// enough — a `float x = p->field`, an `lrintf(p->field)`, or a float-typed
-// helper parameter rounds it back to float32 at the READ. Compile the voice
-// sources with -Wfloat-conversion and require zero implicit double→float
-// conversions (explicit `(float)` casts on output samples do not warn).
+// A `float x = p->field` or float-typed helper rounds the value back at the READ, so the voice sources compile with
+// -Wfloat-conversion and must emit no implicit double→float conversion.
 func TestModularParamsAreNeverNarrowed(t *testing.T) {
 	cc, err := exec.LookPath("cc")
 	if err != nil {
@@ -180,8 +150,6 @@ func TestModularParamsAreNeverNarrowed(t *testing.T) {
 	}
 }
 
-// TestOnlyTheModularParamBlockCrossesTheABI: the generated JS ABI carries the
-// modular block only — no 7-field synth_params block.
 func TestOnlyTheModularParamBlockCrossesTheABI(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRootForC(t), "src/js/synth_param_abi.gen.js"))
 	if err != nil {
@@ -192,9 +160,7 @@ func TestOnlyTheModularParamBlockCrossesTheABI(t *testing.T) {
 	}
 }
 
-// TestGeneratedCHeaderIsCurrent: src/c/modular_params.gen.h is generated from
-// modular_fields.go by `go run ./cmd/gen-synth-abi -c`; a hand edit or a stale
-// regeneration fails here (the JS half is TestSynthParamABIGenFileIsCurrent).
+// A hand edit or stale regeneration fails here.
 func TestGeneratedCHeaderIsCurrent(t *testing.T) {
 	root := repoRootForC(t)
 	cmd := exec.Command(goBinaryPath(), "run", "./cmd/gen-synth-abi", "-c")

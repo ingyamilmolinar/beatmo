@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A sample-edit must rotate the binding, NOT blanket-drop every other pitch's
-// cached voice. hashSampleEdit is already XORed into paramsHash, so the key
-// rotates by itself; an additional voiceCacheInvalidate is redundant and
-// recreates the 93%-miss knob-drag storm that SetInstrumentParam was fixed to
-// avoid (synth_recipe.go:256-267).
+// The hash already rotates the key; an extra invalidation would recreate the knob-drag miss storm.
 func TestSetSampleEditDoesNotBlanketInvalidateOtherPitches(t *testing.T) {
 	const id = roster.OrganChurch
 	globalVoiceCache.Clear()
@@ -31,11 +27,7 @@ func TestSetSampleEditDoesNotBlanketInvalidateOtherPitches(t *testing.T) {
 		}
 	}
 
-	// A sample edit rotates the binding for EVERY pitch (the edit hash is in
-	// the key), so VoiceCached for the NEW binding is legitimately false.
-	// What must NOT happen is the OLD entries being dropped: they are what a
-	// pre-warmed neighbour relies on, and dropping them makes every subsequent
-	// note a cold render.
+	// The NEW binding is legitimately uncached; the OLD entries must survive, since pre-warmed neighbours rely on them.
 	before := voiceCacheEntryCountForTest()
 	SetSampleEdit(id, SampleEdit{StartFrac: 0, EndFrac: 0.9, GainDB: -3})
 	after := voiceCacheEntryCountForTest()

@@ -42,11 +42,6 @@ func TestTrackKeepsHop(t *testing.T) {
 	}
 }
 
-// TestHeadline_NeverOffersComponentZeroAsTheReading pins the display rule for
-// non-scalar measurements. The three concrete regressions it guards are named
-// in Headline's doc: band.t60's -1 sentinel printed as "-1.000 s",
-// mode.ratios' constant "0 cents" anchor gap, and decay.per_mode's lowest
-// mode standing in for a mean.
 func TestHeadline_NeverOffersComponentZeroAsTheReading(t *testing.T) {
 	scalarD := Descriptor{Scope: ScopeWhole}
 	if txt, ok := scalarD.Headline(Scalar(1.5)); ok {
@@ -56,15 +51,13 @@ func TestHeadline_NeverOffersComponentZeroAsTheReading(t *testing.T) {
 		t.Errorf("an unavailable measurement needs no headline, got %q", txt)
 	}
 
-	// A COMPOUND vector deliberately puts its headline first (ring T60 carries
-	// flags behind it), so Primary() is honest there and must be left alone.
+	// Its headline comes first, so Primary() is honest there.
 	compound := Descriptor{Scope: ScopeWhole, Compound: true}
 	if txt, ok := compound.Headline(Vector([]float64{2.5, 1, -30}, nil)); ok {
 		t.Errorf("a compound measurement's Values[0] IS the reading, got %q", txt)
 	}
 
-	// Band vector: the count reflects the measurable bands, and the -1
-	// sentinel is NOT counted as one.
+	// The -1 sentinel is not counted.
 	band := Descriptor{Scope: ScopeBand}
 	txt, ok := band.Headline(Vector([]float64{bandT60Unfit, 2.0, 3.5, bandT60Unfit}, nil))
 	if !ok {
@@ -89,9 +82,7 @@ func TestHeadline_NeverOffersComponentZeroAsTheReading(t *testing.T) {
 	}
 }
 
-// TestHeadline_LiveVectorRowsAreCovered checks the rule against the REAL
-// registry rows that motivated it, so a Scope or Compound change on any of
-// them re-opens the display hole rather than passing silently.
+// Against the REAL registry rows, so a Scope or Compound change on one of them reopens the hole loudly.
 func TestHeadline_LiveVectorRowsAreCovered(t *testing.T) {
 	r := DefaultRegistry()
 	for _, id := range []string{IDBandT60, IDModeRatios, IDDecayPerMode} {

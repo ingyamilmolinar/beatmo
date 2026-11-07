@@ -9,9 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestRecipeDispatch_NoUserParamsFallsBackToLegacy asserts that when no
-// per-instrument params are set, the dispatcher returns the same kind of
-// voice as the legacy Instrument.NewVoice path.
 func TestRecipeDispatch_NoUserParamsFallsBackToLegacy(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
@@ -25,10 +22,7 @@ func TestRecipeDispatch_NoUserParamsFallsBackToLegacy(t *testing.T) {
 	}
 }
 
-// TestRecipeDispatch_UserParamsRouteThroughRecipe asserts that the recipe
-// path produces a different buffer than the legacy path for the same
-// instrument when user params are set. This is the v1 freezing-surface
-// for "SetInstrumentParam changes audio output."
+// The minimum contract: SetInstrumentParam changes audio output.
 func TestRecipeDispatch_UserParamsRouteThroughRecipe(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
@@ -45,8 +39,6 @@ func TestRecipeDispatch_UserParamsRouteThroughRecipe(t *testing.T) {
 	if len(legacyBuf) == 0 || len(recipeBuf) == 0 {
 		t.Fatalf("empty buffers: legacy=%d recipe=%d", len(legacyBuf), len(recipeBuf))
 	}
-	// They should diverge somewhere in the buffer; a non-zero L1 distance
-	// is enough to confirm the recipe ran with the new post_decay value.
 	var dist float64
 	n := len(legacyBuf)
 	if len(recipeBuf) < n {
@@ -60,18 +52,14 @@ func TestRecipeDispatch_UserParamsRouteThroughRecipe(t *testing.T) {
 	}
 }
 
-// TestRecipeDispatch_UnknownInstrumentReturnsNil mirrors the silent-drop
-// behavior of legacyNewVoice for unknown ids; the dispatcher must not
-// panic or invent a buffer.
+// Must not panic or invent a buffer.
 func TestRecipeDispatch_UnknownInstrumentReturnsNil(t *testing.T) {
 	if v := newRecipeAwareVoice("not-a-real-instrument", 44100); v != nil {
 		t.Errorf("expected nil for unknown instrument; got %#v", v)
 	}
 }
 
-// TestRecipeDispatch_CacheHitOnRepeatedTrigger asserts that consecutive
-// triggers with the same params return cached buffers (one render call,
-// then cache hits).
+// One render, then hits.
 func TestRecipeDispatch_CacheHitOnRepeatedTrigger(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Snare) })
 
@@ -97,8 +85,6 @@ func TestRecipeDispatch_CacheHitOnRepeatedTrigger(t *testing.T) {
 	}
 }
 
-// drainVoiceToBuffer pulls up to N samples from v and returns them as
-// float32. Used by recipe-dispatch tests to compare voice outputs.
 func drainVoiceToBuffer(v Voice, n int) []float32 {
 	if v == nil {
 		return nil

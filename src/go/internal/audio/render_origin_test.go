@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A render on the prewarm path must NOT be attributed to the dispatch
-// goroutine, and vice versa. DispatchRenders is the gate for invariant I3
-// ("audioLoop never calls recipe.Render"), so misattribution here would make
-// the whole benchmark lie.
+// DispatchRenders gates invariant I3 (the dispatch goroutine never renders), so misattribution would make the benchmark lie.
 func TestRenderOriginAttribution(t *testing.T) {
 	const id = roster.OrganChurch
 	const pitch = 3.0
@@ -49,15 +46,11 @@ func TestRenderOriginAttribution(t *testing.T) {
 	}
 }
 
-// A UI-goroutine audition / warm must NEVER count as a dispatch render: the
-// DispatchRenders == 0 gate would false-positive on the very knob-release
-// audition the benchmark's knob-storm scenario triggers.
+// The DispatchRenders == 0 gate would false-positive on the knob-release audition the knob-storm scenario triggers.
 func TestNonDispatchCallersDoNotInflateDispatchRenders(t *testing.T) {
 	const id = roster.OrganChurch
 
-	// Set a user param so the RECIPE path engages. Without one,
-	// tryRecipeVoiceOpts declines and Play falls back to legacyNewVoice, which
-	// records no metrics at all — making the assertion below vacuous (0==0).
+	// Without a user param Play takes the legacy voice, which records no metrics, and the assertion would be vacuous.
 	SetInstrumentParam(id, "drive", 0.42)
 	t.Cleanup(func() { ResetInstrumentParams(id) })
 
@@ -83,10 +76,8 @@ func TestNonDispatchCallersDoNotInflateDispatchRenders(t *testing.T) {
 	}
 }
 
-// THE LINCHPIN. PrewarmVoiceDoc must produce the byte-identical cache key
-// that dispatch later reads. If the two key computations drift, prewarm renders
-// into a slot nobody reads: the cache "works", CPU is burned, and dispatch
-// still cold-renders. Guard both directions: warm-then-dispatch must be a HIT.
+// THE LINCHPIN: if the two key computations drift, prewarm renders into a slot nobody reads and dispatch still
+// cold-renders.
 func TestPrewarmVoiceDocKeyMatchesDispatch(t *testing.T) {
 	const id = roster.OrganChurch
 	const pitch = -2.0

@@ -36,9 +36,7 @@ func TestUnwrapCVoiceNilForUnknown(t *testing.T) {
 	}
 }
 
-// TestMixHeadroomValue asserts the expected headroom constant to prevent
-// accidental regressions. The value 0.18 provides -14.9dB per-voice
-// headroom for dense mixes (7+ instruments).
+// 0.18 ≈ -14.9 dB per voice: room for dense mixes of 7+ instruments.
 func TestMixHeadroomValue(t *testing.T) {
 	if mixHeadroom != 0.18 {
 		t.Fatalf("mixHeadroom = %v, want 0.18", mixHeadroom)

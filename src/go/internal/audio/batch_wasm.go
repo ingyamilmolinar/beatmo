@@ -7,15 +7,8 @@ import (
 	"syscall/js"
 )
 
-// batchScratch reuses the []any argument slices across PlayBatch calls so
-// the WASM Go→JS bridge does not allocate fresh argument slices per
-// batch. Each js.ValueOf(slice) creates a JS-side Array + a Go-side
-// js.Value with a finalizer; pre-fix, we leaked these at the audio
-// event rate (60+ /sec) which contributed to long-session OOMs by
-// growing WASM linear memory faster than Go GC could reclaim. Owned
-// behind a Mutex because PlayBatch may be called from the audioLoop
-// goroutine OR (in tests) directly from the UI goroutine; contention
-// is essentially zero in practice.
+// Reused argument slices: each js.ValueOf(slice) makes a JS Array plus a finalized js.Value, which at the event
+// rate grew WASM memory faster than GC reclaimed it. Locked because tests call PlayBatch from the UI goroutine.
 type batchScratch struct {
 	mu      sync.Mutex
 	ids     []any
@@ -33,9 +26,7 @@ type batchScratch struct {
 
 var batchScratchPool batchScratch
 
-// ensureLen resizes the six scratch slices to exactly n elements,
-// growing the backing arrays only when n exceeds capacity. Reset cells
-// to nil/zero so a smaller batch doesn't carry over stale data.
+// Cells are reset so a smaller batch carries no stale data.
 func (s *batchScratch) ensureLen(n int) {
 	if cap(s.ids) < n {
 		s.ids = make([]any, n)
@@ -64,26 +55,17 @@ func (s *batchScratch) ensureLen(n int) {
 	s.vids = s.vids[:n]
 }
 
-// PlayBatch dispatches multiple sound requests via a single JS bridge call
-// when available to reduce Go→JS crossings. Falls back to per-item dispatch.
-//
-// Prefers the playSoundsBatchFlat JS export (one Invoke with primitive
-// arrays) over playSoundsBatch (one Invoke with Object-per-item — much
-// heavier JS allocation). The historical BEATMO_AUDIO_BATCH_FLAT gate
-// is gone: the flat path is unconditionally preferred when available.
+// playSoundsBatchFlat (one Invoke with primitive arrays) over playSoundsBatch (an object per item, far heavier in
+// JS).
 func PlayBatch(reqs []BatchParam) {
 	n := len(reqs)
 	if n == 0 {
 		return
 	}
-	// Stamp the trigger clock for every scheduled hit before dispatching to the
-	// JS bridge, so sequencer-driven playback advances audio.SinceLastTrigger on
-	// WASM exactly like the desktop batch path (which records via PlayParamsAt).
-	// Without this, trigger-driven UI (synth glow, sampler playhead) only lit up
-	// for the Preview button in the browser, never for the running sequencer.
+	// Stamped before dispatch, as desktop's PlayParamsAt does, or trigger-driven UI lights only for Preview in the
+	// browser.
 	for i := range reqs {
-		// Lane voices (VoiceID > 0) are committed up to the horizon early;
-		// the UI lane stamps their trigger when the beat comes due.
+		// Lane voices are committed up to the horizon early; the UI lane stamps their trigger when the beat comes due.
 		if reqs[i].VoiceID == 0 {
 			RecordVoiceTrigger(reqs[i].ID)
 		}
@@ -106,21 +88,13 @@ func PlayBatch(reqs []BatchParam) {
 				s.hasWhen[i] = nil
 				s.whens[i] = nil
 			}
-			// Row/Abs: sequencer identity (-1 for fire-and-forget) threaded to
-			// audio.js's timingTraces ring (Stage-D browser emission timing,
-			// parity-timing-sync). Always sent — JS defaults missing/undefined
-			// entries to -1 anyway, but sending explicit -1 keeps both sides
-			// symmetric and avoids relying on sparse-array holes across the
-			// Go->JS bridge.
+			// -1 for fire-and-forget, sent explicitly rather than relying on sparse-array holes across the bridge.
 			s.rows[i] = r.Row
 			s.abss[i] = r.Abs
-			// Ideal/Grid: measurement-only timing identity for the playback
-			// probe (pre-clamp request, and predictor time without lookahead).
-			// 0 = unknown; JS treats non-positive as absent.
+			// Measurement only, for the playback probe; 0 = unknown.
 			s.ideals[i] = r.Ideal
 			s.grids[i] = r.Grid
-			// VoiceID: audio-lane voice id (0 = preview / UI sound), so JS
-			// can cancel / replace it before it starts.
+			// 0 = preview / UI sound, never cancelled.
 			s.vids[i] = float64(r.VoiceID)
 		}
 		jsIDs := js.ValueOf(s.ids)

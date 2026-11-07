@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// The three scalar cases below are the worked examples from
-// docs/superpowers/specs/2026-08-22-verdict-to-metric-mapping.md. They are the
-// contract that the classifiers moved out of cmd/refs/diagnose.go behave
-// identically after the move.
+// The worked examples of the verdict-to-metric mapping: the moved classifiers behave identically.
 
 func TestCompareSecondsRatio(t *testing.T) {
 	// The mapping doc's harp example: 1.130s reference vs 0.160s synth = 7.1x short.
@@ -74,12 +71,7 @@ func TestCompareUnavailableReferencePropagates(t *testing.T) {
 	}
 }
 
-// TestCompareVectorL1Mean pins the vector reduction: mean absolute difference
-// lands in Signed (the raw reduced magnitude), while Norm is that value scaled
-// by the mismatch threshold so it stays comparable with every scalar
-// descriptor. Norm >= 1 means "at or past mismatch" for EVERY descriptor
-// regardless of form; that invariant is what makes the worst-offenders
-// ranking meaningful.
+// Signed holds the raw reduced magnitude, Norm it scaled by the mismatch threshold.
 func TestCompareVectorL1Mean(t *testing.T) {
 	d := CompareByKind(KindFraction,
 		Vector([]float64{1, 0.5, 0.25}, nil),
@@ -103,8 +95,7 @@ func TestCompareVectorIdenticalIsOK(t *testing.T) {
 }
 
 func TestCompareTrackResamplesToCommonLength(t *testing.T) {
-	// Same ramp sampled at two different rates must compare as near-identical
-	// rather than as a length mismatch.
+	// The same ramp at two rates compares as near-identical, not a length mismatch.
 	a := make([]float64, 100)
 	for i := range a {
 		a[i] = float64(i) / 99
@@ -134,11 +125,7 @@ func TestCompareIdentityIsZeroForEveryKind(t *testing.T) {
 	}
 }
 
-// TestCompareRateIsSignedNotPercentage pins the fix for a real defect found by
-// running the tool: signed rates were typed KindHz, so a reference of
-// +57 Hz/s against a synth of -516 Hz/s rendered as "-1013%" — a meaningless
-// number for a quantity that crosses zero, and undefined when the reference
-// sits near zero.
+// A rate crossing zero (+57 vs -516 Hz/s) must not render as a percentage ("-1013%").
 func TestCompareRateIsSignedNotPercentage(t *testing.T) {
 	d := CompareWithThresholds(KindRate, Scalar(56.5), Scalar(-516.5), 150, 500)
 	if d.Verdict != VerdictMismatch {
@@ -155,8 +142,7 @@ func TestCompareRateIsSignedNotPercentage(t *testing.T) {
 	}
 }
 
-// TestCompareRateNearZeroReferenceIsFinite is the case that made KindHz wrong:
-// a reference rate of ~0 makes any percentage explode or divide by zero.
+// A reference near zero makes any percentage explode.
 func TestCompareRateNearZeroReferenceIsFinite(t *testing.T) {
 	d := CompareWithThresholds(KindRate, Scalar(0.0001), Scalar(-0.05), 0.02, 0.1)
 	if math.IsNaN(d.Norm) || math.IsInf(d.Norm, 0) {
@@ -167,9 +153,7 @@ func TestCompareRateNearZeroReferenceIsFinite(t *testing.T) {
 	}
 }
 
-// TestDescriptorThresholdOverridesApply proves a descriptor can supply its own
-// scale — required because KindRate spans Hz/sec, dB/sec and 1/sec^2, which
-// sit orders of magnitude apart and cannot share one default.
+// KindRate spans Hz/s, dB/s and 1/s², orders of magnitude apart, so no default fits them all.
 func TestDescriptorThresholdOverridesApply(t *testing.T) {
 	base := Descriptor{ID: "t", Group: "g", Name: "n", Doc: "d", Kind: KindRate,
 		Applies: AlwaysApplies, Extract: func(*Bundle) Measurement { return Scalar(0) }}
@@ -202,12 +186,7 @@ func TestKindDefaultsSurviveWhenNotOverridden(t *testing.T) {
 	}
 }
 
-// TestReducedDeltaDisplay_UsesPreformattedDisplayVerbatim pins the split
-// between the two reduced-delta entry points. compareReduced appends the
-// magnitude to a bare operator label; reducedDeltaDisplay does not touch the
-// string it is given. Everything else about the two must be identical, which
-// the second half asserts field by field so a future edit cannot make the
-// verbatim path diverge in verdict, Norm or Mag.
+// Identical in verdict, Norm and Mag; only the display handling differs.
 func TestReducedDeltaDisplay_UsesPreformattedDisplayVerbatim(t *testing.T) {
 	const mag = 1.28
 	pre := reducedDeltaDisplay(mag, "mean 2.43x (worst 4k 6.52x)", 0.5, 1.0)
@@ -227,10 +206,7 @@ func TestReducedDeltaDisplay_UsesPreformattedDisplayVerbatim(t *testing.T) {
 	}
 }
 
-// The three comparators that format their own value must not print it twice.
-// This is the regression: band.t60 read
-// "mean 2.43x (worst 4k 6.52x) 1.280", where the trailing number is the same
-// quantity in a different domain and reads as an extra column.
+// The trailing number is the same quantity in another domain and reads as an extra column.
 func TestPreformattedComparatorsDoNotDoublePrintTheMagnitude(t *testing.T) {
 	r := DefaultRegistry()
 	for _, tc := range []struct {
@@ -260,14 +236,11 @@ func TestPreformattedComparatorsDoNotDoublePrintTheMagnitude(t *testing.T) {
 		if !strings.Contains(got.Display, tc.want) {
 			t.Errorf("%s: display %q lost its unit %q", tc.id, got.Display, tc.want)
 		}
-		// The tell for the double-print: the display ENDS in a bare
-		// three-decimal number appended after the comparator's own text.
+		// The double print ENDS in a bare three-decimal number.
 		if m := trailingBareFloat.FindString(got.Display); m != "" {
 			t.Errorf("%s: display %q ends in an appended bare magnitude %q", tc.id, got.Display, m)
 		}
 	}
 }
 
-// trailingBareFloat matches a " 1.280"-style suffix: a space followed by a
-// three-decimal number at end of string, with no unit after it.
 var trailingBareFloat = regexp.MustCompile(` -?\d+\.\d{3}$`)

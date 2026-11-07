@@ -19,8 +19,7 @@ func lossFixture(t *testing.T) (*LossRef, []Mode) {
 
 func TestLossOfTheReferenceItselfIsZero(t *testing.T) {
 	r, modes := lossFixture(t)
-	// Same modes, other level, other leading silence: alignment + equal peak
-	// make it the same signal.
+	// Alignment and equal peak make other levels and leading silence the same signal.
 	cand := append(make([]float64, 300), Synthesize(modes, 48000, 72000)...)
 	for i := range cand {
 		cand[i] *= 0.37

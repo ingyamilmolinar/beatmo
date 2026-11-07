@@ -6,27 +6,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// wind_metrics.go — onset-aligned attack analysis, spectral irregularity and
-// formant-band energies. These target the axes the sustain-window Fingerprint
-// cannot see for wind instruments:
-//
-//   - AutoSegment picks the LOUDEST window, which lands mid-note, so
-//     Fingerprint.AttackTimeSec measured on it describes level ripple, not the
-//     note's attack. OnsetSegment aligns to the true tone onset instead (a 10%
-//     threshold with a 1% backtrack, so a breath/inhale preroll at a few % of
-//     peak — present in real wind recordings — does not trigger it).
-//   - Winds bloom: the spectral centroid RISES through the attack as upper
-//     harmonics arrive later than lower ones. WindAttack captures the centroid
-//     trajectory anchored at the onset.
-//   - Real horns have a jagged harmonic envelope (tonehole-lattice ripple);
-//     naive saw+LP patches are too smooth. SpectralIrregularity (Krimphoff)
-//     quantifies that jaggedness.
-//   - The sax identity lives in fixed formant regions (bari: knee ~450-900 Hz,
-//     tract band ~0.9-2 kHz, brilliance 2-8 kHz). FormantBandEnergies measures
-//     the energy split across those bands.
+// What the sustain-window Fingerprint cannot see for winds: the loudest window lands mid-note, so attack needs a true
+// onset (10 % trigger, 1 % backtrack, so a breath preroll does not fire it); winds bloom, the centroid rising through
+// the attack; real horns have a jagged harmonic envelope; a sax lives in fixed formant regions.
 
-// WindAttack holds onset-aligned attack descriptors for a sustained
-// (wind/brass/bowed) note.
 type WindAttack struct {
 	OnsetSec         float64    // position of the detected tone onset in the input wave
 	AttackTimeSec    float64    // 10% → 90% RMS rise time measured from the onset
@@ -35,17 +18,12 @@ type WindAttack struct {
 	TemporalCentroid float64    // energy-weighted mean time of the whole note (sec, from onset)
 }
 
-// windAttackFFT is the STFT frame size used for the attack centroid
-// trajectory: 2048 samples ≈ 43 ms at 48 kHz — short enough to localize the
-// early attack, long enough to resolve a 123 Hz fundamental's harmonics.
+// ≈43 ms at 48 kHz: short enough to localise the early attack, long enough to resolve a 123 Hz fundamental's
+// harmonics.
 const windAttackFFT = 2048
 
-// OnsetSegment returns the sub-wave starting at the detected tone onset (up to
-// durSec seconds) plus the onset time in seconds. Detection: the RMS envelope
-// must reach 10% of its peak (so a breath preroll at a few % of peak does not
-// trigger), then the start is backtracked to the last frame below 1% of peak
-// (so the measured window still contains the full rise). Returns the input
-// unchanged with onset 0 when it is silent or too short.
+// The envelope must reach 10 % of its peak (a breath preroll does not), then backtracks below 1 % so the window keeps
+// the full rise. Unchanged with onset 0 when silent or too short.
 func OnsetSegment(w wave.Wave, durSec float64) (wave.Wave, float64) {
 	const hop = 256
 	env := RMSEnvelope(w, hop, 0)
@@ -71,10 +49,8 @@ func OnsetSegment(w wave.Wave, durSec float64) (wave.Wave, float64) {
 	if trigger < 0 {
 		return w, 0
 	}
-	// Backtrack down the rising edge to its valley: walk back while the
-	// envelope keeps (roughly) descending and stays above the breath/silence
-	// floor (1.5% of peak). A fixed low threshold alone fails on recordings
-	// whose breath preroll hovers around 1-2% of peak.
+	// Walks back down the rising edge to its valley above 1.5 %: a fixed low threshold fails on a preroll hovering
+	// around 1–2 %.
 	start := trigger
 	for start > 0 && env[start] >= 0.015*peak && env[start-1] <= env[start]*1.05 {
 		start--
@@ -91,8 +67,7 @@ func OnsetSegment(w wave.Wave, durSec float64) (wave.Wave, float64) {
 		float64(startSample) / float64(w.SampleRate)
 }
 
-// ComputeWindAttack measures onset-aligned attack descriptors on the FULL note
-// wave w (not a pre-segmented sustain window).
+// On the FULL note, not a sustain window.
 func ComputeWindAttack(w wave.Wave) WindAttack {
 	var wa WindAttack
 	if w.SampleRate <= 0 || len(w.Samples) == 0 {
@@ -168,11 +143,8 @@ func ComputeWindAttack(w wave.Wave) WindAttack {
 	return wa
 }
 
-// SpectralIrregularity is Krimphoff's jaggedness measure over the harmonic
-// amplitude envelope: the mean absolute deviation (in dB) of each partial from
-// the 3-point moving average of its neighbours. Zero-amplitude partials at the
-// tail are excluded. A smooth 1/n saw envelope scores near 0; real horns with
-// tonehole-lattice ripple score several dB.
+// Krimphoff: each partial's mean |dB| deviation from its neighbours' 3-point average, trailing zeros excluded. A
+// smooth saw scores ~0, real horns several dB.
 func SpectralIrregularity(partials [16]float64) float64 {
 	// Find the last non-negligible partial so trailing zeros don't dilute.
 	last := 0
@@ -210,14 +182,10 @@ func SpectralIrregularity(partials [16]float64) float64 {
 	return sum / float64(n)
 }
 
-// WindFormantBandsHz are the default band edges for baritone-register winds:
-// below the bore knee, the knee/first-formant band, the tract-influenced band,
-// and the brilliance band.
+// Baritone register: below the bore knee, the knee / first formant, the tract band, brilliance.
 var WindFormantBandsHz = []float64{0, 450, 900, 2000, 8000}
 
-// FormantBandEnergies returns each band's fraction of the total energy
-// (magnitude²) within [bands[0], bands[len-1]]. bands are ascending Hz edges;
-// the result has len(bands)-1 entries summing to 1 (all zeros for silence).
+// len(bands)-1 entries summing to 1 (zeros for silence).
 func FormantBandEnergies(w wave.Wave, bands []float64) []float64 {
 	nb := len(bands) - 1
 	out := make([]float64, nb)

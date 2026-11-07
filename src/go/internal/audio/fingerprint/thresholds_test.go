@@ -29,9 +29,7 @@ func TestEmbeddedThresholdFileParses(t *testing.T) {
 	_ = LoadThresholdFile()
 }
 
-// TestCalibratedFromIsEmptyForHandThresholds pins the report's third state:
-// a descriptor with no file entry stays hand-thresholded and says so by
-// reporting "" (which validate renders as "hand").
+// "" renders as "hand".
 func TestCalibratedFromIsEmptyForHandThresholds(t *testing.T) {
 	r := NewRegistry()
 	r.Register(Descriptor{ID: "t.z", Group: "g", Name: "z", Doc: "d", Kind: KindFraction,
@@ -41,9 +39,7 @@ func TestCalibratedFromIsEmptyForHandThresholds(t *testing.T) {
 	}
 }
 
-// TestThresholdEntryWithZeroMismatchIsIgnored: an entry that would silence a
-// descriptor entirely (mismatch 0 means "never fires") is a malformed row, not
-// an instruction. The hand thresholds stand.
+// Mismatch 0 would mean "never fires": a malformed row, so the hand thresholds stand.
 func TestThresholdEntryWithZeroMismatchIsIgnored(t *testing.T) {
 	r := NewRegistry()
 	r.Register(Descriptor{ID: "t.w", Group: "g", Name: "w", Doc: "d", Kind: KindFraction,

@@ -39,10 +39,8 @@ func TestActiveStages_OnlyActiveOnes(t *testing.T) {
 	}
 }
 
-// Every override key must be a real engine parameter. An override the merge
-// step silently ignores would render an IDENTICAL clip to the full render and
-// report the stage as having zero leverage -- a false "this stage does not
-// matter", which is exactly the conclusion this tool exists to prevent.
+// An ignored override renders identically and reports zero leverage: the false "does not matter" this tool exists to
+// prevent.
 func TestStages_EveryOverrideKeyIsARealParam(t *testing.T) {
 	known := map[string]bool{}
 	for _, d := range audio.ModularSynthParamDefs() {
@@ -84,11 +82,6 @@ func TestTopStages_RanksDropsNaNAndBreaksTiesStably(t *testing.T) {
 	}
 }
 
-// The no-effect reading is NOT zero for every Kind: KindSeconds/KindRatio fold
-// their ratio to >=1 before dividing by the mismatch threshold, so comparing a
-// measurement with ITSELF yields 1/mismatch. Unsubtracted, a stage that does
-// nothing reads 0.50 on a seconds axis and 0.00 on a fraction axis, and the
-// matrix stops being comparable across axes.
 func TestStageSensitivity_SubtractsThePerKindNoEffectFloor(t *testing.T) {
 	secs := fingerprint.Descriptor{
 		ID: "t.seconds", Kind: fingerprint.KindSeconds,

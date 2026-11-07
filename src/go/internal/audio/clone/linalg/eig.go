@@ -9,11 +9,8 @@ import (
 // ErrNoConvergence is returned when the QR iteration exceeds its budget.
 var ErrNoConvergence = errors.New("linalg: QR iteration did not converge")
 
-// Eigenvalues returns the eigenvalues of the square complex matrix a:
-// Householder reduction to upper Hessenberg form, then single-shift QR with
-// Wilkinson shifts (an exceptional shift every 10th iteration) and deflation
-// at negligible subdiagonals. Only eigenvalues are needed (ESPRIT poles), so
-// each QR step touches only the active diagonal block. a is not modified.
+// Hessenberg reduction, then single-shift QR with Wilkinson shifts (an exceptional shift every 10th iteration);
+// only eigenvalues are needed, so each step touches only the active block. a is not modified.
 func Eigenvalues(a *Matrix) ([]complex128, error) {
 	n := a.Rows
 	if n == 0 {
@@ -90,8 +87,7 @@ func givens(a, b complex128) (float64, complex128) {
 	return aa / r, (a / complex(aa, 0)) * cmplx.Conj(b) / complex(r, 0)
 }
 
-// qrStep performs one shifted QR step H ← RQ + μI on the active block
-// [l, hi] of the Hessenberg matrix h.
+// H ← RQ + μI on the active block [l, hi].
 func qrStep(h *Matrix, l, hi int, mu complex128) {
 	for k := l; k <= hi; k++ {
 		h.Set(k, k, h.At(k, k)-mu)
@@ -121,8 +117,6 @@ func qrStep(h *Matrix, l, hi int, mu complex128) {
 	}
 }
 
-// hessenberg reduces a to upper Hessenberg form by Householder similarity
-// transforms P = I − 2vvᴴ.
 func hessenberg(a *Matrix) *Matrix {
 	n := a.Rows
 	h := a.Clone()

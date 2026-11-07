@@ -17,19 +17,14 @@ var modularSchemaNames = func() map[string]bool {
 	return m
 }()
 
-// knownParamName reports whether name means something for instrumentID: a
-// modular engine param, or a param the instrument's bound recipe declares (a
-// runtime plugin recipe may define its own names).
+// A runtime plugin recipe may define its own names.
 func knownParamName(instrumentID instrument.ID, name string) bool {
 	return modularSchemaNames[name] || lookupParamDef(instrumentID, name).Name != ""
 }
 
-// ValidateRecipeParams rejects params the engine cannot honour: a name the
-// modular block does not have (a retired or misspelled knob), a non-finite
-// value, or a family voice placed in a slot its family has no fields for. The
-// error names the first offending param (sorted, so the message is stable).
-// Used at every boundary that accepts params from outside the running app:
-// project import, instrument bundles, stored user recipes.
+// A name the block does not have, a non-finite value, or a family voice in a slot its family has no fields for. The
+// error names the first offender, sorted so the message is stable. Every boundary that accepts params from outside
+// the running app goes through this.
 func ValidateRecipeParams(p map[string]float64) error {
 	if err := validateParamNames(p); err != nil {
 		return err
@@ -42,8 +37,7 @@ func ValidateRecipeParams(p map[string]float64) error {
 	return nil
 }
 
-// validateParamNames is ValidateRecipeParams without the value check, for the
-// boundaries that already strip non-finite values themselves.
+// For boundaries that already strip non-finite values themselves.
 func validateParamNames(p map[string]float64) error {
 	for _, k := range sortedKeys(p) {
 		if !modularSchemaNames[k] {

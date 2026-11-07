@@ -10,13 +10,7 @@ import (
 	"testing"
 )
 
-// TestChainSpecGenFileIsCurrent ensures the checked-in src/js/chain_spec.gen.js
-// matches what cmd/gen-chain-spec emits right now. If the canonical chain
-// configuration in chain_spec.go changes (compressor params, soft-clip
-// threshold, headroom, sample rate), the gen file must be regenerated in the
-// same commit — otherwise the browser's WebAudio chain silently diverges from
-// the desktop Go/C chain and the platforms sound different. Mirrors
-// TestSynthParamABIGenFileIsCurrent.
+// A chain value changed without regenerating the gen file makes the browser silently diverge from desktop.
 func TestChainSpecGenFileIsCurrent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("subprocess codegen relies on POSIX go binary path")
@@ -55,8 +49,7 @@ Diff (want = on-disk, got = generator output):
 	}
 }
 
-// TestChainSpecLiveValues asserts the desktop audio path is wired to the
-// spec, so the spec can't drift away from what the code does.
+// So the spec can't drift from what the code does.
 func TestChainSpecLiveValues(t *testing.T) {
 	spec := CanonicalChainSpec()
 	if env.AudioSampleRate.DefaultString() != strconv.Itoa(spec.SampleRate) {

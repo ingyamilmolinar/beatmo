@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// TestSnareToneNoise: a pure tone reads as mostly tonal, band-limited noise as
-// mostly noise, and the low-body / high-buzz fractions track where the energy is.
 func TestSnareToneNoise(t *testing.T) {
 	const sr = 44100
 	n := sr / 2
@@ -19,8 +17,7 @@ func TestSnareToneNoise(t *testing.T) {
 		tone[i] = math.Sin(2*math.Pi*190*t) * math.Exp(-6*t)
 	}
 	tm := AnalyzeSnare(wave.Wave{Samples: tone, SampleRate: sr})
-	// The short body window leaks spectral energy, so a pure tone caps ~0.6-0.7
-	// (not 1.0) — the metric is used for RELATIVE ref-vs-synth comparison.
+	// The short body window leaks, capping a pure tone near 0.6–0.7; the metric is for relative comparison.
 	if tm.ToneNoiseRatio < 0.55 {
 		t.Fatalf("pure tone should be mostly tonal, got ToneNoiseRatio=%.2f", tm.ToneNoiseRatio)
 	}
@@ -45,8 +42,7 @@ func TestSnareToneNoise(t *testing.T) {
 	}
 }
 
-// TestSnareDualDecay: a signal whose LOW band decays fast and HIGH band rings
-// long should measure BodyDecay < BuzzDecay (the fat-snare "thump + ring").
+// The fat-snare "thump + ring".
 func TestSnareDualDecay(t *testing.T) {
 	const sr = 44100
 	n := sr

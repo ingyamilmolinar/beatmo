@@ -14,35 +14,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// tuning_test.go — does every pitched instrument actually SOUND at the pitch
-// the score asked for?
-//
-// Node pitch 0 is A3 = 220 Hz, and a node at semitone p must sound at
-// 220·2^((p+offset)/12) where offset is audio.InstrumentPitchInfo's answer for
-// that instrument. Nothing enforced that end to end before 2026-09-12, and
-// three defects had accumulated underneath it: voice-ahh/voice-opera sat ~65
-// cents flat (an over-long pitch-envelope scoop), voice-soprano rendered a
-// full octave up uncompensated, and the score importer octave-corrected
-// double-bass for an offset it does not have. Green unit tests all round — the
-// pitch was simply never measured off the rendered audio.
-//
-// These tests run against the REAL C DSP (render_prod.go, //go:build !test),
-// so they execute under `make test-real` / a plain `go test`, not the stubbed
-// fast path where RenderInstrument is a pure-Go approximation.
+// A node at semitone p must sound at 220·2^((p+offset)/12), measured off the rendered audio of the REAL C DSP: green
+// unit tests alone left voices 65 cents flat and an octave up.
 
 const a3Hz = 220.0
 
-// foldCents folds a cents error into [-600,+600).
-//
-// This is the crux of measuring tuning honestly. YIN legitimately locks onto
-// the 2nd harmonic whenever an instrument's fundamental is weak (a bassoon, a
-// harpsichord, a trumpet), so a RAW f0 comparison reports those as an octave
-// out when they are perfectly in tune — a false positive that would make this
-// test useless. Folding sends any whole-octave disagreement to 0 and leaves
-// exactly the fractional part, which is what a listener hears as dissonance.
-// Register errors are covered separately and exactly by
-// TestInstrumentPitchInfoFoldsRecipeDefaults in internal/audio, which reads
-// the declared offsets rather than guessing them from a spectrum.
+// YIN rightly locks onto the 2nd harmonic of a weak fundamental, so whole octaves fold to 0 and only the fractional
+// part, what a listener hears as dissonance, remains. Register is checked exactly from the declared offsets.
 func foldCents(c float64) float64 {
 	f := math.Mod(c, 1200)
 	if f >= 600 {
@@ -54,10 +32,7 @@ func foldCents(c float64) float64 {
 	return f
 }
 
-// inharmonicByDesign lists instruments whose perceived pitch legitimately
-// departs from their nominal fundamental, with the reason. These are struck
-// bars and bowls whose seeds deliberately let inharmonic partials dominate, so
-// a fundamental-tracking detector cannot grade them.
+// Struck bars and bowls whose inharmonic partials dominate by design, so a fundamental tracker cannot grade them.
 var inharmonicByDesign = map[instrument.ID]string{
 	roster.Kalimba: "osc_enabled:0 — the tine's measured inharmonic partials " +
 		"(3.44/4.03/4.53x f0, gains up to 0.62) deliberately dominate the " +
@@ -66,46 +41,26 @@ var inharmonicByDesign = map[instrument.ID]string{
 		"are inharmonic, so its struck pitch is not its fundamental",
 }
 
-// detuneTolCents is the pass bar. A quarter tone is 50 cents and is unmistakably
-// out of tune; 25 keeps a comfortable margin while leaving room for the vibrato
-// and ensemble detune the melodic seeds intentionally carry.
+// A quarter tone (50) is unmistakably out; 25 leaves room for intended vibrato and ensemble detune.
 const detuneTolCents = 25.0
 
-// probePitches spans two octaves either side of the A3 origin, including
-// non-octave intervals so a per-octave wrap cannot hide inside the fold.
+// Non-octave intervals too, so a per-octave wrap cannot hide inside the fold.
 var probePitches = []int{-12, -5, 0, 4, 7, 12}
 
-// measureDetune renders inst at each probe pitch and returns the median folded
-// cents error plus the number of confidently-measured pitches.
 func measureDetune(t *testing.T, inst string) (median float64, measured int) {
 	t.Helper()
 	offset, _ := audio.InstrumentPitchInfo(instrument.ID(inst))
 	var errs []float64
 	for _, p := range probePitches {
-		// The instrument's own declared offset is part of the contract: a
-		// cello is SUPPOSED to sound an octave below node pitch 0.
+		// A cello is SUPPOSED to sound an octave below node pitch 0.
 		want := a3Hz * math.Pow(2, (float64(p)+offset)/12)
 		w, err := RenderInstrument(instrument.ID(inst), float64(p), 44100, 1.5)
 		if err != nil || w.Len() == 0 {
 			continue
 		}
 		est := fingerprint.DetectF0Detailed(w)
-		// This test treats the detected f0 as an ABSOLUTE frequency — it
-		// compares it against a nominal Hz — so it must clear every gate that
-		// qualifies one, not just confidence.
-		//
-		// Confidence alone is not enough, and the gap is not theoretical: YIN
-		// searches down to fingerprint.F0SearchMinHz (50 Hz), so an instrument
-		// whose fundamental is below that pins AT the floor and reports it with
-		// confidence 1.000. kick-808 (44 Hz) and kick-punchy (45 Hz) then read
-		// +221 and +182 cents sharp — which is exactly 1200*log2(50/f0), the
-		// detector's floor rather than any property of the instrument. Three of
-		// the six probe pitches sit below the floor for those two, so the median
-		// lands on a pinned value and the test reports a tuning fault in a
-		// perfectly in-tune kick.
-		//
-		// UsableAsPitch is the conjunction of all three gates; see its doc for
-		// why none is redundant.
+		// An ABSOLUTE frequency must clear every gate, not just confidence: below YIN's 50 Hz floor a kick pins at the floor at
+		// confidence 1.0 and would read as a tuning fault.
 		if usable, _ := fingerprint.UsableAsPitch(w, est); !usable || est.Confidence < 0.5 {
 			continue
 		}
@@ -118,8 +73,7 @@ func measureDetune(t *testing.T, inst string) (median float64, measured int) {
 	return errs[len(errs)/2], len(errs)
 }
 
-// TestEveryPitchedInstrumentSoundsInTune is the end-to-end guard: render the
-// real DSP and measure, rather than trusting the declared params.
+// Measures the real DSP rather than trusting the declared params.
 func TestEveryPitchedInstrumentSoundsInTune(t *testing.T) {
 	if testing.Short() {
 		t.Skip("renders ~90 instruments through the C DSP; skipped under -short")
@@ -132,9 +86,7 @@ func TestEveryPitchedInstrumentSoundsInTune(t *testing.T) {
 		t.Run(string(inst), func(t *testing.T) {
 			med, n := measureDetune(t, string(inst))
 			if n == 0 {
-				// Not a silent pass: an instrument that yields no confident
-				// f0 at any probe pitch cannot be graded, and if it is marked
-				// pitched that is itself worth knowing.
+				// Not a silent pass: a pitched instrument that cannot be graded is worth knowing.
 				t.Skipf("no confident f0 at any probe pitch — cannot grade tuning")
 			}
 			if why, ok := inharmonicByDesign[inst]; ok {
@@ -151,10 +103,7 @@ func TestEveryPitchedInstrumentSoundsInTune(t *testing.T) {
 	}
 }
 
-// TestDetectF0IsAccurateOnKnownTones guards the MEASURING INSTRUMENT itself.
-// Every tuning claim above rests on DetectF0, so a regression in the detector
-// would silently turn this file into a rubber stamp. Synthetic tones of known
-// frequency are the only ground truth that does not depend on the synth.
+// Every tuning claim rests on DetectF0; tones of known frequency are the only ground truth independent of the synth.
 func TestDetectF0IsAccurateOnKnownTones(t *testing.T) {
 	const sr = 44100
 	for _, harmonics := range []int{1, 5, 12} {
@@ -165,8 +114,7 @@ func TestDetectF0IsAccurateOnKnownTones(t *testing.T) {
 			for i := range s {
 				tt := float64(i) / sr
 				v := 0.0
-				// A harmonic stack, not a bare sine: a single sine cannot
-				// expose the octave ambiguity that real timbres provoke.
+				// A bare sine cannot expose the octave ambiguity real timbres provoke.
 				for h := 1; h <= harmonics; h++ {
 					v += math.Sin(2*math.Pi*want*float64(h)*tt) / float64(h)
 				}

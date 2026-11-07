@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestRenderLatencyMetrics verifies the "measure-first" render counters: a first
-// trigger renders (cache miss, recorded duration); an identical second trigger is
-// served from cache (hit, no new render). These make the param-storm cost
-// falsifiable before optimizing it away.
+// A miss records a render; the identical second trigger hits. Makes the param-storm cost falsifiable.
 func TestRenderLatencyMetrics(t *testing.T) {
 	const (
 		id = roster.KickAcoustic

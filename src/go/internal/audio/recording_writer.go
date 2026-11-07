@@ -9,21 +9,15 @@ import (
 	"os"
 )
 
-// streamSink is the surface streamWavWriter needs from its output. *os.File
-// satisfies it; tests can substitute an in-memory implementation.
+// Tests substitute an in-memory sink.
 type streamSink interface {
 	io.Writer
 	io.Seeker
 	io.Closer
 }
 
-// streamWavWriter writes a WAV file incrementally: header up-front with
-// placeholder sizes, sample frames streamed via a buffered writer, then the
-// header is patched on Close. Avoids the full-buffer-in-memory cost and the
-// per-sample bytes.Buffer.Write hot loop in the legacy encoder path.
-//
-// Designed for use from a single goroutine (one per channel). Not safe for
-// concurrent Write calls.
+// Header with placeholder sizes up front, frames through a buffered writer, header patched on Close: no full buffer in
+// memory. One goroutine per channel; not safe for concurrent writes.
 type streamWavWriter struct {
 	sink       streamSink
 	buf        *bufio.Writer
@@ -34,15 +28,13 @@ type streamWavWriter struct {
 	written    uint32 // bytes written to the data chunk so far
 	closed     bool
 
-	// Pre-allocated scratch for sample-block conversion. Sized once at New;
-	// not grown on hot path.
+	// Sized once; never grown on the hot path.
 	scratch []byte
 }
 
 const wavHeaderSize = 44 // RIFF + fmt + data headers, before samples
 
-// newStreamWavWriter opens path for writing and emits the WAV header with
-// placeholder size fields. The caller must call Close to patch them.
+// The caller must Close to patch the sizes.
 func newStreamWavWriter(path string, format AudioFormat, sampleRate int) (*streamWavWriter, error) {
 	f, err := os.Create(path)
 	if err != nil {
@@ -118,9 +110,7 @@ func (w *streamWavWriter) writeHeader(dataSize uint32) error {
 	return err
 }
 
-// WriteSamplesFloat32 appends float32 samples in [-1,1] to the data chunk,
-// converting on the fly. Pre-allocated scratch is reused; no per-sample
-// allocation. The caller may pass any-size slice.
+// Any slice length; the scratch is reused, no per-sample allocation.
 func (w *streamWavWriter) WriteSamplesFloat32(samples []float32) error {
 	if w.closed {
 		return fmt.Errorf("streamWavWriter: write after close")
@@ -157,16 +147,14 @@ func (w *streamWavWriter) WriteSamplesFloat32(samples []float32) error {
 	return err
 }
 
-// WriteSilence appends n samples of silence efficiently (single buffered
-// write, no per-sample loop).
+// One buffered write.
 func (w *streamWavWriter) WriteSilence(n int) error {
 	if w.closed || n <= 0 {
 		return nil
 	}
 	bytesPerSample := w.bps / 8
 	bytes := n * bytesPerSample
-	// Reuse scratch as a zero buffer. Grow if needed but don't grow forever:
-	// silence runs are typically a few blocks long.
+	// Silence runs are a few blocks long, so growth is bounded.
 	if cap(w.scratch) < bytes {
 		w.scratch = make([]byte, bytes)
 	} else {
@@ -181,8 +169,7 @@ func (w *streamWavWriter) WriteSilence(n int) error {
 	return err
 }
 
-// SamplesWritten returns the number of samples written so far (excluding
-// header).
+// Excluding the header.
 func (w *streamWavWriter) SamplesWritten() int {
 	bytesPerSample := w.bps / 8
 	if bytesPerSample == 0 {
@@ -191,8 +178,7 @@ func (w *streamWavWriter) SamplesWritten() int {
 	return int(w.written) / bytesPerSample
 }
 
-// Close flushes the buffered writer and patches the RIFF + data size fields
-// in the header. The underlying sink is closed.
+// Also closes the sink.
 func (w *streamWavWriter) Close() error {
 	if w.closed {
 		return nil

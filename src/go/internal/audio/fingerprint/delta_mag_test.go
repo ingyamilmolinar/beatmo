@@ -5,22 +5,9 @@ import (
 	"testing"
 )
 
-// delta_mag_test.go — Delta.Mag must be the magnitude the comparator actually
-// weighed, expressed in the units the descriptor DECLARES its thresholds in.
-//
-// WHY A PROPERTY TEST AND NOT A SPOT CHECK. Threshold calibration
-// (cmd/refs/calibrate_thresholds.go) feeds Mag straight into the percentiles
-// it writes back into Drift/Mismatch. If a comparator reports Mag in some
-// other unit, calibration writes a number in the wrong scale and the axis
-// either fires on everything or on nothing — silently, because the JSON looks
-// perfectly reasonable either way. That is not hypothetical: band.t60
-// declares T60 RATIOS and compares mean|log2 ratio|, so the obvious
-// "Norm x mismatch" reconstruction is neither a ratio nor a log2 there.
-//
-// The invariant below is the one calibration depends on and the one a
-// transforming comparator can violate: classifying Mag against the
-// descriptor's own thresholds must reproduce the verdict the comparator
-// returned. A comparator that reports Mag in the wrong domain fails it.
+// Calibration writes Mag's percentiles back into Drift/Mismatch, so a Mag in the wrong unit silently makes the axis
+// fire on everything or nothing. The invariant: classifying Mag against the descriptor's own thresholds reproduces
+// the comparator's verdict.
 
 func TestDeltaMagReproducesTheVerdict(t *testing.T) {
 	bundles := map[string]*Bundle{}
@@ -40,12 +27,7 @@ func TestDeltaMagReproducesTheVerdict(t *testing.T) {
 			if !ref.OK {
 				continue
 			}
-			// A SWEEP, not two points. A comparator reporting Mag in the
-			// wrong domain still agrees with the classifier over part of
-			// the range by coincidence -- band.t60 with its Mag left in
-			// log2 agrees at frac 0.2 and 3.0 and diverges only in
-			// between -- so the fracs have to straddle both thresholds
-			// from several distances.
+			// A SWEEP: a comparator with Mag in the wrong domain still agrees by coincidence over part of the range.
 			for _, frac := range []float64{0.2, 0.6, 1.0, 1.4, 1.8, 2.4, 3.0} {
 				synth := perturb(d, ref, frac)
 				got := d.CompareWith(ref, synth)
@@ -56,15 +38,8 @@ func TestDeltaMagReproducesTheVerdict(t *testing.T) {
 					t.Errorf("%s/%s frac=%g: Mag=%v is not a number", d.ID, p.name, frac, got.Mag)
 					continue
 				}
-				// A perturbation of frac=1 lands EXACTLY on a threshold,
-				// where floating point decides the tie: the harness scales
-				// by the threshold and the comparator may round-trip
-				// through its own transform (band.t60 compares
-				// log2(mismatch) and reports 2^mean; 2^log2(x) is not
-				// bit-identical to x). Both sides of a one-ULP tie are
-				// therefore accepted. The invariant under test is that Mag
-				// is in the right UNITS — an order-of-magnitude property —
-				// not how a tie breaks.
+				// frac=1 lands exactly on a threshold, where a transform round trip (2^log2 x ≠ x bit for bit) decides the tie, so both
+				// sides of a one-ULP tie are accepted: the property is the UNITS, not how a tie breaks.
 				strict, tolerant := verdictFor(got.Mag, drift, mismatch, 0), verdictFor(got.Mag, drift, mismatch, 1e-9)
 				if got.Verdict != strict && got.Verdict != tolerant {
 					t.Errorf("%s/%s frac=%g: Mag=%g against drift=%g mismatch=%g implies %s, "+
@@ -81,11 +56,7 @@ func TestDeltaMagReproducesTheVerdict(t *testing.T) {
 	t.Logf("verified Delta.Mag against declared thresholds on %d (descriptor, probe, frac) triples", checked)
 }
 
-// TestDeltaMagUnitsPerKind pins the three scalar unit conventions by hand, so
-// a reader can see what "the declared threshold units" actually means without
-// reverse-engineering compareScalar.
-// verdictFor classifies mag against a threshold pair, counting a value
-// within rel of a threshold as having reached it. rel=0 is the strict rule.
+// rel=0 is the strict rule; within rel of a threshold counts as reaching it.
 func verdictFor(mag, drift, mismatch, rel float64) Verdict {
 	at := func(v, th float64) bool {
 		return v >= th || math.Abs(v-th) <= rel*math.Max(1, math.Abs(th))
@@ -129,9 +100,7 @@ func TestDeltaMagUnitsPerKind(t *testing.T) {
 	}
 }
 
-// TestDeltaMagIsFalseForSentinelRows: the "one side had no event at all"
-// branches set Norm=1 by fiat. That is a statement, not a measurement, and
-// calibration must not average it into a percentile.
+// Norm=1 there is set by fiat, a statement rather than a measurement, so calibration must not average it.
 func TestDeltaMagIsFalseForSentinelRows(t *testing.T) {
 	drift, mismatch := KindSeconds.Thresholds()
 	got := CompareWithThresholds(KindSeconds, Scalar(1.0), Scalar(0), drift, mismatch)

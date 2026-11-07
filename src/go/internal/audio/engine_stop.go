@@ -1,37 +1,8 @@
 //go:build !test && !js
 
-// ─── 3-Phase Desktop Audio Mixer ────────────────────────────────────────────
-//
-// The desktop mixer uses a 3-phase block processing design to prevent shared
-// biquad EQ state corruption.
-//
-//	Phase 1: Render voices → per-instrument buffers (NO EQ)
-//	         Each voice: voice.Sample() → voiceTemp, apply mixHeadroom (0.18×),
-//	         accumulate into instBufs[instrumentID].
-//
-//	Phase 2: Per-instrument channel EQ → masterBuf
-//	         For each active instrument: channel.ProcessBlockLocal(instBuf, masterBuf)
-//	         (applies volume + EQ; does NOT recurse to parent channel).
-//
-//	Phase 3: Master channel EQ → workBuf → soft clip → output capture → int16 (×32767)
-//
-// WHY 3 PHASES: each biquad filter is stateful (x1, x2, y1, y2) and expects a
-// continuous signal stream. The old code processed individual voices through
-// shared biquad chains, corrupting filter state and causing audible distortion
-// (clicks, noise). The fix sums all voices per-instrument FIRST, then routes
-// the coherent sum through EQ. WASM was never affected because WebAudio sums
-// voices at the GainNode level before routing through filter nodes.
-//
-// Debugging workflow (each env var isolates a pipeline stage):
-//
-//	TEST_TONE=1           → pure 440Hz sine, bypasses all synth (tests Oto/driver)
-//	TEST_VOICE=1          → simple 220Hz sine per hit (tests voice/mixer path)
-//	BYPASS_CHANNEL_PROC=1 → skip channel processing (isolates mixer vs EQ)
-//	AUDIO_CLIP_DEBUG=1    → log clipping events before hard clamp
-//	DEBUG_MIXER=1         → log workBuf min/max values periodically
-//	BYPASS_HEADROOM=1     → skip 0.25× attenuation (test headroom sufficiency)
-//	TEST_RAW_VOICE=1      → output first voice raw (test voice buffer integrity)
-//	SINGLE_VOICE=1        → limit to one voice (test multi-voice accumulation)
+// A biquad is stateful and needs one continuous stream, so the desktop mixer runs in three phases: voices +
+// headroom into per-instrument buffers (no EQ), each channel's inserts and EQ on its sum into the master, then the
+// master EQ → soft clip → capture → int16. The TEST_* / BYPASS_* / DEBUG_* env vars isolate one stage each.
 package audio
 
 import (
@@ -82,8 +53,7 @@ func init() {
 	}
 }
 
-// testSineVoice is a simple 220Hz sine wave voice for debugging.
-// Uses a pre-rendered float32 buffer like cVoice to match the C synth path.
+// A pre-rendered float32 buffer, like cVoice, to match the C synth path.
 type testSineVoice struct {
 	buf []float32
 	pos int
@@ -151,8 +121,6 @@ var (
 	outputCaptureMu      sync.Mutex
 )
 
-// StartOutputCapture begins capturing the final mixed audio output.
-// Call StopOutputCapture to retrieve the captured samples.
 func StartOutputCapture() {
 	outputCaptureMu.Lock()
 	outputCaptureBuf = outputCaptureBuf[:0]
@@ -161,8 +129,7 @@ func StartOutputCapture() {
 	log.Debugf("[capture] started capturing output")
 }
 
-// StopOutputCapture stops capturing and returns the captured samples.
-// Returns a copy of the captured float64 samples (post-headroom, pre-int16 conversion).
+// A copy, post-soft-clip and pre-int16.
 func StopOutputCapture() []float64 {
 	outputCaptureMu.Lock()
 	outputCaptureEnabled = false
@@ -202,8 +169,7 @@ func OutputCaptureSampleRate() int {
 	return sampleRate
 }
 
-// SampleRate returns the audio output sample rate for the current platform.
-// Use this when configuring EQ filters to ensure correct filter frequencies.
+// EQ filters need it for correct frequencies.
 func SampleRate() int {
 	return sampleRate
 }
@@ -212,9 +178,7 @@ func (m *mixer) Stop(id channel.ID) {
 	m.mu.Lock()
 	for i := 0; i < len(m.voices); i++ {
 		if m.voices[i].id == id {
-			// Request graceful fade-out instead of immediate removal.
-			// The voice will report done=true after the fade completes,
-			// and the mixer will naturally remove it in processBlock.
+			// A graceful fade: the voice reports done after it, and processBlock removes it.
 			if ap, ok := m.voices[i].v.(*antiPopVoice); ok {
 				ap.RequestStop()
 			} else {
@@ -228,8 +192,7 @@ func (m *mixer) Stop(id channel.ID) {
 	m.mu.Unlock()
 }
 
-// Read implements io.Reader for oto.Player.
-// Uses block-based processing to minimize lock overhead.
+// Block-based to keep lock overhead low.
 func (m *mixer) Read(p []byte) (int, error) {
 	samples := len(p) / 2
 
@@ -261,23 +224,8 @@ func (m *mixer) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// processBlock processes blockLen samples starting at offset.
-// Uses 3-phase processing to avoid shared biquad state corruption:
-//
-//	Phase 1: Render each voice + headroom → per-instrument buffer (no EQ)
-//	Phase 2: Per-instrument channel EQ → masterBuf
-//	Phase 3: Master channel EQ → workBuf
-//
-// This ensures each biquad filter chain receives a coherent, continuous signal
-// stream instead of interleaved audio from unrelated voices, which was the root
-// cause of desktop audio distortion.
-//
-// Caller must hold m.mu.
-// processTestTone renders a pure 440 Hz sine (TEST_TONE=1), bypassing all synth
-// and processing. Extracted verbatim from processBlock's early-return diagnostic
-// path so the hot 3-phase kernel isn't cluttered by a mode that never runs in
-// production; behaviour is unchanged. Assumes m.workBuf is already allocated
-// (processBlock's lazy-init runs before the guard that calls this).
+// TEST_TONE=1: a pure 440 Hz sine bypassing all synthesis, kept out of the hot kernel. m.workBuf must already be
+// allocated.
 func (m *mixer) processTestTone(offset, blockLen int, p []byte) {
 	sr := float64(sampleRate)
 	freq := 440.0
@@ -306,10 +254,7 @@ func (m *mixer) processTestTone(offset, blockLen int, p []byte) {
 	updateDeviceClock(int64(m.pos))
 }
 
-// processRawVoice outputs voice[0]'s raw samples with no mixing/EQ/headroom
-// (TEST_RAW_VOICE=1), to isolate voice-buffer distortion. Extracted verbatim
-// from processBlock's early-return diagnostic path; behaviour is unchanged.
-// Caller guarantees len(m.voices) > 0.
+// TEST_RAW_VOICE=1: voice 0 with no mixing, EQ or headroom, isolating the voice buffer. len(m.voices) > 0.
 func (m *mixer) processRawVoice(offset, blockLen int, p []byte) {
 	vs := m.voices[0]
 	startPos := m.pos + offset
@@ -367,9 +312,7 @@ func (m *mixer) processRawVoice(offset, blockLen int, p []byte) {
 }
 
 func (m *mixer) processBlock(offset, blockLen int, p []byte) {
-	// Lazily initialize work buffers (needed for tests that create mixer{} directly).
-	// Each buffer is checked individually so older test fixtures that pre-allocate
-	// some but not all buffers still get the missing ones filled in.
+	// Each buffer separately, for test fixtures that build mixer{} directly with only some allocated.
 	if m.workBuf == nil {
 		m.workBuf = make([]float64, blockSize)
 	}
@@ -395,8 +338,6 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		return
 	}
 
-	// TEST_RAW_VOICE mode: output raw voice samples with no processing —
-	// isolates whether the voice buffer itself causes distortion.
 	if env.TestRawVoice.Get() && len(m.voices) > 0 {
 		m.processRawVoice(offset, blockLen, p)
 		return
@@ -426,8 +367,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		vs := m.voices[i]
 		blockStart := m.pos + offset
 
-		// A voice starts on its own sample, inside the block if that is where
-		// it falls (it used to wait for the next block: up to 63 frames late).
+		// A voice starts on its own sample, inside the block if that is where it falls.
 		if vs.start >= blockStart+blockLen {
 			i++
 			continue
@@ -474,12 +414,8 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
-	// === PHASE 2: Per-instrument channel processing → masterBuf ===
-	//
-	// Split into two sub-passes so the scope panel can compare the signal
-	// between insert FX and EQ (scope.StageInsertFX vs scope.StageEQ).
-	//   Phase 2a: instBuf → ProcessInsertsBlockLocal → postFXBuf (tap StageInsertFX)
-	//   Phase 2b: postFXBuf → ProcessEQBlockLocal → postEQBuf (tap StageEQ)
+	// Two sub-passes so the scope can compare between insert FX and EQ: inserts → postFXBuf (StageInsertFX), then EQ →
+	// postEQBuf (StageEQ).
 	if !env.BypassChannelProc.Get() {
 		at := m.pos + offset
 		m.mixedChans = m.mixedChans[:0]
@@ -492,12 +428,8 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 			m.mixedChans = append(m.mixedChans, ch)
 			m.mixChannel(id, ch, m.instBufs[slot][:blockLen], at)
 		}
-		// A channel with an effect or an EQ runs every block, voice or not —
-		// silence in — so a delay's echoes, a reverb's tail and an EQ's ring
-		// play out, and an LFO's phase advances, exactly as in the browser,
-		// whose worklet processes every render quantum. (It used to run only
-		// while one of its voices played: tails stopped dead at the voice's
-		// end and resumed, stale, with the next note.)
+		// A channel with an effect or EQ runs every block, voice or not, so tails ring out and LFO phase advances exactly as
+		// in the browser's worklet, which processes every quantum.
 		if pcs := chanMgr.procChannels.Load(); pcs != nil {
 			for _, ch := range *pcs {
 				if slices.Contains(m.mixedChans, ch) {
@@ -542,8 +474,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	if analyzerSvc != nil {
 		analyzerSvc.PushMasterBuf(m.workBuf[:blockLen])
 	}
-	// Phase 2: feed the same block through the K-weighted LUFS
-	// integrator so the Levels tab's LUFS-S readout follows the master.
+	// The Levels tab's LUFS-S follows the master.
 	FeedMasterLUFS(m.workBuf[:blockLen])
 
 	// Scope tap: final master output (after master EQ/compressor).
@@ -596,28 +527,23 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
-	// Master soft clip (mix_dsp.c — the browser's master node runs the same
-	// C): identity below the knee, a smooth approach to full scale above.
+	// The same C as the browser's master node.
 	softClipBlock(m.workBuf[:blockLen])
 
-	// Capture what the device receives (after the soft clip, before int16):
-	// the browser's output capture taps the same point.
+	// What the device receives, after the soft clip; the browser's capture taps the same point.
 	if outputCaptureEnabled {
 		outputCaptureMu.Lock()
 		outputCaptureBuf = append(outputCaptureBuf, m.workBuf[:blockLen]...)
 		outputCaptureMu.Unlock()
 	}
 
-	// Recording pipeline tap: stream per-instrument + the master as the device
-	// receives it (post soft clip, like the browser's master tap) to disk on
-	// background workers. The atomic pointer check is zero-cost when not
-	// recording; Tap itself is non-blocking and allocation-free.
+	// Per-instrument and master as the device receives them, written by background workers; zero-cost when not
+	// recording, and Tap never blocks or allocates.
 	if pipe := pipelinePtr.Load(); pipe != nil {
 		pipe.Tap(m.instSlotIDs, m.activeSlots, m.instBufs, m.workBuf[:], blockLen)
 	}
 
-	// Convert to int16. Use math.Round instead of truncation to reduce
-	// quantization noise; the soft clip never leaves [-1, 1].
+	// Rounded, not truncated, to reduce quantisation noise; the soft clip never leaves [-1, 1].
 	for i := 0; i < blockLen; i++ {
 		sum := m.workBuf[i]
 		if sum > 1 {
@@ -635,8 +561,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	updateDeviceClock(int64(m.pos))
 }
 
-// mixChannel runs one instrument channel's inserts and EQ over in (its voices,
-// or silence) and adds the result to the master bus, tapping each stage.
+// in is its voices, or silence; each stage is tapped.
 func (m *mixer) mixChannel(id channel.ID, ch *Channel, in []float64, at int) {
 	n := len(in)
 	for k := 0; k < n; k++ {
@@ -675,15 +600,10 @@ func (m *mixer) mixChannel(id channel.ID, ch *Channel, in []float64, at int) {
 // debugVoiceCount tracks voice sample logging frequency
 var debugVoiceCount int64
 
-// mixHeadroom is applied per-voice BEFORE accumulation to prevent clipping.
-// -14.9dB headroom (0.18) provides ~3dB more margin than the previous 0.25
-// for dense mixes (7+ instruments) while the master compressor normalizes.
-// Value lives in chain_spec.go (VoiceHeadroom) as the single source of truth
-// shared with the cross-platform parity surface.
+// Applied per voice BEFORE accumulation, so a dense mix stays under the soft-clip knee.
 const mixHeadroom = VoiceHeadroom
 
-// ensureInstBuf returns the per-instrument buffer for the given slot, zeroing
-// it on first use within the current block. Uses O(1) slice indexing.
+// Zeroed on first use within the block.
 func (m *mixer) ensureInstBuf(slot, blockLen int) []float64 {
 	// Grow instBufs if a slot was allocated after mixer init.
 	for slot >= len(m.instBufs) {
@@ -707,12 +627,7 @@ func (m *mixer) ensureInstBuf(slot, blockLen int) []float64 {
 	return buf
 }
 
-// renderVoiceIntoInstBuf renders the voice into frames [off, blockLen) of
-// the block, applies headroom, and accumulates into the per-instrument buffer.
-// Does NOT apply any channel/EQ processing — that happens in phase 2/3.
-// Uses BlockVoice bulk path when available for reduced function-call overhead.
-// Returns true if the voice is done and should be removed.
-// Caller must hold m.mu.
+// Frames [off, blockLen), headroom applied, no channel processing. Returns true when done. Caller holds m.mu.
 func (m *mixer) renderVoiceIntoInstBuf(vs *voiceState, off, blockLen int) bool {
 	instBuf := m.ensureInstBuf(vs.slot, blockLen)[off:blockLen]
 	want := blockLen - off

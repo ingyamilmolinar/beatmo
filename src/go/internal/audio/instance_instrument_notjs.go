@@ -4,8 +4,6 @@ package audio
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// instanceAlreadyRegistered reports whether id is in the playable instrument
-// registry (the map keyed by id → Instrument).
 func instanceAlreadyRegistered(id instrument.ID) bool {
 	instMu.RLock()
 	_, ok := instruments[id]
@@ -13,11 +11,7 @@ func instanceAlreadyRegistered(id instrument.ID) bool {
 	return ok
 }
 
-// registerInstanceAlias makes id share the base instrument's playable Instrument
-// so legacyNewVoice / instrumentDurationSamples resolve it identically. The
-// shared Instrument value is read-only at trigger time, so aliasing (not
-// cloning) is safe and guarantees byte-identical legacy renders; the recipe
-// path (tryRecipeVoice) is driven by the binding + seeding done by the caller.
+// The shared Instrument is read-only at trigger time, so aliasing rather than cloning is safe and byte-identical.
 func registerInstanceAlias(id, base instrument.ID) {
 	instMu.RLock()
 	inst, ok := instruments[base]

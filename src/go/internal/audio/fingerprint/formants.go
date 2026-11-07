@@ -26,9 +26,7 @@ const (
 	formantHiHz    = 8000.0
 	bridgeHillLoHz = 1800.0
 	bridgeHillHiHz = 3300.0
-	// bandwidthWalkMaxHz caps each half of the -3 dB bandwidth walk (~800 Hz
-	// per side) to prevent multi-kHz bogus estimates when the envelope never
-	// drops 3 dB (e.g. a broad or monotone peak).
+	// Caps each side of the -3 dB walk, so a broad peak that never drops 3 dB cannot give a multi-kHz bandwidth.
 	bandwidthWalkMaxHz = 800.0
 	// bandwidthMaxHz clamps the final computed BandwidthHz to a sane upper bound.
 	bandwidthMaxHz = 2000.0
@@ -40,9 +38,7 @@ const (
 	formantMinGainDB = -60.0
 )
 
-// computeSpectralEnvelope estimates the spectral envelope of w via real-cepstrum
-// liftering, then peak-picks formants and identifies the violin "bridge hill".
-// Returns a zero SpectralEnvelope when w is silent or too short.
+// Real-cepstrum liftering, then formant peaks and the violin "bridge hill"; zero for silent or short input.
 func computeSpectralEnvelope(w wave.Wave, cfg AnalysisConfig) SpectralEnvelope {
 	if len(w.Samples) < 4 || w.SampleRate == 0 {
 		return SpectralEnvelope{}
@@ -77,14 +73,8 @@ func computeSpectralEnvelope(w wave.Wave, cfg AnalysisConfig) SpectralEnvelope {
 		logMag[i] = math.Log(m)
 	}
 
-	// 3. Real-cepstrum liftering via DCT-II (forward) + zero high quefrencies + inverse DCT.
-	// Forward DCT-II of logMag → cepstrum coefficients. Only the first cepLifterN
-	// coefficients survive liftering (the inverse pass below reads at most
-	// cepLifterN of them), so compute exactly those and skip the ~99% of
-	// quefrencies that would immediately be zeroed. dctII computes len(cep)
-	// independent outputs, so a shorter cep yields bit-identical low
-	// coefficients at O(numBins·cepLifterN) instead of O(numBins²) cos calls —
-	// the DCT was the dominant cost of the whole fingerprint (see FromWave).
+	// Only the first cepLifterN coefficients survive liftering, so only those are computed: identical low coefficients at
+	// O(numBins·cepLifterN) instead of O(numBins²), the dominant cost of the whole fingerprint.
 	keep := cepLifterN
 	if keep > numBins {
 		keep = numBins
@@ -92,8 +82,7 @@ func computeSpectralEnvelope(w wave.Wave, cfg AnalysisConfig) SpectralEnvelope {
 	cep := make([]float64, keep)
 	dctII(logMag, cep)
 
-	// Inverse DCT-II (= DCT-III scaled): reconstruct smooth log-envelope.
-	// IDCT-II(x)[n] = (x[0] + 2*sum_{k=1}^{N-1} x[k]*cos(pi/N*(n+0.5)*k)) / N
+	// IDCT-II(x)[n] = (x[0] + 2·Σ x[k]·cos(π/N·(n+0.5)·k)) / N.
 	envelope := make([]float64, numBins)
 	N := float64(numBins)
 	piOverN := math.Pi / N
@@ -135,22 +124,13 @@ func computeSpectralEnvelope(w wave.Wave, cfg AnalysisConfig) SpectralEnvelope {
 			continue // noise floor; skip
 		}
 
-		// -3 dB bandwidth: walk left and right from the peak until we drop 3 dB
-		// in log-magnitude (= log(√2) ≈ 0.3466 in natural log units, since
-		// envelope is log(|X|), not log(|X|²)). -3 dB in amplitude → factor √2
-		// → Δlog = log(√2).
-		// The walk is bounded by three stopping conditions per side:
-		//   (a) the envelope crosses the -3 dB threshold,
-		//   (b) an adjacent local minimum of the envelope (prevents leaking into
-		//       a neighboring peak),
-		//   (c) a sane half-window of bandwidthWalkMaxHz.
+		// The envelope is log|X|, so -3 dB is Δlog = log √2. Each side stops at that threshold, at a true local minimum (no
+		// leaking into a neighbour) or at bandwidthWalkMaxHz.
 		thresh := envelope[i] - math.Log(math.Sqrt2)
 		maxWalkBins := int(bandwidthWalkMaxHz/binHz + 0.5)
 		loHalf := i
 		for loHalf > 1 && envelope[loHalf] >= thresh {
-			// Stop at a true local minimum: the value at loHalf is lower than
-			// both its neighbours (a valley between two peaks), not merely the
-			// downslope from the current peak.
+			// A valley between two peaks, not merely the downslope of this one.
 			if loHalf < i-1 && envelope[loHalf] <= envelope[loHalf-1] && envelope[loHalf] <= envelope[loHalf+1] {
 				break
 			}
@@ -161,8 +141,6 @@ func computeSpectralEnvelope(w wave.Wave, cfg AnalysisConfig) SpectralEnvelope {
 		}
 		hiHalf := i
 		for hiHalf < numBins-2 && envelope[hiHalf] >= thresh {
-			// Stop at a true local minimum: the value at hiHalf is lower than
-			// both its neighbours.
 			if hiHalf > i+1 && envelope[hiHalf] <= envelope[hiHalf-1] && envelope[hiHalf] <= envelope[hiHalf+1] {
 				break
 			}

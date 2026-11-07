@@ -11,18 +11,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// RenderInstrument renders instID at the given pitch (semitones from A3=220Hz)
-// for durSec (0 = instrument default) at sr, returning a mono wave.Wave (float64).
+// Pitch in semitones from A3 = 220 Hz; durSec 0 = the instrument default.
 func RenderInstrument(instID instrument.ID, pitch float64, sr int, durSec float64) (wave.Wave, error) {
 	return RenderWithParams(instID, pitch, sr, durSec, nil)
 }
 
-// RenderWithParams is RenderInstrument with extra param overrides set through
-// the instrument's document (and "pitch") before rendering.
-//
-// Production build: renders the document's flattened block through the C DSP
-// for bit-accurate audio. No normalization, no fallback — silence is a valid
-// result.
+// The RAW C render: no normalization, no fallback; silence is a valid result.
 func RenderWithParams(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
 	fields, _, samples, err := resolveRender(instID, pitch, sr, durSec, overrides)
 	if err != nil {
@@ -39,13 +33,8 @@ func RenderWithParams(instID instrument.ID, pitch float64, sr int, durSec float6
 	return wave.Wave{Samples: out, SampleRate: sr, Label: string(instID)}, nil
 }
 
-// RenderShipped renders instID (with overrides set through its document) as
-// a trigger PLAYS it — document FX, gate tail, normalisation, amplitude, and
-// percussion pitched by resampling — via audio.RenderAsShipped, then fits it
-// to durSec (0 = the instrument default): truncated, or zero-padded past the
-// end of the voice (silence is what plays there). The comparison tools use
-// this; RenderWithParams stays the RAW C render for the tools that need it
-// (measure-loudness computes the amplitude, so it must not see it applied).
+// As a trigger PLAYS it, fitted to durSec (padded with the silence that plays there). RenderWithParams stays raw for
+// tools that must not see the amplitude applied (measure-loudness computes it).
 func RenderShipped(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
 	if durSec <= 0 {
 		durSec = audio.ConfigForInstrument(instID).DurationSec
@@ -56,10 +45,8 @@ func RenderShipped(instID instrument.ID, pitch float64, sr int, durSec float64, 
 	return RenderHeld(instID, pitch, sr, durSec, 0, overrides)
 }
 
-// RenderHeld is RenderShipped with the voice held voiceSec long (its
-// render.seconds; 0 = the shipped length) — a player holding the note longer
-// or shorter, exactly as a document of that length plays. durSec <= 0
-// returns the whole voice instead of fitting it to a length.
+// A player holding the note longer or shorter, exactly as a document of that length plays. durSec ≤ 0 returns the
+// whole voice.
 func RenderHeld(instID instrument.ID, pitch float64, sr int, durSec, voiceSec float64, overrides map[string]float64) (wave.Wave, error) {
 	ov := make(map[string]float64, len(overrides))
 	for k, v := range overrides {
@@ -76,8 +63,7 @@ func RenderHeld(instID instrument.ID, pitch float64, sr int, durSec, voiceSec fl
 	return w, err
 }
 
-// RenderHeldDoc is RenderHeld for a document that is not registered anywhere
-// (a tuned or cloned candidate); durSec <= 0 returns the whole voice.
+// For an unregistered document (a tuned or cloned candidate).
 func RenderHeldDoc(d instrument.Doc, pitch float64, sr int, durSec, voiceSec float64) (wave.Wave, error) {
 	if voiceSec > 0 {
 		d.Render.Seconds = voiceSec
@@ -91,11 +77,8 @@ func RenderHeldDoc(d instrument.Doc, pitch float64, sr int, durSec, voiceSec flo
 	return wave.Wave{Samples: out, SampleRate: sr, Label: string(d.ID)}, nil
 }
 
-// HeldSeconds is how long instID's voice must be held, played at pitch, to
-// last at least minSec: its shipped render.seconds when that is already long
-// enough, longer otherwise (never shorter). Note length is the player's
-// choice, so a comparison against a recording that holds its note for 2 s
-// must not hold a 1 s voice against it.
+// Never shorter than shipped: note length is the player's choice, so a 2 s recorded note is not compared against a 1 s
+// voice.
 func HeldSeconds(instID instrument.ID, pitch, minSec float64) float64 {
 	d, err := audio.InstrumentDocWithFields(instID, nil)
 	if err != nil {
@@ -113,9 +96,7 @@ func HeldSecondsDoc(d instrument.Doc, pitch, minSec float64) float64 {
 	return math.Max(d.Render.Seconds, minSec*rate)
 }
 
-// RenderShippedDoc is RenderShipped for a document that is not registered
-// anywhere (a WAV-clone candidate): the same played sound, durSec of it
-// (0 = the document's own render.seconds), zero-padded past the voice.
+// For an unregistered document; durSec 0 = its own render.seconds.
 func RenderShippedDoc(d instrument.Doc, pitch float64, sr int, durSec float64) (wave.Wave, error) {
 	if durSec <= 0 {
 		durSec = d.Render.Seconds

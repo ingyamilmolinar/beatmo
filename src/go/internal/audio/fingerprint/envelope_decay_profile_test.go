@@ -7,34 +7,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// envelope_decay_profile_test.go — decay measured in SECTIONS, not as one T60.
-//
-// WHY T60 WAS NOT ENOUGH
-// ----------------------
-// RingT60Sec is the time to fall 60 dB below the peak. Every instrument
-// reference in the corpus is truncated by its own fetch config (convert.max_sec,
-// typically 2-3 s), so for anything that rings the clip ends long before -60 dB
-// and BOTH sides report a clamped lower bound pinned to the clip length. The
-// comparison then reads "1.1x short -- fine" on instruments the listener
-// rejected outright:
-//
-//	harp           ref T60 1.95  synth T60 1.76   "1.1x short"   listener: "n"
-//	tubular-bells  rate -4.3 vs -5.0 dB/s          "fine"         listener: "n"
-//
-// Validated against the ear verdicts, `ring T60` scored AUC 0.21 (95% CI
-// 0.00-0.47) -- confidently ANTI-correlated with perceived quality.
-//
-// The shallower thresholds are reached WELL INSIDE the clip, so they measure
-// rather than clamp, and they describe the part of the decay a listener
-// actually hears:
-//
-//	harp           T20 ref 0.48  synth 1.56   3.3x too long
-//	tubular-bells  T10 ref 1.28  synth 0.35   3.7x too fast
-//
-// Both are exactly the complaints the listener made and T60 could not see.
+// Every reference is truncated (2–3 s), so a ringing note ends long before -60 dB and both sides report a clamped
+// T60 that reads "fine" on instruments the listener rejected; ring T60 was anti-correlated with the ear verdicts.
+// Shallower thresholds are reached inside the clip, so they measure what a listener hears.
 
-// expDecay builds a hit decaying at a known dB/sec, so the T-values are known
-// analytically and the test asserts against arithmetic rather than a snapshot.
+// Known T-values, so the assertions are arithmetic, not snapshots.
 func expDecay(sr int, f0, sec, dbPerSec float64) wave.Wave {
 	n := int(float64(sr) * sec)
 	s := make([]float64, n)
@@ -64,8 +41,7 @@ func TestDecayProfile_MatchesAnalyticDecayRate(t *testing.T) {
 	}
 }
 
-// The whole point: a clip that ends before -60 dB must still yield MEASURED
-// shallow thresholds rather than clamped ones.
+// A clip ending before -60 dB still yields MEASURED shallow thresholds.
 func TestDecayProfile_ShallowThresholdsSurviveClipTruncation(t *testing.T) {
 	// 8 dB/sec over a 2 s clip reaches only -16 dB: T10 measurable, T20 not.
 	seg := AnalyzeEnvelopeSegments(expDecay(44100, 220, 2.0, 8))
@@ -83,8 +59,7 @@ func TestDecayProfile_ShallowThresholdsSurviveClipTruncation(t *testing.T) {
 	}
 }
 
-// EnergySections is the "split it up into multiple sections" measurement: what
-// share of the note's energy lands in each equal slice of its audible span.
+// Each equal slice of the audible span's share of the energy.
 func TestEnergySections_SumToOneAndTrackShape(t *testing.T) {
 	seg := AnalyzeEnvelopeSegments(expDecay(44100, 220, 2.0, 30))
 	var sum float64

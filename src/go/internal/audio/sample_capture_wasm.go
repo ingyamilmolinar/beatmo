@@ -9,19 +9,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// RenderInstrumentOneShot captures the active instrument's rendered one-shot on
-// the browser. The PCM is produced by the C synth inside the JS WebAudio layer,
-// so capture goes through the captureInstrumentPCM JS bridge, which returns the
-// rendered Float32Array (as a Uint8Array view) plus its sample rate, or a falsy
-// value when no render is available yet.
+// The PCM is rendered by the C synth in the JS layer: falsy when no render exists yet.
 func RenderInstrumentOneShot(id instrument.ID) ([]float32, int) {
 	return captureInstrumentPCMOpts(id, false)
 }
 
-// RenderInstrumentOneShotRaw captures ignoring any non-destructive sample-edit
-// descriptor (the JS bridge skips its applySampleEdit step when raw is set).
-// The Sampler editor loads through this so it shows the UN-edited source
-// waveform and overlays the saved trim/pitch/gain itself.
+// The JS bridge skips applySampleEdit when raw is set.
 func RenderInstrumentOneShotRaw(id instrument.ID) ([]float32, int) {
 	return captureInstrumentPCMOpts(id, true)
 }

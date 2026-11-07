@@ -12,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// synthRenderChecksum renders an instrument one-shot deterministically and
-// returns (sampleCount, bitChecksum). The bit checksum is order-sensitive and
-// covers every sample's exact float32 bits — a single changed sample changes it.
+// (sampleCount, order-sensitive checksum of every sample's float32 bits).
 func synthRenderChecksum(id string) (int, uint64) {
 	buf, _ := RenderInstrumentOneShotRaw(instrument.ID(id))
 	var bits uint64
@@ -24,11 +22,7 @@ func synthRenderChecksum(id string) (int, uint64) {
 	return len(buf), bits
 }
 
-// TestSynthGoldenIdentityCapture prints the render checksum for every built-in
-// instrument. Run with CAPTURE to (re)generate the pinned goldens in
-// TestSynthGoldenByteIdentity:
-//
-//	go test -run TestSynthGoldenIdentityCapture -v ./internal/audio/ 2>&1 | grep GOLDEN
+// Regenerates the pinned goldens: go test -run TestSynthGoldenIdentityCapture -v ./internal/audio/ | grep GOLDEN
 func TestSynthGoldenIdentityCapture(t *testing.T) {
 	Reset()
 	ResetInstruments()

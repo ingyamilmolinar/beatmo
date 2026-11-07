@@ -8,32 +8,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// modular_modulator_stages_test.go covers the Phase-8C modulator stages
-// (PITCH ENV / LFO / BURST) promised by the unification spec §1 and delivered
-// after the gap audit. Contract per stage:
-//
-//   - *_enabled defaults DISABLED (schema identity 0, mp_get fallback 0) so
-//     every pre-Phase-8C render — all 648 oracle fixtures, the modular goldens,
-//     the NULL fast path — is byte-identical with the stage code present.
-//   - enabled=0 is an EXACT bypass: setting the stage's numeric knobs while the
-//     toggle is off must not change a single byte.
-//   - enabled=1 with the canonical UI defaults audibly changes the render
-//     (no silent no-op toggle).
-//
-// PITCH ENV scope: the legacy OSC stage oscillator (wavetable types 0-3) and
-// the FM core (osc_type 4, via fm_preset.pitch_env_*). Like the FM stage on
-// migrated drums, it is context-dependent — it does nothing until the OSC
-// stage is enabled and uses a pitched osc type (the documented fm_enabled
-// precedent in modular_stage_params.go). LFO and BURST are post-mix
-// multiplicative stages and shape EVERY voice, including migrated family
-// gen-slot voices.
+// PITCH ENV / LFO / BURST: off by default, an exact bypass while off, audible when on with the UI defaults. PITCH ENV
+// acts only on a pitched osc stage or the FM core; LFO and BURST are post-mix and shape every voice.
 
 const modStageSR = 48000
 const modStageSamples = modStageSR / 2 // 0.5 s
 
-// modIdentityVoice returns the identity modular voice params (the same values
-// the NULL fast path uses): sine osc, default ADSR/filter, all stages at their
-// engine defaults.
+// The values the NULL fast path uses.
 func modIdentityVoice() modularBlock {
 	return initBlockForTest(nil)
 }
@@ -118,8 +99,7 @@ func TestLFOEnabledChangesRender(t *testing.T) {
 	assertDiffers(t, "lfo on", renderModularFor(t, base), renderModularFor(t, on))
 }
 
-// TestLFOShapesMigratedFamilyVoice proves the LFO is a real post-mix stage on a
-// migrated drum (the gen-slot kick voice), not just the legacy osc path.
+// On the gen-slot kick voice, not only the osc path.
 func TestLFOShapesMigratedFamilyVoice(t *testing.T) {
 	base := renderFieldsForTest(t, roster.Kick, modStageSR, modStageSamples, nil)
 	on := renderFieldsForTest(t, roster.Kick, modStageSR, modStageSamples, map[string]float64{
@@ -164,10 +144,7 @@ func TestBurstShapesMigratedFamilyVoice(t *testing.T) {
 
 // ── Identity / golden neutrality ───────────────────────────────────────────
 
-// TestModulatorStagesIdentityIsByteNeutral renders the identity voice and the
-// NULL fast path and asserts they still agree — the appended modulator fields
-// must not disturb the pre-Phase-8C engine at identity. (The committed golden
-// hash in modular_golden_test.go pins the same property against history.)
+// The appended modulator fields must not move the identity render.
 func TestModulatorStagesIdentityIsByteNeutral(t *testing.T) {
 	viaIdentity := renderModularFor(t, modIdentityVoice())
 	null := make([]float32, modStageSamples)

@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestProcessBlockLocalDoesNotChainToParent verifies that ProcessBlockLocal
-// applies this channel's volume and EQ but does NOT recurse to the parent
-// channel. This is the key distinction that makes the 3-phase mixer work.
+// No recursion to the parent channel: what makes the 3-phase mixer work.
 func TestProcessBlockLocalDoesNotChainToParent(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -63,10 +61,7 @@ func TestProcessBlockLocalDoesNotChainToParent(t *testing.T) {
 	}
 }
 
-// TestMultiInstrumentMasterBiquadCoherence verifies that the 3-phase mixer
-// pattern produces correct results when multiple instruments are summed and
-// then processed through master EQ. The master lowpass should attenuate
-// high-frequency instruments while passing low-frequency ones.
+// Summed, then the master lowpass attenuates the high instruments and passes the low ones.
 func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -93,8 +88,6 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 	sigSnare := genSine(800, sr, n)  // below cutoff
 	sigHihat := genSine(5000, sr, n) // above cutoff
 
-	// 3-phase simulation:
-	// Phase 1: accumulate per-instrument (with headroom)
 	kickBuf := make([]float64, n)
 	snareBuf := make([]float64, n)
 	hihatBuf := make([]float64, n)
@@ -104,13 +97,11 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 		hihatBuf[i] = sigHihat[i] * 0.25
 	}
 
-	// Phase 2: ProcessBlockLocal per instrument → masterBuf
 	masterBuf := make([]float64, n)
 	InstrumentChannel(channel.Of(instrument.ID(kickID))).ProcessBlockLocal(kickBuf, masterBuf)
 	InstrumentChannel(channel.Of(instrument.ID(snareID))).ProcessBlockLocal(snareBuf, masterBuf)
 	InstrumentChannel(channel.Of(instrument.ID(hihatID))).ProcessBlockLocal(hihatBuf, masterBuf)
 
-	// Phase 3: master ProcessBlockLocal → workBuf
 	workBuf := make([]float64, n)
 	mainCh := channelForInstrument(channel.ID{})
 	mainCh.ProcessBlockLocal(masterBuf, workBuf)
@@ -135,8 +126,7 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 		t.Fatalf("3-phase multi-instrument output diverges from reference (correlation < 0.999): %.6f", corr)
 	}
 
-	// Also verify that 5kHz hihat is attenuated by the master lowpass.
-	// Process hihat alone through the 3-phase path with a fresh master biquad.
+	// A fresh master biquad.
 	bqMain2 := makeBiquad(EQLowpass, sr, 2000, 0.707, 0)
 	if bqMain2 == nil {
 		t.Fatal("failed to create second master biquad")
@@ -166,9 +156,7 @@ func TestMultiInstrumentMasterBiquadCoherence(t *testing.T) {
 	}
 }
 
-// TestProcessBlockLocalAccumulates verifies that ProcessBlockLocal accumulates
-// into the output buffer rather than overwriting it. This is critical for the
-// mixer's per-instrument → master accumulation pattern.
+// The mixer's per-instrument → master accumulation depends on it.
 func TestProcessBlockLocalAccumulates(t *testing.T) {
 	withDefaultAudio(t)
 	const (

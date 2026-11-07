@@ -4,18 +4,10 @@ package audio
 
 import "testing"
 
-// noise_ma is the in-repo transplant of miniaudio's ma_noise white stream
-// (Lehmer LCG, MA_LCG_A=48271, MA_LCG_M=2^31-1, MA_LCG_C=0; seed 0 is
-// replaced by MA_DEFAULT_LCG_SEED=4321 in ma_noise_config_init —
-// miniaudio.h:66997). The legacy drum renderers consume ma_noise with seed
-// 0; their modular-preset replacements consume noise_ma. This test is the
-// proof the two streams are bit-identical, including the int32-overflow
-// wraparound inside the LCG step (state can go negative — the transplant
-// must reproduce that, not "fix" it).
+// noise_ma transplants miniaudio's ma_noise white stream (Lehmer LCG 48271, 2^31-1); the streams must be bit-identical,
+// including the int32 wraparound where state goes negative, which the transplant must reproduce, not "fix".
 func TestNoiseMaParity(t *testing.T) {
-	// 262144 draws — far longer than any voice render, and deep enough into
-	// the LCG period to exercise many negative-state wraparounds where a
-	// wrong sign/modulus reproduction would surface.
+	// Deep enough into the period for many negative-state wraparounds.
 	const n = 1 << 18
 	want := make([]float32, n)
 	got := make([]float32, n)
@@ -29,8 +21,7 @@ func TestNoiseMaParity(t *testing.T) {
 	}
 }
 
-// Seed handling must match ma_noise_config_init: explicit non-zero seeds
-// pass through; 0 becomes 4321.
+// As ma_noise_config_init: seed 0 becomes 4321.
 func TestNoiseMaSeedZeroIsDefault(t *testing.T) {
 	a := make([]float32, 1024)
 	b := make([]float32, 1024)

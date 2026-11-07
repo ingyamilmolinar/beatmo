@@ -1,12 +1,5 @@
-// Package linalg is the small dense complex linear algebra the WAV-clone
-// analysis needs: a Hermitian eigensolver (ESPRIT signal subspaces), the
-// eigenvalues of a general complex matrix (ESPRIT poles) and complex least
-// squares (rotational invariance, Vandermonde amplitudes). Matrices are at
-// most a few hundred wide and every routine is deterministic. gonum was
-// considered and rejected: it has no decompositions for complex matrices.
-//
-// Dev-only: nothing reachable from a shipped binary imports this package
-// (TestCloneIsDevOnly).
+// Package linalg is the small dense complex linear algebra the WAV-clone analysis needs; gonum has no complex
+// decompositions. Every routine is deterministic. Dev-only.
 package linalg
 
 import "math/cmplx"

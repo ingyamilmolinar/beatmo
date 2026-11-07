@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// Analyzer is a lightweight realtime meter + spectrum tap.
-// Uses lock-free atomics for the hot path (ProcessSample) to reduce contention.
+// Lock-free atomics on the hot path (ProcessSample) keep the audio thread uncontended.
 type Analyzer struct {
 	mu       sync.Mutex // Only used during compute
 	window   []float64
@@ -38,8 +37,7 @@ type AnalyzerSnapshot struct {
 	Waveform  []float64
 }
 
-// NewAnalyzer creates an analyzer with the requested window size. The size is
-// rounded to the nearest power-of-two between 64 and 8192.
+// The size is rounded to the nearest power of two in [64, 8192].
 func NewAnalyzer(window int) *Analyzer {
 	if window < 64 {
 		window = 64
@@ -61,8 +59,7 @@ func NewAnalyzer(window int) *Analyzer {
 	return a
 }
 
-// ProcessSample taps the stream and forwards the input unchanged.
-// Uses lock-free atomics for the hot path to reduce contention.
+// Forwards the input unchanged.
 func (a *Analyzer) ProcessSample(x float64) float64 {
 	n := len(a.window)
 	// Atomic increment, get previous value
@@ -81,8 +78,7 @@ func (a *Analyzer) ProcessSample(x float64) float64 {
 	return x
 }
 
-// ProcessBlock batches circular buffer writes with minimal atomics. Only stores
-// the write index atomically at window boundaries and at the end of the block.
+// The write index is stored atomically only at window boundaries and at the block end.
 func (a *Analyzer) ProcessBlock(samples []float32, n int) {
 	ws := len(a.window)
 	if ws == 0 || n <= 0 {
@@ -105,15 +101,11 @@ func (a *Analyzer) ProcessBlock(samples []float32, n int) {
 	a.write.Store(int32(idx % ws))
 }
 
-// ProcessBlockBuf implements BlockProcessor for Analyzer.
-// Copies input to output (pass-through) and feeds samples to the analyzer.
 func (a *Analyzer) ProcessBlockBuf(in, out []float32, samples int) {
 	copy(out[:samples], in[:samples])
 	a.ProcessBlock(in, samples)
 }
 
-// Snapshot returns the latest measurements.
-// Uses atomic reads for RMS/Peak and a snapshot copy of spectrum for lock-free access.
 func (a *Analyzer) Snapshot() AnalyzerSnapshot {
 	rms := math.Float64frombits(a.rmsBits.Load())
 	peak := math.Float64frombits(a.peakBits.Load())
@@ -144,13 +136,8 @@ func (a *Analyzer) Snapshot() AnalyzerSnapshot {
 	}
 }
 
-// Reset zeros the retained waveform/spectrum/RMS/peak so the next Snapshot reads
-// flat until fresh audio flows. Analyzer instances are reused across circuit
-// loads (see wireChannelAnalyzer), and compute() only overwrites these when the
-// window fills — so a stopped analyzer keeps returning the previous circuit's
-// frame forever. Called on circuit load so the audio-panel tabs read flat until
-// the new circuit is played. Safe to call when the audio thread is idle (import
-// stops playback before rebuilding the graph).
+// Instances are reused across circuit loads and compute() overwrites only when a window fills, so a stopped analyzer
+// would show the previous circuit forever. Only safe while the audio thread is idle (import stops playback first).
 func (a *Analyzer) Reset() {
 	if a == nil {
 		return
@@ -172,8 +159,7 @@ func (a *Analyzer) Reset() {
 	a.peakBits.Store(0)
 }
 
-// SetEnabled controls whether compute() runs. When disabled, audio still passes
-// through but FFT/RMS/peak analysis is skipped, saving ~4.65% CPU.
+// Audio still passes through; only the analysis is skipped.
 func (a *Analyzer) SetEnabled(on bool) { a.enabled.Store(on) }
 
 // Enabled returns whether the analyzer's compute path is active.
@@ -278,13 +264,8 @@ var analyzerRegistry = struct {
 	m map[channel.ID]*Analyzer
 }{m: map[channel.ID]*Analyzer{}}
 
-// EnableChannelAnalyzer wires an analyzer into a channel's processor chain and
-// returns the analyzer instance for polling.
-//
-// IDEMPOTENT: callers re-issue this on every channel focus (setEQActiveChannel)
-// and every audio-panel tab transition (EnsureAnalyzersForTab), so it must reuse
-// the analyzer already wired at the same window instead of appending another.
-// See analyzer_wiring.go for why stacking here is an audio-thread bug.
+// IDEMPOTENT: channel focus and every tab transition re-issue it, so it reuses the analyzer already wired at that
+// window; a stacked analyzer is another FFT on the audio thread.
 func EnableChannelAnalyzer(id channel.ID, window int) *Analyzer {
 	an := wireChannelAnalyzer(id, window)
 	analyzerRegistry.Lock()
@@ -304,8 +285,7 @@ func ChannelAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot {
 	return an.Snapshot()
 }
 
-// EnablePreEQAnalyzer creates an analyzer on the channel that taps the signal
-// after volume but before the EQ processor chain. Returns the analyzer.
+// Taps after volume, before the EQ chain.
 func EnablePreEQAnalyzer(id channel.ID, window int) *Analyzer {
 	an := NewAnalyzer(window)
 	ch := chanMgr.ensureChannel(id)
@@ -334,22 +314,14 @@ var preEQAnalyzerRegistry = struct {
 	m map[channel.ID]*Analyzer
 }{m: map[channel.ID]*Analyzer{}}
 
-// EnableSynthAnalyzer is a no-op on desktop — per-stage scope data flows
-// through the real scope.Service (engine_stop.go) rather than JS-side
-// AnalyserNode taps. Returns nil so the WASM/desktop call shapes match.
-//
-// WASM has a real implementation in analyzer_wasm.go that wires an
-// AudioContext AnalyserNode at the channel ingress.
+// A no-op on desktop, where per-stage scope data comes from scope.Service; nil keeps the call shape of the WASM
+// version.
 func EnableSynthAnalyzer(id channel.ID, window int) *Analyzer { return nil }
 
-// SynthAnalyzerSnapshot is a no-op on desktop — see EnableSynthAnalyzer.
-// WASM uses the JS AnalyserNode; the UI bridge in
-// internal/ui/wasm_analyzer_bridge.go is the only caller and it's only
-// compiled for WASM.
+// A no-op on desktop; only the WASM bridge calls it.
 func SynthAnalyzerSnapshot(id channel.ID) AnalyzerSnapshot { return AnalyzerSnapshot{} }
 
-// SetAnalyzerEnabled enables or disables FFT compute for a channel's analyzers.
-// Audio pass-through is never affected; only the FFT/RMS/peak computation is gated.
+// Pass-through is never affected; only the analysis is gated.
 func SetAnalyzerEnabled(id channel.ID, on bool) {
 	analyzerRegistry.RLock()
 	an := analyzerRegistry.m[id]
@@ -374,11 +346,7 @@ func resetAnalyzers() {
 	preEQAnalyzerRegistry.Unlock()
 }
 
-// ResetAllChannelAnalyzers zeros the retained frame of every wired channel and
-// pre-EQ analyzer without unregistering them (unlike resetAnalyzers, which drops
-// the registry references but leaves the reused instances holding stale data).
-// Called on circuit load so a stopped, freshly loaded circuit shows no stale
-// waveform/spectrum/level data on the audio-panel tabs.
+// Unlike resetAnalyzers, keeps the registrations: the reused instances would otherwise hold stale frames.
 func ResetAllChannelAnalyzers() {
 	analyzerRegistry.RLock()
 	for _, an := range analyzerRegistry.m {
@@ -392,16 +360,13 @@ func ResetAllChannelAnalyzers() {
 	preEQAnalyzerRegistry.RUnlock()
 }
 
-// AnalyzerBridgeStats returns zero counters on desktop; the JS↔Go bridge
-// counters only exist in the WASM build.
+// The bridge counters exist only in the WASM build.
 func AnalyzerBridgeStats() (calls, elementReads uint64) { return 0, 0 }
 
 // ResetAnalyzerBridgeStats is a no-op on desktop.
 func ResetAnalyzerBridgeStats() {}
 
-// ChannelAnalyzerMetrics returns scalar metrics for the channel,
-// derived from the existing analyzer snapshot. Desktop has no JS bridge
-// to short-circuit, so this is just a scalar projection.
+// Desktop has no bridge to skip: a scalar projection of the snapshot.
 func ChannelAnalyzerMetrics(id channel.ID) (peak, rms float64, clips int, active bool) {
 	s := ChannelAnalyzerSnapshot(id)
 	clips = s.ClipCount

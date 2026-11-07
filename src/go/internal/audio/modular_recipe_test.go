@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// ParamDef gains an optional Enum field (v2, additive + omitempty) so discrete
-// params (oscillator type, filter type, …) carry selector labels while staying
-// float-valued. A ParamDef WITHOUT an enum must serialize identically to v1
-// (no "enum" key) so existing recipe goldens are unaffected.
+// Without an enum it must serialize exactly as before (no "enum" key), so recipe goldens are unaffected.
 func TestParamDefEnumRoundTrip(t *testing.T) {
 	withEnum := ParamDef{
 		Name: "osc_type", Label: "Oscillator", Min: 0, Max: 4, Default: 0,
@@ -48,14 +45,8 @@ func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 		t.Fatalf("ModularSynthParamDefs len = %d, want %d (1:1 with the scalar schema)", len(defs), len(schema))
 	}
 	ident := modularFieldInits()
-	// Phase-8C carve-out: the modulator-stage NUMERICS (pitchenv/lfo/burst
-	// knobs) deliberately default to AUDIBLE values (12 st sweep, 8 Hz / 0.5
-	// wobble, clap bursts) while their schema identity stays 0. The invariant
-	// this test protects — an unedited voice renders identically through the
-	// NULL fast path and the recipe path — still holds because each stage's
-	// ENABLE defaults 0 (which MUST equal its identity, asserted below) and a
-	// disabled stage never reads its numerics (exact bypass; see
-	// TestPitchEnvDisabledIsExactBypass et al). The toggles are NOT carved out.
+	// The modulator numerics default to audible values while their identity stays 0; untouched renders still match because
+	// each stage's ENABLE defaults to its identity and a disabled stage never reads its numerics.
 	modulatorNumericCarveOut := map[string]bool{
 		"pitchenv_amt": true, "pitchenv_decay": true,
 		"lfo_rate": true, "lfo_depth": true, "lfo_target": true,
@@ -85,9 +76,6 @@ func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 			t.Errorf("ModularSynthParamDefs missing %q", n)
 		}
 	}
-	// The four discrete params must carry enum labels (osc_type now includes
-	// the two noise generators; the five per-stage enable toggles are Off/On).
-	// Phase-15 added glottal-pulse osc_type 12 ("Voice"), bumping 12 -> 13.
 	enums := map[string]int{
 		"osc_type": 13, "fm_algorithm": 4, "amp_curve": 2, "filter_type": 3,
 		"osc_enabled": 2, "fm_enabled": 2, "env_enabled": 2, "filter_enabled": 2, "drive_enabled": 2,

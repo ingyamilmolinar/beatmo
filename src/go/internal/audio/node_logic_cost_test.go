@@ -13,18 +13,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Deterministic CPU-cost measurement of the predictor scheduling path — the Go
-// analog of scripts/bench_audio_node_cost.mjs (which measures only WebAudio
-// insert-FX node cost). This covers the path FX-cost can't: the predictor
-// Ensure()/rebuild that runs on the scheduling critical path on BOTH desktop
-// and browser, and which the user's "choppy when I add node rules" symptom
-// points at.
-//
-// Key mechanism under test (predictor_compute.go:184-235): a node-param edit
-// sets predDirty; the next Ensure() re-walks [0, windowStart) for every row to
-// rebuild cumulative per-row logic state. windowStart = horizon - windowCap
-// grows without bound across a session, so each edit's rebuild cost grows with
-// how long you've been playing — independent of how small the edit was.
+// The predictor's dirty rebuild runs on the scheduling path on both platforms: an edit re-walks [0, windowStart) for
+// every row, and windowStart grows with the session, so an edit's cost grows with how long you have been playing.
 
 // costCircuit holds a predictor plus the handle needed to dirty it.
 type costCircuit struct {
@@ -72,8 +62,7 @@ func buildCostCircuit(t *testing.T, n int, profile string) costCircuit {
 	return costCircuit{pred: finishPredictor(graph), graph: graph, editID: ids[0]}
 }
 
-// dirtyEdit mutates one node param and pushes it to the predictor, setting
-// predDirty (the same path a live node-rule edit takes).
+// The same path a live node-rule edit takes.
 func (c costCircuit) dirtyEdit() {
 	node, _ := c.graph.GetNodeByID(c.editID)
 	node.Params.LogicN++ // any param change dirties the predictor
@@ -86,8 +75,7 @@ func medianMS(ds []time.Duration) float64 {
 	return float64(ds[len(ds)/2].Microseconds()) / 1000.0
 }
 
-// timeDirtyRebuild advances the window to `windowStart+windowCap`, then times
-// the Ensure() that follows a dirty edit (the full [0,windowStart) re-walk).
+// Times the full [0, windowStart) re-walk after a dirty edit.
 func timeDirtyRebuild(c costCircuit, windowStart, reps int) (rebuildMS float64, gotStart int) {
 	horizon := windowStart + 4096 // windowCap=4096 → slides windowStart to `windowStart`
 	c.pred.Ensure(horizon)        // advance window (simulate playback to here)
@@ -117,10 +105,7 @@ func timeSteadyEnsure(c costCircuit, fromHorizon, reps int) float64 {
 	return medianMS(ds)
 }
 
-// TestNodeLogicEnsureCostTable prints the deterministic cost table and asserts
-// the smoking gun: the dirty-rebuild cost scales with windowStart (session
-// length), which is what makes "add a node rule mid-song" choppy. Task 9's fix
-// will bound this; TestDirtyRebuildBoundedByWindowCap gates that.
+// The cost scales with windowStart (session length): what makes adding a rule mid-song choppy.
 func TestNodeLogicEnsureCostTable(t *testing.T) {
 	const reps = 7
 	profiles := []string{"static", "every_n", "prev_chain"}

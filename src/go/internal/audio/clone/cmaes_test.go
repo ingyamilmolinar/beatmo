@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// TestCMAESMinimisesAQuadratic: a rotated, ill-conditioned (1e3) ellipsoid in
-// 10 dimensions, optimum away from the start.
+// Rotated, conditioned 1e3, optimum away from the start.
 func TestCMAESMinimisesAQuadratic(t *testing.T) {
 	const n = 10
 	opt := make([]float64, n)

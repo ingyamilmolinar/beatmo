@@ -2,21 +2,10 @@ package fingerprint
 
 import "fmt"
 
-// registry_core.go — the nine axes cmd/refs/diagnose.go used to hand-write.
-//
-// Group and Name strings are reproduced BYTE-FOR-BYTE from the pre-registry
-// diagnose.go. They are load-bearing: the frozen acceptance baseline in
-// cmd/refs/testdata/diagnose_baseline_2026-08-22.json keys on them, as does
-// the verdict table transcribed from
-// docs/superpowers/specs/2026-08-22-verdict-to-metric-mapping.md. Renaming an
-// axis here silently breaks the gate that proves the diagnostic still
-// reproduces the listener's own complaints.
-//
-// Descriptor IDs are new (the hand-written axes had no stable machine key)
-// and are what goldens and the calibration tables will key on from now on.
+// Group and Name are byte for byte the old diagnose strings: the acceptance baseline and the verdict table key on them,
+// so a rename silently breaks the gate. IDs are what goldens and calibration key on.
 
-// Core descriptor IDs. Exported so the validation harnesses and cmd/refs can
-// reference specific axes without stringly-typed literals scattered around.
+// Exported so harnesses and cmd/refs need no string literals.
 const (
 	IDNoiseFraction     = "noise.fraction"
 	IDNoiseFlatness     = "noise.flatness"
@@ -48,22 +37,13 @@ const (
 	GroupMod      = "modulation"
 )
 
-// naSilent is the single reason string used whenever an envelope-derived
-// descriptor cannot be measured because the clip carries no audible signal.
 const naSilent = "signal is silent"
 
 func init() {
 	r := DefaultRegistry()
 
-	// --- noise / harmonic balance ------------------------------------------
-	//
-	// Noise QUANTITY and noise CHARACTER are deliberately two descriptors,
-	// not one. The mapping doc's snare correction is the reason: the synth
-	// measured MORE noise energy (fraction 0.815 -> 0.933) but FAR more
-	// tonal noise (flatness 0.599 -> 0.204). Broadband noise reads as snare
-	// wires; band-limited coloured noise reads as hiss. When these two
-	// disagree, the disagreement IS the diagnosis — averaging them away
-	// would have destroyed the finding.
+	// Noise QUANTITY and CHARACTER are two descriptors: a synth snare with MORE noise but far more tonal noise reads as hiss
+	// instead of wires, and the disagreement IS the diagnosis.
 
 	r.Register(Descriptor{
 		ID: IDNoiseFraction, Group: GroupNoise, Name: "noise fraction",
@@ -163,19 +143,8 @@ func init() {
 		},
 	})
 
-	// --- temporal envelope: decay measured in SECTIONS ----------------------
-	//
-	// ring T60 above is kept for continuity but is close to useless on this
-	// corpus and known to be so: every reference is truncated by its own fetch
-	// config, so anything that rings hits the clip end long before -60 dB and
-	// both sides report a clamped lower bound. Validated against the listener
-	// verdicts it scored AUC 0.21 (95% CI 0.00-0.47) -- confidently
-	// ANTI-correlated with perceived quality.
-	//
-	// These four are what the listener actually asked for, in their words:
-	// "split it up into multiple sections and also get duration of attack,
-	// release, peak". The shallow thresholds are reached inside the clip so
-	// they MEASURE, and the section profile says where the energy sits.
+	// Ring T60 is kept but known to mislead on truncated references; these thresholds are reached inside the clip, and
+	// the section profile says where the energy sits.
 
 	decayRow := func(id, name string, dbDown int, get func(EnvelopeSegments) (float64, bool)) {
 		r.Register(Descriptor{
@@ -217,10 +186,8 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDEnergySections, Group: GroupEnvelope, Name: "energy sections",
 		Scope: ScopeWhole, Repr: ReprTime, Kind: KindFraction,
-		// Thresholds on the mean absolute difference of four shares that sum to
-		// 1. A 0.05 mean shift moves roughly a twentieth of the note's power
-		// between sections -- audible as a different envelope shape; 0.15 is a
-		// different instrument's shape entirely.
+		// On four shares summing to 1: 0.05 moves a twentieth of the power between sections, 0.15 is another instrument's
+		// shape.
 		Drift: 0.05, Mismatch: 0.15,
 		Doc: "EnvelopeSegments.EnergySections: the share of the note's total energy in each " +
 			"quarter of its audible span. The 'split it into sections' view -- it answers " +
@@ -240,15 +207,7 @@ func init() {
 		},
 	})
 
-	// --- temporal envelope: the remaining named durations --------------------
-	//
-	// The listener asked for "duration of attack, release, peak, etc" and the
-	// first pass registered attack, release, the shallow decay thresholds and
-	// the section profile -- but DecaySec, DecayRateDBPerSec, PeakSec and
-	// TotalAudibleSec were computed on every analysis and read by nothing.
-	// (Found by TestNoUnreadMetricFields, which exists because this is the
-	// fourth time an analyzer in this package has turned out to have no
-	// consumer.)
+	// Computed on every analysis, so they are registered rather than left unread (TestNoUnreadMetricFields).
 
 	r.Register(Descriptor{
 		ID: IDEnvDecay, Group: GroupEnvelope, Name: "decay",
@@ -345,14 +304,8 @@ func init() {
 		},
 	})
 
-	// --- partial structure ---------------------------------------------------
-	//
-	// Two descriptors asking DIFFERENT questions, both kept deliberately.
-	// Inharmonicity asks "how far is each partial from its OWN nearest
-	// integer multiple of f0" — a tuned bar's ~4x overtone scores near zero
-	// there, since 4 IS an integer. SeriesDeviation asks "does the found
-	// partial SEQUENCE look like a consecutive series at all" — the actual
-	// string-vs-bar/tube discriminator behind the kalimba complaint.
+	// Two questions, both kept: Inharmonicity asks how far each partial is from its own nearest integer (a bar's 4×
+	// scores ~0); SeriesDeviation asks whether the sequence is consecutive, the string-vs-bar discriminator.
 
 	r.Register(Descriptor{
 		ID: IDInharmonicity, Group: GroupPartials, Name: "inharmonicity",
@@ -445,14 +398,8 @@ const (
 	ringT60DecayRate    = 2
 )
 
-// compareRingT60 reproduces cmd/refs/diagnose.go's ringT60Axis exactly.
-//
-// When BOTH sides' T60 are extrapolated lower bounds, comparing them is
-// vacuous, so it escalates to the post-peak decay RATE, which IS measurable
-// inside the clip. When only one side is extrapolated the ordinary ratio
-// still carries signal (harp reads 1.9x short even with one side biased
-// toward it), but the note says which value is a bound rather than a
-// measurement.
+// Both sides extrapolated makes the T60 comparison vacuous, so it escalates to the post-peak decay RATE, measurable
+// inside the clip; with one side extrapolated the ratio still carries signal and the note says which value is a bound.
 func compareRingT60(ref, synth Measurement, drift, mismatch float64) Delta {
 	if !ref.OK {
 		return Delta{NA: ref.NA}
@@ -460,10 +407,7 @@ func compareRingT60(ref, synth Measurement, drift, mismatch float64) Delta {
 	if !synth.OK {
 		return Delta{NA: synth.NA}
 	}
-	// The compound measurement carries three components by construction. A
-	// short vector means the extractor and this comparator have drifted apart;
-	// report that rather than panicking mid-report and taking every other axis
-	// down with it.
+	// A short vector means extractor and comparator drifted; report it instead of panicking the whole report.
 	if len(ref.Values) <= ringT60DecayRate || len(synth.Values) <= ringT60DecayRate {
 		return Delta{NA: fmt.Sprintf(
 			"malformed ring-T60 measurement: need %d components, got ref=%d synth=%d",
@@ -475,9 +419,7 @@ func compareRingT60(ref, synth Measurement, drift, mismatch float64) Delta {
 	if refExtrap && synthExtrap {
 		v, dir := ClassifyDecayRate(
 			ref.Values[ringT60DecayRate], synth.Values[ringT60DecayRate], drift, mismatch)
-		// The escalation compares IMPLIED T60s, so the magnitude it weighs is
-		// their folded ratio -- the same unit the seconds path below reports,
-		// which is what lets one calibrated threshold serve both paths.
+		// The folded ratio of the implied T60s, the seconds path's unit, so one calibrated threshold serves both.
 		magT60, magOK := decayRateFoldedT60Ratio(
 			ref.Values[ringT60DecayRate], synth.Values[ringT60DecayRate])
 		return Delta{
@@ -495,14 +437,8 @@ func compareRingT60(ref, synth Measurement, drift, mismatch float64) Delta {
 	return compareScalar(KindSeconds, ref.Values[ringT60Sec], synth.Values[ringT60Sec], drift, mismatch)
 }
 
-// decayRateNorm mirrors ratioNormAndDisplay's normalization for the decay-rate
-// escalation path, so a rate-derived verdict ranks against every other
-// descriptor on the same Norm>=1-means-mismatch scale.
-// decayRateFoldedT60Ratio returns the folded ratio of the T60s the two decay
-// rates imply, and whether it is a measurement at all. It is false when either
-// side shows no decay trend, where the classifier asserts a verdict from the
-// asymmetry rather than from a ratio -- a sentinel, not a magnitude, and so
-// not something threshold calibration may average.
+// false when either side shows no decay trend: the verdict then comes from the asymmetry, a sentinel calibration must
+// not average.
 func decayRateFoldedT60Ratio(refRate, synthRate float64) (float64, bool) {
 	refAbs, synthAbs := absF(refRate), absF(synthRate)
 	if refAbs < decayRateFlatEps || synthAbs < decayRateFlatEps {

@@ -8,19 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The render path flattens the instrument's document (then sets the pitch
-// field), so a pitch-shifting value the instrument SHIPS with — an osc_octave
-// in its document, say — moves the sounding frequency exactly as a user knob
-// would.
-//
-// InstrumentPitchInfo used to read only the user-override map, so those seed
-// offsets were invisible to it: it reported +0 semitones for instruments the
-// engine renders a full octave away. That broke its documented contract
-// ("the displayed note is exactly what the engine sounds") and, because it is
-// the only programmatic answer to "does this instrument shift pitch?", it left
-// the score importer hand-maintaining the same knowledge in a comment — where
-// it drifted (double-bass was compensated as if it had an octave offset it
-// does not have).
+// A value the instrument SHIPS with (an osc_octave in its document) moves the sound as a user knob would, so the note
+// must reflect it.
 func TestInstrumentPitchInfoFoldsRecipeDefaults(t *testing.T) {
 	cases := []struct {
 		inst instrument.ID
@@ -50,9 +39,7 @@ func TestInstrumentPitchInfoFoldsRecipeDefaults(t *testing.T) {
 	}
 }
 
-// A user edit must still WIN over the shipped value (it replaces it in the
-// document) — otherwise re-tuning an instrument in the
-// Synth tab would stop moving its displayed note.
+// Or re-tuning in the Synth tab would stop moving the displayed note.
 func TestInstrumentPitchInfoUserOverrideBeatsDefault(t *testing.T) {
 	const inst = roster.Cello // default osc_octave:-1
 	if base, _ := InstrumentPitchInfo(inst); math.Abs(base-(-12)) > 1e-9 {

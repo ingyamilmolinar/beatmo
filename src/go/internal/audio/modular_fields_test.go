@@ -7,11 +7,8 @@ import (
 	"testing"
 )
 
-// TestModularFieldsReproduceTheShippedLayout is the safety net for moving the
-// ABI into one table: the derived schema must keep the shipped names, order and
-// identities exactly (frozen in testdata/modular_schema_layout.json before the
-// table existed). Later Phase C tasks reshape the block deliberately and
-// re-freeze this file in the same change.
+// The derived schema must keep the shipped names, order and identities exactly; a deliberate reshape re-freezes the
+// layout file in the same change.
 func TestModularFieldsReproduceTheShippedLayout(t *testing.T) {
 	raw, err := os.ReadFile("testdata/modular_schema_layout.json")
 	if err != nil {
@@ -36,10 +33,8 @@ func TestModularFieldsReproduceTheShippedLayout(t *testing.T) {
 	}
 }
 
-// TestFieldDocsDescribeNoSubstitutedDefaults: since Phase C the engine reads
-// every field as-is, so a Doc may not say a value is swapped for another one
-// ("(0: 300)", a NaN sentinel, a fallback, a legacy path) — those notes were
-// generated straight into modular_params.gen.h and contradicted the code.
+// The engine reads every field as-is, so a Doc may not describe a substituted value ("(0: 300)", a NaN sentinel, a
+// fallback): those notes are generated into the C header.
 func TestFieldDocsDescribeNoSubstitutedDefaults(t *testing.T) {
 	bad := regexp.MustCompile(`(?i)\(0: ?[0-9]|legacy|fallback|\bNaN\b|kp_get|mp_get`)
 	for _, f := range modularFields {

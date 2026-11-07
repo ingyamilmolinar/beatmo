@@ -9,19 +9,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// invert.go — Analysis → instrument document (spec §5a). The document holds
-// MEASURED MODEL NUMBERS on the plan-2 stages and nothing else: mode rows
-// stored relative to the models the C evaluates live (amplitudes ÷ the fitted
-// strike, decays ÷ the fitted law), the fitted strike and law as the stages'
-// absolute values, residual noise-band rows. At the fit pitch it reproduces
-// the measurement exactly (TestInvertReproducesTheMeasuredModes).
+// MEASURED MODEL NUMBERS only: mode rows relative to what the C evaluates live (amplitudes ÷ the strike, decays ÷
+// the law), the strike and law as absolute stage values, residual noise rows. At the fit pitch it reproduces the
+// measurement exactly.
 
 // InvertOptions shapes the candidate document.
 type InvertOptions struct {
 	ID             instrument.ID
 	Name, Category string
-	// Into keeps an existing instrument's identity (id, name, category,
-	// notes, render length) and replaces its sound.
+	// Keeps an existing instrument's identity (id, name, category, notes, render length) and replaces its sound.
 	Into     *instrument.Doc
 	MaxModes int     // default 128 (the table capacity)
 	FloorDB  float64 // drop modes this far below the strongest's energy; default −60
@@ -58,15 +54,13 @@ var (
 	tcBounds    = [2]float64{0, 0.05}
 	hardBounds  = [2]float64{-24, 24}
 	noiseQBound = [2]float64{0.1, 100}
-	// noiseCenterBounds / modeFreqHzMax are the table columns' bounds
-	// (module_decls.go).
+	// The table columns' bounds.
 	noiseCenterBounds = [2]float64{10, 24000}
 	modeFreqHzMax     = 24000.0
 )
 
-// RenderPitch is the node pitch a reference is fitted and auditioned at
-// (spec §5b): a pitched reference sounds exactly its nominal f0
-// (220·2^(p/12) = f0); an unpitched one its catalogue note when known.
+// A pitched reference sounds exactly its nominal f0 (220·2^(p/12) = f0); an unpitched one its catalogue note when
+// known.
 func (p PitchInfo) RenderPitch() float64 {
 	if p.Pitched && p.F0Hz > 0 {
 		return 12 * math.Log2(p.F0Hz/modularBaseFreq)
@@ -90,8 +84,7 @@ func Invert(a Analysis, opt InvertOptions) (instrument.Doc, InvertReport, error)
 		return instrument.Doc{}, rep, fmt.Errorf("clone: no modes to invert")
 	}
 
-	// A percussion voice renders at pitch 0 and is resampled by k at the
-	// fit pitch, so the model is stored in the pitch-0 domain.
+	// Percussion renders at pitch 0 and is resampled by k, so the model is stored in the pitch-0 domain.
 	k := 1.0
 	if !rep.Melodic {
 		k = math.Pow(2, rep.FitPitch/12)
@@ -175,8 +168,7 @@ func Invert(a Analysis, opt InvertOptions) (instrument.Doc, InvertReport, error)
 	nt := instrument.Table{Cols: []string{"center", "q", "level", "attack", "fast_rate", "fast_mix", "tail_rate"}}
 	var bands []NoiseBand
 	for _, b := range activeBands(a.Residual.Bands) {
-		// Pre-scaled for a resample, a band can leave the column's range (a
-		// conga at +22 st put the 31.5 Hz band at 8.8 Hz): it cannot be stored.
+		// Pre-scaled for the resample a band can leave the column's range, and cannot be stored.
 		if c := b.CenterHz / k; c >= noiseCenterBounds[0] && c <= noiseCenterBounds[1] {
 			bands = append(bands, b)
 		}
@@ -209,8 +201,7 @@ func Invert(a Analysis, opt InvertOptions) (instrument.Doc, InvertReport, error)
 	return d, rep, nil
 }
 
-// selectModes ranks by energy, drops modes floorDB under the strongest, and
-// keeps at most maxModes without splitting a doublet at the cut.
+// Never splits a doublet at the cut.
 func selectModes(in []Mode, maxModes int, floorDB float64) ([]Mode, int) {
 	ms := append([]Mode(nil), in...)
 	sort.SliceStable(ms, func(i, j int) bool { return ms[i].Energy() > ms[j].Energy() })
@@ -261,8 +252,7 @@ func activeBands(in []NoiseBand) []NoiseBand {
 	return out
 }
 
-// renderSeconds is the time the slowest audible part of the model (pitch-0
-// domain) takes to reach the reference's floor.
+// Pitch-0 domain.
 func renderSeconds(modes []Mode, bands []NoiseBand, k, floor float64) float64 {
 	floor = math.Max(floor, 1e-6)
 	t := 0.0
@@ -283,9 +273,7 @@ func wrapPhase(p float64) float64 { return math.Remainder(p, 2*math.Pi) }
 
 func clamp(v float64, b [2]float64) float64 { return math.Min(math.Max(v, b[0]), b[1]) }
 
-// DocSHA identifies a candidate for the listening gate: the content hash with
-// render.amplitude zeroed — `make measure-loudness` rewrites that field after
-// adopt and must not invalidate the verdict (spec §6a).
+// render.amplitude is zeroed: measure-loudness rewrites it after adopt and must not invalidate the verdict.
 func DocSHA(d instrument.Doc) string {
 	d.Render.Amplitude = 0
 	return instrument.ContentHash(d)

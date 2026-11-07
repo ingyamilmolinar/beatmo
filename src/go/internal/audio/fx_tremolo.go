@@ -4,8 +4,7 @@ package audio
 
 import "math"
 
-// tremolo implements LFO-based amplitude modulation. The LFO shape can be
-// sine, triangle, or square wave, and modulates the signal's gain.
+// Sine, triangle or square LFO on the gain.
 type tremolo struct {
 	rate  float64 // LFO frequency Hz (0.5-20)
 	depth float64 // modulation depth 0-1

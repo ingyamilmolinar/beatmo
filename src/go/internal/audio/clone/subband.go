@@ -5,14 +5,9 @@ import (
 	"math/cmplx"
 )
 
-// Sub-band layout (spec §2b): 24 log-spaced bands from 30 Hz to
-// min(20 kHz, 0.45·rate). A mode belongs to the band whose CORE [Lo, Hi)
-// holds its frequency; each band heterodynes its core centre to DC,
-// low-passes and decimates so ESPRIT sees few poles.
-//
-// Decimated rate fs_d ≥ 2·w (w = core width). The low-pass passes ±0.5w flat
-// and stops from ±1.5w (Blackman, cutoff w): a component at |f| ≥ 1.5w is the
-// only thing that could fold into the core ±0.5w, and it is ≥ 74 dB down.
+// A mode belongs to the band whose CORE [Lo, Hi) holds it; each band heterodynes its core centre to DC, low-passes and
+// decimates so ESPRIT sees few poles. The low-pass is flat to ±0.5w and stops from ±1.5w: only a component at
+// |f| ≥ 1.5w could fold into the core, and it is ≥ 74 dB down.
 type band struct {
 	Index  int
 	Lo, Hi float64 // core edges, Hz
@@ -48,8 +43,7 @@ func bandLayout(rate int) []band {
 	return out
 }
 
-// lowpassTaps is a Blackman-windowed sinc with cutoff w Hz and transition
-// width w (0.5w → 1.5w), normalised to unit DC gain.
+// Normalised to unit DC gain.
 func lowpassTaps(rate int, w float64) []float64 {
 	n := int(math.Ceil(5.5 * float64(rate) / w))
 	if n%2 == 0 {
@@ -78,10 +72,7 @@ func lowpassTaps(rate int, w float64) []float64 {
 	return h
 }
 
-// baseband heterodynes x by e^{−i2π·Center·(n−onset)/rate}, low-passes and
-// decimates it, using only samples in [from, to) (each output's whole filter
-// support lies inside). first is the absolute sample index of y[0]; y[m] is
-// centred on first + m·Decim.
+// Only samples in [from, to), so each output's filter support lies inside; y[m] is centred on first + m·Decim.
 func baseband(x []float64, rate, onset, from, to int, b band) ([]complex128, int) {
 	half := len(b.Taps) / 2
 	first := from + half
@@ -90,9 +81,7 @@ func baseband(x []float64, rate, onset, from, to int, b band) ([]complex128, int
 	}
 	re := make([]float64, to-from)
 	im := make([]float64, to-from)
-	// e^{−iw(n−onset)} by phasor recursion, re-anchored exactly every 1024
-	// samples (drift stays ~1e-13; math.Sincos per sample was a third of the
-	// whole analysis).
+	// Phasor recursion re-anchored every 1024 samples: math.Sincos per sample was a third of the analysis.
 	w := 2 * math.Pi * b.Center / float64(rate)
 	sw, cw := math.Sincos(-w)
 	var pr, pi float64
@@ -118,10 +107,8 @@ func baseband(x []float64, rate, onset, from, to int, b band) ([]complex128, int
 	return y, first
 }
 
-// gain is the band filter's exact response to a baseband component
-// e^{s·t} (s = −α + i·2π·Δf, continuous time): Σ h_j e^{s·τ_j}. Dividing a
-// measured amplitude by it removes both the pass-band shape and the bias a
-// long symmetric filter puts on a DAMPED exponential.
+// Dividing a measured amplitude by it removes the pass-band shape and the bias a long symmetric filter puts on a
+// DAMPED exponential.
 func (b band) gain(s complex128, rate int) complex128 {
 	half := len(b.Taps) / 2
 	var g complex128

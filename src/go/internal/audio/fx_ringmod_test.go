@@ -30,8 +30,6 @@ func TestRingModNoNaN(t *testing.T) {
 }
 
 func TestRingModSumDifference(t *testing.T) {
-	// Ring modulation of two sine waves at f1 and f2 produces
-	// energy at f1-f2 (difference) and f1+f2 (sum).
 	const sr = 44100
 	const n = 44100 // 1 second for good frequency resolution
 	const inputFreq = 440.0

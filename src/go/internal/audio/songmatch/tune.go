@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// TunePassages runs the per-instrument matcher on each manifest tuning passage,
-// returning a "seed" TuningHint per passage (sorted by instrument id). Never patches.
+// Sorted by instrument; never patches.
 func TunePassages(refWav wave.Wave, manifest fingerprint.TimeManifest, budget, restarts int) ([]TuningHint, error) {
 	passes := append([]fingerprint.TuningPassage(nil), manifest.TuningPassages...)
 	sort.Slice(passes, func(i, j int) bool { return passes[i].Instrument < passes[j].Instrument })

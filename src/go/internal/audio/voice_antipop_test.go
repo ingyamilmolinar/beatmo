@@ -81,8 +81,7 @@ func TestAntiPopFadeOut(t *testing.T) {
 		t.Errorf("first fade-out sample should be near 1.0, got %f", s0)
 	}
 
-	// Midpoint of fade-out: envelope = 1-0.5 = 0.5, the browser's gain ramp
-	// at the same frame (a linear stop on both platforms).
+	// The browser's gain ramp at the same frame.
 	half := fadeOutSamples / 2
 	for i := 1; i < half; i++ {
 		v.Sample()

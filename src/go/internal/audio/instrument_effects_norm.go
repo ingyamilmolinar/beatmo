@@ -7,15 +7,8 @@ import (
 	"strings"
 )
 
-// NormalizeEffects turns an ordered insert-effect chain into a deduplicated
-// library ([]EffectDef, each defined once) plus an ordered list of id references
-// (the "effect_chain"). Two placements of the same effect (identical Type,
-// Params, and Enabled) share one library entry and one id; the id list preserves
-// order and repeats. This is the on-file/in-store representation that keeps
-// instruments decoupled from effect definitions.
-//
-// Identity for dedup is (Type, sorted Params, Enabled) — Enabled is part of the
-// definition, so a bypassed copy is a distinct def.
+// Effects stay decoupled from instruments on file: each is defined once and referenced by id, in order, repeats
+// allowed. Enabled is part of the identity, so a bypassed copy is a distinct def.
 func NormalizeEffects(chain []EffectSlot) ([]EffectDef, []string) {
 	if len(chain) == 0 {
 		return nil, nil
@@ -41,9 +34,7 @@ func NormalizeEffects(chain []EffectSlot) ([]EffectDef, []string) {
 	return defs, ids
 }
 
-// DenormalizeEffects resolves an ordered id chain back into a concrete
-// []EffectSlot, deep-copying each referenced def's params. Unknown ids are
-// skipped (lenient — a partial/edited bundle degrades rather than fails).
+// Unknown ids are skipped: a partial or edited bundle degrades rather than fails.
 func DenormalizeEffects(defs []EffectDef, chain []string) []EffectSlot {
 	if len(chain) == 0 {
 		return nil
@@ -67,8 +58,6 @@ func DenormalizeEffects(defs []EffectDef, chain []string) []EffectSlot {
 	return out
 }
 
-// effectSlotKey builds a canonical, order-independent key for dedup: the effect
-// type, its params sorted by name, and the enabled flag.
 func effectSlotKey(s EffectSlot) string {
 	keys := make([]string, 0, len(s.Params))
 	for k := range s.Params {

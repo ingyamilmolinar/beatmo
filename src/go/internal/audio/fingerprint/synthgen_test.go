@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// synthTone generates a steady harmonic tone. partials[k] is the amplitude of
-// the (k+1)th harmonic. Amplitudes are scaled so the sum of partials ≤ 1.0
-// peak, then multiplied by 0.5 for headroom.
+// partials[k] is harmonic k+1; scaled to ≤ 1 peak, then halved for headroom.
 func synthTone(sr int, dur, f0 float64, partials []float64) wave.Wave {
 	n := int(dur * float64(sr))
 	samples := make([]float64, n)
@@ -24,9 +22,7 @@ func synthTone(sr int, dur, f0 float64, partials []float64) wave.Wave {
 	return wave.Wave{Samples: samples, SampleRate: sr}
 }
 
-// synthVibratoTone generates a harmonic tone with sinusoidal pitch vibrato.
-// vibRate is the vibrato rate in Hz; vibCents is the ±peak deviation in cents.
-// Phase is integrated sample-by-sample to give clean frequency modulation.
+// vibCents is the ±peak deviation; phase is integrated per sample.
 func synthVibratoTone(sr int, dur, f0 float64, partials []float64, vibRate, vibCents float64) wave.Wave {
 	n := int(dur * float64(sr))
 	samples := make([]float64, n)
@@ -47,8 +43,7 @@ func synthVibratoTone(sr int, dur, f0 float64, partials []float64, vibRate, vibC
 	return wave.Wave{Samples: samples, SampleRate: sr}
 }
 
-// synthSwellH2 generates a tone where H1 has steady amplitude 1.0 and H2
-// amplitude follows a triangular swell 0 → 1 → 0 over the note duration.
+// H2 swells 0 → 1 → 0 under a steady H1.
 func synthSwellH2(sr int, dur, f0 float64) wave.Wave {
 	n := int(dur * float64(sr))
 	samples := make([]float64, n)
@@ -65,8 +60,7 @@ func synthSwellH2(sr int, dur, f0 float64) wave.Wave {
 	return wave.Wave{Samples: samples, SampleRate: sr}
 }
 
-// synthFormantTone generates a harmonic-rich tone (~10 partials at 1/k) passed
-// through a single RBJ band-pass biquad at formantHz with quality q.
+// ~10 partials at 1/k through one RBJ band-pass.
 func synthFormantTone(sr int, dur, f0, formantHz, q float64) wave.Wave {
 	// Build harmonic source first (~10 partials at 1/k).
 	nPartials := 10
@@ -76,8 +70,7 @@ func synthFormantTone(sr int, dur, f0, formantHz, q float64) wave.Wave {
 	}
 	src := synthTone(sr, dur, f0, partials)
 
-	// RBJ Band-pass (constant 0 dB peak) coefficients.
-	// From Audio EQ Cookbook: H(s) = (s/Q) / (s^2 + s/Q + 1)
+	// Constant 0 dB peak: H(s) = (s/Q) / (s² + s/Q + 1).
 	omega := 2 * math.Pi * formantHz / float64(sr)
 	sinOmega := math.Sin(omega)
 	cosOmega := math.Cos(omega)
@@ -109,9 +102,7 @@ func synthFormantTone(sr int, dur, f0, formantHz, q float64) wave.Wave {
 	return wave.Wave{Samples: out, SampleRate: sr}
 }
 
-// synthBrightLoudTone generates a tone where both overall gain and upper-partial
-// brightness track a triangular loudness curve (0→1→0 over the note). The louder
-// the signal, the brighter (more upper partials).
+// The louder, the brighter.
 func synthBrightLoudTone(sr int, dur, f0 float64) wave.Wave {
 	nPartials := 8
 	n := int(dur * float64(sr))
@@ -122,8 +113,7 @@ func synthBrightLoudTone(sr int, dur, f0 float64) wave.Wave {
 		gain := 1.0 - math.Abs(2.0*float64(i)/fn-1.0) // triangular 0→1→0
 		v := 0.0
 		for k := 0; k < nPartials; k++ {
-			// Base amplitude is 1/(k+1). Upper partials (k>0) get additional
-			// boost proportional to the loudness gain.
+			// Upper partials get a boost proportional to the loudness.
 			baseAmp := 1.0 / float64(k+1)
 			var amp float64
 			if k == 0 {
@@ -139,13 +129,11 @@ func synthBrightLoudTone(sr int, dur, f0 float64) wave.Wave {
 	return wave.Wave{Samples: samples, SampleRate: sr}
 }
 
-// synthNoisyTone generates a steady harmonic tone plus additive white noise at
-// the given approximate RMS. The PRNG is seeded deterministically (seed=1).
+// Seeded deterministically.
 func synthNoisyTone(sr int, dur, f0 float64, partials []float64, noiseRMS float64) wave.Wave {
 	tone := synthTone(sr, dur, f0, partials)
 	rng := rand.New(rand.NewSource(1))
-	// Scale noise: uniform [-1,1] has RMS = 1/sqrt(3) ≈ 0.577.
-	// To hit target RMS multiply by noiseRMS * sqrt(3).
+	// Uniform [-1,1] has RMS 1/√3.
 	noiseScale := noiseRMS * math.Sqrt(3)
 	for i := range tone.Samples {
 		tone.Samples[i] += noiseScale * (2*rng.Float64() - 1)

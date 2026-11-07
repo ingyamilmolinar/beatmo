@@ -6,13 +6,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// decorrelation.go — is each partial a single locked sine, or a living band?
-//
-// AGENTS.synth.instruments.md records the PADsynth argument verbatim:
-// phase-locked partials read as artificial; a real harmonic is a narrow band
-// of slightly detuned, randomly phased components. Two measurements make that
-// checkable: how wide each partial is, and how independently the partials
-// move.
+// Is each partial one locked sine or a living band? Phase-locked partials read as artificial; a real harmonic is a
+// narrow band of detuned, randomly phased components. Measured as each partial's width and how independently
+// partials move.
 
 const (
 	decorrFFTSize         = 32768
@@ -20,24 +16,13 @@ const (
 	decorrMinSharedFrames = 8
 	decorrMaxModes        = 8
 
-	// decorrMaxWalkBinsCap bounds how far, in fine (32768-pt) bins, the
-	// hill-climb and the -3 dB descent are allowed to travel from a mode's
-	// nominal bin. Without a cap, a mode sitting on a noisy shelf (no local
-	// minimum before the spectrum floor) walks the descent arbitrarily far —
-	// even past the neighbouring mode, or past 2*m.Hz, at which point the
-	// width-to-cents conversion divides by a non-positive number and
-	// math.Log2 silently returns NaN. The cap is also clamped to at most
-	// half the fine-bin distance to the NEAREST OTHER mode: a peak's -3 dB
-	// skirt must never be allowed to cross into a neighbour's peak, or two
-	// close partials would each report the other's width.
+	// Bounds the walk from a mode's bin: on a noisy shelf the descent would run past the neighbour or past 2·Hz, where
+	// the cents conversion divides by a non-positive number and Log2 yields NaN. Also clamped to half the distance to the
+	// nearest other mode, so one peak never reports a neighbour's width.
 	decorrMaxWalkBinsCap = 64
 )
 
-// maxWalkBins bounds the hill-climb/half-max walk for modes[i]: at most
-// decorrMaxWalkBinsCap fine bins, and never more than half the fine-bin
-// distance to the nearest OTHER mode in the full modes slice (not just the
-// ones this call will measure — a neighbour beyond decorrMaxModes is still a
-// real spectral neighbour to stay clear of).
+// Against the nearest OTHER mode in the full slice: one beyond decorrMaxModes is still a spectral neighbour.
 func maxWalkBins(modes []Mode, i int, binHz float64) int {
 	nearest := math.Inf(1)
 	for j := range modes {
@@ -81,8 +66,7 @@ func PartialBandwidthCents(w wave.Wave, modes []Mode) (float64, bool) {
 		}
 		walk := maxWalkBins(modes, i, binHz)
 
-		// climb to the local max near the mode, bounded so it cannot walk
-		// onto a neighbouring mode's peak.
+		// Bounded, so it cannot walk onto a neighbour's peak.
 		steps := 0
 		for c > 1 && mag[c-1] > mag[c] {
 			if steps >= walk {
@@ -122,9 +106,7 @@ func PartialBandwidthCents(w wave.Wave, modes []Mode) (float64, bool) {
 			steps++
 		}
 		if loHitBound || hiHitBound {
-			// The -3 dB point was never reached within the bound (a noisy
-			// shelf, or the neighbour-clearance cap) — this mode's width is
-			// not resolvable, not "very wide". Skip rather than fabricate.
+			// Not reached within the bound: unresolvable, not "very wide".
 			continue
 		}
 
@@ -134,10 +116,7 @@ func PartialBandwidthCents(w wave.Wave, modes []Mode) (float64, bool) {
 		}
 		widthHz := widthBins * binHz
 		if widthHz >= 2*m.Hz {
-			// A width at or past 2x the mode's own frequency makes
-			// (m.Hz - widthHz/2) non-positive, which would poison
-			// math.Log2 with a NaN or an undefined logarithm — treat it as
-			// unresolvable instead of fabricating a value.
+			// A width of 2× the frequency would make the log undefined: unresolvable instead.
 			continue
 		}
 		sum += 1200 * math.Log2((m.Hz+widthHz/2)/(m.Hz-widthHz/2))
@@ -149,11 +128,7 @@ func PartialBandwidthCents(w wave.Wave, modes []Mode) (float64, bool) {
 	return sum / float64(n), true
 }
 
-// PartialIndependence returns 1 minus the mean pairwise Pearson correlation
-// of the strong partials' detrended dB tracks, clamped to [0, 1]: a
-// negative mean correlation is finite-sample noise (nothing in the model
-// means "more independent than independent"), not a signal of extra
-// aliveness, so it is folded back to 1 rather than reported as-is.
+// Clamped to [0, 1]: a negative mean correlation is finite-sample noise, not extra aliveness.
 func PartialIndependence(modes []Mode) (float64, bool) {
 	if len(modes) < 2 {
 		return 0, false
@@ -184,9 +159,7 @@ func PartialIndependence(modes []Mode) (float64, bool) {
 	return v, true
 }
 
-// pearsonShared correlates two dB tracks over the frames where both are
-// present, after removing each one's own OLS trend (a shared decay must not
-// read as correlation — every partial of a plucked note decays).
+// After removing each track's own trend: a shared decay (every plucked partial decays) is not correlation.
 func pearsonShared(a, b []float64) (float64, bool) {
 	var xs, ya, yb []float64
 	for f := range a {
@@ -206,21 +179,9 @@ func pearsonShared(a, b []float64) (float64, bool) {
 		saa += da[i] * da[i]
 		sbb += db[i] * db[i]
 	}
-	// A flat residual has no variance for a correlation to be defined
-	// against, so the two cases must be separated.
-	//
-	// BOTH flat: the two partials really do move together -- neither
-	// deviates from its own trend at all -- so r = 1 ("perfectly locked") is
-	// the honest reading.
-	//
-	// ONE flat: the correlation is undefined (a zero denominator), and
-	// calling it 1 asserts perfect lock between a partial that moves and one
-	// that does not. That is not a weak claim, it is a WRONG one, and
-	// PartialIndependence averages it in as though it were measured -- so a
-	// single perfectly-steady synth partial dragged the whole independence
-	// score toward "locked" no matter what the others were doing. The pair
-	// is skipped instead; if every pair is skipped, PartialIndependence
-	// reports unavailable, which is the correct answer.
+	// BOTH flat: the partials move together, so r = 1 is honest. ONE flat: the correlation is undefined, and calling it 1
+	// asserts perfect lock that PartialIndependence would average in; the pair is skipped, and if every pair is skipped
+	// the measurement is unavailable.
 	aFlat, bFlat := saa <= 1e-12, sbb <= 1e-12
 	if aFlat && bFlat {
 		return 1, true
@@ -231,9 +192,7 @@ func pearsonShared(a, b []float64) (float64, bool) {
 	return sab / math.Sqrt(saa*sbb), true
 }
 
-// detrend removes the OLS line (removing the mean and slope over xs) from
-// ys, so a shared decay or swell does not read as correlation between two
-// otherwise-independent tracks.
+// So a shared decay or swell does not read as correlation.
 func detrend(xs, ys []float64) []float64 {
 	slope := olsSlope(xs, ys)
 	var mx, my float64

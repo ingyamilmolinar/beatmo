@@ -6,34 +6,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// essence.go — what makes an instrument THAT instrument, measured so that
-// what a player or a recording changes (pitch, note length, level, room tone)
-// does not decide the answer. Design + the measured failures it replaces:
-// docs/superpowers/specs/2026-10-17-wav-match-essence-design.md.
-//
-// The older whole-timbre Fingerprint is unsuitable for "which instrument is
-// this?": it analyses only a sustain window that starts 0.3 s in (no attack,
-// and a short percussive render is fingerprinted on silence), re-detects f0
-// per clip (so two clips at the same pitch can be compared on different
-// harmonic grids), and floors its MFCC log at an ABSOLUTE 1e-10, which lets
-// inaudible room tone 60+ dB down dominate the cepstrum.
-//
-// Here nothing depends on the pitch (the caller plays both clips at the same
-// note; the ERB-band colour resolves the low harmonics the way the ear does),
-// the reference states the region (WindowSec: onset → the last frame within
-// 30 dB of its peak), and every spectrum is perceptual LOUDNESS ACROSS
-// FREQUENCY — band power^0.3
-// (Stevens), each clip normalised to its own loudest band — so a band 60 dB
-// down weighs ~1.6 % of the peak instead of half a log scale. ACROSS TIME the
-// frames are weighted by ENERGY: the loud part of a note is what identifies
-// the instrument, and loudness-weighting time let a reverb tail 30 dB down
-// (13 % of the hit per frame, but fifty frames of it) out-vote a kick's own
-// sound (TestEssenceSelfIdentifiesUnderNuisance).
+// What makes an instrument THAT instrument, insensitive to pitch, length, level and room: ERB bands resolve harmonics as
+// the ear does, spectra are LOUDNESS across frequency and frames are weighted by ENERGY across time, so a long reverb
+// tail cannot out-vote the hit. The caller plays both clips at one note.
 
 // EssenceOpts says what the caller already knows about a clip.
 type EssenceOpts struct {
-	// WindowSec is the region to analyse from the clip's start. 0 = derive it
-	// from the clip itself (a reference); a candidate passes the reference's.
+	// 0 derives it from the clip (a reference); a candidate passes the reference's.
 	WindowSec float64
 }
 
@@ -47,32 +26,21 @@ type Essence struct {
 
 	// Loud is the per-frame loudness, normalised so its peak is 1.
 	Loud []float64
-	// Weight is each frame's ENERGY relative to the loudest frame: how much
-	// that moment counts in every time average (Color, Evolution, Texture).
+	// How much each moment counts in every time average.
 	Weight []float64
-	// Shape is each frame's band loudness normalised to unit sum (the frame's
-	// colour, independent of how loud the frame is); nil for a silent frame.
+	// Unit sum, so the colour is independent of loudness; nil for a silent frame.
 	Shape [][]float64
 	// Color is the clip's energy-weighted mean colour (unit sum).
 	Color []float64
-	// Flat is the per-octave NOISE share — the median bin's power over the
-	// octave's mean, ÷ ln 2, so white noise reads ~1 and resolved partials over
-	// silence ~0 (the median sits between partials, on the noise) —
-	// energy-weighted over frames; FlatW is each octave's loudness share.
-	// Flatness (geometric/arithmetic mean) was tried first and is dominated by
-	// the partial peaks: a -12 dB breath barely moves it.
+	// Median bin power over the octave mean, ÷ ln 2: white noise ~1, partials over silence ~0 (the median sits between
+	// partials). Flatness was tried and is dominated by the partial peaks. FlatW is each octave's loudness share.
 	Flat, FlatW []float64
-	// Decay is the level in dB re the loudest frame, clipped at essDecayFloor,
-	// at each of essDecayDelays after the onset of the loud part
-	// (essLoudOnset): how the note dies away. NaN where the delay falls past
-	// the analysis window.
+	// dB re the loudest frame, clipped at essDecayFloor, after the onset of the loud part; NaN past the window.
 	Decay []float64
 	// AttackSec is the 10 → 90 % amplitude rise time.
 	AttackSec float64
 }
 
-// EssenceScore is the per-term distance between a reference and a candidate;
-// EssenceTotals weighs the terms (EssenceWeights) into one ranking distance.
 type EssenceScore struct {
 	Color     float64 `json:"color"`     // mean colour, L1 of unit-sum loudness spectra (0..2)
 	Evolution float64 `json:"evolution"` // how the colour moves over the note (attack → body), L1 (0..~2)
@@ -81,22 +49,9 @@ type EssenceScore struct {
 	Attack    float64 `json:"attack"`    // |Δ log10 rise time|, rise times floored at essAttackJND (0..2)
 }
 
-// EssenceWeights weights the raw terms. Colour, its evolution, the noise
-// texture and how the note dies away (plucked/struck decays, bowed/blown
-// holds -- how the instrument is PLAYED, not for how long) are the
-// instrument; the attack time depends partly on the player, so it counts,
-// but less. The terms share a currency (a fraction of loudness, 0..1-2), so
-// they are summed as measured: dividing each by its median over the
-// candidate set was tried first and amplified the narrow terms -- a 0.05
-// texture gap cost as much as a 0.75 colour gap -- and graded worse on every
-// catalogued reference set (refs match -validate).
-//
-// A separate harmonic-profile term (partials 1..10 at the known f0) was
-// dropped on 2026-10-18: the ERB bands already resolve the harmonics the ear
-// resolves, and it carried no ranking signal of its own -- the same grades
-// without it on the catalogued references (MRR 0.394 vs 0.393), and real
-// recordings of one instrument found each other no better with it (spec
-// 2026-10-17, "what is signal").
+// Colour, its evolution, the noise texture and how the note dies away (how it is PLAYED, not for how long) are the
+// instrument; the attack depends partly on the player and counts less. The terms share a currency, so they sum as
+// measured: per-term median normalisation amplified the narrow terms and graded worse.
 var EssenceWeights = EssenceScore{
 	Color: 1, Evolution: 1, Texture: 1, Decay: 1, Attack: 0.1,
 }
@@ -111,18 +66,13 @@ const (
 	essAttackWinS = 0.020   // attack envelope: running max over >= one period of 50 Hz...
 	essAttackHopS = 0.001   // ...sampled every ms
 	essMinAttack  = 0.001
-	// essAttackJND is the onset resolution of the ear: rise times shorter
-	// than this are all heard as instantaneous, so the attack distance treats
-	// them as equal. On a bare log scale a real harp's 16 ms pluck sat farther
-	// from the synth harp's 1 ms than from a tuba's 43 ms blown onset.
+	// The ear hears every rise shorter than this as instantaneous.
 	essAttackJND   = 0.010
 	essSilentPeak  = 1e-9
 	essSilentFrame = 1e-9 // a frame quieter than this × the loudest is silent
 )
 
-// AnalyzeEssence describes w over its analysis window (see EssenceOpts).
-// w is assumed to start at its onset; refs match trims every clip the same
-// way before calling.
+// w starts at its onset; refs match trims every clip alike.
 func AnalyzeEssence(w wave.Wave, o EssenceOpts) Essence {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -217,16 +167,12 @@ func AnalyzeEssence(w wave.Wave, o EssenceOpts) Essence {
 	return e
 }
 
-// EssenceTerms is the raw per-term distance of cand from ref. ref defines
-// the region and the weighting over time (its energy): the question is
-// always "does cand sound like THIS recording".
+// ref defines the region and the weighting: "does cand sound like THIS recording".
 func EssenceTerms(ref, cand Essence) EssenceScore {
 	var s EssenceScore
 	s.Color = essL1(ref.Color, cand.Color)
 
-	// Evolution compares each frame's DEVIATION from the clip's own mean
-	// colour, so it measures how the colour moves (attack spectrum, a struck
-	// string darkening) and nothing Color already counted.
+	// Each frame's DEVIATION from the clip's own mean colour, so it measures movement and nothing Color counted.
 	var num, den float64
 	for i := 0; i < len(ref.Shape) && i < len(cand.Shape); i++ {
 		r, c := ref.Shape[i], cand.Shape[i]
@@ -244,11 +190,8 @@ func EssenceTerms(ref, cand Essence) EssenceScore {
 		s.Evolution = num / den
 	}
 
-	// Noise versus tone can only be compared where BOTH clips have sound:
-	// whether an octave has energy at all is Color's question. Weighting by
-	// either clip alone let a faint noisy residue -- the synth trumpet's
-	// 4-12 kHz, 1-2 % of its loudness -- outweigh the best harmonic match in
-	// the roster.
+	// Only where BOTH clips have sound: whether an octave has energy at all is Color's question, and weighting by one clip
+	// let a faint noisy residue outweigh the best harmonic match.
 	for b := range ref.FlatW {
 		if b < len(cand.Flat) {
 			w := math.Min(ref.FlatW[b], cand.FlatW[b])
@@ -256,9 +199,7 @@ func EssenceTerms(ref, cand Essence) EssenceScore {
 		}
 	}
 
-	// Decay: the reference's delays that fit its window; a candidate whose
-	// own peak came later than the reference's (a slower attack) has fewer
-	// in-window delays and holds its last level for the rest.
+	// A candidate whose peak came later has fewer in-window delays and holds its last level.
 	var dn int
 	for k, r := range ref.Decay {
 		if math.IsNaN(r) {
@@ -282,17 +223,12 @@ func EssenceTerms(ref, cand Essence) EssenceScore {
 	return s
 }
 
-// EssenceTotal is one candidate's weighted distance -- what EssenceTotals
-// ranks by, and the pitch-search objective: resampling a drum moves its
-// decay as much as its colour, so the search must judge both (choosing the
-// shift by the spectral terms alone left a shaker at the right colour and
-// the wrong decay).
+// Also the pitch-search objective: resampling a drum moves its decay as much as its colour, so both are judged.
 func EssenceTotal(s EssenceScore) float64 {
 	return essenceTotalsOf([]EssenceScore{s})[0]
 }
 
-// EssenceTotals ranks cands against ref: lower is closer; a silent
-// candidate is +Inf.
+// Lower is closer; a silent candidate is +Inf.
 func EssenceTotals(ref Essence, cands []Essence) []float64 {
 	scores := make([]EssenceScore, len(cands))
 	for i, c := range cands {
@@ -307,7 +243,6 @@ func EssenceTotals(ref Essence, cands []Essence) []float64 {
 	return tot
 }
 
-// EssenceTotalsOf is EssenceTotals over terms the caller already computed;
 // silent[i] marks a candidate that rendered nothing.
 func EssenceTotalsOf(scores []EssenceScore, silent []bool) []float64 {
 	tot := essenceTotalsOf(scores)
@@ -319,8 +254,6 @@ func EssenceTotalsOf(scores []EssenceScore, silent []bool) []float64 {
 	return tot
 }
 
-// essenceTotalsOf is the EssenceWeights-weighted sum of each candidate's
-// terms.
 func essenceTotalsOf(scores []EssenceScore) []float64 {
 	w := EssenceWeights
 	tot := make([]float64, len(scores))
@@ -331,18 +264,14 @@ func essenceTotalsOf(scores []EssenceScore) []float64 {
 	return tot
 }
 
-// EssenceTraits is a clip's essence reduced to three readable directions,
-// for telling a person HOW a voice differs from a recording (the distance
-// terms only say by how much): brightness, noisiness, and how far it has
-// died away half a second in.
+// Three readable directions (brightness, noise, decay half a second in) telling a person HOW a voice differs; the
+// terms only say by how much.
 type EssenceTraits struct {
 	// BrightnessHz is the centre of mass of the mean colour, as a frequency.
 	BrightnessHz float64 `json:"brightness_hz"`
-	// Noise is the loudness-weighted noise share across octaves (0 = pure
-	// partials, 1 = white noise).
+	// 0 = pure partials, 1 = white noise.
 	Noise float64 `json:"noise"`
-	// DecayDB is the mean level after the peak over the decay delays that fit
-	// the window (0 = held, essDecayFloor = gone).
+	// 0 = held, essDecayFloor = gone.
 	DecayDB float64 `json:"decay_db"`
 }
 
@@ -382,8 +311,7 @@ func (e Essence) Traits() EssenceTraits {
 
 type essBand struct{ lo, hi int } // FFT bin range [lo, hi)
 
-// essERBBands splits essMinHz..essMaxHz into one band per ERB (Glasberg &
-// Moore's ERB-rate scale: the auditory filter resolution), as FFT-bin ranges.
+// One band per ERB: the auditory filter resolution.
 func essERBBands(frame, sr int) []essBand {
 	binHz := float64(sr) / float64(frame)
 	top := math.Min(essMaxHz, float64(sr)/2)
@@ -408,8 +336,7 @@ func essERBBands(frame, sr int) []essBand {
 	}
 }
 
-// essFrameMag is the Hann-windowed magnitude spectrum of s[start:start+frame]
-// (zero-padded past the end of s).
+// Zero-padded past the end of s.
 func essFrameMag(s []float64, start, frame, sr int) []float64 {
 	end := min(start+frame, len(s))
 	seg := wave.Wave{SampleRate: sr}
@@ -420,8 +347,7 @@ func essFrameMag(s []float64, start, frame, sr int) []float64 {
 	return mag
 }
 
-// essReferenceWindow is the sample count from the onset to the end of the
-// last frame whose power is within essWindowDB of the loudest frame.
+// Onset to the end of the last frame within essWindowDB of the loudest.
 func essReferenceWindow(s []float64, frame, hop int) int {
 	if len(s) == 0 {
 		return 0
@@ -446,9 +372,7 @@ func essReferenceWindow(s []float64, frame, hop int) int {
 	return min(len(s), last*hop+frame)
 }
 
-// essTexture is the per-octave noise share (see Essence.Flat) over 2×frame
-// STFT frames (bins fine enough to separate a low note's partials),
-// energy-weighted over frames, plus each octave's loudness share.
+// 2×frame STFTs, fine enough to separate a low note's partials.
 func essTexture(s []float64, sr, frame int) (flat, share []float64) {
 	tf := 2 * frame
 	hop := tf / 2
@@ -491,9 +415,7 @@ func essTexture(s []float64, sr, frame int) (flat, share []float64) {
 	if pmax <= 0 {
 		return flat, share
 	}
-	// Over time each octave's noise share is ENERGY-weighted (a reverb tail
-	// is noise-like and long; the note is short and loud); across octaves
-	// the shares are loudness, as for Color.
+	// Over time ENERGY-weighted (a reverb tail is noise-like and long, the note short and loud); across octaves loudness.
 	wsum := make([]float64, nb)
 	for _, f := range frames {
 		for b := range f.pow {
@@ -517,17 +439,10 @@ func essTexture(s []float64, sr, frame int) (flat, share []float64) {
 	return flat, share
 }
 
-// essPeakFrac is how close to the loudest frame's energy the frame a note is
-// read from must come (-1 dB): the note's "peak" is the ONSET of its loud
-// part, not the arg-max. On a held note every plateau frame is within a hair
-// of the maximum, so the arg-max lands anywhere -- a late one read the decay
-// off the clip's cut end, so a held tone measured a -16 dB "decay" and how
-// long a note was held leaked into Decay
-// (TestEssenceDecayIgnoresWhereTheHeldPlateauPeaks).
+// The note's "peak" is the ONSET of its loud part, not the arg-max: on a held plateau the arg-max lands anywhere, and a
+// late one read the decay off the cut end, leaking the note length into Decay.
 const essPeakFrac = 0.794
 
-// essLoudOnset is the first frame whose energy is within essPeakFrac of the
-// loudest.
 func essLoudOnset(energy []float64) int {
 	var mx float64
 	for _, v := range energy {
@@ -541,22 +456,12 @@ func essLoudOnset(energy []float64) int {
 	return 0
 }
 
-// essDecayDelays are the delays after the loudest frame at which the decay
-// profile is read: log-spaced, so the early decay -- where the direct sound
-// dominates any room -- is sampled densely and a reverb tail only sparsely.
-// They stop at half a second: that is where struck/plucked separates from
-// held and a short ring from a long one (marimba vs vibraphone). How many
-// SECONDS a note goes on ringing is duration-like -- a 2 s profile let a
-// sustained tuba out-rank the synth harp for a real harp that rings longer
-// than the synth does -- and graded the same on the corpus (MRR 0.409 vs
-// 0.400, refs match -validate).
+// Log-spaced, so the early decay where the direct sound dominates is sampled densely; they stop at half a second,
+// where struck separates from held. How many SECONDS a note rings is duration-like and let a sustained tuba out-rank
+// the right instrument.
 var essDecayDelays = []float64{0.03, 0.06, 0.12, 0.25, 0.5}
 
-// essDecayProfile reads the per-frame energy (relative to the loudest frame)
-// in dB, clipped at essDecayFloor, at essDecayDelays after the onset of the
-// loud part (essLoudOnset). weight holds only the frames that end inside the
-// analysis window: a frame running past it is part zero padding and would
-// read as a decay the note never made.
+// Only frames that end inside the window: one running past it is part padding and would read as a decay.
 func essDecayProfile(weight []float64, hopSec float64) []float64 {
 	pk := essLoudOnset(weight)
 	out := make([]float64, len(essDecayDelays))
@@ -575,11 +480,8 @@ func essDecayProfile(weight []float64, hopSec float64) []float64 {
 	return out
 }
 
-// essAttackTime is the 10 → 90 % rise, up to its peak, of a running-max
-// envelope: the largest |sample| over the trailing essAttackWinS, sampled
-// every essAttackHopS. A max over at least one period has no ripple on a
-// 50 Hz kick (an RMS over 5 ms read the same kick as 1 or 6 ms by phase), and
-// it does not smear a step: the envelope jumps the moment the onset arrives.
+// A running max over at least one period has no ripple on a 50 Hz kick (a 5 ms RMS read it by phase) and jumps the
+// moment the onset arrives.
 func essAttackTime(s []float64, sr int) float64 {
 	hop := max(1, int(essAttackHopS*float64(sr)))
 	span := max(1, int(math.Round(essAttackWinS/essAttackHopS)))
@@ -636,10 +538,7 @@ func essL1(a, b []float64) float64 {
 	return d
 }
 
-// essMedian is the median of v, which it reorders. It selects rather than
-// sorts (the texture takes one per octave per frame, a tenth of its time
-// when it sorted a copy); the value is the sorted middle exactly
-// (TestEssMedianIsTheSortedMiddle).
+// Reorders v; selects rather than sorts, exactly the sorted middle.
 func essMedian(v []float64) float64 {
 	n := len(v)
 	if n == 0 {
@@ -656,8 +555,7 @@ func essMedian(v []float64) float64 {
 	return (lo + hi) / 2
 }
 
-// essSelect reorders v so that v[k] is its k-th smallest, nothing before k
-// is larger and nothing after is smaller (Hoare's FIND), and returns v[k].
+// Hoare's FIND.
 func essSelect(v []float64, k int) float64 {
 	l, r := 0, len(v)-1
 	for l < r {

@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// pitchDefaults holds the pitch-bearing subset of an instrument's LIBRARY
-// document — the values the fundamentals table was measured at.
+// The values the fundamentals table was measured at.
 type pitchDefaults struct {
 	oscOctave   float64
 	oscDetune   float64
@@ -17,8 +16,7 @@ type pitchDefaults struct {
 	postPitch   float64 // FINISH Resample, semitones
 }
 
-// libraryFieldsEntry caches the flat view of a library document (the values
-// the fundamentals table was measured at), keyed by the library revision.
+// Keyed by the library revision.
 type libraryFieldsEntry struct {
 	libRev uint64
 	vals   map[string]float64
@@ -29,8 +27,7 @@ var (
 	libraryFieldsCache = map[instrument.ID]libraryFieldsEntry{}
 )
 
-// libraryFieldValues is the flat view (FieldValues) of library document id,
-// recomputed only when the library changes. nil when id is not in the library.
+// nil when id is not in the library.
 func libraryFieldValues(id instrument.ID) map[string]float64 {
 	rev := libraryRev.Load()
 	libraryFieldsMu.RLock()
@@ -49,56 +46,15 @@ func libraryFieldValues(id instrument.ID) map[string]float64 {
 	return vals
 }
 
-// InstrumentPitchInfo reports the effective pitch offset (in semitones from
-// A3 = 220 Hz, the node-pitch-0 convention) contributed by an instrument's
-// current synth + sampler parameters, and whether the instrument is pitched
-// (musically noteworthy) rather than unpitched percussion.
-//
-// It is the note-display companion to the render path: a node's absolute note
-// is noteName(A3 + nodePitch + offsetSemis). Because it reads the live param +
-// sampler-edit state, the note derived from it tracks synth/sampler edits
-// automatically — no cached value to keep in sync.
-//
-// It resolves each pitch knob the SAME WAY the render path does — from the
-// instrument's document, whatever it ships with plus any edit — because a
-// pitch-shifting value the instrument ships with
-// moves the sounding frequency exactly as a user knob would. Reading only the
-// override map (as this did before 2026-09-12) reported +0 semitones for the
-// thirteen instruments whose seeds carry an octave or a detune, so the
-// displayed note disagreed with the sounding one by up to a full octave, and
-// the score importer — which has no other programmatic answer to "does this
-// instrument shift pitch?" — hand-maintained the same knowledge in a comment
-// that drifted (double-bass was compensated for an octave offset it does not
-// have; voice-soprano's real +1 octave was compensated nowhere).
-//
-// Node pitch itself is NOT folded in here: at render time the node's semitone
-// pitch overrides the recipe's generic "pitch" param (synth_recipe_dispatch.go
-// merged["pitch"] = pitch), so the caller adds node pitch exactly once on top
-// of this offset. The knobs folded here are the ones that STACK on top of the
-// A3 base: octave, fine-detune (cents), and a base-frequency override.
-//
-// Performance: allocation-free on the cached path and holds each lock only
-// briefly, so it is safe to call every frame from the UI draw loop. It reads
-// the specific pitch keys directly without cloning the params map (unlike
-// GetInstrumentParams, which returns a defensive copy) and reads the recipe
-// defaults through a revision-gated per-recipe cache.
+// Semitones from A3 (node pitch 0) that the instrument's live document and Sampler edit add, and whether it names a
+// note. Each pitch knob is resolved as the render resolves it, shipped value plus edit, since a shipped octave moves
+// the sound as a user knob would. Node pitch is not folded in. Allocation-free on the cached path: called every frame.
 func InstrumentPitchInfo(instrumentID instrument.ID) (offsetSemis float64, pitched bool) {
-	// An instance row ("kick--2", the suffix gen-showcase mints for the Nth
-	// copy of an instrument in a template) must answer exactly as its base:
-	// EnsureInstanceInstrument promotes it to render IDENTICALLY, so anything
-	// else here means two rows playing one sound disagree about what note it
-	// is. Before this resolution they did — a duplicated kick row showed no
-	// note beside an original showing A1, and organ-church--2 reported +0
-	// against its base's -12, a full octave out.
-	//
-	// The INSTANCE id still drives the params lookup, so a per-instance
-	// override keeps overriding; only the recipe and the fundamentals entry
-	// fall back to the base.
+	// An instance row renders IDENTICALLY to its base, so it must name the same note; the instance id still drives the
+	// params lookup, so a per-instance edit keeps applying.
 	baseID := instrumentID.Base()
 
-	// The live values are the instrument's project document; the "defaults"
-	// are the library document it came from — the values the fundamentals table
-	// was measured at — so the delta is exactly what the user's edits added.
+	// The "defaults" are the library document the table was measured at, so the delta is exactly what edits added.
 	cur := MergedInstrumentParamsRO(instrumentID)
 	origin := baseID
 	if o := instrumentDocOrigin(instrumentID); o != "" {
@@ -128,12 +84,8 @@ func InstrumentPitchInfo(instrumentID instrument.ID) (offsetSemis float64, pitch
 		return def
 	}
 
-	// The instrument's BASE fundamental — what it sounds at its shipped
-	// parameters — comes from the generated table (cmd/gen-fundamentals), which
-	// resolves it by rendering the voice and measuring it, falling back to a
-	// declared base-frequency param. That is the only way to answer the
-	// question for the families whose pitch lives in a pitch envelope rather
-	// than in any single declared knob.
+	// The base comes from the generated table: rendering and measuring is the only answer for families whose pitch lives
+	// in a pitch envelope rather than a knob.
 	declaresFundamental := false
 	base, known := instrumentFundamentals[instrumentID]
 	if !known && baseID != instrumentID {
@@ -141,28 +93,19 @@ func InstrumentPitchInfo(instrumentID instrument.ID) (offsetSemis float64, pitch
 	}
 
 	if known && base.baseHz > 0 {
-		// Absolute base from the table, then the DELTA the live parameters add
-		// on top of the defaults it was measured at. Reading the delta rather
-		// than the absolute value is what keeps the note tracking synth edits:
-		// turn the tuning knob and the note moves, with nothing cached here to
-		// invalidate.
+		// A delta over the measured defaults, not an absolute read, so the note follows a tuning knob with nothing cached.
 		offsetSemis += 12 * math.Log2(base.baseHz/220.0)
 		offsetSemis += (pick(oOct, d.oscOctave) - d.oscOctave) * 12
 		offsetSemis += (pick(oDet, d.oscDetune) - d.oscDetune) / 100.0
 		offsetSemis += pick(oPost, d.postPitch) - d.postPitch
-		// A base-frequency knob moved away from the default the table was
-		// measured at shifts the pitch by their ratio. The FM family declares
-		// gen1_fm_base, the other families voice_freq_hz; the order matches
-		// baseFrequencyParamNames.
+		// FM declares gen1_fm_base, the other families voice_freq_hz; the order matches baseFrequencyParamNames.
 		offsetSemis += baseFreqDeltaSemis(
 			firstPositive(pick(oFM, d.fmBase), pick(oVoice, d.voiceFreqHz)),
 			firstPositive(d.fmBase, d.voiceFreqHz),
 		)
 	} else {
-		// Not in the table: a user instrument, or one the table resolved as
-		// unpitched. Fall back to the declared-parameter computation, which is
-		// exactly what this function did before the table existed — so an
-		// instrument the table has nothing to say about keeps its old answer.
+		// Not in the table (a user instrument, or one resolved as unpitched): the declared-parameter computation, so such an
+		// instrument keeps its answer.
 		offsetSemis += pick(oOct, d.oscOctave) * 12
 		offsetSemis += pick(oDet, d.oscDetune) / 100.0
 		offsetSemis += pick(oPost, d.postPitch)
@@ -175,37 +118,19 @@ func InstrumentPitchInfo(instrumentID instrument.ID) (offsetSemis float64, pitch
 		}
 	}
 
-	// Sampler transpose/detune, if the instrument carries a sample-edit
-	// descriptor (a non-destructive resample applied at trigger time).
 	hasSampleEdit := false
 	if e, ok := SampleEditFor(instrumentID); ok {
 		offsetSemis += e.TransposeSemis + e.DetuneCents/100.0
 		hasSampleEdit = true
 	}
 
-	// An instrument is "pitched" (worth a musical note name) when we can say
-	// what note it sounds. Since 2026-09-13 that is the common case rather than
-	// the curated melodic one: the table resolves a fundamental for 119 of the
-	// 133 built-ins, so kicks, snares, toms, congas, cowbell and the FM family
-	// all name a note, and only genuinely unpitched noise (hi-hats, claps,
-	// shaker, whisper) declines to.
-	//
-	// pitchAwareRecipe stays in the disjunction so the table can only ADD note
-	// names, never remove one: a melodic instrument whose measurement came back
-	// unreliable (tubular-bells, voice-ahh, voice-opera) keeps the note it has
-	// always shown via the declared-parameter fallback above.
-	// declaresFundamental covers the ids the table has no row for — a user
-	// instrument, or one built on a drum recipe — whose recipe nonetheless
-	// declares a base frequency. Without it the rule would be "shipped drums
-	// name a note, a user's copy of one does not", which is a distinction the
-	// user has no way to see the logic of.
+	// The melodic flag keeps the table from REMOVING a note name (an unreliable measurement on a melodic voice); a declared
+	// fundamental covers ids the table has no row for, or a user's copy of a drum would lose a note its original names.
 	pitched = (known && base.baseHz > 0) || declaresFundamental || instrumentDocMelodic(instrumentID) || hasSampleEdit
 	return offsetSemis, pitched
 }
 
-// baseFreqDeltaSemis is the semitone shift from moving a base-frequency knob
-// off the default the fundamentals table was measured at. Zero when either
-// value is absent, so an instrument with no such knob contributes nothing.
+// Zero when either value is absent.
 func baseFreqDeltaSemis(now, def float64) float64 {
 	if now <= 0 || def <= 0 || now == def {
 		return 0

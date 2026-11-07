@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// applyDefaultFXPerSample is applyDefaultFX as it was before the block path:
-// every sample through every processor, one call each.
+// One call per sample per processor, the reference for the block path.
 func applyDefaultFXPerSample(buf []float32, sampleRate int, slots []EffectSlot) {
 	var procs []InsertEffect
 	for _, s := range slots {
@@ -25,8 +24,7 @@ func applyDefaultFXPerSample(buf []float32, sampleRate int, slots []EffectSlot) 
 	}
 }
 
-// fxIdentitySignal has what makes an effect's state matter: a transient, a
-// held tone, a decay, silence and a second hit.
+// A transient, a held tone, a decay, silence and a second hit: what makes state matter.
 func fxIdentitySignal(sr int) []float32 {
 	r := rand.New(rand.NewSource(3))
 	out := make([]float32, sr)
@@ -46,9 +44,7 @@ func fxIdentitySignal(sr int) []float32 {
 	return out
 }
 
-// A document's FX chain renders through one block call per effect; the voice
-// must be the per-sample voice bit for bit, for every effect at its defaults,
-// at either end of every parameter, at random settings, and chained.
+// Bit for bit at defaults, at both ends of every param, at random settings, and chained.
 func TestDocumentFXBlockMatchesPerSample(t *testing.T) {
 	const sr = 44100
 	regs := EffectRegistrations()

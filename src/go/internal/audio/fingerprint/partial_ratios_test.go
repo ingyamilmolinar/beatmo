@@ -10,8 +10,6 @@ import (
 // --- direct-formula sanity (mirrors kick_inharmonicity_test.go's style) -----
 
 func TestPartialRatiosFromPeaks_HarmonicSeries(t *testing.T) {
-	// A clean harmonic stack: 1,2,3,4 x f0=200. Every rank's ratio equals
-	// its expected consecutive harmonic number exactly.
 	pr := partialRatiosFromPeaks([]spectralPartial{
 		{Freq: 200, Amp: 1}, {Freq: 400, Amp: 1}, {Freq: 600, Amp: 1}, {Freq: 800, Amp: 1},
 	}, 200)
@@ -30,11 +28,8 @@ func TestPartialRatiosFromPeaks_HarmonicSeries(t *testing.T) {
 }
 
 func TestPartialRatiosFromPeaks_BarLikeNonConsecutive(t *testing.T) {
-	// A tuned-bar-like stack: partials near 1x, 4x, 9x f0 (skips 2,3,5-8) --
-	// each individual partial is close to SOME integer, so a
-	// nearest-integer mistuning check would call this nearly perfectly in
-	// tune. SeriesDeviation must instead catch that rank 2 (by frequency)
-	// sits at 4x, not the 2x a consecutive series would place there.
+	// Each partial is near SOME integer, so nearest-integer mistuning calls it in tune; SeriesDeviation must see rank 2 at
+	// 4×, not 2×.
 	pr := partialRatiosFromPeaks([]spectralPartial{
 		{Freq: 200, Amp: 1}, {Freq: 804, Amp: 1}, {Freq: 1830, Amp: 1},
 	}, 200)
@@ -74,17 +69,12 @@ func TestPartialRatiosFromPeaks_Degenerate(t *testing.T) {
 	}
 }
 
-// --- full-pipeline sanity (FFT-resolvable content, mirrors
-// TestKickAnalyze_InharmonicityPipeline) --------------------------------------
-
 func TestAnalyzePartialRatios_Pipeline(t *testing.T) {
 	const sr = 44100
 	const fftSize = 16384
 	binHz := float64(sr) / float64(fftSize)
 
-	// Fundamental-dominant amplitudes so peak-picking finds all 3 partials
-	// with the fundamental included; spacings are all >> binHz so each
-	// partial resolves to its own bin cleanly.
+	// Fundamental-dominant, with spacings far above binHz so each partial resolves to its own bin.
 	harmonicWave := weightedPartials(sr, 1.0, []float64{220, 440, 660}, []float64{1.0, 0.6, 0.4})
 	barWave := weightedPartials(sr, 1.0, []float64{220, 884, 2013}, []float64{1.0, 0.6, 0.4})
 

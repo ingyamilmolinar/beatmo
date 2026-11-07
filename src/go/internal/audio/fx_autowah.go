@@ -10,9 +10,7 @@ const (
 	autowahFilterQ  = 2.0    // resonance factor
 )
 
-// autoWah implements an envelope-following auto-wah (dynamic bandpass filter).
-// The filter cutoff is modulated by a combination of the input signal's
-// amplitude envelope and an internal LFO, producing a wah-wah sweep.
+// The bandpass cutoff follows the input envelope plus an internal LFO.
 type autoWah struct {
 	sensitivity float64 // envelope sensitivity 0-1
 	rate        float64 // LFO rate Hz

@@ -8,8 +8,6 @@ import (
 )
 
 func TestLimiterCeiling(t *testing.T) {
-	// Feed a hot signal (+6 dB, amplitude 2.0). No output sample should
-	// exceed the ceiling level.
 	l := newLimiter(44100, DefaultParams(EffectLimiter))
 	const sr = 44100
 	const n = 8000
@@ -25,8 +23,7 @@ func TestLimiterCeiling(t *testing.T) {
 }
 
 func TestLimiterPassesBelowThreshold(t *testing.T) {
-	// A quiet signal (amplitude 0.1, ~-20 dB) should be below or near the
-	// default -1 dB threshold and pass through scaled by ceiling/threshold.
+	// Below the default threshold it passes scaled by ceiling/threshold.
 	l := newLimiter(44100, DefaultParams(EffectLimiter))
 	const sr = 44100
 	const n = 4000
@@ -68,9 +65,7 @@ func TestLimiterNoNaN(t *testing.T) {
 }
 
 func TestLimiterSetParam(t *testing.T) {
-	// With threshold=-1 dB, a 2.0 amplitude signal is well above threshold
-	// and gets limited. After raising threshold to 0 dB, less limiting occurs
-	// and the peak output should be higher.
+	// A higher threshold limits less, so the peak rises.
 	l := newLimiter(44100, map[string]float64{
 		"threshold": -6,
 		"release":   50,
@@ -119,8 +114,6 @@ func TestLimiterSetParam(t *testing.T) {
 }
 
 func TestLimiterBrickWall(t *testing.T) {
-	// Feed an impulse of amplitude 5.0. The limiter should never let output
-	// exceed the ceiling.
 	l := newLimiter(44100, DefaultParams(EffectLimiter))
 	ceilingLin := l.ceilingLin
 

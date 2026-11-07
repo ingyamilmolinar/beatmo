@@ -12,13 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// RenderDocForGraph renders d the way a trigger of id plays it in the browser:
-// window.renderDocPCM runs the playback render worker on d's flattened block,
-// post-processes it like ensureRenderedSample (voice FX, gate tail,
-// peak-normalise × amplitude, end fade, id's Sampler edit) and resolves with
-// the PCM. Graph renders wait while any
-// playback render is queued, so they never delay a note. BLOCKS until the
-// promise settles — call it off the UI goroutine (a pool worker).
+// Waits while any playback render is queued, so a graph never delays a note. BLOCKS until the promise settles: call it
+// off the UI goroutine.
 func RenderDocForGraph(id instrument.ID, d instrument.Doc, pitch float64) ([]float32, int, error) {
 	fn := js.Global().Get("renderDocPCM")
 	if fn.Type() != js.TypeFunction {

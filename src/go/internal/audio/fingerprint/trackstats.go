@@ -5,31 +5,12 @@ import (
 	"sort"
 )
 
-// trackstats.go — ONE statistic set, applied uniformly to every frame-wise
-// track.
-//
-// This is what turns "measure the whole signal" from a pile of bespoke
-// scalars into a mechanical cross-product. Rather than hand-writing
-// CentroidMean, CentroidRange and CentroidSlope (which TemporalFingerprint
-// does today) and then hand-writing the equivalents for RMS, flatness, noise
-// fraction and sixteen harmonic tracks, every track gets the same reduction.
-//
-// It also subsumes existing scalars: TemporalFingerprint.CentroidMean,
-// .CentroidRange and .CentroidSlope are exactly StatsOf(tracks.Centroid)'s
-// Mean, Range and Slope. That overlap is deliberate and is what the Phase 6
-// orthogonality analysis is for -- it will show which of the legacy scalars
-// are now redundant, with evidence rather than by assertion.
+// One statistic set for every track, so whole-signal statistics are a mechanical cross-product. It subsumes
+// TemporalFingerprint's centroid scalars on purpose; the orthogonality analysis says which legacy scalars are
+// redundant.
 
-// TrackStats is the uniform reduction of one frame-wise track.
-//
-// The set is chosen so that MAGNITUDE and SHAPE are separable. That
-// distinction is the whole point: the violin's amplitude variation was tuned
-// to std/mean 0.40 against a real 0.64 and still sounded wrong, because the
-// real signal's variation is a slow bow-stroke SHAPE while the synth's was
-// fast chaos. Std alone cannot tell those apart. Slope, Curvature and
-// MonotonicFrac describe the shape; Mean, Std, IQR and Range describe the
-// magnitude. (Separating RATE as well needs the modulation spectrum, which is
-// a later phase.)
+// MAGNITUDE and SHAPE separable: a slow bow-stroke shape and fast chaos can share a std. Slope, Curvature and
+// MonotonicFrac are the shape; Mean, Std, IQR and Range the magnitude.
 type TrackStats struct {
 	Mean   float64
 	Median float64
@@ -41,31 +22,20 @@ type TrackStats struct {
 	Max    float64
 	Range  float64 // Max - Min
 
-	// Slope is the OLS trend in units per SECOND (not per frame), so it is
-	// comparable across analyses at different hop sizes.
+	// Per SECOND, comparable across hop sizes.
 	Slope float64
 
-	// Curvature is the quadratic coefficient of a second-order least-squares
-	// fit, in units per second squared. It separates a steady ramp (≈0) from
-	// an accelerating bloom or a decaying settle at the same overall slope.
+	// Units/s²: separates a steady ramp (≈0) from an accelerating bloom or a settling decay at the same slope.
 	Curvature float64
 
-	// MonotonicFrac is the fraction of consecutive deltas sharing the
-	// majority sign: 1.0 for a strictly monotonic track, ~0.5 for noise. It
-	// is the cheapest "shaped gesture vs chaos" discriminator available
-	// without a modulation spectrum.
+	// 1.0 strictly monotonic, ~0.5 for noise: the cheapest gesture-vs-chaos discriminator.
 	MonotonicFrac float64
 
-	// N is the number of frames the statistics were computed over. 0 means
-	// every field above is a zero placeholder, not a measurement.
+	// 0 means every field is a zero placeholder, not a measurement.
 	N int
 }
 
-// StatsOf reduces one track sampled every hopSec seconds.
-//
-// An empty or single-sample track yields zeros, never NaN: a report row
-// reading NaN is strictly worse than one reading 0 with N=0 alongside it, and
-// NaN propagates silently through any downstream comparison.
+// Empty or single-sample tracks yield zeros, never NaN, which propagates silently into comparisons.
 func StatsOf(track []float64, hopSec float64) TrackStats {
 	s := TrackStats{N: len(track)}
 	if len(track) == 0 {
@@ -99,13 +69,8 @@ func StatsOf(track []float64, hopSec float64) TrackStats {
 	return s
 }
 
-// quadraticCoeff returns the `a` coefficient of the least-squares fit
-// y = a*x^2 + b*x + c.
-//
-// Solved via the 3x3 normal equations with Cramer's rule. That is adequate
-// here because x is a short, evenly-spaced, well-conditioned time axis; it is
-// not a general-purpose polynomial fitter. A near-singular system (fewer than
-// three distinct x values) returns 0 rather than a huge spurious coefficient.
+// Cramer's rule on the 3×3 normal equations, adequate for a short well-conditioned time axis; under three distinct x
+// returns 0 rather than a huge spurious coefficient.
 func quadraticCoeff(xs, ys []float64) float64 {
 	n := float64(len(xs))
 	if len(xs) < 3 || len(xs) != len(ys) {
@@ -122,9 +87,6 @@ func quadraticCoeff(xs, ys []float64) float64 {
 		sxy += x * ys[i]
 		sx2y += x2 * ys[i]
 	}
-	// | sx4 sx3 sx2 | |a|   |sx2y|
-	// | sx3 sx2 sx  | |b| = |sxy |
-	// | sx2 sx  n   | |c|   |sy  |
 	det := sx4*(sx2*n-sx*sx) - sx3*(sx3*n-sx*sx2) + sx2*(sx3*sx-sx2*sx2)
 	if math.Abs(det) < 1e-18 {
 		return 0
@@ -133,11 +95,7 @@ func quadraticCoeff(xs, ys []float64) float64 {
 	return detA / det
 }
 
-// monotonicFraction returns the share of consecutive deltas that move in the
-// majority direction. Exactly-zero deltas are excluded rather than counted
-// against monotonicity: a track that plateaus mid-rise is still a shaped
-// gesture, and counting its flat frames as "not monotonic" would penalize
-// exactly the envelope shapes worth recognizing.
+// Exactly-zero deltas are excluded: a plateau mid-rise is still a shaped gesture.
 func monotonicFraction(track []float64) float64 {
 	up, down := 0, 0
 	for i := 1; i < len(track); i++ {
@@ -150,9 +108,7 @@ func monotonicFraction(track []float64) float64 {
 	}
 	moves := up + down
 	if moves == 0 {
-		// A perfectly flat track is trivially "monotonic" in the sense that
-		// nothing contradicts a direction, but it carries no gesture. Report
-		// 0 so it cannot masquerade as a shaped one.
+		// A flat track contradicts no direction but carries no gesture.
 		return 0
 	}
 	if up > down {

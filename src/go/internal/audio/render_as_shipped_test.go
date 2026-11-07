@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestRenderAsShippedMatchesPlayback pins RenderAsShipped — a pure function
-// of a DOCUMENT — to RenderAsPlayed, which goes through the real dispatch
-// path (project store, voice cache, playedVoice). Every analysis tool renders
-// candidates through RenderAsShipped, so a drift here means every comparison
-// measures a sound nobody hears.
+// Every analysis tool renders through RenderAsShipped, so a drift from real playback means every comparison measures a
+// sound nobody hears.
 func TestRenderAsShippedMatchesPlayback(t *testing.T) {
 	for _, id := range roster.All {
 		d, ok := EnsureInstrumentDoc(id)

@@ -9,9 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// doc_voice_native.go — THE native synth voice (spec §8): an instrument
-// document, flattened, rendered, then its voice fx, its gate and the
-// instrument's normalisation, then the Sampler edit.
+// THE native synth voice: a document flattened and rendered, then its voice fx, gate and normalisation, then the
+// Sampler edit.
 
 // docInstrument is every synth instrument in the instrument table.
 type docInstrument struct{ id instrument.ID }
@@ -24,8 +23,7 @@ func (d docInstrument) NewVoice(sampleRate int) Voice {
 	return &cVoice{buf: buf}
 }
 
-// ensureDoc makes sure id has a project document without copying one when it
-// already does (the dispatch hot path).
+// Without copying one when it exists: the dispatch hot path.
 func ensureDoc(id instrument.ID) bool {
 	if HasInstrumentDoc(id) {
 		return true
@@ -50,9 +48,7 @@ func pitchFieldIndex() int {
 	return pitchIdx
 }
 
-// liveVoiceKey is the cache key of id's CURRENT document, computed from the
-// stored block and hash with no allocation (the dispatch hot path). It equals
-// docVoiceKey(id, current document).
+// From the stored block and hash, with no allocation (the hot path); equals docVoiceKey(id, current document).
 func liveVoiceKey(id instrument.ID, sampleRate int, pitch float64, pitched, ignoreEdit bool) (voiceCacheKey, bool) {
 	block, hash, salt, ok := docBlockForDispatch(id)
 	if !ok {
@@ -79,8 +75,7 @@ func effectSlotsOf(fx []instrument.Module) []EffectSlot {
 	return out
 }
 
-// docVoiceKey flattens d (pitch written for a pitched render) and returns the
-// cache key dispatch uses, plus the block.
+// The pitch is written for a pitched render.
 func docVoiceKey(id instrument.ID, d instrument.Doc, sampleRate int, pitch float64, pitched, ignoreEdit bool) (voiceCacheKey, []float64) {
 	block := instrument.Flatten(d, BuiltinModuleRegistry())
 	key := voiceCacheKey{instrumentID: id, sampleRate: sampleRate}
@@ -97,8 +92,7 @@ func docVoiceKey(id instrument.ID, d instrument.Doc, sampleRate int, pitch float
 	return key, block
 }
 
-// docVoiceBuffer renders (or fetches from the voice cache) the voice of id's
-// project document. The returned buffer is shared read-only with the cache.
+// The buffer is shared read-only with the cache.
 func docVoiceBuffer(id instrument.ID, sampleRate int, pitch float64, pitched, ignoreEdit bool, origin renderOrigin) ([]float32, voiceCacheKey, bool) {
 	if !ensureDoc(id) {
 		return nil, voiceCacheKey{}, false
@@ -115,8 +109,7 @@ func docVoiceBuffer(id instrument.ID, sampleRate int, pitch float64, pitched, ig
 		if v, ok := serveBestAvailable(id, pitch); ok {
 			return v.(*cVoice).buf, key, true
 		}
-		// Nothing cached at all — render below: a late first note beats a
-		// silent one (user decision), bounded to the instrument's first trigger.
+		// A late first note beats a silent one (user decision); it costs only the instrument's first trigger.
 	}
 	d, ok := InstrumentDoc(id)
 	if !ok {
@@ -126,8 +119,6 @@ func docVoiceBuffer(id instrument.ID, sampleRate int, pitch float64, pitched, ig
 	return buf, key, true
 }
 
-// renderDocIntoCache renders d's voice for id and stores it under its key
-// (no-op returning the cached buffer when already present).
 func renderDocIntoCache(id instrument.ID, d instrument.Doc, sampleRate int, pitch float64, pitched, ignoreEdit bool, origin renderOrigin) []float32 {
 	key, block := docVoiceKey(id, d, sampleRate, pitch, pitched, ignoreEdit)
 	if buf, ok := globalVoiceCache.Get(key); ok {
@@ -145,9 +136,8 @@ func renderDocIntoCache(id instrument.ID, d instrument.Doc, sampleRate int, pitc
 	return buf
 }
 
-// renderDocBlock is the voice buffer of d given its already-flattened block:
-// C render → document FX → gate tail → peak-normalise × d's amplitude. The
-// ONE implementation behind the voice cache and RenderAsShipped.
+// C render → document FX → gate tail → peak-normalise × amplitude: the ONE implementation behind the cache and
+// RenderAsShipped.
 func renderDocBlock(d instrument.Doc, block []float64, sampleRate int) []float32 {
 	n := VoiceFrames(d.Render.Seconds, sampleRate)
 	buf := make([]float32, n)
@@ -162,8 +152,7 @@ func renderDocBlock(d instrument.Doc, block []float64, sampleRate int) []float32
 	return buf
 }
 
-// renderDocVoice flattens d (writing pitch when pitched, exactly as
-// docVoiceKey does) and renders its voice buffer. No cache, no globals.
+// Flattens exactly as docVoiceKey does. No cache, no globals.
 func renderDocVoice(d instrument.Doc, sampleRate int, pitch float64, pitched bool) []float32 {
 	block := instrument.Flatten(d, BuiltinModuleRegistry())
 	if pitched {
@@ -172,13 +161,9 @@ func renderDocVoice(d instrument.Doc, sampleRate int, pitch float64, pitched boo
 	return renderDocBlock(d, block, sampleRate)
 }
 
-// RenderAsShipped returns the samples a trigger of document d at (pitch,
-// duration 1) puts into the mix — RenderAsPlayed for a document that need not
-// be registered anywhere. Melodic documents render AT pitch and play at rate
-// 1; everything else renders at its own pitch and is resampled by
-// 2^(pitch/12) through the same resampleVoice playedVoice uses. Writes no
-// global state, so analysis tools may call it from several goroutines.
-// Guard: TestRenderAsShippedMatchesPlayback.
+// What a trigger of d at (pitch, duration 1) puts into the mix, for a document registered nowhere: melodic renders
+// AT pitch at rate 1, the rest resampled by 2^(pitch/12) through playedVoice's resampleVoice. Writes no global
+// state, so tools may call it from several goroutines.
 func RenderAsShipped(d instrument.Doc, sampleRate int, pitch float64) []float64 {
 	var buf []float32
 	rate := 1.0
@@ -199,10 +184,7 @@ func RenderAsShipped(d instrument.Doc, sampleRate int, pitch float64) []float64 
 	}
 }
 
-// RenderInstrumentWithFields renders id's document with fields set through it
-// (see InstrumentDocWithFields): n RAW samples at sr — the C voice exactly as
-// the engine produces it, before playback normalization and amplitude. The
-// render path every tool that "renders an instrument with overrides" uses.
+// RAW samples, before normalisation and amplitude: the path every override render uses.
 func RenderInstrumentWithFields(id instrument.ID, sr, n int, fields map[string]float64) ([]float32, error) {
 	d, err := InstrumentDocWithFields(id, fields)
 	if err != nil {
@@ -211,17 +193,14 @@ func RenderInstrumentWithFields(id instrument.ID, sr, n int, fields map[string]f
 	return RenderDocRaw(d, sr, n), nil
 }
 
-// RenderDocRaw is the RAW C render of a document that need not be registered
-// anywhere (n samples at sr, no FX / gate / normalisation) — the
-// cross-platform reference's form (cmd/export_audio's document cases).
+// No FX, gate or normalisation: the cross-platform reference's form.
 func RenderDocRaw(d instrument.Doc, sr, n int) []float32 {
 	buf := make([]float32, n)
 	renderModularBlock(buf, sr, n, modularBlock(instrument.Flatten(d, BuiltinModuleRegistry())))
 	return buf
 }
 
-// gateTail hard-gates the tail after a given fraction of the buffer (a
-// document's render.gate_tail; 0 or >= 1 = no gate).
+// 0 or >= 1 = no gate.
 func gateTail(buf []float32, cutoffFrac float64) {
 	if cutoffFrac <= 0 || cutoffFrac >= 1 {
 		return

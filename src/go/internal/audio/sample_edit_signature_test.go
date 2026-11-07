@@ -2,8 +2,6 @@ package audio
 
 import "testing"
 
-// SampleEditSignature is the Sampler tab's external-change detector; it had
-// no direct test (0% in the native coverage run).
 func TestSampleEditSignature(t *testing.T) {
 	const id = "sig-test-instrument"
 	t.Cleanup(func() { ClearSampleEdit(id) })

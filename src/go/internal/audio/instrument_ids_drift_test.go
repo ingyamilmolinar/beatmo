@@ -9,32 +9,12 @@ import (
 	"testing"
 )
 
-// TestInstrumentIDsGenUpToDate re-runs the generator against a COPY of its
-// inputs and fails when the committed instrument_ids_gen.go no longer matches.
-//
-// This exists because the file went stale and nothing said so. roster.All
-// is not just a set — ResetInstruments seeds instOrder straight from it
-// (engine_instruments.go), so it is the ORDER the instrument menu lists within a
-// category, and it used to be the order NewDrumView picked the default first row
-// from. The generator's contract is that it mirrors ResetInstruments' registration
-// order: engine_instruments.go's literals, then modular_instruments.go's table. When
-// the kick/snare/clap conversion moved those ids from the literals into the table
-// without a regen, the committed slice kept them in their old positions and quietly
-// stopped describing the roster it claims to describe.
-//
-// A pre-commit hook rejects stale *.gen.go, but only for someone who ran
-// `make install-hooks`, and only at commit time. This is the same check on the
-// normal test path.
-//
-// Real build only: the generator parses the `!test && !js` engine_instruments.go,
-// so under -tags test it would be comparing against a different source of truth.
+// roster.All is ORDER, not just a set (ResetInstruments seeds the menu order from it), and the pre-commit hook only
+// checks those who installed it.
 func TestInstrumentIDsGenUpToDate(t *testing.T) {
 	goBin := goToolForGenerator(t)
 
-	// The generator resolves every path relative to its working directory and
-	// WRITES instrument_ids_gen.go there (and ../instrument/roster/roster_gen.go),
-	// so it runs over a copy — running it in place would rewrite the very files
-	// under test and always pass.
+	// The generator writes into its working directory: run in place it would rewrite the files under test and always pass.
 	root := t.TempDir()
 	pkg := filepath.Join(root, "audio")
 	assets := filepath.Join(root, "assets")
@@ -84,8 +64,7 @@ func TestInstrumentIDsGenUpToDate(t *testing.T) {
 	}
 }
 
-// goToolForGenerator locates a go toolchain, preferring the repo's bundled one
-// (the rest of the project pins it to avoid version drift).
+// Prefers the repo's bundled toolchain.
 func goToolForGenerator(t *testing.T) string {
 	t.Helper()
 	if p, err := filepath.Abs("../../../.tools/go/bin/go"); err == nil {

@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// sample_edit_reapply_test.go — SetSampleEdit / ClearSampleEdit re-derive a user
-// sample's playable PCM from its pristine source so a Sampler edit on a WAV /
-// user-sample instrument is audible in real time (no Save), and clearing it
-// reverts. Synth instruments (no stored pristine) are untouched — they re-render
-// through the recipe path instead.
+// A user sample's edit is audible in real time with no Save; synths re-render through the recipe path instead.
 
 func TestSetSampleEditReregistersUserSampleBaked(t *testing.T) {
 	const id = "user.sample.reapply"

@@ -5,11 +5,7 @@ import (
 	"math"
 )
 
-// registry_modes.go — the first descriptor group built on modes.go's f0-free
-// mode tracker (Task 1). Every earlier partial-structure descriptor anchored
-// on DetectF0, which is the wrong model for bars, bells, drums and cymbals.
-// These rows apply purely on RequiresModes, so they show up for percussive
-// and unpitched instruments (snare, tubular-bells) as well as pitched ones.
+// Built on the f0-free mode tracker, gated only on RequiresModes, so percussive and unpitched instruments get them too.
 
 const (
 	IDModeAnchorHz       = "mode.anchor_hz"
@@ -32,10 +28,7 @@ const (
 	modeCountHiHz         = 8000.0
 )
 
-// ModeRatioDistanceCents is the symmetric mean nearest-neighbour gap between
-// two ratio lists, in cents: for each ratio on one side, the closest ratio on
-// the other; averaged; the larger of the two directions is returned so a
-// synth that adds spurious modes is penalised as much as one that misses.
+// The larger of the two directions, so spurious extra modes cost as much as missing ones.
 func ModeRatioDistanceCents(ref, synth []float64) float64 {
 	one := func(a, b []float64) float64 {
 		if len(a) == 0 || len(b) == 0 {
@@ -56,19 +49,8 @@ func ModeRatioDistanceCents(ref, synth []float64) float64 {
 	return math.Max(one(ref, synth), one(synth, ref))
 }
 
-// centsNearestGap is ModeRatioDistanceCents's own symmetric-mean-nearest-
-// neighbour math, applied to values already expressed in CENTS (as
-// IDModeRatios' Extract stores them) rather than raw ratios. It is
-// mathematically identical to converting each side back to a ratio
-// (2^(cents/1200)) and calling ModeRatioDistanceCents — 1200*log2(y/x) ==
-// centsY - centsX — but works directly in the descriptor's own declared
-// unit. That matters for TestDescriptorThresholdsAreOnTheRightScale's
-// generic perturbation probe: it shifts a Vector Measurement's components by
-// a delta in the descriptor's OWN unit (cents, here), and only a Values
-// payload that is genuinely already in cents makes that shift land as a
-// proportional cents-scale change in the comparator's output. Raw ratios
-// (1.0, 2.76, 5.40, …) are a different scale entirely — an 8-cents shove
-// added directly to a ratio of 1.0 is a ~9x pitch jump, not an 8-cent one.
+// The same math on values already in CENTS, the descriptor's declared unit: the threshold-scale probe shifts
+// components in that unit, and an 8-cent shift added to a raw ratio of 1.0 would be a ~9× pitch jump.
 func centsNearestGap(ref, synth []float64) float64 {
 	one := func(a, b []float64) float64 {
 		if len(a) == 0 || len(b) == 0 {
@@ -125,36 +107,9 @@ func ModeCountPerOctave(ms *ModeSet) (float64, bool) {
 	return float64(n) / octaves, true
 }
 
-// ModeBeating measures acoustic beating as PER-MODE amplitude ripple with
-// common-mode rejection.
-//
-// Each strong mode's own dB Track is an independent measurement of that
-// partial's level over time. modeSelfBeat estimates a (rate, depth) ripple
-// for each one. A mode's ripple is reported as "beating" only when:
-//
-//   - depth >= modeBeatingMinDepth and rate <= modeBeatingMaxGapHz (both
-//     already enforced by modeSelfBeat), AND
-//   - its rate is NOT shared, within modeBeatingShareTolHz, by EVERY other
-//     strong mode that itself has a measurable ripple.
-//
-// The second condition is the common-mode rejection: a global tremolo (an
-// LFO on the whole instrument's output amplitude) modulates every partial
-// identically, so every strong mode reports the SAME ripple rate — that is
-// a tremolo, not beating, and is rejected. Real acoustic beating comes from
-// two physical partials interacting (either resolved as separate Mode
-// entries whose sum ripples, or merged into one Mode when they are closer
-// than the FFT can resolve — see modeSelfBeat), which shows up on only SOME
-// modes, or on one merged mode with no "other" to compare against.
-//
-// A signal with exactly one strong mode qualifies unconditionally when its
-// own ripple clears the depth/rate bounds: there are no other modes to
-// share the rate with, so common-mode rejection cannot apply (checking it
-// vacuously would incorrectly reject the single-mode case, which is
-// PRECISELY the two-real-partials-merged-into-one-track scenario this
-// package exists to handle).
-//
-// When more than one mode qualifies, the deepest ripple wins — the ear
-// notices the most prominent wave, not the first one found.
+// Per-mode ripple with common-mode rejection: a rate shared by EVERY rippling strong mode is a tremolo on the whole
+// output, not beating, which comes from two partials and shows on only some modes or on one merged mode. One strong
+// mode qualifies outright (the merged-pair case); the deepest qualifying ripple wins.
 func ModeBeating(ms *ModeSet) (rateHz, depth float64, ok bool) {
 	strong := ms.Strong(modeStrongWithin)
 	if len(strong) == 0 {
@@ -198,31 +153,9 @@ func ModeBeating(ms *ModeSet) (rateHz, depth float64, ok bool) {
 	return rates[best], depths[best], true
 }
 
-// modeSelfBeat measures a beat rate/depth from ONE mode's own dB track by
-// DETRENDING it (removing its own OLS decay line) and then counting how
-// often the residual, converted back to a linear amplitude ratio, crosses
-// its own mean — two zero-crossings per beat cycle.
-//
-// Detrending is required, not cosmetic: a real mode's dB track carries BOTH
-// its natural decay AND any amplitude ripple riding on top of it. Counting
-// crossings of the RAW track's global mean undercounts cycles once decay has
-// pulled later frames well below that mean (verified against the real
-// vibraphone synth: its lfo_rate=5Hz/lfo_depth=0.35 amplitude tremolo, ridden
-// on an -8 to -18 dB/s natural decay, measured as a false ~2 Hz on the raw
-// track — only ~3.5 apparent cycles over ~1.8s — vs ~5.4 Hz once the decay
-// trend is removed first, which is what let a real amplitude tremolo evade
-// ModeBeating's common-mode rejection: with each mode's rate wrongly
-// estimated differently, they no longer looked shared).
-//
-// Frame duration is measured from the SPAN of present (non-NaN) frame
-// indices, not merely their count: a track with internal gaps (from
-// AnalyzeModes' one-frame miss tolerance) would otherwise have its elapsed
-// time undercounted by the width of those gaps, inflating the rate.
-//
-// Only rates within modeBeatingMaxGapHz are reported: above that the
-// hop-rate sampling (~1/HopSec) can alias a faster ripple into a false slow
-// one, and modeBeatingMaxGapHz is already the ceiling ModeBeating cares
-// about.
+// Detrended first: crossings of a decaying track's raw mean undercount cycles and gave each mode a different false rate,
+// letting a real tremolo dodge common-mode rejection. Duration comes from the span of present frames, so gaps do not
+// inflate the rate; only rates up to modeBeatingMaxGapHz, above which hop sampling aliases.
 func modeSelfBeat(m Mode, hopSec float64) (rateHz, depth float64, ok bool) {
 	var idx, dbs []float64
 	for i, db := range m.Track {
@@ -356,11 +289,7 @@ func init() {
 				return Delta{OK: false, NA: "mode ratios unavailable on one side"}
 			}
 			d := centsNearestGap(ref.Values, synth.Values)
-			// Declared thresholds are already in this comparator's units
-			// (cents), so they pass straight through.
-			// The display already carries the value in this comparator's own
-			// units, so it is passed through verbatim rather than having a
-			// second, differently-rounded copy appended.
+			// Declared thresholds are already in cents; the display already carries the value.
 			return reducedDeltaDisplay(d, fmt.Sprintf("mean gap %.0f cents", d), drift, mismatch)
 		},
 	})

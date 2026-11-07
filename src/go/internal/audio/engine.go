@@ -16,17 +16,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
 
-// sampleRate is the audio output sample rate.
-// Default is EngineSampleRate (48 kHz), the rate the browser runs at too, so
-// a circuit is the same samples on both platforms. BEATMO_AUDIO_SAMPLE_RATE
-// (env.AudioSampleRate) overrides it for diagnostics only.
+// 48 kHz, the browser's rate too, so a circuit is the same samples on both; the env override is for diagnostics only.
 var sampleRate = func() int {
 	rate := env.AudioSampleRate.Get()
 	if env.AudioSampleRate.IsSet() {
 		log.Infof("[audio] using custom sample rate: %d Hz", rate)
 	}
-	// Effects built before the device opens (an offline render) run at the
-	// engine rate too.
+	// So effects built before the device opens run at the engine rate too.
 	InitInsertChains(rate)
 	return rate
 }()
@@ -61,14 +57,9 @@ type Voice interface {
 	Sample() (float64, bool)
 }
 
-// BlockVoice is an optional interface for voices that support bulk sample
-// rendering. When a voice implements BlockVoice, the mixer uses SampleBlock
-// instead of calling Sample() in a tight loop, reducing per-sample function
-// call overhead.
+// The mixer then uses SampleBlock instead of calling Sample() in a loop.
 type BlockVoice interface {
 	Voice
-	// SampleBlock fills dst with up to len(dst) samples and returns the
-	// number of samples written and whether the voice is done.
 	SampleBlock(dst []float64) (int, bool)
 }
 
@@ -92,9 +83,7 @@ func Register(id instrument.ID, inst Instrument) {
 	}
 }
 
-// Unregister removes a runtime-registered instrument from the playable set. It
-// is the inverse of Register, used by DeleteInstrument to drop a cloned/user
-// instrument. Removing an id that isn't registered is a no-op.
+// Removing an unregistered id is a no-op.
 func Unregister(id instrument.ID) {
 	instMu.Lock()
 	_, existed := instruments[id]
@@ -114,16 +103,13 @@ func Unregister(id instrument.ID) {
 	}
 }
 
-// AnalyzerService returns the global analyzer service, or nil if audio
-// has not been initialized (e.g. in test/WASM builds).
+// nil before audio init (test / WASM builds).
 func AnalyzerService() *analyzer.Service { return analyzerSvc }
 
-// ScopeService returns the global scope service, or nil if audio
-// has not been initialized (e.g. in test/WASM builds).
+// nil before audio init (test / WASM builds).
 func ScopeService() *scope.Service { return scopeSvc }
 
-// ExportService returns the global scope export service, or nil if
-// export is not enabled.
+// nil when export is disabled.
 func ExportService() *scopeexport.Service { return exportSvc }
 
 // EnableScopeExport enables scope export on the next audio init.
@@ -142,10 +128,7 @@ func initContext() {
 	mix = newMixer(c)
 	// Initialize insert effect chains with the correct sample rate.
 	InitInsertChains(sampleRate)
-	// Phase 2 audio-panel redesign: stand up the master LUFS integrator
-	// before the analyzer service so MasterLUFSGetter has something to
-	// read on the first tick. The integrator is fed from the mixer
-	// master push site (engine_stop.go) via FeedMasterLUFS.
+	// Before the analyzer service, so MasterLUFSGetter has something to read on the first tick.
 	EnsureMasterLUFS(float64(sampleRate))
 	// Start the analyzer service for real-time metering and FFT.
 	analyzerSvc = analyzer.NewService(analyzer.Config{
@@ -203,8 +186,7 @@ func initContext() {
 	}
 }
 
-// Close stops the audio player, clears all voices, and releases the audio
-// device. Safe to call when mix is nil (e.g. audio was never initialized).
+// Safe when audio was never initialised.
 func Close() {
 	if mix == nil {
 		return

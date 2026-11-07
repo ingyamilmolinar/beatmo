@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestVoiceEmissionPublishesReport exercises the Task 3.2 wiring: a voice
-// scheduled with a parity identity (row, abs) publishes exactly one
-// EmitReport the first block it actually renders. Drives processBlock
-// directly via the real desktop mixer (no Oto device), per newTestMixer.
+// Exactly one report on the first block a (row, abs) voice renders, through the real mixer.
 func TestVoiceEmissionPublishesReport(t *testing.T) {
 	resetClockProbeForTest()
 	m := newTestMixer() // constructs a mixer without a live Oto player
@@ -38,24 +35,14 @@ func TestVoiceEmissionPublishesReport(t *testing.T) {
 	}
 }
 
-// TestProcessBlockEmitPathAllocFree pins the hot-path alloc-discipline rule
-// from the parity-timing plan (Task 3.2): a processBlock iteration that
-// exercises the publish-on-first-render path (a voice with row>=0 rendering
-// for the first time) must add zero allocations. publishEmitReport writes
-// into a fixed-size ring array and uses only atomics, so this is expected
-// to be exactly 0 allocs/op; updateDeviceClock is likewise atomics-only.
-//
-// The voiceState is built by hand (bypassing Schedule's antiPop-wrap /
-// analyzer-notify / scope-push side paths, which run on the caller's
-// goroutine at trigger time, not inside processBlock) so only processBlock's
-// own allocations are measured.
+// The publish-on-first-render path adds zero allocations. The voiceState is built by hand, since Schedule's side
+// paths run on the caller's goroutine, not in processBlock.
 func TestProcessBlockEmitPathAllocFree(t *testing.T) {
 	resetClockProbeForTest()
 	m := newTestMixer()
 	buf := make([]byte, blockSize*2)
 
-	// Warm up slot/channel/instBuf lazy-init paths before measuring so the
-	// measured loop only exercises the steady-state per-block code.
+	// Lazy init warmed first, so only steady-state code is measured.
 	slot := m.instrumentSlot(channel.Of(roster.Kick))
 	ch := channelForInstrument(channel.Of(roster.Kick))
 	// Long enough to survive every measured iteration without exhausting.
@@ -67,8 +54,7 @@ func TestProcessBlockEmitPathAllocFree(t *testing.T) {
 	m.processBlock(0, blockSize, buf) // warm-up call (not measured)
 
 	avg := testing.AllocsPerRun(20, func() {
-		// Reset the guard so the publish branch fires on every measured
-		// call, not just the first — a plain field write, not an alloc.
+		// So the publish branch fires on every measured call.
 		vs.emitted = false
 		m.mu.Lock()
 		m.processBlock(0, blockSize, buf)

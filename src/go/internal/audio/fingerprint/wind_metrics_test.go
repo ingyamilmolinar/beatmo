@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// mkNote builds preSec of low-level breath noise (breathAmp of peak) followed
-// by a tone with a linear attackSec ramp to full level, sustained to durSec.
+// Breath noise first, then a tone with a linear attack.
 func mkNote(sr int, preSec, breathAmp, attackSec, durSec, f0 float64) wave.Wave {
 	n := int((preSec + durSec) * float64(sr))
 	s := make([]float64, n)
@@ -33,9 +32,7 @@ func mkNote(sr int, preSec, breathAmp, attackSec, durSec, f0 float64) wave.Wave 
 }
 
 func TestOnsetSegment_SkipsBreathPreroll(t *testing.T) {
-	// 1.4 s of 2%-level breath (like the mtg bari-sax recording) then the tone.
-	// A 1%-of-peak trigger would fire inside the breath; the 10% trigger with
-	// 1% backtrack must land within ~50 ms of the true tone start.
+	// A 1 % trigger would fire inside the 2 % breath; the onset must land within ~50 ms of the real tone.
 	sr := 48000
 	w := mkNote(sr, 1.4, 0.02, 0.15, 1.5, 123)
 	_, onset := OnsetSegment(w, 1.0)
@@ -58,8 +55,7 @@ func TestComputeWindAttack_AttackTime(t *testing.T) {
 }
 
 func TestComputeWindAttack_CentroidBloom(t *testing.T) {
-	// A tone whose 2nd..4th harmonics fade in AFTER the fundamental (wind
-	// "bloom") must show a rising centroid trajectory and a positive slope.
+	// Upper harmonics fading in after the fundamental: a rising centroid.
 	sr := 48000
 	n := int(1.0 * float64(sr))
 	s := make([]float64, n)
@@ -103,8 +99,7 @@ func TestSpectralIrregularity_SmoothVsJagged(t *testing.T) {
 
 func TestFormantBandEnergies_PlacesEnergy(t *testing.T) {
 	sr := 48000
-	// Two tones: 600 Hz (band 450-900) and 3000 Hz (band 2000-8000), equal
-	// amplitude → equal energy split between bands 1 and 3, none in 0 and 2.
+	// Equal energy in bands 1 and 3, none in 0 and 2.
 	n := int(1.0 * float64(sr))
 	s := make([]float64, n)
 	for i := range s {

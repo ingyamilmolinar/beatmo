@@ -10,10 +10,8 @@ import (
 	"testing"
 )
 
-// TestTheEngineHasOneRenderEntryPoint: every instrument renders through
-// render_modular_p with a full param block. The NULL-params render_modular
-// (the engine's own defaults) was deleted in Phase C of the config-only
-// refactor; a second entry point is how C-side defaults would creep back in.
+// Every instrument renders through render_modular_p with a full param block; a second entry point is how C-side
+// defaults would creep back.
 func TestTheEngineHasOneRenderEntryPoint(t *testing.T) {
 	root := repoRootForC(t)
 	var found []string
@@ -31,8 +29,6 @@ func TestTheEngineHasOneRenderEntryPoint(t *testing.T) {
 	}
 }
 
-// repoRootForC returns the repository root by walking up from the current
-// test file's directory until it finds a directory containing src/c.
 func repoRootForC(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

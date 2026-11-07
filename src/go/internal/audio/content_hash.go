@@ -7,9 +7,7 @@ import (
 	"math"
 )
 
-// content_hash.go carries NO build tags on purpose: the WAV version pin must
-// hash identically on native, wasm, and under -tags test. crypto/sha256 is
-// pure-Go stdlib and compiles for js/wasm.
+// Untagged: the WAV version pin must hash identically on native, wasm and under -tags test.
 
 // Sha256Hex returns the lowercase hex SHA-256 of b.
 func Sha256Hex(b []byte) string {
@@ -17,10 +15,8 @@ func Sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// HashSamplePCM returns a stable content hash of a decoded sample: every frame
-// as little-endian float32 followed by the sample rate. This is the pinned
-// "version" a WavRef records — sharing the instrument config carries only this
-// hash, never the audio bytes.
+// Every frame as little-endian float32, then the rate: the version a WavRef pins, so sharing carries the hash, never
+// the audio.
 func HashSamplePCM(pcm []float32, sampleRate int) string {
 	buf := make([]byte, 0, len(pcm)*4+4)
 	var w [4]byte

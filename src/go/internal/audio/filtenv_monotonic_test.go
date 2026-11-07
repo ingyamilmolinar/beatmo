@@ -7,14 +7,7 @@ import (
 	"testing"
 )
 
-// TestFiltEnv_ZeroAmtIsNeutral asserts that filtenv_enabled with amt=0 produces
-// output byte-identical to filtenv_disabled — the AMOUNT knob (not just the
-// enable flag) must gate the effect, so a stage that is "on" but at amt=0 is a
-// true no-op.
-//
-// The monotonic-brightening-with-amt coverage and the enabled=0 ≡ baseline
-// identity check live in all_instruments_pitch_table_test.go
-// (TestFiltEnvMonotonicBrightening). This test pins the orthogonal amt=0 case.
+// The AMOUNT gates the effect, not only the enable flag: on at amt 0 is a true no-op.
 func TestFiltEnv_ZeroAmtIsNeutral(t *testing.T) {
 	const sr, n = 48000, 24000
 

@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// NewEQProcessor constructs the channel EQ for bands: the C program runner
-// (mix_dsp.c) over BuildEQProgram — the same program and the same C the
-// browser's beatmo-dsp worklet runs.
+// The C program runner over BuildEQProgram: the same program and C the browser's worklet runs.
 func NewEQProcessor(sampleRate int, bands ...EQBand) Processor {
 	return newCEQ(BuildEQProgram(sampleRate, bands))
 }
@@ -27,11 +25,8 @@ func NewShelfEQ(sampleRate int, low bool, freq, q, gainDB float64) Processor {
 	return NewEQProcessor(sampleRate, EQBand{Kind: kind, Freq: freq, Q: q, GainDB: gainDB})
 }
 
-// SetChannelEQ replaces the EQ on a channel, preserving insert effects. An
-// edit that keeps the program's shape (a gain or frequency move — every
-// detent of a band drag) retunes the live EQ and keeps its filter state, as
-// the browser's worklet does; a new shape (a band muted, a filter switched)
-// builds a fresh EQ on both platforms.
+// Insert effects are preserved. A same-shape edit (every detent of a band drag) retunes the live EQ and keeps its
+// state, as the worklet does; a new shape (a mute, a filter switch) builds a fresh EQ on both platforms.
 func SetChannelEQ(id channel.ID, sampleRate int, bands ...EQBand) {
 	channelEQWrites.Add(1)
 	prog := BuildEQProgram(sampleRate, bands)

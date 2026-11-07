@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestAnalyzerBlockSampleParity verifies that ProcessBlock produces the same
-// RMS/peak as equivalent ProcessSample calls.
 func TestAnalyzerBlockSampleParity(t *testing.T) {
 	const (
 		sr = 44100
@@ -33,9 +31,7 @@ func TestAnalyzerBlockSampleParity(t *testing.T) {
 	a2.ProcessBlock(in32, n)
 	snap2 := a2.Snapshot()
 
-	// Compare RMS — the float64→float32→float64 round-trip may introduce small
-	// differences since ProcessSample feeds float64 directly while ProcessBlock
-	// casts from float32.
+	// ProcessSample feeds float64 directly while ProcessBlock casts from float32.
 	rmsDiff := math.Abs(snap1.RMS - snap2.RMS)
 	peakDiff := math.Abs(snap1.Peak - snap2.Peak)
 	t.Logf("RMS: sample=%.8f block=%.8f diff=%.2e", snap1.RMS, snap2.RMS, rmsDiff)
@@ -49,8 +45,6 @@ func TestAnalyzerBlockSampleParity(t *testing.T) {
 	}
 }
 
-// TestPreEQTapInBlockPath verifies that the pre-EQ analyzer tap feeds the
-// analyzer when the block processing path is active.
 func TestPreEQTapInBlockPath(t *testing.T) {
 	withDefaultAudio(t)
 	const (

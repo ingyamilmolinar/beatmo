@@ -35,9 +35,7 @@ func TestRMSTrackFollowsAnAmplitudeRamp(t *testing.T) {
 	}
 }
 
-// TestHarmonicTracksCaptureABloom is the trumpet case in miniature: a tone
-// whose upper harmonic grows in over the note. A mid-sustain snapshot sees one
-// arbitrary point on that curve; the harmonic track sees the whole trajectory.
+// A snapshot sees one point on the bloom; the track sees the trajectory.
 func TestHarmonicTracksCaptureABloom(t *testing.T) {
 	sr := 44100
 	secs := 2.0
@@ -102,16 +100,8 @@ func TestTracksAllSlicesShareLength(t *testing.T) {
 	}
 }
 
-// TestCentroidStatsAgreeWithLegacyTemporalFingerprint is the re-expression
-// invariant. TemporalFingerprint.CentroidMean/.CentroidSlope are hand-written
-// scalars over the same quantity; StatsOf(tracks.Centroid) must reproduce them
-// in magnitude and sign.
-//
-// The tolerance is deliberately loose: computeTemporal skips the first 0.1 s
-// and trims to 1024 of 1025 bins, while Tracks covers the whole signal at the
-// full bin count. They should agree in magnitude and sign, not exactly. An
-// exact assertion here would be asserting that two deliberately different
-// windows are the same window.
+// Loose on purpose: computeTemporal skips 0.1 s and drops one bin, so the two agree in magnitude and sign, not
+// exactly.
 func TestCentroidStatsAgreeWithLegacyTemporalFingerprint(t *testing.T) {
 	w := bundleTone(44100, 440, 2)
 	// Give it some evolution so slope is non-trivial.

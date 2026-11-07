@@ -2,36 +2,9 @@
 
 package audio
 
-// Cross-platform golden baseline for the insert-effect C DSP (insert_fx.c).
-//
-// The same C source is compiled twice: natively into build/libdrums.a (this
-// package's cgo wrappers — the desktop audio path) and via Emscripten into
-// src/js/drums.single.js (exercised in the browser by
-// src/js/xplat_insert_fx_parity.browser.test.js). Until this test there was NO
-// check that the two builds produce the same audio for the same effect +
-// params — per-effect
-// functional tests existed on both sides, but a drift (param-mapping bug,
-// compiler flag change, libm divergence) would ship silently.
-//
-// This test renders a deterministic input through every registered effect at
-// two param sets (catalog defaults + a "hot" aggressive set) and locks the
-// native output in testdata/ifx_xplat_golden.json — full PCM, not just a
-// hash, so the browser side (src/js/xplat_insert_fx_parity.browser.test.js)
-// can diff per-sample against the SAME file and report bit-exact vs
-// tolerance-grade per effect (native cc may contract a*b+c into FMA on
-// x86 and links glibc libm; wasm has no FMA and uses musl-derived libm, so
-// some effects are close-but-not-bit-identical by construction — the same
-// reality the modular xplat suite documents as "correlation-grade").
-//
-// Processing is chunked at 128 samples to match the AudioWorklet quantum so
-// both platforms exercise identical block boundaries.
-//
-// Regeneration protocol (intentional DSP changes only):
-//
-//	cd src/go && IFX_GOLDEN_UPDATE=1 xvfb-run -a ../../.tools/go/bin/go \
-//	  test ./internal/audio/ -run TestInsertFXXplatGolden -v
-//
-// then re-run without the env var and commit the JSON in the same change.
+// The native output of every insert effect, full PCM, so the browser build of the same C diffs per sample against
+// this file (native may contract into FMA and links glibc libm, so some effects are close rather than bit-identical).
+// Chunked at 128 to match the AudioWorklet quantum. Regenerate with IFX_GOLDEN_UPDATE=1, intentional DSP changes only.
 
 import (
 	"crypto/sha256"
@@ -52,10 +25,8 @@ const (
 	ifxGoldenPath    = "testdata/ifx_xplat_golden.json"
 )
 
-// ifxGoldenInput generates the deterministic test signal: a full-scale
-// integer-LCG noise burst. Mirrored EXACTLY (same integer arithmetic, same
-// float64 divide, same float32 rounding) by makeInput() in
-// src/js/xplat_insert_fx_parity.browser.test.js — change one, change both.
+// Mirrored EXACTLY (integer arithmetic, float64 divide, float32 rounding) by makeInput() in
+// xplat_insert_fx_parity.browser.test.js: change one, change both.
 func ifxGoldenInput(n int) []float32 {
 	out := make([]float32, n)
 	state := uint32(12345)
@@ -66,10 +37,8 @@ func ifxGoldenInput(n int) []float32 {
 	return out
 }
 
-// ifxGoldenHotParams holds the aggressive per-effect settings (borrowed from
-// the worklet functional suite) so the golden exercises the wet path — at
-// catalog defaults several effects are mostly-dry or sub-threshold. Delay
-// time is shortened to 50ms so the first echoes land inside the window.
+// At catalog defaults several effects are mostly dry or under threshold; these exercise the wet path. Delay is 50 ms
+// so the first echoes land in the window.
 var ifxGoldenHotParams = map[EffectType]map[string]float64{
 	EffectDistortion: {"drive": 15, "tone": 4000, "mix": 1},
 	EffectDelay:      {"time": 50, "feedback": 0.6, "mix": 0.8},
@@ -156,12 +125,8 @@ func TestInsertFXXplatGolden(t *testing.T) {
 			{Name: "defaults", Params: DefaultParams(typ)},
 		}
 		if hot, ok := ifxGoldenHotParams[typ]; ok {
-			// Store the MERGED param map (hot over catalog defaults), not the
-			// raw hot map: the browser test must receive every init argument
-			// explicitly rather than relying on the worklet-mirror's `??`
-			// fallbacks staying in sync with the Go catalog (the same drift
-			// class the chain-spec parity work fixed by emitting merged
-			// params).
+			// The MERGED map, so the browser receives every init argument rather than trusting its own fallbacks to match the Go
+			// catalog.
 			cases = append(cases, ifxGoldenCase{Name: "hot", Params: mergeDefaults(typ, hot)})
 		} else {
 			t.Errorf("effect %q has no hot-params entry — add one to ifxGoldenHotParams", typ)

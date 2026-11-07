@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// INVARIANT I3: with non-blocking dispatch armed, a cache miss must NEVER
-// render on the caller's goroutine. It must serve the best available buffer and
-// hand the exact render off-thread.
+// With non-blocking dispatch armed, a miss serves the best available buffer and renders off-thread.
 func TestNonBlockingDispatchNeverRendersInline(t *testing.T) {
 	const id = roster.OrganChurch
 	globalVoiceCache.Clear()
@@ -66,10 +64,7 @@ func TestNonBlockingGateDoesNotAffectPrewarm(t *testing.T) {
 	}
 }
 
-// The nothing-cached fall-through (user-mandated): with the non-blocking gate
-// ARMED but NOTHING cached for the instrument, serveBestAvailable returns false
-// and dispatch must FALL THROUGH to a real render — a LATE first note, never
-// silence and never nil. Regression net for the Tier-3→fall-through revert.
+// With nothing cached the dispatch falls through to a real render: a late first note, never silence.
 func TestNonBlockingDispatchFallsThroughWhenNothingCached(t *testing.T) {
 	const id = roster.OrganChurch
 	globalVoiceCache.Clear()

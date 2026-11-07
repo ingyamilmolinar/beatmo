@@ -20,17 +20,8 @@ type recordingSession struct {
 	stats     *statsPoller
 }
 
-// StartRecording activates the off-thread capture+encode pipeline. The
-// browser-side worklet (audio thread) feeds samples directly into a Web
-// Worker (encoder thread); the Go-WASM goroutine that calls into here
-// only signals "go" and immediately returns. No audio data ever crosses
-// the main thread on the hot path.
-//
-// Briefly blocks (typically <50 ms) waiting for the encoder Worker to
-// confirm readiness — without this barrier the first audio frames could
-// arrive at the worker before the channel ports are wired and would be
-// silently dropped. The hitch is below one frame at 60 fps and matches
-// the cost of any user gesture that crosses the JS/WASM boundary once.
+// The worklet feeds a Web Worker directly, so no audio crosses the main thread. Blocks briefly for the worker's
+// readiness: frames arriving before the ports are wired would be dropped.
 func StartRecording(opts RecordingOptions) error {
 	recordingMu.Lock()
 	defer recordingMu.Unlock()
@@ -64,19 +55,8 @@ func StartRecording(opts RecordingOptions) error {
 	return nil
 }
 
-// StopRecording immediately marks the session as stopping, then dispatches
-// the slow worker-await + download trigger onto a background goroutine so
-// the calling Update tick returns within microseconds. The returned
-// RecordingResult holds metadata + an "expected" SessionDir filename for
-// the inline UI toast; the actual download fires when the worker emits
-// the Blob, and a subsequent EventRecordStop hook delivers the final
-// "Recording saved" toast (matching desktop UX).
-//
-// Why async: the worker can take 100-500 ms to encode and bundle a
-// multi-channel session. Blocking the JS-driven Update tick for that
-// long would stutter the UI and force the game loop to skip RAF ticks.
-// Spawning a goroutine instead lets the Go scheduler yield to JS while
-// awaitJSPromise blocks on the encoder Worker, keeping the UI fluid.
+// Returns within microseconds: encoding takes 100-500 ms, and blocking the JS-driven Update for that would stutter the
+// UI. The download fires when the worker emits the Blob, followed by EventRecordStop.
 func StopRecording() (*RecordingResult, error) {
 	recordingMu.Lock()
 	if activeSession == nil {
@@ -102,40 +82,25 @@ func StopRecording() (*RecordingResult, error) {
 			Format:     session.opts.Format,
 			Timestamp:  timestamp,
 		},
-		// Pre-populate so the UI's inline "Saving recording to ..." toast
-		// can render the expected filename immediately. The async path
-		// will overwrite if the worker assigns a different name.
+		// So the inline toast can show the expected name at once; the async path overwrites it if the worker picks another.
 		SessionDir: expectedZip,
 	}
 
-	// Background finalize on the canonical recording.lifecycle pool: the
-	// Go-WASM scheduler yields to the JS event loop while awaitJSPromise
-	// blocks, so neither the audio thread nor the UI thread is impacted.
-	// Mirrors the desktop queueFinalize pattern (recording_lifecycle.go)
-	// so panics are recovered by the pool worker and the goroutine count
-	// is bounded by the registry budget.
+	// On the lifecycle pool like desktop, so panics are recovered and goroutines bounded by the registry budget.
 	finalizeBegin()
 
 	err := lifecyclePool().Submit(func(_ context.Context) {
 		finalizeRecordingAsync(session, result, duration, timestamp)
 	})
 	if err != nil {
-		// Pool saturated or closed — run inline rather than lose the
-		// recording. activeSession is already nil so the caller has
-		// already returned; this just makes Stop synchronous in the
-		// degenerate case.
+		// Run inline rather than lose the recording.
 		log.Warnf("[record] lifecycle pool busy, finalizing sync: %v", err)
 		finalizeRecordingAsync(session, result, duration, timestamp)
 	}
 	return result, nil
 }
 
-// finalizeRecordingAsync drives the JS encoder Worker through finalize,
-// triggers the browser download, and publishes EventRecordStop. Runs on
-// the recording.lifecycle pool worker (or inline as a fallback); never
-// blocks the UI thread. The matching finalizeBegin() is performed by the
-// caller (StopRecording) so WaitRecordingFinalized is symmetric with the
-// desktop path.
+// The caller does finalizeBegin, so WaitRecordingFinalized works as on desktop.
 func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, duration float64, timestamp string) {
 	defer finalizeDone()
 
@@ -179,8 +144,7 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 			Name:     name,
 			Filename: ch.Filename,
 			Bytes:    ch.Bytes,
-			// Data deliberately nil: the encoded bytes live in the JS Blob
-			// referenced by the cached download handle. Use Bytes for size.
+			// The bytes live in the JS Blob; use Bytes for size.
 		})
 		result.Metadata.Channels = append(result.Metadata.Channels, ChannelMeta{
 			ID:       ch.ID,
@@ -243,9 +207,7 @@ func RecordingElapsed() time.Duration {
 	return time.Since(activeSession.startTime)
 }
 
-// RecordingAutoStopped reports whether the worker tripped a hard cap
-// (max bytes per channel or max duration). Reads the cached worker stats
-// — non-blocking.
+// Max bytes per channel or max duration. Non-blocking.
 func RecordingAutoStopped() bool {
 	return platformRecordingStatsSnapshot().AutoStopped
 }

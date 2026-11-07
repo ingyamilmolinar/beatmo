@@ -5,33 +5,23 @@ import (
 	"strconv"
 )
 
-// modal_model.go — the MODAL (+ STRIKE) stages' modes as a voice SOUNDS them,
-// computed from a flattened param map: a line-for-line mirror of
-// src/c/modal_bank.c (the frequency rule, stretch, tune, the min(20 kHz,
-// 0.45·sr) limit, the decay law, Decay ×, Brightness and the smooth strike
-// envelope). The Synth tab's mode-spectrum graph draws it; the WAV-clone
-// tooling (clone.DocModes) inverts against it. Guard:
-// TestModalModesMatchTheEngine (real C).
+// A line-for-line mirror of src/c/modal_bank.c, for the Synth tab's mode graph and the WAV-clone inversion: change one,
+// change both.
 
-// ModalMode is one mode at a render: x = Amp·e^(−Alpha·t)·cos(2π·Freq·t + Phase)
-// in HEARD time (after the playback resample of a non-melodic voice). Row is
-// the table row it came from.
+// In HEARD time, after a non-melodic voice's playback resample.
 type ModalMode struct {
 	Row                     int
 	Freq, Alpha, Amp, Phase float64
 }
 
-// ModalStrikeSpectrum mirrors modal_strike_spectrum: the smooth envelope of
-// the raised-cosine contact spectrum, 1/√(1 + (π (f·tc)³)²).
+// 1/√(1 + (π (f·tc)³)²): the raised-cosine contact spectrum's smooth envelope.
 func ModalStrikeSpectrum(f, tc float64) float64 {
 	x := f * tc
 	r := math.Pi * x * x * x
 	return 1 / math.Sqrt(1+r*r)
 }
 
-// ModalVoice is the frequency the C voice renders at and the resample factor
-// playback applies at node pitch: a melodic voice renders AT the pitch (rate
-// 1); anything else at its own core pitch, resampled by 2^(pitch/12).
+// A melodic voice renders AT the pitch (k = 1); anything else at its own core pitch, resampled by 2^(pitch/12).
 func ModalVoice(p RecipeParams, pitch float64, melodic bool) (voiceHz, k float64) {
 	st := p["pitch"]
 	k = 1
@@ -53,9 +43,7 @@ func ModalVoice(p RecipeParams, pitch float64, melodic bool) (voiceHz, k float64
 // modularBaseFreqHz is MODULAR_BASE_FREQ (src/c/modular.c).
 const modularBaseFreqHz = 220.0
 
-// ModalModes returns the modes p's MODAL stage sounds at node pitch, rendered
-// at rate. Rows the C skips (non-positive, at or above the limit, past Keep)
-// are absent; nil when the stage is off.
+// Rows the C skips (non-positive, at or past the limit, past Keep) are absent; nil when the stage is off.
 func ModalModes(p RecipeParams, pitch float64, melodic bool, rate int) []ModalMode {
 	if math.Round(p["modal_enabled"]) == 0 {
 		return nil

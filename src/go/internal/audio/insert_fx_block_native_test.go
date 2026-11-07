@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// ProcessBlockBuf coverage for every registered C insert effect. The mixer's
-// block path (channels.go) is the production caller, but the fast native
-// test run only exercised ProcessSample — leaving every ProcessBlockBuf in
-// insert_fx_c.go at 0%. This table drives each effect's block API directly
-// and cross-checks it against the per-sample API on a stateless effect.
+// The mixer calls ProcessBlockBuf; the per-sample API is the reference it is checked against.
 
 func noiseBurst(n int) []float32 {
 	// Deterministic pseudo-noise — no math/rand so runs are reproducible.
@@ -40,9 +36,7 @@ func TestInsertFXProcessBlockBufAllEffects(t *testing.T) {
 				t.Fatalf("%s does not implement BlockProcessor", typ)
 			}
 
-			// Run several blocks: time-based effects (pitchshift's 20-100ms
-			// grain window, delay lines) have startup latency longer than
-			// one block, so total energy is measured across the whole run.
+			// Pitchshift windows and delay lines take longer than one block to start, so energy is summed over the run.
 			var energy float64
 			out := make([]float32, len(in))
 			for block := 0; block < 16; block++ {
@@ -58,9 +52,7 @@ func TestInsertFXProcessBlockBufAllEffects(t *testing.T) {
 					energy += f * f
 				}
 			}
-			// A sustained noise feed through any default-params effect must
-			// not be silenced to digital zero (gate included: default
-			// threshold passes a full-scale noise burst).
+			// Default params, the gate included, pass a full-scale noise burst.
 			if energy == 0 {
 				t.Fatalf("%s produced all-zero output from a sustained noise feed", typ)
 			}
@@ -82,8 +74,7 @@ func TestInsertFXProcessBlockBufAllEffects(t *testing.T) {
 	}
 }
 
-// Block and per-sample APIs must agree on a stateless effect (distortion has
-// no time-dependent state, so sample-by-sample == block).
+// Distortion has no time-dependent state, so per sample == block.
 func TestInsertFXBlockMatchesPerSampleStateless(t *testing.T) {
 	in := noiseBurst(256)
 

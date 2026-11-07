@@ -8,17 +8,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// instNameOverrides holds user-set display-name overrides keyed by the
-// immutable instrument ID. Renaming an instrument writes here and nowhere
-// else — the ID never moves, so no other map needs re-keying.
+// Keyed by the immutable ID: a rename writes here and nowhere else, so no other map needs re-keying.
 var (
 	instNameMu        sync.RWMutex
 	instNameOverrides = map[instrument.ID]string{}
 )
 
-// SetInstrumentDisplayName records a display-name override for an instrument
-// ID. An empty name clears the override (the instrument falls back to its
-// catalog/pretty default). The ID is unchanged — this is pure metadata.
+// An empty name clears the override.
 func SetInstrumentDisplayName(id instrument.ID, name string) {
 	if id == "" {
 		return
@@ -32,8 +28,6 @@ func SetInstrumentDisplayName(id instrument.ID, name string) {
 	instNameMu.Unlock()
 }
 
-// InstrumentDisplayNameOverride returns id's display-name override ("" when
-// none is set).
 func InstrumentDisplayNameOverride(id instrument.ID) string {
 	instNameMu.RLock()
 	defer instNameMu.RUnlock()
@@ -47,20 +41,14 @@ func ClearInstrumentDisplayName(id instrument.ID) {
 	instNameMu.Unlock()
 }
 
-// clearInstrumentDisplayNames drops every display-name override. ResetInstruments
-// calls it so a registry reset also restores default instrument names — and so
-// the process-global override store cannot leak across tests (a rename/import in
-// one test would otherwise change a builtin's label for every later test).
+// So the process-global override store cannot leak a rename across tests.
 func clearInstrumentDisplayNames() {
 	instNameMu.Lock()
 	instNameOverrides = map[instrument.ID]string{}
 	instNameMu.Unlock()
 }
 
-// InstrumentDisplayName resolves the user-facing label for an instrument ID.
-// Resolution order: user override → catalog SoundMeta.Name → catalog RelPath
-// basename (pretty-cased) → PrettyName(id). This is the single source of
-// truth for instrument labels across UI and non-UI callers.
+// The single source of instrument labels: override → catalog name → catalog file basename → PrettyName(id).
 func InstrumentDisplayName(id instrument.ID) string {
 	if id == "" {
 		return ""

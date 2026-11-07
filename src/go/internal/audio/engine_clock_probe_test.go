@@ -28,27 +28,15 @@ func TestDeviceClockAndEmitRing(t *testing.T) {
 	}
 }
 
-// TestDeviceClockAndEmitRingConcurrent exercises the seqlock writer/reader and
-// the SPSC ring's producer/consumer under -race with real cross-goroutine
-// concurrency (the sequential test above only proves API correctness on one
-// goroutine). One goroutine is the sole clock writer, a second is a
-// concurrent reader (proving the seqlock never returns a torn pair and never
-// blocks the writer); a third goroutine is the sole ring producer while the
-// test goroutine is the sole consumer, draining concurrently. The ring is a
-// bounded drop-on-full design (see publishEmitReport), so with a fast
-// producer and a consumer competing with a goroutine-scheduler this test
-// only asserts every drained report has internally-consistent fields
-// (Abs == expected for its DevPos) and that head-tail accounting stays sane
-// — not that zero reports are dropped, which would be a false assumption
-// about the intentional backpressure design.
+// Real cross-goroutine concurrency under -race: the seqlock never returns a torn pair or blocks the writer. The
+// ring drops on full by design, so only each drained report's consistency and the head/tail accounting are checked.
 func TestDeviceClockAndEmitRingConcurrent(t *testing.T) {
 	resetClockProbeForTest()
 
 	const iters = 20000
 	clockDone := make(chan struct{})
 
-	// Single writer goroutine — mirrors the real single-writer contract
-	// (the Oto Read goroutine is the only caller of updateDeviceClock).
+	// The real contract: one writer.
 	go func() {
 		for i := int64(1); i <= iters; i++ {
 			updateDeviceClock(i)
@@ -56,8 +44,6 @@ func TestDeviceClockAndEmitRingConcurrent(t *testing.T) {
 		close(clockDone)
 	}()
 
-	// Concurrent reader — must never observe a torn (pos, wall) pair (checked
-	// via DevPos/wall sanity) and must never block the writer.
 	readerDone := make(chan struct{})
 	go func() {
 		defer close(readerDone)

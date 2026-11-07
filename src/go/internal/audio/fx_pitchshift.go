@@ -4,11 +4,8 @@ package audio
 
 import "math"
 
-// pitchShift implements a dual delay-line pitch shifter (Eventide-style).
-// Two read heads traverse a circular buffer at a rate that differs from the
-// write rate. The rate difference creates pitch shift. Triangular cross-fading
-// between the two heads (offset by half a window) hides wrap-around
-// discontinuities. All parameters are smoothed to prevent clicks on change.
+// Two read heads drift against the write head (Eventide-style); triangular crossfades half a window apart hide the
+// wrap-around. Every param smoothed.
 type pitchShift struct {
 	pitch  smoothParam // semitones -24..+24
 	mix    smoothParam // 0=dry, 1=wet
@@ -64,8 +61,6 @@ func (p *pitchShift) recalc() {
 	}
 }
 
-// bufReadLerp reads from a circular buffer at a fractional position using
-// linear interpolation.
 func bufReadLerp(buf []float64, bufLen int, pos float64) float64 {
 	for pos < 0 {
 		pos += float64(bufLen)
@@ -100,8 +95,7 @@ func (p *pitchShift) ProcessSample(x float64) float64 {
 	p.buf[p.writePos] = x
 	p.writePos = (p.writePos + 1) % bufLen
 
-	// Rate difference: shift = 2^(semitones/12).
-	// step = 1.0 - shift: how fast read heads drift relative to write head.
+	// step = 1 − 2^(semitones/12): how fast the read heads drift against the write head.
 	shift := math.Pow(2.0, pitch/12.0)
 	step := 1.0 - shift
 

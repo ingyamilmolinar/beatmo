@@ -13,9 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestZeroIsARealValue: a knob turned to 0 must sound like 0, not like the C
-// default the engine used to swap in for it (Phase C, review focus 1): a hi-hat
-// with rattle 0 rattled fully, a plate with tune 0 sounded at tune 1.
+// A knob at 0 sounds like 0, never like a substituted engine default.
 func TestZeroIsARealValue(t *testing.T) {
 	for _, c := range []struct {
 		id, param string
@@ -38,8 +36,6 @@ func TestZeroIsARealValue(t *testing.T) {
 	}
 }
 
-// TestNoFallbackHelpersRemainInC: the engine reads every param directly — no
-// NULL-params path, no NaN sentinel, no "0 means default" substitution.
 func TestNoFallbackHelpersRemainInC(t *testing.T) {
 	root := repoRootForC(t)
 	for _, f := range []string{"modular.c", "modular_stages.c", "modular.h", "synth_post.h", "drums.c"} {
@@ -50,8 +46,7 @@ func TestNoFallbackHelpersRemainInC(t *testing.T) {
 		for _, banned := range []string{
 			"kp_get(", "mp_get(", "cym_modal_param(", "cym_modal_level(",
 			"(gain > 0.0) ? gain : 1.0", "const modular_params zero", "void render_modular(",
-			// the POST indirection: per-op enable flags that were always 1 and
-			// "default if params is NULL" accessors
+			// Per-op enable flags that were always 1, and "default if params is NULL" accessors.
 			"apply_post_params", "post_config", "sp_decay(",
 			// surviving "0 / NaN means something else" substitutions
 			"lpAlpha = 0.5", "(modesV == modesV)", "modes == modes", "slotGain",
@@ -75,10 +70,7 @@ func equalF32(a, b []float32) bool {
 	return true
 }
 
-// TestFamilyVoiceBeyondCapacityRendersSilence: the engine defends itself when a
-// block puts a family voice in a slot that family has no fields for (Phase C
-// task C3) — that slot contributes nothing, instead of reading another family's
-// memory.
+// That slot contributes nothing instead of reading another family's memory.
 func TestFamilyVoiceBeyondCapacityRendersSilence(t *testing.T) {
 	b := initBlockForTest(nil)
 	b.set("osc_enabled", 0)
@@ -92,21 +84,16 @@ func TestFamilyVoiceBeyondCapacityRendersSilence(t *testing.T) {
 	}
 }
 
-// TestLinkedEngineMatchesTheSchema: the C engine that is actually LINKED was
-// compiled against the same param block the Go marshal builds. A header
-// regenerated without rebuilding build/libdrums.a (or drums.single.js) leaves
-// every later field read at a shifted offset — wrong voices, no error.
+// A header regenerated without rebuilding the engine reads every later field at a shifted offset: wrong voices, no
+// error.
 func TestLinkedEngineMatchesTheSchema(t *testing.T) {
 	if n := compiledModularParamCount(); n != len(modularParamSchema) {
 		t.Fatalf("linked C engine has %d params, the schema %d — rebuild build/libdrums.a", n, len(modularParamSchema))
 	}
 }
 
-// TestSnareVoiceStaysStableAcrossTuneRange: Tune at either end of its range
-// must leave a working voice. At 0 the voice's filters were designed at 0 Hz
-// (rc = 1/0 → NaN from the first sample); at Max the wire band-pass landed
-// above Nyquist and the biquad blew up within ~20 ms. The FINISH stage's
-// non-finite guard turns that into silence, so measure the silence.
+// At 0 the filters are designed at 0 Hz (NaN from the first sample); at Max the wire band-pass lands above Nyquist and
+// blows up. FINISH's non-finite guard turns that into silence, so silence is what is measured.
 func TestSnareVoiceStaysStableAcrossTuneRange(t *testing.T) {
 	for _, id := range []instrument.ID{roster.Snare, roster.Rimshot, roster.SnareCrack, roster.SnareDeep, roster.SnareAcoustic, roster.Clap, roster.CongaOrganic, roster.TomHighAcoustic} {
 		var lo, hi float64

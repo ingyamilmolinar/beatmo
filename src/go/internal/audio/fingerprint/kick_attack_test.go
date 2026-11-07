@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// swellSine ramps linearly from 0 to full over swellSec, then decays with tau —
-// a slow attack (in contrast to expDecaySine, which is full amplitude at t=0).
+// A slow attack, unlike expDecaySine.
 func swellSine(sr int, dur, f0, swellSec, tau float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)

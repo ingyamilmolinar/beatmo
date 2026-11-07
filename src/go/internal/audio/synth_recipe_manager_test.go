@@ -13,8 +13,7 @@ import (
 
 const testInstID = "test-mgr-snare"
 
-// withTestInstDoc gives testInstID a project document copied from the shipped
-// snare (the flat-field API edits documents; spec 2026-10-04 §6).
+// Copied from the shipped snare.
 func withTestInstDoc(t *testing.T) {
 	t.Helper()
 	if err := InstallInstrumentDocForTest(testInstID, roster.Snare); err != nil {

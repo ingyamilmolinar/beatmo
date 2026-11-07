@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestGraphRenderIsThePlayedVoice: the Synth-tab graph is drawn from EXACTLY
-// the buffer a trigger plays (spec 2026-10-24 §5 T5) — bit for bit the voice
-// cache's buffer, with and without a Sampler edit.
+// Bit for bit the voice cache's buffer, with and without a Sampler edit.
 func TestGraphRenderIsThePlayedVoice(t *testing.T) {
 	for _, id := range []instrument.ID{roster.Kick808, roster.Violin} {
 		for _, withEdit := range []bool{false, true} {

@@ -9,13 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSetInstrumentParamsSkipsRedundantReapply proves the bulk param setter (the
-// JSON import path that every undo/redo restore rides) does NOT re-render an
-// instrument when the params are unchanged. Without the no-op skip, each
-// undo/redo re-applied EVERY instrument's full param set, firing the WASM
-// re-render bridge + voice-cache invalidation for every instrument — so undoing
-// a single synth-control change re-rendered the whole kit (the "applying actions is
-// slow" lag).
+// Every undo/redo rides the import path; re-applying unchanged params re-rendered the whole kit.
 func TestSetInstrumentParamsSkipsRedundantReapply(t *testing.T) {
 	resetLibraryForTest(t)
 	const id = roster.Kick
@@ -38,9 +32,6 @@ func TestSetInstrumentParamsSkipsRedundantReapply(t *testing.T) {
 	}
 }
 
-// TestSetSampleEditSkipsRedundantReapply proves re-applying an identical sampler
-// edit is a no-op (no re-render) so sampler undo/redo doesn't re-render unchanged
-// instruments.
 func TestSetSampleEditSkipsRedundantReapply(t *testing.T) {
 	const id = "test.inst.redundant.sampleedit"
 	t.Cleanup(func() { ClearSampleEdit(id) })

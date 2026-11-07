@@ -10,14 +10,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Cross-platform stage renders (cmd/export_audio --stages,
-// xplat_audio_stages.browser.test.js): the real offline mixer, against the
-// LIVE engine configuration like RenderMasterMixOffline, with every stage of
-// every channel captured so the browser's graph can be compared tap by tap.
+// Against the LIVE configuration, every stage of every channel captured so the browser's graph can be compared tap by
+// tap.
 
-// StageNote is one note of a stage render: Dur is the node's Duration factor
-// (playedVoice's dur), Vol its volume (row × node). A Lane note is scheduled
-// as an audio-lane voice (vid > 0), so StageStops can fade it.
+// A Lane note is an audio-lane voice (vid > 0), so StageStops can fade it.
 type StageNote struct {
 	Inst  instrument.ID
 	At    int
@@ -27,17 +23,13 @@ type StageNote struct {
 	Lane  bool
 }
 
-// StageStop is a lane stop (a mute node): at sample At, fade the lane voices of
-// Inst that started before it (mixer.stopLaneAtSample).
+// A mute node: lane voices of Inst that started before At fade.
 type StageStop struct {
 	Inst instrument.ID
 	At   int
 }
 
-// StageTaps is one channel's signal at each stage boundary, sample-aligned
-// from the render's first sample: Voices = its voices summed (× headroom, the
-// mixer's per-instrument buffer), Inserts = after its insert chain, EQ = after
-// its EQ (what it adds to the master bus).
+// Sample-aligned from the render's first sample: Voices (× headroom), after Inserts, after EQ (what reaches the master).
 type StageTaps struct {
 	Voices, Inserts, EQ []float64
 }
@@ -51,8 +43,7 @@ var stageCapture struct {
 // stageCaptureOn is the mixer's lock-free check (zero cost outside a render).
 var stageCaptureOn atomic.Bool
 
-// captureStage appends block (starting at absolute sample at) to *dst, padding
-// the silence since the channel was last active.
+// Pads the silence since the channel was last active.
 func captureStage(dst *[]float64, at int, block []float64) {
 	for len(*dst) < at {
 		*dst = append(*dst, 0)
@@ -60,8 +51,7 @@ func captureStage(dst *[]float64, at int, block []float64) {
 	*dst = append(*dst, block...)
 }
 
-// stageCaptureBlock records one channel's three taps for the block at `at`.
-// Called by processBlock (Phase 2) only while a stage render runs.
+// Called from processBlock only while a stage render runs.
 func stageCaptureBlock(id channel.ID, at int, voices, inserts, eq []float64) {
 	stageCapture.Lock()
 	defer stageCapture.Unlock()
@@ -78,10 +68,7 @@ func stageCaptureBlock(id channel.ID, at int, voices, inserts, eq []float64) {
 	captureStage(&t.EQ, at, eq)
 }
 
-// RenderStagesOffline renders notes (and lane stops) for totalSamples through
-// the offline mixer at the engine rate and returns the master output (after
-// the soft clip — what the device receives) and every channel's stage taps,
-// each padded to totalSamples. DSP state starts from silence.
+// The master is after the soft clip, what the device receives; every tap padded to totalSamples. DSP starts from silence.
 func RenderStagesOffline(notes []StageNote, stops []StageStop, totalSamples int) ([]float64, map[instrument.ID]StageTaps) {
 	ResetDSPState()
 	m := newTestMixer()

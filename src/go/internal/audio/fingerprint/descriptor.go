@@ -2,17 +2,8 @@ package fingerprint
 
 import "fmt"
 
-// descriptor.go — one row of the measurement registry.
-//
-// The registry is the single source of truth for every measurement the
-// analysis battery makes. Before it, cmd/refs/diagnose.go hand-wrote nine
-// axes as inline mkAxis calls with their thresholds scattered as
-// package-level constants; that shape does not survive growing to ~150
-// descriptors, and it offers nowhere to hang the orthogonality, robustness
-// and calibration analyses that make the battery trustworthy.
-//
-// Declaring a descriptor is meant to be one literal with no code. Anything
-// exotic supplies a Compare override.
+// One row of the measurement registry, the single source of every measurement: declaring a descriptor is one
+// literal with no code, and anything exotic supplies a Compare override.
 
 // Scope says WHICH PART of the signal a descriptor measures.
 type Scope int
@@ -44,9 +35,7 @@ func (s Scope) String() string {
 	}
 }
 
-// Repr says WHICH REPRESENTATION of the signal a descriptor reads. Grouping
-// the report by Repr answers "which domain does this mismatch actually live
-// in" — a question the flat axis list could not express.
+// Grouping by Repr answers which domain a mismatch actually lives in.
 type Repr int
 
 const (
@@ -78,14 +67,10 @@ func (r Repr) String() string {
 
 // Descriptor declares one measurement.
 type Descriptor struct {
-	// ID is the stable machine key ("noise.fraction", "seg.attack.centroid").
-	// Goldens and the calibration tables key on it, so it must not change
-	// once committed.
+	// Goldens and calibration tables key on it: it must not change once committed.
 	ID string
 
-	// Group and Name are the human-facing labels. They are load-bearing:
-	// cmd/refs/diagnose_acceptance_test.go keys on them, so the nine
-	// migrated axes must keep their original strings byte-for-byte.
+	// The diagnose acceptance test keys on these strings byte for byte.
 	Group string
 	Name  string
 
@@ -93,74 +78,36 @@ type Descriptor struct {
 	Repr  Repr
 	Kind  Kind
 
-	// Drift and Mismatch override Kind's default thresholds for this
-	// descriptor. Both zero means "use the Kind defaults". They exist because
-	// some kinds have no single natural scale: KindRate covers Hz/sec, dB/sec
-	// and units/sec^2, which sit orders of magnitude apart, so the scale has
-	// to come from the descriptor rather than from its kind.
+	// Both zero = the Kind defaults. Some kinds have no single scale (KindRate spans Hz/s, dB/s, units/s²), so the scale
+	// comes from the descriptor.
 	Drift, Mismatch float64
 
-	// Unit overrides the rendered unit suffix. Empty means the Kind's default
-	// ("Hz" for KindHz, "s" for KindSeconds, none otherwise). A rate
-	// descriptor needs it: Hz/sec and Hz are not the same quantity and must
-	// not print the same.
+	// Empty = the Kind's default; Hz/s and Hz must not print the same.
 	Unit string
 
-	// Compound marks a measurement whose vector components are NOT peers:
-	// index 0 is the headline value and the rest are flags or fallback
-	// quantities its comparator reads (env.ring_t60 carries an
-	// "extrapolated" bit and a decay rate alongside the T60).
-	//
-	// It exists because harnesses that perturb a measurement have to know
-	// which components may be moved, and the only available proxy was
-	// "Compare != nil" — which was wrong the moment a genuine all-peer vector
-	// (mode.ratios, decay.per_mode) acquired a custom comparator, and quietly
-	// weakened the scale gate for those rows to a single-component nudge that
-	// a mean-based reduction dilutes to nothing.
+	// Index 0 is the headline value and the rest are flags or fallbacks its comparator reads, so perturbation harnesses
+	// know which components may move ("Compare != nil" was the wrong proxy).
 	Compound bool
 
-	// Demoted marks a descriptor that is measured and displayed but excluded
-	// from every "worst offending axes" ranking and from validate's trusted
-	// set. Set when calibration showed the axis misleads on this corpus.
+	// Measured and shown, but out of every ranking and validate's trusted set: calibration showed it misleads.
 	Demoted bool
 
-	// Doc must explain what the descriptor reads AND why that source rather
-	// than a neighbouring one. The registry discipline test enforces
-	// non-emptiness; reviewers enforce the rest.
+	// What it reads AND why that source rather than a neighbour's.
 	Doc string
 
-	// Applies gates the descriptor on measured signal character — pitched vs
-	// unpitched, sustained vs percussive — never on an instrument→family
-	// table, which would go stale as instruments change. Required: use
-	// AlwaysApplies to put "applies everywhere" on the record explicitly
-	// rather than leaving it nil by omission.
+	// Gated on measured signal character, never an instrument→family table that would go stale. Required: AlwaysApplies
+	// puts "everywhere" on the record.
 	Applies func(*Bundle) bool
 
 	// Extract reads the measurement from an already-computed Bundle.
 	Extract func(*Bundle) Measurement
 
-	// Compare overrides the default comparator for this descriptor. Nil means
-	// CompareByKind(d.Kind, …).
-	//
-	// It is HANDED this descriptor's effective (drift, mismatch) — the same
-	// pair Thresholds() returns, calibration included — and must use them
-	// rather than literals. A comparator that hardcoded its thresholds was
-	// unreachable from the calibration file: `refs calibrate-thresholds`
-	// could write an entry for it, the registry would apply it, and the
-	// comparator would go on using the number in its own source, so the axis
-	// stayed saturated while the report claimed it had been calibrated
-	// (mode.ratios fired on 91% of instruments against a hand-guessed 80
-	// cents, with a good-group p90 an order of magnitude larger).
-	//
-	// A comparator MAY transform the pair into its own working domain
-	// (band.t60 declares ratios and compares mean|log2|); when it does it
-	// must still report Delta.Mag in the DECLARED units, so calibration and
-	// the comparator agree on what a threshold means.
+	// nil = CompareByKind. It is HANDED the effective (drift, mismatch), calibration included, and must use them: a
+	// hardcoded threshold is unreachable from the calibration file and stays saturated. A comparator may transform them,
+	// but must report Delta.Mag in the DECLARED units.
 	Compare func(ref, synth Measurement, drift, mismatch float64) Delta
 }
 
-// CompareWith applies this descriptor's comparator, falling back to the
-// Kind-appropriate default.
 func (d Descriptor) CompareWith(ref, synth Measurement) Delta {
 	if d.Compare != nil {
 		drift, mismatch := d.Thresholds()
@@ -173,8 +120,6 @@ func (d Descriptor) CompareWith(ref, synth Measurement) Delta {
 	return CompareByKind(d.Kind, ref, synth)
 }
 
-// Thresholds returns this descriptor's effective (drift, mismatch) pair: its
-// own overrides when set, otherwise its Kind's defaults.
 func (d Descriptor) Thresholds() (drift, mismatch float64) {
 	kd, km := d.Kind.Thresholds()
 	if d.Drift > 0 {
@@ -188,29 +133,18 @@ func (d Descriptor) Thresholds() (drift, mismatch float64) {
 
 // --- Applicability predicates ------------------------------------------------
 
-// AlwaysApplies is the explicit no-op predicate. Descriptors must set Applies
-// rather than leaving it nil, so "this applies everywhere" is a decision on
-// the record rather than an omission nobody reviewed.
+// So "applies everywhere" is a recorded decision, not an omission nobody reviewed.
 func AlwaysApplies(*Bundle) bool { return true }
 
-// RequiresPitched gates descriptors whose meaning depends on a harmonic
-// series existing at all — every partial, harmonic-ladder and inharmonicity
-// measurement. Gated on the MEASURED signal so it self-classifies.
-//
-// F0Hz > 0 is NOT sufficient and was the original bug: DetectF0's octave
-// guard returns a number for any signal, so a hi-hat reported 56.5 Hz and
-// every harmonic descriptor happily measured against a fundamental that does
-// not exist. The confidence gate is what makes this predicate mean "a
-// harmonic series is actually there".
+// For descriptors that need a harmonic series. F0Hz > 0 is NOT enough: DetectF0 returns a number for any signal (a
+// hi-hat read 56.5 Hz), so the confidence gate is what makes this mean a series exists.
 func RequiresPitched(b *Bundle) bool {
 	fp := b.Fingerprint()
 	return fp.F0Hz > 0 && fp.F0Confidence >= F0ReliableConfidence
 }
 
-// naUnreliableF0 explains a suppressed harmonic measurement in terms a reader
-// can act on: it names the number that was rejected and the confidence that
-// rejected it, so "not measurable" reads as a finding about the signal rather
-// than as a tooling gap.
+// Names the rejected number and the confidence that rejected it, so "not measurable" reads as a finding about the
+// signal.
 func naUnreliableF0(b *Bundle) string {
 	fp := b.Fingerprint()
 	if fp.F0Hz <= 0 {
@@ -222,22 +156,16 @@ func naUnreliableF0(b *Bundle) string {
 		fp.F0Hz, fp.F0Confidence, F0ReliableConfidence)
 }
 
-// RequiresSustain gates descriptors defined only over a sustain plateau
-// (sustain modulation, sustain-segment timbre). A percussive hit has no
-// plateau, and reporting 0 there would read as "perfectly steady" when the
-// truth is "not applicable".
+// A percussive hit has no plateau, and 0 there would read as "perfectly steady" rather than "not applicable".
 func RequiresSustain(b *Bundle) bool {
 	s := b.Segments()
 	return !s.Silent && !s.NoSustainPlateau && s.SustainSec > 0
 }
 
-// RequiresPercussive gates the kick/snare-family descriptors: an audible
-// signal that peaks and decays without ever establishing a plateau.
+// Peaks and decays without ever establishing a plateau.
 func RequiresPercussive(b *Bundle) bool {
 	s := b.Segments()
 	return !s.Silent && s.NoSustainPlateau
 }
 
-// RequiresAudible gates on the signal not being silent — the weakest useful
-// precondition, for descriptors that work on any real signal.
 func RequiresAudible(b *Bundle) bool { return !b.Segments().Silent }

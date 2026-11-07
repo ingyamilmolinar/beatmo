@@ -5,10 +5,7 @@ import (
 	"math/cmplx"
 )
 
-// Synthesize renders modes from t = 0 for n samples at rate: the pure-Go
-// reference resynthesis the residual and the tests use (the engine's C modal
-// bank is plan 2). One phasor recursion per mode, stopped once the mode is
-// 160 dB below its start.
+// The pure-Go reference resynthesis; each mode stops once 160 dB below its start.
 func Synthesize(modes []Mode, rate, n int) []float64 {
 	out := make([]float64, n)
 	for _, m := range modes {

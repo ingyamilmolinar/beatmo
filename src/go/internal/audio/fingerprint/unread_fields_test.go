@@ -12,55 +12,27 @@ import (
 	"testing"
 )
 
-// unread_fields_test.go — an analyzer that computes a number nothing reads is
-// not a measurement, it is a cost.
-//
-// This package has produced that bug four separate times, each found by hand
-// and each hiding a real gap:
-//
-//   - AnalyzeSnare / AnalyzePiano / ComputeWindAttack / SpectralIrregularity ran
-//     on every fingerprint with zero non-test consumers (fixed by
-//     registry_family.go).
-//   - Tristimulus, the vibrato bank and the formant bank likewise (fixed by
-//     registry_timbre.go / registry_perceptual.go). Tristimulus then turned out
-//     to be the SECOND most predictive axis in the whole battery.
-//   - EnvelopeSegments.DecaySec / DecayRateDBPerSec / PeakSec /
-//     TotalAudibleSec, while the listener's own request was "get duration of
-//     attack, release, peak, etc" (fixed by the env.* rows in registry_core.go).
-//
-// The failure is silent by construction: an unread field costs CPU on every
-// analysis, reads as covered because it has unit tests, and shows up nowhere.
-// So the test is structural -- it parses the package, finds every exported
-// field on a metrics struct, and asserts something outside the file that
-// computes it actually reads it.
+// A computed number nothing reads is a cost, not a measurement, and the failure is silent (it has unit tests and shows
+// up nowhere); the package produced it repeatedly. Structural: every exported field of a metrics struct must be read
+// outside the file computing it.
 
-// metricStructs are the analysis result types whose fields must be consumed.
-// Adding an analyzer means adding it here, which is the point: the cost of a
-// new metric should include saying who will read it.
+// Adding an analyser means saying who will read it.
 var metricStructs = []string{
 	"Fingerprint", "EnvelopeSegments", "Tracks", "TrackStats",
 	"SnareMetrics", "PianoMetrics", "WindAttack", "SpectralEnvelope",
 	"NoiseProfile", "HarmonicTrajectory", "PartialRatios",
 }
 
-// unreadAllowed lists fields deliberately computed without a consumer, each
-// with the reason. An entry here is a decision on the record, not an oversight;
-// removing the field is always the alternative.
+// Each with its reason: a decision on the record; removing the field is always the alternative.
 var unreadAllowed = map[string]string{
-	// TrackStats is a uniform statistic set applied to every frame-wise track.
-	// registry_tracks.go registers a CURATED subset of the 6x12 cross-product
-	// on purpose -- registering all 72 would bury the report in near-duplicates
-	// before the orthogonality analysis has said which are redundant. The
-	// unregistered statistics stay available for that analysis to reach for.
+	// A curated subset of the cross-product is registered by design.
 	"TrackStats.Mean":  "uniform statistic set; registry_tracks.go registers a curated subset by design",
 	"TrackStats.Std":   "uniform statistic set; see TrackStats.Mean",
 	"TrackStats.P10":   "uniform statistic set; see TrackStats.Mean",
 	"TrackStats.Range": "uniform statistic set; see TrackStats.Mean",
 	"Tracks.Rolloff":   "frame-wise rolloff kept parallel to Centroid so the two can be correlated by a future descriptor; no row reads it yet",
 
-	// Legacy composite-distance inputs. distance.go collapses everything into
-	// one weighted scalar, which is the failure mode the per-axis registry
-	// exists to replace; its inputs are not re-registered as axes.
+	// distance.go's composite scalar is what the per-axis registry replaces; its inputs are not re-registered.
 	"Fingerprint.SustainMag":     "input to distance.go's legacy composite scalar only",
 	"Fingerprint.LogAttackTime":  "input to distance.go's legacy composite scalar only",
 	"PianoMetrics.NumPartials":   "diagnostic count for piano.stretch_cents' own vector length, not an axis",
@@ -78,13 +50,7 @@ func fieldReadRe(field string) *regexp.Regexp {
 	return regexp.MustCompile(`\.` + regexp.QuoteMeta(field) + `\b`)
 }
 
-// stripComments removes line and block comments.
-//
-// Load-bearing, not tidiness: several descriptor Doc strings name the field
-// they read in prose ("NoiseProfile.ResidualRatio: ..."), and counting a
-// mention in documentation as a read would let a field be documented into
-// looking alive while nothing actually consumed it -- the precise illusion this
-// test exists to break.
+// Descriptor Docs name fields in prose, and a mention must not count as a read.
 func stripComments(src string) string {
 	var b strings.Builder
 	for i := 0; i < len(src); {
@@ -102,8 +68,7 @@ func stripComments(src string) string {
 			}
 			i += j + 4
 		case src[i] == '"':
-			// Skip string literals too: a Doc built with + concatenation is a
-			// string, not a comment, and mentions the field the same way.
+			// A Doc built with + is a string, not a comment, and mentions fields the same way.
 			j := i + 1
 			for j < len(src) && src[j] != '"' {
 				if src[j] == '\\' {
@@ -138,12 +103,7 @@ func moduleRootFrom(dir string) (string, bool) {
 	}
 }
 
-// consumersOutsidePackage returns comment-stripped sources for every non-test
-// Go file in the module OUTSIDE this package.
-//
-// Required, because the most important consumers live outside it: cmd/refs
-// reads PartialRatios.Ratios to print the side-by-side partial lists, and an
-// in-package-only scan calls that dead.
+// The key consumers live outside the package (cmd/refs prints PartialRatios.Ratios).
 func consumersOutsidePackage(t *testing.T) []string {
 	t.Helper()
 	root, ok := moduleRootFrom(".")
@@ -288,8 +248,7 @@ func TestNoUnreadMetricFields(t *testing.T) {
 		len(fields), len(metricStructs), len(unreadAllowed))
 }
 
-// TestUnreadAllowlistHasNoStaleEntries keeps the allowlist honest in the other
-// direction: once a field gains a real consumer, its excuse must be deleted.
+// Once a field gains a consumer, its excuse is deleted.
 func TestUnreadAllowlistHasNoStaleEntries(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

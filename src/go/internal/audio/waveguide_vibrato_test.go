@@ -12,35 +12,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// waveguide_vibrato_test.go — every parameter a seed sets must actually reach
-// the DSP.
-//
-// THE BUG THIS PINS
-// -----------------
-// modular.c's oscillator dispatch is a strict if/else-if chain, and the
-// physical-model branch (osc_type 7-11) sits AHEAD of both the vibrato branch
-// and the unison branch. Every waveguide voice returned before either could
-// run, so `lfo_target:1` vibrato was silently dead on the whole bowed-string
-// family -- cello, viola, violin and double-bass all configure it (3.6-4.4 Hz
-// at 2.5-3.0 cents), all four documented the effect in their seed comments,
-// and none of them produced any. The listener's verdicts on three of the four
-// were "breathy and soft" / "needs refinement", which is what a dead-straight
-// bowed tone sounds like.
-//
-// The failure mode is silent by construction: a seed parameter that goes
-// nowhere produces no error, no warning and no audible clue -- it just does
-// nothing, while the seed comment asserts otherwise. So this test asserts the
-// EFFECT, not the plumbing.
+// A seed parameter that never reaches the DSP fails silently (no error, no audible clue), so this asserts the EFFECT:
+// the physical-model branch runs ahead of the generic vibrato, so the waveguides apply it themselves.
 
-// renderModularProbe renders a seed through the same recipe path the modular
-// goldens use. 1.5 s is long enough for several cycles of a 3-5 Hz vibrato.
+// 1.5 s holds several cycles of a 3-5 Hz vibrato.
 func renderModularProbe(t *testing.T, seed RecipeParams) []float32 {
 	t.Helper()
 	return renderModularSeed(t, seed, 1.5)
 }
 
-// withParam returns a copy of seed with one key overridden, so a table of
-// probes cannot accidentally share mutated state.
+// A copy, so probes cannot share mutated state.
 func withParam(seed RecipeParams, key string, v float64) RecipeParams {
 	out := make(RecipeParams, len(seed)+1)
 	for k, val := range seed {
@@ -50,13 +31,9 @@ func withParam(seed RecipeParams, key string, v float64) RecipeParams {
 	return out
 }
 
-// probeVibrato renders a shipped instrument through its real recipe and reports
-// what the analysis battery detects.
 func probeVibrato(t *testing.T, inst instrument.ID) (rateHz, extentCents float64, ok bool) {
 	t.Helper()
-	// 44100 deliberately, not renderModularSeed's 48000: that is the rate the
-	// game actually renders at, and these voices' vibrato is only ~2.5 cents --
-	// right at the detector's own 2-cent floor, where the rate matters.
+	// The analysis rate: a ~2.5-cent vibrato sits at the detector's 2-cent floor, where the rate matters.
 	const sr = 44100
 	n := int(2.5 * sr)
 	buf := renderFieldsForTest(t, inst, sr, n, nil)
@@ -71,8 +48,7 @@ func probeVibrato(t *testing.T, inst instrument.ID) (rateHz, extentCents float64
 	return fp.Vibrato.RateHz, fp.Vibrato.ExtentCents, true
 }
 
-// waveguideOscTypes are the physical-model branches that bypass the generic
-// vibrato path and therefore need their own application of it.
+// These bypass the generic vibrato path and apply their own.
 var waveguideOscTypes = []int{7, 8, 9, 10, 11}
 
 func isWaveguide(t int) bool {
@@ -84,9 +60,7 @@ func isWaveguide(t int) bool {
 	return false
 }
 
-// TestWaveguideVibratoActuallyModulatesPitch renders a waveguide voice with and
-// without vibrato and requires the output to differ. A no-op vibrato produces
-// byte-identical audio, which is exactly how this went unnoticed.
+// A no-op vibrato renders byte-identical audio.
 func TestWaveguideVibratoActuallyModulatesPitch(t *testing.T) {
 	for _, ot := range waveguideOscTypes {
 		base := RecipeParams{
@@ -114,9 +88,7 @@ func TestWaveguideVibratoActuallyModulatesPitch(t *testing.T) {
 	}
 }
 
-// TestWaveguideVibratoIsIdentityWhenUnconfigured is the other half: a voice that
-// does NOT configure vibrato must be untouched, so the fix cannot perturb the
-// instruments it was not meant to change.
+// So applying vibrato cannot perturb instruments that do not ask for it.
 func TestWaveguideVibratoIsIdentityWhenUnconfigured(t *testing.T) {
 	for _, ot := range waveguideOscTypes {
 		base := RecipeParams{
@@ -144,9 +116,7 @@ func TestWaveguideVibratoIsIdentityWhenUnconfigured(t *testing.T) {
 	}
 }
 
-// TestBowedStringSeedsRenderDetectableVibrato is the end-to-end gate on the
-// four shipped instruments: the vibrato they configure must appear in the
-// audio at the configured RATE, not merely make the output different.
+// At the configured RATE, not merely a different output.
 func TestBowedStringSeedsRenderDetectableVibrato(t *testing.T) {
 	for _, tc := range []struct {
 		inst     instrument.ID
@@ -162,23 +132,15 @@ func TestBowedStringSeedsRenderDetectableVibrato(t *testing.T) {
 		if math.Abs(rate-tc.wantRate) > 0.5 {
 			t.Errorf("%s: vibrato rate %.2f Hz, want ~%.1f Hz", tc.inst, rate, tc.wantRate)
 		}
-		// These seeds ship a deliberately shallow ~2.5-cent vibrato, matched to
-		// references that are fairly straight notes. That sits right at the
-		// detector's own 2-cent floor, so this asserts only that it registers
-		// at all -- whether it should be DEEPER is an ear question, not a
-		// measurement one.
+		// A deliberately shallow vibrato at the detector's floor: whether it should be deeper is an ear question.
 		if extent < 1.5 {
 			t.Errorf("%s: vibrato extent %.1f cents did not register", tc.inst, extent)
 		}
 	}
 }
 
-// TestNoSeedConfiguresUnisonOnAWaveguide guards the OTHER half of the same
-// dispatch bug, which is NOT fixed: the unison branch is still unreachable for
-// osc_type 7-11, because running N independent waveguide limit cycles is an
-// N-fold cost in a real-time path and that is a deliberate decision, not an
-// oversight. What must not happen is a seed quietly configuring unison there
-// and its author believing it works -- as celloSeed did.
+// Unison stays unreachable on a waveguide by decision (N limit cycles is N× the real-time cost); no document may
+// configure it there and believe it works.
 func TestNoSeedConfiguresUnisonOnAWaveguide(t *testing.T) {
 	for _, id := range roster.All {
 		m := MergedInstrumentParamsRO(id)
@@ -197,16 +159,8 @@ func TestNoSeedConfiguresUnisonOnAWaveguide(t *testing.T) {
 	}
 }
 
-// TestBowedStringVibratoIsNotMetronomic guards the regression that shipping the
-// vibrato fix introduced.
-//
-// A vibrato at a mathematically constant rate is the single most recognisable
-// "this is an LFO, not a player" tell. The first cut measured
-// VibratoFingerprint.Jitter == 0.000 -- perfectly periodic -- against the corpus
-// double-bass reference's 0.411, and the listener moved double-bass from "sounds
-// like the real thing" to "has some vibrato or something that goes up and down
-// in time" on the very next pass. Detecting it needs no reference audio: a
-// jitter of exactly zero is self-evidently synthetic.
+// A constant-rate vibrato is the most recognisable "LFO, not a player" tell; a jitter of exactly zero is
+// self-evidently synthetic, no reference needed.
 func TestBowedStringVibratoIsNotMetronomic(t *testing.T) {
 	for _, inst := range []instrument.ID{roster.Cello, roster.Violin, roster.Viola, roster.DoubleBass} {
 		_, _, ok := probeVibrato(t, inst)
@@ -222,8 +176,7 @@ func TestBowedStringVibratoIsNotMetronomic(t *testing.T) {
 	}
 }
 
-// probeVibratoJitter renders a shipped instrument and returns the detected
-// cycle-to-cycle rate irregularity.
+// Cycle-to-cycle rate irregularity.
 func probeVibratoJitter(t *testing.T, inst instrument.ID) float64 {
 	t.Helper()
 	const sr = 44100

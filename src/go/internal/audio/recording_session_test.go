@@ -52,8 +52,7 @@ func TestStartStopRecording(t *testing.T) {
 
 	// Should have master channel at minimum
 	if len(result.Channels) == 0 {
-		// Master may have no samples since no audio was actually playing
-		// but result should still be valid
+		// Nothing played, so master may be empty; the result must still be valid.
 	}
 
 	if result.Metadata.BPM != 120 {
@@ -249,8 +248,7 @@ func TestStopRecordingWithCapturedData(t *testing.T) {
 		t.Fatalf("StartRecording: %v", err)
 	}
 
-	// Simulate captured audio by tapping the active pipeline directly,
-	// matching what mixer.processBlock does on the audio thread.
+	// As mixer.processBlock does on the audio thread.
 	pipe := pipelinePtr.Load()
 	if pipe == nil {
 		t.Fatal("pipelinePtr should not be nil during recording")
@@ -268,9 +266,7 @@ func TestStopRecordingWithCapturedData(t *testing.T) {
 		t.Fatalf("StopRecording: %v", err)
 	}
 
-	// StopRecording detaches finalization to the lifecycle pool, which writes
-	// result.Metadata.Channels asynchronously. Wait for it before reading any
-	// finalize-populated field or the read races the pool goroutine.
+	// Finalize writes Metadata.Channels on the lifecycle pool; reading before it lands races.
 	wctx, wcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer wcancel()
 	if err := WaitRecordingFinalized(wctx); err != nil {

@@ -7,11 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Phase 9 contract: every SetInstrumentParam call bumps the dispatch
-// counter, rejected non-finite calls bump the rejected counter, and the
-// dispatch average + max reflect actual wall-clock cost. Tests use the
-// snare instrument because it has a shipped instrument document under -tags
-// test.
+// The snare has a shipped document under -tags test.
 func TestParamLatencyMetrics_CountsDispatchedCalls(t *testing.T) {
 	ResetParamLatencyMetrics()
 	t.Cleanup(ResetParamLatencyMetrics)
@@ -60,11 +56,7 @@ func TestParamLatencyMetrics_CountsRejectedNonFinite(t *testing.T) {
 }
 
 func TestParamLatencyMetrics_CoalescesNoOpWrites(t *testing.T) {
-	// Phase 8 contract: same-value SetInstrumentParam calls must NOT bump
-	// Updates (because state didn't change) and MUST NOT trigger cache
-	// invalidate / hook publish / platform callback. The Coalesced counter
-	// distinguishes "stationary drag burst" from "user actually changing
-	// the param".
+	// A same-value write must not count as an update or publish anything; Coalesced tells a stationary drag from a change.
 	ResetParamLatencyMetrics()
 	t.Cleanup(ResetParamLatencyMetrics)
 	ResetInstrumentParams(roster.Snare)

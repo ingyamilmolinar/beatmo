@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A document's SOUND SIGNATURE identifies what it sounds like, not who it is:
-// the dial relevance verdicts and the graph renders are reused for any
-// document with the same signature (a row instance, a Save As copy, the same
-// instrument in another circuit), and recomputed when anything audible moves.
+// Reused for any document with the same signature, recomputed when anything audible moves.
 func TestSoundSignatureIsTheSoundNotTheIdentity(t *testing.T) {
 	d, ok := EnsureInstrumentDoc(roster.Kick808)
 	if !ok {
@@ -46,9 +43,7 @@ func TestSoundSignatureIsTheSoundNotTheIdentity(t *testing.T) {
 	}
 }
 
-// Opening a circuit (and an undo/redo crossing one) starts a new circuit
-// GENERATION: what the Synth tab learned about the previous circuit's
-// instruments (their dial relevance anchors) is re-learned for the new ones.
+// What the Synth tab learned about the previous circuit's instruments is re-learned for the new ones.
 func TestCircuitGenerationAdvancesOnEveryCircuitChange(t *testing.T) {
 	g0 := CircuitGeneration()
 	snap := CircuitSnapshot()

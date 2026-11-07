@@ -9,12 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestMergedInstrumentParamsRO_InvalidatesOnEveryMutationPath guards the
-// revision plumbing behind the merged-params cache: every mutation that can
-// change an instrument's flat values must be visible through the cached
-// read-only accessor on the next call. A missed bump would freeze the Synth
-// tab's previews/mirror at stale values (the cache backs every per-frame
-// read — see merged_params_cache.go).
+// A missed revision bump would freeze the Synth tab at stale values: the cache backs every per-frame read.
 func TestMergedInstrumentParamsRO_InvalidatesOnEveryMutationPath(t *testing.T) {
 	resetLibraryForTest(t)
 	const inst = roster.DnbKick

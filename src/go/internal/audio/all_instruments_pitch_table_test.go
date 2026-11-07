@@ -10,17 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestAllMelodicInstruments_PitchRangeRendersCleanly is Gap A: a table test
-// over every registered melodic instrument at pitches -12, 0, +12.
-//
-// For each (instrument, pitch) pair it asserts:
-//   - finite (no NaN or Inf)
-//   - non-silent (peak > 0.01)
-//   - bounded (|sample| < 2.0 — generous headroom for summed harmonics)
-//
-// This guards against a seed change that produces silence or explosion
-// at a non-default pitch, which the existing per-instrument seed tests
-// do not catch (they render only at the default pitch=0).
+// Every melodic instrument at -12, 0 and +12 must be finite, non-silent and bounded: the per-instrument tests
+// render only at pitch 0, where a seed change that silences or explodes another pitch never shows.
 func TestAllMelodicInstruments_PitchRangeRendersCleanly(t *testing.T) {
 	const sr = 44100
 	const n = sr / 4 // 0.25 s is enough for any attack
@@ -99,9 +90,7 @@ func floatToIntStr(f float64) string {
 	return s + string(digits)
 }
 
-// TestCelloFormantPreservedVsResample is Gap B (second melodic instrument):
-// For cello at pitch=+12, the at-pitch render differs from a naive
-// resample-by-+12 of the pitch=0 buffer. Complements the existing violin test.
+// At +12 an at-pitch render differs from resampling the pitch-0 buffer.
 func TestCelloFormantPreservedVsResample(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Cello) })
 
@@ -146,15 +135,11 @@ func TestCelloFormantPreservedVsResample(t *testing.T) {
 	t.Logf("cello pitch=+12 re-render vs resample L1 dist = %.4f (over %d samples)", l1dist, n)
 }
 
-// TestFiltEnvMonotonicBrightening is Gap C:
-// With filtenv_enabled:1, increasing filtenv_amt should produce MORE
-// high-frequency energy in the attack window (the filter opens wider).
-// And with filtenv_enabled:0 the output is byte-identical to no-filtenv.
+// More filtenv_amt opens the filter wider in the attack; with filtenv_enabled 0 the output is byte-identical to none.
 func TestFiltEnvMonotonicBrightening(t *testing.T) {
 	const sr, n = 48000, 48000
 
-	// hfAttackEnergy measures high-frequency energy in the first 2000 samples
-	// via first-difference squared sum (large delta = HF energy).
+	// First-difference energy over the first 2000 samples: a large delta is HF energy.
 	hfAttackEnergy := func(buf []float32) float64 {
 		end := 2000
 		if end > len(buf) {
@@ -221,11 +206,7 @@ func TestFiltEnvMonotonicBrightening(t *testing.T) {
 	}
 }
 
-// TestAllInstrumentDefaultsUnchanged is Gap D:
-// Every shipped instrument rendered from its document must produce
-// the SAME buffer on two consecutive calls (deterministic) and must not be
-// silent. This guards against a seed change silently wiping an instrument's
-// defaults so the next render plays a different sound.
+// Two consecutive renders of every shipped document are identical and non-silent.
 func TestAllInstrumentDefaultsUnchanged(t *testing.T) {
 	const sr = 44100
 	const n = sr / 8 // 0.125 s

@@ -37,18 +37,15 @@ const (
 	maxOrderPerBand = 24
 	minBandSamples  = 12
 	modeRelFloorDB  = -60 // drop modes this far below the strongest
-	// maxExtrapolationNp: 40 dB = ln(100) Np of decay between the onset and
-	// the window start.
+	// 40 dB = ln(100) Np of decay between onset and window start.
 	maxExtrapolationNp = 4.605170185988092
 	// maxModeAlpha: T60 ≥ 20 ms (3·ln 10 / 0.02 Np/s) — faster is a transient.
 	maxModeAlpha = 345.38776394910684
 )
 
-// EstimateModes runs sub-band ESPRIT over p's decay window (spec §2b) and
-// returns the modes with their amplitudes back-extrapolated to the onset,
-// sorted by descending energy. Pole hygiene: α > 0, frequency inside the
-// band's CORE (so overlapping bands never double-count), SNR at the window
-// start ≥ 0 dB, amplitude within 60 dB of the strongest mode.
+// Amplitudes back-extrapolated to the onset, sorted by energy. A pole is kept only with α > 0, its frequency in its
+// band's CORE (overlapping bands never double-count), SNR ≥ 0 dB at the window start, and within 60 dB of the
+// strongest.
 func EstimateModes(p Prepared) (ModesResult, error) {
 	var res ModesResult
 	for _, b := range bandLayout(p.Rate) {
@@ -98,10 +95,8 @@ func EstimateModes(p Prepared) (ModesResult, error) {
 		}
 		res.Bands = append(res.Bands, d)
 	}
-	// A mode that had to fall more than 40 dB before the window opened was
-	// essentially over before analysis began: it belongs to the strike
-	// transient (the residual), and its onset amplitude would be a 40 dB+
-	// extrapolation of noise.
+	// A mode that fell more than 40 dB before the window opened belongs to the strike transient, and its onset amplitude
+	// would be an extrapolation of noise.
 	tws := float64(p.WindowStart-p.Onset) / float64(p.Rate)
 	observable := res.Modes[:0]
 	for _, m := range res.Modes {
@@ -110,12 +105,8 @@ func EstimateModes(p Prepared) (ModesResult, error) {
 		}
 	}
 	res.Modes = refitAmplitudes(p, observable)
-	// Transient hygiene: a "mode" that rings out in under 20 ms, or whose
-	// amplitude exceeds the recording's own peak, is not a resonance — ESPRIT
-	// fits an onset noise burst with clusters of fast poles whose amplitudes
-	// cancel (a WAV-clone round trip measured eight of them at up to 8× full
-	// scale around a −30 dB noise band). They belong to the residual (noise
-	// rows); drop them and refit until none is left.
+	// A "mode" ringing out in under 20 ms or louder than the recording's peak is not a resonance: ESPRIT fits an onset
+	// burst with clusters of fast cancelling poles. They belong to the residual; drop and refit until none is left.
 	for iter := 0; iter < 4; iter++ {
 		clean := make([]Mode, 0, len(res.Modes))
 		for _, m := range res.Modes {
@@ -145,10 +136,8 @@ func EstimateModes(p Prepared) (ModesResult, error) {
 	return res, nil
 }
 
-// trimToBandSignal cuts y after the last point where its smoothed power is
-// still 6 dB above the band's share of the recording's noise floor (white
-// noise of RMS σ heterodyned and low-passed to two-sided width 2w carries
-// σ²·2w/rate). A band that never rises above it returns nil.
+// Cut after the last point whose smoothed power is 6 dB above the band's share of the noise floor (white noise of
+// RMS σ, heterodyned to two-sided width 2w, carries σ²·2w/rate). nil for a band that never rises above it.
 func trimToBandSignal(y []complex128, floorRMS float64, b band, rate int) []complex128 {
 	if len(y) == 0 {
 		return nil
@@ -167,10 +156,8 @@ func trimToBandSignal(y []complex128, floorRMS float64, b band, rate int) []comp
 			quietest = smooth[m]
 		}
 	}
-	// The band's noise is the lower of its share of the recording floor and
-	// its own quietest moment: either can be read too high (a floor taken
-	// from a ring; a band that rings throughout), and too high a noise skips
-	// weak bands outright.
+	// The lower of the band's floor share and its own quietest moment: either can read too high, and too high a noise
+	// skips weak bands.
 	noise := floorRMS * floorRMS * 2 * (b.Hi - b.Lo) / float64(rate)
 	if quietest < noise {
 		noise = quietest
@@ -194,31 +181,13 @@ const (
 	refitRows     = 4096
 	refitMaxModes = 128 // the modal layer's table capacity (spec §3b)
 	refitDenseSec = 0.2
-	// refitRelTol drops normal-matrix eigen-directions below this fraction of
-	// the largest (singular values below 1e-4 of the largest).
+	// Singular values below 1e-4 of the largest.
 	refitRelTol = 1e-8
 )
 
-// refitAmplitudes replaces every mode's amplitude and phase with ONE joint
-// least-squares fit of the full-band recording from the onset, keeping
-// ESPRIT's frequencies and decay rates:
-//
-//	x(t) ≈ Σ_k e^{−α_k·t}·(A_k·cos ω_k t + B_k·sin ω_k t),  t from the onset.
-//
-// The per-band Vandermonde amplitudes are only valid INSIDE each band's
-// window, which starts a long filter half-length after the onset in the low
-// bands; extrapolated back to the onset they blew up — a spurious 32 Hz
-// "mode" in VCSL's marimba came back +48 dB, and clustered poles (cowbell's
-// 464–491 Hz group, a tom's pitch glide) cancel each other inside the window
-// and stop cancelling outside it. A joint fit sees the early signal.
-//
-// The solve is the TRUNCATED minimum-norm one: fast modes at nearby
-// frequencies are nearly collinear over the window, and a plain least-squares
-// gives them huge cancelling amplitudes (measured: residuals of 10⁶ % on the
-// corpus). The normal matrix is eigendecomposed and directions below
-// refitRelTol of the largest — exactly those cancelling combinations — are
-// dropped. Rows are a seeded jittered sample of times (deterministic; no two
-// modes alias onto one column the way a uniform stride could).
+// ONE joint least-squares fit from the onset: per-band amplitudes blow up extrapolated back to it. TRUNCATED
+// minimum-norm, since nearly collinear fast modes otherwise take huge cancelling amplitudes; rows are a seeded jittered
+// sample so no two modes alias onto one column.
 func refitAmplitudes(p Prepared, modes []Mode) []Mode {
 	if len(modes) == 0 {
 		return modes
@@ -227,17 +196,9 @@ func refitAmplitudes(p Prepared, modes []Mode) []Mode {
 	if len(modes) > refitMaxModes {
 		modes = modes[:refitMaxModes]
 	}
-	// Rows span [onset, window end): frequencies and decays come from the
-	// settled window, but the amplitudes must hold FROM THE ONSET, where the
-	// resynthesis starts — fitted on the window alone, fast modes were free
-	// before it and blew up there.
-	// Rows: EVERY sample of the first refitDenseSec after the onset (where
-	// nearly all the energy is — a sparse sample there leaves the high modes
-	// unconstrained between rows: one row per 16 samples cannot pin a mode
-	// above ~1.4 kHz, and the fit blew up between them), then a seeded
-	// jittered sample of the rest of the window. The amplitudes must hold FROM
-	// THE ONSET, where the resynthesis starts; frequencies and decays still
-	// come from the settled window.
+	// Every sample of the first refitDenseSec (where nearly all energy is; a sparse stride cannot pin high modes
+	// between rows), then a seeded jittered sample of the rest. Amplitudes must hold FROM THE ONSET, where
+	// resynthesis starts.
 	k2 := 2 * len(modes)
 	gr := make([]float64, k2*k2) // the real normal matrix (upper triangle)
 	h := make([]float64, k2)

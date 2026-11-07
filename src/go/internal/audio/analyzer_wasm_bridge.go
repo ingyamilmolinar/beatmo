@@ -9,19 +9,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// Per-tap snapshot caches. The bridge dispatcher routes ChannelAnalyzer-
-// Snapshot / PreEQAnalyzerSnapshot / SynthAnalyzerSnapshot lookups
-// through these so the per-Draw fetch rate stays bounded by
-// snapshotCacheTTL even when the UI runs at 120+ fps.
+// Keep the per-Draw fetch rate bounded by snapshotCacheTTL even at 120+ fps.
 var (
 	channelSnapCache = newSnapshotCache()
 	preEQSnapCache   = newSnapshotCache()
 	synthSnapCache   = newSnapshotCache()
 )
 
-// SnapshotCacheBypassForTest unconditionally clears the per-snapshot
-// caches. Used by tests that need to observe back-to-back fetches
-// without TTL interference.
+// For tests that observe back-to-back fetches without TTL interference.
 func SnapshotCacheBypassForTest() {
 	channelSnapCache.mu.Lock()
 	channelSnapCache.entries = make(map[channel.ID]*snapshotCacheEntry)
@@ -34,14 +29,8 @@ func SnapshotCacheBypassForTest() {
 	synthSnapCache.mu.Unlock()
 }
 
-// readSnapshotF64FromTypedArray reads a Float32Array view (exposed as a
-// Uint8Array on the JS side under bufKey) into a freshly-allocated
-// []float64 of length lenVal.Int(). Uses js.CopyBytesToGo for a single
-// bulk transfer — one js.Value for the typed array plus one for the
-// length scalar, instead of N per-element v.Index(i).Float() calls.
-//
-// Returns nil when either the length field is absent (legacy JS bundle
-// without the typed-array attachment) or the length is zero.
+// One bulk js.CopyBytesToGo instead of a js.Value per element. nil when the length field is absent (a JS bundle
+// without the typed array) or zero.
 func readSnapshotF64FromTypedArray(val js.Value, bufKey, lenKey string) []float64 {
 	lenVal := val.Get(lenKey)
 	if !lenVal.Truthy() {
@@ -60,9 +49,7 @@ func readSnapshotF64FromTypedArray(val js.Value, bufKey, lenKey string) []float6
 	defer putSnapshotByteBuf(scratch)
 	js.CopyBytesToGo(scratch, u8)
 	bridgeSnapshotElementReads.Add(uint64(n))
-	// Reinterpret []byte as []float32 (same backing array). Safe because
-	// the Float32Array we got from JS has the same little-endian wire
-	// representation as Go's float32 on the wasm target.
+	// Safe: the Float32Array and Go's float32 share the little-endian layout on wasm.
 	f32 := unsafe.Slice((*float32)(unsafe.Pointer(&scratch[0])), n)
 	out := make([]float64, n)
 	for i := 0; i < n; i++ {
@@ -71,11 +58,8 @@ func readSnapshotF64FromTypedArray(val js.Value, bufKey, lenKey string) []float6
 	return out
 }
 
-// readSnapshotF64Legacy reads a plain JS Array under fieldKey via the
-// per-element v.Index(i).Float() loop. Used as the fallback when the JS
-// side hasn't been rebuilt with the typed-array attachment. This is the
-// original implementation; calling it costs N js.Value allocations and
-// is the pattern that drove the production WASM OOM.
+// The fallback for a JS bundle without the typed array: N js.Value allocations per call, the pattern behind the
+// WASM OOM.
 func readSnapshotF64Legacy(val js.Value, fieldKey string) []float64 {
 	v := val.Get(fieldKey)
 	if !v.Truthy() || v.Length() == 0 {
@@ -90,11 +74,6 @@ func readSnapshotF64Legacy(val js.Value, fieldKey string) []float64 {
 	return out
 }
 
-// readSnapshotF64 prefers the typed-array fast path and falls back to
-// the legacy per-element loop only when the JS bundle predates the
-// typed-array attachment. typedKey is the U8 view field name
-// (e.g. "spectrumU8"); legacyKey is the old plain-array field name
-// (e.g. "spectrum").
 func readSnapshotF64(val js.Value, typedKey, lenKey, legacyKey string) []float64 {
 	if out := readSnapshotF64FromTypedArray(val, typedKey, lenKey); out != nil {
 		return out

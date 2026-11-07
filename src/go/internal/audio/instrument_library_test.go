@@ -21,8 +21,7 @@ func TestShippedLibraryMatchesTheSources(t *testing.T) {
 	}
 }
 
-// Every shipped document in the embedded pack validates against this build's
-// registry (the loader skips an invalid one rather than crash at init).
+// The loader skips an invalid document rather than crash at init, so this is where one fails.
 func TestShippedPackValidates(t *testing.T) {
 	shippedPack()
 	if len(packInvalid) > 0 {

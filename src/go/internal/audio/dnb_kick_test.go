@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// renderDnbKickSeed renders the dnb-kick instrument's document through the
-// modular engine (RAW — the path every note takes), returning the buffer.
+// RAW, the path every note takes.
 func renderDnbKickSeed(t testing.TB, sr, samples int) []float32 {
 	return renderFieldsForTest(t, roster.DnbKick, sr, samples, nil)
 }
@@ -44,12 +43,8 @@ func argmaxMagAt(f []float64, freqs []float64, sr int) float64 {
 	return best
 }
 
-// TestDnbKickSeedIsKickShaped pins the structural identity measured from the
-// reference 36010__sandyrb__dnb-kick-003.wav: a deep, dark DnB sub-kick —
-// bass-dominated (energy concentrated below ~160 Hz, essentially nothing above
-// 400 Hz), fundamental ≈ 60–90 Hz, and a short tail that has largely decayed by
-// the back of the buffer. The seed is tuned (A/B vs the reference) to satisfy
-// these; the test is the regression net for the kick's identity.
+// A deep, dark DnB sub kick: energy below ~160 Hz, almost nothing above 400 Hz, fundamental 60–90 Hz, a tail largely
+// gone by the end of the buffer.
 func TestDnbKickSeedIsKickShaped(t *testing.T) {
 	const sr = 48000
 	const samples = sr / 2 // 0.5 s, matching the reference length
@@ -67,8 +62,7 @@ func TestDnbKickSeedIsKickShaped(t *testing.T) {
 		t.Fatalf("dnb-kick is silent/too quiet: peak=%.4f", peak)
 	}
 
-	// 2. Bass-dominated and dark: low-band energy dwarfs high-band energy
-	// (the reference has ~0 energy above 400 Hz, 1.4% HF click).
+	// Low-band energy dwarfs high-band energy.
 	low := maxMagAt(f, []float64{45, 55, 65, 75, 90, 110}, sr)
 	high := maxMagAt(f, []float64{800, 1500, 3000, 6000}, sr)
 	if low < 4*high {
@@ -81,8 +75,7 @@ func TestDnbKickSeedIsKickShaped(t *testing.T) {
 		t.Fatalf("fundamental too high for a DnB sub-kick: dominant=%.0f Hz (want <=120)", dom)
 	}
 
-	// 4. Short tail: the back quarter of the buffer has largely decayed
-	// relative to the punch (reference is −40 dB by ~98 ms).
+	// The back quarter has largely decayed relative to the punch.
 	early := rmsRange(buf, 0, samples/10)       // first ~50 ms (the body)
 	late := rmsRange(buf, samples*3/4, samples) // last ~125 ms (the tail)
 	if early <= 0 {
@@ -93,19 +86,10 @@ func TestDnbKickSeedIsKickShaped(t *testing.T) {
 	}
 }
 
-// TestDnbKickPlaybackPathRendersKick is THE regression for the "seeded modular
-// instrument renders a generic tone" gotcha. A node triggers playback through
-// the tryRecipeVoiceOpts→legacyNewVoice dispatch (RenderInstrumentOneShotRaw
-// uses the identical path); because the seed IS the shipped default,
-// RecipeDefaultsCustomized is false, so the recipe path is NOT taken and the
-// instrument's Render closure must itself bake the kick seed. Before the fix the
-// playback path rendered the BARE modular voice (a ~220 Hz sine blip — the
-// "high-pitched electronic xylophone" the user heard). This asserts playback is
-// the dark, bass-dominated kick, matching the recipe render.
+// A node's playback must render the instrument's document, the dark sub kick, never the bare modular voice (a
+// ~220 Hz blip).
 func TestDnbKickPlaybackPathRendersKick(t *testing.T) {
-	// Every configurable-KICK-stage instrument is a seeded modular preset and
-	// MUST bake its seed in its Render closure (bakedModularRender) — else the
-	// node plays the bare ~218 Hz modular voice.
+	// A fine grid tells a low fundamental from 218 Hz.
 	grid := make([]float64, 0, 200)
 	for hz := 30.0; hz <= 400; hz += 2 {
 		grid = append(grid, hz)
@@ -126,19 +110,14 @@ func TestDnbKickPlaybackPathRendersKick(t *testing.T) {
 		if peak < 0.1 {
 			t.Fatalf("%s playback silent/too quiet: peak=%.4f", id, peak)
 		}
-		// The DECISIVE check: the dominant frequency must be the kick's sub
-		// fundamental (≤~80 Hz), NOT the bare modular voice's ~218 Hz A3 sine (the
-		// pre-fix "electronic xylophone"). Scan a fine grid so a low fundamental
-		// and 218 Hz are distinguished (a coarse low/high band test passes for both).
+		// The dominant frequency must be the sub fundamental, not the bare voice's A3; a coarse band test passes both.
 		if dom := argmaxMagAt(f, grid, sr); dom > 150 {
 			t.Fatalf("%s PLAYBACK dominant freq = %.0f Hz — the bare modular voice (~218 Hz), not the kick. The Render closure must bake the seed.", id, dom)
 		}
 	}
 }
 
-// renderKickVariantForTest renders the source==5 kick voice at the given variant
-// with a representative punchy param set, returning the raw buffer (an engine
-// block, initBlockForTest).
+// A representative punchy param set on a raw engine block.
 func renderKickVariantForTest(t testing.TB, variant float64, extra RecipeParams) []float32 {
 	p := RecipeParams{
 		"kick_enabled": 1,
@@ -171,11 +150,8 @@ func crestOf(buf []float32) float64 {
 	return peak / (math.Sqrt(sum/float64(len(buf))) + 1e-12)
 }
 
-// TestKickVariant5LayeredHasPunchAndCleanTail is THE driver for the layered-kick
-// DSP: variant 5 must produce a much higher CREST (the sharp transient = punch)
-// than the saturation-flattened existing variants (~3), via a post-distortion
-// click spike — AND its grit must decay with the body (the late tail is NOT a
-// sustained bright hiss).
+// Variant 5 needs a much higher crest than the saturation-flattened variants (punch), and its grit must decay with
+// the body rather than leave a bright hiss.
 func TestKickVariant5LayeredHasPunchAndCleanTail(t *testing.T) {
 	const sr = 48000
 	base := crestOf(renderKickVariantForTest(t, 0, nil))
@@ -184,8 +160,7 @@ func TestKickVariant5LayeredHasPunchAndCleanTail(t *testing.T) {
 	if hc < 5.0 {
 		t.Fatalf("variant 5 (layered) crest=%.2f, want >=5 (the post-distortion punch); base variant crest=%.2f", hc, base)
 	}
-	// Grit must decay with the body: the late tail (last 30%) must not be a
-	// bright hiss — its HF (>2 kHz) energy must be a small fraction of its total.
+	// The late tail's HF energy is a small fraction of its total.
 	f := f32toF64(hybrid)
 	lateLo := len(f) * 70 / 100
 	late := f[lateLo:]
@@ -196,10 +171,7 @@ func TestKickVariant5LayeredHasPunchAndCleanTail(t *testing.T) {
 	}
 }
 
-// windowHFProxy returns the per-8ms-window high-frequency energy fraction (a
-// first-difference high-pass proxy) over the kick BODY (0..bodyMs). A "spitty"
-// kick sputters — its HF fraction swings violently window-to-window; a smooth
-// kick's HF fraction changes gradually.
+// A sputtering kick's HF fraction swings window to window; a smooth one changes gradually.
 func windowHFProxy(buf []float32, sr, bodyMs int) []float64 {
 	win := sr * 8 / 1000
 	var out []float64
@@ -215,19 +187,11 @@ func windowHFProxy(buf []float32, sr, bodyMs int) []float64 {
 	return out
 }
 
-// TestKickVariant5BodyNotSpitty is the ANTI-SPIT invariant. The true "spit" was
-// AM-FLUTTER: the grit noise ran THROUGH the distortion and was multiplied by the
-// body wave, so the body's high-frequency content swung wildly window-to-window
-// (per-window HF proxy jumping 0.0005↔0.021, adjacent ratios >20×, up to 1315×).
-// The decoupled ADDITIVE air is smooth — even carrying the reference's organic
-// air level (~2% in 1-3 kHz), the body's per-window HF holds ~0.016-0.019, an
-// adjacent ratio of ~1.2×. So the invariant is SMOOTHNESS (no flutter), not an
-// absolute darkness cap: organic air is fine, sputtering air is the spit. A floor
-// skips inaudible noise-floor windows whose ratios are meaningless.
+// Grit run THROUGH the distortion was multiplied by the body wave and fluttered; additive air is smooth even at an
+// organic level. So the invariant is smoothness, not darkness; a floor skips inaudible windows.
 func TestKickVariant5BodyNotSpitty(t *testing.T) {
 	const sr = 48000
-	// High air (0.30) to STRESS the guard — if a change re-fused the noise into
-	// the distortion, this much noise would sputter loudly.
+	// High air stresses the guard: noise fused into the distortion would sputter loudly.
 	buf := renderKickVariantForTest(t, 5, RecipeParams{
 		"voice_freq_hz": 45, "gen1_kick_noise": 0.30, "gen1_kick_sat": 1.2,
 		"gen1_kick_click": 0.30, "gen1_kick_pe_amt": 0.9, "gen1_kick_pe_rate": 35,
@@ -235,11 +199,7 @@ func TestKickVariant5BodyNotSpitty(t *testing.T) {
 		"gen1_kick_env1": 12, "gen1_kick_attack": 1.5, "gen1_kick_fade": 4,
 	})
 	hf := windowHFProxy(buf, sr, 72)
-	// Windows 0-1 (0-16 ms) are the attack transient. Flutter's signature is an
-	// UPWARD spike — a quiet body window followed by a bright one (the fused-grit
-	// spit swung 0.0005→0.021, jumping UP >20×). A smooth attack-decayed air only
-	// steps DOWN (monotonic), so only upward jumps count. (An adjacent-ratio that
-	// also counted downward steps false-positives on a fast, clean decay.)
+	// Windows 0-1 are the attack. Flutter is an UPWARD jump; a clean decay only steps down, so only upward jumps count.
 	worst := 1.0
 	for i := 2; i < len(hf); i++ {
 		if hf[i] < 1e-4 || hf[i-1] < 1e-4 {
@@ -254,14 +214,10 @@ func TestKickVariant5BodyNotSpitty(t *testing.T) {
 	}
 }
 
-// TestKickEnabledGatesVoice drives the KICK stage's enable pill: with the kick
-// gen-slot active (source==5), kick_enabled<0.5 silences the voice and
-// kick_enabled>=0.5 renders it — the engine's gate on the family constant.
 func TestKickEnabledGatesVoice(t *testing.T) {
 	const sr = 48000
 	const samples = sr / 4
-	// kick_enabled is a type constant of the kick layer (the document always
-	// writes 1); this drives the ENGINE's gate on it directly in the block.
+	// The document always writes 1, so the engine's gate is driven in the block directly.
 	d, _ := ShippedDoc(roster.DnbKick)
 	base := modularBlock(instrument.Flatten(d, BuiltinModuleRegistry()))
 	render := func(enabled float64) float32 {
@@ -289,9 +245,7 @@ func TestKickEnabledGatesVoice(t *testing.T) {
 	}
 }
 
-// TestDnbKickInstrumentWiredAndKickShaped: the dnb-kick instrument renders
-// (through its project document — EnsureInstrumentDoc) the kick-shaped,
-// bass-dominated signal.
+// Through its project document.
 func TestDnbKickInstrumentWiredAndKickShaped(t *testing.T) {
 	const sr, samples = 48000, sr / 2
 	buf := renderFieldsForTest(t, roster.DnbKick, sr, samples, nil)

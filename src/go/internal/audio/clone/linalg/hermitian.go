@@ -6,13 +6,7 @@ import (
 	"sort"
 )
 
-// eigHermitianJacobi is the cyclic-Jacobi Hermitian eigensolver: accurate to
-// working precision and simple, but O(n³) PER SWEEP (0.25 s at 128 × 128), so
-// it is kept only as the test oracle for EigHermitian.
-//
-// Each rotation first turns the pivot a_pq real with a diagonal phase, then
-// applies the classic real Jacobi rotation (Numerical Recipes' θ/t/c/s); the
-// product J = diag(1, e^{−iφ})·P is unitary and zeroes a_pq.
+// Accurate and simple but O(n³) per sweep, so it is only the test oracle for EigHermitian.
 func eigHermitianJacobi(a *Matrix) ([]float64, *Matrix) {
 	n := a.Rows
 	A := a.Clone()
@@ -102,13 +96,8 @@ func sortDescending(diag []float64, V *Matrix) ([]float64, *Matrix) {
 	return vals, vecs
 }
 
-// EigHermitian returns the eigenvalues of the Hermitian matrix a in
-// DESCENDING order and the matching unit eigenvectors as the columns of vecs.
-// a is not modified. Householder reduction to a Hermitian tridiagonal T
-// (A = Q·T·Qᴴ), a diagonal phase D that makes T real (T = D·T'·Dᴴ), then the
-// implicit QL iteration on T' with eigenvector accumulation: eigenvectors are
-// Q·D·Z. O(n³) once — ~100× faster than Jacobi at the 128 × 128 ESPRIT
-// covariances, same accuracy (TestEigHermitianMatchesJacobi).
+// Eigenvalues in DESCENDING order with unit eigenvectors as columns; a is not modified. Householder tridiagonal, a
+// diagonal phase that makes it real, then implicit QL: O(n³) once, far faster than Jacobi at ESPRIT sizes.
 func EigHermitian(a *Matrix) ([]float64, *Matrix) {
 	n := a.Rows
 	if n == 0 {
@@ -155,9 +144,7 @@ func EigHermitian(a *Matrix) ([]float64, *Matrix) {
 		for i := k + 1; i < n; i++ {
 			v[i] /= complex(vn, 0)
 		}
-		// H = I − 2vvᴴ; HAH = A − v·wᴴ − w·vᴴ with p = A·v, κ = vᴴp, w = 2(p − κv).
-		// v is zero above k+1, so only rows/columns ≥ k are touched (column k
-		// becomes [.., alpha, 0, …]).
+		// v is zero above k+1, so only rows/columns ≥ k are touched.
 		var kappa complex128
 		ad := A.Data
 		for i := k; i < n; i++ {
@@ -245,9 +232,7 @@ func EigHermitian(a *Matrix) ([]float64, *Matrix) {
 	return sortDescending(d, vecs)
 }
 
-// tqli is the implicit QL iteration with Wilkinson-type shifts on the real
-// symmetric tridiagonal (d diagonal, e[i] = T[i+1][i], e[n−1] ignored),
-// accumulating the rotations into z (row-major n×n). Numerical Recipes §11.3.
+// d diagonal, e[i] = T[i+1][i] (e[n−1] ignored), rotations accumulated into row-major z; Numerical Recipes §11.3.
 func tqli(d, e, z []float64, n int) {
 	if n > 0 {
 		e[n-1] = 0

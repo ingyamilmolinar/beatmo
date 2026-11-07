@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Every shipped instrument's playback amplitude comes from its document's
-// render.amplitude (loudness already folded in) — there is no table.
+// Loudness is already folded into render.amplitude; there is no table.
 func TestConfigForInstrumentUsesTheDocumentAmplitude(t *testing.T) {
 	ids := roster.All
 	if len(ids) == 0 {

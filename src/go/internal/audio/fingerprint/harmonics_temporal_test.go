@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// TestHarmonicTrajectory_DetectsMidNotePeak is the primary TDD test: H2 of a
-// synthSwellH2 wave peaks at the midpoint of the window, so PeakTimeSec[1]
-// must land in the middle-ish region (not at the very start or end).
+// H2 swells to the window's midpoint, so its peak time lands mid-window.
 func TestHarmonicTrajectory_DetectsMidNotePeak(t *testing.T) {
 	sr := 48000
 	w := synthSwellH2(sr, 2.0, 440)
@@ -34,8 +32,6 @@ func TestHarmonicTrajectory_NTracked(t *testing.T) {
 	}
 }
 
-// TestHarmonicTrajectory_SteadyToneH1SustainLevel verifies that for a steady
-// pure tone, SustainLevel[0] is near 1.0 (normalized to itself).
 func TestHarmonicTrajectory_SteadyToneH1SustainLevel(t *testing.T) {
 	sr := 48000
 	w := synthTone(sr, 2.0, 440, []float64{1.0})
@@ -46,8 +42,6 @@ func TestHarmonicTrajectory_SteadyToneH1SustainLevel(t *testing.T) {
 	}
 }
 
-// TestHarmonicTrajectory_SwellDecayRateNegative verifies that for synthSwellH2,
-// H2's DecayRate is negative (amplitude falls post-peak).
 func TestHarmonicTrajectory_SwellDecayRateNegative(t *testing.T) {
 	sr := 48000
 	w := synthSwellH2(sr, 2.0, 440)
@@ -57,8 +51,6 @@ func TestHarmonicTrajectory_SwellDecayRateNegative(t *testing.T) {
 	}
 }
 
-// TestHarmonicTrajectory_EvenOddLength verifies EvenOddOverTime has one entry
-// per STFT frame and that values are finite and non-negative.
 func TestHarmonicTrajectory_EvenOddLength(t *testing.T) {
 	sr := 48000
 	w := synthTone(sr, 1.0, 440, []float64{1.0, 0.5, 0.25, 0.125})
@@ -73,8 +65,6 @@ func TestHarmonicTrajectory_EvenOddLength(t *testing.T) {
 	}
 }
 
-// TestHarmonicTrajectory_SilentInput verifies that a silent wave returns a
-// zero HarmonicTrajectory without panicking and without NaN/Inf values.
 func TestHarmonicTrajectory_SilentInput(t *testing.T) {
 	sr := 48000
 	silent := make([]float64, sr*2)
@@ -91,8 +81,6 @@ func TestHarmonicTrajectory_SilentInput(t *testing.T) {
 	}
 }
 
-// TestHarmonicTrajectory_SwellAttackRatePositive verifies that H2 of the swell
-// tone has a positive AttackRate (amplitude rises in dB before its peak).
 func TestHarmonicTrajectory_SwellAttackRatePositive(t *testing.T) {
 	sr := 48000
 	w := synthSwellH2(sr, 2.0, 440)

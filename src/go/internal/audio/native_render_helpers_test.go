@@ -12,16 +12,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Shared helpers for the native (CGo) render tests: one fixed render shape and
-// a byte-exact digest, so every byte-identity test hashes the same way.
+// One render shape and one digest, so every byte-identity test hashes the same way.
 
 const (
 	nativeGoldenSR      = 48000
 	nativeGoldenSamples = 48000 // 1.0s
 )
 
-// hashFloat32 is the sha256 over a buffer's raw IEEE-754 bits — any one-ULP
-// change in any sample changes it.
+// Any one-ULP change in any sample changes it.
 func hashFloat32(buf []float32) string {
 	h := sha256.New()
 	var b [4]byte
@@ -32,8 +30,7 @@ func hashFloat32(buf []float32) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// pickNonDefaultValue returns a value of d as far from its default as its range
-// allows (the opposite end), so an edit to it is maximally likely to be heard.
+// The opposite end of the range, so an edit is most likely to be heard.
 func pickNonDefaultValue(d ParamDef) float64 {
 	if d.Min == d.Max {
 		return d.Default
@@ -45,8 +42,7 @@ func pickNonDefaultValue(d ParamDef) float64 {
 	return d.Max
 }
 
-// shippedRender returns a Render func playing instrument id exactly as shipped:
-// its document's flattened block, RAW.
+// The document's flattened block, RAW.
 func shippedRender(id instrument.ID) func(buf []float32, sampleRate, samples int) {
 	return func(buf []float32, sampleRate, samples int) {
 		if out, err := RenderInstrumentWithFields(id, sampleRate, samples, nil); err == nil {
