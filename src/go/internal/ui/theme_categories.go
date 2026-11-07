@@ -6,24 +6,18 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// ThemeCategory groups DESIGN.md color tokens that recolor together from ONE
-// picked swatch. This table is the single source of truth for the Theme
-// overlay rows, the derivation engine (theme_derive.go), and the guard
-// TestThemeCategoryTableComplete (every color token is in exactly one
-// category or in themeFixedTokens).
+// The single source for the editor rows and the derivation; every colour token is in exactly one category or in
+// themeFixedTokens.
 type ThemeCategory struct {
 	ID       string
 	LabelKey i18n.Key
 	GlossKey i18n.Key
-	// Anchor is the swatch NAME whose HSL the default token values are
-	// measured against. Applying the anchor reproduces DESIGN.md exactly.
+	// Applying the anchor reproduces DESIGN.md exactly.
 	Anchor string
-	// KeepLightness categories keep each token's absolute lightness (the
-	// shade column only chooses tint strength) so a light pick never yields a
-	// light UI or unreadable text.
+	// Absolute lightness is kept (the shade only sets tint strength), so a light pick never makes a light UI or
+	// unreadable text.
 	KeepLightness bool
-	// Tokens: the FIRST entry is the category's principal color, shown on the
-	// editor chip (background → the canvas, accent → primary, …).
+	// The FIRST entry is the principal colour shown on the editor chip.
 	Tokens []string
 }
 
@@ -40,10 +34,8 @@ var themeCategories = []ThemeCategory{
 	{ID: "accent", LabelKey: i18n.KeyThemeCatAccent, GlossKey: i18n.KeyThemeGlossAccent, Anchor: "sunset-gold-300", Tokens: []string{
 		"primary", "primary-bright", "primary-dim", "on-surface-accent", "splitter-handle", "drum-glow", "slider-fill",
 		"solo-active-border", "eq-filter-active-fill", "eq-filter-active-border", "viz-glow",
-		// The timeline ruler's visible window and the playhead are transport
-		// chrome beside the accent-lit controls, not a data canvas: under a
-		// preset whose Visualizers hue differs from its Accent (Ocean) they
-		// read as a stray third color when grouped with the traces.
+		// Transport chrome, not a data canvas: grouped with the traces they read as a stray third colour under a preset
+		// whose Visualizers hue differs from Accent.
 		"timeline-view", "timeline-view-hi", "timeline-cursor"}},
 	{ID: "focus", LabelKey: i18n.KeyThemeCatFocus, GlossKey: i18n.KeyThemeGlossFocus, Anchor: "hot-pink-300", Tokens: []string{"focus-ring"}},
 	{ID: "grid", LabelKey: i18n.KeyThemeCatGrid, GlossKey: i18n.KeyThemeGlossGrid, Anchor: "orchid-500", KeepLightness: true, Tokens: []string{
@@ -58,8 +50,7 @@ var themeCategories = []ThemeCategory{
 		"viz-bass", "viz-mids", "viz-treble"}},
 }
 
-// themeFixedTokens are semantic-state and debug colors that a theme never
-// touches (red must stay "danger", green must stay "go").
+// Red must stay "danger" and green "go", whatever the theme.
 var themeFixedTokens = map[string]bool{
 	"success": true, "error": true, "error-text": true, "mute": true, "mute-active-border": true,
 	"destructive": true, "destructive-border": true, "destructive-confirm-fill": true, "destructive-confirm-border": true,
@@ -69,9 +60,7 @@ var themeFixedTokens = map[string]bool{
 	"slider-thumb-shadow": true, // pure-black drop shadow, achromatic by design
 }
 
-// isRawPaletteToken reports whether name is one of the raw chromatic ramp /
-// night-neutral entries (the palette itself, not a role). They are the
-// SOURCE swatches and are never themed.
+// The SOURCE swatches, never themed themselves.
 func isRawPaletteToken(name string) bool {
 	if strings.HasPrefix(name, "night-") {
 		return true
@@ -103,8 +92,7 @@ func themeCategoryByID(id string) (ThemeCategory, bool) {
 	return ThemeCategory{}, false
 }
 
-// themeCategoryOfToken returns the category id owning token ("", false for
-// fixed / raw / unknown tokens).
+// !ok for fixed, raw or unknown tokens.
 func themeCategoryOfToken(token string) (string, bool) {
 	for _, c := range themeCategories {
 		for _, t := range c.Tokens {

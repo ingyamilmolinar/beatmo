@@ -1,13 +1,7 @@
 package ui
 
-// WheelModel is the value model a ValueWheel scrolls. The wheel owns NO value
-// of its own: every label it draws and every step it takes goes through the
-// model, so one view serves synth/sampler knobs (knobModel), plain numbers
-// (NumberModel: BPM, node values, go-to position/time, clock fields) and any
-// future source without the view knowing which.
-//
-// Offsets and steps follow the barrel's geometry: offset +n is the n-th
-// DISTINCT value ABOVE the centre selector (larger), -n below (smaller).
+// The wheel owns NO value: every label and step goes through the model, so one view serves knobs and plain numbers.
+// Offset +n is the n-th DISTINCT value ABOVE the centre (larger).
 type WheelModel interface {
 	// Snapshot / Restore capture and reinstate the value (transactional Cancel).
 	Snapshot() float64
@@ -15,21 +9,17 @@ type WheelModel interface {
 
 	// CenterLabel is the live value shown in the centre selector.
 	CenterLabel() string
-	// RowLabel is the label offset distinct rows from the centre; ok == false
-	// when that row falls outside the value range (the row is not drawn).
+	// !ok outside the range: the row is not drawn.
 	RowLabel(offset int) (string, bool)
 	// SelectRow sets the value to exactly what RowLabel(offset) shows.
 	SelectRow(offset int) bool
 
-	// Step moves the value by n detents at the active resolution. Returns
-	// whether the value changed (false at a clamp).
+	// false at a clamp.
 	Step(n int) bool
-	// StepFine moves by n detents one ladder rung finer than the active one,
-	// without persisting the rung (Shift + scroll).
+	// Shift + scroll; the rung is not persisted.
 	StepFine(n int) bool
 
-	// HasLadder reports whether a resolution ladder is shown. Ladder indices
-	// run fine→coarse (rung 0 = finest); the view draws the coarsest on top.
+	// Ladder indices run fine→coarse (0 = finest); the view draws the coarsest on top.
 	HasLadder() bool
 	LadderLen() int
 	LadderIndex() int

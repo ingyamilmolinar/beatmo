@@ -4,17 +4,8 @@ import (
 	"image"
 )
 
-// Subject identifies a UI surface that the screenshot harness can crop to.
-// SubjectFullScreen (the empty string) is the default and means "no crop —
-// capture the entire framebuffer", preserving legacy behavior for every
-// existing scene that does not opt in.
-//
-// New subjects are added by:
-//  1. defining a const here,
-//  2. adding a case in (*Game).SubjectRect that returns its bounds,
-//  3. exposing the bounds publicly on the owning component if it isn't
-//     already (the rule: never reach into a private field from this file —
-//     promote a getter instead).
+// "" means no crop. A new subject needs a const, a SubjectRect case and a public bounds getter on its owner: never
+// reach into a private field from here.
 type Subject string
 
 const (
@@ -42,9 +33,7 @@ const (
 	SubjectWarmupToast    Subject = "warmup_toast" // the circuit-loading progress toast (logsToast)
 )
 
-// AllSubjects returns every named subject in declaration order. Used by
-// JS bridge enumeration and tests. Excludes SubjectFullScreen because that
-// is the absence-of-crop, not a surface.
+// Excludes SubjectFullScreen, the absence of a crop.
 func AllSubjects() []Subject {
 	return []Subject{
 		SubjectMainGrid,
@@ -68,20 +57,8 @@ func AllSubjects() []Subject {
 	}
 }
 
-// SubjectRect returns the screen-space bounding rectangle of the requested
-// surface at the current laid-out frame. The second return is false when
-// the subject is not currently visible (e.g. the FX panel when no row has
-// it open, or the EQ panel when the mobile profile has it collapsed) — the
-// caller should skip cropping and report a clear error in that case.
-//
-// The returned rect is always clipped to the framebuffer (0,0)-(winW,winH)
-// so a too-large widget rect cannot escape the screen and produce a
-// negative-sized or out-of-bounds crop.
-//
-// Callers must ensure layout has happened (one Layout()+Draw() cycle, or
-// the SettleFrames countdown that the screenshot harness performs) before
-// calling — the rects below are populated by Layout/Draw and are zero on a
-// freshly-constructed Game.
+// !ok when the subject is not visible (the caller reports it). Clipped to the framebuffer. Valid only after a
+// layout + draw: the rects are zero on a new Game.
 func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 	if s == SubjectFullScreen {
 		return image.Rect(0, 0, g.winW, g.winH), true
@@ -123,12 +100,7 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 		if dv == nil || dv.eqPanelZone == nil {
 			return image.Rectangle{}, false
 		}
-		// Each EQ tab paints into the panel's content rect; the visual
-		// difference is which renderer runs. We crop to the full panel
-		// (including the tab header strip) so the captured PNG shows the
-		// active-tab affordance, then clamp to the screen. SubjectSynthPanel
-		// and SubjectSampler share this rect — both the Synth and Sampler
-		// tabs are peer tabs of the audio panel.
+		// The whole panel, tab strip included, so the PNG shows the active-tab affordance; Synth and Sampler share it.
 		return clamp(dv.eqRect)
 	case SubjectChain:
 		if dv == nil || dv.eqPanelZone == nil {
@@ -148,10 +120,7 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 		if dv == nil {
 			return image.Rectangle{}, false
 		}
-		// Full top header strip — spans the entire drum-pane width and
-		// includes transport cluster, BPM, length controls, master volume,
-		// overflow, etc. Falling back to the bare WidgetTransport rect
-		// would only capture the play/stop/record cluster.
+		// The full header strip: WidgetTransport alone is only the play/stop/record cluster.
 		return clamp(dv.HeaderRect())
 	case SubjectFXPanel:
 		if dv == nil {
@@ -204,8 +173,7 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 	return image.Rectangle{}, false
 }
 
-// SubjectByName parses a Subject from its string form. The empty string
-// resolves to SubjectFullScreen. Unknown names return ok=false.
+// "" is SubjectFullScreen; unknown names return !ok.
 func SubjectByName(name string) (Subject, bool) {
 	if name == "" {
 		return SubjectFullScreen, true

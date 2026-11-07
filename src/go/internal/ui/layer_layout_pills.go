@@ -2,12 +2,7 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// LayoutPillsLayer paints the splitter pill handles on inner column/row
-// dividers — debug-only chrome controlled by Profile().ShowLayoutGuides
-// (false in production; flip via BEATMO_DEBUG_LAYOUT=1).
-//
-// Z = ZLayoutPills (180) — above all primary content, below LayoutGuides
-// and portal overlays.
+// Debug only (BEATMO_DEBUG_LAYOUT=1).
 type LayoutPillsLayer struct {
 	dv *DrumView
 }
@@ -38,9 +33,7 @@ func (l *LayoutPillsLayer) Draw(dst *ebiten.Image) {
 	}
 	for i := 1; i < len(dv.widgets.rowPos)-1; i++ {
 		idx := i - 1
-		// The EQ↔rows divider is drawn in production by rowEQDividerLayer
-		// (line + pill). When that layer owns it, skip it here so the debug
-		// overlay never double-draws the same pill on top.
+		// rowEQDividerLayer draws that pill in production; skip it so the debug overlay never draws it twice.
 		if dv.showRowEQDivider() && idx == dv.eqDividerRowIdx() {
 			continue
 		}

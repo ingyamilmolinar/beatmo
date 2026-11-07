@@ -1,12 +1,5 @@
-// Package uistate provides a small declarative config for booting Beatmo
-// into a specific UI state, used primarily by the screenshot harness. It
-// covers fields that fall outside the existing tunkul.json import schema
-// (camera position, splitter fraction, layout profile, view mode, sidebar).
-//
-// Anything covered by tunkul.json — circuits, instruments, EQ band gains,
-// transport BPM/subdiv/length, master volume, send effects — should be
-// loaded via the existing -import flag. This package complements that
-// schema; it does not duplicate it.
+// Boot-time UI state the project file does not carry (camera, splitter, profile, view, sidebar), for the
+// screenshot harness; circuits and audio settings still load through -import.
 package uistate
 
 import (
@@ -19,8 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/ui"
 )
 
-// Config is the JSON schema for -ui-state. Pointers (*int, *bool) are
-// nullable: a missing field leaves the corresponding game state alone.
+// Pointers: a missing field leaves that state alone.
 type Config struct {
 	schema.Envelope
 	Profile       string `json:"profile,omitempty"` // "desktop" | "mobile"
@@ -68,9 +60,7 @@ func (m ViewMode) String() string                { return enum.String(viewModeNa
 func (m ViewMode) MarshalText() ([]byte, error)  { return enum.Marshal(viewModeNames, m) }
 func (m *ViewMode) UnmarshalText(b []byte) error { return enum.Unmarshal(viewModeNames, b, m) }
 
-// applier captures every Game setter Apply touches. Decoupling the
-// package from *ui.Game lets us unit-test the decision tree without the
-// stub-Ebiten harness.
+// Lets the decision tree be unit-tested without the stub-Ebiten harness.
 type applier interface {
 	SetForceMobileProfile(bool)
 	SetForceAutoSize(bool)
@@ -107,18 +97,14 @@ func loadFile(path string) (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return Config{}, fmt.Errorf("parse ui-state: %w", err)
 	}
-	// This file is named explicitly on the command line, so an unreadable
-	// schema_version is a hard error — the caller chose it and should be
-	// told. A file with no schema_version predates versioning: accepted.
+	// Any version but the current one is a hard error: the user named this file.
 	if err := c.Validate("ui-state"); err != nil {
 		return Config{}, err
 	}
 	return c, nil
 }
 
-// Apply walks the config in deterministic order: profile → defaults →
-// splitter → camera → view → sidebar. Menu state is intentionally not in
-// Config; scenes own that.
+// Menu state is not in Config: scenes own it.
 func Apply(g *ui.Game, c Config) error {
 	return apply(g, c)
 }

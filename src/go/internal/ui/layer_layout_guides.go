@@ -7,14 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// LayoutGuidesLayer paints lightweight outlines along widget-board column
-// and row dividers — debug-only chrome controlled by Profile().ShowLayoutGuides
-// (false in production; flip via BEATMO_DEBUG_LAYOUT=1).
-//
-// Z = ZLayoutGuides (185) — topmost decorative layer, just below portal
-// overlays. Drawing late (rather than early as the legacy code did) means
-// guides sit on top of widget content when enabled, which is what a debug
-// overlay should do.
+// Debug only (BEATMO_DEBUG_LAYOUT=1). Drawn late so the guides sit on top of content, as a debug overlay should.
 type LayoutGuidesLayer struct {
 	dv *DrumView
 }
@@ -29,9 +22,7 @@ func (l *LayoutGuidesLayer) Visible() bool {
 
 func (l *LayoutGuidesLayer) Draw(dst *ebiten.Image) {
 	dv := l.dv
-	// Coordinate conventions: when drawing into a local buffer sized to
-	// the drum view (test buffer), coordinates are widget-board-relative;
-	// when drawing to a sub-image of the screen, offset by dv.Bounds.
+	// A buffer the size of the drum view uses board-relative coordinates; a screen sub-image is offset by Bounds.
 	local := dv.Bounds.Dx() == dst.Bounds().Dx() && dv.Bounds.Dy() == dst.Bounds().Dy()
 	offX, offY := 0, 0
 	if !local {

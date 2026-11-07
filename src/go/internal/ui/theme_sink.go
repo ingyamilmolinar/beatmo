@@ -6,9 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// ThemeSaveSink is the persistence shim the Theme overlay writes the user's
-// theme through and reads at startup. userprefs.ThemeStore satisfies it;
-// tests use a stub. Mirrors LanguageSaveSink (language_sink.go).
 type ThemeSaveSink interface {
 	LoadTheme() (theme.UserDoc, error)
 	SaveTheme(d theme.UserDoc) error
@@ -19,8 +16,7 @@ var (
 	themeSink   ThemeSaveSink
 )
 
-// SetThemeSink registers the global theme persistence sink. Nil-safe:
-// passing nil keeps theme editing working in-session without persistence.
+// Nil keeps editing working in-session without persistence.
 func SetThemeSink(s ThemeSaveSink) {
 	themeSinkMu.Lock()
 	themeSink = s
@@ -33,9 +29,7 @@ func activeThemeSink() ThemeSaveSink {
 	return themeSink
 }
 
-// ApplyStoredTheme seeds g.userTheme from the sink and applies the effective
-// theme before the first frame. Called by the production bootstrap right
-// after New(); no sink or empty theme ⇒ default palette.
+// Before the first frame; nothing stored means the default palette.
 func ApplyStoredTheme(g *Game) {
 	s := activeThemeSink()
 	if s == nil || g == nil {

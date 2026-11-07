@@ -33,9 +33,7 @@ func expandHome(p string) string {
 	return p
 }
 
-// buildDemo imports a demo config from BEATMO_DEMO_CONFIG (or BEATMO_CONFIG)
-// during tests so we can validate the env-based demo path without building the
-// full programmatic demo.
+// Under tests only the env-config path is built.
 func (g *Game) buildDemo() {
 	if g.demoBuilt || g.drum == nil || g.graph == nil {
 		return
@@ -86,8 +84,7 @@ func (g *Game) buildDemo() {
 // RunDemo is a no-op stub in test builds.
 func (g *Game) RunDemo() {}
 
-// RunBenchmark stores benchmark configuration. Functional under tests so the
-// benchmark lifecycle can be exercised via direct Update() calls.
+// Functional under tests so the lifecycle runs through direct Update() calls.
 func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario, stormInst instrument.ID) {
 	g.benchBPM = bpm
 	g.benchDuration = dur

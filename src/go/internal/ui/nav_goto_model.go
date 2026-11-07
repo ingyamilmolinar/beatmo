@@ -5,14 +5,9 @@ import (
 	"strconv"
 )
 
-// Value models for the navigation menu's go-to wheel (beat and time modes).
-// Both are NumberModels so the shared ValueWheel scrolls them exactly like
-// any other value.
+// NumberModels, so the shared ValueWheel scrolls them like any other value.
 
-// formatGotoBeat renders an absolute subdivision step as the user reads it:
-// "Beat N" with N 1-BASED (step 0 is Beat 1 — the same number the beat
-// counter shows), plus the position inside the beat as a reduced fraction
-// when it is off the beat ("Beat 3 · 3/8", "Beat 2 · 1/2").
+// 1-BASED like the beat counter, plus the reduced fraction inside the beat ("Beat 3 · 3/8").
 func formatGotoBeat(steps, div int) string {
 	if div <= 0 {
 		div = 1
@@ -39,12 +34,9 @@ func gcdInt(a, b int) int {
 	return a
 }
 
-// gotoBeatStrides are the go-to wheel's beat-mode step sizes, in beats, coarse
-// rungs only; the 1/div subdivision rung is prepended when div > 1.
+// In beats; the 1/div rung is prepended when div > 1.
 var gotoBeatStrides = []int{1, 4, 16}
 
-// newGotoBeatModel builds the beat-mode model over absolute subdivision steps
-// [0, maxSteps], starting at startSteps, with the one-beat rung selected.
 func newGotoBeatModel(div, maxSteps, startSteps int) *NumberModel {
 	if div <= 0 {
 		div = 1
@@ -98,8 +90,7 @@ func newGotoTimeModel(maxSec, startSec int) *NumberModel {
 	return m
 }
 
-// gotoStepsToSeconds converts an absolute subdivision step to whole seconds
-// (rounded down) at the given tempo.
+// Rounded down.
 func gotoStepsToSeconds(steps, div, bpm int) int {
 	if div <= 0 {
 		div = 1

@@ -2,11 +2,7 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// RowZoomChipsLayer paints the mobile row-zoom +/− chips. Theme 3 of the
-// mobile UI consistency pass. Rect is non-empty only on mobile in Pads
-// view (zeroed elsewhere by layout).
-//
-// Z = ZRowZoomChips (160).
+// Mobile Pads view only; the layout zeroes the rect elsewhere.
 type RowZoomChipsLayer struct {
 	dv *DrumView
 }

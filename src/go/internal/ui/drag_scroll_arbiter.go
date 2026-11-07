@@ -1,18 +1,7 @@
 package ui
 
-// dragScrollArbiter decides, over a single press gesture, whether the pointer
-// tapped the control it started on or swept to scroll the ControlGrid that hosts
-// that control. On press it begins a natural content drag on the grid; each drag
-// frame advances the grid and, once travel crosses the tap slop, latches the
-// gesture as a scroll. On release it reports whether the gesture stayed a tap
-// (caller opens the control) or became a scroll (caller does nothing). Bound to
-// one *ControlGrid for the gesture's lifetime; the zero value is idle.
-//
-// This is the "swipe scrolls, tap opens" gate shared by the Synth and Sampler
-// control adapters. It is deliberately NOT DrumView.tapGate (the mobile tap
-// DEBOUNCE keyed by location+frame) nor DeferredTap (which fires a stored
-// position on release); this one drives a LIVE scroll during the gesture and
-// only reports the tap/scroll verdict at the end.
+// "Swipe scrolls, tap opens": drives a LIVE scroll during the gesture and reports the verdict at the end. Not
+// DrumView.tapGate (a debounce) nor DeferredTap (which fires a stored position). The zero value is idle.
 type dragScrollArbiter struct {
 	grid     *ControlGrid
 	startY   int
@@ -20,8 +9,7 @@ type dragScrollArbiter struct {
 	active   bool
 }
 
-// begin starts a gesture at pointer y on grid g. A nil or non-scrolling grid
-// still tracks the tap so release opens the control.
+// A nil or non-scrolling grid still tracks the tap.
 func (a *dragScrollArbiter) begin(y int, g *ControlGrid) {
 	a.grid = g
 	a.startY = y
@@ -32,8 +20,6 @@ func (a *dragScrollArbiter) begin(y int, g *ControlGrid) {
 	}
 }
 
-// drag advances the grid to pointer y and latches a scroll once travel exceeds
-// the tap slop. Returns true when the grid's scroll position changed.
 func (a *dragScrollArbiter) drag(y int) (moved bool) {
 	if !a.active {
 		return false
@@ -47,8 +33,6 @@ func (a *dragScrollArbiter) drag(y int) (moved bool) {
 	return false
 }
 
-// end finishes the gesture and reports whether it stayed a tap (never crossed
-// the slop). The caller opens the control only on a tap.
 func (a *dragScrollArbiter) end() (wasTap bool) {
 	wasTap = a.active && !a.scrolled
 	if a.grid != nil {

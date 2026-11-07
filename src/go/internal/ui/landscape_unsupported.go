@@ -7,30 +7,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Mobile landscape is intentionally unsupported. The portrait layout assumes a
-// tall framebuffer (the audio panel alone wants ~350px of height); in landscape
-// the ~390px-tall screen cannot host both a usable grid AND the audio panel, so
-// the panel's content overlaps or clips. Rather than ship a broken layout, the
-// mobile profile detects landscape and renders a full-screen "rotate to
-// portrait" notice. Detection and rendering both live here so the disable is a
-// single, well-tested seam; rotating back to portrait simply makes
-// landscapeUnsupported() false again and the normal UI resumes (Layout state is
-// untouched by the notice, so the transition is seamless).
+// Mobile landscape is unsupported on purpose: a ~390 px-tall screen cannot hold a usable grid AND the audio
+// panel, so a rotate notice replaces the UI. Layout state is untouched, so rotating back resumes seamlessly.
 
-// landscapeNoticeDrawHook is a test-only observation seam (nil in production),
-// mirroring drawTextColorAtScaleHook. drawLandscapeUnsupported invokes it so a
-// test can assert the notice path was taken without reading pixels.
+// Test seam, nil in production: asserts the notice path without reading pixels.
 var landscapeNoticeDrawHook func()
 
-// landscapeUnsupported reports whether the current frame is a mobile (small
-// screen) profile in landscape orientation (width > height). Only the mobile
-// profile disables landscape; wide desktop windows are always supported.
+// Wide desktop windows are always supported.
 func (g *Game) landscapeUnsupported() bool {
 	return Profile().IsMobile() && g.winW > g.winH
 }
 
-// landscapeNoticeLines returns the localized lines of the rotate-to-portrait
-// notice (title first, then the explanatory body).
 func landscapeNoticeLines() []string {
 	return []string{
 		i18n.T(i18n.KeyOrientationTitle),
@@ -38,9 +25,6 @@ func landscapeNoticeLines() []string {
 	}
 }
 
-// drawLandscapeUnsupported paints the full-screen rotate-to-portrait notice. It
-// replaces the normal grid/drum panes entirely while the mobile layout is in
-// landscape.
 func (g *Game) drawLandscapeUnsupported(screen *ebiten.Image) {
 	if landscapeNoticeDrawHook != nil {
 		landscapeNoticeDrawHook()

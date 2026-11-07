@@ -10,19 +10,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// recipe_save_sink.go — Save As, the only save (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// §2.7). The project owns COPIES of library instrument documents; Save As
-// moves a copy — document and audio bundle (Sampler edit, EQ, insert effects)
-// — into the library as a new VERSION: of the instrument it comes from ("save
-// over", nothing overwritten) or of a new instrument ("save as new"). The
-// library persists through audio.SetInstrumentLibrarySink (instruments.json /
-// localStorage), wired by the bootstraps.
+// Save As, the only save: the project owns COPIES of library documents, and Save As files a copy (document +
+// audio bundle) as a new VERSION, of its own instrument ("over", nothing overwritten) or a new one.
 
-// saveAsInstrument runs the Save As the dialog confirmed: the name of the
-// library instrument instID comes from saves over it, any other name makes a
-// new one (classifySaveAsName already refused another instrument's name). A
-// save that cannot be stored tells the user and changes nothing.
+// classifySaveAsName has already refused another instrument's name; a save that cannot be stored notifies and
+// changes nothing.
 func (dv *DrumView) saveAsInstrument(instID instrument.ID, displayName string) instrument.ID {
 	var id instrument.ID
 	if classifySaveAsName(displayName, instID).kind == saveAsOver {
@@ -36,13 +28,7 @@ func (dv *DrumView) saveAsInstrument(instID instrument.ID, displayName string) i
 	return id
 }
 
-// saveRecipeForInstrument saves instID's project copy over the library
-// instrument it comes from (audio.InstrumentLibraryIdentity: its Origin, else
-// its instance base): a new version of it,
-// carrying the instrument's current audio bundle. Every circuit opened later
-// plays it instead of the document the circuit carries for the same
-// instrument (audio.OpenCircuitInstrumentDocs). Returns the library id saved,
-// or "" when nothing could be saved.
+// Every circuit opened later plays this version instead of the document it carries. "" when nothing was saved.
 func saveRecipeForInstrument(instID instrument.ID) instrument.ID {
 	if instID == "" {
 		return ""
@@ -69,23 +55,12 @@ func saveRecipeForInstrument(instID instrument.ID) instrument.ID {
 	return libID
 }
 
-// SaveActiveRecipeAs saves the Synth tab's instrument as a new one (see
-// SaveActiveRecipeAsFor).
 func (dv *DrumView) SaveActiveRecipeAs(displayName string) instrument.ID {
 	return dv.SaveActiveRecipeAsFor(dv.synthTabActiveInstrument(), displayName)
 }
 
-// SaveActiveRecipeAsFor writes instID's project copy and audio bundle into the
-// library as the first version of a NEW user instrument (id =
-// audio.NewUserInstrumentID, content addressed), makes it playable and listed,
-// and repoints the project copy's Origin at it — so the row keeps its id (and
-// channel) while the dirty dot and the next Save As now refer to the new
-// instrument. The rows playing instID take the new name (the same
-// metadata-only override a rename writes, exported as the row name). One undo
-// step (the rename) reverts the copy's name and origin; the library entry
-// stays. A sample instrument's new instrument is a new user sample on the same
-// PCM. displayName "" keeps the "<name> (saved)" suggestion. Returns the new
-// library id, or "" when nothing was saved.
+// A new content-addressed user instrument; the copy's Origin is repointed so the row keeps its id and channel,
+// and the playing rows take the new name. One undo step reverts name and origin; the library entry stays.
 func (dv *DrumView) SaveActiveRecipeAsFor(instID instrument.ID, displayName string) instrument.ID {
 	if instID == "" {
 		return ""
@@ -124,9 +99,7 @@ func (dv *DrumView) SaveActiveRecipeAsFor(instID instrument.ID, displayName stri
 	return lib.ID
 }
 
-// saveSampleAsNew makes a sample instrument's Save As new: a new user sample
-// on the same (pristine) PCM, with the source's audio bundle, as its first
-// version; the rows that played the source play it. Nothing is baked.
+// A new user sample on the same pristine PCM with the source's bundle; nothing is baked.
 func (dv *DrumView) saveSampleAsNew(src instrument.ID, displayName string, b audio.AudioBundle) instrument.ID {
 	rec, ok := audio.UserSamplePCM(src)
 	if !ok {

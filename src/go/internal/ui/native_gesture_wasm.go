@@ -2,9 +2,7 @@
 
 package ui
 
-// platformSyncNativeRects clears each JS gesture registry and re-arms exactly
-// the gated set. Called only when the set changed (see syncNativeGestures), so
-// the clear+register churn cannot interrupt a steady-state gesture.
+// Called only when the set changed, so the clear+register churn never interrupts a steady gesture.
 func platformSyncNativeRects(rects []NativeRect) {
 	filePickerClearRects()
 	softKeyboardClearRects()

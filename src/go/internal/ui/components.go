@@ -8,8 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// drawEdgeLine is defined as a variable so tests can intercept edge rendering
-// and verify arrowhead behaviour.
+// A var so tests can intercept edge rendering.
 var drawEdgeLine = DrawLineCam
 
 // pixel helper is defined in widgets.go and reused here.
@@ -57,8 +56,6 @@ type SignalStyle struct {
 // Draw renders the signal at world coordinates with the given camera transform.
 func (s SignalStyle) Draw(dst *ebiten.Image, x, y float64, cam *ebiten.GeoM) {
 	size := float64(s.Radius) * 2
-	// Outer glow — radius multiplier sourced from DESIGN.md
-	// geometry.signal-glow-radius-multiplier.
 	var op ebiten.DrawImageOptions
 	glowSize := size * genGeomSignalGlowRadiusMultiplier
 	op.GeoM.Scale(glowSize, glowSize)
@@ -74,27 +71,9 @@ func (s SignalStyle) Draw(dst *ebiten.Image, x, y float64, cam *ebiten.GeoM) {
 	dst.DrawImage(pixel(s.Color), &op2)
 }
 
-// drawNodeBloom paints a soft, multi-ring "Vice-City" neon bloom in the node's
-// own instrument color, centered on (cx,cy) screen pixels, sized off the node's
-// screen radius rPx. The bloom is three concentric *filled* rounded rects drawn
-// back-to-front — widest/faintest first, tightest/brightest last — so the
-// alpha-blended falloff reads as a radial halo rather than a hard box. Each
-// ring uses an EXISTING alpha bucket via WithAlphaFromColor: AlphaFaint /
-// AlphaMedium / AlphaStrong. Even the pink/magenta instrument family reads
-// because the innermost ring lands at AlphaStrong (180).
-//
-// intensity (0..1) is the live node-fire animation level; it scales each ring's
-// alpha so the bloom decays naturally as the firing animation decays, and it
-// scales the outer-ring spread so a freshly-fired node blooms wider than a
-// fading one. The most-recently-fired node therefore carries the brightest,
-// widest bloom automatically (latest-hit emphasis).
-//
-// The two wider outer rings are gated on rPx >= 8 so tiny zoomed-out nodes
-// don't over-bloom — at small radii only the tight inner ring draws, preserving
-// a visible firing cue without a runaway box. The spread is capped so the
-// widest ring never extends more than ~7px past the node radius, keeping the
-// bloom inside the bound asserted by TestDesktopNodeHighlightReasonableSize
-// (<= 2*rPx+16 near the node).
+// Three filled rings back to front, so the falloff reads as a halo rather than a box; intensity scales alpha
+// and spread so the latest hit blooms brightest. Small nodes get the inner ring only; the spread stays under the
+// highlight-size bound.
 func drawNodeBloom(dst *ebiten.Image, cx, cy, rPx int, nodeColor color.Color, intensity float64) {
 	if dst == nil || nodeColor == nil {
 		return
@@ -108,9 +87,7 @@ func drawNodeBloom(dst *ebiten.Image, cx, cy, rPx int, nodeColor color.Color, in
 	if rPx < 1 {
 		rPx = 1
 	}
-	// Ring insets past the node radius (px). The widest ring (idx 0) spreads
-	// with intensity so a fresh hit blooms further than a fading one, capped at
-	// +7px (so width <= 2*rPx+14 < 2*rPx+16, inside the highlight-size bound).
+	// Capped at +7 px so the width stays under 2·rPx+16.
 	spread := int(math.Round(4 + 3*intensity)) // 4..7
 	insets := [3]int{spread, spread - 3, 1}
 	alphas := [3]uint8{
@@ -118,8 +95,7 @@ func drawNodeBloom(dst *ebiten.Image, cx, cy, rPx int, nodeColor color.Color, in
 		scaleAlpha(AlphaMedium, intensity),
 		scaleAlpha(AlphaStrong, intensity),
 	}
-	// Inner (brightest) ring always draws; the two wider halo rings are gated
-	// on a comfortable on-screen radius so tiny nodes don't over-bloom.
+	// Tiny nodes get only the inner ring, so they never over-bloom.
 	start := 2
 	if rPx >= 8 {
 		start = 0
@@ -140,21 +116,8 @@ func drawNodeBloom(dst *ebiten.Image, cx, cy, rPx int, nodeColor color.Color, in
 	}
 }
 
-// drawRectHoverGlow paints an own-color hover highlight that CONFORMS to the
-// component rect r for ANY aspect ratio — a tall thin line, a wide pill, or a
-// square. It assumes NO shape: every stroke derives from r itself, so the
-// highlight follows the component's real bounds instead of a centred blob (the
-// failure mode of drawNodeBloom on a non-square control). Composed of:
-//
-//   - a few concentric 1px outlines expanding outward from r with alpha falloff
-//     (an edge-hugging glow that traces r at every step),
-//   - a soft own-color fill over r's interior (covers the component body), and
-//   - a crisp own-color outline hugging r's edge.
-//
-// This is the shared hover-highlight primitive for every OWN-COLOR glow — grid
-// nodes, EQ band/HP/LP handles, sampler trim lines — so they all behave
-// identically for any shape. (drawNodeBloom is kept only for the tuned neon
-// FIRING bloom.) p (0..1) scales the whole effect.
+// The one own-color hover glow for any shape: every stroke derives from r, so it follows a thin line or a pill
+// instead of a centred blob. drawNodeBloom stays only for the firing bloom.
 func drawRectHoverGlow(dst *ebiten.Image, r image.Rectangle, col color.Color, p float64) {
 	if dst == nil || col == nil || r.Empty() || p <= 0 {
 		return
@@ -162,8 +125,6 @@ func drawRectHoverGlow(dst *ebiten.Image, r image.Rectangle, col color.Color, p 
 	if p > 1 {
 		p = 1
 	}
-	// Outward glow — concentric 1px outlines expanding from r, brightest at the
-	// edge and fading with distance. Each traces r's actual shape.
 	const spread = 4
 	for i := spread; i >= 1; i-- {
 		frac := float64(spread-i+1) / float64(spread+1) // nearer the edge → brighter
@@ -203,8 +164,7 @@ func (s EdgeStyle) Draw(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *ebiten.G
 	s.DrawProgress(dst, x1, y1, x2, y2, cam, 1)
 }
 
-// DrawProgress renders a portion of the edge according to progress t
-// (0..1). When t reaches 1 the arrow head is drawn.
+// The arrowhead draws at t = 1.
 func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *ebiten.GeoM, t float64) {
 	if t <= 0 {
 		return
@@ -234,32 +194,14 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 type ButtonStyle struct {
 	Fill   color.Color
 	Border color.Color
-	// live, when set, is consulted at draw time instead of Fill so a style
-	// COPIED at construction (`b.Style = InstButtonStyle`, profile fields)
-	// still follows a runtime theme applied later. ButtonStyleFromSpec and
-	// the hand-composed theme.go styles set it; Fill stays populated for
-	// callers that read the value directly. A small comparable struct (not
-	// a func) so styles stay `==`-comparable (menus test Style identity).
+	// Re-read at draw time so a style COPIED at construction follows a later runtime theme; a comparable
+	// struct, not a func, so styles stay ==-comparable.
 	live liveFill
-	// Radius, when > 0, draws the button as a rounded rectangle using
-	// drawRoundedButton instead of the square drawButton path. Use a
-	// RadiusSM / RadiusMD token from touch_sizes.go. Zero preserves the
-	// historical square chrome so all existing ButtonStyle values are
-	// unaffected by this field addition.
+	// 0 keeps the square chrome existing styles rely on.
 	Radius int
 }
 
-// ButtonStyleFromSpec builds a ButtonStyle from a generated ComponentSpec
-// looked up by ID. Used by theme.go to source the legacy *Style vars from
-// DESIGN.md instead of hand-coded color literals — every theme.go var that
-// has a corresponding ComponentID can flip its initialiser to this one
-// call. Behaviour stays byte-equivalent (TestComponentSpecsDrift verifies
-// the spec values match the original literals).
-//
-// Returning a value (not a pointer) preserves the historical struct-copy
-// semantics of theme.go assignments. The Border color flows through as
-// the BorderRef.Resolve() result — concrete NRGBA so existing call sites
-// receive the same type they did before.
+// Returns a value to keep theme.go's struct-copy semantics; Border is the concrete resolved NRGBA.
 func ButtonStyleFromSpec(id ComponentID) ButtonStyle {
 	spec := Spec(id)
 	return ButtonStyle{Fill: spec.Fill, Border: spec.Border.Resolve(), live: liveFill{kind: liveFillSpec, spec: id}}
@@ -274,8 +216,6 @@ const (
 	liveFillAccent                     // colAccent (mobile primary action)
 )
 
-// liveFill is the comparable "how to re-read my fill" tag carried by
-// ButtonStyle / TextInputStyle copies.
 type liveFill struct {
 	kind liveFillKind
 	spec ComponentID
@@ -301,24 +241,13 @@ func (s ButtonStyle) withLive(kind liveFillKind) ButtonStyle {
 	return s
 }
 
-// Draw renders the button rectangle. When Radius > 0 the button is drawn as a
-// rounded rectangle via drawRoundedButton; otherwise delegates to renderLegacy
-// (the chrome-rendering primitive in render.go) so all chrome flows through a
-// single path. Hover/press deltas mirror the historical hand-coded values
-// that Phase 2 captured byte-equivalent in DESIGN.md `button-secondary`
-// (verified by TestComponentSpecsDrift).
 func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	// Flat-tonal (2026-07-25): one filled body, no border. s.Border is kept on
-	// the struct (call sites and specs still set it) but is no longer painted —
-	// a control's silhouette is the tone step against its container. Hover and
-	// press remain the historical +12 / -20 brightness deltas so the
-	// interaction FEEL is unchanged; only the geometry is.
-	// See DESIGN.md "Elevation & Depth".
+	// Flat-tonal: one filled body; s.Border is kept on the struct but no longer painted. The +12/-20 deltas keep
+	// the interaction feel unchanged.
 	drawFlatButtonBody(dst, r, flatStateFill(s.fill(), ComponentState{Pressed: pressed, Hovered: hovered}), fitRadius(s.Radius, r))
 }
 
-// DrawAnimated draws the button with a shrink animation controlled by anim
-// (0..1). anim is typically set to 1 on click and decays toward 0.
+// anim is typically 1 on click, decaying toward 0.
 func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed bool, anim float64) {
 	if anim < 0 {
 		anim = 0
@@ -328,9 +257,6 @@ func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed 
 	drawButton(dst, animRect, s.fill(), s.Border, pressed, Profile().DrawTopEdgeHighlight)
 }
 
-// ColorSwatchStyle draws a solid color swatch button whose fill is provided
-// dynamically via a function. This is used for per-row color selection where
-// each button reflects the current row color.
 type ColorSwatchStyle struct {
 	Color  func() color.Color
 	Border color.Color
@@ -343,8 +269,7 @@ func (s ColorSwatchStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, ho
 			col = c
 		}
 	}
-	// Swatch hover delta is +20 (vs ButtonStyle's +12) — historical
-	// chrome decision preserved verbatim. Border has no hover delta.
+	// +20, not ButtonStyle's +12, deliberately; the border has no hover delta.
 	renderLegacy(dst, r, col, s.Border,
 		InteractionDelta{FillDelta: 20},
 		InteractionDelta{},
@@ -356,17 +281,13 @@ type TextInputStyle struct {
 	Fill   color.Color
 	Border color.Color
 	Cursor color.Color
-	// live: re-resolve the fill at draw time for styles copied at
-	// construction (see ButtonStyle.live).
+	// Re-resolved at draw time, as ButtonStyle.live.
 	live liveFill
 }
 
 func (s TextInputStyle) fill() color.Color { return s.live.resolve(s.Fill) }
 
-// TextInputStyleFromSpec builds a TextInputStyle from a generated
-// ComponentSpec. Cursor color is hand-passed because cursor-color isn't
-// a per-component design token (it's universally white across inputs);
-// future generator support could add a `cursorColor:` schema field.
+// The cursor colour is not a per-component token (it is white everywhere), so it is passed in.
 func TextInputStyleFromSpec(id ComponentID, cursor color.Color) TextInputStyle {
 	spec := Spec(id)
 	return TextInputStyle{
@@ -377,24 +298,13 @@ func TextInputStyleFromSpec(id ComponentID, cursor color.Color) TextInputStyle {
 	}
 }
 
-// Draw renders the text box background. The pressed flag represents focus
-// in the legacy API; we map it to ComponentState.Pressed for the
-// renderLegacy primitive (same drawButton effect). No hover/focus deltas
-// are applied in the static path — only DrawAnimated handles those.
+// No hover/focus deltas here; only DrawAnimated applies them.
 func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	// Flat-tonal: an input shares the CONTROL body (the input-field spec
-	// fill, the same surface-2 tone as every keycap) so a label box and the
-	// stepper buttons beside it read as one component family. The focus ring
-	// (drawn by DrawAnimated) is what marks it as a slot you type into.
-	// See DESIGN.md "Elevation & Depth". Guard:
-	// TestVolumeButtonsAndInputsShareKeycapBody.
+	// Shares the control body (the surface-2 tone) so a label box and its stepper buttons read as one family; the
+	// focus ring marks it as a slot you type into.
 	drawFlatButtonBody(dst, r, s.fill(), fitRadius(RadiusControl, r))
 }
 
-// DrawAnimated draws the text box with a subtle focus animation. The
-// focus delta (+30 fill / +80 border) and accent ring are produced by
-// renderLegacy; the inset animation rectangle is computed here and
-// passed through.
 func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focused bool, anim float64) {
 	if anim < 0 {
 		anim = 0
@@ -405,9 +315,7 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	}
 	inset := int(anim * float64(minDim) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	// Flat-tonal: the shared control body (spec fill), brightened while
-	// focused. The hot-pink focus ring is the one outline the system still
-	// draws.
+	// The focus ring is the one outline the system still draws.
 	fill := s.fill()
 	if focused {
 		fill = adjustColor(fill, 30)
@@ -426,8 +334,7 @@ type DrumCellStyle struct {
 	Border    color.Color
 }
 
-// narrowCellThreshold is the cell width (px) at or below which borders are
-// suppressed to keep active cells visible at high subdivisions.
+// Borders vanish at or below this so active cells stay visible at high subdivisions.
 const narrowCellThreshold = 6
 
 // Draw renders a drum cell considering its state. onCol overrides the default On color.
@@ -449,8 +356,7 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 	drawRect(dst, r, fill, true)
 
 	if !narrow {
-		// Normal path: flat fill + full border (no lit top strip — DESIGN.md
-		// Rule 2, nothing is 3D).
+		// No lit top strip: nothing is 3D.
 		drawRect(dst, r, s.Border, false)
 	} else if on || highlighted {
 		// Narrow active cell: right-edge separator only (1px vs 2px)

@@ -6,29 +6,20 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// undoEntry is one history step: a label for the UI + the document snapshot
-// to restore to (the BEFORE state of the transition this entry represents).
+// snapshot is the BEFORE state of the transition this entry represents.
 type undoEntry struct {
 	label    string
 	snapshot []byte
-	// circuit is the session state that was current with snapshot but is not
-	// part of the document bytes — the open circuit's instrument documents
-	// (Reset's target), which only a circuit OPEN changes. Restored alongside
-	// the snapshot so undoing a template load also resets to the previous
-	// circuit's tones.
+	// Session state outside the document bytes: the open circuit's instrument documents, which only an OPEN changes.
+	// Restored too, so undoing a template load also restores the previous circuit's tones.
 	circuit any
 }
 
-// UndoManager is a session-only, bounded snapshot journal. It is decoupled
-// from the mutation sites: it knows only how to capture the current document
-// (Capture), how to restore one (Restore), and receives a synchronous
-// record() call at each deterministic commit.
+// Session-only and bounded; it knows only Capture, Restore and the record() call at each commit.
 type UndoManager struct {
-	capture   func() []byte
-	restore   func([]byte) error
-	committed []byte
-	// committedCircuit is the session-side companion of committed (see
-	// undoEntry.circuit); captured/restored through SetCircuitState's hooks.
+	capture          func() []byte
+	restore          func([]byte) error
+	committed        []byte
 	committedCircuit any
 	captureCircuit   func() any
 	restoreCircuit   func(any)
@@ -37,18 +28,14 @@ type UndoManager struct {
 	maxDepth         int
 	restoring        bool
 
-	// Grouping: a compound user gesture (e.g. deleting a mid-circuit node, which
-	// removes the node, its edges, cascades a row, and reconnects neighbours)
-	// emits several recorded events but must collapse into a SINGLE atomic undo
-	// step. beginGroup/endGroup bracket such a gesture; record() calls in between
-	// are deferred and finalized as one step at the outermost endGroup.
+	// A compound gesture (deleting a mid-circuit node: node, edges, row cascade, reconnect) records several events but
+	// must undo as ONE step; record() calls inside the group are finalized at the outermost endGroup.
 	groupDepth int
 	groupLabel string
 	groupDirty bool
 }
 
-// NewUndoManager constructs a manager. capture must return a deterministic
-// byte snapshot of the document; restore must apply one.
+// capture must be deterministic.
 func NewUndoManager(capture func() []byte, restore func([]byte) error) *UndoManager {
 	return &UndoManager{
 		capture:   capture,
@@ -58,9 +45,7 @@ func NewUndoManager(capture func() []byte, restore func([]byte) error) *UndoMana
 	}
 }
 
-// SetCircuitState installs the capture/restore pair for the session state that
-// travels with each snapshot without being part of it (undoEntry.circuit), and
-// captures the current value as the committed one.
+// Captures the current value as committed.
 func (m *UndoManager) SetCircuitState(capture func() any, restore func(any)) {
 	m.captureCircuit, m.restoreCircuit = capture, restore
 	m.committedCircuit = m.circuitNow()
@@ -80,16 +65,13 @@ func (m *UndoManager) applyCircuit(v any) {
 	m.committedCircuit = v
 }
 
-// record snapshots the current (post-change) document and, if it differs from
-// the committed baseline, pushes the previous baseline as an undo step. No-op
-// gestures (snapshot == baseline) are dropped. Clears redo on a real change.
+// No-op gestures (snapshot == baseline) are dropped; a real change clears redo.
 func (m *UndoManager) record(label string) {
 	if m.restoring {
 		return
 	}
 	if m.groupDepth > 0 {
-		// Inside a compound gesture: defer the snapshot to endGroup so the whole
-		// gesture is one atomic step. Remember the first label as a fallback.
+		// Deferred to endGroup; the first label is the fallback.
 		m.groupDirty = true
 		if m.groupLabel == "" {
 			m.groupLabel = label
@@ -99,20 +81,14 @@ func (m *UndoManager) record(label string) {
 	m.commitNow(label)
 }
 
-// commitNow captures the current document and, if it differs from the committed
-// baseline, pushes one undo step. Shared by record() (immediate, no group) and
-// endGroup() (deferred, end of a compound gesture).
 func (m *UndoManager) commitNow(label string) {
 	snap := m.capture()
 	if len(snap) == 0 {
-		// Capture failed (e.g. exportBytes errored/panicked on a transient or
-		// partially-built document). Never record a bogus step or corrupt the
-		// baseline — just skip this commit.
+		// A failed capture (a half-built document) must never record a bogus step or corrupt the baseline.
 		return
 	}
 	if len(m.committed) == 0 {
-		// No valid baseline yet (a prior capture failed). Adopt this snapshot
-		// as the baseline without recording a step to undo "to nothing".
+		// No baseline yet: adopt this one rather than record a step that undoes "to nothing".
 		m.committed = snap
 		m.committedCircuit = m.circuitNow()
 		return
@@ -129,10 +105,7 @@ func (m *UndoManager) commitNow(label string) {
 	m.redo = m.redo[:0]
 }
 
-// beginGroup opens a coalescing scope. record() calls until the matching
-// endGroup are deferred into one atomic step. Nestable (depth-counted); only the
-// outermost endGroup finalizes. The step's label is the first non-empty label
-// seen — an explicit beginGroup label, else the first sub-action's label.
+// Nestable; only the outermost endGroup finalizes. The label is the first non-empty one seen.
 func (m *UndoManager) beginGroup(label string) {
 	if m.groupDepth == 0 {
 		m.groupDirty = false
@@ -144,9 +117,7 @@ func (m *UndoManager) beginGroup(label string) {
 	}
 }
 
-// endGroup closes a coalescing scope. On the outermost close it captures the
-// final document once (only when a record happened — empty frames stay cheap and
-// never call capture) and pushes a single step.
+// Captures once, and only when something recorded, so empty frames never call capture.
 func (m *UndoManager) endGroup() {
 	if m.groupDepth == 0 {
 		return
@@ -207,8 +178,7 @@ func (m *UndoManager) Redo() {
 	m.applyCircuit(e.circuit)
 }
 
-// OnExternalLoad clears history (called by a real user import/scene-apply).
-// No-op while restoring so an undo-driven re-import does not wipe the stacks.
+// A no-op while restoring, so an undo re-import keeps the stacks.
 func (m *UndoManager) OnExternalLoad() {
 	if m.restoring {
 		return
@@ -219,13 +189,8 @@ func (m *UndoManager) OnExternalLoad() {
 	m.committedCircuit = m.circuitNow()
 }
 
-// RecordExternalLoad records a document swap (template / file load) as a SINGLE
-// undo step instead of clearing history, so one Undo restores the pre-load
-// circuit. The pre-load document is still the committed baseline at call time
-// (in-import mutations are suppressed by the g.importing capture guard), so
-// commitNow pushes it as the step and adopts the post-load document as the new
-// baseline. No-op while restoring — an undo-driven re-import must not push a
-// bogus step or perturb the stacks (mirrors OnExternalLoad's guard).
+// A document swap is ONE step, so one Undo restores the pre-load circuit (still the baseline, since the import
+// suppresses its own captures). A no-op while restoring.
 func (m *UndoManager) RecordExternalLoad(label string) {
 	if m.restoring {
 		return
@@ -233,8 +198,7 @@ func (m *UndoManager) RecordExternalLoad(label string) {
 	m.commitNow(label)
 }
 
-// undoObserver is the process-wide sink for committed-mutation taps. One Game
-// per process, so a package global is safe (mirrors input.go's var pattern).
+// One Game per process, so a package global is safe.
 var undoObserver interface {
 	recordKind(label string)
 	beginGroup(label string)
@@ -249,12 +213,7 @@ func (o undoManagerObserver) recordKind(label string) { o.m.record(label) }
 func (o undoManagerObserver) beginGroup(label string) { o.m.beginGroup(label) }
 func (o undoManagerObserver) endGroup()               { o.m.endGroup() }
 
-// beginUndoGroup / endUndoGroup are the free-function taps that wrap a compound
-// user gesture so all its recorded sub-mutations collapse into one atomic undo
-// step. No-ops when no observer is registered. Always pair them with defer:
-//
-//	beginUndoGroup("delete node")
-//	defer endUndoGroup()
+// No-ops without an observer. Always pair with defer: beginUndoGroup("delete node"); defer endUndoGroup().
 func beginUndoGroup(label string) {
 	if undoObserver != nil {
 		undoObserver.beginGroup(label)
@@ -267,9 +226,7 @@ func endUndoGroup() {
 	}
 }
 
-// documentScopeKinds is the recorded-set: committed document-state kinds that
-// produce an undo step. It is DERIVED from hooks.ActionRegistry (the single
-// source of truth) — do not hand-edit. Pinned by TestUndoableSetMatchesRegistry.
+// DERIVED from hooks.ActionRegistry, never hand-edited.
 var documentScopeKinds = buildDocumentScopeKinds()
 
 func buildDocumentScopeKinds() map[hooks.Kind]string {
@@ -285,8 +242,7 @@ func buildDocumentScopeKinds() map[hooks.Kind]string {
 // undoLabelFor returns the UI label for a recorded kind ("" if not recorded).
 func undoLabelFor(k hooks.Kind) string { return documentScopeKinds[k] }
 
-// recordUndo is the synchronous tap. Free-function form so emit helpers can
-// call it without a *Game. No-op when kind is out of the recorded-set.
+// A free function so emit helpers need no *Game; a no-op outside the recorded set.
 func recordUndo(k hooks.Kind) {
 	label, ok := documentScopeKinds[k]
 	if !ok || undoObserver == nil {
@@ -295,6 +251,4 @@ func recordUndo(k hooks.Kind) {
 	undoObserver.recordKind(label)
 }
 
-// recordUndoStep is the DrumView-scoped convenience wrapper used at UI commit
-// sites that already hold a *DrumView.
 func (dv *DrumView) recordUndoStep(k hooks.Kind) { recordUndo(k) }

@@ -5,14 +5,8 @@ import (
 	"reflect"
 )
 
-// jsSafe returns v with every value of a NAMED basic type (instrument.ID,
-// a typed int enum, …) replaced by the plain type of the same kind, and every
-// struct with a MarshalText (channel.ID) by its text, walking
-// []any and map[string]any. syscall/js.ValueOf accepts only the plain types
-// and panics on a named one; the compiler cannot see that because ValueOf
-// takes any. Every JS export returns through jsFn, which passes its result
-// through here. A container is copied only when one of its elements changes,
-// so the common case (nothing named) allocates nothing.
+// syscall/js.ValueOf panics on a NAMED basic type (instrument.ID, an int enum), and takes any, so the compiler cannot
+// see it: named basics become plain, MarshalText structs their text. Copies a container only when an element changes.
 func jsSafe(v any) any {
 	out, _ := jsSafeValue(v)
 	return out

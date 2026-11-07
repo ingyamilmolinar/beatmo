@@ -1,19 +1,12 @@
 package ui
 
-// DeferredTap encapsulates the two-phase tap pattern used on mobile: position
-// is stored on touch begin, then fired on touch end if no scroll was committed.
-// This prevents accidental button presses during scroll gestures.
-//
-// Five instances replace 15 individual fields on DrumView (contextMenu,
-// overflow, instMenu, eqCh, subdiv).
+// Stored on touch begin, fired on touch end only if no scroll was committed, so a scroll never presses a button.
 type DeferredTap struct {
 	active bool
 	x, y   int
 }
 
-// Begin records a tap start at (x, y). Returns false (and does nothing) if
-// suppressClicksUntilRelease is set, ensuring uniform guard behavior across
-// all menus.
+// Refuses while suppressClicksUntilRelease is set, the same guard for every menu.
 func (dt *DeferredTap) Begin(x, y int) bool {
 	if suppressClicksUntilRelease {
 		return false
@@ -23,8 +16,6 @@ func (dt *DeferredTap) Begin(x, y int) bool {
 	return true
 }
 
-// End fires fireFn with the stored position if a tap was in progress, then
-// clears the state. Returns true if a tap was pending.
 func (dt *DeferredTap) End(fireFn func(x, y int)) bool {
 	if !dt.active {
 		return false

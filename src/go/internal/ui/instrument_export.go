@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
-// errInstrumentRow is returned when a bundle build/apply targets a row index
-// outside the current row set.
 var errInstrumentRow = errors.New("instrument bundle: row index out of range")
 
 // wavRegistry lazily returns the DrumView's WAV version registry.
@@ -20,14 +18,8 @@ func (dv *DrumView) wavRegistry() *audio.WavRegistry {
 	return dv.wavReg
 }
 
-// BuildInstrumentBundle assembles a portable, config-only bundle for ONE
-// instrument (the row at rowIdx). It reconstructs a shareable recipe (base +
-// seed), normalizes the row's insert-effects into the bundle's effect library,
-// carries the optional per-instrument EQ inline, and — for a user WAV — records
-// a reference (name + content hash + source locations), never the PCM.
-//
-// The result is a 1-instrument bundle; the same builder over a set produces a
-// multi-instrument "pack" (identical schema, shared effects library).
+// Config only: a user WAV becomes a reference (name, content hash, sources), never PCM. The same builder
+// over a set makes a multi-instrument pack.
 func (dv *DrumView) BuildInstrumentBundle(rowIdx int) (audio.InstrumentBundle, error) {
 	if rowIdx < 0 || rowIdx >= len(dv.Rows) {
 		return audio.InstrumentBundle{}, errInstrumentRow
@@ -49,18 +41,14 @@ func (dv *DrumView) BuildInstrumentBundle(rowIdx int) (audio.InstrumentBundle, e
 		doc.SampleEdit = e.Fields()
 	}
 
-	// User WAV → a hash-pinned reference (NO PCM). The pin is the
-	// content hash of the CANONICAL WAV bytes (the stored PCM re-encoded through
-	// the recording encoder) — a deterministic, decoder-independent "file
-	// version". Sources point at where those bytes can be re-fetched.
+	// The pin is the hash of the CANONICAL WAV bytes (stored PCM re-encoded), a decoder-independent version.
 	if audio.IsUserSample(instID) {
 		if rec, ok := audio.UserSamplePCM(instID); ok {
 			if canonical, err := wavgen.EncodeWAV(rec.PCM, rec.SampleRate); err == nil {
 				sha := audio.Sha256Hex(canonical)
 				v := dv.wavRegistry().Register(string(instID), sha)
 				ref := &audio.WavRef{Name: string(instID) + ".wav", Sha256: sha, Version: v.Version}
-				// The sample store serves this WAV keyed by instrument id on both
-				// platforms (its PCM re-encodes to the same canonical bytes).
+				// Its PCM re-encodes to the same canonical bytes on both platforms.
 				ref.Sources = append(ref.Sources, audio.WavSource{Kind: audio.WavSourceLocalStorage, Ref: string(instID)})
 				doc.WavRef = ref
 			}
@@ -83,8 +71,7 @@ func (dv *DrumView) BuildInstrumentBundle(rowIdx int) (audio.InstrumentBundle, e
 	return bundle, nil
 }
 
-// buildInstrumentEQ snapshots a row's EQ into a portable struct, or nil when the
-// EQ is flat and all filters are off (nothing worth carrying).
+// nil when flat with filters off.
 func buildInstrumentEQ(row *DrumRow) *audio.InstrumentEQ {
 	src := rowEQ(row)
 	active := src.HPF || src.LPF

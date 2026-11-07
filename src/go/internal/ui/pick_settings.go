@@ -11,15 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// pick_settings.go — choosing an instrument never drops or silently changes
-// settings (spec 2026-10-31 §2.9; residency spec §5.2's pick table). A row's
-// settings are its instrument's audio bundle; the picked instrument brings its
-// own (its circuit bundle when another row plays it, else its library one):
-//
-//	row has none                        → the instrument's
-//	instrument has none, or the same    → the row's carry over
-//	both set and different, or keeping  → the user is asked; a cancel
-//	the row's would change another row    changes nothing
+// Picking an instrument never drops or silently changes settings: the row's carry over when the instrument has
+// none (or the same), the instrument's apply when the row has none, and otherwise the user is asked.
 
 // settingsChoice is what choosing an instrument for a row does to settings.
 type settingsChoice struct {
@@ -43,16 +36,13 @@ func (dv *DrumView) settingsChoiceFor(row int, id instrument.ID) settingsChoice 
 	return c.withAsk()
 }
 
-// withAsk sets ask: the row has settings that differ from the instrument's,
-// and the instrument has its own, or another row plays it.
 func (c settingsChoice) withAsk() settingsChoice {
 	differ := c.row.Digest() != c.inst.Digest()
 	c.ask = !c.row.IsNeutral() && differ && (!c.inst.IsNeutral() || len(c.others) > 0)
 	return c
 }
 
-// settingsFor is the bundle id plays with after the choice: the row's
-// (keep) or the instrument's. Without a question, the row's when it has any.
+// Without a question, the row's when it has any.
 func (c settingsChoice) settingsFor(keep bool) audio.AudioBundle {
 	if keep && !c.row.IsNeutral() {
 		return c.row
@@ -68,10 +58,7 @@ func (c settingsChoice) keepLabel() string {
 	return i18n.Tf(i18n.KeyAlsoChangesRowFmt, strconv.Itoa(c.others[0]+1))
 }
 
-// pickInstrument switches row to id, asking first when the row's settings
-// and the instrument's would conflict (until the answer, the row keeps
-// playing what it plays). The pick and the answer are one undo step: both
-// land in the same frame.
+// Until the answer the row keeps playing what it plays; the pick and the answer land in one frame, one undo step.
 func (dv *DrumView) pickInstrument(row int, id instrument.ID) {
 	if row < 0 || row >= len(dv.Rows) || id == "" || dv.Rows[row].Instrument == id {
 		return
@@ -92,11 +79,8 @@ func (dv *DrumView) pickInstrument(row int, id instrument.ID) {
 	}, nil)
 }
 
-// applyKitChoosing applies k through the same choice, per kit instrument (one
-// channel, one set of settings): the rows moving onto it bring their settings
-// — the lowest such row's when they differ, and then the question names whose
-// it keeps and which row it changes. When any instrument would need the
-// question, ONE question covers the whole swap.
+// Per kit instrument (one channel, one set of settings): rows moving onto it bring theirs, the lowest row's
+// when they differ. ONE question covers the whole swap.
 func (dv *DrumView) applyKitChoosing(k audio.Kit) int {
 	plan := audio.KitPlan(k, kitRowBinder{dv: dv})
 	byTarget := map[instrument.ID][]int{}

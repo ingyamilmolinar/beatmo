@@ -10,8 +10,7 @@ import (
 )
 
 func init() {
-	// flushGoCoverage() returns {meta: base64, counters: base64} or null
-	// if the binary was not built with -cover.
+	// null when the binary was not built with -cover.
 	js.Global().Set("flushGoCoverage", jsFn(func(args jsArgs) any {
 		var meta bytes.Buffer
 		if err := coverage.WriteMeta(&meta); err != nil {

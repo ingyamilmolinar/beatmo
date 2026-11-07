@@ -13,21 +13,8 @@ const (
 	schedSmallLead  = 0.003 // 3ms
 )
 
-// ScheduleMetricsSnapshot is a point-in-time snapshot of the three-stage
-// audio scheduling pipeline:
-//
-//	Stage A — sequencer-fire-late: how late seqScheduleTime fires a beat
-//	          relative to its ideal wall-clock moment (real → scheduler).
-//	Stage B — bridge latency: from audio request enqueue (req.enqAt) to
-//	          audioLoop dispatch (scheduler → audio bridge).
-//	Stage C — schedule lead: lead = when - audioNow, the cushion between
-//	          dispatch and the buffer's scheduled fire time (audio bridge
-//	          → audio output). Overdue events (lead < 0) accumulate as lag.
-//
-// For each stage we expose count, P50/P90/P99/max, and StdDev as a jitter
-// proxy. Browser audio.js mirrors stage C only; stages A and B are Go-side
-// since the sequencer + audio queue both live in the Go runtime even
-// under WASM.
+// Stage A: how late the sequencer fires a beat. B: enqueue → audioLoop dispatch. C: lead = when - audioNow
+// (negative = lag). audio.js mirrors only C; A and B live in Go even on WASM.
 type ScheduleMetricsSnapshot struct {
 	Count          int64 `json:"count"`
 	Overdue        int64 `json:"overdue"`
@@ -71,18 +58,10 @@ type ScheduleMetricsSnapshot struct {
 	EmitP99    float64 `json:"emitP99"`    // P99 of |drift|
 	EmitStdDev float64 `json:"emitStdDev"` // stddev of |drift|
 
-	// End-to-end latency = SeqFireLate + Bridge + max(0, -Lead).
-	// Sampled by combining contemporaneous observations; we approximate
-	// by summing per-stage P99s. Reported as a derived field so tests can
-	// gate against a single worst-case ceiling.
+	// The sum of per-stage P99s: an over-estimate, conservative for a single ceiling gate.
 	E2EP99 float64 `json:"e2eP99"`
 }
 
-// scheduleMetrics tracks the three-stage audio scheduling pipeline on
-// desktop and under WASM. The browser's scheduleMetrics object in
-// audio.js mirrors Stage C only; stages A and B are owned here because
-// the sequencer goroutine and the audio dispatch loop both live in Go
-// even when targeting wasm.
 type scheduleMetrics struct {
 	mu sync.Mutex
 
@@ -122,25 +101,17 @@ type scheduleMetrics struct {
 	emitAbsMax   float64
 	emitSamples  []float64 // |drift| reservoir for percentile
 
-	// sorted is Snapshot's scratch copy of one reservoir: each reservoir is
-	// sorted ONCE per Snapshot and every quantile read off it. Snapshot runs
-	// every frame (parityTimingCheck) and the audio lane keeps the lead
-	// reservoir full (~2000 observations/s under edits): a copy + sort per
-	// quantile was three sorts of 2048 samples per stage per frame.
+	// Each reservoir is sorted ONCE per Snapshot: per-quantile copy+sort was three 2048-sample sorts per stage per frame.
 	sorted []float64
 
-	// rev counts mutations; Snapshot returns snap while snapRev == rev. A
-	// frame with no new observation (most of them) re-sorted every reservoir
-	// for an identical snapshot.
+	// Snapshot returns the cached snap while nothing new was observed, most frames.
 	rev      uint64
 	snapRev  uint64
 	haveSnap bool
 	snap     ScheduleMetricsSnapshot
 }
 
-// Observe records a Stage C scheduling event (audio dispatch → fire).
-// audioNow is the current audio clock; when is the scheduled playback
-// time. Both in seconds.
+// Stage C; seconds on the audio clock.
 func (m *scheduleMetrics) Observe(audioNow, when float64) {
 	lead := when - audioNow
 	if math.IsInf(lead, 0) || math.IsNaN(lead) {
@@ -188,9 +159,7 @@ func (m *scheduleMetrics) Observe(audioNow, when float64) {
 	pushSample(&m.leadSamples, lead)
 }
 
-// ObserveBridge records a Stage B observation. dtSec is the elapsed
-// wall-clock seconds between sequencer enqueue (req.enqAt) and the
-// audioLoop dispatch site.
+// Stage B: wall seconds from req.enqAt to dispatch.
 func (m *scheduleMetrics) ObserveBridge(dtSec float64) {
 	if math.IsNaN(dtSec) || math.IsInf(dtSec, 0) || dtSec < 0 {
 		return
@@ -207,10 +176,7 @@ func (m *scheduleMetrics) ObserveBridge(dtSec float64) {
 	pushSample(&m.bridgeSamples, dtSec)
 }
 
-// ObserveSeqFireLate records a Stage A observation. lateSec is the
-// wall-clock seconds by which seqScheduleTime fired a beat after the
-// beat's ideal target moment. Always non-negative because seqScheduleTime
-// only fires once target ≥ idx.
+// Stage A; never negative, since seqScheduleTime only fires once target ≥ idx.
 func (m *scheduleMetrics) ObserveSeqFireLate(lateSec float64) {
 	if math.IsNaN(lateSec) || math.IsInf(lateSec, 0) {
 		return
@@ -230,11 +196,7 @@ func (m *scheduleMetrics) ObserveSeqFireLate(lateSec float64) {
 	pushSample(&m.seqFireSamples, lateSec)
 }
 
-// ObserveEmitDrift records a Stage D observation: driftSec is the signed
-// wall-clock seconds between a beat's ideal scheduled moment and the actual
-// audio sample emission (emittedAt - idealWhen). Signed drift feeds the
-// systematic-bias mean; |drift| feeds the tail/max/stddev so symmetric
-// jitter cannot cancel out.
+// Stage D, signed: the mean shows systematic bias, |drift| feeds the tail so symmetric jitter cannot cancel.
 func (m *scheduleMetrics) ObserveEmitDrift(driftSec float64) {
 	if math.IsNaN(driftSec) || math.IsInf(driftSec, 0) {
 		return
@@ -253,22 +215,8 @@ func (m *scheduleMetrics) ObserveEmitDrift(driftSec float64) {
 	pushSample(&m.emitSamples, a)
 }
 
-// ResetPeaks zeroes only the per-stage session-monotonic MAX fields
-// (seqFireMax, maxLag, bridgeMax, emitAbsMax) — counts, sums, and the
-// percentile reservoirs are left untouched so mean/P99/stddev keep
-// integrating over their existing window.
-//
-// Called from bumpParityGen (game_mutation_gate.go) on every structural
-// mutation (node/edge/rule/group/BPM/length/insert-fx — every path that
-// routes through the mutation gate) so a spike latched by an edit-induced
-// scheduling stall — either recorded just before the edit, or slipping
-// through DURING the edit before the grace-window observation guards in
-// game_sequencer_schedule.go / game_audio_loop.go take effect — can never
-// survive to breach evalTimingStage's absMax dropout check (which fires
-// regardless of MinSamples) after grace expires. This is the deterministic
-// half of the C1 fix; the grace-window observation guards are the
-// preventive half. See design §3.4 ("universal suppression across all
-// stages") in docs/superpowers/specs/2026-07-10-parity-timing-sync-design.md.
+// Called on every structural mutation, so a spike latched by an edit-induced stall can never breach the absMax
+// dropout check after grace expires. Counts, sums and reservoirs keep integrating.
 func (m *scheduleMetrics) ResetPeaks() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -353,13 +301,8 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		s.MaxLead = m.maxLead
 		s.AvgLead = m.sumLead / float64(m.count)
 		s.LeadStdDev = stddev(m.sumLead, m.sumLeadSq, m.count)
-		// Lag statistics are normalized over ALL dispatches in the window, not
-		// just the overdue ones. sumLag/len(lagSamples) is the conditional
-		// "mean lateness of the late beats" — under that reading a SINGLE 4ms
-		// blip in a 65-dispatch window reported AvgLag=LagP99=4ms and breached
-		// the 0.5ms MeanMax bound written for sustained drift (300 BPM bench
-		// crash, 2026-07-13). On-time dispatches contribute lag 0; the isolated
-		// blip belongs to MaxLag (dropout), which the emit cross-check governs.
+		// Over ALL dispatches: the mean over late beats alone made one 4 ms blip breach the 0.5 ms bound meant for
+		// sustained drift. An isolated blip belongs to MaxLag.
 		s.AvgLag = m.sumLag / float64(m.count)
 		lead := m.sortSamples(m.leadSamples)
 		s.LeadP50 = sortedQuantile(lead, 0.50)
@@ -410,9 +353,7 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		s.EmitP99 = math.NaN()
 	}
 
-	// End-to-end P99: sum the per-stage P99s plus any overdue lag. This
-	// over-estimates (independent stages don't share their P99 sample)
-	// but is conservative for ceiling gating.
+	// Over-estimates (stages do not share their P99 sample), conservative for ceiling gating.
 	if m.seqFireCount > 0 && m.bridgeCount > 0 && m.count > 0 {
 		s.E2EP99 = s.SeqFireP99 + s.BridgeP99
 		if !math.IsNaN(s.LagP99) {
@@ -426,8 +367,7 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 	return s
 }
 
-// stddev returns the sample stddev given running sum, sum-of-squares, and n.
-// Returns NaN for n < 2.
+// NaN for n < 2.
 func stddev(sum, sumSq float64, n int64) float64 {
 	if n < 2 {
 		return math.NaN()
@@ -442,8 +382,7 @@ func stddev(sum, sumSq float64, n int64) float64 {
 	return math.Sqrt(v)
 }
 
-// pushSample appends to the ring buffer. When full, randomly replaces an
-// existing entry (reservoir sampling), matching the browser's pushSample().
+// Reservoir sampling when full, matching the browser's pushSample().
 func pushSample(buf *[]float64, v float64) {
 	if len(*buf) < schedMaxSamples {
 		*buf = append(*buf, v)
@@ -452,11 +391,8 @@ func pushSample(buf *[]float64, v float64) {
 	}
 }
 
-// lagPercentileAll returns the q-quantile of the lag distribution over ALL
-// count dispatches, where the (count-overdue) on-time dispatches have lag 0
-// and the overdue tail is approximated by the lagSamples reservoir. Zero when
-// the overdue fraction is at most (1-q): the q-quantile dispatch was on-time.
-// sortedLag is the lag reservoir sorted ascending.
+// On-time dispatches count as lag 0 and the overdue tail comes from the reservoir; 0 when the overdue share is at
+// most 1-q. sortedLag ascending.
 func lagQuantileAll(sortedLag []float64, overdue, count int64, q float64) float64 {
 	if count <= 0 || overdue <= 0 || len(sortedLag) == 0 {
 		return 0
@@ -468,16 +404,14 @@ func lagQuantileAll(sortedLag []float64, overdue, count int64, q float64) float6
 	return sortedQuantile(sortedLag, 1-tail/float64(overdue))
 }
 
-// sortSamples copies a reservoir into m.sorted and sorts it (caller holds
-// m.mu). The result is valid until the next sortSamples call.
+// Caller holds m.mu; valid until the next call.
 func (m *scheduleMetrics) sortSamples(samples []float64) []float64 {
 	m.sorted = append(m.sorted[:0], samples...)
 	sort.Float64s(m.sorted)
 	return m.sorted
 }
 
-// percentileSample returns the qth percentile from a sample buffer.
-// Returns NaN if empty. Matches the browser's percentile() function.
+// NaN if empty; matches the browser's percentile().
 func percentileSample(samples []float64, q float64) float64 {
 	sorted := make([]float64, len(samples))
 	copy(sorted, samples)

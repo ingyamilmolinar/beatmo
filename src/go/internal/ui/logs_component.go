@@ -11,14 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// LogsComponent is the Logs Navigation Panel: a large modal overlay that lists
-// the merged event stream + notifications with fuzzy name search, data-driven
-// category chips, exact/range timestamp filters, and pagination. It implements
-// compOverlayable and is hosted in the portal by DrumView.openLogsPanel.
-//
-// This file carries the component's state + lifecycle + panel geometry; the
-// row/pagination rendering, search box, category chips, and timestamp controls
-// are layered on in sibling methods (see logs_component_*.go).
+// A large modal of the merged event stream + notifications with search, category chips, time filters and pages;
+// rendering lives in the logs_component_*.go siblings.
 type LogsComponent struct {
 	overlayBase
 	dv   *DrumView
@@ -39,36 +33,27 @@ type LogsComponent struct {
 	filtered       []logRow
 	pageCountCache int
 
-	// scrollable list within the current page (reuses MenuScroll — the same
-	// clicky scrollbar the template/instrument menus use). scrollView is the
-	// list viewport; bodyRect its outer rect.
+	// The same clicky MenuScroll as the template and instrument menus.
 	scroll     *MenuScroll
 	scrollView image.Rectangle
 
-	// unread-badge watermarks: newest event Seq + newest notification timestamp
-	// seen when the panel was last opened.
+	// The newest event Seq and notification time seen at the last open.
 	lastSeenSeq     int64
 	lastSeenNotifMs int64
 
-	// unread-badge memoization: the badge is queried every frame, but the
-	// underlying rings change rarely. Cache the (count, hasErr) result keyed by
-	// the rings' cheap latest-Seq / latest-notif-ms, recomputing (the expensive
-	// full-ring scan) only when one of those advances. markSeen invalidates it.
+	// The badge asks every frame; the full ring scan reruns only when a ring's latest Seq or time advances.
 	unreadValid    bool
 	unreadCnt      int
 	unreadErr      bool
 	unreadKeySeq   int64
 	unreadKeyNtPsh int64
 
-	// footer page-nav: real keycap Buttons. The rects mirror the buttons' bounds
-	// (kept for hit-test helpers/tests). There is NO close (×) button — the logs
-	// grid button toggles this panel closed.
+	// No close ×: the logs grid button toggles the panel. The rects mirror the buttons for hit-test helpers.
 	prevBtn, nextBtn *Button
 	prevRect         image.Rectangle
 	nextRect         image.Rectangle
 
-	// header "Clear history" action button (empties the log ring + notifications,
-	// incl. persistence). Its rect mirrors the button bounds for hit-test tests.
+	// Empties the log ring and the notifications, persistence included.
 	clearBtn  *Button
 	card      *MenuCard // shared frame (panel, title band, Clear history action, close ×)
 	clearRect image.Rectangle
@@ -78,17 +63,13 @@ type LogsComponent struct {
 	searchRect image.Rectangle
 	levelBtns  [len(logLevelOrder)]*Button
 
-	// timestamp filter controls: At|Range toggle (pill buttons) + value fields
-	// (keycap buttons that open the date/time picker). The picker is a stacked
-	// portal owned by the component.
+	// The picker is a stacked portal owned by the component.
 	atModeBtn, rangeModeBtn              *Button
 	atFieldBtn, fromFieldBtn, toFieldBtn *Button
 	picker                               *logsDateTimePicker
 }
 
-// NewLogsComponent constructs a closed logs panel bound to dv.
-// logsPageSize is the fixed rows-per-page. Pages bound the total; a page taller
-// than the body scrolls within itself via MenuScroll.
+// Pages bound the total; a page taller than the body scrolls within itself.
 const logsPageSize = 50
 
 func NewLogsComponent(dv *DrumView) *LogsComponent {
@@ -102,9 +83,7 @@ func NewLogsComponent(dv *DrumView) *LogsComponent {
 	}
 }
 
-// Open marks the panel open and rebuilds its data snapshot. Because the panel is
-// reached from an error-focused notification icon, the level filter defaults to
-// ERROR (the ERROR chip pre-selected); other level chips are one click away.
+// Reached from an error-focused icon, so the level filter starts on ERROR.
 func (c *LogsComponent) Open() {
 	c.open = true
 	c.page = 1
@@ -119,8 +98,6 @@ func (c *LogsComponent) Close() { c.open = false }
 // IsOpen reports whether the panel is open.
 func (c *LogsComponent) IsOpen() bool { return c.open }
 
-// markSeen records the newest event Seq + notification timestamp as read,
-// clearing the unread badge.
 func (c *LogsComponent) markSeen() {
 	if snap := eventlogger.History().Snapshot(); len(snap) > 0 {
 		c.lastSeenSeq = snap[0].Seq // newest-first
@@ -133,20 +110,11 @@ func (c *LogsComponent) markSeen() {
 	c.unreadValid = false // watermarks moved → recompute on next query
 }
 
-// unreadCount returns how many unread ERRORS the notification icon should badge,
-// and whether any is an error (always true when n>0). The logs icon is an
-// error-focused notification indicator: routine events/info are NOT counted —
-// only error notifications newer than the last-seen watermark. Opening the panel
-// (markSeen) clears it.
-//
-// Called every frame by the grid badge, so the result is memoized: the notif
-// ring scan runs only when the rings' cheap latest-Seq / latest-notif-ms advance
-// (or markSeen invalidates the cache).
+// Unread ERRORS only: the icon is an error indicator, so routine events never count. Memoized, since the badge
+// asks every frame.
 func (c *LogsComponent) unreadCount() (int, bool) {
 	curSeq := eventlogger.History().LatestSeq()
-	// The notif push-counter is monotonic and survives ring eviction, so ANY new
-	// notification (even two in the same millisecond, even after the ring fills)
-	// changes the key and invalidates the cache.
+	// The push counter is monotonic and survives eviction, so ANY new notification invalidates the cache.
 	curPush := c.notifPushSeq()
 	if c.unreadValid && curSeq == c.unreadKeySeq && curPush == c.unreadKeyNtPsh {
 		return c.unreadCnt, c.unreadErr
@@ -167,8 +135,7 @@ func (c *LogsComponent) unreadCount() (int, bool) {
 	return n, hasErr
 }
 
-// notifPushSeq returns the notification store's monotonic push counter (0 when
-// absent) — the cheap, eviction-proof change signal for the unread memoization.
+// 0 when absent; the eviction-proof change signal.
 func (c *LogsComponent) notifPushSeq() int64 {
 	if c.dv == nil || c.dv.notifStore == nil {
 		return 0
@@ -176,18 +143,13 @@ func (c *LogsComponent) notifPushSeq() int64 {
 	return c.dv.notifStore.PushSeq()
 }
 
-// Update drives the search box (caret/typing) and re-applies filters when the
-// query changes. The TextInput self-focuses on click and reads the keyboard.
 func (c *LogsComponent) Update() {
-	// Touch-fling momentum — the inertial half of the shared instrument-menu
-	// feel. rebuild recomputes the windowed rows for the advancing offset.
+	// rebuild recomputes the windowed rows for the advancing offset.
 	if c.scroll != nil {
 		c.scroll.Tick(c.rebuild)
 	}
 	if c.searchBox != nil {
-		// Mobile native <input> writes the query out-of-band (not the ebiten
-		// keyboard the box reads); pull its live value first (mirrors the
-		// instrument menu). No-op on desktop / when no native value is pending.
+		// The mobile native <input> writes out of band; pull its value first.
 		if v, ok := mobileInputGetValue(logsSearchMobileInputID); ok && v != c.searchBox.Value() {
 			c.searchBox.SetText(v)
 		}
@@ -198,13 +160,8 @@ func (c *LogsComponent) Update() {
 	}
 }
 
-// reapply recomputes the filtered set + page count after ANY filter change
-// (level, search, time) and snaps the view back to the start: page 1, scroll at
-// the top. This is the single chokepoint that keeps the results — and the
-// pagination "n / m" — in sync with the current filters in real time. Every
-// filter mutator routes through here, so a new selection never leaves a stale
-// page count or a scrolled-down viewport. Does NOT re-pull the snapshot (cheaper
-// than rebuild; Draw's per-frame rebuild keeps the live stream current).
+// The single chokepoint after ANY filter change: back to page 1 at the top, so the page count and viewport never
+// go stale. Does not re-pull the snapshot; Draw's per-frame rebuild keeps the stream live.
 func (c *LogsComponent) reapply() {
 	c.filtered = filterRows(c.all, c.nameQuery, c.activeLevel, c.tsMode, c.atSel, c.fromSel, c.toSel)
 	c.pageCountCache = pageCount(len(c.filtered), c.pageSize)
@@ -212,9 +169,7 @@ func (c *LogsComponent) reapply() {
 	c.scrollToTop()
 }
 
-// scrollToTop snaps the list back to its first row. Called whenever the visible
-// set changes wholesale (filter change via reapply, page change) so the new
-// content never opens scrolled halfway down.
+// So new content never opens scrolled halfway down.
 func (c *LogsComponent) scrollToTop() {
 	if c.scroll != nil {
 		c.scroll.ScrollBehavior().VS.First = 0
@@ -242,12 +197,10 @@ func (c *LogsComponent) clearSearch() {
 	c.reapply()
 }
 
-// ClaimsKeyboard makes the panel own the keyboard while open, so the grid never
-// acts on keys typed into the search box.
+// So the grid never acts on keys typed into the search box.
 func (c *LogsComponent) ClaimsKeyboard() bool { return c.IsOpen() }
 
-// HandleEscape clears a non-empty query (keeping the panel open); with an empty
-// query it returns false so the universal handler closes the panel.
+// An empty query returns false so the universal handler closes the panel.
 func (c *LogsComponent) HandleEscape() bool {
 	if c.nameQuery == "" {
 		return false
@@ -268,8 +221,6 @@ func (c *LogsComponent) notifInputs() []notifRowInput {
 	return out
 }
 
-// rebuild recomputes the merged snapshot, the distinct-tag set, the filtered
-// rows, and the page count. Clamps page into range.
 func (c *LogsComponent) rebuild() {
 	c.all = mergeLogRows(eventlogger.History().Snapshot(), c.notifInputs())
 	c.filtered = filterRows(c.all, c.nameQuery, c.activeLevel, c.tsMode, c.atSel, c.fromSel, c.toSel)
@@ -290,19 +241,13 @@ func (c *LogsComponent) visibleRows() []logRow {
 	return pageSlice(c.filtered, c.pageSize, c.page)
 }
 
-// panelRect returns the logs panel rect. Same size as before (3/4 of the drum
-// pane); on desktop it now drops from the grid-pane logs button via the shared
-// helper instead of centering in the drum pane. Mobile (UseBottomSheet) or a
-// missing owner falls back to the centered form.
+// Mobile, or no owner, falls back to the centred form.
 func (c *LogsComponent) panelRect() image.Rectangle {
 	b := c.dv.Bounds
 	w := b.Dx() * 3 / 4
 	h := b.Dy() * 3 / 4
-	// Anchor to the grid-pane logs button on EVERY screen size (grid-pane-clamped)
-	// so it never falls back to centering in dv.Bounds (the drum pane) and
-	// appearing in the drum-view panel — the small-screen "menus in the drum view"
-	// bug. Logs lays its rows out within the returned rect, so a shorter grid pane
-	// simply shows fewer rows + paginates.
+	// Anchored to the grid-pane button on every screen size: centring in the drum pane put menus inside the drum view
+	// on small screens.
 	if g := c.dv.game; g != nil {
 		if anchor := g.gridLogsButtonRect(); !anchor.Empty() {
 			return g.gridAnchoredPopupRect(anchor, w, h, GridAnchorOpts{})
@@ -316,13 +261,9 @@ func (c *LogsComponent) panelRect() image.Rectangle {
 // InputBounds is the modal panel rect (the hit region while open).
 func (c *LogsComponent) InputBounds() image.Rectangle { return c.panelRect() }
 
-// Capturing reports whether the scrollbar owns an in-flight gesture (thumb drag
-// on desktop, touch-scroll on mobile). The tree keeps routing OnDrag to the panel
-// while this is true, and the portal stays open. Mirrors InstrumentMenuComponent.
+// While true the tree keeps routing OnDrag here and the portal stays open.
 func (c *LogsComponent) Capturing() bool { return c.scrollCapturing() }
 
-// scrollCapturing is true while the MenuScroll is mid-gesture: a desktop thumb
-// drag, a committed mobile touch-scroll, or an in-flight deferred tap.
 func (c *LogsComponent) scrollCapturing() bool {
 	if c.scroll == nil {
 		return false
@@ -331,10 +272,7 @@ func (c *LogsComponent) scrollCapturing() bool {
 	return sb.Dragging() || sb.ScrollingCommitted() || c.scroll.TapActive()
 }
 
-// routeScroll forwards one event to the MenuScroll and returns the InputResult:
-// InputCaptured while the scroll owns a gesture (so the tree keeps sending
-// OnDrag), else InputConsumed when it merely handled/consumed the event, else
-// InputIgnored when the scroll wanted nothing to do with it.
+// InputCaptured while the scroll owns a gesture, so the tree keeps sending OnDrag.
 func (c *LogsComponent) routeScroll(p image.Point, pressed bool) InputResult {
 	if c.scroll == nil {
 		return InputIgnored
@@ -356,8 +294,7 @@ func (c *LogsComponent) routeScroll(p image.Point, pressed bool) InputResult {
 	return InputIgnored
 }
 
-// HandleWheel scrolls the list within the current page (one item per step, the
-// clicky MenuScroll behavior). Page changes are via the footer prev/next.
+// Page changes are the footer's job.
 func (c *LogsComponent) HandleWheel(x, y, steps int) InputResult {
 	if c.scroll != nil {
 		c.scroll.HandleWheel(steps)
@@ -368,25 +305,17 @@ func (c *LogsComponent) HandleWheel(x, y, steps int) InputResult {
 // logsRowH is the per-row height in the body.
 func logsRowH() int { return TextHeight() + SpaceSM }
 
-// logsFooterH reserves the pagination band at the bottom of the panel.
-// Delegates to menuPagerFooterH (menu_pager.go) so logs, the FX add-menu, and
-// the template menu share one single-source footer height.
+// Shared with the FX add-menu and the template menu.
 func logsFooterH() int { return menuPagerFooterH() }
 
-// logsBtnSize is the square size of the panel's icon keycap buttons.
-// Delegates to menuPagerBtnSize (menu_pager.go).
 func logsBtnSize() int { return menuPagerBtnSize() }
 
-// pagePrev/pageNext change the page and snap the scroll back to the top so the
-// new page always opens at its first row.
+// The new page opens at its first row.
 func (c *LogsComponent) pagePrev() { c.page--; c.rebuild(); c.scrollToTop() }
 func (c *LogsComponent) pageNext() { c.page++; c.rebuild(); c.scrollToTop() }
 
-// clearHistory empties EVERY log source behind the panel: the in-memory event
-// ring (eventlogger) and the notification store — the latter also writing an
-// empty snapshot through its persist sink so the cleared state survives a
-// refresh. It then refreshes the view (empty on every level, page 1, scroll top)
-// and invalidates the unread-badge memo so the grid Logs icon drops to 0.
+// Clears every source, writing an empty snapshot through persistence so a refresh stays cleared, and drops the
+// unread memo so the grid icon reads 0.
 func (c *LogsComponent) clearHistory() {
 	eventlogger.History().Clear()
 	if c.dv != nil && c.dv.notifStore != nil {
@@ -442,8 +371,7 @@ func (c *LogsComponent) ensureLevelButtons() {
 	}
 }
 
-// HandleInput handles clicks inside the modal panel: close button, page nav,
-// else consume (so a press never leaks to the background beneath the modal).
+// Everything is consumed, so a press never leaks beneath the modal.
 func (c *LogsComponent) HandleInput(x, y int, pressed bool) InputResult {
 	// Frame controls first (close ×, "Clear history" header action).
 	if c.card != nil && c.IsOpen() {
@@ -453,27 +381,19 @@ func (c *LogsComponent) HandleInput(x, y int, pressed bool) InputResult {
 	}
 	p := image.Pt(x, y)
 
-	// An in-flight scroll gesture (thumb drag / touch-scroll) owns every event
-	// FIRST — checked before the buttons so a drag passing over a header button
-	// can never re-trigger it. While capturing, the tree routes OnDrag straight
-	// here (pressed=true), so this branch continues and ends the gesture.
+	// A scroll gesture owns every event FIRST, so a drag over a header button never re-triggers it.
 	if c.scrollCapturing() {
 		return c.routeScroll(p, pressed)
 	}
 
-	// Search field: on press only; a click on the trailing clear-× wipes the
-	// query. (TextInput self-focuses on click via Update.)
 	if pressed && c.searchBox != nil && !c.searchRect.Empty() && p.In(c.searchRect) {
 		if c.searchBox.Value() != "" && menuSearchAdornmentsActive(c.searchBox) && p.In(menuSearchClearRect(c.searchBox)) {
 			c.clearSearch()
 		}
 		return InputConsumed
 	}
-	// Route BOTH press and release to every button so their press-lifecycle
-	// (held counter / pressed flag) resets on release — otherwise a button fires
-	// its OnClick only once and then goes dead (the close-button regression).
-	// OnClick fires on the press edge of the button under the cursor; buttons
-	// elsewhere just reset. No early return, so all buttons see every event.
+	// Press AND release reach every button so each one's press lifecycle resets; otherwise a button fires once
+	// and goes dead.
 	c.handleTimeInput(x, y, pressed)
 	for _, b := range c.levelBtns {
 		if b != nil {
@@ -485,27 +405,17 @@ func (c *LogsComponent) HandleInput(x, y int, pressed bool) InputResult {
 			b.HandleInputResult(x, y, pressed)
 		}
 	}
-	// Scrollbar thumb press / mobile touch-begin (reuses MenuScroll — the same
-	// clicky scrollbar the template/instrument menus use). A press on the thumb
-	// starts a drag and returns InputCaptured so the tree keeps routing the drag
-	// back here; the trailing popup catch-all consumes any other in-panel tap.
+	// A thumb press captures so the tree routes the drag back here; the catch-all consumes other in-panel taps.
 	if res := c.routeScroll(p, pressed); res != InputIgnored {
 		return res
 	}
 	return InputConsumed
 }
 
-// Draw paints the modal panel: surface, header (title, close, search box, level
-// chips), the scrollable current page of rows, and the pagination footer.
 func (c *LogsComponent) Draw(dst *ebiten.Image) {
 	r := c.panelRect()
-	// Shared panel chrome (shadow + surface-overlay fill + panel border +
-	// popupCornerRadius) — identical to File and Settings.
-	// --- Header layout (card title band, search row, chip row) ---
 	c.ensurePanelButtons()
-	// Shared MenuCard frame: panel, title band (IconLogs + "Logs"), the
-	// "Clear history" header action, close ×. Label set before Layout so the
-	// action button is sized for the active locale.
+	// The label is set before Layout so the action button fits the active locale.
 	c.clearBtn.Text = i18n.T(i18n.KeyLogsClearHistory)
 	c.card.Layout(r, MenuCardSpec{Title: i18n.T(i18n.KeyLogs), IconID: IconLogs, Actions: []*Button{c.clearBtn}})
 	c.card.Draw(dst)
@@ -522,8 +432,7 @@ func (c *LogsComponent) Draw(dst *ebiten.Image) {
 	bodyTop := chipsY + chipH + SpaceSM
 	bodyBot := r.Max.Y - logsFooterH()
 
-	// Refresh the merged snapshot + filtered rows each frame (live stream). The
-	// page size is fixed (logsPageSize); a page taller than the body scrolls.
+	// Rebuilt every frame: the stream is live.
 	c.rebuild()
 
 	// Search box (self-focusing TextInput; Update reads the keyboard).
@@ -542,10 +451,7 @@ func (c *LogsComponent) Draw(dst *ebiten.Image) {
 	// Level chips (DEBUG/INFO/WARN/ERROR, single-select radio).
 	c.drawLevelChips(dst, r, chipsY, chipH)
 
-	// Body: scrollable list of the current page's rows. Reserve a scrollbar
-	// gutter on the right. Rows: TIMESTAMP · LEVEL · message (left→right, so a
-	// long message flows right and clips at the gutter — never overlaps the
-	// timestamp on its left).
+	// Timestamp, level, message left to right, so a long message clips at the gutter and never covers the time.
 	c.scrollView = image.Rect(r.Min.X+SpaceMD, bodyTop, r.Max.X-SpaceSM, bodyBot)
 	rows := c.visibleRows()
 	visible := max(1, (bodyBot-bodyTop)/rowH)
@@ -606,9 +512,6 @@ func (c *LogsComponent) drawLevelChips(dst *ebiten.Image, r image.Rectangle, y, 
 	}
 }
 
-// drawFooter paints the shared "Page X / M" navigator (extracted to
-// drawMenuPagerFooter so logs, the FX add-menu, and the template menu share one
-// width-adaptive pager). Records prev/next hit rects.
 func (c *LogsComponent) drawFooter(dst *ebiten.Image, r image.Rectangle) {
 	label := i18n.Tf(i18n.KeyLogsPage, c.page, c.pageCountNow())
 	c.prevRect, c.nextRect = drawMenuPagerFooter(dst, r, label, c.prevBtn, c.nextBtn)

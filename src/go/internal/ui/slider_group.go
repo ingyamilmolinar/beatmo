@@ -2,13 +2,7 @@ package ui
 
 import "image"
 
-// SliderGroup wraps a set of sliders with automatic capture semantics,
-// implementing InputHandler. It replaces the manual activeSlider/activeSliderKind
-// tracking by managing which slider is capturing input internally.
-//
-// When a press starts inside any slider, that slider captures all subsequent
-// input until release. The onChange callback fires whenever the captured slider's
-// value changes.
+// The slider a press starts on captures all input until release.
 type SliderGroup struct {
 	sliders         []*Slider
 	onChange        func(idx int, val float64)
@@ -16,8 +10,6 @@ type SliderGroup struct {
 	containerBounds image.Rectangle // if non-empty, reject new presses outside this rect
 }
 
-// NewSliderGroup creates a new SliderGroup. The onChange callback receives the
-// slider index and its current value whenever the value changes during a drag.
 func NewSliderGroup(sliders []*Slider, onChange func(idx int, val float64)) *SliderGroup {
 	return &SliderGroup{
 		sliders:  sliders,
@@ -26,9 +18,7 @@ func NewSliderGroup(sliders []*Slider, onChange func(idx int, val float64)) *Sli
 	}
 }
 
-// SetSliders replaces the slider set. Preserves the active capture index
-// only when the active slider pointer is the same object (reposition case).
-// Releases capture when the set changes or the active index is out of range.
+// The capture survives only if the same slider object is still present (a reposition).
 func (g *SliderGroup) SetSliders(sliders []*Slider) {
 	if g.active >= 0 {
 		// Preserve capture only if the same slider object is at the same index.
@@ -44,10 +34,7 @@ func (g *SliderGroup) SetSliders(sliders []*Slider) {
 // Sliders returns the current slider set.
 func (g *SliderGroup) Sliders() []*Slider { return g.sliders }
 
-// SetContainerBounds sets an optional spatial constraint. When non-empty,
-// new presses outside this rectangle are rejected before testing individual
-// sliders. Active drags are unaffected (the cursor can leave the container
-// while dragging without releasing).
+// New presses outside are rejected; an active drag may leave the container.
 func (g *SliderGroup) SetContainerBounds(r image.Rectangle) { g.containerBounds = r }
 
 // Active returns the index of the currently captured slider, or -1.
@@ -56,10 +43,6 @@ func (g *SliderGroup) Active() int { return g.active }
 // Capturing returns true if any slider in the group is actively being dragged.
 func (g *SliderGroup) Capturing() bool { return g.active >= 0 }
 
-// HandleInput dispatches input to the slider group.
-// If a slider is already captured, it receives all input until release.
-// Otherwise, each slider is tested in order for a new press.
-// Returns InputCaptured during drag, InputConsumed on release, InputIgnored otherwise.
 func (g *SliderGroup) HandleInput(mx, my int, pressed bool) InputResult {
 	if g.active >= 0 {
 		// Already captured — route to the active slider.

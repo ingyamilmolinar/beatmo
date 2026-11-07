@@ -12,11 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// jsArgs wraps the raw js.Value argument slice passed to a JS-exported
-// function with bounds- and type-safe typed accessors. Out-of-range or
-// wrong-typed reads return the zero value instead of panicking, which
-// collapses the per-export `if len(args) < N { return … }` guard boilerplate
-// down to the cases where the sentinel return is actually meaningful.
+// Out-of-range or wrong-typed reads return the zero value instead of panicking.
 type jsArgs struct{ v []js.Value }
 
 // Len reports how many arguments the caller passed.
@@ -40,8 +36,7 @@ func (a jsArgs) Str(i int) string { return jsArgString(a.v, i, "") }
 // StrOr returns args[i] as a string, or def if absent / falsy.
 func (a jsArgs) StrOr(i int, def string) string { return jsArgString(a.v, i, def) }
 
-// Instrument parses args[i] as an instrument id (instrument.ParseID); ""
-// when absent or invalid, which every instrument API treats as "none".
+// "" when absent or invalid, which every instrument API treats as none.
 func (a jsArgs) Instrument(i int) instrument.ID {
 	id, err := instrument.ParseID(a.Str(i))
 	if err != nil {
@@ -50,8 +45,7 @@ func (a jsArgs) Instrument(i int) instrument.ID {
 	return id
 }
 
-// Channel parses args[i] as a mixer channel name ("main" or an instrument
-// id); the zero ID when absent or invalid. "" names no channel.
+// The zero ID when absent or invalid; "" names no channel.
 func (a jsArgs) Channel(i int) channel.ID {
 	id, err := channel.Parse(a.Str(i))
 	if err != nil {
@@ -76,9 +70,7 @@ func (a jsArgs) Bool(i int) bool {
 	return a.v[i].Truthy()
 }
 
-// At returns the raw js.Value at index i (js.Undefined() if absent) for the
-// rare export that needs a non-scalar argument — a JS array or object it must
-// probe with .Type()/.Length()/.Index()/.Get().
+// For the rare export that probes a JS array or object.
 func (a jsArgs) At(i int) js.Value {
 	if i >= len(a.v) {
 		return js.Undefined()
@@ -86,13 +78,8 @@ func (a jsArgs) At(i int) js.Value {
 	return a.v[i]
 }
 
-// jsFn adapts a jsArgs-based handler into a js.Func, hiding the
-// this/args/interface{} signature boilerplate at every registration site.
-// Callers keep the literal Global-Set registration form, passing jsFn as the
-// second argument, so the export-name text stays visible to the catalogue
-// drift guard (which scans registration source by regex). The result passes
-// through jsSafe: an instrument.ID (or any named basic type) in it would make
-// syscall/js panic, and nothing at compile time can see that.
+// The literal Global().Set form stays at each site so the catalogue drift guard's regex sees the name. Results
+// go through jsSafe: a named type would make syscall/js panic, and the compiler cannot see it.
 func jsFn(fn func(a jsArgs) any) js.Func {
 	return js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		r := jsSafe(fn(jsArgs{v: args}))
@@ -104,10 +91,8 @@ func jsFn(fn func(a jsArgs) any) js.Func {
 	})
 }
 
-// afterJSExport runs after every bridge call. The Game points it at kickLane:
-// a bridge edit happens outside Update, and on WASM the sequencer goroutine
-// only runs on its next JS-timer tick — the kick makes it runnable before
-// control returns to JS, so the audio lane sees the edit at once.
+// A bridge edit happens outside Update and the WASM sequencer runs only on its next timer tick; the kick makes it
+// runnable before control returns to JS, so the audio lane sees the edit at once.
 var afterJSExport func()
 
 func boolSliceToJS(arr []bool) js.Value {

@@ -7,16 +7,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// controlGridFadeBands is the band count for the edge-fade gradients — enough for
-// a smooth dissolve at panel scale while staying cheap (fillVerticalGradient is
-// per-frame alloc-free, backed by pixelCache).
+// fillVerticalGradient is alloc-free, so this stays cheap.
 const controlGridFadeBands = 8
 
-// drawControlGridEdgeFades paints the scroll affordance for a ControlGrid: a top
-// fade when content is scrolled down from the first row, and a bottom fade over
-// the reserved peek band whenever more rows exist below. Both dissolve the grid's
-// content into the panel surface bg, so the fade itself is the "more below" (or
-// "more above") signal. No-op when the grid fits (no peek band reserved).
+// The fade itself is the "more above/below" signal. No-op when the grid fits.
 func drawControlGridEdgeFades(dst *ebiten.Image, g *ControlGrid, bg color.Color) {
 	h := g.PeekH()
 	if h <= 0 {
@@ -26,9 +20,7 @@ func drawControlGridEdgeFades(dst *ebiten.Image, g *ControlGrid, bg color.Color)
 	if r.Empty() {
 		return
 	}
-	// Opaque + fully-transparent variants of the panel surface bg, so the
-	// gradient dissolves grid content into the surface. WithAlphaFromColor
-	// narrows the runtime bg (unknown concrete type) — no inline literal.
+	// WithAlphaFromColor narrows the runtime bg without an inline literal.
 	opaque := WithAlphaFromColor(bg, 0xFF)
 	transparent := WithAlphaFromColor(bg, 0x00)
 	if g.ShowTopFade() {

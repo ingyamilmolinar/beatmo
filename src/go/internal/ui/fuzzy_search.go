@@ -11,29 +11,8 @@ type FuzzyResult struct {
 	Positions []int // Rune indices in target that matched query chars.
 }
 
-// FuzzyMatch scores how well query matches target using subsequence matching.
-// Characters in query must appear in target in order, but not necessarily
-// contiguously. Returns Score=-1 when query is not a subsequence of target.
-//
-// Scoring:
-//   - +1 per matched character (base)
-//   - +1 for exact case match
-//   - +5 for consecutive matched characters (gap == 0)
-//   - −min(gap, 10) for non-consecutive matches (linear gap penalty, capped)
-//   - +10 for match at start of word (after space/hyphen/underscore)
-//   - +15 for match at start of string
-//   - +20 bonus when query appears as an exact (case-insensitive) substring
-//   - per-target length penalty (prefer specific matches)
-//
-// Implementation: a dynamic-programming search over all valid position
-// assignments. Greedy forward matching (the previous implementation) could
-// pick a scattered set of positions when a strictly higher-scoring
-// contiguous tail existed later in the target — DP rules that out. The
-// exact-substring fast path stays because it's both faster and produces
-// the same answer as DP for the contiguous case.
-//
-// Complexity: O(|query| × |target|²). Instrument names are short (<30
-// runes) so this is negligible vs. the previous greedy O(|target|).
+// Subsequence scoring (+1 match, +1 case, +5 consecutive, -gap (≤10), +10 word start, +15 string start, +20
+// exact substring, minus a length penalty) by DP: greedy matching missed a better contiguous tail later on.
 func FuzzyMatch(query, target string) FuzzyResult {
 	qLowerStr := strings.ToLower(query)
 	tLowerStr := strings.ToLower(target)
@@ -49,12 +28,7 @@ func FuzzyMatch(query, target string) FuzzyResult {
 		return FuzzyResult{Score: -1}
 	}
 
-	// Exact substring fast path. When the query appears verbatim (case-
-	// insensitively) in the target, the contiguous run is the global
-	// optimum: every transition is a +5 consecutive bonus. We still apply
-	// the per-position scoring + the +20 exact-substring bonus + length
-	// penalty so the score is comparable to the DP's output for non-
-	// contiguous cases.
+	// A verbatim substring is the global optimum, scored the same way so it compares with the DP's results.
 	if idx := strings.Index(tLowerStr, qLowerStr); idx >= 0 {
 		startRune := runeIndexAtByte(target, idx)
 		positions := make([]int, len(qLower))
@@ -75,16 +49,12 @@ func FuzzyMatch(query, target string) FuzzyResult {
 	return res
 }
 
-// dpFuzzySubsequence is the DP core. Returns Score=-1 when query is not a
-// subsequence of target.
 func dpFuzzySubsequence(qOrig, qLower, tOrig, tLower []rune) FuzzyResult {
 	qn := len(qLower)
 	tn := len(tLower)
 	const negInf = -1 << 30
 
-	// dp[i][j] = best score for matching query[0..=i] ending at target[j].
-	// prev[i][j] = the j' from which we transitioned. Storing the full
-	// table makes traceback O(qn) without recomputation.
+	// The full table makes traceback O(qn) without recomputation.
 	dp := make([][]int, qn)
 	prev := make([][]int, qn)
 	for i := range dp {
@@ -164,9 +134,6 @@ func dpFuzzySubsequence(qOrig, qLower, tOrig, tLower []rune) FuzzyResult {
 	return FuzzyResult{Score: bestScore, Positions: positions}
 }
 
-// perCharScore returns the per-position bonuses at target[ti] when matching
-// query[qi]: +1 base, +1 case match, +15 start-of-string OR +10 word boundary.
-// Mirrors the bonuses the previous scorePositions applied per position.
 func perCharScore(qOrig, tOrig, tLower []rune, qi, ti int) int {
 	score := 1 // base
 	if ti < len(tOrig) && qi < len(qOrig) && tOrig[ti] == qOrig[qi] {
@@ -182,16 +149,11 @@ func perCharScore(qOrig, tOrig, tLower []rune, qi, ti int) int {
 	return score
 }
 
-// isWordBoundary returns true for the separators that mark the start of a
-// new word for scoring purposes.
 func isWordBoundary(r rune) bool {
 	return r == ' ' || r == '-' || r == '_'
 }
 
-// scoreContiguous scores a fully-consecutive run of positions (from the
-// exact-substring fast path). Equivalent to the DP path's scoring for an
-// all-gap-0 walk: per-position bonuses + +5 consecutive bonus per
-// transition.
+// Equivalent to the DP's scoring for an all-consecutive walk.
 func scoreContiguous(qOrig, tOrig, tLower []rune, positions []int) int {
 	score := 0
 	for i, pos := range positions {
@@ -203,9 +165,7 @@ func scoreContiguous(qOrig, tOrig, tLower []rune, positions []int) int {
 	return score
 }
 
-// targetLengthPenalty discounts longer targets to prefer specific matches.
-// Halved and capped at 10 (== 20 raw / 2) so the penalty tops out before
-// it can outweigh strong per-position bonuses.
+// Capped at 10 so it never outweighs strong per-position bonuses.
 func targetLengthPenalty(targetLen, queryLen int) int {
 	diff := targetLen - queryLen
 	if diff > 20 {
@@ -242,14 +202,10 @@ type MenuSearchResult struct {
 	Highlights []int // Rune indices in Label that matched the query.
 }
 
-// MenuSearcher provides generic fuzzy search filtering for menu lists.
-// It searches both key and label, preferring label matches since those
-// produce visible highlights.
+// Label matches are preferred: they produce visible highlights.
 type MenuSearcher struct{}
 
-// Search filters items by fuzzy-matching query against each item's label
-// and key. Returns matched items sorted by score (best first). When query
-// is empty, all items are returned with no highlights.
+// An empty query returns everything with no highlights.
 func (s *MenuSearcher) Search(query string, items []MenuSearchItem) []MenuSearchResult {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -272,8 +228,6 @@ func (s *MenuSearcher) Search(query string, items []MenuSearchItem) []MenuSearch
 		}
 
 		res := MenuSearchResult{Key: item.Key, Label: item.Label}
-		// Prefer label match when it succeeds — it produces highlights.
-		// Fall back to key match only when label doesn't match at all.
 		if lr.Score >= 0 {
 			res.Score = lr.Score
 			res.Highlights = lr.Positions

@@ -4,12 +4,7 @@ package ui
 
 import "syscall/js"
 
-// initJSSlimBarDiag wires slimBarDiag() onto the JS global. It returns the
-// current drum-row render diagnostic (geometry + which compositing path drew
-// the last frame) so src/js/drum_slim_bar_watch.js can read the canvas at the
-// right cell band and, when it catches the intermittent "slim bars" artifact,
-// log exactly which path (windowed sub-image blit vs legacy shift-and-fill)
-// produced it. See drum_render_diag.go.
+// Lets the canvas watcher sample the right band and log which compositing path drew a slim-bar artifact.
 func (g *Game) initJSSlimBarDiag() {
 	js.Global().Set("slimBarDiag", jsFn(func(args jsArgs) any {
 		if g.drum == nil {

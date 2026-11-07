@@ -8,18 +8,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
 
-// selectJSONAsync routes the desktop file picker through the bounded
-// "ui.dialog" pool so user-initiated dialogs cannot spawn unbounded
-// goroutines if the picker stalls or the user spams the button.
+// The bounded ui.dialog pool, so a stalled picker or a spammed button cannot spawn unbounded goroutines.
 func selectJSONAsync(cb func([]byte, string, error)) {
 	err := async.Go("ui.dialog", func(_ context.Context) {
 		d, name, e := selectJSON()
 		cb(d, name, e)
 	})
 	if err != nil {
-		// Pool saturated or shutting down — surface the error so the
-		// caller's UI gates (importing/uploading flags) clear instead
-		// of staying stuck waiting for a callback that never arrives.
+		// Report the error so the caller's importing/uploading gates clear instead of waiting forever.
 		cb(nil, "", err)
 	}
 }

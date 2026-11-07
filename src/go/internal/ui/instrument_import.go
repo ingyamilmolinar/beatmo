@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
-// CollisionChoice is how the caller resolves an id/name collision with an
-// existing USER instrument on import.
 type CollisionChoice int
 
 const (
@@ -34,15 +32,8 @@ type ImportResult struct {
 	WavState audio.WavResolveStatus // meaningful only when WavRef != nil
 }
 
-// ApplyInstrumentBundle registers every instrument in a portable bundle into the
-// running app (config-only — recipe, effects, EQ, sample-edit, and a WAV
-// reference resolved via locators). It never overwrites a built-in (a colliding
-// recipe id is re-namespaced); a colliding USER instrument is resolved by the
-// caller (Replace / Keep both). When applyToRow is a valid row index, the LAST
-// imported instrument is bound to that row and its EQ applied there.
-//
-// locators supply the platform byte-fetchers per WAV source kind (file /
-// localstorage / url); pass nil to skip WAV resolution (config still imports).
+// Never overwrites a built-in (re-namespaced); a USER collision is resolved by the caller. With a valid row,
+// the LAST instrument binds there. nil locators skip WAV resolution.
 func (dv *DrumView) ApplyInstrumentBundle(
 	b *audio.InstrumentBundle,
 	resolve func(ImportCollision) CollisionChoice,
@@ -52,8 +43,7 @@ func (dv *DrumView) ApplyInstrumentBundle(
 	if err := audio.ValidateBundleHeader(b); err != nil {
 		return nil, err
 	}
-	// Validate EVERY document before registering any: a bad second doc must not
-	// leave the first one registered, bound and persisted.
+	// Validate every document first: a bad second one must not leave the first registered.
 	for i, doc := range b.Instruments {
 		if doc.Synth == nil {
 			continue
@@ -69,8 +59,7 @@ func (dv *DrumView) ApplyInstrumentBundle(
 		newID := dv.resolveImportID(i, doc, resolve)
 
 		if doc.Synth != nil {
-			// The library gets the document under its (possibly re-namespaced)
-			// id; the project gets a copy whose Origin is that entry.
+			// The project's copy has the library entry as its Origin.
 			lib := doc.Synth.Clone()
 			lib.ID, lib.Origin = newID, ""
 			if err := audio.SaveLibraryDoc(lib); err != nil {
@@ -107,8 +96,7 @@ func (dv *DrumView) ApplyInstrumentBundle(
 			}
 		}
 
-		// EQ + row binding when a target row is given (last instrument wins),
-		// through the real pick path so dependents (EQ channel …) follow.
+		// Through the real pick path so dependents follow.
 		if applyToRow >= 0 && applyToRow < len(dv.Rows) {
 			if doc.EQ != nil {
 				applyInstrumentEQToRow(dv.Rows[applyToRow], doc.EQ)
@@ -123,9 +111,7 @@ func (dv *DrumView) ApplyInstrumentBundle(
 	return results, nil
 }
 
-// bundleUserCollisions returns the docs whose recipe id collides with an
-// existing USER instrument (built-ins never collide — they are re-namespaced).
-// Used to decide whether to prompt Replace/Keep-both before applying.
+// Built-ins never collide: they are re-namespaced.
 func bundleUserCollisions(b *audio.InstrumentBundle) []ImportCollision {
 	if b == nil {
 		return nil
@@ -154,8 +140,7 @@ func bundleWantID(doc audio.BundleInstrument) instrument.ID {
 	return ""
 }
 
-// freshImportID mints a user id for a bundled instrument that cannot keep the
-// id it carries (a shipped id, a Keep-both collision, or none at all).
+// For a shipped id, a Keep-both collision, or no id at all.
 func freshImportID(doc audio.BundleInstrument) instrument.ID {
 	if doc.Synth != nil {
 		return audio.NewUserInstrumentID(doc.Name, *doc.Synth)
@@ -163,8 +148,6 @@ func freshImportID(doc audio.BundleInstrument) instrument.ID {
 	return userSampleID(doc.Name, "bundle")
 }
 
-// resolveImportID picks the id a bundled instrument registers under, protecting
-// shipped instruments and honoring the collision resolver for user dups.
 func (dv *DrumView) resolveImportID(idx int, doc audio.BundleInstrument, resolve func(ImportCollision) CollisionChoice) instrument.ID {
 	want := bundleWantID(doc)
 	if want == "" {
@@ -186,8 +169,6 @@ func (dv *DrumView) resolveImportID(idx int, doc audio.BundleInstrument, resolve
 	return want
 }
 
-// applyInstrumentEQToRow copies a bundle's inline EQ onto the row's
-// instrument.
 func applyInstrumentEQToRow(row *DrumRow, eq *audio.InstrumentEQ) {
 	if eq == nil {
 		return

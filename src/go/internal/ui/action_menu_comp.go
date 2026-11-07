@@ -7,8 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// actionMenuItem is one row of an actionMenuComponent: a labeled action, with an
-// optional destructive tint (red label, for Reset-style actions).
 type actionMenuItem struct {
 	Label       string
 	Destructive bool
@@ -23,12 +21,8 @@ type actionMenuProps struct {
 	RowHeight  int
 }
 
-// actionMenuComponent is a small anchored menu of labeled actions — the string
-// sibling of SubdivMenuComponent (which is int-options only). It backs the
-// Synth/Sampler "⋯" overflow (Save As / Reset) on mobile, reusing the same
-// overlayBase + AnchorPopupRect + drawMenuRow + compPortalOverlay machinery so
-// it looks and behaves like every other list menu (bottom sheet on mobile,
-// below-anchor card on desktop). No scroll: the item count is tiny and fixed.
+// The string sibling of SubdivMenuComponent, built from the same overlay machinery so it behaves like every
+// other list menu. No scroll: the item count is tiny and fixed.
 type actionMenuComponent struct {
 	overlayBase
 	props        actionMenuProps
@@ -43,8 +37,6 @@ func newActionMenuComponent() *actionMenuComponent {
 	return &actionMenuComponent{overlayBase: newOverlayBase()}
 }
 
-// SetScreenBounds sets the clamp region used by AnchorPopupRect / bottom sheet.
-// The portal opener calls it before Open so the menu positions inside the view.
 func (m *actionMenuComponent) SetScreenBounds(b image.Rectangle) {
 	if b == m.screenBounds {
 		return
@@ -77,8 +69,7 @@ func (m *actionMenuComponent) Close() {
 	m.open = false
 	m.buttons = nil
 	if m.nav != nil {
-		// Clear the cursor so the next open starts with nothing highlighted
-		// rather than resuming on a row from a different item set.
+		// The next open starts with nothing highlighted, not on a row of a different item set.
 		m.nav.Reset()
 	}
 	if m.props.OnClose != nil {
@@ -86,9 +77,6 @@ func (m *actionMenuComponent) Close() {
 	}
 }
 
-// rebuild recreates the item buttons and positions the card. Desktop drops a
-// below-anchor card sized to the widest label; mobile renders a full-width
-// bottom sheet (mirrors SubdivMenuComponent / the context menu).
 func (m *actionMenuComponent) rebuild() {
 	m.buttons = m.buttons[:0]
 	m.cardRect = image.Rectangle{}
@@ -241,17 +229,7 @@ func (m *actionMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// --- Keyboard navigation -------------------------------------------------
-//
-// This menu rendered rows and had no keyboard support at all: it was exempt
-// from the menu-keynav discipline test on the grounds that it "hosts no list
-// itself", which stopped being true once it grew props.Items. It now drives the
-// same MenuKeyNav every other list menu uses.
-
-// ClaimsKeyboard reports whether the menu owns keyboard input.
-//
-// Without this the arrows fall through to the grid's arrow-pan, so one press
-// pans the camera under an open menu and does nothing inside it.
+// Without this the arrows fall through to the grid's arrow-pan under an open menu.
 func (m *actionMenuComponent) ClaimsKeyboard() bool { return m != nil && m.open }
 
 // KeyNav is the menu's keyboard cursor, created on first use.
@@ -262,8 +240,7 @@ func (m *actionMenuComponent) KeyNav() *MenuKeyNav {
 	return m.nav
 }
 
-// UpdateKeyNav pumps the cursor for one frame, driven from the portal's
-// per-frame update so the arrows work wherever the pointer is.
+// Driven from the portal's per-frame update so the arrows work wherever the pointer is.
 func (m *actionMenuComponent) UpdateKeyNav() {
 	if !m.open {
 		if m.nav != nil {
@@ -283,8 +260,7 @@ func (m *actionMenuComponent) MenuItemSelectable(i int) bool {
 	return i >= 0 && i < len(m.buttons) && m.buttons[i] != nil && m.buttons[i].OnClick != nil
 }
 
-// MenuActivate runs row i's action — identical to clicking it, including the
-// Close the row closure already performs.
+// Identical to clicking it, including the Close the row closure performs.
 func (m *actionMenuComponent) MenuActivate(i int) {
 	if !m.MenuItemSelectable(i) {
 		return
@@ -292,6 +268,5 @@ func (m *actionMenuComponent) MenuActivate(i int) {
 	m.buttons[i].OnClick()
 }
 
-// The card is sized to its (tiny, fixed) item count and never scrolls, so
-// there is nothing to reveal.
+// The card never scrolls, so there is nothing to reveal.
 func (m *actionMenuComponent) MenuScrollBehavior() *ScrollBehavior { return nil }

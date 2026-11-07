@@ -18,8 +18,6 @@ var (
 	kbInitialized    bool
 )
 
-// softKeyboardInit caches JS function references for the keyboard proxy.
-// Called once during initJS().
 func softKeyboardInit() {
 	g := js.Global()
 	kbProxyFocusFn = g.Get("_kbProxyFocus")
@@ -28,17 +26,13 @@ func softKeyboardInit() {
 	kbRegisterRectFn = g.Get("_kbRegisterFocusRect")
 	kbClearRectsFn = g.Get("_kbClearFocusRects")
 	kbInitialized = kbProxyFocusFn.Truthy() && kbProxyBlurFn.Truthy() && kbProxyDrainFn.Truthy()
-	// Bridge the proxy's Escape key to the universal Esc handler. The hidden
-	// proxy input holds keyboard focus while a text field is active, so the
-	// canvas never sees Esc — the proxy's keydown handler calls this.
+	// The hidden proxy holds focus while a field is active, so the canvas never sees Esc.
 	kbEscFn = js.FuncOf(func(js.Value, []js.Value) any {
 		SignalSoftKeyboardEscape()
 		return nil
 	})
 	g.Set("_kbProxyEscapeGo", kbEscFn)
-	// Bridge the proxy's caret-navigation keys (Arrow Left/Right) too: the proxy
-	// holds keyboard focus, so the canvas never sees them and caret movement was
-	// dead on WASM. The proxy's keydown handler forwards them via these funcs.
+	// The proxy holds focus, so the canvas never sees the arrows; without this, caret movement was dead on WASM.
 	kbArrowLeftFn = js.FuncOf(func(js.Value, []js.Value) any {
 		SignalSoftKeyboardArrowLeft()
 		return nil
@@ -49,10 +43,7 @@ func softKeyboardInit() {
 		return nil
 	})
 	g.Set("_kbProxyArrowRightGo", kbArrowRightFn)
-	// Home / End caret-jump keys, same out-of-band bridge as the arrows (the
-	// proxy holds focus so the canvas never sees them). Delete (forward-delete)
-	// needs no bridge func — the proxy keydown handler buffers it as the '\x7f'
-	// DEL sentinel into charBuf, drained by softKeyboardDrainChars.
+	// Delete needs no bridge: the keydown handler buffers it as the '\x7f' sentinel.
 	kbHomeFn = js.FuncOf(func(js.Value, []js.Value) any {
 		SignalSoftKeyboardHome()
 		return nil
@@ -66,15 +57,8 @@ func softKeyboardInit() {
 	mobileInputInit()
 }
 
-// softKeyboardShow focuses the hidden proxy input. The proxy is the keyboard-
-// capture path for text fields on WASM (desktop AND mobile): it buffers every
-// keystroke via the browser's own keydown/input events, so short key presses are
-// never dropped — unlike Ebiten's per-frame isKeyPressed() level check, which
-// misses a Backspace/Enter that goes down+up between two Update ticks (observed
-// on WebKit/Safari and any throttled loop). The proxy's keydown handler
-// (index.html) forwards Backspace/Enter/Escape/Arrows as buffered runes; see
-// softKeyboardDrainChars. Do NOT gate this on platform — a hardware keyboard on
-// desktop needs the buffered proxy path just as much as a mobile soft keyboard.
+// The proxy buffers every keystroke through the browser's own events, so a Backspace/Enter that goes down and up
+// between two ticks is never lost (as Ebiten's level check loses it). Never gate on platform: hardware keyboards need it too.
 func softKeyboardShow(inputmode string) {
 	if !kbInitialized {
 		return
@@ -90,8 +74,7 @@ func softKeyboardHide() {
 	kbProxyBlurFn.Invoke()
 }
 
-// softKeyboardDrainChars drains accumulated characters from the proxy input.
-// Returns runes including '\b' for backspace and '\n' for Enter.
+// '\b' is Backspace, '\n' Enter.
 func softKeyboardDrainChars() []rune {
 	if !kbInitialized {
 		return nil
@@ -127,9 +110,7 @@ func softKeyboardActive() bool {
 	return active.Get("id").String() == "beatmo-kb-proxy"
 }
 
-// softKeyboardRegisterRect registers a canvas region as focusable for the
-// gesture-based soft keyboard system. On touchend inside this rect, the JS
-// layer will call proxy.focus() synchronously within the trusted gesture.
+// The JS layer focuses the proxy synchronously inside the trusted touchend, as browsers require.
 func softKeyboardRegisterRect(id string, x, y, w, h int, inputmode string) {
 	if !kbRegisterRectFn.Truthy() {
 		return

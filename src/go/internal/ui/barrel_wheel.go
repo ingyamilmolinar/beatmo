@@ -1,15 +1,11 @@
 package ui
 
-// barrelBinding is the value model a BarrelWheel scrolls. The wheel owns no
-// value state; it reads labels and asks the binding to step by whole detents.
-// Implementations resolve their underlying widget by index every call so a
-// panel re-layout can never leave a dangling pointer.
+// The wheel owns no value. Implementations resolve their widget by index on every call so a re-layout cannot
+// leave a dangling pointer.
 type barrelBinding interface {
-	// labelAt returns the display label offset detents from the current
-	// selection (0 == current). Used only for the fade stack render.
+	// 0 = current; used only by the fade stack.
 	labelAt(offset int) string
-	// stepBy moves the current selection by detents (signed). Returns whether
-	// the underlying value changed (false at a hard clamp).
+	// false at a hard clamp.
 	stepBy(detents int) bool
 	// canStep reports whether one more step in dir (+1/-1) is possible.
 	canStep(dir int) bool
@@ -25,10 +21,7 @@ const (
 	barrelMaxVelScale = 3.0  // cap fling velocity at detentPx * this
 )
 
-// BarrelWheel is an infinite, inertial scroll wheel: a sub-detent pixel offset
-// plus a velocity that decays with friction and snaps to the nearest detent at
-// rest. Direction: a DOWNWARD gesture (y increasing / positive notch) advances
-// the binding in the +1 direction (see plan Global Constraints).
+// A DOWNWARD gesture (y increasing / a positive notch) steps the binding +1.
 type BarrelWheel struct {
 	b        barrelBinding
 	detentPx int
@@ -63,8 +56,7 @@ func (w *BarrelWheel) BeginDrag(y int) {
 	w.lastDragY = y
 }
 
-// DragTo shifts by the pointer delta (natural: offset follows the finger) and
-// crosses whole detents. Returns whether a detent crossed.
+// Natural: the offset follows the finger.
 func (w *BarrelWheel) DragTo(y int) bool {
 	if !w.dragging {
 		return false
@@ -93,12 +85,8 @@ func (w *BarrelWheel) ImpulseNotch(dir int) bool {
 	return true
 }
 
-// StepImmediate performs one synchronous, full-detent step against the bound
-// value — for discrete keyboard input, where the caller (and its test)
-// expects the underlying value to have already changed by the time this call
-// returns, unlike ImpulseNotch's kinetic impulse which only resolves the step
-// across subsequent Tick calls. It still seeds a residual pixel offset so the
-// fade stack eases back to center like a kinetic step would.
+// Synchronous, for keyboard input: the value has changed when this returns, unlike ImpulseNotch. It still
+// seeds a residual offset so the stack eases back to centre.
 func (w *BarrelWheel) StepImmediate(dir int) bool {
 	if w.b == nil || dir == 0 {
 		return false
@@ -142,8 +130,7 @@ func (w *BarrelWheel) Tick() bool {
 	return false
 }
 
-// advance shifts offsetPx by dpx and applies whole-detent crossings, honoring
-// clamps (a clamp kills velocity and pins offset to 0).
+// A clamp kills velocity and pins the offset to 0.
 func (w *BarrelWheel) advance(dpx float64) bool {
 	if w.b == nil || w.detentPx <= 0 {
 		return false

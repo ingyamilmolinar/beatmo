@@ -2,13 +2,8 @@
 
 package ui
 
-// The tour's per-step assertions: every step of tour_steps.go declares the
-// state it exists to show (tourStep.reached), and the runner checks a few
-// invariants after EVERY step (tourInvariants). A failed check is reported by
-// the step's name — in the recording's report.json (showcase_video.sh refuses
-// to encode a recording with step errors) and by TestShowcaseTourReachesEveryStep.
-// The video is the product, so a tap that lands on the wrong control must not
-// survive into it as "the tour finished".
+// Every step declares the state it exists to show, and invariants are checked after EVERY step: the video is the
+// product, so a tap on the wrong control must not survive as "the tour finished".
 
 import (
 	"fmt"
@@ -22,10 +17,7 @@ import (
 
 type tourCheck = func(r *tourRunner, g *Game) error
 
-// tourInvariants hold between every two steps once the template is in: the
-// tour never creates or deletes a node or an edge (a stray tap on the grid
-// would), and once Play was pressed the song keeps playing (a stray tap on
-// the transport would stop the video's music).
+// A stray tap on the grid would add a node; one on the transport would stop the music.
 func (r *tourRunner) tourInvariants(g *Game) error {
 	if len(g.nodes) != r.nodes0 || len(g.edges) != r.edges0 {
 		return fmt.Errorf("the circuit changed: %d nodes / %d edges, the template has %d / %d", len(g.nodes), len(g.edges), r.nodes0, r.edges0)
@@ -114,8 +106,7 @@ func reachedSidebarControl(id sbID) tourCheck {
 	}
 }
 
-// reachedPickerConfirmed: re-tapping the picked cell closed the picker and
-// kept the pick (and the node sidebar open).
+// The pick is kept and the node sidebar stays open.
 func reachedPickerConfirmed(pick tourCheck) tourCheck {
 	return func(r *tourRunner, g *Game) error {
 		if g.sidebar.noteMatrixIsOpen() || g.sidebar.chordMatrixIsOpen() {
@@ -128,9 +119,7 @@ func reachedPickerConfirmed(pick tourCheck) tourCheck {
 	}
 }
 
-// markY / reachedTowardY: a drag of a handle from its marked Y toward target
-// must land on it, or at least halve the distance (a layout minimum may stop
-// it short).
+// At least halfway: a layout minimum may stop the drag short.
 func (r *tourRunner) markY(key string, y int) {
 	if r.mark == nil {
 		r.mark = map[string]float64{}

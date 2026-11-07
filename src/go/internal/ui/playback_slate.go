@@ -8,14 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// playbackSlate owns the row-indexed scheduling, beat-path, timeline/freeze,
-// and trigger-logic state that Game.Update, the background sequencer, and the
-// drum-row refresh share. Value-embedded in Game (see game_struct.go) so every
-// field stays promoted (g.nextBeatIdxs, …) — zero call-site churn. Methods are
-// relocated onto *playbackSlate in Tasks 2–4; the host interface arrives in Task 5.
-//
-// Contains atomics (seqPathSnap, audioGen) → NEVER construct a playbackSlate{}
-// composite literal and never copy it (copylocks). Value-embed + statement-init.
+// Row-indexed scheduling, beat-path, freeze and trigger state shared by Update, the sequencer and the row
+// refresh; value-embedded in Game so its fields stay promoted. Holds atomics: never a composite literal or a copy.
 type playbackSlate struct {
 	g *Game // back-reference, set once in New (replaced by a SlateHost interface in Task 5)
 
@@ -38,18 +32,14 @@ type playbackSlate struct {
 	seqCh       <-chan engine.Event
 	seqNextIdxs []int
 	seqQuit     chan struct{}
-	// lookaheadFloor/lookaheadGen ratchet runtimeAudioLookahead within one
-	// transport generation (g.audioGen) so UI timings can grow the audio
-	// cushion but never make it oscillate. Accessed under seqMu (scheduleSound).
+	// Ratchets within one transport generation so UI timings can grow the cushion but never make it oscillate.
+	// Under seqMu.
 	lookaheadFloor float64
 	lookaheadGen   uint64
-	// seqPathSnap holds an immutable snapshot of per-row beat paths for the
-	// background sequencer so path rebuilds do not race with scheduling.
+	// Immutable, so path rebuilds never race with scheduling.
 	seqPathSnap atomic.Pointer[seqPathSnapshot]
 
-	// lastHLIdxByRow tracks the last highlighted absolute subdivision index
-	// per row to prevent duplicate highlight hooks when the same cell is
-	// refreshed across frames.
+	// Stops a cell refreshed across frames from firing its highlight hook twice.
 	lastHLIdxByRow []int
 
 	// highlight scheduling from sequencer goroutine
@@ -60,77 +50,53 @@ type playbackSlate struct {
 
 	// Segmented drum timeline; stores committed past beats per row.
 	timeline *timeline.Service
-	// Highest absolute subdivision index frozen per row (inclusive). Starts
-	// at -1; grows monotonically while playing. Reset on Stop.
+	// Inclusive; -1 at start, monotonic while playing, reset on Stop.
 	frozenUpToByRow []int
 
-	// Instrumentation: total iterations executed by refreshDrumRow's safety-net
-	// freeze back-fill loop, summed across rows over the process lifetime. Used
-	// by tests to assert the loop is bounded by the predictor window rather than
-	// the (unbounded) elapsed playhead — a full re-freeze from abs 0 on resume
-	// was the "playing after a long session hangs for a few seconds" bug.
+	// Lets tests assert the back-fill is bounded by the predictor window, not the elapsed playhead: a full re-freeze
+	// on resume hung playback after a long session.
 	freezeBackfillIters int64
 
-	// Highest absolute subdivision index already validated by reconcileFrozen
-	// per row (inclusive). reconcileFrozen's per-refresh scan resumes from
-	// reconciledUpToByRow[r]+1 instead of futureReleaseStart, bounding scan
-	// cost to O(newly frozen abs since last refresh) instead of O(freezeLimit).
-	// -1 means "not yet reconciled". Invalidated on SetPaths, Stop reset, row
-	// count change, and inside reconcileFrozen on clamp/trim.
+	// The scan resumes from here, bounding it to the newly frozen cells; -1 = not yet. Invalidated on SetPaths,
+	// Stop, a row-count change and a clamp/trim.
 	reconciledUpToByRow []int
 
-	// Path signatures per row to detect circuit shape changes. Used to avoid
-	// recomputing stable rows during active playback.
+	// So stable rows are not recomputed during playback.
 	pathSigByRow        []uint64
 	rowsPathChanged     []bool
 	pathChangeBeatByRow []int
 	pathsDirty          bool
 
-	// Per-row signature of the current rendered row window (Steps + CellTypes)
-	// used to invalidate only changed row caches when circuits are edited
-	// during active playback.
+	// So an edit during playback invalidates only the rows that changed.
 	rowRenderSig []uint64
-	// Scratch buffers used by refreshDrumRow so published Steps/CellTypes are not
-	// mutated in place. When rowSnapshotMode is enabled (debug), refreshDrumRow
-	// allocates fresh slices instead of reusing these buffers.
+	// So published Steps/CellTypes are never mutated in place; rowSnapshotMode allocates fresh slices instead.
 	rowStepsScratch [][]bool
 	rowTypesScratch [][]model.NodeType
 	rowSnapshotMode bool
-	// Offsets of the last DrumView window used to populate step/cell metadata.
-	// Helps preserve past cells across refreshes when the visible window stays
-	// stationary; rewound windows must recompute from predictor snapshots.
+	// A stationary window keeps its past cells; a rewound one recomputes from the predictor.
 	lastStepsOffset     int
 	lastCellTypesOffset int
 
-	// audioGen is the GLOBAL transport generation. Pause/Stop/seek bump it to
-	// drop ALL in-flight scheduled audio. A structural graph edit must NOT bump
-	// it — doing so dropped already-scheduled beats on rows whose path did not
-	// change, leaving an audible gap when placing/moving a node. Structural
-	// invalidation is per-row via Game.rowStructGen (kept on Game, not this slate).
+	// The GLOBAL transport generation: Pause/Stop/seek bump it to drop all in-flight audio. A structural edit
+	// must NOT (it dropped scheduled beats on unchanged rows); that is per-row via Game.rowStructGen.
 	audioGen atomic.Uint64
 
 	// Per-row trigger counters for node-level logic evaluation.
 	nodeTriggerCountsByRow map[int]map[model.NodeID]int
-	// Guard to avoid double-incrementing trigger counters when the same
-	// (row, idx, node) is evaluated multiple times within a frame.
+	// Guards against counting the same (row, idx, node) twice in a frame.
 	lastEvalIdxByRowNode map[int]map[model.NodeID]int
 	// Per-row trigger counters for NodeLogic callbacks (separate from built-in logic).
 	nodeLogicTriggerCountsByRow map[int]map[model.NodeID]int
 
-	// Last trigger state for each node per row: true if the last evaluation
-	// for that node resulted in an audible trigger. Used by advanced logic
-	// rules that depend on previous node trigger/skip.
+	// For logic rules that depend on whether a node fired last time.
 	lastTriggeredByRow map[int]map[model.NodeID]bool
 
 	// Last audible node fired on each row; used by built-in logic rules.
 	lastFiredNodeByRow []model.NodeID
-	// Per-row mute gate (absolute subdivision index, exclusive) set by
-	// mute nodes to temporarily silence playback.
+	// Exclusive.
 	muteUntilByRow []int
 	// Loop completion counts per row.
 	loopCountByRow []int
-	// playedGraveyard keeps the played history of rows deleted during this
-	// playback session, keyed by the row's origin node, so undoing the delete
-	// brings the row's past back with it. Cleared with the timeline.
+	// Keyed by origin node, so undoing a delete brings the row's past back.
 	playedGraveyard map[model.NodeID]*timeline.PlayedHistory
 }
